@@ -8,10 +8,12 @@ Nodo 以插件形式运行在 DeepSeek Harness（下称 dsh）中。
 
 ## 界面预览
 
-![Nodo 角色与会话界面](docs/Image/conversations.png)
-![Nodo 会话事件显示](docs/Image/streaming.png)
-![Nodo 工作流画布](docs/Image/workflow.png)
-![Nodo 角色配置](docs/Image/role.png)
+<p align="center">
+  <a href="docs/Image/conversations.png"><img src="docs/Image/conversations.png" alt="Nodo 角色与会话界面" width="24%"></a>
+  <a href="docs/Image/streaming.png"><img src="docs/Image/streaming.png" alt="Nodo 会话事件显示" width="24%"></a>
+  <a href="docs/Image/workflow.png"><img src="docs/Image/workflow.png" alt="Nodo 工作流画布" width="24%"></a>
+  <a href="docs/Image/role.png"><img src="docs/Image/role.png" alt="Nodo 角色配置" width="24%"></a>
+</p>
 
 ## 你可以用 Nodo 做什么
 

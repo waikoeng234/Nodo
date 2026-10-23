@@ -8,10 +8,12 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 
 ## Preview
 
-![Nodo roles and conversations](docs/Image/conversations.png)
-![Nodo conversation events](docs/Image/streaming.png)
-![Nodo workflow canvas](docs/Image/workflow.png)
-![Nodo role configuration](docs/Image/role.png)
+<p align="center">
+  <a href="docs/Image/conversations.png"><img src="docs/Image/conversations.png" alt="Nodo roles and conversations" width="24%"></a>
+  <a href="docs/Image/streaming.png"><img src="docs/Image/streaming.png" alt="Nodo conversation events" width="24%"></a>
+  <a href="docs/Image/workflow.png"><img src="docs/Image/workflow.png" alt="Nodo workflow canvas" width="24%"></a>
+  <a href="docs/Image/role.png"><img src="docs/Image/role.png" alt="Nodo role configuration" width="24%"></a>
+</p>
 
 ## What you can do with Nodo
 
