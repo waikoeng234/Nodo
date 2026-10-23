@@ -603,7 +603,11 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 result = { decision: chosen };
             }
             peer.reply(request.id, result);
+            // The request is deleted above before the daemon's serverRequest/resolved
+            // arrives, so the receive loop can no longer match it; the close must come
+            // from here or the host keeps showing a settled card.
             requests.delete(id);
+            emit({ type: 'request/closed', id });
             return Promise.resolve(true);
         },
         onEvent() { throw new Error('Pass onEvent to createCodexDriver'); },
