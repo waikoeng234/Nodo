@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createZcodeDriver, findZcodeExecutable } from '../agent-drivers/src/zcode/index.js'
+import { createZcodeDriver, findZcodeExecutable } from '../agent-drivers/dist/zcode/index.js'
 import { install } from '../src/host/adapter/registry.js'
 
 const changesOnly = process.argv.includes('--changes')

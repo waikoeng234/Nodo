@@ -9,7 +9,7 @@ import { RESOURCE_LIMITS, materializeResources, projectContent } from '../src/ho
 import { createPump } from '../src/host/adapter/pump.js'
 import { registerMirrorTool } from '../src/host/adapter/mirror-tools.js'
 import { redactDeep, redactor } from '../src/host/secrets.js'
-import { registerEngine } from '../agent-drivers/src/index.js'
+import { registerEngine } from '../agent-drivers/dist/index.js'
 import { boot, until, withHost } from './helpers/host.js'
 
 const presentation = (body = {}, revision) => ({ version: 1, kind: 'tool', mode: 'snapshot', body, ...(revision !== undefined ? { revision } : {}) })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { registerEngine } from '../agent-drivers/src/index.js'
+import { registerEngine } from '../agent-drivers/dist/index.js'
 import { createEchoDriver, echoInfo, validateEchoOptions, checkEcho } from './helpers/echo-driver.js'
 import { boot, until, withHost } from './helpers/host.js'
 

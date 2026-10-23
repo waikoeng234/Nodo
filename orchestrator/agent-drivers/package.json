@@ -10,23 +10,23 @@
   ],
   "license": "Apache-2.0",
   "type": "module",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "exports": {
-    ".": "./src/index.js",
-    "./spi": "./src/spi.js",
-    "./probe": "./src/probe.js",
+    ".": "./dist/index.js",
+    "./spi": "./dist/spi.js",
+    "./probe": "./dist/probe.js",
     "./package.json": "./package.json"
   },
   "files": [
     "LICENSE",
     "NOTICE",
-    "src/",
+    "dist/",
     "PROTOCOL.md",
     "ENGINE_INTAKE.md",
     "README.md"
   ],
   "engines": {
-    "node": ">=20.3.0"
+    "node": ">=24"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1"

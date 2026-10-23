@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { readdirSync } from 'node:fs'
 import { open, realpath, stat } from 'node:fs/promises'
-import { validateWorkspace } from '../../agent-drivers/src/cli.js'
+import { validateWorkspace } from '../../agent-drivers/dist/cli.js'
 import { NAME_MAX } from './constants.js'
 import { normalize, unquote } from './text.js'
 

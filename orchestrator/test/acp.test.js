@@ -4,9 +4,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { createAcpDriver } from '../agent-drivers/src/acp/core.js'
-import { formElicitation } from '../agent-drivers/src/acp/elicitation.js'
-import { jsonRpcProcess } from '../agent-drivers/src/json-rpc-process.js'
+import { createAcpDriver } from '../agent-drivers/dist/acp/core.js'
+import { formElicitation } from '../agent-drivers/dist/acp/elicitation.js'
+import { jsonRpcProcess } from '../agent-drivers/dist/json-rpc-process.js'
 import { until } from './helpers/host.js'
 
 const fixture = fileURLToPath(new URL('./fixtures/acp-cli.cjs', import.meta.url))

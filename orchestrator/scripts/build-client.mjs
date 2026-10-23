@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Script } from 'node:vm'
-import { engineMetadata } from '../agent-drivers/src/index.js'
+import { engineMetadata } from '../agent-drivers/dist/index.js'
 import { PANEL_SOURCES } from './client-sources.mjs'
 
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))

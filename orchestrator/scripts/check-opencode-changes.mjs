@@ -3,8 +3,8 @@ import { createServer } from 'node:http'
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createOpencodeDriver } from '../agent-drivers/src/opencode/index.js'
-import { cliVersion, findExecutable } from '../agent-drivers/src/cli.js'
+import { createOpencodeDriver } from '../agent-drivers/dist/opencode/index.js'
+import { cliVersion, findExecutable } from '../agent-drivers/dist/cli.js'
 
 const bin = findExecutable('opencode')
 assert.ok(bin, 'Install OpenCode before running this local check')

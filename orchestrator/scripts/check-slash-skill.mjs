@@ -8,7 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDriver } from '../agent-drivers/src/index.js'
+import { createDriver } from '../agent-drivers/dist/index.js'
 
 const TOKEN = 'NODO_PROBE_OK'
 const SKILL_BODY = `Reply with the exact token ${TOKEN} and nothing else.`

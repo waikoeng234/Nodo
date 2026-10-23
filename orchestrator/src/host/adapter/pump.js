@@ -6,7 +6,7 @@
 // stays the authority: nothing here assembles prompts (the newest human message
 // is relayed verbatim) or executes anything engine-side.
 import { randomUUID } from 'node:crypto'
-import { UnsupportedCapabilityError } from '../../../agent-drivers/src/spi.js'
+import { UnsupportedCapabilityError } from '../../../agent-drivers/dist/spi.js'
 import { MIRROR_TOOL_NAME } from './mirror-tools.js'
 import { human, promptKey, newestUserInput, newestUserPrompt, engineInput } from './input.js'
 import { clip } from '../text.js'

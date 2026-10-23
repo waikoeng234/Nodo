@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createIdentityFiles } from '../agent-drivers/src/identity-files.js'
+import { createIdentityFiles } from '../agent-drivers/dist/identity-files.js'
 import { until, withHost } from './helpers/host.js'
 
 test('identity files share immutable complete content, retain old versions and collect only unreferenced versions', () => {

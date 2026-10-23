@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { engineMetadata } from '../../../agent-drivers/src/index.js'
+import { engineMetadata } from '../../../agent-drivers/dist/index.js'
 import { createPump } from './pump.js'
 import { installSteering } from './steering.js'
 import { decideApproval } from './approval-bridge.js'

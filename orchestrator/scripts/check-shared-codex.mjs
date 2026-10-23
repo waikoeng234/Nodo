@@ -5,9 +5,9 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { once } from 'node:events'
-import { createDriver } from '../agent-drivers/src/index.js'
-import { connectCodex } from '../agent-drivers/src/codex/native.js'
-import { findExecutable } from '../agent-drivers/src/cli.js'
+import { createDriver } from '../agent-drivers/dist/index.js'
+import { connectCodex } from '../agent-drivers/dist/codex/native.js'
+import { findExecutable } from '../agent-drivers/dist/cli.js'
 
 const home = mkdtempSync(join(tmpdir(), 'orch-shared-codex-'))
 const socket = join(home, 's')

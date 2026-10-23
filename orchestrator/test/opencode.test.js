@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/src/index.js'
+import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/dist/index.js'
 import { boot, until, withHost } from './helpers/host.js'
-import { opencodeInstructions } from '../agent-drivers/src/opencode/instructions.js'
+import { opencodeInstructions } from '../agent-drivers/dist/opencode/instructions.js'
 
 const withFixture = async (run) => {
   const dir = mkdtempSync(join(tmpdir(), 'orch-opencode-fixture-'))

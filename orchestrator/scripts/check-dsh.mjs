@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { once } from 'node:events'
-import { checkEngine, createDriver } from '../agent-drivers/src/index.js'
+import { checkEngine, createDriver } from '../agent-drivers/dist/index.js'
 
 const waitFor = async (check, timeout = 20000) => {
   const deadline = Date.now() + timeout

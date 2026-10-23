@@ -11,10 +11,10 @@
 // it); extracting it back to a standalone package means republishing it and
 // switching this specifier.
 import { join } from 'node:path'
-import { createIdentityFiles } from '../../agent-drivers/src/identity-files.js'
+import { createIdentityFiles } from '../../agent-drivers/dist/identity-files.js'
 import { ADAPTER_ENGINES } from './adapter/registry.js'
 
-const DRIVERS_SPECIFIER = '../../agent-drivers/src/index.js'
+const DRIVERS_SPECIFIER = '../../agent-drivers/dist/index.js'
 const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' })
 
 export function install(rt) {

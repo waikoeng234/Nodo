@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/src/index.js'
+import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/dist/index.js'
 import { until, withHost } from './helpers/host.js'
 
 const withFixture = async (run) => {

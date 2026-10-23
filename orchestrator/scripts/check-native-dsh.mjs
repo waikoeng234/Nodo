@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { once } from 'node:events'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
-import { findDshExecutable } from '../agent-drivers/src/dsh/config.js'
+import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running the native check')

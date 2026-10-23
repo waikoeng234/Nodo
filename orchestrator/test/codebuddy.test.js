@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { chmodSync, copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/src/index.js'
+import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/dist/index.js'
 import { until } from './helpers/host.js'
 import { createPump } from '../src/host/adapter/pump.js'
 

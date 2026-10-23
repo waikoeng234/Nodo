@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { zcodeInstructions } from '../agent-drivers/src/zcode/instructions.js'
-import { opencodeInstructions } from '../agent-drivers/src/opencode/instructions.js'
-import { createIdentityFiles } from '../agent-drivers/src/identity-files.js'
-import { zcodeMcpServers } from '../agent-drivers/src/zcode/mcp.js'
+import { zcodeInstructions } from '../agent-drivers/dist/zcode/instructions.js'
+import { opencodeInstructions } from '../agent-drivers/dist/opencode/instructions.js'
+import { createIdentityFiles } from '../agent-drivers/dist/identity-files.js'
+import { zcodeMcpServers } from '../agent-drivers/dist/zcode/mcp.js'
 
 const fixture = async run => {
   const root = mkdtempSync(join(tmpdir(), 'nodo-zcode-role-test-'))

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine } from '../agent-drivers/src/index.js'
-import { findDshExecutable } from '../agent-drivers/src/dsh/index.js'
+import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine } from '../agent-drivers/dist/index.js'
+import { findDshExecutable } from '../agent-drivers/dist/dsh/index.js'
 import { withHost, boot, until } from './helpers/host.js'
 
 const withFixture = async run => {

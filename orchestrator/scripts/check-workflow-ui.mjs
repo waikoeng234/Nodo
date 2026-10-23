@@ -7,7 +7,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findDshExecutable } from '../agent-drivers/src/dsh/config.js'
+import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running the isolated UI check')
@@ -26,7 +26,7 @@ if (desktopChrome) writeFileSync(join(plugin, 'client.js'), `window.__ModuleLoad
   }, 'workflow: desktop chrome fixture')
 } }) })`)
 writeFileSync(join(plugin, 'index.js'), `
-import { registerEngine } from ${JSON.stringify(new URL('../agent-drivers/src/index.js', import.meta.url).href)}
+import { registerEngine } from ${JSON.stringify(new URL('../agent-drivers/dist/index.js', import.meta.url).href)}
 import { createEchoDriver, echoInfo } from ${JSON.stringify(new URL('../test/helpers/echo-driver.js', import.meta.url).href)}
 registerEngine('workflow-fixture', {
   info: { ...echoInfo, id: 'workflow-fixture', label: '本地验证 Agent', requiresCwd: true }, validate: value => value,

@@ -13,9 +13,9 @@
 // steer(): accepted while a turn runs; each steered text becomes one follow-up
 // turn after the current one ends on its own ('done'). interruptTurn() stops the
 // script at once and drops steered texts.
-import { registerEngine } from '../../agent-drivers/src/index.js'
-import { STEER } from '../../agent-drivers/src/spi.js'
-import { invalidConfig, validateWorkspace } from '../../agent-drivers/src/cli.js'
+import { registerEngine } from '../../agent-drivers/dist/index.js'
+import { STEER } from '../../agent-drivers/dist/spi.js'
+import { invalidConfig, validateWorkspace } from '../../agent-drivers/dist/cli.js'
 
 export const echoInfo = {
   id: 'echo', label: 'Echo (test)', requiresCwd: false, description: 'Simulated agent; no model or CLI required.',

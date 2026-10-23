@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { scanEngineCommands } from '../agent-drivers/src/index.js'
+import { scanEngineCommands } from '../agent-drivers/dist/index.js'
 import { apply } from '../src/host/adapter/skills.js'
 
 const catalog = (engine, commands) => {

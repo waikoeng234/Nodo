@@ -72,7 +72,7 @@ const withConsumer = run => {
   try {
     for (const dir of [driver, cwd, home, dsh]) mkdirSync(dir, { recursive: true })
     copyFileSync(new URL('../agent-drivers/package.json', import.meta.url), join(driver, 'package.json'))
-    cpSync(new URL('../agent-drivers/src', import.meta.url), join(driver, 'src'), { recursive: true })
+    cpSync(new URL('../agent-drivers/dist', import.meta.url), join(driver, 'dist'), { recursive: true })
     run({ consumer, cwd, dsh, execute(source) {
       const entry = join(consumer, 'check.mjs')
       writeFileSync(entry, source)
@@ -97,7 +97,7 @@ for (const location of ['consumer', 'workspace', 'dsh']) {
       provideWebSocket(join(dsh, 'profiles'), 'dsh')
       execute(`
         import assert from 'node:assert/strict'
-        import { hostWebSocket } from './node_modules/agent-drivers/src/websocket.js'
+        import { hostWebSocket } from './node_modules/agent-drivers/dist/websocket.js'
         assert.equal(hostWebSocket().location, ${JSON.stringify(location)})
       `)
     })

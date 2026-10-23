@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/src/index.js'
-import { claudeArgs } from '../agent-drivers/src/claude/native.js'
+import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/dist/index.js'
+import { claudeArgs } from '../agent-drivers/dist/claude/native.js'
 import { withHost, boot, until } from './helpers/host.js'
 
 const withFixture = async (run) => {

@@ -7,8 +7,8 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkZcode } from '../agent-drivers/src/zcode/index.js'
-import { findZcodeExecutable } from '../agent-drivers/src/zcode/index.js'
+import { checkZcode } from '../agent-drivers/dist/zcode/index.js'
+import { findZcodeExecutable } from '../agent-drivers/dist/zcode/index.js'
 
 const requested = process.argv[2]
 const executable = findZcodeExecutable(requested ?? 'zcode')

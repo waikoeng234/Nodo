@@ -30,10 +30,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "node scripts/build-client.mjs",
-    "build:check": "node scripts/build-client.mjs --check",
+    "build:drivers": "tsc -p agent-drivers",
+    "build": "npm run build:drivers && node scripts/build-client.mjs",
+    "build:check": "node scripts/check-drivers-build.mjs && node scripts/build-client.mjs --check",
     "verify:engine": "node scripts/verify-engine.mjs",
-    "test": "node --test test/*.test.js"
+    "test": "npm run build:drivers && node --test test/*.test.js"
   },
   "dsh": {
     "client": {
@@ -49,5 +50,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
   }
 }

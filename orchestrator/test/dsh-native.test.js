@@ -4,9 +4,9 @@
 // No dsh process is needed: the host is a stub shaped like the real services.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createNativeDshDriver } from '../agent-drivers/src/dsh/native.js'
-import { createDriver, engineCatalog, enginePermissionModes } from '../agent-drivers/src/index.js'
-import { nativeDshChanges } from '../agent-drivers/src/dsh/native-changes.js'
+import { createNativeDshDriver } from '../agent-drivers/dist/dsh/native.js'
+import { createDriver, engineCatalog, enginePermissionModes } from '../agent-drivers/dist/index.js'
+import { nativeDshChanges } from '../agent-drivers/dist/dsh/native-changes.js'
 
 const totals = () => ({
   tokenUsage: { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },

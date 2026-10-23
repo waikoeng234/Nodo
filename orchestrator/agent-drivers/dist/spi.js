@@ -2,22 +2,20 @@
 // event and request shapes it emits. Model catalogs are an optional `scan` beside
 // the SPI; login flows, billing and thread/room/memory concepts stay out of this
 // package.
-
 /** The eight primitives. `missingPrimitives` checks an adapter against this list. */
 export const PRIMITIVES = [
-  'openSession',
-  'sendTurn',
-  'steer',
-  'interruptTurn',
-  'respondToRequest',
-  'onEvent',
-  'hasSession',
-  'dispose',
-]
-
+    'openSession',
+    'sendTurn',
+    'steer',
+    'interruptTurn',
+    'respondToRequest',
+    'onEvent',
+    'hasSession',
+    'dispose',
+];
 // Only driver-authored capability messages may cross the host's startup error boundary.
-export class UnsupportedCapabilityError extends Error {}
-
+export class UnsupportedCapabilityError extends Error {
+}
 // Optional instructionMode is 'native' only after openSession has installed the
 // supplied instructions. Missing or 'none' runs the session without role identity;
 // the host never copies identity into task messages.
@@ -34,29 +32,25 @@ export class UnsupportedCapabilityError extends Error {}
 // the session's older history; drivers without one omit it and the host hides
 // the composer's compact row (capabilities.compact).
 // Engines with asynchronous compaction emit turn/start and turn/end for its lifetime.
-
 /** steer() outcomes. `steered`: the running turn will take the text in; `refused`:
  *  the engine cannot steer mid-turn (queue or interrupt instead); `indeterminate`:
  *  the text was handed over but the engine gives no acknowledgement. */
 export const STEER = Object.freeze({
-  STEERED: 'steered',
-  REFUSED: 'refused',
-  INDETERMINATE: 'indeterminate',
-})
-
+    STEERED: 'steered',
+    REFUSED: 'refused',
+    INDETERMINATE: 'indeterminate',
+});
 /** The outcome of a hand-over that failed: a request that timed out may still have
  *  reached the engine, so it must not be sent again as a new turn. */
-export const steerFailed = error => (error?.name === 'TimeoutError' ? STEER.INDETERMINATE : STEER.REFUSED)
-
+export const steerFailed = (error) => (error?.name === 'TimeoutError' ? STEER.INDETERMINATE : STEER.REFUSED);
 /** respondToRequest decisions. `allow`/`deny` answer a permission request; `answer`
  *  replies to a question with free text. `always` may upgrade a once-allow into a
  *  session rule when the engine supports it. */
 export const DECISION = Object.freeze({
-  ALLOW: 'allow',
-  DENY: 'deny',
-  ANSWER: 'answer',
-})
-
+    ALLOW: 'allow',
+    DENY: 'deny',
+    ANSWER: 'answer',
+});
 /**
  * Events every adapter emits through `onEvent`:
  *
@@ -167,25 +161,24 @@ export const DECISION = Object.freeze({
  *   decodeMs      time the turn spent producing output
  *   decodeTokens  output tokens produced over decodeMs, for the speed figure
  */
-
 /** The normalized `usage` keys, in display order. */
-export const USAGE_KEYS = Object.freeze(['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'contextUsed', 'contextSize'])
-
+export const USAGE_KEYS = Object.freeze(['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'contextUsed', 'contextSize']);
 /**
  * Builds a normalized `usage` from raw protocol numbers: unknown keys, absent
  * fields, NaN, Infinity and negatives are dropped, so a half-reported turn
  * still adds what it does know. Returns undefined when nothing survives.
  */
 export function usageOf(raw) {
-  if (raw === null || typeof raw !== 'object') return undefined
-  const usage = {}
-  for (const key of USAGE_KEYS) {
-    const value = raw[key]
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) usage[key] = Math.round(value)
-  }
-  return Object.keys(usage).length > 0 ? usage : undefined
+    if (raw === null || typeof raw !== 'object')
+        return undefined;
+    const usage = {};
+    for (const key of USAGE_KEYS) {
+        const value = raw[key];
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+            usage[key] = Math.round(value);
+    }
+    return Object.keys(usage).length > 0 ? usage : undefined;
 }
-
 /**
  * Folds one request's normalized usage into a running one, for the engines that
  * report per model call: the four token buckets add up, the two context fields
@@ -193,39 +186,41 @@ export function usageOf(raw) {
  * whose requests each know different fields still ends with everything known.
  */
 export function addUsage(base, next) {
-  if (base === undefined || next === undefined) return base ?? next
-  const usage = {}
-  for (const key of USAGE_KEYS) {
-    if (key === 'contextUsed' || key === 'contextSize') {
-      const value = next[key] ?? base[key]
-      if (value !== undefined) usage[key] = value
-    } else if (base[key] !== undefined || next[key] !== undefined) {
-      usage[key] = (base[key] ?? 0) + (next[key] ?? 0)
+    if (base === undefined || next === undefined)
+        return base ?? next;
+    const usage = {};
+    for (const key of USAGE_KEYS) {
+        if (key === 'contextUsed' || key === 'contextSize') {
+            const value = next[key] ?? base[key];
+            if (value !== undefined)
+                usage[key] = value;
+        }
+        else if (base[key] !== undefined || next[key] !== undefined) {
+            usage[key] = (base[key] ?? 0) + (next[key] ?? 0);
+        }
     }
-  }
-  return Object.keys(usage).length > 0 ? usage : undefined
+    return Object.keys(usage).length > 0 ? usage : undefined;
 }
-
 /** The normalized `timing` keys. */
-export const TIMING_KEYS = Object.freeze(['ttftMs', 'ttftSteps', 'llmMs', 'toolMs', 'decodeMs', 'decodeTokens'])
-
+export const TIMING_KEYS = Object.freeze(['ttftMs', 'ttftSteps', 'llmMs', 'toolMs', 'decodeMs', 'decodeTokens']);
 /** The clean-up `usageOf` does, for a `timing` object. */
 export function timingOf(raw) {
-  if (raw === null || typeof raw !== 'object') return undefined
-  const timing = {}
-  for (const key of TIMING_KEYS) {
-    const value = raw[key]
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) timing[key] = Math.round(value)
-  }
-  return Object.keys(timing).length > 0 ? timing : undefined
+    if (raw === null || typeof raw !== 'object')
+        return undefined;
+    const timing = {};
+    for (const key of TIMING_KEYS) {
+        const value = raw[key];
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+            timing[key] = Math.round(value);
+    }
+    return Object.keys(timing).length > 0 ? timing : undefined;
 }
-
 /** Returns the primitive names an adapter object does not provide as functions. */
 export function missingPrimitives(candidate) {
-  if (candidate === null || typeof candidate !== 'object') return [...PRIMITIVES]
-  return PRIMITIVES.filter(name => typeof candidate[name] !== 'function')
+    if (candidate === null || typeof candidate !== 'object')
+        return [...PRIMITIVES];
+    return PRIMITIVES.filter(name => typeof candidate[name] !== 'function');
 }
-
 /**
  * Optional primitives beyond the eight: a driver implements those its engine can
  * honor and declares exactly those in `info.capabilities` — declaration without
@@ -233,10 +228,9 @@ export function missingPrimitives(candidate) {
  * refuses. New optional primitives join this list.
  */
 export const OPTIONAL_METHODS = [
-  'compact', // compact the session's older history; absent when the engine's channel has no such request
-]
-
+    'compact', // compact the session's older history; absent when the engine's channel has no such request
+];
 /** Whether a driver implements one optional primitive. */
 export function hasOptionalMethod(driver, name) {
-  return typeof driver?.[name] === 'function'
+    return typeof driver?.[name] === 'function';
 }

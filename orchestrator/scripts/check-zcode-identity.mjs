@@ -5,8 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createZcodeDriver, findZcodeExecutable } from '../agent-drivers/src/zcode/index.js'
-import { createIdentityFiles } from '../agent-drivers/src/identity-files.js'
+import { createZcodeDriver, findZcodeExecutable } from '../agent-drivers/dist/zcode/index.js'
+import { createIdentityFiles } from '../agent-drivers/dist/identity-files.js'
 
 // Use a separate home and local model endpoint, leaving real login data alone.
 if (process.argv[2] !== '--worker') {
@@ -57,7 +57,7 @@ if (process.argv[2] !== '--worker') {
   mkdirSync(join(home, '.zcode'), { recursive: true })
   writeFileSync(join(home, '.zcode/AGENTS.md'), globalMarker)
   mkdirSync(join(home, '.zcode/cli'), { recursive: true })
-  writeFileSync(join(home, '.zcode/cli/config.json'), JSON.stringify({ mcp: { servers: { existing: { type: 'stdio', command: process.execPath, args: [fileURLToPath(new URL('../agent-drivers/src/role-server.js', import.meta.url))], env: { NODO_ROLE_INSTRUCTIONS: 'EXISTING_MCP_CONTEXT', NODO_ROLE_TOOL_IDENTITY: '1' } } } }, plugins: { enabledPlugins: { 'fixture-disabled': false } } }))
+  writeFileSync(join(home, '.zcode/cli/config.json'), JSON.stringify({ mcp: { servers: { existing: { type: 'stdio', command: process.execPath, args: [fileURLToPath(new URL('../agent-drivers/dist/role-server.js', import.meta.url))], env: { NODO_ROLE_INSTRUCTIONS: 'EXISTING_MCP_CONTEXT', NODO_ROLE_TOOL_IDENTITY: '1' } } } }, plugins: { enabledPlugins: { 'fixture-disabled': false } } }))
   writeFileSync(join(root, '.env'), '')
   const personal = join(root, 'personal.json')
   writeFileSync(personal, JSON.stringify({ schemaVersion: 1, config: {

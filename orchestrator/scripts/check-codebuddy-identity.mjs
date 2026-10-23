@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDriver } from '../agent-drivers/src/index.js'
+import { createDriver } from '../agent-drivers/dist/index.js'
 
 // Real CodeBuddy CLI against a local mock model, with a separate home and
 // config directory; the placeholder key only passes the ACP login gate.

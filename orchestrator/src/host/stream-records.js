@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { toolText } from './text.js'
 import { estimateResources, materializeResources, normalizeResources, previewResources, projectContent } from './resources.js'
-import { normalizeChanges } from '../../agent-drivers/src/file-changes.js'
+import { normalizeChanges } from '../../agent-drivers/dist/file-changes.js'
 import { readImageFile } from './image-files.js'
 
 export const STREAM_LIMITS = Object.freeze({ detailBytes: 1024 * 1024, sessionBytes: 16 * 1024 * 1024, entries: 1024 })

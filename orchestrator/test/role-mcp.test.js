@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { roleMcp } from '../agent-drivers/src/role-mcp.js'
+import { roleMcp } from '../agent-drivers/dist/role-mcp.js'
 
 test('role MCP serves a fixed per-session identity, including initialization instructions', async () => {
   const roles = ['Coder\n{{literal}} {env:UNSET} {file:/unreadable}', 'Decider\nOnly decide']

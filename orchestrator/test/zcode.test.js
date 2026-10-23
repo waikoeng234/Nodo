@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine } from '../agent-drivers/src/index.js'
-import { findZcodeExecutable } from '../agent-drivers/src/zcode/index.js'
-import { zcodeProviderEnv } from '../agent-drivers/src/zcode/native.js'
+import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine } from '../agent-drivers/dist/index.js'
+import { findZcodeExecutable } from '../agent-drivers/dist/zcode/index.js'
+import { zcodeProviderEnv } from '../agent-drivers/dist/zcode/native.js'
 import { withHost, boot, until } from './helpers/host.js'
 
 const withFixture = async run => {

@@ -7,7 +7,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { findDshExecutable } from '../agent-drivers/src/dsh/config.js'
+import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running this check')
@@ -21,7 +21,7 @@ const cwd = join(home, 'workspace')
 mkdirSync(plugin); mkdirSync(cwd)
 writeFileSync(join(plugin, 'package.json'), JSON.stringify({ name: 'nodo-es03-fixture', version: '0.0.0', type: 'module', main: 'index.js',
   exports: { '.': './index.js', './client': './client.js', './package.json': './package.json' }, dsh: { client: { inject: ['@deepseek-ai/dsh-client-ui-layout'], platform: 'web' } } }))
-const drivers = new URL('../agent-drivers/src/index.js', import.meta.url).href
+const drivers = new URL('../agent-drivers/dist/index.js', import.meta.url).href
 writeFileSync(join(plugin, 'index.js'), `
 import { registerEngine } from ${JSON.stringify(drivers)}
 const snapshot = (body, revision) => ({ version: 1, kind: 'tool', mode: 'snapshot', body, revision })

@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { createClaudeDriver, findExecutable } from '../agent-drivers/src/claude/index.js'
+import { createClaudeDriver, findExecutable } from '../agent-drivers/dist/claude/index.js'
 
 const bin = findExecutable('claude')
 assert.ok(bin, 'Install Claude Code before running this check')
