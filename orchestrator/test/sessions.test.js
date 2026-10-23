@@ -598,12 +598,17 @@ test('one global role opens independent conversations in multiple workspaces and
     const updated = (await host.api('state')).profiles.find(item => item.id === role.id)
     assert.equal(updated.sessions.find(item => item.id === first.id).instructions, 'Original identity')
     assert.equal(updated.sessions.at(-1).instructions, 'New identity')
-    assert.equal((await host.post('workspace-delete', { id: a.id })).error.code, 'orch/busy')
+    assert.equal(await host.api('workspace-delete', { id: a.id }), true)
     host.dispose()
     host = boot(home)
     const reopened = (await host.api('state')).profiles.find(item => item.id === role.id)
+    assert.equal((await host.api('state')).workspaces.some(item => item.id === a.id), false)
     assert.equal(reopened.sessions.find(item => item.id === first.id).workspaceRef, a.id)
     assert.equal(reopened.sessions.find(item => item.id === second.id).workspaceRef, b.id)
+    assert.equal(reopened.sessions.find(item => item.id === first.id).cwd, realpathSync(a.cwd))
+    assert.deepEqual((await host.api('transcript', { profile: role.id, session: first.id })).filter(line => line.who === 'user').map(line => line.text), ['Task A'])
+    const third = await host.api('session-create', { profile: role.id, workspace: b.id, lazy: true })
+    assert.equal(third.workspaceRef, b.id, 'the retained role can still start conversations elsewhere')
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 

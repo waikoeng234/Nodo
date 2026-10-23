@@ -70,8 +70,32 @@ export function install(rt) {
     await rt.load()
     const workspace = state.workspaces[String(id ?? '')]
     if (workspace === undefined) throw Object.assign(new Error('No such workspace'), { code: 'orch/not-found' })
+    for (const summary of await rt.listRuns()) {
+      if (['done', 'failed', 'cancelled', 'unreadable'].includes(summary.status)) continue
+      const run = await rt.loadRun(summary.id)
+      const usesSession = Object.values(run.attempts).some(attempt => {
+        const found = attempt.sessionId && rt.conversationOf(attempt.sessionId)
+        return attempt.workspaceId === workspace.id || found && rt.sessionWorkspace(found.profile, found.session)?.id === workspace.id
+      })
+      const usesRole = run.snapshot.input?.workspaceId === undefined && Object.keys(run.snapshot.profiles ?? {}).some(id => {
+        const profile = state.profiles[id]
+        return profile && rt.sessionWorkspace(profile, rt.sessionsOf(profile).find(session => session.id === profile.activeSessionId))?.id === workspace.id
+      })
+      if (run.snapshot.input?.workspaceId === workspace.id || usesSession || usesRole) throw Object.assign(new Error('请先结束或取消使用此工作区的工作流，再删除工作区'), { code: 'orch/busy' })
+    }
     const profiles = profilesIn(workspace)
-    if (profiles.length > 0) throw Object.assign(new Error(`"${workspace.name}" still has ${profiles.length} role(s); delete or move them first`), { code: 'orch/busy' })
+    const work = rt.workView()
+    if (profiles.some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id
+      && (work[session.id]?.active || rt.adapterBusy?.(session))))) throw Object.assign(new Error('请先停止或完成此工作区中正在运行的任务，再删除工作区'), { code: 'orch/busy' })
+    for (const profile of profiles) {
+      profile.sessions ??= rt.sessionsOf(profile)
+      for (const session of profile.sessions) {
+        if (rt.sessionWorkspace(profile, session)?.id !== workspace.id) continue
+        session.cwd ??= workspace.cwd
+        session.workspaceRef ??= workspace.id
+      }
+      if (profile.workspaceId === workspace.id) delete profile.workspaceId
+    }
     delete state.workspaces[workspace.id]
     await rt.save()
     return true

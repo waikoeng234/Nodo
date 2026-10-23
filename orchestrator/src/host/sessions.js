@@ -15,6 +15,7 @@ export function install(rt) {
   }
   const sessionsOf = profile => profile.sessions ?? [{ id: profile.id, name: 'Session 1', engine: profile.engine, model: profile.model, thinking: profile.thinking, engineOptions: profile.engineOptions, driverSessionId: profile.driverSessionId, briefSent: !!profile.driverSessionId }]
   const sessionWorkspace = (profile, session) => rt.state.workspaces[session?.workspaceRef]
+    ?? (session?.workspaceRef && session.cwd ? { id: session.workspaceRef, cwd: session.cwd } : undefined)
     ?? Object.values(rt.state.workspaces).find(workspace => session?.cwd && workspace.cwd === session.cwd)
     ?? rt.workspaceOf(profile)
   const conversationOf = id => {
@@ -67,7 +68,7 @@ export function install(rt) {
     choices = cleanSessionChoices(profile, choices)
     const active = sessionsOf(profile).find(session => session.id === profile.activeSessionId)
     const workspace = workspaceRef !== undefined ? rt.findWorkspace(workspaceRef) : sessionWorkspace(profile, active)
-    if (!workspace) throw new Error('Choose a valid workspace for the conversation')
+    if (!workspace || rt.state.workspaces[workspace.id] === undefined) throw new Error('Choose a valid workspace for the conversation')
     profile.sessions ??= sessionsOf(profile)
     // A nameless draft is the new-conversation placeholder — one per role and
     // workspace, reused until its first input names it; the host has no

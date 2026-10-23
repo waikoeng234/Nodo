@@ -1,12 +1,12 @@
 // Legacy workspace-bound profiles remain readable; new roles can be global.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { boot, until, withHost } from './helpers/host.js'
 
-test('workspace lifecycle: create validates, rename to same name, profiles pin it, empty deletes', async () => {
+test('workspace lifecycle: deletion keeps roles, conversation history and the directory', async () => {
   await withHost(async ({ api, post, home }) => {
     assert.equal((await post('workspace-create', { name: 'Bad', cwd: '.' })).error.code, 'orch/invalid')
     const workspace = await api('workspace-create', { name: 'Site', cwd: join(home, 'site') })
@@ -21,14 +21,105 @@ test('workspace lifecycle: create validates, rename to same name, profiles pin i
     assert.equal(profile.workspaceId, workspace.id)
     assert.equal(profile.cwd, workspace.cwd)
 
-    assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
+    assert.equal((await post('workspace-delete', { id: 'missing' })).error.code, 'orch/not-found')
     await api('send', { profile: profile.id, text: 'build' })
     await until(async () => !(await api('state')).work[profile.id].active)
     assert.equal(existsSync(join(home, 'site')), true, 'the workspace directory is created on first use')
-    await api('profile-delete', { id: profile.id })
+    const history = await api('transcript', { profile: profile.id })
     assert.equal(await api('workspace-delete', { id: workspace.id }), true)
+    const view = await api('state')
+    assert.equal(view.workspaces.some(item => item.id === workspace.id), false)
+    assert.equal(view.profiles.find(item => item.id === profile.id).workspaceId, undefined)
+    assert.deepEqual(await api('transcript', { profile: profile.id }), history)
+    assert.equal(existsSync(workspace.cwd), true)
   })
 })
+
+test('deleting a workspace preserves drafts and archived sessions without moving them to another workspace', async () => {
+  await withHost(async ({ api, post, home, runtime }) => {
+    const a = await api('workspace-create', { name: 'A', cwd: join(home, 'a') })
+    const alias = await api('workspace-create', { name: 'Same directory', cwd: a.cwd })
+    const b = await api('workspace-create', { name: 'B', cwd: join(home, 'b') })
+    mkdirSync(a.cwd)
+    writeFileSync(join(a.cwd, 'note.md'), 'Original directory')
+    const role = await api('profile-create', { name: 'Shared', engine: 'echo', instructions: 'Keep this identity' })
+    const first = await api('session-create', { profile: role.id, workspace: a.id, lazy: true })
+    await api('session-archive', { profile: role.id, session: first.id, archived: true })
+    const second = await api('session-create', { profile: role.id, workspace: b.id, lazy: true })
+    const legacy = await api('profile-create', { name: 'Legacy', engine: 'echo', workspace: a.id })
+    const elsewhere = await api('profile-create', { name: 'Bound to B', engine: 'echo', workspace: b.id })
+    const third = await api('session-create', { profile: elsewhere.id, workspace: a.id, lazy: true })
+    const rt = await runtime
+    const original = rt.state.profiles[elsewhere.id].sessions.find(item => item.id === third.id)
+    original.driverSessionId = 'native-thread'
+    original.workspaceId = 'native-workspace'
+    const unrelated = await rt.createRun({ workflowId: 'other', workflowName: 'Other', graph: { nodes: [], edges: [] }, input: { workspaceId: b.id } })
+    assert.equal(await api('workspace-delete', { id: a.id }), true)
+    const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    assert.equal(saved.workspaces[a.id], undefined, 'the workspace record is actually deleted')
+    assert.equal(Object.keys(saved.profiles).length, 3)
+    assert.equal(saved.profiles[legacy.id].workspaceId, undefined)
+    assert.equal(saved.profiles[elsewhere.id].workspaceId, b.id)
+    assert.equal(saved.profiles[role.id].instructions, 'Keep this identity')
+    assert.equal(saved.profiles[role.id].sessions.find(item => item.id === first.id).archivedAt > 0, true)
+    assert.equal(saved.profiles[role.id].sessions.find(item => item.id === second.id).workspaceRef, b.id)
+    assert.equal(original.driverSessionId, 'native-thread')
+    assert.equal(original.workspaceId, 'native-workspace')
+    for (const profile of [rt.state.profiles[role.id], rt.state.profiles[legacy.id], rt.state.profiles[elsewhere.id]]) {
+      const session = rt.sessionsOf(profile).find(item => item.workspaceRef === a.id)
+      assert.equal(session.cwd, a.cwd, 'even an unsent session keeps its original directory')
+      assert.equal(rt.sessionWorkspace(profile, session).id, a.id)
+      assert.notEqual(rt.sessionWorkspace(profile, session).id, alias.id)
+    }
+    assert.equal((await rt.prepareConversation(third.id)).cwd, realpathSync(a.cwd))
+    assert.equal((await api('workspace-file', { profile: elsewhere.id, session: third.id, path: 'note.md' })).text, 'Original directory')
+    assert.equal((await post('session-create', { profile: elsewhere.id, lazy: true })).ok, false, 'a new conversation requires an existing workspace')
+    assert.equal((await post('workspace-delete', { id: a.id })).error.code, 'orch/not-found')
+    assert.equal((await rt.loadRun(unrelated.id)).status, 'running')
+    assert.equal(existsSync(join(a.cwd, 'note.md')), true)
+  })
+})
+
+test('workspace deletion refuses running tasks and native activity without changing role bindings', async () => {
+  await withHost(async ({ api, post, home, runtime }) => {
+    const workspace = await api('workspace-create', { name: 'Busy', cwd: join(home, 'busy') })
+    const role = await api('profile-create', { name: 'Waiting', engine: 'echo', workspace: workspace.id, engineOptions: { script: [{ kind: 'ask' }] } })
+    await api('send', { profile: role.id, text: 'Wait for permission' })
+    await until(async () => (await api('state')).approvals.length > 0)
+    assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
+    const rt = await runtime
+    assert.equal(rt.state.profiles[role.id].workspaceId, workspace.id)
+    await api('interrupt', { profile: role.id })
+    await until(async () => !(await api('state')).work[role.id]?.active)
+    const adapterBusy = rt.adapterBusy
+    rt.adapterBusy = () => true
+    assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
+    rt.adapterBusy = adapterBusy
+    assert.equal(await api('workspace-delete', { id: workspace.id }), true)
+    assert.ok(rt.state.profiles[role.id])
+  })
+})
+
+for (const reference of ['pinned', 'session', 'role']) {
+  test(`workspace deletion waits for an unfinished workflow using its ${reference}`, async () => {
+    await withHost(async ({ api, post, home, runtime }) => {
+      const workspace = await api('workspace-create', { name: 'Flow', cwd: join(home, 'flow') })
+      const role = await api('profile-create', { name: 'Flow role', engine: 'echo' })
+      const session = await api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+      const rt = await runtime
+      const run = await rt.createRun({ workflowId: 'fixture', workflowName: 'Fixture', graph: { nodes: [], edges: [] },
+        profiles: reference === 'role' ? { [role.id]: {} } : {}, input: reference === 'pinned' ? { workspaceId: workspace.id } : {} })
+      if (reference === 'session') await rt.commit(run.id, draft => { draft.attempts.first = { sessionId: session.id } })
+      assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
+      await rt.commit(run.id, draft => { draft.status = 'needs_reconcile' })
+      assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
+      await rt.commit(run.id, draft => { draft.status = 'cancelled' })
+      assert.equal(await api('workspace-delete', { id: workspace.id }), true)
+      assert.ok(rt.state.profiles[role.id])
+      assert.equal((await rt.loadRun(run.id)).status, 'cancelled')
+    })
+  })
+}
 
 test('editing a workspace cwd moves its roles and restarts their conversations', async () => {
   await withHost(async ({ api, home }) => {

@@ -3356,8 +3356,8 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '删除工作区',
     description: workspace.worktree
-      ? `将把“${workspace.name}”从工作区列表移除。工作树目录和分支会保留；仍有角色或会话用它时无法删除。`
-      : `将把“${workspace.name}”从工作区列表移除。目录本身不会被删除；仍有角色或会话用它时无法删除。`,
+      ? `将删除工作区“${workspace.name}”。角色、历史会话、工作树目录和分支会保留；相关任务和工作流需先结束。`
+      : `将删除工作区“${workspace.name}”。角色、历史会话和目录文件会保留；相关任务和工作流需先结束。`,
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, { key: 'delete', variant: 'outline', className: 'nodo-dialog-danger', disabled: busy, onClick: () => void remove() }, '删除工作区'),
