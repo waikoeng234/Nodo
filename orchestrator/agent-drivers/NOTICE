@@ -1,0 +1,9 @@
+agent-drivers (Nodo)
+Copyright 2026 Nodo contributors
+
+This package's original contributions are licensed under the Apache
+License, Version 2.0. See LICENSE. Dependencies retain their own copyrights
+and applicable licenses.
+
+The @modelcontextprotocol/sdk dependency is installed separately under its
+own license. Refer to its distributed LICENSE for the installed version.

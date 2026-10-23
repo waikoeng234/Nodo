@@ -1,0 +1,53 @@
+{
+  "name": "dsh-plugin-nodo",
+  "version": "0.1.0",
+  "description": "Nodo: dispatch tasks 1:1 to local coding CLIs through extensible agent-drivers; artifacts are the handoff medium",
+  "keywords": [
+    "dsh-plugin",
+    "nodo",
+    "agents",
+    "drivers"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "LICENSE",
+    "NOTICE",
+    "index.js",
+    "src/host/",
+    "src/client/",
+    "src/shared/",
+    "agent-drivers/",
+    "cordis.patch.yml",
+    "client.js",
+    "THIRD_PARTY_NOTICES.txt",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "build:check": "node scripts/build-client.mjs --check",
+    "verify:engine": "node scripts/verify-engine.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}

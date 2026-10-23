@@ -1,0 +1,34 @@
+{
+  "name": "agent-drivers",
+  "version": "0.1.0",
+  "description": "One SPI, eight primitives, native coding-agent sessions and workspaces; pure ESM.",
+  "keywords": [
+    "codex",
+    "agent",
+    "driver",
+    "spi"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./spi": "./src/spi.js",
+    "./probe": "./src/probe.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "LICENSE",
+    "NOTICE",
+    "src/",
+    "PROTOCOL.md",
+    "ENGINE_INTAKE.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.3.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}

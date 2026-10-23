@@ -1,0 +1,11 @@
+Nodo
+Copyright 2026 Nodo contributors
+
+Nodo's original contributions are licensed under the Apache License,
+Version 2.0. See LICENSE. Third-party materials retain their own copyrights
+and applicable licenses.
+
+Additional dependency, UI, and asset notices are in
+orchestrator/THIRD_PARTY_NOTICES.txt in the source repository, or
+THIRD_PARTY_NOTICES.txt in the Nodo plugin package. Product names and marks
+belong to their respective owners; no affiliation or endorsement is implied.

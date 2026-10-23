@@ -1,0 +1,55 @@
+Nodo's original contributions are licensed under Apache-2.0 (see LICENSE).
+Project copyright information is in NOTICE. The license
+of Nodo does not replace the licenses of the third-party materials below.
+
+The panel renders its menus, dialogs, buttons, list rows, message rows, tool and
+thinking rows, markdown, icons and form controls through
+@deepseek-ai/dsh-client-ui-primitives (DeepSeek Harness), MIT licensed: the shell
+seeds that package into the client module table for every plugin.
+
+The panel also copies layout values (sizes, paddings, radii, gaps, type scale)
+and the composer's send and stop glyph paths from the host's own client packages
+(dsh-client-ui-conversation, dsh-client-ui-chat, dsh-client-ui-tool,
+dsh-client-ui-sidebar, dsh-client-ui-workspace, dsh-client-ui-approval,
+dsh-client-ui-user-questions, dsh-client-locale — all DeepSeek Harness, MIT
+licensed) so its surfaces match the product they sit in.
+
+The session identity MCP service uses @modelcontextprotocol/sdk 1.32.1,
+the official Model Context Protocol TypeScript SDK, MIT licensed.
+It is installed as an npm dependency with its license; protocol code is not copied.
+
+The settings and onboarding pages identify the adapted Agents with their
+official brand marks, stored as src/client/assets/engines/*.svg and taken from
+each vendor's own channel: the favicons of claude.ai (Claude by Anthropic),
+opencode.ai, codebuddy.ai, qoder.com and pi.dev, and the logo published by z.ai.
+The Codex knot (OpenAI) and the DeepSeek whale (DSH) still come from the
+Simple Icons collection (https://simpleicons.org, code licensed CC0; the
+OpenAI glyph from the simple-icons 13 release) — openai.com and deepseek.com
+block automated fetching, so those two marks are unchanged. They remain
+trademarks of their respective owners, used here solely to identify each
+Agent.
+
+MIT license terms for the host-derived UI material described above:
+
+Copyright (c) 2026 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The installed @modelcontextprotocol/sdk 1.32.1 package separately retains its
+MIT License and Copyright (c) 2024 Anthropic, PBC in its distributed LICENSE.

@@ -1,0 +1,40 @@
+function RolePicker({ profiles, profile, disabled, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const name = profile?.name ?? '选择角色'
+  const face = [profile && h(RoleAvatar, { profile, size: 20 }), h('span', { className: 'nodo-role-seat-label' }, name)]
+  if (!onSelect) return profile ? h('span', { className: 'nodo-role-seat nodo-role-seat-fixed',
+    'aria-label': `会话角色：${name}，不可修改`, title: '会话角色已固定' }, ...face) : null
+  return h(Menu, {
+    open, onClose: () => setOpen(false), portal: true, side: 'top', align: 'end',
+    className: 'nodo-role-seat', listClassName: 'nodo-role-seat-list', selectedId: profile?.id,
+    items: profiles.length ? profiles.map(role => ({ id: role.id, label: role.name,
+      icon: h(RoleAvatar, { profile: role, size: 20 }), disabled })) : [{ type: 'label', id: 'empty', text: '请先添加角色' }],
+    onSelect: id => { if (!disabled && profiles.some(role => role.id === id)) { onSelect(id); setOpen(false) } },
+    anchor: h('button', { type: 'button', className: 'nodo-role-seat-trigger', disabled,
+      'data-nodo-role-seat': true, 'aria-haspopup': 'menu', 'aria-expanded': open,
+      'aria-label': `选择角色，当前 ${name}`, onClick: () => setOpen(value => !value) },
+    ...face, h(IconChevronDownOutlineRegular, { size: 14 })),
+  })
+}
+
+function createRoleSeat(ctx, space) {
+  function RoleSeat({ sessionId }) {
+    const { view } = useStateView()
+    const profile = view?.profiles.find(role => role.sessions.some(session =>
+      (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) === sessionId))
+    if (typeof ctx.sessions.subagentAddress === 'function' && ctx.sessions.subagentAddress(sessionId) !== undefined) return null
+    return h(RolePicker, { profiles: view?.profiles ?? [], profile })
+  }
+  ctx.slots.inject('conversation.input.right', () => {
+    let unregister
+    const update = () => {
+      const state = space.getSnapshot()
+      if (state.active && !state.legacy && !unregister) unregister = ctx.slots.register({ name: 'conversation.input.right', id: 'nodo-role' }, RoleSeat)
+      else if ((!state.active || state.legacy) && unregister) { unregister(); unregister = null }
+    }
+    const stop = space.subscribe(update)
+    update()
+    return () => { stop(); unregister?.() }
+  })
+  return { RoleSeat }
+}

@@ -1,0 +1,5 @@
+# Adds the Nodo host plugin to the dsh bundle. Its browser half is loaded from the
+# package.json "dsh.client" entry and the ./client export.
+- insert:
+    - id: nodo
+      name: dsh-plugin-nodo

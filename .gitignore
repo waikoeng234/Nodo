@@ -1,0 +1,23 @@
+# 依赖
+node_modules/
+
+# 本地配置与凭证
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# 系统文件与日志
+.DS_Store
+*.log
+
+# Nodo 运行数据、附件与工作树
+.nodo/
+
+# 测试夹具与探针产物
+*-requests.jsonl
+acp-wire.jsonl
+session-ledger
+
+# client.js 是宿主加载入口，构建后需随源码提交。

@@ -1,2 +1,196 @@
 # Nodo
-Combine multiple agents like Claude, Code, and Codex into a team and collaborate on a single workspace.
+
+简体中文 | [English](README.en.md)
+
+**把 Claude Code、Codex 等 多个Agent 组成一支团队，在一个工作台里分工协作。**
+
+Nodo 以插件形式运行在 DeepSeek Harness（下称 dsh）中。
+
+## 界面预览
+
+![Nodo 角色与会话界面](docs/Image/conversations.png)
+![Nodo 会话事件显示](docs/Image/streaming.png)
+![Nodo 工作流画布](docs/Image/workflow.png)
+![Nodo 角色配置](docs/Image/role.png)
+
+## 你可以用 Nodo 做什么
+
+- **多 Agent 同台**：在一个界面使用不同 Agent，各自沿用原有的配置与认证。
+- **角色分工**：为角色设定身份、职责和工作范围，按任务类型分派。
+- **项目与会话**：按项目整理各角色的会话，随时回查历史；需要隔离修改时可创建 Git 工作树。
+- **可视化工作流**：编排任务与交付关系，支持人工确认、条件分支和返工。
+- **按任务分配成本**：复杂任务交给能力强的 Agent，杂项交给价格更低的 Agent。
+
+## 安装
+
+### 使用前准备
+
+- dsh 0.2.0-rc.1 或更高版本。
+- 至少一个已完成登录或模型配置的 Agent。目前已接入 Codex、Claude Code、DeepSeek Harness、ZCode、CodeBuddy、OpenCode、Qoder 和 Pi（实验性），具体可用功能取决于 Agent 版本及其公开接口。
+- 从源码安装时，还需要 Node.js 20.3.0 或更高版本。
+
+
+
+### 安装插件
+
+在 dsh 插件页点击 **添加插件** → **安装第三方插件**，输入以下任一来源：
+
+- 包名：`dsh-plugin-nodo`
+- GitHub 仓库地址：`https://github.com/waikoeng234/Nodo`
+- 本地目录：本机 `orchestrator/` 目录的路径，见「从源码安装」
+
+重新加载插件后，侧栏出现 **Nodo** 入口即安装成功。
+
+### 从源码安装
+
+1. 克隆本仓库，执行：
+  ```sh
+   cd orchestrator
+   npm ci --ignore-scripts
+   npm run build:check
+  ```
+2. 在插件页输入本机 `orchestrator/` 目录的路径。
+
+更新时拉取最新代码，重新执行上面的命令，再重新加载插件。
+
+## 快速开始
+
+1. **启用 Agent**：打开 Nodo，在首次引导中选择要启用的 Agent。未被自动检测到的，在 **设置 → 模型提供方与 Agent** 中填写其可执行文件路径。
+2. **添加项目**：在项目列表中添加本机工作目录。
+3. **开始会话**：添加角色时，可以套用预置的 `decider`、`coder`、`reviewer` 身份，或自己填写，再选择所用 Agent 和默认模型，即可开始对话。角色创建后 Agent 不可更换。
+4. **运行工作流**：在侧栏 **Workflow** 中新建流程，为执行节点绑定角色并写明任务，按需加入人工确认节点。运行后可在运行记录中查看每一步的状态与报告。
+
+
+
+## 为什么选择 Nodo
+
+模型的表现不仅取决于模型本身，也取决于运行它的 **Harness**。
+
+- **多模型 API**：切换模型，仍由同一个 Harness 执行。
+- **Subagent**：拆分任务，仍在同一个 Harness 内协作。
+- **Nodo**：编排多个原生 Agent，让它们在各自的 Harness 中执行。
+
+
+| 核心差异  | Nodo                          | 单 Harness 接入多模型API / Subagent   |
+| ----- | ----------------------------- | ------------------------------- |
+| 集成层级  | 编排多个原生 Agent                  | 在一个 Harness 内使用多个模型或子代理         |
+| 执行机制  | 各 Agent 保留自身支持的原生执行环境         | 统一使用当前 Harness 的执行框架            |
+| 跨厂商能力 | 可组合不同厂商的原生 Agent              | 可组合不同模型；原生 Agent 能力不会自动随 API 接入 |
+| 任务协作  | 跨 Agent 分工、交接与工作流编排           | 主要依赖当前 Harness 的路由与任务委派能力       |
+| 控制方式  | 在统一窗口中管理多 Agent 会话与跨 Agent 流程 | 在单个 Agent 环境中管理模型或子代理           |
+
+
+Nodo 与 Subagent 也不冲突：各Agent 在 Nodo 中仍可以运行自己的 [Subagent](https://code.claude.com/docs/en/sub-agents)。
+
+## 工作原理
+
+以一个「规划 → 实现 → 审查」工作流为例：`decider` 用 Codex 规划，`coder` 用 Claude Code 实现，`reviewer` 用 OpenCode 审查。
+
+```mermaid
+flowchart LR
+    U[你] --> N[Nodo 工作台<br/>角色 · 会话 · 工作流]
+    N --> D[agent-drivers 适配层]
+    D --> A1[Codex]
+    D --> A2[Claude Code]
+    D --> A3[OpenCode]
+    A1 & A2 & A3 --> M[各自配置的模型服务]
+    A1 & A2 & A3 --> P[(项目目录<br/>.nodo/ 交接报告)]
+```
+
+
+
+
+
+### 接入：Nodo 不替 Agent 干活
+
+Nodo 通过各 Agent 官方公开的接口接入，如 Codex 的 app-server、Claude Code 的 stream-JSON、OpenCode 的 ACP。写代码的始终是 Claude Code 本身，用的是它自己的登录、模型、工具和上下文管理；Nodo 只负责启动会话、转交消息与审批，并统一显示结果。
+
+### 角色：Agent 怎么认领身份
+
+你为角色填写的身份、职责和工作要求，会通过 Agent 自己的系统提示通道注入，例如 Claude Code 的 `--append-system-prompt`、Codex 的 developer instructions；少数 Agent 通过身份文件或 MCP 工具提供。每个会话只注入一次，不会混进你的对话消息。
+
+所以在例子里，Claude Code 从第一条消息起就按 `coder` 的职责工作，OpenCode 则按 `reviewer` 的职责审查。
+
+### 引用：在会话之间传递结果
+
+Agent 之间不共享对话上下文。需要让一个角色参考另一个角色的结果时，在B角色会话中通过 /引用会话 功能，选中A角色已完成的回复，随消息一起发出，发给 Agent 时标注为"参考资料，不是指令"：它不会改变当前角色的身份和权限。它也是工作流功能里Agent handoff的基础。
+
+在例子里，你可以在 `coder` 的会话里引用 `decider` 的规划，再在 `reviewer` 的会话里引用 `coder` 的实现，手动推进整个过程。
+
+> 为什么这样设计：解决使用多个Agent工作时来回复制粘贴内容的过程。
+
+
+
+### 交接：工作流里的结果传递
+
+工作流中，每一步的最终回复会保存为报告，放在项目的 `.nodo/workflow-runs/` 下。下一步只拿到最新报告的路径和一份索引，按需读取；报告同样标注为"参考资料，不是指令"。你在人工节点做出的选择则不同，它会作为指令交给下一步。
+
+在例子里，`reviewer` 读的是实现报告；审查要求返工时，`coder` 重做前能读到审查意见。
+
+> 为什么这样设计：上下文不会随步骤越积越长；每一步的产出都留在磁盘上，随时可以回查；也降低了一个 Agent 的输出被下一个 Agent 当成指令执行的风险。
+
+
+
+## 数据与隐私
+
+- **插件数据**：项目、角色、会话和工作流记录保存在本机 `~/.dsh/orchestrator`（设置了 `DSH_HOME` 时为其下的 `orchestrator/`）。反馈问题时请勿上传这个目录。
+- **写入你项目的文件**：运行工作流时，Nodo 会在项目下创建 `.nodo/` 目录存放步骤报告和附件副本，并自动在其中写入 `.gitignore`，这些文件不会出现在项目的 Git 变更里。
+- **凭证**：以本地文件保存，仅当前用户可读，并按角色限定可用范围。
+- **代码与模型服务**：Nodo 本身不上传数据，但各 Agent 会把任务和代码发给它配置的模型服务，费用和数据规则以对应服务为准。
+
+
+
+## 当前限制
+
+- Agent 之间的模型、思考档位、图片、附件、运行中插入消息和压缩能力并不一致；Nodo 只接入 Agent 实际提供的能力。
+- 会话能否在 Agent 自己的应用中同步查看，取决于各 Agent 的接入方式。
+- 工作流目前只支持串行步骤、分支和有限次数的返工，不支持并行执行。
+- 界面显示的工具详情、文件变更和运行状态仅供参考，以实际文件和 Agent 状态为准。
+- 已接入不代表所有版本和平台均已验收；宿主或 CLI 的版本变化可能影响兼容性。
+
+
+
+## 常见问题
+
+
+
+### 安装后没有 Nodo 入口
+
+先重新加载插件和页面，必要时重新打开 dsh，并在插件页确认没有重复安装 Nodo。
+
+如果是从本地目录安装，再检查两点：填写的路径指向 `orchestrator/`，即包含 `package.json` 的那一层；已在该目录执行过 `npm ci --ignore-scripts` 和 `npm run build:check`，且检查通过。
+
+### 没有检测到已安装的 Agent
+
+宿主进程的 `PATH` 可能与终端不同。在 Agent 设置中填写 CLI 的绝对路径，保存后重新检查。确认该路径指向可执行文件。
+
+### 模型列表为空，或模型服务连接失败
+
+先在 Agent 自己的环境中确认登录和模型配置，再回到 Nodo 保存设置，重新检查连接并扫描本地配置。
+
+### 为什么工作流停在某一步
+
+查看运行详情中的结束原因，核对对应会话和实际文件后，选择重试、接受产出或取消。
+
+### 为什么界面变成只读
+
+可能有另一个 dsh 正在使用同一数据目录，或状态文件读取失败。请按界面提示处理，不要直接删除锁文件或覆盖状态文件。
+
+## 参与贡献
+
+欢迎提交问题、文档修正和代码，流程和问题反馈要求见[贡献指南](CONTRIBUTING.md)。
+
+- 问题反馈入口：`https://github.com/waikoeng234/Nodo/issues`。
+
+
+
+## 参与开发
+
+- [开发指南（英文）](docs/development.md)：构建、测试、新增 Agent 和提交 PR。
+- [架构说明（英文）](docs/architecture.md)：代码结构、消息路径和数据存储。
+
+
+
+## 许可证与第三方内容
+
+Nodo 采用 [Apache-2.0](LICENSE) 许可证，版权声明见 [NOTICE](NOTICE)，第三方内容见[第三方声明](orchestrator/THIRD_PARTY_NOTICES.txt)。文中提及的产品名称与商标归各自权利人所有。
