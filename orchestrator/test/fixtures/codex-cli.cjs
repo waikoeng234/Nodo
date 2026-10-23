@@ -41,7 +41,10 @@ const receive = line => {
   if (!ready) { send({ id, error: { message: 'initialize first' } }); return }
   if (!method && message.error) return
   if (!method && approval !== null && message.id === approval) {
+    const resolved = approval
     approval = null
+    // The real daemon confirms the client's reply with this notification before the turn continues.
+    note('serverRequest/resolved', { requestId: resolved })
     if (message.result?.decision === 'accept') answer('Approved')
     else if (message.result?.answers) answer('Answered ' + Object.keys(message.result.answers).join(','))
     else done('interrupted')
