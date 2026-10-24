@@ -663,7 +663,7 @@ test('a new conversation starts from the role card and carries the previous tier
   const host = boot(home)
   try {
     const workspace = await host.api('workspace-create', { name: 'Memory', cwd: join(home, 'memory') })
-    const role = await host.api('profile-create', { name: 'Rememberer', engine: 'dsh', workspace: workspace.id, model: 'm1', thinking: 'high' })
+    const role = await host.api('profile-create', { name: 'Rememberer', engine: 'echo', workspace: workspace.id, model: 'm1', thinking: 'high' })
     const first = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
     assert.deepEqual({ model: first.model, thinking: first.thinking }, { model: 'm1', thinking: 'high' },
       'the card seeds the role\'s first conversation')
