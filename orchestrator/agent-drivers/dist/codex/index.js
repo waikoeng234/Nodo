@@ -72,9 +72,6 @@ export async function checkCodex({ cwd, engineOptions = {} } = {}) {
     }
     return { engine: 'codex', ok: checks.every(check => check.ok), executable, version, checks };
 }
-// The reasoning efforts Codex documents; the config file carries no per-model
-// list, so the file fallback offers these and marks the configured one.
-const CODEX_EFFORTS = ['minimal', 'low', 'medium', 'high'];
 // Targeted key scan of config.toml (not a TOML parser): the model and reasoning
 // effort of the top-level table and of every [profiles.*] table.
 function codexConfigModels(path) {
@@ -120,7 +117,7 @@ function codexConfigModels(path) {
     }
     flush();
     return entries.map(entry => ({ id: entry.id, ...(entry.label ? { label: entry.label } : {}),
-        ...(entry.defaultThinking ? { defaultThinking: entry.defaultThinking } : {}), thinking: CODEX_EFFORTS.map(id => ({ id })) }));
+        ...(entry.defaultThinking ? { defaultThinking: entry.defaultThinking } : {}) }));
 }
 export async function scanCodex({ engineOptions = {} } = {}) {
     const options = validateCodexOptions(engineOptions);

@@ -33,7 +33,7 @@ export const cleanModel = raw => {
 export const cleanThinking = raw => {
   if (raw === undefined || raw === null || raw === '') return undefined
   if (typeof raw !== 'string' || raw.length > 60 || !/^[\w.-]+$/.test(raw.trim())) throw Object.assign(new Error('Invalid thinking level'), { code: 'orch/invalid' })
-  return raw.trim()
+  return raw.trim() === 'default' ? undefined : raw.trim()
 }
 
 export function install(rt) {

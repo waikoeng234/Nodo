@@ -103,6 +103,9 @@ export function install(rt) {
     for (const key of SECTIONS) if (!isRecord(state[key])) state[key] = {}
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
+    const choices = [...Object.values(state.prefs.engineConfigs ?? {}),
+      ...Object.values(state.profiles).flatMap(profile => [profile, ...(profile.sessions ?? [])])]
+    for (const choice of choices) if (choice?.thinking === 'default') delete choice.thinking
   }
 
   // v1 → v2: profiles carried their working directory as `cwd`; v2 hoists it

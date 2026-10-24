@@ -139,10 +139,8 @@ export function handshakeClaude({ executable, cwd, env }: ClaudeHandshakeOptions
   })
 }
 
-// Fallback when the CLI does not answer the initialize handshake: the efforts
-// the CLI documents for --effort, the alias menu, and the settings file's
-// configured model as default.
-const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+// Fallback when the CLI does not answer the initialize handshake: the alias
+// menu, and the settings file's configured model as default.
 const CLAUDE_ALIASES = ['fable', 'opus', 'sonnet', 'haiku']
 
 function claudeSettings(path: string) {
@@ -167,7 +165,7 @@ export async function scanClaude({ engineOptions = {}, cwd }: EngineScanOptions 
   const options = validateClaudeOptions(engineOptions)
   const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
   const settings = claudeSettings(join(config, 'settings.json'))
-  const fallback = { ...settings, models: settings.models.map(id => ({ id, thinking: CLAUDE_EFFORTS.map(effort => ({ id: effort })) })) }
+  const fallback = { ...settings, models: settings.models.map(id => ({ id })) }
   const executable = findExecutable(options.bin ?? 'claude')
   let probed: ReturnType<typeof claudeCatalog> = []
   if (executable) {

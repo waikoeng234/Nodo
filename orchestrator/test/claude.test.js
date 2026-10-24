@@ -339,7 +339,7 @@ test('Claude environment check uses the stream handshake; the catalog reads the 
       assert.equal(fallback.source, 'Claude settings.json')
       assert.equal(fallback.defaultModel, 'sonnet')
       assert.deepEqual(fallback.models.map(model => model.id), ['fable', 'opus', 'sonnet', 'haiku'])
-      assert.deepEqual(fallback.models[0].thinking.map(level => level.id), ['low', 'medium', 'high', 'xhigh', 'max'])
+      assert.equal(fallback.models[0].thinking, undefined, 'the settings fallback does not invent effort levels')
     } finally {
       delete process.env.CLAUDE_CONFIG_DIR
       delete process.env.CLAUDE_FIXTURE_NO_MODELS

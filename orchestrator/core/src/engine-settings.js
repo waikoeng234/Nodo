@@ -17,7 +17,7 @@ export function install(rt) {
   // through engine-catalog, never with the polled state. A list written in an
   // older shape is not served: the page scans again instead of showing labels
   // this build no longer writes.
-  const CATALOG_FORMAT = 3
+  const CATALOG_FORMAT = 4
   const engineCatalogOf = (engine) => {
     const cached = rt.state.engineCatalogs?.[engine]
     return cached?.format === CATALOG_FORMAT ? cached : null

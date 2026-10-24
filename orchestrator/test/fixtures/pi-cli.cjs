@@ -13,9 +13,11 @@ if (!writeFileSyncSafe('edited.txt', 'before')) process.exit(1)
 function writeFileSyncSafe(name, content) { try { writeFileSync(name, content) ; return true } catch { return false } }
 
 const fixtureModels = [
-  { id: 'fixture-model', name: 'Fixture Model', provider: 'fixture', contextWindow: 200000, thinkingLevelMap: { high: 'high', medium: 'medium' } },
+  { id: 'fixture-model', name: 'Fixture Model', provider: 'fixture', contextWindow: 200000, reasoning: true, thinkingLevelMap: { high: 'high', medium: 'medium' } },
   { id: 'other-model', name: 'Other Model', provider: 'fixture' },
   { id: 'cross-model', name: 'Cross Model', provider: 'other' },
+  { id: 'partial-model', name: 'Partial Model', provider: 'fixture', contextWindow: 128000, reasoning: true, thinkingLevelMap: { off: null, minimal: null, low: 'low', medium: null, high: 'high', xhigh: null, max: 'max' } },
+  { id: 'plain-model', name: 'Plain Model', provider: 'fixture', contextWindow: 32000, reasoning: false },
 ]
 const fixtureCommands = [
   { name: 'review', description: 'Review code changes and find actionable issues', source: 'prompt', sourceInfo: { path: '/tmp/prompts/review.md', source: 'local', scope: 'project' } },

@@ -17,7 +17,7 @@ export type PiDriverOptions = {
   model?: string; thinking?: string; permission?: PermissionMode; driverSessionId?: string; instructions?: string
 }
 type PiHandshakeOptions = { executable: string; cwd?: string; env?: NodeJS.ProcessEnv }
-type PiModel = { id?: unknown; provider?: unknown; name?: unknown; contextWindow?: unknown; thinkingLevelMap?: unknown }
+type PiModel = { id?: unknown; provider?: unknown; name?: unknown; contextWindow?: unknown; reasoning?: unknown; thinkingLevelMap?: unknown }
 type PiData = {
   error?: unknown; sessionId?: unknown; model?: PiModel; models?: PiModel[]
   commands?: { name?: unknown; description?: unknown }[]; disposition?: string
@@ -131,15 +131,25 @@ export async function checkPi({ cwd, engineOptions = {} }: EngineScanOptions = {
 
 // The RPC model table is the protocol's own catalog. Entries key as provider/id
 // — the one spelling both --model and set_model accept — and thinkingLevelMap
-// keys are the pi thinking levels that model accepts.
+// values name the level each key maps to; null marks a level the model does
+// not support.
 const catalogId = (model: PiModel | undefined) => typeof model?.id === 'string' && model.id !== '' && typeof model.provider === 'string' && model.provider !== ''
   ? `${model.provider}/${model.id}` : typeof model?.id === 'string' && model.id !== '' ? model.id : undefined
+// pi's own support rule: a reasoning model takes the whole ladder except levels
+// the map marks null, with xhigh/max only when the map names them; a model that
+// cannot reason only takes off, which the host menu's follow-the-agent entry
+// already covers.
+const PI_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const piLevels = (model: PiModel) => {
+  if (model.reasoning !== true) return []
+  const map = model.thinkingLevelMap && typeof model.thinkingLevelMap === 'object' ? model.thinkingLevelMap as Record<string, unknown> : {}
+  const levels = PI_LEVELS.filter(level => map[level] !== null && !((level === 'xhigh' || level === 'max') && map[level] === undefined))
+  return levels.length === 1 && levels[0] === 'off' ? [] : levels
+}
 const piCatalog = (models: PiModel[] | undefined) => (Array.isArray(models) ? models : []).flatMap(model => {
   const id = catalogId(model)
   if (!id) return []
-  const levels = model.thinkingLevelMap && typeof model.thinkingLevelMap === 'object'
-    ? Object.keys(model.thinkingLevelMap).filter(level => typeof level === 'string' && level !== '')
-    : []
+  const levels = piLevels(model)
   return [{ id,
     ...(typeof model.name === 'string' && model.name !== '' ? { label: model.name } : {}),
     ...(levels.length ? { thinking: levels.map(level => ({ id: level })) } : {}) }]

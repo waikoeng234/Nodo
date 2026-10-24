@@ -551,7 +551,8 @@ test('scanning an engine lists its models with their thinking levels, and falls 
       assert.equal(fallback.source, 'Codex config.toml')
       assert.equal(fallback.defaultModel, 'gpt-local')
       assert.deepEqual(fallback.models.map(model => model.id), ['gpt-local', 'gpt-fast'])
-      assert.equal(fallback.models[0].defaultThinking, 'high')
+      assert.equal(fallback.models[0].defaultThinking, 'high', 'the configured effort stays as the default')
+      assert.equal(fallback.models[0].thinking, undefined, 'the config fallback does not invent effort levels')
       assert.equal(fallback.models[1].label, 'fast')
     } finally {
       if (previous === undefined) delete process.env.CODEX_HOME
@@ -594,24 +595,88 @@ test('a thinking level reaches the engine turn and the scanned default becomes a
   }))
 })
 
-// A model list cached by an older build carries no format: the host ignores it
-// and the page scans again, so labels and provider groups that build no longer
-// writes never reach the picker.
-test('a catalog cached without the current format is scanned again', async () => {
+for (const format of [undefined, 3]) test(`a catalog cached with format ${format} is scanned again`, async () => {
   await withFixture(async ({ bin, cwd }) => {
     const home = mkdtempSync(join(tmpdir(), 'orch-catalog-format-'))
     writeFileSync(join(home, 'state.json'), JSON.stringify({ version: 2,
       prefs: { engineConfigs: { codex: { engineOptions: { bin } } } },
-      engineCatalogs: { codex: { source: 'older build', at: 1, models: [{ id: 'legacy-model', label: 'Legacy · Provider' }] } } }))
-    const host = boot(home)
+      engineCatalogs: { codex: { format, source: 'older build', at: 1, models: [{ id: 'legacy-model', thinking: [{ id: 'default' }] }] } } }))
+    let host = boot(home)
     try {
       assert.equal((await host.api('engine-catalog')).find(item => item.id === 'codex').catalog, null, 'the older cached list is not served')
+      assert.equal((await host.api('engine-detect')).find(item => item.id === 'codex').catalog, null)
       const scanned = await host.api('engine-scan', { engine: 'codex' })
-      assert.equal(typeof scanned.format, 'number', 'a fresh scan carries the format')
+      assert.ok(scanned.format > 3, 'a fresh scan invalidates catalogs with fabricated thinking levels')
       const listed = (await host.api('engine-catalog')).find(item => item.id === 'codex')
       assert.deepEqual(listed.catalog.models.map(model => model.id), ['fixture-model', 'other-model'], 'the fresh scan is served')
       assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).engineCatalogs.codex.format, scanned.format, 'the format is what the file keeps')
+      host.dispose()
+      host = boot(home)
+      assert.deepEqual((await host.api('engine-catalog')).find(item => item.id === 'codex').catalog, scanned, 'a current catalog survives restart')
     } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  })
+})
+
+test('legacy default thinking choices follow the engine after loading and saving', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const home = join(cwd, 'plugin')
+    mkdirSync(home)
+    const path = join(home, 'state.json')
+    const profile = { id: 'role', name: 'Coder', engine: 'codex', workspaceId: 'workspace', model: 'fixture-model', thinking: 'default', engineOptions: { bin },
+      activeSessionId: 'default', sessions: [
+        { id: 'default', name: 'Default', engine: 'codex', workspaceRef: 'workspace', model: 'fixture-model', thinking: 'default', engineOptions: { bin }, briefSent: true },
+        { id: 'high', name: 'High', engine: 'codex', workspaceRef: 'workspace', thinking: 'high', engineOptions: { bin }, driverSessionId: 'kept-thread' },
+      ] }
+    writeFileSync(path, JSON.stringify({ version: 2, profiles: { role: profile,
+      implicit: { id: 'implicit', name: 'Implicit', engine: 'echo', thinking: 'default', engineOptions: {} } },
+      workspaces: { workspace: { id: 'workspace', name: 'Workspace', cwd } },
+      prefs: { engineConfigs: { codex: { thinking: 'default', engineOptions: { bin } }, echo: { thinking: 'high', engineOptions: {} } } },
+      transcripts: { default: [{ who: 'user', text: 'Previous task', at: 1 }] } }))
+    let host = boot(home)
+    try {
+      const state = await host.api('state')
+      const restored = state.profiles.find(item => item.id === 'role')
+      assert.equal(restored.thinking, undefined)
+      assert.equal(restored.sessions.find(item => item.id === 'default').thinking, undefined)
+      assert.equal(restored.sessions.find(item => item.id === 'high').thinking, 'high')
+      assert.equal(restored.sessions.find(item => item.id === 'high').driverSessionId, 'kept-thread')
+      assert.equal(state.profiles.find(item => item.id === 'implicit').thinking, undefined)
+      assert.equal(state.prefs.engineConfigs.codex.thinking, undefined)
+      assert.equal(state.prefs.engineConfigs.echo.thinking, 'high')
+      const created = await host.api('profile-create', { name: 'New coder', engine: 'codex' })
+      assert.equal(created.thinking, undefined, 'new roles do not inherit the legacy marker')
+      const draft = await host.api('session-create', { profile: profile.id, workspace: 'workspace', lazy: true })
+      assert.equal(draft.thinking, undefined, 'new sessions do not inherit the legacy marker')
+      await host.api('send', { profile: profile.id, session: 'default', text: 'EFFORT' })
+      await until(async () => !(await host.api('state')).work.default.active)
+      const transcript = await host.api('transcript', { profile: profile.id, session: 'default' })
+      assert.equal(transcript[0].text, 'Previous task')
+      assert.ok(transcript.some(line => line.text === 'Effort none'), 'the driver receives no explicit effort')
+      const saved = JSON.parse(readFileSync(path, 'utf8'))
+      assert.equal(saved.prefs.engineConfigs.codex.thinking, undefined)
+      assert.equal(saved.profiles.role.thinking, undefined)
+      assert.equal(saved.profiles.role.sessions.find(item => item.id === 'default').thinking, undefined)
+      assert.equal(saved.profiles.implicit.thinking, undefined)
+      host.dispose()
+      host = boot(home)
+      assert.equal((await host.api('state')).profiles.find(item => item.id === 'role').sessions.find(item => item.id === 'high').thinking, 'high')
+    } finally { host.dispose() }
+  })
+})
+
+test('legacy default thinking inputs clear explicit engine, role and session choices', async () => {
+  await withHost(async ({ api, home }) => {
+    await api('engine-config-set', { engine: 'echo', thinking: 'high' })
+    const profile = await api('profile-create', { name: 'Coder', engine: 'echo', thinking: 'default' })
+    assert.equal(profile.thinking, undefined)
+    await api('profile-update', { id: profile.id, changes: { thinking: 'high' } })
+    const workspace = await api('workspace-create', { name: 'Workspace', cwd: home })
+    const session = await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true, choices: { thinking: 'default' } })
+    assert.equal(session.thinking, undefined)
+    await api('session-update', { profile: profile.id, session: session.id, changes: { thinking: 'high' } })
+    assert.equal((await api('session-update', { profile: profile.id, session: session.id, changes: { thinking: 'default' } })).thinking, undefined)
+    assert.equal((await api('profile-update', { id: profile.id, changes: { thinking: 'default' } })).thinking, undefined)
+    assert.equal((await api('engine-config-set', { engine: 'echo', thinking: 'default' })).thinking, undefined)
   })
 })
 

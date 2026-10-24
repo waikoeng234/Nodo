@@ -17,7 +17,9 @@ export const levelsOf = (efforts, preferred) => {
 };
 const levelsFromOptions = (configOptions, effortConfigId) => {
     const option = (configOptions ?? []).find(item => item.id === effortConfigId);
-    return levelsOf(choicesOf(option).filter(level => typeof level?.value === 'string' && level.value !== '')
+    // 'default' means the engine picks the level itself, which the host menu's
+    // follow-the-agent entry already covers.
+    return levelsOf(choicesOf(option).filter(level => typeof level?.value === 'string' && level.value !== '' && level.value !== 'default')
         .map(level => ({ id: level.value, name: level.name })), option?.currentValue);
 };
 // A choice outside a nested group may carry its provider in the value, the way

@@ -16,7 +16,7 @@ are added.
 | Protocol | `--mode rpc`: commands/responses correlate by `id`; no ACP, no JSON-RPC, so the connector is its own (`native.ts`) |
 | Continuity | `--session-id <id>` reuses or creates that exact project session (get_state echoes it; an empty session writes no file until the first append). Cross-process cold resume is maintainer acceptance |
 | Native session store | `~/.pi/agent/sessions/--<escaped-cwd>--/<timestamp>_<id>.jsonl`, format v3 tree; CLI-only tool — no desktop app shares it |
-| Models / thinking | `get_available_models` returns full catalog rows (cost, context window, `thinkingLevelMap`); the scan keys entries as `provider/id`, the one spelling both `--model` and `set_model` accept; thinking levels come from `thinkingLevelMap` keys |
+| Models / thinking | `get_available_models` returns full catalog rows (cost, context window, `thinkingLevelMap`); the scan keys entries as `provider/id`, the one spelling both `--model` and `set_model` accept; thinking levels follow pi's own support rule over `thinkingLevelMap` (`null` marks an unsupported level) |
 | Permissions | None: the Agent never asks per tool call (its security model is isolation plus `--tools`/`--exclude-tools`). No autonomy tiers are declared beyond the host default; the host approval pipeline has no Agent-side counterpart |
 | Questions | No native ask tool. Extension dialogs (`extension_ui_request` select/confirm/input/editor) are the only server→client question channel and must be answered or the Agent stalls — each surfaces as a question card and answers ride `extension_ui_response` |
 | Project trust | RPC mode cannot show the trust prompt, so the driver always passes `--no-approve`: project `.pi/` settings and extensions never load silently. `AGENTS.md`/`CLAUDE.md` context files load regardless |
@@ -60,8 +60,8 @@ variable. Optional settings:
   on PATH (the npm-global install).
 - `model` (common profile field): a catalog id exactly as the scan lists it
   (`provider/id`); blank uses the Agent's configured default.
-- `thinking` (common profile field): a level the selected model lists in its
-  `thinkingLevelMap` (`off`…`max`).
+- `thinking` (common profile field): a level the selected model supports in its
+  `thinkingLevelMap` (`off`…`max`; a `null` entry marks an unsupported level).
 - Identity is passed as `--append-system-prompt` (instructionMode `native`),
   re-applied on every spawn and resume.
 

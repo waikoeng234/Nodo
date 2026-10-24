@@ -96,16 +96,27 @@ export async function checkPi({ cwd, engineOptions = {} } = {}) {
 }
 // The RPC model table is the protocol's own catalog. Entries key as provider/id
 // — the one spelling both --model and set_model accept — and thinkingLevelMap
-// keys are the pi thinking levels that model accepts.
+// values name the level each key maps to; null marks a level the model does
+// not support.
 const catalogId = (model) => typeof model?.id === 'string' && model.id !== '' && typeof model.provider === 'string' && model.provider !== ''
     ? `${model.provider}/${model.id}` : typeof model?.id === 'string' && model.id !== '' ? model.id : undefined;
+// pi's own support rule: a reasoning model takes the whole ladder except levels
+// the map marks null, with xhigh/max only when the map names them; a model that
+// cannot reason only takes off, which the host menu's follow-the-agent entry
+// already covers.
+const PI_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const piLevels = (model) => {
+    if (model.reasoning !== true)
+        return [];
+    const map = model.thinkingLevelMap && typeof model.thinkingLevelMap === 'object' ? model.thinkingLevelMap : {};
+    const levels = PI_LEVELS.filter(level => map[level] !== null && !((level === 'xhigh' || level === 'max') && map[level] === undefined));
+    return levels.length === 1 && levels[0] === 'off' ? [] : levels;
+};
 const piCatalog = (models) => (Array.isArray(models) ? models : []).flatMap(model => {
     const id = catalogId(model);
     if (!id)
         return [];
-    const levels = model.thinkingLevelMap && typeof model.thinkingLevelMap === 'object'
-        ? Object.keys(model.thinkingLevelMap).filter(level => typeof level === 'string' && level !== '')
-        : [];
+    const levels = piLevels(model);
     return [{ id,
             ...(typeof model.name === 'string' && model.name !== '' ? { label: model.name } : {}),
             ...(levels.length ? { thinking: levels.map(level => ({ id: level })) } : {}) }];

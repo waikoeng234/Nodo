@@ -204,8 +204,8 @@ test('OpenCode environment check uses the ACP handshake and the scan reads sessi
       'a row is the model name alone: the route prefix is the provider, not part of the name')
     assert.deepEqual(catalog.models.map(model => model.group), ['fixture', 'fixture', 'other'],
       'the provider in the route is the section the model sits under')
-    assert.deepEqual(catalog.models[0].thinking.map(level => level.id), ['default', 'high'])
-    assert.equal(catalog.models[0].defaultThinking, 'default')
+    assert.deepEqual(catalog.models[0].thinking.map(level => level.id), ['high'], "the engine's own 'default' choice stays out of the list")
+    assert.equal(catalog.models[0].defaultThinking, undefined)
     assert.deepEqual(catalog.models[1].thinking.map(level => level.id), ['low', 'high', 'max'])
     assert.equal(catalog.models[1].defaultThinking, 'low', 'levels are read per selected model')
     assert.deepEqual((await scanEngine('opencode', { engineOptions: { bin: join(cwd, 'missing') }, cwd })).models, [], 'an unreachable CLI reports an empty list')

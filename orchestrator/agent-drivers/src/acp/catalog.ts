@@ -27,7 +27,9 @@ export const levelsOf = (efforts?: { id?: unknown; name?: unknown }[] | null, pr
 
 const levelsFromOptions = (configOptions: AcpConfigOption<unknown>[] | null | undefined, effortConfigId?: string) => {
   const option = (configOptions ?? []).find(item => item.id === effortConfigId)
-  return levelsOf(choicesOf(option).filter(level => typeof level?.value === 'string' && level.value !== '')
+  // 'default' means the engine picks the level itself, which the host menu's
+  // follow-the-agent entry already covers.
+  return levelsOf(choicesOf(option).filter(level => typeof level?.value === 'string' && level.value !== '' && level.value !== 'default')
     .map(level => ({ id: level.value, name: level.name })), option?.currentValue)
 }
 

@@ -404,6 +404,24 @@ test('node attachments and model choices survive saving and reach only their own
   assert.equal(run.snapshot.graph.nodes[1].choices.model, 'first-model')
 }))
 
+test('a run saved with a legacy default thinking choice lets the engine pick when it resumes', async () => withRuntime(async ({ host, rt, workspace }) => {
+  delivered.length = 0
+  const profile = await host.api('profile-create', { name: 'Legacy', engine: 'workflow-input-proof', workspace: workspace.id })
+  const workflow = await host.api('workflow-create', { name: 'Legacy thinking', nodes: [
+    { id: 'start', name: '开始', kind: 'start' }, { id: 'gate', kind: 'human', options: [{ id: 'go', label: 'Go' }] },
+    { id: 'only', name: '任务', kind: 'agent', profileId: profile.id, task: 'Only', choices: { thinking: 'high' } },
+    { id: 'end', name: '完成', kind: 'end', deliver: 'only' },
+  ], edges: [{ from: 'start', exit: 'done', to: 'gate' }, { from: 'gate', exit: 'go', to: 'only' }, { from: 'only', exit: 'done', to: 'end' }] })
+  const pending = rt.runWorkflow(workflow.id)
+  const card = await questionCard(host)
+  await rt.commit(card.id.split(':')[1], (draft) => { draft.snapshot.graph.nodes.find(node => node.id === 'only').choices.thinking = 'default' })
+  await host.api('approval-answer', { id: card.id, decision: 'answer', exit: 'go' })
+  const run = await pending
+  assert.equal(run.status, 'done')
+  assert.equal(delivered.length, 1)
+  assert.equal(delivered[0].thinking, undefined)
+}))
+
 test('a long upstream report reaches an engine as a readable workspace file, survives restart, and stays out of the prompt', async () => withRuntime(async ({ host, rt, home, workspace, role }) => {
   delivered.length = 0
   const report = LONG_WORKFLOW_REPORT

@@ -541,10 +541,11 @@ export function install(rt) {
         workflowSessionTitle(node, runTaskTitle(run.title, workflowTitleSource(run.snapshot.graph), rt.redactSecrets), rt.redactSecrets), workspace?.id, true, false, {},
         { kind: 'workflow', workflowId: run.workflowId, runId: run.id, nodeId: node.id, attemptId: attempt.id })
       live.activeSessionId = activeSessionId
-      // The run keeps the model, thinking and permission it started with.
+      // The run keeps the model, thinking and permission it started with. A saved
+      // thinking 'default' means the engine picks, the same as no choice.
       for (const key of ['model', 'thinking', 'permission']) {
         const value = node.choices?.[key] ?? snap[key]
-        if (value === undefined || value === '') delete session[key]
+        if (value === undefined || value === '' || (key === 'thinking' && value === 'default')) delete session[key]
         else session[key] = value
       }
       await rt.save()
