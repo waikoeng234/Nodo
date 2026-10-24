@@ -218,18 +218,22 @@ test('OpenCode slash lines expand from command files before reaching the channel
   await withFixture(async ({ bin, cwd }) => {
     mkdirSync(join(cwd, '.opencode', 'command'), { recursive: true })
     writeFileSync(join(cwd, '.opencode', 'command', 'probe.md'), '---\ndescription: probe\n---\nReply TOKEN.\n')
+    mkdirSync(join(cwd, '.agents', 'skills', 'probe-skill'), { recursive: true })
+    writeFileSync(join(cwd, '.agents', 'skills', 'probe-skill', 'SKILL.md'), '---\nname: probe-skill\ndescription: Probe skill\n---\nReply SKILL.\n')
     const events = []
     const driver = createDriver('opencode', { bin, cwd, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('/probe extra words')
       await until(() => events.find(event => event.type === 'turn/end'))
-      await assert.rejects(driver.sendTurn('/nope'), /no command "\/nope"/)
+      await driver.sendTurn('/probe-skill')
+      await until(() => events.filter(event => event.type === 'turn/end').length >= 2)
+      await assert.rejects(driver.sendTurn('/nope'), /no command or skill "\/nope"/)
       events.length = 0
       await driver.sendTurn('/^\\d+/ matches digits')
       await until(() => events.find(event => event.type === 'turn/end'))
     } finally { driver.dispose() }
     const lines = readFileSync(join(cwd, 'opencode-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
     const prompt = lines.filter(entry => entry.method === 'session/prompt').map(entry => entry.text)
-    assert.deepEqual(prompt, ['Reply TOKEN.\n\nextra words', '/^\\d+/ matches digits'])
+    assert.deepEqual(prompt, ['Reply TOKEN.\n\nextra words', 'Reply SKILL.', '/^\\d+/ matches digits'])
   })
 })

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createAcpDriver, initializeAcp } from '../acp/core.js'
@@ -79,19 +79,47 @@ export async function scanOpencode({ engineOptions = {}, cwd } = {}) {
 // driver therefore resolves /name from the same files and id rule the scan
 // lists (project winning) and sends the body; a first word outside that rule
 // is text, an unknown command name errors instead of vanishing.
-const opencodeCommandDirs = cwd => [
-  join(cwd ?? '.', '.opencode', 'command'),
-  join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'opencode', 'command'),
+const opencodeConfigDir = () => join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'opencode')
+
+// The roots the CLI itself resolves, in order: the project's .opencode and the
+// compatibility trees it also loads (.claude, .agents), then the global config
+// directory. Command roots hold flat markdown files; skill roots hold one
+// directory per skill or a flat markdown skill, symlinks followed.
+const opencodeRoots = cwd => [
+  { dir: join(cwd ?? '.', '.opencode', 'command'), skills: false, scope: 'project' },
+  { dir: join(cwd ?? '.', '.opencode', 'commands'), skills: false, scope: 'project' },
+  { dir: join(cwd ?? '.', '.opencode', 'skill'), skills: true, scope: 'project' },
+  { dir: join(cwd ?? '.', '.opencode', 'skills'), skills: true, scope: 'project' },
+  { dir: join(cwd ?? '.', '.claude', 'skills'), skills: true, scope: 'project' },
+  { dir: join(cwd ?? '.', '.agents', 'skills'), skills: true, scope: 'project' },
+  { dir: join(opencodeConfigDir(), 'command'), skills: false, scope: 'global' },
+  { dir: join(opencodeConfigDir(), 'commands'), skills: false, scope: 'global' },
+  { dir: join(opencodeConfigDir(), 'skill'), skills: true, scope: 'global' },
+  { dir: join(opencodeConfigDir(), 'skills'), skills: true, scope: 'global' },
+  { dir: join(homedir(), '.claude', 'skills'), skills: true, scope: 'global' },
+  { dir: join(homedir(), '.agents', 'skills'), skills: true, scope: 'global' },
 ]
 
-const opencodeCommandBody = (name, cwd) => {
-  for (const dir of opencodeCommandDirs(cwd)) {
-    try {
-      const raw = readFileSync(join(dir, `${name}.md`), 'utf8')
-      return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
-    } catch { /* not in this directory */ }
+const opencodeScan = (cwd) => {
+  const found = collector()
+  for (const root of opencodeRoots(cwd)) {
+    let entries
+    try { entries = readdirSync(root.dir, { withFileTypes: true }) } catch { continue }
+    for (const entry of entries) {
+      const path = join(root.dir, entry.name)
+      let info
+      try { info = statSync(path) } catch { continue }
+      if (root.skills && info.isDirectory()) found.add(join(path, 'SKILL.md'), entry.name, undefined, root.scope)
+      else if (info.isFile() && entry.name.endsWith('.md')) found.add(path, entry.name.replace(/\.md$/, ''), undefined, root.scope)
+    }
   }
-  return undefined
+  return found
+}
+
+const opencodeCommandBody = (name, cwd) => {
+  const entry = opencodeScan(cwd).list().commands.find(command => command.id === name)
+  if (entry === undefined) return undefined
+  return readFileSync(entry.path, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
 }
 
 export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, thinking, instructions, instructionDir, identityFiles, identityOwner, ...options } = {}) {
@@ -104,7 +132,7 @@ export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, t
       const match = /^\/([^\s/]+)(?:\s+([\s\S]*))?$/.exec(text.trim())
       if (!match || !COMMAND_NAME.test(match[1])) return text
       const body = opencodeCommandBody(match[1], cwd)
-      if (body === undefined) throw invalidConfig(`OpenCode has no command "/${match[1]}"`)
+      if (body === undefined) throw invalidConfig(`OpenCode has no command or skill "/${match[1]}"`)
       return match[2] ? `${body}\n\n${match[2]}` : body
     },
     connect(callbacks) {
@@ -133,19 +161,10 @@ export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, t
   })
 }
 
-// The composer's /-menu inventory: the command markdown files the CLI resolves,
-// from the project's .opencode/command (winning on name collisions) and the
-// user's global config directory.
+// The composer's /-menu inventory: the command markdown and skill files the
+// CLI resolves, from the project's .opencode and compatibility trees (winning
+// on name collisions) and the user's global config directory.
 export async function scanOpencodeCommands({ engineOptions = {}, cwd } = {}) {
   validateOpencodeOptions(engineOptions)
-  const found = collector()
-  const scan = (dir, scope) => {
-    let entries
-    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
-    for (const entry of entries) if (entry.isFile() && entry.name.endsWith('.md')) found.add(join(dir, entry.name), entry.name.replace(/\.md$/, ''), undefined, scope)
-  }
-  const [project, global] = opencodeCommandDirs(cwd)
-  scan(project, 'project')
-  scan(global, 'global')
-  return found.list('OpenCode commands')
+  return opencodeScan(cwd).list('OpenCode commands and skills')
 }

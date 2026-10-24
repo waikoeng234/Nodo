@@ -29,7 +29,7 @@ test('native role skill catalogs reuse each engine scan and preserve invocation 
     write(join(home, '.agents/skills/zcode-only/SKILL.md'), '---\nname: zcode-only\ndescription: ZCode skill\n---\nbody')
     write(join(cwd, '.opencode/command/local.md'), '---\ndescription: Local command\n---\nbody')
     for (const [engine, expected] of Object.entries({
-      codex: ['codex-only'], claude: ['documents:docx', 'project_review'], zcode: ['zcode-only'], opencode: ['local'],
+      codex: ['codex-only'], claude: ['documents:docx', 'project_review'], zcode: ['zcode-only'], opencode: ['local', 'zcode-only'],
     })) {
       const service = catalog(engine, ({ engine, cwd }) => scanEngineCommands(engine, { cwd }))
       const skills = await service.list({ cwd })

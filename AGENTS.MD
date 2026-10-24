@@ -8,6 +8,10 @@ This document governs AI and automated development in the "Nodo" project. During
 - Prefer mature, stable libraries for common functionality such as standard formats, protocols, parsing, compression, encryption, and dates. Do not implement these from scratch unless the user explicitly requests it or an existing project implementation must be retained.
 - Do not change unrelated files or perform incidental refactoring.
 
+# UI requirements
+- Don't add redundant explanatory text to the interface.
+- Optimize the alignment of interface elements and the UI for better visual balance; for nested areas, try to make the rounded corners concentric.
+
 # Testing requirements
 - Run targeted tests by default. Run only the test files corresponding to the module affected by the change.
 - Do not perform real-environment validation unless the user explicitly requests it.
