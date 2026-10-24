@@ -106,7 +106,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
           onChange: changeText, onSend: () => void send(),
           onAttach: files => { void Promise.all(files.map(readImage)).then(added => changeImages(current => [...current, ...added])).catch(failure => setError(failure.message)) },
           onRemoveImage: index => changeImages(images.filter((_, position) => position !== index)),
-          onInsert: profile ? value => changeText(text + value) : undefined,
+          onInsert: profile ? value => changeText(`${text}${text && !/\s$/.test(text) ? ' ' : ''}${value}`) : undefined,
           onGoal: () => setError('请在角色配置中修改职责说明。'), onCompact: () => setError('发送后可压缩会话上下文。'),
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
             ...(changes.permission === '' && profile.engine !== 'dsh' ? { permission: 'workspace' } : {}) } })) : undefined,

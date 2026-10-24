@@ -566,7 +566,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
           onChange: changeText, onSend: () => void send(),
           onAttach: files => { void Promise.all(files.map(readImage)).then(added => changeImages(current => [...current, ...added])).catch(failure => setError(failure.message)) },
           onRemoveImage: index => changeImages(images.filter((_, position) => position !== index)),
-          onInsert: profile ? value => changeText(text + value) : undefined,
+          onInsert: profile ? value => changeText(`${text}${text && !/\s$/.test(text) ? ' ' : ''}${value}`) : undefined,
           onGoal: () => setError('请在角色配置中修改职责说明。'), onCompact: () => setError('发送后可压缩会话上下文。'),
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
             ...(changes.permission === '' && profile.engine !== 'dsh' ? { permission: 'workspace' } : {}) } })) : undefined,
@@ -4431,13 +4431,17 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     setPane('root')
     load()
   }
+  // An action picked while a typed token holds the menu open consumes the
+  // token — a command pick replaces it, and an action pick drops it, so no
+  // stray '/' or '$' stays in the draft afterwards.
+  const act = action => { close(); if (trigger !== null) onToken(''); action() }
   const pick = id => {
-    if (id === 'file') { close(); onInsert('@'); return }
-    if (id === 'upload') { close(); onUpload(); return }
-    if (id === 'reference') { close(); onReference(); return }
-    if (id === 'goal') { close(); onGoal(); return }
-    if (id === 'plan') { close(); onModelChange({ permission: (profile.permission || 'workspace') === 'plan' ? '' : 'plan' }); return }
-    if (id === 'compact') { close(); onCompact(); return }
+    if (id === 'file') { close(); trigger === null ? onInsert('@') : onToken('@'); return }
+    if (id === 'upload') return act(onUpload)
+    if (id === 'reference') return act(onReference)
+    if (id === 'goal') return act(onGoal)
+    if (id === 'plan') return act(() => onModelChange({ permission: (profile.permission || 'workspace') === 'plan' ? '' : 'plan' }))
+    if (id === 'compact') return act(onCompact)
     if (typeof id === 'string' && id.startsWith('cmd:')) {
       close()
       const line = `/${id.slice(4)} `
