@@ -1,5 +1,5 @@
 // A plain `enum` (optionally titled by `enumNames`) offers the same choices as `oneOf`.
-const choicesOf = property => Array.isArray(property?.oneOf) ? property.oneOf
+const choicesOf = (property) => Array.isArray(property?.oneOf) ? property.oneOf
     : Array.isArray(property?.enum) ? property.enum.map((value, index) => ({ const: value, title: property.enumNames?.[index] ?? value }))
         : [];
 export function formElicitation({ method, params }) {

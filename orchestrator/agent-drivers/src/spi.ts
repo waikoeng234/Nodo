@@ -3,6 +3,24 @@
 // the SPI; login flows, billing and thread/room/memory concepts stay out of this
 // package.
 
+export type PermissionMode = 'plan' | 'workspace' | 'full'
+export type EngineField = { name: string; target: string; label: string; type: string; placeholder?: string; default?: unknown }
+export type EngineCapabilities = {
+  resume?: boolean; steer?: boolean; permissions?: boolean; questions?: boolean; commands?: boolean; compact?: boolean
+  permissionModes?: PermissionMode[]
+  [name: string]: boolean | PermissionMode[] | undefined
+}
+export type EngineInfo = {
+  id: string
+  label: string
+  command?: string
+  requiresCwd?: boolean
+  description?: string
+  fields?: EngineField[]
+  capabilities?: EngineCapabilities
+  nativeRuntime?: boolean
+}
+
 export type Usage = {
   inputTokens?: number
   outputTokens?: number

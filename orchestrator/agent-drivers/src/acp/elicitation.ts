@@ -1,9 +1,18 @@
+export type ElicitationChoice = { const?: unknown; title?: unknown; description?: unknown }
+export type ElicitationProperty = { title?: string; description?: string; type?: unknown; oneOf?: unknown; enum?: unknown; enumNames?: unknown[] }
+export type ElicitationParams = { mode?: unknown; message?: string; requestedSchema?: { properties?: Record<string, ElicitationProperty>; required?: unknown } }
+export type ElicitationQuestion = { id: string; question: string; options: { label: string; description?: unknown }[]; optional?: boolean }
+export interface FormElicitation {
+  card: { reason: string; detail: { questions: ElicitationQuestion[] } }
+  answer(value?: string): { action: 'accept'; content: Record<string, unknown> }
+}
+
 // A plain `enum` (optionally titled by `enumNames`) offers the same choices as `oneOf`.
-const choicesOf = property => Array.isArray(property?.oneOf) ? property.oneOf
-  : Array.isArray(property?.enum) ? property.enum.map((value, index) => ({ const: value, title: property.enumNames?.[index] ?? value }))
+const choicesOf = (property?: ElicitationProperty): ElicitationChoice[] => Array.isArray(property?.oneOf) ? property.oneOf as ElicitationChoice[]
+  : Array.isArray(property?.enum) ? (property.enum as unknown[]).map((value, index) => ({ const: value, title: property.enumNames?.[index] ?? value }))
     : []
 
-export function formElicitation({ method, params }) {
+export function formElicitation({ method, params }: { method: string; params: ElicitationParams }): FormElicitation | undefined {
   if (method !== 'elicitation/create' || (params.mode && params.mode !== 'form')) return
   const properties = params.requestedSchema?.properties ?? {}
   // Without a `required` list every question is treated as required.
@@ -17,14 +26,14 @@ export function formElicitation({ method, params }) {
   return {
     card: { reason: params.message ?? questions.map(question => question.question).join('\n'), detail: { questions } },
     answer(value) {
-      let values
+      let values: Record<string, unknown>
       if (questions.length === 1) values = { [questions[0].id]: String(value ?? '').trim() }
       else {
-        try { values = JSON.parse(value) } catch { throw new Error('Answer each question using the form') }
+        try { values = JSON.parse(value!) as Record<string, unknown> } catch { throw new Error('Answer each question using the form') }
         if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Answer each question using the form')
       }
       if (questions.some(question => !question.optional && !String(values?.[question.id] ?? '').trim())) throw new Error('Answer every question first')
-      const content = {}
+      const content: Record<string, unknown> = {}
       for (const question of questions) {
         const answer = String(values[question.id] ?? '').trim()
         if (answer === '') continue

@@ -2,7 +2,7 @@
 // thinking-level option is rebuilt for whichever model is selected. A scan
 // therefore selects every candidate in turn inside one throwaway session and
 // reads the levels off each recomputed option set.
-const choicesOf = option => (Array.isArray(option?.options) ? option.options : [])
+const choicesOf = (option) => (Array.isArray(option?.options) ? option.options : [])
     .flatMap(item => (Array.isArray(item?.options) ? item.options : [item]));
 // The thinking levels of one model: `efforts` are {id, name} pairs and `preferred`
 // the level the engine would pick on its own, which is only a default when the

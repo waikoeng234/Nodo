@@ -4,11 +4,14 @@
 // result, instead of failing later inside a user's first dispatch.
 import { spawn } from 'node:child_process'
 
-export function probeSpawn({ bin = process.execPath, args = ['-e', 'process.stdout.write("ok")'], timeoutMs = 10_000 } = {}) {
+export type ProbeSpawnOptions = { bin?: string; args?: readonly string[]; timeoutMs?: number }
+export type ProbeSpawnResult = { ok: true } | { ok: false; step: 'spawn' | 'timeout' | 'error' | 'exit'; error: string }
+
+export function probeSpawn({ bin = process.execPath, args = ['-e', 'process.stdout.write("ok")'], timeoutMs = 10_000 }: ProbeSpawnOptions = {}): Promise<ProbeSpawnResult> {
   return new Promise((resolve) => {
     let settled = false
     let out = ''
-    const finish = (result) => {
+    const finish = (result: ProbeSpawnResult) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
@@ -18,7 +21,7 @@ export function probeSpawn({ bin = process.execPath, args = ['-e', 'process.stdo
     try {
       child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     } catch (error) {
-      return finish({ ok: false, step: 'spawn', error: String(error?.message ?? error) })
+      return finish({ ok: false, step: 'spawn', error: String((error as { message?: unknown } | null | undefined)?.message ?? error) })
     }
     const timer = setTimeout(() => {
       child.kill('SIGKILL')

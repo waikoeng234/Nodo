@@ -1,6 +1,9 @@
 import { fileURLToPath } from 'node:url'
 
-export function roleMcp(instructions, identityFile, { toolIdentity = false, readyFile } = {}) {
+export type RoleMcpServer = { name: string; command: string; args: string[]; env: { name: string; value: string }[] }
+export type RoleMcpOptions = { toolIdentity?: boolean; readyFile?: string }
+
+export function roleMcp(instructions?: string, identityFile?: string, { toolIdentity = false, readyFile }: RoleMcpOptions = {}): RoleMcpServer[] {
   if (!instructions) return []
   return [{
     name: 'nodo_role', command: process.execPath,

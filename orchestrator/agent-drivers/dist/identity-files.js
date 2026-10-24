@@ -4,7 +4,7 @@ import { join } from 'node:path';
 export function createIdentityFiles(root) {
     const references = join(root, 'references');
     const versions = join(root, 'versions');
-    const reference = owner => join(references, `${encodeURIComponent(owner)}.json`);
+    const reference = (owner) => join(references, `${encodeURIComponent(owner)}.json`);
     const prepare = () => {
         for (const path of [root, references, versions])
             mkdirSync(path, { recursive: true, mode: 0o700 });

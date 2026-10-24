@@ -3,15 +3,15 @@ import { validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges } from '../file-changes.js';
 const MEDIA_BLOCKS = new Set(['image', 'audio', 'resource_link', 'resource']);
-const blockValue = block => block?.type === 'content' ? block.content : block;
-const objectOf = value => (value !== null && typeof value === 'object' ? value : {});
-const hasMedia = content => Array.isArray(content) && content.some(block => MEDIA_BLOCKS.has(blockValue(block)?.type));
-const hasContentBlock = content => Array.isArray(content) && content.some(block => block?.type === 'content');
-const hasText = content => Array.isArray(content) && content.some(block => {
+const blockValue = (block) => block?.type === 'content' ? block.content : block;
+const objectOf = (value) => (value !== null && typeof value === 'object' ? value : {});
+const hasMedia = (content) => Array.isArray(content) && content.some((block) => MEDIA_BLOCKS.has(blockValue(block)?.type));
+const hasContentBlock = (content) => Array.isArray(content) && content.some((block) => block?.type === 'content');
+const hasText = (content) => Array.isArray(content) && content.some((block) => {
     const inner = blockValue(block);
     return inner?.type === 'text' && typeof inner.text === 'string' && inner.text !== '';
 });
-const rawText = value => {
+const rawText = (value) => {
     if (typeof value === 'string')
         return value;
     if (Array.isArray(value))
@@ -52,16 +52,16 @@ export async function initializeAcp(peer, clientCapabilities = {}, clientInfo) {
 }
 export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = {}, support) {
     const { id, label } = support;
-    const emit = event => { try {
+    const emit = (event) => { try {
         onEvent?.(event);
     }
     catch { } };
     // ACP plan entries carry status pending/in_progress/completed and a content
     // string; anything else cannot be placed and is left out rather than guessed.
-    const planSteps = entries => entries.filter(entry => typeof entry?.content === 'string' && entry.content !== '')
+    const planSteps = (entries) => entries.filter(entry => typeof entry?.content === 'string' && entry.content !== '')
         .map(entry => ({ text: entry.content, status: entry.status === 'in_progress' ? 'in_progress' : entry.status === 'completed' ? 'completed' : 'pending' }));
-    const errorText = error => typeof error === 'string' ? error : typeof error?.message === 'string' ? error.message : undefined;
-    const translateError = error => support.error?.(error) ?? error;
+    const errorText = (error) => typeof error === 'string' ? error : typeof error?.message === 'string' ? error.message : undefined;
+    const translateError = (error) => (support.error?.(error) ?? error);
     let peer = null;
     let ready = null;
     let sessionId = driverSessionId;
@@ -471,7 +471,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                     // for a retry instead of closing the UI onto a turn that can no
                     // longer settle.
                     if (entry.question.respond)
-                        await entry.question.respond({ peer, sessionId, id: entry.id, value });
+                        await entry.question.respond({ peer, sessionId: sessionId, id: entry.id, value });
                     else
                         peer.reply(entry.id, entry.question.answer(value));
                 }

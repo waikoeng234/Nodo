@@ -2,27 +2,92 @@ import { STEER, addUsage, usageOf } from '../spi.js'
 import { validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges } from '../file-changes.js'
+import type { Driver, DriverEvent, PermissionMode, Usage } from '../spi.js'
+import type { JsonRpcPeer, JsonRpcProcessOptions, RpcId } from '../json-rpc-process.js'
+import type { FileChanges } from '../file-changes.js'
+import type { Coverage } from '../coverage.js'
+import type { AcpConfigOption } from './catalog.js'
+import type { ElicitationParams } from './elicitation.js'
+
+export type AcpDriverOptions = { onEvent?: (event: DriverEvent) => void; cwd?: string; driverSessionId?: string; permission?: PermissionMode }
+export type AcpCapabilities = { promptCapabilities?: { image?: boolean }; sessionCapabilities?: { resume?: boolean }; loadSession?: boolean; [key: string]: unknown }
+export type AcpAttached = { sessionId?: string; configOptions?: AcpConfigOption[]; [key: string]: unknown }
+export type AcpCallbacks = Required<Pick<JsonRpcProcessOptions, 'onNotification' | 'onRequest' | 'onClose'>>
+export type AcpQuestionContext = { method: string; params: AcpParams; tool?: string }
+export type AcpQuestionResponse = { peer: JsonRpcPeer; sessionId: string; id: RpcId; value?: string }
+export type AcpQuestion = { card: { reason?: string; detail?: unknown } } & (
+  { respond(context: AcpQuestionResponse): unknown; answer?: never }
+  | { respond?: undefined; answer(value?: string): unknown }
+)
+export type AcpSupport = {
+  id: string
+  label: string
+  connect(callbacks: AcpCallbacks): JsonRpcPeer
+  configure?(context: { peer: JsonRpcPeer; sessionId: string; attached: AcpAttached; permission?: PermissionMode }): unknown
+  dispose?(): void
+  error?(error: unknown): unknown
+  expandPrompt?(text: string): string | Promise<string>
+  fileChanges?: boolean
+  initialize?(peer: JsonRpcPeer): Promise<AcpCapabilities>
+  instructionMode?: string
+  question?(context: AcpQuestionContext): AcpQuestion | undefined
+  resumeMethod?: string
+  savedId?(sessionId: string): string
+  stopReason?(stop: unknown): 'done' | 'interrupted' | 'error' | undefined
+  thoughts?: boolean
+}
+type AcpBlock = { type?: string; text?: string; content?: unknown; path?: unknown; oldText?: unknown; newText?: unknown }
+type AcpMeta = {
+  isReplay?: unknown
+  'opencode/child-session'?: { id?: unknown; title?: unknown; parentID?: string }
+  'opencode/retry'?: { attempt?: unknown; error?: unknown } | null
+  'opencode/compaction'?: { status?: unknown; error?: unknown } | null
+  [key: string]: unknown
+}
+type AcpPlanEntry = { content?: string; status?: unknown }
+type AcpUpdate = {
+  sessionUpdate?: string; _meta?: AcpMeta; content?: unknown; messageId?: string; toolCallId?: string
+  name?: string; title?: string; rawInput?: unknown; rawOutput?: unknown; kind?: string; locations?: unknown; status?: string
+  used?: unknown; size?: unknown; entries?: unknown
+  plan?: { type?: string; entries?: unknown; content?: unknown; planId?: unknown }; planId?: unknown
+  compactionId?: unknown; error?: unknown
+}
+export type AcpParams = ElicitationParams & {
+  sessionId?: unknown; _meta?: AcpMeta; update?: AcpUpdate
+  options?: { kind?: string; optionId?: string }[]
+  toolCall?: { name?: string; title?: string; toolCallId?: string }
+  [key: string]: unknown
+}
+type AcpTool = { name: string; input?: unknown; output?: unknown; rawOutput?: unknown; content?: unknown; kind?: string; locations?: unknown }
+type AcpTurn = {
+  id: string; started: boolean; messages: Map<string, string>; tools: Map<string, AcpTool>; completedTools: Set<string>
+  children: Map<string, { text: string; title?: string; started?: boolean }>; changes: FileChanges
+  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; done?: Promise<void>; settle?: () => void
+}
+type AcpPending = { id: RpcId; params: AcpParams; replied?: boolean; gated?: boolean; busy?: boolean } & (
+  { kind: 'permission' } | { kind: 'question'; question: AcpQuestion }
+)
 
 const MEDIA_BLOCKS = new Set(['image', 'audio', 'resource_link', 'resource'])
-const blockValue = block => block?.type === 'content' ? block.content : block
-const objectOf = value => (value !== null && typeof value === 'object' ? value : {})
-const hasMedia = content => Array.isArray(content) && content.some(block => MEDIA_BLOCKS.has(blockValue(block)?.type))
-const hasContentBlock = content => Array.isArray(content) && content.some(block => block?.type === 'content')
-const hasText = content => Array.isArray(content) && content.some(block => {
+const blockValue = (block: unknown) => (block as AcpBlock | null | undefined)?.type === 'content' ? (block as AcpBlock).content as AcpBlock | null | undefined : block as AcpBlock | null | undefined
+const objectOf = <Value extends object>(value: unknown): Value => (value !== null && typeof value === 'object' ? value as Value : {} as Value)
+const hasMedia = (content: unknown): content is unknown[] => Array.isArray(content) && content.some((block: unknown) => MEDIA_BLOCKS.has(blockValue(block)?.type!))
+const hasContentBlock = (content: unknown): content is unknown[] => Array.isArray(content) && content.some((block: unknown) => (block as AcpBlock | null | undefined)?.type === 'content')
+const hasText = (content: unknown) => Array.isArray(content) && content.some((block: unknown) => {
   const inner = blockValue(block)
   return inner?.type === 'text' && typeof inner.text === 'string' && inner.text !== ''
 })
-const rawText = value => {
+const rawText = (value: unknown): string => {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return value.map(rawText).filter(Boolean).join('\n')
   if (value === null || typeof value !== 'object') return ''
-  if (typeof value.text === 'string') return value.text
-  if (typeof value.output === 'string') return value.output
-  return Array.isArray(value.content) ? rawText(value.content) : ''
+  if (typeof (value as { text?: unknown }).text === 'string') return (value as { text: string }).text
+  if (typeof (value as { output?: unknown }).output === 'string') return (value as { output: string }).output
+  return Array.isArray((value as { content?: unknown }).content) ? rawText((value as { content: unknown[] }).content) : ''
 }
 // Media content is selected for its image/audio/resource evidence, but a
 // simultaneous plain rawOutput may still be the only readable output.
-const withRawText = (content, rawOutput) => {
+const withRawText = (content: unknown[], rawOutput: unknown) => {
   if (hasText(content) || rawOutput === undefined) return content
   const text = rawText(rawOutput)
   return [...content, text ? { type: 'text', text } : rawOutput]
@@ -30,40 +95,40 @@ const withRawText = (content, rawOutput) => {
 
 // The end-turn ACP `Usage` object is an open RFD, and real agents report the
 // buckets disjoint: `inputTokens` is already the uncached prompt side.
-const acpUsage = (raw) => {
+const acpUsage = (raw: unknown) => {
   if (raw === null || typeof raw !== 'object') return undefined
   return usageOf({
-    inputTokens: raw.inputTokens,
-    outputTokens: raw.outputTokens,
-    cacheReadTokens: raw.cachedReadTokens,
-    cacheWriteTokens: raw.cachedWriteTokens,
+    inputTokens: (raw as Record<string, unknown>).inputTokens,
+    outputTokens: (raw as Record<string, unknown>).outputTokens,
+    cacheReadTokens: (raw as Record<string, unknown>).cachedReadTokens,
+    cacheWriteTokens: (raw as Record<string, unknown>).cachedWriteTokens,
   })
 }
 
-export async function initializeAcp(peer, clientCapabilities = {}, clientInfo) {
-  const result = await peer.request('initialize', { protocolVersion: 1, clientCapabilities, ...(clientInfo ? { clientInfo } : {}) }, 30_000)
+export async function initializeAcp(peer: JsonRpcPeer, clientCapabilities: Record<string, unknown> = {}, clientInfo?: { name: string; version?: string; title?: string }): Promise<AcpCapabilities> {
+  const result = await peer.request<{ protocolVersion?: unknown; agentCapabilities?: AcpCapabilities }>('initialize', { protocolVersion: 1, clientCapabilities, ...(clientInfo ? { clientInfo } : {}) }, 30_000)
   if (result?.protocolVersion !== 1) throw new Error('Unsupported ACP protocol version')
   return result.agentCapabilities ?? {}
 }
 
-export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = {}, support) {
+export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: AcpDriverOptions = {}, support: AcpSupport): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const { id, label } = support
-  const emit = event => { try { onEvent?.(event) } catch {} }
+  const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   // ACP plan entries carry status pending/in_progress/completed and a content
   // string; anything else cannot be placed and is left out rather than guessed.
-  const planSteps = entries => entries.filter(entry => typeof entry?.content === 'string' && entry.content !== '')
-    .map(entry => ({ text: entry.content, status: entry.status === 'in_progress' ? 'in_progress' : entry.status === 'completed' ? 'completed' : 'pending' }))
-  const errorText = error => typeof error === 'string' ? error : typeof error?.message === 'string' ? error.message : undefined
-  const translateError = error => support.error?.(error) ?? error
-  let peer = null
-  let ready = null
+  const planSteps = (entries: AcpPlanEntry[]): NonNullable<Extract<DriverEvent, { type: 'plan' }>['steps']> => entries.filter(entry => typeof entry?.content === 'string' && entry.content !== '')
+    .map(entry => ({ text: entry.content!, status: entry.status === 'in_progress' ? 'in_progress' : entry.status === 'completed' ? 'completed' : 'pending' }))
+  const errorText = (error: unknown) => typeof error === 'string' ? error : typeof (error as { message?: unknown } | null | undefined)?.message === 'string' ? (error as { message: string }).message : undefined
+  const translateError = (error: unknown) => (support.error?.(error) ?? error) as Error
+  let peer: JsonRpcPeer | null = null
+  let ready: Promise<void> | null = null
   let sessionId = driverSessionId
   let connected = false
   let promptImages = false
   let disposed = false
   let sequence = 0
-  let running = null
-  const requests = new Map()
+  let running: AcpTurn | null = null
+  const requests = new Map<string, AcpPending>()
   const coverage = createCoverage(id, 'acp')
 
   const closeRequests = () => {
@@ -78,7 +143,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
     }
     requests.clear()
   }
-  const end = (turn, reason, error, usage) => {
+  const end = (turn: AcpTurn, reason: 'done' | 'interrupted' | 'error', error?: string, usage?: unknown) => {
     if (running !== turn) return
     running = null
     turn.settle?.()
@@ -98,8 +163,8 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
     connection?.dispose()
     if (connection) emit({ type: 'session', state: 'closed' })
   }
-  const receive = ({ method, params: raw }) => {
-    const params = objectOf(raw)
+  const receive = ({ method, params: raw }: { method?: string; params?: unknown }) => {
+    const params = objectOf<AcpParams>(raw)
     // A notification outside the declared set counts by category only; its raw
     // name and payload go nowhere. Declared-but-unmapped methods stay silent.
     if (method !== undefined && method !== 'session/update') {
@@ -108,17 +173,17 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
     }
     if (params.sessionId !== sessionId || !running?.started || params._meta?.isReplay || params.update?._meta?.isReplay) return
     const turn = running
-    const update = objectOf(params.update)
-    const meta = objectOf(update._meta)
+    const update = objectOf<AcpUpdate>(params.update)
+    const meta = objectOf<AcpMeta>(update._meta)
     if (update.sessionUpdate !== undefined && !DECLARED.acp.variants[update.sessionUpdate]) coverage.count('unknown-variant')
     // Child-session ownership rides `_meta` when the dedicated child channel is
     // not negotiated (OpenCode): child-owned updates are activity of that child,
     // never the main turn's reply. The child id/parent stay the source's own.
     const child = meta['opencode/child-session']
     if (child && typeof child.id === 'string' && child.id !== '') {
-      if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text' && update.content.text) {
+      if (update.sessionUpdate === 'agent_message_chunk' && (update.content as AcpBlock | null | undefined)?.type === 'text' && (update.content as AcpBlock).text) {
         const entry = turn.children.get(child.id) ?? { text: '' }
-        entry.text = `${entry.text}${update.content.text}`.slice(0, 4000)
+        entry.text = `${entry.text}${(update.content as AcpBlock).text}`.slice(0, 4000)
         if (typeof child.title === 'string' && child.title) entry.title = child.title
         turn.children.set(child.id, entry)
         emit({ type: 'activity', turnId: turn.id, phase: entry.started ? 'update' : 'start', entityId: child.id, name: 'subagent',
@@ -127,26 +192,26 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
       }
       if ((update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') && update.toolCallId) {
         const status = update.status
-        emit({ type: 'activity', turnId: turn.id, phase: ['completed', 'failed'].includes(status) ? 'end' : update.sessionUpdate === 'tool_call' ? 'start' : 'update',
+        emit({ type: 'activity', turnId: turn.id, phase: ['completed', 'failed'].includes(status!) ? 'end' : update.sessionUpdate === 'tool_call' ? 'start' : 'update',
           entityId: `${child.id}/${update.toolCallId}`, name: 'subagent',
           ...(update.title || update.name ? { title: update.title ?? update.name } : {}),
           ...(child.parentID ? { parentId: child.parentID } : {}), isError: status === 'failed' })
       }
       return
     }
-    if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
+    if (update.sessionUpdate === 'agent_message_chunk' && (update.content as AcpBlock | null | undefined)?.type === 'text') {
       if (update.messageId && !turn.messages.has(update.messageId)) {
         if (turn.messages.size) emit({ type: 'delta', turnId: turn.id, text: '\n' })
         turn.messages.set(update.messageId, '')
       }
-      if (update.content.text) {
-        if (update.messageId) turn.messages.set(update.messageId, turn.messages.get(update.messageId) + update.content.text)
+      if ((update.content as AcpBlock).text) {
+        if (update.messageId) turn.messages.set(update.messageId, turn.messages.get(update.messageId)! + (update.content as AcpBlock).text!)
         else turn.unbounded = true
-        emit({ type: 'delta', turnId: turn.id, text: update.content.text })
+        emit({ type: 'delta', turnId: turn.id, text: (update.content as AcpBlock).text! })
       }
     }
-    if (support.thoughts !== false && update.sessionUpdate === 'agent_thought_chunk' && update.content?.type === 'text') emit({ type: 'thinking', turnId: turn.id, text: update.content.text })
-    if (['tool_call', 'tool_call_update'].includes(update.sessionUpdate)) {
+    if (support.thoughts !== false && update.sessionUpdate === 'agent_thought_chunk' && (update.content as AcpBlock | null | undefined)?.type === 'text') emit({ type: 'thinking', turnId: turn.id, text: (update.content as AcpBlock).text! })
+    if (['tool_call', 'tool_call_update'].includes(update.sessionUpdate!)) {
       const key = update.toolCallId
       if (!key || turn.completedTools.has(key)) return
       const previous = turn.tools.get(key)
@@ -168,13 +233,13 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
       const locations = update.locations === undefined ? previous?.locations : update.locations
       turn.tools.set(key, { name, input, output, rawOutput, content, kind, locations })
       if (previous === undefined) {
-        emit({ type: 'tool', turnId: turn.id, callId: key, name, phase: 'start', input, brief: update.title ?? update.rawInput?.command ?? update.rawInput?.description })
-      } else if (!['completed', 'failed'].includes(update.status)) {
+        emit({ type: 'tool', turnId: turn.id, callId: key, name, phase: 'start', input, brief: update.title ?? (update.rawInput as { command?: string } | null | undefined)?.command ?? (update.rawInput as { description?: string } | null | undefined)?.description })
+      } else if (!['completed', 'failed'].includes(update.status!)) {
         // ACP tool_call_update is a partial patch: an included field replaces
         // the previous value, an omitted one stays. Only changed fields are
         // forwarded so a status-only update does not churn the host row.
-        const changed = (value, before) => JSON.stringify(value) !== JSON.stringify(before)
-        const fields = {}
+        const changed = (value: unknown, before: unknown) => JSON.stringify(value) !== JSON.stringify(before)
+        const fields: { name?: string; input?: unknown; output?: unknown } = {}
         if (typeof update.name === 'string' && update.name !== '' && update.name !== previous.name) fields.name = update.name
         if (update.rawInput !== undefined && changed(input, previous.input)) fields.input = input
         if ((update.rawOutput !== undefined || update.content !== undefined) && changed(output, previous.output)) fields.output = output
@@ -183,13 +248,13 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             ...(fields.input !== undefined ? { input: fields.input } : {}), ...(fields.output !== undefined ? { output: fields.output } : {}) })
         }
       }
-      if (['completed', 'failed'].includes(update.status)) {
+      if (['completed', 'failed'].includes(update.status!)) {
         if (support.fileChanges) {
-          const files = (Array.isArray(content) ? content : []).filter(block => block?.type === 'diff').map(block => ({ path: block.path,
+          const files: { path: unknown; edit: { operation: string; oldText?: unknown; newText?: unknown } }[] = (Array.isArray(content) ? content as AcpBlock[] : []).filter(block => block?.type === 'diff').map(block => ({ path: block.path,
             edit: { operation: block.oldText === null ? 'add' : 'update',
               ...(typeof block.oldText === 'string' || block.oldText === null ? { oldText: block.oldText } : {}), newText: block.newText } }))
-          if (['edit', 'delete', 'move'].includes(kind)) for (const location of Array.isArray(locations) ? locations : []) {
-            if (!files.some(file => file.path === location?.path)) files.push({ path: location?.path, edit: { operation: kind === 'edit' ? 'unknown' : kind } })
+          if (['edit', 'delete', 'move'].includes(kind!)) for (const location of Array.isArray(locations) ? locations as { path?: unknown }[] : []) {
+            if (!files.some(file => file.path === location?.path)) files.push({ path: location?.path, edit: { operation: kind === 'edit' ? 'unknown' : kind! } })
           }
           turn.changes.add(key, files, update.status === 'completed')
         }
@@ -235,21 +300,21 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
       // types its negotiated path classifies as cancelled.
       const compaction = meta['opencode/compaction']
       const cancelled = typeof compaction.error === 'object' && compaction.error !== null
-        && ['aborted', 'compaction.interrupted'].includes(compaction.error.type)
+        && (['aborted', 'compaction.interrupted'] as readonly unknown[]).includes((compaction.error as { type?: unknown }).type)
       emit({ type: 'lifecycle', turnId: turn.id, kind: 'compaction', phase: compaction.status === 'started' ? 'start' : 'end',
         ...(compaction.status === 'failed' && !cancelled && errorText(compaction.error) ? { detail: errorText(compaction.error) } : {}),
         isError: compaction.status === 'failed' && !cancelled, cancelled })
     }
   }
-  const ask = ({ id: requestId, method, params: raw }) => {
-    const params = objectOf(raw)
+  const ask = ({ id: requestId, method, params: raw }: { id: RpcId; method: string; params?: unknown }) => {
+    const params = objectOf<AcpParams>(raw)
     if (!peer) return
     if (!DECLARED.acp.requests[method]) coverage.count('unknown-request')
     if (!running?.started || (params.sessionId !== undefined && params.sessionId !== sessionId)) return peer.refuse(requestId, 'No matching active turn')
     const cardId = `${id}:${sessionId}:${typeof requestId}:${requestId}`
     if (method === 'session/request_permission') {
       if (!Array.isArray(params.options) || !params.options.length) return peer.refuse(requestId, 'No permission choices supplied')
-      const tool = params.toolCall?.name ?? params.toolCall?.title ?? running.tools.get(params.toolCall?.toolCallId)?.name
+      const tool = params.toolCall?.name ?? params.toolCall?.title ?? running.tools.get(params.toolCall?.toolCallId!)?.name
       // An engine may promote a permission into a question: CodeBuddy gates its
       // AskUserQuestion tool with one, the questions riding in the tool call's
       // raw input, and the answers travel back outside the ACP reply. The hook
@@ -273,12 +338,12 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
   }
   const boot = () => {
     if (ready) return ready
-    let connection
+    let connection: JsonRpcPeer | undefined
     const startup = (async () => {
       if (disposed) throw new Error(`${label} driver disposed`)
       validateWorkspace(cwd, true)
       emit({ type: 'session', state: 'starting' })
-      connection = support.connect({ onNotification: receive, onRequest: ask, onClose(error) {
+      connection = support.connect({ onNotification: receive as (message: unknown) => void, onRequest: ask as (message: unknown) => void, onClose(error) {
         if (peer !== connection) return
         peer = null; ready = null; connected = false
         if (running?.started) end(running, running.cancelled ? 'interrupted' : 'error', running.cancelled ? undefined : translateError(error).message)
@@ -295,7 +360,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         else if (capabilities.loadSession) method = 'session/load'
         else throw new Error(`${label} ACP cannot restore the saved session`)
       }
-      const attached = await connection.request(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: [] }, 30_000)
+      const attached = await connection.request<AcpAttached>(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: [] }, 30_000)
       if (!sessionId) sessionId = attached?.sessionId
       else if (attached?.sessionId && attached.sessionId !== sessionId) throw new Error(`${label} restored a different session`)
       if (typeof sessionId !== 'string' || !sessionId) throw new Error(`${label} returned no session id`)
@@ -322,7 +387,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
     async sendTurn(text, images = []) {
       if (disposed) throw new Error(`${label} driver disposed`)
       if (running) throw new Error(`${label} already has a running turn`)
-      const turn = running = { id: `${id}-${++sequence}`, started: false, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) }
+      const turn: AcpTurn = running = { id: `${id}-${++sequence}`, started: false, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) }
       try {
         await boot()
         if (disposed || running !== turn) return turn.id
@@ -332,11 +397,11 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         if (support.expandPrompt) text = await support.expandPrompt(text)
         if (disposed || running !== turn) return turn.id
         turn.started = true
-        turn.done = new Promise(resolve => { turn.settle = resolve })
+        turn.done = new Promise<void>(resolve => { turn.settle = resolve })
         emit({ type: 'turn/start', turnId: turn.id })
         // A prompt's response ends the turn; it has no handshake deadline.
         const prompt = [...(text === '' ? [] : [{ type: 'text', text: String(text) }]), ...images.map(image => ({ type: 'image', mimeType: image.mediaType, data: image.data }))]
-        peer.request('session/prompt', { sessionId, prompt }, null).then(result => {
+        peer!.request<{ stopReason?: unknown; usage?: unknown }>('session/prompt', { sessionId, prompt }, null).then(result => {
           const stop = result?.stopReason
           // Only an explicit end_turn is a normal finish; a support override
           // still wins so engine-specific reason maps stay authoritative.
@@ -358,10 +423,10 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
       closeRequests()
       const drop = () => { turn.unconfirmed = true; disconnect(); end(turn, 'interrupted') }
       if (!turn.started) { drop(); return }
-      try { peer.notify('session/cancel', { sessionId }) }
+      try { peer!.notify('session/cancel', { sessionId }) }
       catch { drop(); return }
-      let timer
-      await Promise.race([turn.done, new Promise(resolve => { timer = setTimeout(resolve, 5000) })])
+      let timer: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([turn.done, new Promise<void>(resolve => { timer = setTimeout(resolve, 5000) })])
       clearTimeout(timer)
       if (running === turn) drop()
     },
@@ -369,9 +434,9 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
       const entry = requests.get(cardId)
       if (!entry || !peer || entry.busy) return false
       if (entry.kind === 'permission') {
-        if (!['allow', 'deny'].includes(decision)) return false
+        if (!['allow', 'deny'].includes(decision!)) return false
         const kinds = decision === 'allow' ? (always ? ['allow_always', 'allow_once'] : ['allow_once']) : ['reject_once', 'reject_always']
-        const option = kinds.map(kind => entry.params.options.find(item => item.kind === kind)).find(Boolean)
+        const option = kinds.map(kind => entry.params.options!.find(item => item.kind === kind)).find(Boolean)
         if (option) peer.reply(entry.id, { outcome: { outcome: 'selected', optionId: option.optionId } })
         else if (decision === 'deny') peer.reply(entry.id, { outcome: { outcome: 'cancelled' } })
         else throw new Error(`${label} did not offer this permission decision`)
@@ -392,7 +457,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
           // question's interruption) awaits it: a failure keeps the card open
           // for a retry instead of closing the UI onto a turn that can no
           // longer settle.
-          if (entry.question.respond) await entry.question.respond({ peer, sessionId, id: entry.id, value })
+          if (entry.question.respond) await entry.question.respond({ peer, sessionId: sessionId!, id: entry.id, value })
           else peer.reply(entry.id, entry.question.answer(value))
         } catch (error) {
           entry.busy = false

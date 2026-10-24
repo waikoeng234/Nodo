@@ -11,7 +11,7 @@ import type { Coverage } from '../coverage.js'
 import { connectCodex, ensureCodexWorkspace } from './native.js'
 import { createFileChanges } from '../file-changes.js'
 import type { FileChanges } from '../file-changes.js'
-import type { Driver, DriverEvent, Usage } from '../spi.js'
+import type { Driver, DriverEvent, EngineInfo, Usage } from '../spi.js'
 import type { CodexPeer, RpcId } from './native.js'
 
 type CodexOptions = { cwd?: string; engineOptions?: Record<string, unknown> }
@@ -116,7 +116,7 @@ export const codexInfo = {
     { name: 'socket', target: 'engineOptions', label: 'Shared Codex socket (optional)', type: 'text', placeholder: 'Default shared daemon; or its absolute control socket path' },
   ],
   capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] },
-}
+} satisfies EngineInfo
 
 export function validateCodexOptions(raw: Record<string, unknown> = {}) {
   for (const key of Object.keys(raw)) if (!['bin', 'socket'].includes(key)) throw invalidConfig(`Unsupported Codex option: ${key}`)
