@@ -2,7 +2,7 @@
 // found by scanning each engine's documented global locations. There is no
 // protocol listing, so `source` names what answered and an empty scan stays an
 // honest empty list.
-import { readFileSync, readdirSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 const frontmatter = (path) => {
     let head;
@@ -17,10 +17,18 @@ const frontmatter = (path) => {
     return { name: line('name'), description: line('description') };
 };
 // The subdirectories of one directory, [] when it is missing; the shared shape
-// behind the plugin-cache walks (every engine caches one dir per version).
+// behind the plugin-cache walks (every engine caches one dir per version). A
+// symlink counts as its target: skill trees are commonly linked across engines.
 export const listDirs = (dir) => {
     try {
-        return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(dir, entry.name));
+        return readdirSync(dir, { withFileTypes: true })
+            .filter(entry => { try {
+            return statSync(join(dir, entry.name)).isDirectory();
+        }
+        catch {
+            return false;
+        } })
+            .map(entry => join(dir, entry.name));
     }
     catch {
         return [];
