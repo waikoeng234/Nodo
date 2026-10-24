@@ -4,10 +4,17 @@
 // engine's own docs forbid line readers like readline.
 import { spawn } from 'node:child_process'
 
+export type PiArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string }
+export type PiConnectOptions<Frame = unknown> = {
+  executable: string; args?: string[]; cwd?: string; env?: NodeJS.ProcessEnv
+  onFrame?: (record: Frame) => void; onClose?: (error: Error) => void
+}
+export type PiConnection = { write(record: unknown): void; running: Promise<void>; dispose(): void }
+
 // RPC mode cannot show the project-trust prompt, and the host never silently
 // trusts a workspace's .pi resources: project settings and extensions stay off.
 // AGENTS.md/CLAUDE.md context files load regardless of this flag.
-export function piArgs({ model, thinking, instructions, driverSessionId } = {}) {
+export function piArgs({ model, thinking, instructions, driverSessionId }: PiArgsOptions = {}) {
   return [
     '--mode', 'rpc', '--no-approve',
     ...(model ? ['--model', model] : []),
@@ -17,22 +24,22 @@ export function piArgs({ model, thinking, instructions, driverSessionId } = {}) 
   ]
 }
 
-export function connectPi({ executable, args, cwd, env, onFrame = () => {}, onClose = () => {} }) {
+export function connectPi<Frame = unknown>({ executable, args, cwd, env, onFrame = () => {}, onClose = () => {} }: PiConnectOptions<Frame>): PiConnection {
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   let closed = false
   let stderrTail = ''
   let buffer = ''
-  const write = record => {
+  const write = (record: unknown) => {
     if (closed || child.stdin.destroyed) throw new Error('pi RPC connection is closed')
     child.stdin.write(`${JSON.stringify(record)}\n`)
   }
-  const finish = error => {
+  const finish = (error: Error) => {
     if (closed) return
     closed = true
     onClose(error)
     if (child.exitCode === null) child.kill('SIGTERM')
   }
-  child.on('error', error => finish(new Error(`Cannot start pi (${error.code ?? 'spawn failed'})`)))
+  child.on('error', error => finish(new Error(`Cannot start pi (${(error as NodeJS.ErrnoException).code ?? 'spawn failed'})`)))
   child.stdin.on('error', () => finish(new Error('Cannot write to pi')))
   // stderr can carry configuration diagnostics; keep a short, secret-filtered tail.
   child.stderr.on('data', chunk => { stderrTail = `${stderrTail}${chunk}`.slice(-1024) })
@@ -47,14 +54,14 @@ export function connectPi({ executable, args, cwd, env, onFrame = () => {}, onCl
       const line = buffer.slice(0, at)
       buffer = buffer.slice(at + 1)
       if (closed) return
-      let record
+      let record: unknown
       try { record = JSON.parse(line) } catch { continue }
-      try { onFrame(record) } catch { finish(new Error('Invalid pi protocol record')) }
+      try { onFrame(record as Frame) } catch { finish(new Error('Invalid pi protocol record')) }
     }
   })
   // Closing stdin is the engine's orderly shutdown path; it disposes the active
   // runtime and exits after the current command or settled run.
-  const running = new Promise((resolve, reject) => {
+  const running = new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve)
     child.once('error', reject)
     child.once('close', () => reject(new Error('pi exited during startup')))

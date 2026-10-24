@@ -20,12 +20,12 @@ export function connectPi({ executable, args, cwd, env, onFrame = () => { }, onC
     let closed = false;
     let stderrTail = '';
     let buffer = '';
-    const write = record => {
+    const write = (record) => {
         if (closed || child.stdin.destroyed)
             throw new Error('pi RPC connection is closed');
         child.stdin.write(`${JSON.stringify(record)}\n`);
     };
-    const finish = error => {
+    const finish = (error) => {
         if (closed)
             return;
         closed = true;

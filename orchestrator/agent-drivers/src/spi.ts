@@ -74,10 +74,10 @@ export type DriverEvent =
   | { type: 'session'; state: 'starting' | 'ready' | 'closed'; sessionId?: string; workspaceId?: string; detail?: unknown }
   | { type: 'turn/start'; turnId: string }
   | { type: 'delta' | 'text' | 'thinking'; turnId: string; text: string }
-  | { type: 'tool'; turnId: string; name: string; phase: 'start' | 'update' | 'end'; callId?: string; parentCallId?: string;
+  | ({ type: 'tool'; turnId: string; callId?: string; parentCallId?: string;
       input?: unknown; inputText?: string; inputDelta?: string; output?: unknown; outputText?: string; outputDelta?: string;
       progress?: { elapsedMs?: number; message?: string; stdoutTail?: string; stderrTail?: string; stdoutBytes?: number; stderrBytes?: number; outputBytes?: number };
-      brief?: string; isError?: boolean; presentation?: unknown }
+      brief?: string; isError?: boolean; presentation?: unknown } & ({ phase: 'start' | 'end'; name: string } | { phase: 'update'; name?: string }))
   | { type: 'changes'; turnId: string; presentation: ChangesPresentation }
   | { type: 'plan'; turnId: string; entityId?: string; title?: string; explanation?: string; text?: string;
       steps?: { text: string; status: 'pending' | 'in_progress' | 'completed' }[]; removed?: boolean }

@@ -75,7 +75,7 @@ export function handshakeQoder({ executable, cwd, env }) {
                         return settle(reject, new Error('Qoder rejected initialization'));
                     if (!response || typeof response !== 'object' || Array.isArray(response))
                         return settle(reject, new Error('Invalid Qoder initialize response'));
-                    settle(resolve, { peer, response });
+                    settle(resolve, { peer: peer, response: response });
                 } });
             peer.write({ type: 'control_request', request_id: 'orch-check', request: { subtype: 'initialize' } });
         }
@@ -125,10 +125,10 @@ export async function checkQoder({ cwd, engineOptions = {} } = {}) {
 // The initialize response's model table: `value` is what --model takes back,
 // displayName names the row, `efforts` are the levels that model accepts and
 // `defaultEffort` its preset. The `isDefault` entry is the configured default.
-const qoderCatalog = models => (Array.isArray(models) ? models : []).flatMap(model => {
+const qoderCatalog = (models) => (Array.isArray(models) ? models : []).flatMap(model => {
     if (typeof model?.value !== 'string' || model.value === '')
         return [];
-    const levels = Array.isArray(model.efforts) ? model.efforts.filter(level => typeof level === 'string' && level !== '') : [];
+    const levels = Array.isArray(model.efforts) ? model.efforts.filter((level) => typeof level === 'string' && level !== '') : [];
     return [{ id: model.value,
             ...(typeof model.displayName === 'string' && model.displayName !== '' ? { label: model.displayName } : {}),
             ...(typeof model.defaultEffort === 'string' && model.defaultEffort !== '' ? { defaultThinking: model.defaultEffort } : {}),
@@ -196,7 +196,7 @@ const qoderRatioTokens = (raw, contextWindow) => typeof raw?.context_usage_ratio
     && typeof contextWindow === 'number' && contextWindow > 0
     ? Math.round(raw.context_usage_ratio * contextWindow) : undefined;
 export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
-    const emit = event => { try {
+    const emit = (event) => { try {
         onEvent?.(event);
     }
     catch { } };
@@ -243,7 +243,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
             emit(turn.changes.snapshot(turn.id));
         emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) });
     };
-    const control = request => new Promise((resolve, reject) => {
+    const control = (request) => new Promise((resolve, reject) => {
         const request_id = `orch-${++controlSeq}`;
         const timer = setTimeout(() => { if (controls.delete(request_id))
             reject(new Error('Qoder control request timed out')); }, 5000);
@@ -268,7 +268,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
             emit({ type: 'tool', turnId: turn.id, callId: block.id, name: block.name ?? 'tool', phase: 'start', input: block.input,
                 ...(parentCallId ? { parentCallId } : {}) });
     };
-    const receive = frame => {
+    const receive = (frame) => {
         if (frame.type === 'control_response') {
             const pending = controls.get(frame.response?.request_id);
             if (!pending)
@@ -390,7 +390,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
         if (!['system', 'user', 'assistant', 'result', 'control_response'].includes(frame.type) && !DECLARED.qoder.notifications[frame.type])
             coverage.count('unknown-notification');
     };
-    const ask = frame => {
+    const ask = (frame) => {
         const request = frame.request ?? {};
         if (!peer)
             return;

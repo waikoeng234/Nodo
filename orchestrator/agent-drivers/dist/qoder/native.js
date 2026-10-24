@@ -21,12 +21,12 @@ export function connectQoder({ executable, args, cwd, env, onFrame = () => { }, 
     const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let closed = false;
     let stderrTail = '';
-    const write = frame => {
+    const write = (frame) => {
         if (closed || child.stdin.destroyed)
             throw new Error('Qoder CLI connection is closed');
         child.stdin.write(`${JSON.stringify(frame)}\n`);
     };
-    const finish = error => {
+    const finish = (error) => {
         if (closed)
             return;
         closed = true;

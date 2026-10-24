@@ -5,6 +5,58 @@ import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspa
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges } from '../file-changes.js'
 import { piArgs, connectPi } from './native.js'
+import type { PiConnection } from './native.js'
+import type { Driver, DriverEvent, DriverImage, DriverResponse, EngineCheckResult, EngineInfo, PermissionMode, Usage } from '../spi.js'
+import type { Coverage } from '../coverage.js'
+import type { FileChanges } from '../file-changes.js'
+import type { EngineScanOptions, ModelCatalog } from '../index.js'
+import type { SkillInventory } from '../skills.js'
+
+export type PiOptions = { bin?: string }
+export type PiDriverOptions = {
+  onEvent?: (event: DriverEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
+  model?: string; thinking?: string; permission?: PermissionMode; driverSessionId?: string; instructions?: string
+}
+type PiHandshakeOptions = { executable: string; cwd?: string; env?: NodeJS.ProcessEnv }
+type PiModel = { id?: unknown; provider?: unknown; name?: unknown; contextWindow?: unknown; thinkingLevelMap?: unknown }
+type PiData = {
+  error?: unknown; sessionId?: unknown; model?: PiModel; models?: PiModel[]
+  commands?: { name?: unknown; description?: unknown }[]; disposition?: string
+}
+type PiUsage = { input?: unknown; output?: unknown; cacheRead?: unknown; cacheWrite?: unknown }
+type PiEdit = { oldText?: unknown; newText?: unknown }
+type PiInput = PiEdit & { path?: string; content?: unknown; edits?: PiEdit[] }
+type PiContent = { type?: string; text?: unknown }
+type PiMessage = { role?: string; usage?: PiUsage; content?: PiContent[] }
+type PiUpdate =
+  | { type: 'text_delta' | 'thinking_delta' | 'toolcall_delta'; delta?: unknown; contentIndex?: number }
+  | { type: 'toolcall_start'; id?: unknown; toolName?: string; contentIndex?: number }
+  | { type: 'toolcall_end'; toolCall?: { id?: unknown; name: string; arguments: PiInput } }
+  | { type: 'start' | 'done' | 'error' | 'text_start' | 'text_end' | 'thinking_start' | 'thinking_end' }
+type PiResponse = { type: 'response'; id: string; success: boolean; data?: PiData; error?: string }
+type PiRequest = { type: 'extension_ui_request'; id: string; method: string; title?: unknown; options?: unknown; message?: unknown; placeholder?: unknown }
+type PiFrame =
+  | PiResponse | PiRequest
+  | { type: 'agent_settled'; aborted?: boolean }
+  | { type: 'message_start' | 'message_end'; message?: PiMessage }
+  | { type: 'message_update'; usage?: PiUsage; assistantMessageEvent?: PiUpdate }
+  | { type: 'tool_execution_start'; toolCallId: string; toolName: string; args?: PiInput }
+  | { type: 'tool_execution_update'; toolCallId: string; partialResult?: { content?: PiContent[] } }
+  | { type: 'tool_execution_end'; toolCallId: string; result?: { content?: PiContent[] }; isError?: boolean }
+  | { type: 'compaction_start'; reason?: string }
+  | { type: 'compaction_end'; errorMessage?: unknown; aborted?: boolean }
+  | { type: 'auto_retry_start'; attempt?: number; errorMessage?: unknown }
+  | { type: 'auto_retry_end'; attempt?: number; success?: boolean; finalError?: unknown }
+  | { type: 'agent_start' | 'agent_end' | 'turn_start' | 'turn_end' | 'queue_update' | 'entry_appended' | 'session_info_changed'
+      | 'thinking_level_changed' | 'bash_execution_update' | 'extension_error' | 'summarization_retry_scheduled'
+      | 'summarization_retry_attempt_start' | 'summarization_retry_finished' }
+type PiTool = { name: string; input?: PiInput; existedBefore?: boolean }
+type PiTurn = {
+  id: string; started: boolean; tools: Map<string, PiTool>; completedTools: Set<string>; blocks: Map<number | undefined, string>
+  interrupting: boolean; failed?: string; lastText?: string; openMessage?: { sawDelta: boolean; usage?: PiUsage } | null
+  usage?: Usage; contextUsed?: number; changes?: FileChanges | null; settle: (() => void) | null
+  done?: Promise<void>; compacting?: boolean; unconfirmed?: boolean
+}
 
 export { findExecutable } from '../cli.js'
 
@@ -16,9 +68,9 @@ export const piInfo = {
     { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'Model such as provider/id or a pattern; blank uses pi settings' },
   ],
   capabilities: { resume: true, steer: true, permissions: false, questions: true, commands: true, compact: true },
-}
+} satisfies EngineInfo
 
-export function validatePiOptions(raw = {}) {
+export function validatePiOptions(raw: Record<string, unknown> = {}): PiOptions {
   for (const key of Object.keys(raw)) if (key !== 'bin') throw invalidConfig(`Unsupported pi option: ${key}`)
   const bin = validateBin(raw.bin)
   return bin ? { bin } : {}
@@ -28,15 +80,15 @@ export function validatePiOptions(raw = {}) {
 // resolve when every response arrived. get_state answers before any model
 // work, so these cost no tokens; model/credential truth stays with the first
 // real turn, same honesty as the other adapters.
-function rpcPeek(executable, { cwd, env = {}, commands }) {
-  return new Promise((resolvePeek, reject) => {
-    let peer
+function rpcPeek(executable: string, { cwd, env = {}, commands }: Omit<PiHandshakeOptions, 'executable'> & { commands: { id: string; type: string }[] }) {
+  return new Promise<Record<string, PiData>>((resolvePeek, reject) => {
+    let peer: PiConnection | null | undefined
     const timer = setTimeout(() => { peer?.dispose(); reject(new Error('pi RPC peek timed out')) }, 20_000)
-    const answers = {}
+    const answers: Record<string, PiData> = {}
     let answered = 0
     const settle = () => { clearTimeout(timer); const done = peer; peer = null; done?.dispose(); resolvePeek(answers) }
     try {
-      peer = connectPi({ executable, args: piArgs({}), cwd, env, onFrame: record => {
+      peer = connectPi<PiFrame>({ executable, args: piArgs({}), cwd, env, onFrame: record => {
         if (record.type !== 'response' || !commands.some(command => command.id === record.id)) return
         answers[record.id] = record.success === true ? record.data ?? {} : { error: record.error }
         if (++answered === commands.length) settle()
@@ -48,17 +100,17 @@ function rpcPeek(executable, { cwd, env = {}, commands }) {
 
 // get_state answers before any model work and names the session, so this
 // round-trip is the protocol check.
-export async function handshakePi({ executable, cwd, env } = {}) {
+export async function handshakePi({ executable, cwd, env }: PiHandshakeOptions = {} as PiHandshakeOptions) {
   const answers = await rpcPeek(executable, { cwd, env, commands: [{ id: 'orch-check', type: 'get_state' }] })
   const answer = answers['orch-check'] ?? {}
   if (answer.error !== undefined) throw new Error(String(answer.error))
   return answer
 }
 
-export async function checkPi({ cwd, engineOptions = {} } = {}) {
-  const checks = []
+export async function checkPi({ cwd, engineOptions = {} }: EngineScanOptions = {}): Promise<EngineCheckResult> {
+  const checks: EngineCheckResult['checks'] = []
   try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
-  catch (error) { checks.push({ label: 'Working directory', ok: false, message: error.message }) }
+  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validatePiOptions(engineOptions)
   const executable = findExecutable(options.bin ?? 'pi')
   if (!executable) return { engine: 'pi', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'pi CLI executable not found. Install pi or enter its absolute path.' }] }
@@ -73,7 +125,7 @@ export async function checkPi({ cwd, engineOptions = {} } = {}) {
       ? `Configured default: ${[model.provider, model.id].filter(Boolean).join('/')}${typeof model.contextWindow === 'number' ? ` · ${model.contextWindow} token window` : ''}`
       : 'No default model is configured; set one with pi or the profile model field before the first turn.' })
   } catch (error) {
-    checks.push({ label: 'Protocol', ok: false, message: `Could not reach the pi RPC protocol (${error.message}). Verify the installation; the first start may take a moment.` })
+    checks.push({ label: 'Protocol', ok: false, message: `Could not reach the pi RPC protocol (${(error as Error).message}). Verify the installation; the first start may take a moment.` })
   }
   return { engine: 'pi', ok: checks.every(check => check.ok !== false), executable, version, checks }
 }
@@ -81,9 +133,9 @@ export async function checkPi({ cwd, engineOptions = {} } = {}) {
 // The RPC model table is the protocol's own catalog. Entries key as provider/id
 // — the one spelling both --model and set_model accept — and thinkingLevelMap
 // keys are the pi thinking levels that model accepts.
-const catalogId = model => typeof model?.id === 'string' && model.id !== '' && typeof model.provider === 'string' && model.provider !== ''
+const catalogId = (model: PiModel | undefined) => typeof model?.id === 'string' && model.id !== '' && typeof model.provider === 'string' && model.provider !== ''
   ? `${model.provider}/${model.id}` : typeof model?.id === 'string' && model.id !== '' ? model.id : undefined
-const piCatalog = models => (Array.isArray(models) ? models : []).flatMap(model => {
+const piCatalog = (models: PiModel[] | undefined) => (Array.isArray(models) ? models : []).flatMap(model => {
   const id = catalogId(model)
   if (!id) return []
   const levels = model.thinkingLevelMap && typeof model.thinkingLevelMap === 'object'
@@ -94,7 +146,7 @@ const piCatalog = models => (Array.isArray(models) ? models : []).flatMap(model 
     ...(levels.length ? { thinking: levels.map(level => ({ id: level })) } : {}) }]
 })
 
-export async function scanPi({ engineOptions = {}, cwd } = {}) {
+export async function scanPi({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<Omit<ModelCatalog, 'engine'>> {
   const options = validatePiOptions(engineOptions)
   const executable = findExecutable(options.bin ?? 'pi')
   if (!executable) return { source: 'pi CLI not found', models: [] }
@@ -111,7 +163,7 @@ export async function scanPi({ engineOptions = {}, cwd } = {}) {
 
 // The RPC command catalog merges extension commands, prompt templates and
 // skills; each runs through the prompt channel as /name.
-export async function scanPiCommands({ engineOptions = {}, cwd } = {}) {
+export async function scanPiCommands({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<SkillInventory> {
   const options = validatePiOptions(engineOptions)
   const executable = findExecutable(options.bin ?? 'pi')
   if (!executable) return { source: 'pi CLI', commands: [] }
@@ -129,7 +181,7 @@ export async function scanPiCommands({ engineOptions = {}, cwd } = {}) {
 // the add/update split comes from the driver's own existence check taken when
 // the tool starts; edit names its replacements itself. Anything else drops out
 // of the snapshot rather than being guessed.
-function piFileChanges(name, input, existedBefore) {
+function piFileChanges(name: string, input: PiInput | undefined, existedBefore?: boolean) {
   if (name === 'write' && typeof input?.path === 'string' && typeof input?.content === 'string')
     return [{ path: input.path, edit: existedBefore
       ? { operation: 'update', newText: input.content }
@@ -145,42 +197,42 @@ function piFileChanges(name, input, existedBefore) {
   return []
 }
 
-const promptTokens = raw => {
+const promptTokens = (raw: PiUsage | undefined) => {
   const parts = [raw?.input, raw?.cacheRead, raw?.cacheWrite]
   return parts.some(value => typeof value === 'number' && Number.isFinite(value))
-    ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
+    ? parts.reduce<number>((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
     : undefined
 }
 
-const textOf = message => (Array.isArray(message?.content) ? message.content : [])
+const textOf = (message: PiMessage | undefined) => (Array.isArray(message?.content) ? message.content : [])
   .filter(block => block?.type === 'text' && typeof block.text === 'string')
   .map(block => block.text).join('')
 
-export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
-  const emit = event => { try { onEvent?.(event) } catch {} }
-  let peer = null
-  let ready = null
+export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions }: PiDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage; steer(text: string, images?: DriverImage[]): ReturnType<Driver['steer']> } {
+  const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
+  let peer: PiConnection | null = null
+  let ready: Promise<void> | null = null
   let sessionId = driverSessionId
   let connected = false
   let disposed = false
   let sequence = 0
   let rpcSeq = 0
-  let running = null
-  let contextSize
-  const controls = new Map()
-  const requests = new Map()
+  let running: PiTurn | null = null
+  let contextSize: number | undefined
+  const controls = new Map<string, (record: Pick<PiResponse, 'success' | 'data' | 'error'>) => void>()
+  const requests = new Map<string, PiRequest>()
   const coverage = createCoverage('pi')
 
   const closeRequests = () => {
     for (const id of requests.keys()) emit({ type: 'request/closed', id })
     requests.clear()
   }
-  const dropCommands = error => {
+  const dropCommands = (error: string) => {
     const pending = [...controls.values()]
     controls.clear()
     for (const settle of pending) settle({ success: false, error })
   }
-  const end = (reason, error, usage, text) => {
+  const end = (reason: 'done' | 'interrupted' | 'error', error?: unknown, usage?: Usage, text?: string) => {
     if (!running) return
     const turn = running
     running = null
@@ -192,7 +244,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
   }
   // The engine answers a command after it takes effect: abort replies at idle,
   // compact after the summary exists — those two outlive the 5 s default.
-  const command = (type, extra = {}, timeoutMs = 5000) => new Promise((resolvePromise, reject) => {
+  const command = (type: string, extra: Record<string, unknown> = {}, timeoutMs = 5000) => new Promise<PiData>((resolvePromise, reject) => {
     const id = `orch-${++rpcSeq}`
     const timer = timeoutMs ? setTimeout(() => { if (controls.delete(id)) reject(new Error(`pi ${type} command timed out`)) }, timeoutMs) : null
     controls.set(id, record => {
@@ -200,20 +252,20 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
       controls.delete(id)
       record.success === true ? resolvePromise(record.data ?? {}) : reject(new Error(record.error ?? `pi rejected ${type}`))
     })
-    try { peer.write({ id, type, ...extra }) }
+    try { peer!.write({ id, type, ...extra }) }
     catch (error) { controls.delete(id); if (timer) clearTimeout(timer); reject(error) }
   })
-  const startTool = (callId, name, input) => {
+  const startTool = (callId: string, name?: string, input?: PiInput) => {
     const turn = running
     if (!turn || !callId || turn.completedTools.has(callId)) return
     const previous = turn.tools.get(callId)
     turn.tools.set(callId, { name: name ?? previous?.name ?? 'tool', input: input ?? previous?.input, existedBefore: previous?.existedBefore })
     if (!previous) emit({ type: 'tool', turnId: turn.id, callId, name: name ?? 'tool', phase: 'start', ...(input ? { input } : {}) })
   }
-  const existedBefore = path => {
-    try { return statSync(resolve(cwd, path)).isFile() } catch { return false }
+  const existedBefore = (path: string) => {
+    try { return statSync(resolve(cwd!, path)).isFile() } catch { return false }
   }
-  const receive = record => {
+  const receive = (record: PiFrame) => {
     if (record.type === 'response') return controls.get(record.id)?.(record)
     if (record.type === 'extension_ui_request') return ask(record)
     if (!DECLARED.pi.notifications[record.type]) coverage.count('unknown-notification')
@@ -231,7 +283,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     }
     if (record.type === 'message_update') {
       if (record.usage && turn.openMessage) turn.openMessage.usage = record.usage
-      const update = record.assistantMessageEvent ?? {}
+      const update = record.assistantMessageEvent ?? {} as PiUpdate
       if (!DECLARED.pi.variants[update.type] && !['start', 'done', 'error'].includes(update.type)) coverage.count('unknown-variant')
       if (update.type === 'text_delta' && typeof update.delta === 'string' && update.delta !== '') {
         if (turn.openMessage) turn.openMessage.sawDelta = true
@@ -323,7 +375,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
   // Extension dialogs are the only server→client question channel; leaving one
   // unanswered stalls the engine, so each surfaces as a question card even
   // though pi has no native ask tool.
-  const ask = record => {
+  const ask = (record: PiRequest) => {
     if (!peer) return
     const cardId = `pi:${sessionId}:${record.id}`
     requests.set(cardId, record)
@@ -338,14 +390,14 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
   }
   const boot = () => {
     if (ready) return ready
-    let connection
+    let connection: PiConnection | undefined
     const pending = (async () => {
       if (disposed) throw new Error('pi driver disposed')
       validateWorkspace(cwd, true)
       const executable = findExecutable(bin ?? 'pi')
       if (!executable) throw new Error('pi CLI executable not found. Install pi or edit the profile CLI path.')
       emit({ type: 'session', state: 'starting' })
-      connection = connectPi({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId }), cwd, env,
+      connection = connectPi<PiFrame>({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId }), cwd, env,
         onFrame: receive,
         onClose(error) {
           if (peer !== connection) return
@@ -385,7 +437,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     async sendTurn(text, images = []) {
       if (disposed) throw new Error('pi driver disposed')
       if (running) throw new Error('pi already has a running turn')
-      const turn = running = { id: `pi-${++sequence}`, started: false, tools: new Map(), completedTools: new Set(), blocks: new Map(), interrupting: false, failed: undefined, lastText: undefined, openMessage: null, usage: undefined, contextUsed: undefined, changes: createFileChanges(cwd), settle: null }
+      const turn: PiTurn = running = { id: `pi-${++sequence}`, started: false, tools: new Map(), completedTools: new Set(), blocks: new Map(), interrupting: false, failed: undefined, lastText: undefined, openMessage: null, usage: undefined, contextUsed: undefined, changes: createFileChanges(cwd), settle: null }
       try {
         await boot()
         if (disposed || running !== turn) return turn.id
@@ -396,7 +448,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
         // turn closes at once instead of waiting for agent_settled.
         if (disposition === 'handled') { end('done'); return turn.id }
         turn.started = true
-        turn.done = new Promise(resolve => { turn.settle = resolve })
+        turn.done = new Promise<void>(resolve => { turn.settle = resolve })
         emit({ type: 'turn/start', turnId: turn.id })
         return turn.id
       } catch (error) { if (running === turn) running = null; throw error }
@@ -404,28 +456,28 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     // The engine queues the message between tool calls and answers with a
     // disposition, so an answered steer is a steered one; a timeout leaves
     // delivery unknown.
-    async steer(text, images = []) {
+    async steer(text, images: DriverImage[] = []) {
       if (!running?.started || running.interrupting || disposed || !peer) return STEER.REFUSED
       try {
         await command('steer', { message: String(text), ...(images.length ? { images: images.map(image => ({ type: 'image', data: image.data, mimeType: image.mediaType })) } : {}) })
         return STEER.STEERED
       } catch (error) {
-        return String(error?.message).includes('timed out') ? STEER.INDETERMINATE : STEER.REFUSED
+        return String((error as Error)?.message).includes('timed out') ? STEER.INDETERMINATE : STEER.REFUSED
       }
     },
     // The native compaction channel; its lifetime arrives as compaction events.
     async compact() {
       if (disposed) throw new Error('pi driver disposed')
       if (running) throw new Error('pi already has a running turn')
-      const turn = running = { id: `pi-${++sequence}`, started: true, tools: new Map(), completedTools: new Set(), blocks: new Map(), interrupting: false, changes: null, settle: null }
-      turn.done = new Promise(resolve => { turn.settle = resolve })
+      const turn: PiTurn = running = { id: `pi-${++sequence}`, started: true, tools: new Map(), completedTools: new Set(), blocks: new Map(), interrupting: false, changes: null, settle: null }
+      turn.done = new Promise<void>(resolve => { turn.settle = resolve })
       emit({ type: 'turn/start', turnId: turn.id })
       try {
         await boot()
         if (running !== turn) return turn.id
         await command('compact', {}, 600_000)
         end('done')
-      } catch (error) { if (running === turn) end('error', error.message) }
+      } catch (error) { if (running === turn) end('error', (error as Error).message) }
       return turn.id
     },
     async interruptTurn() {
@@ -439,7 +491,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
       await Promise.race([turn.done, new Promise(resolve => { setTimeout(resolve, 5000) })])
       if (running === turn) drop()
     },
-    respondToRequest(id, { decision, value } = {}) {
+    respondToRequest(id, { decision, value }: Omit<DriverResponse, 'value'> & { value?: unknown } = {}) {
       const record = requests.get(id)
       if (!record || !peer) return Promise.resolve(false)
       const answer = record.method === 'confirm'

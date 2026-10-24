@@ -97,9 +97,9 @@ export async function checkPi({ cwd, engineOptions = {} } = {}) {
 // The RPC model table is the protocol's own catalog. Entries key as provider/id
 // — the one spelling both --model and set_model accept — and thinkingLevelMap
 // keys are the pi thinking levels that model accepts.
-const catalogId = model => typeof model?.id === 'string' && model.id !== '' && typeof model.provider === 'string' && model.provider !== ''
+const catalogId = (model) => typeof model?.id === 'string' && model.id !== '' && typeof model.provider === 'string' && model.provider !== ''
     ? `${model.provider}/${model.id}` : typeof model?.id === 'string' && model.id !== '' ? model.id : undefined;
-const piCatalog = models => (Array.isArray(models) ? models : []).flatMap(model => {
+const piCatalog = (models) => (Array.isArray(models) ? models : []).flatMap(model => {
     const id = catalogId(model);
     if (!id)
         return [];
@@ -165,17 +165,17 @@ function piFileChanges(name, input, existedBefore) {
     }
     return [];
 }
-const promptTokens = raw => {
+const promptTokens = (raw) => {
     const parts = [raw?.input, raw?.cacheRead, raw?.cacheWrite];
     return parts.some(value => typeof value === 'number' && Number.isFinite(value))
         ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
         : undefined;
 };
-const textOf = message => (Array.isArray(message?.content) ? message.content : [])
+const textOf = (message) => (Array.isArray(message?.content) ? message.content : [])
     .filter(block => block?.type === 'text' && typeof block.text === 'string')
     .map(block => block.text).join('');
 export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
-    const emit = event => { try {
+    const emit = (event) => { try {
         onEvent?.(event);
     }
     catch { } };
@@ -196,7 +196,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
             emit({ type: 'request/closed', id });
         requests.clear();
     };
-    const dropCommands = error => {
+    const dropCommands = (error) => {
         const pending = [...controls.values()];
         controls.clear();
         for (const settle of pending)
@@ -245,7 +245,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
         if (!previous)
             emit({ type: 'tool', turnId: turn.id, callId, name: name ?? 'tool', phase: 'start', ...(input ? { input } : {}) });
     };
-    const existedBefore = path => {
+    const existedBefore = (path) => {
         try {
             return statSync(resolve(cwd, path)).isFile();
         }
@@ -253,7 +253,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
             return false;
         }
     };
-    const receive = record => {
+    const receive = (record) => {
         if (record.type === 'response')
             return controls.get(record.id)?.(record);
         if (record.type === 'extension_ui_request')
@@ -378,7 +378,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     // Extension dialogs are the only server→client question channel; leaving one
     // unanswered stalls the engine, so each surfaces as a question card even
     // though pi has no native ask tool.
-    const ask = record => {
+    const ask = (record) => {
         if (!peer)
             return;
         const cardId = `pi:${sessionId}:${record.id}`;

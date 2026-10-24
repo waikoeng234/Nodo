@@ -3,12 +3,20 @@
 // so assistant frames arrive whole and text is snapshot-only.
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import type { PermissionMode } from '../spi.js'
+
+export type QoderArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode }
+export type QoderConnectOptions<Frame = unknown, Request = unknown> = {
+  executable: string; args?: string[]; cwd?: string; env?: NodeJS.ProcessEnv
+  onFrame?: (frame: Frame) => void; onRequest?: (frame: Request) => void; onClose?: (error: Error) => void
+}
+export type QoderConnection = { write(frame: unknown): void; running: Promise<void>; dispose(): void }
 
 // `--permission-mode` has no plan tier (plan mode is the EnterPlanMode tool), so
 // the host's plan tier falls back to `default`, where every action asks.
 // `auto` is the engine's classifier tier — ordinary actions run and recognized-
 // dangerous ones ask — matching the workspace tier.
-export function qoderArgs({ model, thinking, instructions, driverSessionId, permission } = {}) {
+export function qoderArgs({ model, thinking, instructions, driverSessionId, permission }: QoderArgsOptions = {}) {
   return [
     '--print', '--input-format', 'stream-json', '--output-format', 'stream-json',
     ...(model ? ['--model', model] : []),
@@ -19,21 +27,21 @@ export function qoderArgs({ model, thinking, instructions, driverSessionId, perm
   ]
 }
 
-export function connectQoder({ executable, args, cwd, env, onFrame = () => {}, onRequest = () => {}, onClose = () => {} }) {
+export function connectQoder<Frame = unknown, Request = unknown>({ executable, args, cwd, env, onFrame = () => {}, onRequest = () => {}, onClose = () => {} }: QoderConnectOptions<Frame, Request>): QoderConnection {
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   let closed = false
   let stderrTail = ''
-  const write = frame => {
+  const write = (frame: unknown) => {
     if (closed || child.stdin.destroyed) throw new Error('Qoder CLI connection is closed')
     child.stdin.write(`${JSON.stringify(frame)}\n`)
   }
-  const finish = error => {
+  const finish = (error: Error) => {
     if (closed) return
     closed = true
     onClose(error)
     if (child.exitCode === null) child.kill('SIGTERM')
   }
-  child.on('error', error => finish(new Error(`Cannot start Qoder CLI (${error.code ?? 'spawn failed'})`)))
+  child.on('error', error => finish(new Error(`Cannot start Qoder CLI (${(error as NodeJS.ErrnoException).code ?? 'spawn failed'})`)))
   child.stdin.on('error', () => finish(new Error('Cannot write to Qoder CLI')))
   // stderr can carry configuration diagnostics; keep a short, secret-filtered tail.
   child.stderr.on('data', chunk => { stderrTail = `${stderrTail}${chunk}`.slice(-1024) })
@@ -43,18 +51,18 @@ export function connectQoder({ executable, args, cwd, env, onFrame = () => {}, o
   })
   // The CLI emits its session init only after the first user frame, so "the
   // process is up" is all a boot can wait for; the session id arrives later.
-  const running = new Promise((resolve, reject) => {
+  const running = new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve)
     child.once('error', reject)
     child.once('close', () => reject(new Error('Qoder CLI exited during startup')))
   })
   createInterface({ input: child.stdout }).on('line', line => {
     if (closed) return
-    let frame
+    let frame: unknown
     try { frame = JSON.parse(line) } catch { return }
     try {
-      if (frame.type === 'control_request') onRequest(frame)
-      else onFrame(frame)
+      if ((frame as { type: string }).type === 'control_request') onRequest(frame as Request)
+      else onFrame(frame as Frame)
     } catch { finish(new Error('Invalid Qoder protocol event')) }
   })
   return {
