@@ -1,4 +1,9 @@
-function createNewConversation(ctx, space, ReferenceDialog) {
+import { h, useState, useRef, useSyncExternalStore, useStateView, call, readImage, NodoLogo } from './ui-shared.js'
+import { Composer } from './composer.js'
+import { RolePicker } from './role-seat.js'
+import { nativeRole, readDrafts, heldImages, subscribeNavigation, readNavigation, setNavigation } from './page.js'
+
+export function createNewConversation(ctx, space, ReferenceDialog) {
   const readOptions = () => {
     try { return JSON.parse(localStorage.getItem('nodo.draft-options')) ?? {} } catch { return {} }
   }

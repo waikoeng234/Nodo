@@ -1,9 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { Script, createContext } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 
-function harness(sessions) {
+async function harness(sessions) {
   let selected = null
   let spaceState = { active: false, legacy: false }
   const sessionListeners = new Set()
@@ -27,10 +26,9 @@ function harness(sessions) {
     getSnapshot: () => spaceState,
     subscribe: listener => { spaceListeners.add(listener); return () => spaceListeners.delete(listener) },
   }
-  const context = createContext({})
-  new Script(readFileSync(new URL('../src/client/native-welcome.js', import.meta.url), 'utf8')).runInContext(context)
+  const { createNativeWelcome } = await loadClient('native-welcome.js')
   const Welcome = () => null
-  const unmount = context.createNativeWelcome(ctx, space, Welcome)()
+  const unmount = createNativeWelcome(ctx, space, Welcome)()
   return {
     registrations,
     enter() { spaceState = { ...spaceState, active: true }; for (const listener of spaceListeners) listener() },
@@ -43,9 +41,9 @@ function harness(sessions) {
   }
 }
 
-test('welcome shadows the conversation only for a blank session inside the Nodo space', () => {
+test('welcome shadows the conversation only for a blank session inside the Nodo space', async () => {
   const sessions = { blank: { blank: true }, started: { blank: false } }
-  const h = harness(sessions)
+  const h = await harness(sessions)
   h.open('blank')
   assert.equal(h.registrations.length, 0, 'the ordinary space keeps the native conversation')
   h.enter()
@@ -60,9 +58,9 @@ test('welcome shadows the conversation only for a blank session inside the Nodo 
   assert.equal(h.registrations.length, 0)
 })
 
-test('the first sent message hands the area back to the host flow', () => {
+test('the first sent message hands the area back to the host flow', async () => {
   const sessions = { 'nodo-1': { blank: true } }
-  const h = harness(sessions)
+  const h = await harness(sessions)
   h.open('nodo-1')
   h.enter()
   assert.equal(h.registrations.length, 1)
@@ -71,9 +69,9 @@ test('the first sent message hands the area back to the host flow', () => {
   h.dispose()
 })
 
-test('leaving the space or entering legacy mode restores the native conversation', () => {
+test('leaving the space or entering legacy mode restores the native conversation', async () => {
   const sessions = { 'nodo-1': { blank: true } }
-  const h = harness(sessions)
+  const h = await harness(sessions)
   h.open('nodo-1')
   h.enter()
   assert.equal(h.registrations.length, 1)
@@ -86,9 +84,9 @@ test('leaving the space or entering legacy mode restores the native conversation
   h.dispose()
 })
 
-test('an open draft hides the welcome and a merely kept one does not', () => {
+test('an open draft hides the welcome and a merely kept one does not', async () => {
   const sessions = { 'nodo-1': { blank: true } }
-  const h = harness(sessions)
+  const h = await harness(sessions)
   h.open('nodo-1')
   h.enter()
   h.draft(true)

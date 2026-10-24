@@ -1,4 +1,6 @@
-function createSessionReferences(ctx, space) {
+import { h, Fragment, useState, useEffect, useSyncExternalStore, call, MARKDOWN_LABELS, IconUsersOutlineRegular, Modal, Button, Input, MarkdownText } from './ui-shared.js'
+
+export function createSessionReferences(ctx, space) {
   const source = 'nodo-reference'
   let dialog = null
   const listeners = new Set()
@@ -174,7 +176,7 @@ function createSessionReferences(ctx, space) {
 
 // The two panes scroll on their own inside a fixed-height layout: the card
 // itself must never scroll, or a long reply moves the whole dialog.
-const REFERENCE_CSS = `
+export const REFERENCE_CSS = `
 .nodo-reference-dialog{width:min(900px,calc(100vw - 32px));max-height:calc(100vh - 120px)}
 .nodo-reference-layout{display:flex;gap:16px;height:min(50vh,560px);min-height:180px}
 .nodo-reference-sources{display:flex;flex-direction:column;gap:10px;width:280px;flex:none;min-width:0}

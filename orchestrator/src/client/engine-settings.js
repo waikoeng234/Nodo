@@ -1,10 +1,17 @@
+import {
+  h, Fragment, useState, useEffect, call, ENGINE_FORM, Modal, Button, StateDot,
+  IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconRefreshOutlineRegular,
+} from './ui-shared.js'
+import { Field } from './profile-dialogs.js'
+import { EngineMark, engineDisplayName } from './engine-logos.js'
+
 // Settings is the host's modal too: the same card and field metrics as the role
 // dialog, with the primary action submitting the form inside it
 // through the form attribute. The registry is shown in two groups — engines
 // detected on this machine first, then the ones that need a CLI path — and a
 // detected engine can be toggled into (or out of) the enabled set the role
 // dialog offers.
-function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClose }) {
+export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClose }) {
   const seed = engineId => {
     const source = view.prefs?.engineConfigs?.[engineId]
     return { engineOptions: { ...source?.engineOptions } }
@@ -169,7 +176,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
 // First-run onboarding: the engines we adapt and detected on this machine, one
 // tap each to choose which to enable. Skipping (or closing) keeps them all —
 // the host only marks onboarding done when the list arrives empty.
-function OnboardingDialog({ onDone }) {
+export function OnboardingDialog({ onDone }) {
   const [engines, setEngines] = useState(null)
   const [picked, setPicked] = useState(null)
   const [busy, setBusy] = useState(false)

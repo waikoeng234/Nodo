@@ -1,10 +1,24 @@
+import {
+  h, Fragment, useState, useEffect, useRef, useId, useStateView, call, sessionTime, layoutService, openNativeSession, nativeSpace,
+  Button, Menu, Modal, Tag, StateDot, IconPanelLeftOutlineRegular, IconTrashOutlineRegular, IconBranchOutlineRegular,
+  IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconUsersOutlineRegular, IconGoalOutlineRegular,
+} from './ui-shared.js'
+import { avatarTemplateOf, RoleAvatar } from './avatar.tsx'
+import { runDuration } from './running.js'
+import { RUN_STATUS, RUN_DOT, statusLine, taskName, RunDetail, ApprovalCard } from './run-cards.js'
+import { Field } from './profile-dialogs.js'
+import { workspacePicker } from './session-rail.js'
+import { nativeRole, setNavigation } from './page.js'
+import { WorkflowTaskComposer } from './workflow-composer.js'
+import { workflowTaskTitle } from '../../core/shared/task-titles.js'
+
 const WF_KIND = { start: '开始', agent: '执行节点', human: '人工节点', end: '结束节点' }
 const wfIcon = kind => ({ start: IconChevronRightOutlineRegular, agent: IconCodeOutlineRegular, human: IconUsersOutlineRegular, end: IconGoalOutlineRegular })[kind]
 const wfClone = value => JSON.parse(JSON.stringify(value))
 const WF_REWORK = '$rework'
 // An agent with a rework wire chooses between two exits, each judged by its listed conditions, one per line.
 const WF_CHECKS = { done: ['任务要求的产出已完成', '结果已验证，没有阻塞问题'], rework: ['存在阻塞问题或未满足任务要求', '缺少继续所需的信息或材料'] }
-const wfExits = node => node.kind === 'end' ? [] : node.kind === 'human'
+export const wfExits = node => node.kind === 'end' ? [] : node.kind === 'human'
   ? (node.options ?? []).map(option => option.id)
   : node.kind === 'agent' && node.exits?.length ? node.exits.map(exit => exit.id) : ['done']
 const wfPortLabel = (node, exit, forward = false) => exit === WF_REWORK ? '返工' : node.options?.find(item => item.id === exit)?.label
@@ -67,7 +81,7 @@ function wfDisconnect(draft, wire) {
     return node.kind === 'agent' && wire.exit === 'rework' ? { ...node, exits: undefined } : node
   }) }
 }
-const wfGraph = definition => {
+export const wfGraph = definition => {
   if (definition.nodes) return wfClone({ nodes: definition.nodes, edges: definition.edges ?? [], ...(definition.workspaceId ? { workspaceId: definition.workspaceId } : {}) })
   const nodes = (definition.steps ?? []).map((step, index) => step.decide
     ? { id: `s${index + 1}`, kind: 'human', name: step.name, question: step.question, options: [{ id: 'continue', label: '继续' }] }
@@ -77,15 +91,15 @@ const wfGraph = definition => {
   nodes.push({ id: 'end', kind: 'end', name: '完成交付', deliver: deliver?.id ?? '' })
   return { nodes, edges: nodes.slice(0, -1).map((node, index) => ({ from: node.id, exit: node.kind === 'human' ? 'continue' : 'done', to: nodes[index + 1].id })) }
 }
-const wfNew = () => ({ name: '未命名流程', nodes: [{ id: 'start', kind: 'start', name: '开始' }, { id: 'end', kind: 'end', name: '完成交付', deliver: '' }], edges: [] })
+export const wfNew = () => ({ name: '未命名流程', nodes: [{ id: 'start', kind: 'start', name: '开始' }, { id: 'end', kind: 'end', name: '完成交付', deliver: '' }], edges: [] })
 // A run takes the tasks it was started with; the flow keeps the rest for the next run.
 const wfClearTasks = graph => ({ ...graph, nodes: graph.nodes.map(node => node.kind === 'agent' ? { ...node, task: '', images: undefined, files: undefined } : node) })
-const wfWorkspace = (view, profile, session) => view.workspaces.find(item => item.id === session?.workspaceRef)
+export const wfWorkspace = (view, profile, session) => view.workspaces.find(item => item.id === session?.workspaceRef)
   ?? view.workspaces.find(item => session?.cwd && item.cwd === session.cwd)
   ?? view.workspaces.find(item => item.id === profile?.workspaceId)
-const wfCurrentSession = profile => profile?.sessions?.find(item => item.id === profile.activeSessionId)
+export const wfCurrentSession = profile => profile?.sessions?.find(item => item.id === profile.activeSessionId)
   ?? (profile?.activeSessionId === profile?.id && profile ? { id: profile.id, name: '默认会话', workspaceRef: profile.workspaceId } : undefined)
-const wfParticipants = (graph, view) => [...new Set(graph.nodes.filter(node => node.kind === 'agent').map(node => node.profileId))].map(id => {
+export const wfParticipants = (graph, view) => [...new Set(graph.nodes.filter(node => node.kind === 'agent').map(node => node.profileId))].map(id => {
   const profile = view.profiles.find(item => item.id === id)
   const session = wfCurrentSession(profile)
   return { id, profile, session, workspace: graph.workspaceId ? view.workspaces.find(item => item.id === graph.workspaceId) : wfWorkspace(view, profile, session) }
@@ -105,7 +119,7 @@ const wfSteps = graph => {
   return [...order, ...graph.nodes.filter(node => !order.includes(node))].filter(node => node.kind === 'agent' || node.kind === 'human')
 }
 
-function wfValidate(draft, view) {
+export function wfValidate(draft, view) {
   const errors = []
   const add = (node, message) => errors.push({ node: node?.id, message: node ? `${node.name || WF_KIND[node.kind]}：${message}` : message })
   const byId = new Map(draft.nodes.map(node => [node.id, node]))
@@ -153,7 +167,7 @@ function wfValidate(draft, view) {
   return errors
 }
 
-function wfHistoryGraph(definitions, run) {
+export function wfHistoryGraph(definitions, run) {
   const definition = run?.graph ?? definitions.find(item => item.id === run?.workflowId)
   if (!definition || !Array.isArray(run?.tasks)) return null
   const graph = wfGraph(definition)
@@ -178,7 +192,7 @@ function wfHistoryGraph(definitions, run) {
   return { ...graph, tasks, taken, status: run.status }
 }
 
-function wfDelivery(graph, run) {
+export function wfDelivery(graph, run) {
   if (!graph || run?.status !== 'done') return null
   const ends = graph.nodes.filter(node => node.kind === 'end')
   if (ends.length !== 1) return null
@@ -187,7 +201,7 @@ function wfDelivery(graph, run) {
   return task ?? null
 }
 
-function wfPositions(graph) {
+export function wfPositions(graph) {
   const rowHeight = Math.max(150, ...graph.nodes.map(node => wfPorts(graph, node).height + 54))
   const levels = new Map(graph.nodes.filter(node => node.kind === 'start').map(node => [node.id, 0]))
   for (let i = 0; i < graph.nodes.length; i++) {
@@ -209,7 +223,7 @@ function wfPositions(graph) {
   }))
 }
 
-function wfRemove(draft, id) {
+export function wfRemove(draft, id) {
   return { ...draft, nodes: draft.nodes.filter(node => node.id !== id).map(node => node.deliver === id ? { ...node, deliver: '' } : node),
     edges: draft.edges.filter(edge => edge.from !== id && edge.to !== id) }
 }
@@ -236,15 +250,15 @@ const wfRead = () => {
 
 let wfSidebarContent = null
 const wfSidebarListeners = new Set()
-const wfSidebarSnapshot = () => wfSidebarContent
-const wfSubscribeSidebar = listener => { wfSidebarListeners.add(listener); return () => wfSidebarListeners.delete(listener) }
-const wfPublishSidebar = content => {
+export const wfSidebarSnapshot = () => wfSidebarContent
+export const wfSubscribeSidebar = listener => { wfSidebarListeners.add(listener); return () => wfSidebarListeners.delete(listener) }
+export const wfPublishSidebar = content => {
   if (content === wfSidebarContent) return
   wfSidebarContent = content
   for (const listener of wfSidebarListeners) listener()
 }
 
-function WorkflowCanvas({ graph, view, selected, onSelect, positions, onPosition, onConnect, onDisconnect, onContext, tools, trailing, dock, history = false, busy = false }) {
+export function WorkflowCanvas({ graph, view, selected, onSelect, positions, onPosition, onConnect, onDisconnect, onContext, tools, trailing, dock, history = false, busy = false }) {
   const [cam, setCam] = useState({ x: 0, y: 0, zoom: 1 }), [link, setLink] = useState(null)
   const zoom = cam.zoom
   const drag = useRef(null), pan = useRef(null), viewport = useRef(null), plane = useRef(null)
@@ -401,7 +415,7 @@ function WorkflowCanvas({ graph, view, selected, onSelect, positions, onPosition
     trailing && h('div', { className: 'nodo-wf-canvas-trail' }, trailing), dock)
 }
 
-function WorkflowInspector({ draft, node, profile, disabled, onChange, onEdge, onRemove }) {
+export function WorkflowInspector({ draft, node, profile, disabled, onChange, onEdge, onRemove }) {
   if (!node) return h('aside', { className: 'nodo-wf-inspector' }, h('p', null, '选择节点进行配置。'))
   const input = (label, key, options = {}) => h(Field, { label }, h(options.area ? 'textarea' : 'input', { className: `nodo-dialog-input${options.area ? ' nodo-dialog-textarea' : ''}`, value: node[key] ?? '', disabled, maxLength: options.max ?? 60,
     onChange: event => onChange({ [key]: event.target.value }), ...(options.area ? { rows: 5 } : {}) }))
@@ -482,7 +496,7 @@ function WorkflowInspector({ draft, node, profile, disabled, onChange, onEdge, o
       h(Button, { variant: 'outline', size: 'sm', disabled, className: 'nodo-dialog-danger', onClick: onRemove }, '删除节点')))
 }
 
-function WorkflowRunDuration({ run }) {
+export function WorkflowRunDuration({ run }) {
   const [, tick] = useState(0)
   const ended = ['done', 'failed', 'cancelled'].includes(run.status)
   useEffect(() => {
@@ -496,7 +510,7 @@ function WorkflowRunDuration({ run }) {
     h('span', { className: 'nodo-running-time' }, Number.isFinite(end) ? runDuration(end - run.createdAt) : '—'))
 }
 
-function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
+export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
   const [saved, setSaved] = useState(wfRead)
   const { draft, source, selected, positions = {} } = saved
   const [mode, setMode] = useState('edit'), [runs, setRuns] = useState([]), [run, setRun] = useState(null), [runId, setRunId] = useState('')
@@ -781,7 +795,7 @@ function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
       h('p', null, '删除后不能恢复。已有运行记录保留；正在编辑的内容转为未保存草稿。')))
 }
 
-function WorkflowEntry() {
+export function WorkflowEntry() {
   const { view, error, refresh } = useStateView()
   useEffect(() => {
     if (document.querySelector('[data-sidebar-collapsed]')) layoutService?.toggleSidebar()
@@ -805,7 +819,7 @@ function WorkflowEntry() {
   return h(WorkflowPage, { view, readOnly: !!view.readOnly, refresh, onOpenSession: open })
 }
 
-const WORKFLOW_CSS = `
+export const WORKFLOW_CSS = `
 .nodo-workflow{--nodo-wf-shadow:color-mix(in srgb,var(--dsw-alias-border-l1) 55%,var(--dsw-alias-label-tertiary));--nodo-wf-rework:var(--dsw-alias-state-warn-primary);flex-direction:row;overflow:hidden;font-size:13px;line-height:1.5}
 .nodo-wf-workspace{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 .nodo-wf-header{--nodo-wf-header-gutter:20px;box-sizing:border-box;display:flex;align-items:center;gap:12px;min-height:max(44px,var(--dsh-frame-top-clearance,0px));padding:6px var(--nodo-wf-header-gutter);padding-inline-start:max(var(--nodo-wf-header-gutter),var(--dsh-frame-leading-clearance,0px));border-bottom:1px solid var(--dsw-alias-border-l2);flex:none;-webkit-app-region:drag}

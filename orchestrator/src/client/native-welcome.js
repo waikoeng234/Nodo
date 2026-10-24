@@ -2,7 +2,7 @@
 // current host session is still blank does it shadow main.conversation with the
 // plugin's hero; the first sent message flips the summary's blank flag and the
 // disposer hands the area back to the host's native conversation entry.
-function createNativeWelcome(ctx, space, Welcome) {
+export function createNativeWelcome(ctx, space, Welcome) {
   let release
   const update = () => {
     const state = space.getSnapshot()

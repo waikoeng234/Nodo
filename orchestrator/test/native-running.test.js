@@ -1,17 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { createContext, Script } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 
-const source = readFileSync(new URL('../src/client/running.js', import.meta.url), 'utf8')
-const context = createContext({
-  AVATAR_TEMPLATES: [],
-  h: (type, props, ...children) => ({ type, props, children }),
-  useSyncExternalStore: (_subscribe, read) => read(),
-  nativeSpace: { subscribe() {}, getSnapshot: () => context.space },
-  useStateView: () => ({ view: context.view }),
+const context = await loadClient('running.js', {
+  stubs: { 'avatar.tsx': { RoleAvatar: 'RoleAvatar' } },
+  createElement: (type, props, ...children) => ({ type, props, children }),
+  react: { useSyncExternalStore: (_subscribe, read) => read() },
+  uiShared: {
+    nativeSpace: { subscribe() {}, getSnapshot: () => context.space },
+    useStateView: () => ({ view: context.view }),
+  },
 })
-new Script(source).runInContext(context)
 const snapshot = turns => ({ views: { get: () => ({ timeline: { turns: new Map(turns.map(turn => [turn.turn, turn])) } }) } })
 const previous = { turn: 3, status: 'closed', start: { time: 1000 } }
 const current = { turn: 4, status: 'open', start: { time: 9000 } }

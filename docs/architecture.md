@@ -61,7 +61,7 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 
 ## Client
 
-`scripts/build-client.mjs` concatenates `src/client/` and `core/shared/` into `client.js` in a fixed order and inlines assets such as icons. dsh loads `client.js` as a plain script. React and UI components are supplied by the host and are not bundled separately.
+`scripts/build-client.mjs` bundles `src/client/` (ESM, plus `core/shared/` data) into `client.js` with esbuild and inlines assets such as icons. dsh loads `client.js` as a plain script. React and UI components are supplied by the host and are not bundled separately.
 
 The client mounts its parts through host UI slots, including run status and references above the composer, conversation message nodes, and tool detail views. UI state such as drafts and navigation is saved in the browser's `localStorage`.
 

@@ -1,10 +1,15 @@
-function Field({ label, children, group = false, required = false }) {
+import { h, Fragment, useState, useEffect, useRef, call, Modal, Button, ROLE_FORM } from './ui-shared.js'
+import { avatarTemplateOf, RoleAvatar } from './avatar.tsx'
+import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
+import ROLE_PRESETS from '../../core/shared/role-presets.json'
+
+export function Field({ label, children, group = false, required = false }) {
   return h(group ? 'div' : 'label', { className: 'nodo-field', role: group ? 'group' : undefined,
     'aria-label': group ? label : undefined },
   h('span', null, label, required && h('span', { className: 'nodo-field-required', 'aria-hidden': true }, '*')), children)
 }
 
-function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, onSaved, onCancel, onDeleted }) {
+export function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, onSaved, onCancel, onDeleted }) {
   // Saved identities ride prefs, so the picker offers them to every later new
   // role and a deleted role card never takes its saved identity along.
   const saved = Array.isArray(savedIdentities) ? savedIdentities : []
@@ -257,7 +262,7 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
       onDeleted: name => { setDeletingIdentity(false); setDraft(current => current.identity === name ? { ...current, identity: 'custom' } : current); void refresh?.(true) } })))
 }
 
-function IdentityDeleteDialog({ identity, onDeleted, onCancel }) {
+export function IdentityDeleteDialog({ identity, onDeleted, onCancel }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const remove = async () => {

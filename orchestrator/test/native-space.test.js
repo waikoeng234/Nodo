@@ -1,11 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { readPanelSource } from './helpers/client-source.js'
-import { Script, createContext } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 import { randomUUID } from 'node:crypto'
 
-function harness(saved, ready = true) {
+async function harness(saved, ready = true) {
   let selected = ready ? 'ordinary-session' : undefined
   const known = new Set(['ordinary-session', saved?.nodoSession].filter(Boolean))
   const catalogListeners = new Set()
@@ -29,11 +27,12 @@ function harness(saved, ready = true) {
       return () => registrations.splice(registrations.indexOf(entry), 1)
     } },
   }
-  const context = createContext({ crypto: { randomUUID }, document: { querySelector: () => null }, queueMicrotask: fn => pending.push(fn), heldImages: {},
-    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } })
-  new Script(readFileSync(new URL('../src/client/native-space.js', import.meta.url), 'utf8')).runInContext(context)
+  const { createNativeSpace } = await loadClient('native-space.js', {
+    globals: { crypto: { randomUUID }, document: { querySelector: () => null }, queueMicrotask: fn => pending.push(fn),
+      localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
+  })
   const Sidebar = () => null
-  const space = context.createNativeSpace(ctx, Sidebar)
+  const space = createNativeSpace(ctx, Sidebar)
   const unmount = factory()
   pending.forEach(run => run())
   return { space, registrations, panels, storage, get selected() { return selected },
@@ -43,8 +42,8 @@ function harness(saved, ready = true) {
     dispose() { unmount(); effects.forEach(dispose => dispose()) } }
 }
 
-test('Nodo replaces the whole sidebar and retains it across native role and session switches', () => {
-  const h = harness()
+test('Nodo replaces the whole sidebar and retains it across native role and session switches', async () => {
+  const h = await harness()
   assert.equal(h.registrations.length, 0)
   h.space.enter()
   const sidebar = h.registrations[0]
@@ -65,8 +64,8 @@ test('Nodo replaces the whole sidebar and retains it across native role and sess
   assert.equal(h.registrations.length, 0)
 })
 
-test('legacy engine content retains the Nodo sidebar and can return to a native role', () => {
-  const h = harness()
+test('legacy engine content retains the Nodo sidebar and can return to a native role', async () => {
+  const h = await harness()
   h.space.enter()
   const sidebar = h.registrations[0]
   h.space.showLegacy()
@@ -81,8 +80,8 @@ test('legacy engine content retains the Nodo sidebar and can return to a native 
 
 const input = (storage, draft, text) => storage.set('nodo.drafts', JSON.stringify({ [`new:${draft.id}`]: text }))
 
-test('a draft holding only picked files survives navigation away', () => {
-  const h = harness()
+test('a draft holding only picked files survives navigation away', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ workspace: 'project' })
   const draft = h.space.getSnapshot().draft
@@ -95,8 +94,8 @@ test('a draft holding only picked files survives navigation away', () => {
   h.dispose()
 })
 
-test('new conversation opens a local draft without a role and input keeps it across navigation', () => {
-  const h = harness()
+test('new conversation opens a local draft without a role and input keeps it across navigation', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ workspace: 'project' })
   assert.equal(h.selected, 'ordinary-session', 'opening a draft must not create or navigate to a host session')
@@ -116,35 +115,36 @@ test('new conversation opens a local draft without a role and input keeps it acr
   h.dispose()
 })
 
-test('a kept draft yields the page to the opened session until the rail row reopens it', () => {
-  const index = readPanelSource()
-  const entry = index.slice(index.indexOf('function NodoEntry('), index.indexOf('function NodoSidebar('))
-  const h = harness()
-  const context = createContext({ nativeSpace: h.space, useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useEffect() {},
-    h: (type, props) => ({ type, props }), NodoPage: 'NodoPage', NewConversation: 'NewConversation' })
-  new Script(`${entry}\nglobalThis.shown = () => NodoEntry()?.type ?? null`).runInContext(context)
+test('a kept draft yields the page to the opened session until the rail row reopens it', async () => {
+  const h = await harness()
+  const { setHostServices, NodoEntry, NewConversation, NodoPage } = await loadClient(['ui-shared.js', 'page.js'], {
+    react: { useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useEffect: () => {} },
+    createElement: (type, props) => ({ type, props }),
+  })
+  setHostServices({ nativeSpace: h.space })
+  const shown = () => NodoEntry()?.type ?? null
   h.space.enter()
   h.space.startDraft({ workspace: 'project' })
   input(h.storage, h.space.getSnapshot().draft, '任务说明')
-  assert.equal(context.shown(), 'NewConversation')
+  assert.equal(shown(), NewConversation)
   h.space.open('native-role')
-  assert.equal(context.shown(), null, 'the opened native session must not stay covered by the kept draft')
+  assert.equal(shown(), null, 'the opened native session must not stay covered by the kept draft')
   h.space.resumeDraft()
-  assert.equal(context.shown(), 'NewConversation')
+  assert.equal(shown(), NewConversation)
   h.selectNative('other-native')
-  assert.equal(context.shown(), null, 'a host-driven session change shows that session')
+  assert.equal(shown(), null, 'a host-driven session change shows that session')
   assert.ok(h.space.getSnapshot().draft, 'the draft is still kept for its rail row')
   h.space.leave()
   h.space.enter()
   assert.equal(h.selected, 'other-native', 'entering again opens the session, not the kept draft')
   assert.equal(h.panels.at(-1), null)
   h.space.showLegacy()
-  assert.equal(context.shown(), 'NodoPage')
+  assert.equal(shown(), NodoPage)
   h.dispose()
 })
 
-test('switching away drops an empty draft, whatever the route', () => {
-  const h = harness()
+test('switching away drops an empty draft, whatever the route', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ workspace: 'project' })
   h.space.open('native-role')
@@ -163,9 +163,9 @@ test('switching away drops an empty draft, whatever the route', () => {
   h.dispose()
 })
 
-test('a draft opened over an existing session survives entering the space', () => {
+test('a draft opened over an existing session survives entering the space', async () => {
   for (const ready of [true, false]) {
-    const h = harness({ active: true, legacy: false, nodoSession: 'native-role' }, ready)
+    const h = await harness({ active: true, legacy: false, nodoSession: 'native-role' }, ready)
     assert.equal(h.selected, ready ? 'native-role' : undefined, 'the space restores the role session it was on')
     h.space.startDraft({ profile: 'a', workspace: 'project' })
     const draft = h.space.getSnapshot().draft
@@ -178,8 +178,8 @@ test('a draft opened over an existing session survives entering the space', () =
   }
 })
 
-test('starting a draft again returns to the same draft with the new seed', () => {
-  const h = harness()
+test('starting a draft again returns to the same draft with the new seed', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ profile: 'a', workspace: 'project' })
   const draft = h.space.getSnapshot().draft
@@ -194,8 +194,8 @@ test('starting a draft again returns to the same draft with the new seed', () =>
   h.dispose()
 })
 
-test('a draft for another recipient starts its own instead of returning the open one', () => {
-  const h = harness()
+test('a draft for another recipient starts its own instead of returning the open one', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ profile: 'a', workspace: 'project' })
   const first = h.space.getSnapshot().draft
@@ -211,8 +211,8 @@ test('a draft for another recipient starts its own instead of returning the open
   h.dispose()
 })
 
-test('endDraft clears only its own draft', () => {
-  const h = harness()
+test('endDraft clears only its own draft', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ workspace: 'project' })
   const draft = h.space.getSnapshot().draft
@@ -223,8 +223,8 @@ test('endDraft clears only its own draft', () => {
   h.dispose()
 })
 
-test('host updates for the same session preserve a draft and a session change keeps it too', () => {
-  const h = harness()
+test('host updates for the same session preserve a draft and a session change keeps it too', async () => {
+  const h = await harness()
   h.space.enter()
   h.space.startDraft({ workspace: 'project' })
   const draft = h.space.getSnapshot().draft
@@ -240,8 +240,8 @@ test('host updates for the same session preserve a draft and a session change ke
   h.dispose()
 })
 
-test('reload restores Nodo mode and its last session through the public navigation API', () => {
-  const h = harness({ active: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' })
+test('reload restores Nodo mode and its last session through the public navigation API', async () => {
+  const h = await harness({ active: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' })
   assert.equal(h.space.getSnapshot().active, true)
   assert.equal(h.selected, 'codex-session')
   assert.equal(h.registrations.length, 1)
@@ -250,8 +250,8 @@ test('reload restores Nodo mode and its last session through the public navigati
   h.dispose()
 })
 
-test('reload waits for the host catalog and preserves the ordinary-space session', () => {
-  const h = harness({ active: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' }, false)
+test('reload waits for the host catalog and preserves the ordinary-space session', async () => {
+  const h = await harness({ active: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' }, false)
   assert.equal(h.selected, undefined)
   assert.equal(h.panels.length, 0)
   h.loadCatalog()
@@ -261,8 +261,8 @@ test('reload waits for the host catalog and preserves the ordinary-space session
   h.dispose()
 })
 
-test('leaving and reloading a legacy conversation retains its main-panel route', () => {
-  const h = harness({ active: true, legacy: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' })
+test('leaving and reloading a legacy conversation retains its main-panel route', async () => {
+  const h = await harness({ active: true, legacy: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' })
   assert.equal(h.panels.at(-1), 'nodo')
   h.space.leave()
   h.space.enter()

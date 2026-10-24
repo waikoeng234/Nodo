@@ -4,9 +4,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { readPanelSource } from './helpers/client-source.js'
+import { loadClient } from './helpers/client-module.js'
 import { fileURLToPath } from 'node:url'
 import { Script, createContext } from 'node:vm'
+
+const clientSource = name => readFileSync(new URL(`../src/client/${name}`, import.meta.url), 'utf8')
 
 const bundleURL = new URL('../client.js', import.meta.url)
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
@@ -99,15 +101,13 @@ test('client registers matching sidebar/main seats after the shell declares them
   assert.equal(registrations.length, 0)
 })
 
-test('tool rows preserve separate input and output for concurrent calls with the same name', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
-    useState: () => [false, () => {}], DisclosureRow: 'DisclosureRow',
-    TOOL_VARIANTS: { generic: { icon: () => 'icon' } },
+test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
+  const { transcriptRows, ProcessRow } = await loadClient('feed.js', {
+    uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' } } },
+    react: { useState: () => [false, () => {}] },
+    createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
   })
-  new Script(source.slice(source.indexOf('function ProcessRow('), source.indexOf('// Consecutive thinking'))).runInContext(context)
-  const rows = context.transcriptRows([
+  const rows = transcriptRows([
     { kind: 'tool', name: 'Read', callId: 'a', phase: 'start', input: 'A input', brief: 'read A' },
     { kind: 'tool', name: 'Read', callId: 'b', phase: 'start', input: 'B input' },
     { kind: 'tool', name: 'Read', callId: 'b', phase: 'end', output: 'B output', isError: true },
@@ -119,39 +119,37 @@ test('tool rows preserve separate input and output for concurrent calls with the
   assert.equal(rows[0].error, false)
   assert.equal(rows[1].item.output, 'B output')
   assert.equal(rows[1].error, true)
-  const rendered = context.ProcessRow({ kind: 'tool', input: rows[0].item.input, output: rows[0].item.output })
+  const rendered = ProcessRow({ kind: 'tool', input: rows[0].item.input, output: rows[0].item.output })
   assert.equal(rendered.props.expandable, true)
   const sections = rendered.props.children.children
   assert.deepEqual(sections.map(section => section.children[0].children[0]), ['输入', '输出'])
   assert.deepEqual(sections.map(section => section.children[1].children[0]), ['A input', 'A output'])
-  const live = context.ProcessRow({ kind: 'tool', title: 'Read', input: 'A input',
+  const live = ProcessRow({ kind: 'tool', title: 'Read', input: 'A input',
     progress: { elapsedMs: 1200, stdoutTail: 'tail fixture', stdoutBytes: 4 } })
   const text = JSON.stringify(live)
   assert.match(text, /已用时 1\.2 秒/)
   assert.match(text, /stdout 4 B/)
   assert.match(text, /stdout（尾部）/)
-  const merged = context.transcriptRows([
+  const merged = transcriptRows([
     { kind: 'tool', name: 'Read', callId: 'p', phase: 'start', input: 'input', progress: { elapsedMs: 5 } },
     { kind: 'tool', name: 'Read', callId: 'p', phase: 'end', output: 'output' },
   ])
   assert.deepEqual(merged[0].item.progress, { elapsedMs: 5 }, 'the running progress survives the end merge for display')
 })
 
-test('plan rows rewrite in place, clear when removed, and subagent rows merge by entity id', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
-    useState: () => [false, () => {}], DisclosureRow: 'DisclosureRow',
-    TOOL_VARIANTS: { generic: { icon: () => 'icon' }, plan: { icon: () => 'icon' }, task: { icon: () => 'icon' } },
+test('plan rows rewrite in place, clear when removed, and subagent rows merge by entity id', async () => {
+  const { transcriptRows, PlanRow } = await loadClient('feed.js', {
+    uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' }, plan: { icon: () => 'icon' }, task: { icon: () => 'icon' } } },
+    react: { useState: () => [false, () => {}] },
+    createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
   })
-  new Script(source.slice(source.indexOf('function ProcessRow('), source.indexOf('// Consecutive thinking'))).runInContext(context)
-  const rows = context.transcriptRows([
+  const rows = transcriptRows([
     { who: 'agent', kind: 'plan', text: 'Fix it', steps: [{ text: 'one', status: 'completed' }, { text: 'two', status: 'in_progress' }] },
     { who: 'agent', kind: 'tool', name: 'task', callId: 'task-1', phase: 'start', brief: 'Research' },
     { who: 'agent', kind: 'tool', name: 'task', callId: 'task-1', phase: 'end', output: 'child two done', isError: true },
   ])
   assert.equal(rows.length, 2)
-  const plan = context.PlanRow({ plan: rows[0].item, running: true })
+  const plan = PlanRow({ plan: rows[0].item, running: true })
   assert.equal(plan.props.title, '计划')
   assert.equal(plan.props.running, true)
   assert.match(JSON.stringify(plan.props.collapsedContent), /two/, 'the running step is the summary')
@@ -162,9 +160,9 @@ test('plan rows rewrite in place, clear when removed, and subagent rows merge by
   assert.equal(merged.running, false)
   assert.equal(merged.error, true)
   assert.equal(merged.item.output, 'child two done')
-  assert.equal(context.transcriptRows([{ who: 'agent', kind: 'plan', text: '', steps: [], removed: true }]).length, 0,
+  assert.equal(transcriptRows([{ who: 'agent', kind: 'plan', text: '', steps: [], removed: true }]).length, 0,
     'a cleared plan leaves no row behind')
-  const textPlan = context.PlanRow({ plan: { who: 'agent', kind: 'plan', text: '# Steps' }, running: false })
+  const textPlan = PlanRow({ plan: { who: 'agent', kind: 'plan', text: '# Steps' }, running: false })
   assert.equal(textPlan.props.expandable, true, 'a markdown-form plan has no steps but a real body to expand')
   assert.equal(textPlan.props.children.props.className, 'nodo-plan-text')
 })
@@ -173,12 +171,15 @@ test('committed client bundle matches its source', () => {
   execFileSync(process.execPath, [fileURLToPath(new URL('../scripts/build-client.mjs', import.meta.url)), '--check'])
 })
 
-test('source parent ids render bounded nesting within one turn and activities have their own count', () => {
-  const source = readPanelSource()
-  const context = createContext({ h: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
-    useState: () => [false, () => {}], DisclosureRow: 'DisclosureRow', IconSparkleRegular: () => 'icon' })
-  new Script(source.slice(source.indexOf('function transcriptRows('), source.indexOf('function Feed('))).runInContext(context)
-  const rows = context.transcriptRows([
+test('source parent ids render bounded nesting within one turn and activities have their own count', async () => {
+  const source = clientSource('feed.js')
+  const { transcriptRows, ProcessGroup } = await loadClient('feed.js', {
+    uiShared: { DisclosureRow: 'DisclosureRow' },
+    primitives: { IconSparkleRegular: () => 'icon' },
+    react: { useState: () => [false, () => {}] },
+    createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
+  })
+  const rows = transcriptRows([
     { who: 'user', text: 'first' },
     { kind: 'tool', callId: 'child', phase: 'start', activity: true },
     { kind: 'tool', callId: 'parent', phase: 'start', activity: true },
@@ -196,16 +197,18 @@ test('source parent ids render bounded nesting within one turn and activities ha
   assert.equal(rows.find(row => row.item.callId === 'next').depth, 0, 'parents do not cross user turns')
   assert.equal(rows.find(row => row.item.callId === 'a').depth, 0, 'a cycle cannot invent a hierarchy')
   assert.ok(rows.every(row => !row.depth || row.depth <= 8), 'cycles cannot grow indentation indefinitely')
-  const group = context.ProcessGroup({ rows: [{ kind: 'thinking' }, { kind: 'tool', activity: true }, { kind: 'tool' }, { kind: 'plan' }] })
+  const group = ProcessGroup({ rows: [{ kind: 'thinking' }, { kind: 'tool', activity: true }, { kind: 'tool' }, { kind: 'plan' }] })
   assert.match(JSON.stringify(group.props.collapsedContent), /思考 1 · 工具 1 · 子任务 1 · 计划 1/)
   assert.match(source, /'data-nodo-depth': row.depth/)
 })
 
 test('conversation selection restores its records without creating a new draft', async () => {
-  const source = readPanelSource()
-  const code = source.slice(source.indexOf('const nativeRole ='), source.indexOf('function NodoPage('))
-    + source.slice(source.indexOf('  const selectSession = async (role,'), source.indexOf('  const archiveSession ='))
-    + '\nglobalThis.select = selectSession'
+  let handleCall = async () => {}
+  const { createNativeSpace, createNativeWelcome, setHostServices, selectSession, startConversation } = await loadClient(
+    ['native-space.js', 'native-welcome.js', 'ui-shared.js', 'page.js'], {
+      globals: { localStorage: { getItem: () => null, setItem() {} }, document: { querySelector: () => null }, crypto: { randomUUID: () => 'draft' } },
+      call: (...args) => handleCall(...args),
+    })
   for (const scenario of [
     { engine: 'zcode', transcript: [{ who: 'user', text: 'Task' }], legacy: true },
     { engine: 'codex', transcript: [{ who: 'user', text: 'Task' }, { who: 'agent', kind: 'text', text: 'Reply' }], legacy: true },
@@ -225,21 +228,11 @@ test('conversation selection restores its records without creating a new draft',
     const errors = [], busy = []
     const current = { key: 'blank-twin' }
     let welcomes = 0
-    const context = createContext({
-      busy: false, sidebarOnly: true, readOnly: scenario.readOnly === true, workspace: { id: 'branch' },
-      workspaces: [{ id: 'branch' }], navigation: { sessions: { 'branch:role': 'conversation' } },
-      localStorage: { getItem: () => null, setItem() {} }, document: { querySelector: () => null },
-      crypto: { randomUUID: () => 'draft' }, heldImages: {},
-      setBusy: value => busy.push(value), setActionError: value => { if (value) errors.push(value) }, setEditing() {},
-      remember: (...args) => remembered.push(args), refresh: async () => {},
-      call: async (endpoint, payload) => {
-        calls.push({ endpoint, payload })
-        if (endpoint === 'transcript') return scenario.transcript
-        if (endpoint === 'session-open') return { sessionId: 'native', conversationId: 'conversation' }
-      },
-    })
-    new Script(readFileSync(new URL('../src/client/native-space.js', import.meta.url), 'utf8')).runInContext(context)
-    new Script(readFileSync(new URL('../src/client/native-welcome.js', import.meta.url), 'utf8')).runInContext(context)
+    handleCall = async (endpoint, payload) => {
+      calls.push({ endpoint, payload })
+      if (endpoint === 'transcript') return scenario.transcript
+      if (endpoint === 'session-open') return { sessionId: 'native', conversationId: 'conversation' }
+    }
     const ctx = {
       slots: { inject() {}, register() { welcomes++; return () => { welcomes-- } } }, effect() {},
       sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: { 'blank-twin': { blank: true } } }), subscribe: () => () => {} } },
@@ -247,19 +240,24 @@ test('conversation selection restores its records without creating a new draft',
       uiWorkspace: { openSession: id => { opened.push(id); panels.push(null) } },
       layout: { selectPanel: id => panels.push(id) },
     }
-    const space = context.createNativeSpace(ctx, () => null)
+    const space = createNativeSpace(ctx, () => null)
     space.enter()
-    const disposeWelcome = context.createNativeWelcome(ctx, space, () => null)()
+    const disposeWelcome = createNativeWelcome(ctx, space, () => null)()
     assert.equal(welcomes, 1)
     if (scenario.draft) space.startDraft({ workspace: 'branch' })
-    context.nativeSpace = space
-    context.openNativeSession = id => space.open(id)
-    new Script(code).runInContext(context)
+    setHostServices({ nativeSpace: space, openNativeSession: id => space.open(id) })
+    const page = {
+      workspace: { id: 'branch' }, busy: false, workspaces: [{ id: 'branch' }],
+      navigation: { sessions: { 'branch:role': 'conversation' } },
+      sidebarOnly: true, readOnly: scenario.readOnly === true,
+      setBusy: value => busy.push(value), setActionError: value => { if (value) errors.push(value) }, setEditing() {},
+      remember: (...args) => remembered.push(args), refresh: async () => {},
+    }
     const role = { id: 'role', engine: scenario.engine, activeSessionId: 'other', sessions: scenario.restore ? [
       { id: 'other', workspaceRef: 'main' }, { id: 'conversation', workspaceRef: 'branch' },
       { id: 'newer', workspaceRef: 'branch', updatedAt: 10 },
     ] : scenario.hosted ? [{ id: 'conversation', workspaceRef: 'branch', nativeSessionId: 'native' }] : [] }
-    await context.select(role, scenario.fresh || scenario.restore ? undefined : 'conversation')
+    await selectSession(role, scenario.fresh || scenario.restore ? undefined : 'conversation', undefined, page)
     assert.deepEqual(errors, [])
     assert.deepEqual(busy, [true, false])
     assert.equal(space.getSnapshot().legacy, scenario.legacy)
@@ -271,11 +269,7 @@ test('conversation selection restores its records without creating a new draft',
     assert.ok(calls.every(call => ['session-open', 'session-select'].includes(call.endpoint)), 'viewing must not send, stop or recreate the engine task')
     if (scenario.fresh) {
       assert.deepEqual(calls, [], 'selecting an empty role must not persist a draft or open an engine session')
-      context.profile = role
-      context.crypto = { randomUUID: () => 'draft' }
-      new Script(source.slice(source.indexOf('  const startConversation ='), source.indexOf('  const attach ='))
-        + '\nglobalThis.create = startConversation').runInContext(context)
-      context.create(role.id)
+      startConversation(role.id, page)
       assert.deepEqual(calls, [], 'new conversation opens an unbound local draft without creating a role session')
       assert.equal(space.getSnapshot().draft.profile, role.id)
       assert.equal(space.getSnapshot().legacy, false)
@@ -285,11 +279,8 @@ test('conversation selection restores its records without creating a new draft',
   }
 })
 
-test('role selection restores a conversation within the current workspace', () => {
-  const source = readPanelSource()
-  const context = createContext({})
-  new Script(source.slice(source.indexOf('const sessionForWorkspace ='), source.indexOf('function NodoPage('))
-    + '\nglobalThis.choose = sessionForWorkspace').runInContext(context)
+test('role selection restores a conversation within the current workspace', async () => {
+  const { sessionForWorkspace: choose } = await loadClient('page.js')
   const workspaces = [{ id: 'main', cwd: '/main' }, { id: 'branch', cwd: '/branch' }]
   const profile = { id: 'role', workspaceId: 'main', activeSessionId: 'main-active', sessions: [
     { id: 'main-active', workspaceRef: 'main', updatedAt: 100 },
@@ -298,59 +289,134 @@ test('role selection restores a conversation within the current workspace', () =
     { id: 'archived', workspaceRef: 'branch', updatedAt: 200, archivedAt: 1 },
     { id: 'compat', updatedAt: 0 },
   ] }
-  assert.equal(context.choose(profile, workspaces[1], workspaces, 'old').id, 'old')
-  assert.equal(context.choose(profile, workspaces[1], workspaces).id, 'latest')
-  assert.equal(context.choose(profile, workspaces[1], workspaces, 'archived').id, 'latest')
+  assert.equal(choose(profile, workspaces[1], workspaces, 'old').id, 'old')
+  assert.equal(choose(profile, workspaces[1], workspaces).id, 'latest')
+  assert.equal(choose(profile, workspaces[1], workspaces, 'archived').id, 'latest')
   profile.activeSessionId = 'old'
-  assert.equal(context.choose(profile, workspaces[1], workspaces).id, 'old')
-  assert.equal(context.choose(profile, workspaces[0], workspaces, 'compat').id, 'compat')
-  assert.equal(context.choose(profile, { id: 'empty' }, workspaces), undefined)
-  assert.equal(context.choose(null, workspaces[1], workspaces), undefined)
-  assert.equal(context.choose(profile, null, workspaces), undefined)
+  assert.equal(choose(profile, workspaces[1], workspaces).id, 'old')
+  assert.equal(choose(profile, workspaces[0], workspaces, 'compat').id, 'compat')
+  assert.equal(choose(profile, { id: 'empty' }, workspaces), undefined)
+  assert.equal(choose(null, workspaces[1], workspaces), undefined)
+  assert.equal(choose(profile, null, workspaces), undefined)
 })
 
-test('sidebar initialization preserves an open new-conversation draft', () => {
-  const source = readPanelSource()
-  const start = source.indexOf('  const initiallyOpened = useRef(false)')
+test('sidebar initialization preserves an open new-conversation draft', async () => {
+  const { openInitialSidebarSession, setHostServices } = await loadClient(['ui-shared.js', 'page.js'], { call: async () => {} })
   for (const engine of ['codex', 'custom']) {
     const calls = []
     const draft = { id: 'new-draft', workspace: 'project' }
-    const context = createContext({
-      sidebarOnly: true, profile: { id: 'role', engine }, workspace: { id: 'project' }, sessionId: 'old-conversation',
-      useRef: value => ({ current: value }), useEffect: run => run(),
+    setHostServices({
       nativeSpace: { getSnapshot: () => ({ draft, drafting: true }), showLegacy: () => calls.push('legacy') },
-      selectSession: () => calls.push('restore'),
+      openNativeSession: null,
     })
-    new Script(source.match(/^const nativeRole = .*$/m)[0] + '\n'
-      + source.slice(start, source.indexOf('\n  return h(', start))).runInContext(context)
+    openInitialSidebarSession({
+      sidebarOnly: true, initiallyOpened: { current: false }, profile: { id: 'role', engine },
+      workspace: { id: 'project' }, sessionId: 'old-conversation', busy: false, workspaces: [], navigation: {},
+      readOnly: false, remember() {}, refresh: async () => {}, setBusy() {}, setActionError() {}, setEditing() {},
+    })
     assert.deepEqual(calls, [], `${engine} must not restore an old conversation over a draft`)
   }
 })
 
+test('NodoPage initializes its sidebar session after loading without replacing drafts or open sessions', async () => {
+  for (const scenario of [
+    { engine: 'codex', legacy: true }, { engine: 'dsh', native: true },
+    { engine: 'codex', drafting: true }, { engine: 'dsh', drafting: true },
+    { engine: 'dsh', nodoSession: 'already-open' },
+    { engine: 'dsh', sidebarOnly: false },
+  ]) {
+    const cells = [], effects = [], cleanups = [], calls = [], opened = []
+    let cursor = 0, view = null, legacy = 0, refreshed = 0
+    const space = { active: true, legacy: false, drafting: scenario.drafting, nodoSession: scenario.nodoSession,
+      ...(scenario.drafting ? { draft: { id: 'new-draft', workspace: 'branch' } } : {}) }
+    const loaded = await loadClient('page.js', {
+      uiShared: {
+        useStateView: () => ({ view, refresh: async () => { refreshed++ } }),
+        nativeSpace: { subscribe() {}, getSnapshot: () => space, showLegacy: () => { legacy++ } },
+        completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
+        subscribeNativeSession() {}, readNativeSession: () => null, runningOf: () => ({ active: false }),
+        openNativeSession: id => opened.push(id),
+        call: async (endpoint, payload) => {
+          calls.push({ endpoint, payload: { ...payload } })
+          return { sessionId: 'native', conversationId: 'selected' }
+        },
+      },
+      react: {
+        useState(initial) {
+          const at = cursor++
+          if (!(at in cells)) cells[at] = typeof initial === 'function' ? initial() : initial
+          return [cells[at], value => { cells[at] = typeof value === 'function' ? value(cells[at]) : value }]
+        },
+        useRef(initial) { const at = cursor++; return cells[at] ??= { current: initial } },
+        useEffect(effect, deps) {
+          const at = cursor++
+          if (!(at in cells) || deps.some((value, index) => !Object.is(value, cells[at][index]))) effects.push(effect)
+          cells[at] = deps
+        },
+      },
+      globals: {
+        document: { visibilityState: 'visible', hasFocus: () => true, addEventListener() {}, removeEventListener() {} },
+        window: { addEventListener() {}, removeEventListener() {} },
+        localStorage: { getItem: key => key === 'nodo.navigation'
+          ? JSON.stringify({ profile: 'role', workspace: 'branch', sessions: { 'branch:role': 'selected' } }) : null, setItem() {} },
+      },
+    })
+    const render = async () => {
+      cursor = 0
+      loaded.NodoPage({ sidebarOnly: scenario.sidebarOnly !== false })
+      for (const effect of effects.splice(0)) {
+        const cleanup = effect()
+        if (typeof cleanup === 'function') cleanups.push(cleanup)
+      }
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    try {
+      await render()
+      assert.equal(legacy, 0, 'initialization waits for the view')
+      assert.deepEqual(calls, [])
+      view = { profiles: [{ id: 'role', engine: scenario.engine, activeSessionId: 'other', sessions: [
+        { id: 'selected', workspaceRef: 'branch' }, { id: 'other', workspaceRef: 'main' },
+      ] }], workspaces: [{ id: 'main' }, { id: 'branch' }], work: {}, stats: {}, prefs: { onboardedAt: 1 } }
+      await render()
+      assert.equal(legacy, scenario.legacy ? 1 : 0)
+      assert.deepEqual(opened, scenario.native ? ['native'] : [])
+      assert.deepEqual(calls, scenario.native ? [{ endpoint: 'session-open', payload: { profile: 'role', session: 'selected', workspace: 'branch' } }] : [])
+      assert.equal(refreshed, scenario.native ? 1 : 0)
+      assert.equal(loaded.readNavigation().sessions['branch:role'], 'selected')
+      view = { ...view, profiles: view.profiles.map(profile => ({ ...profile, id: 'next-role' })) }
+      loaded.setNavigation(current => ({ ...current, profile: 'next-role' }))
+      await render()
+      assert.equal(legacy, scenario.legacy ? 1 : 0, 'later role changes do not repeat initialization')
+      assert.equal(calls.length, scenario.native ? 1 : 0)
+    } finally { for (const cleanup of cleanups.reverse()) cleanup() }
+  }
+})
+
 test('pending conversation selection cannot replace a newer draft or its opened native session', async () => {
-  const source = readPanelSource()
-  const code = source.slice(source.indexOf('const nativeRole ='), source.indexOf('function NodoPage('))
-    + source.slice(source.indexOf('  const selectSession = async (role,'), source.indexOf('  const archiveSession ='))
-    + '\nglobalThis.select = selectSession'
+  let handleCall = async () => {}
+  const { selectSession, setHostServices } = await loadClient(['ui-shared.js', 'page.js'], { call: (...args) => handleCall(...args) })
   for (const endpoint of ['session-open', 'session-select']) for (const sent of [false, true]) {
     const calls = [], remembered = [], opened = [], errors = []
     let release, state = { active: true }
     const waiting = new Promise(resolve => { release = resolve })
-    const context = createContext({
-      busy: false, sidebarOnly: true, readOnly: false, workspace: { id: 'project' }, workspaces: [], navigation: {},
-      setBusy() {}, setEditing() {}, setActionError: value => { if (value) errors.push(value) },
-      remember: (...args) => remembered.push(args), refresh: async () => {},
+    handleCall = async name => {
+      calls.push(name)
+      if (name === endpoint) await waiting
+      if (name === 'transcript') return endpoint === 'session-open' ? [] : [{ who: 'user', text: 'Old task' }]
+      if (name === 'session-open') return { sessionId: 'native-old', conversationId: 'old-conversation' }
+    }
+    setHostServices({
       nativeSpace: { getSnapshot: () => state, showLegacy: () => { calls.push('legacy'); state = { ...state, legacy: true, draft: undefined } } },
       openNativeSession: id => { opened.push(id); state = { ...state, nodoSession: id, draft: undefined } },
-      call: async name => {
-        calls.push(name)
-        if (name === endpoint) await waiting
-        if (name === 'transcript') return endpoint === 'session-open' ? [] : [{ who: 'user', text: 'Old task' }]
-        if (name === 'session-open') return { sessionId: 'native-old', conversationId: 'old-conversation' }
-      },
     })
-    new Script(code).runInContext(context)
-    const pending = context.select({ id: 'role', engine: endpoint === 'session-open' ? 'dsh' : 'codex', sessions: [] }, 'old-conversation')
+    const page = {
+      workspace: { id: 'project' }, busy: false, workspaces: [], navigation: {},
+      sidebarOnly: true, readOnly: false,
+      setBusy() {}, setEditing() {}, setActionError: value => { if (value) errors.push(value) },
+      remember: (...args) => remembered.push(args), refresh: async () => {},
+    }
+    const role = { id: 'role', engine: endpoint === 'session-open' ? 'dsh' : 'codex', sessions: [] }
+    const pending = selectSession(role, 'old-conversation', undefined, page)
     while (!calls.includes(endpoint)) await new Promise(resolve => setImmediate(resolve))
     state = { ...state, draft: { id: 'new-draft', workspace: 'project' }, drafting: true }
     if (sent) state = { ...state, draft: undefined, nodoSession: 'native-new' }
@@ -365,60 +431,55 @@ test('pending conversation selection cannot replace a newer draft or its opened 
   }
 })
 
-test('sidebar status labels and role aggregation preserve concurrent native waits and final outcomes', () => {
-  const source = readPanelSource()
-  const context = createContext({})
-  new Script(source.slice(source.indexOf('const workLabel ='), source.indexOf('// Session rows date'))).runInContext(context)
+test('sidebar status labels and role aggregation preserve concurrent native waits and final outcomes', async () => {
+  const { workLabel, runningOf, workDot } = await loadClient('ui-shared.js')
   const role = { sessions: [{ id: 'one' }, { id: 'two' }] }
-  context.role = role
-  context.work = { one: { active: false, status: 'completed', finishedAt: 99 }, two: { active: true, status: 'waiting-question' } }
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '等待回答')
-  context.work.two = { active: true, status: 'waiting-approval' }
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '等待审批')
-  context.work.two = { active: false, status: 'stopped', finishedAt: 100 }
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '已停止')
-  context.work.two = { active: false, status: 'error', finishedAt: 101 }
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '执行失败')
-  context.work.two = { active: false, status: 'completed', finishedAt: 102 }
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '已完成')
-  assert.equal(new Script("workDot(work.two)").runInContext(context), 'done')
-  context.work.one.seen = true
-  context.work.two.seen = true
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '', 'viewed completions leave no permanent badge')
-  context.work.two.status = 'stopped'
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '', 'a viewed stop leaves no permanent badge either')
-  context.work.two.status = 'error'
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '', 'a viewed failure leaves no permanent badge either')
-  context.work.two = { active: true }
-  assert.equal(new Script('workLabel(runningOf(role, work))').runInContext(context), '运行中')
+  const work = { one: { active: false, status: 'completed', finishedAt: 99 }, two: { active: true, status: 'waiting-question' } }
+  assert.equal(workLabel(runningOf(role, work)), '等待回答')
+  work.two = { active: true, status: 'waiting-approval' }
+  assert.equal(workLabel(runningOf(role, work)), '等待审批')
+  work.two = { active: false, status: 'stopped', finishedAt: 100 }
+  assert.equal(workLabel(runningOf(role, work)), '已停止')
+  work.two = { active: false, status: 'error', finishedAt: 101 }
+  assert.equal(workLabel(runningOf(role, work)), '执行失败')
+  work.two = { active: false, status: 'completed', finishedAt: 102 }
+  assert.equal(workLabel(runningOf(role, work)), '已完成')
+  assert.equal(workDot(work.two), 'done')
+  work.one.seen = true
+  work.two.seen = true
+  assert.equal(workLabel(runningOf(role, work)), '', 'viewed completions leave no permanent badge')
+  work.two.status = 'stopped'
+  assert.equal(workLabel(runningOf(role, work)), '', 'a viewed stop leaves no permanent badge either')
+  work.two.status = 'error'
+  assert.equal(workLabel(runningOf(role, work)), '', 'a viewed failure leaves no permanent badge either')
+  work.two = { active: true }
+  assert.equal(workLabel(runningOf(role, work)), '运行中')
 })
 
-test('a finished role label only counts sessions the current workspace lists', () => {
-  const source = readPanelSource()
-  const context = createContext({})
-  new Script(source.slice(source.indexOf('const workLabel ='), source.indexOf('// Session rows date'))).runInContext(context)
-  context.role = { id: 'role', workspaceId: 'bot', sessions: [
+test('a finished role label only counts sessions the current workspace lists', async () => {
+  const { workLabel, roleStateOf } = await loadClient('ui-shared.js')
+  const role = { id: 'role', workspaceId: 'bot', sessions: [
     { id: 'read', workspaceRef: 'bot' },
     { id: 'unread-bot', workspaceRef: 'bot' },
     { id: 'unread-test', workspaceRef: 'test' },
     { id: 'unread-archived', workspaceRef: 'bot', archivedAt: 1 },
   ] }
-  context.view = { workspaces: [{ id: 'bot', cwd: '/bot' }, { id: 'test', cwd: '/test' }], work: {
+  const view = { workspaces: [{ id: 'bot', cwd: '/bot' }, { id: 'test', cwd: '/test' }], work: {
     read: { active: false, status: 'completed', finishedAt: 1, seen: true },
     'unread-bot': { active: false, status: 'completed', finishedAt: 2 },
     'unread-test': { active: false, status: 'completed', finishedAt: 3 },
     'unread-archived': { active: false, status: 'completed', finishedAt: 4 },
   } }
-  assert.equal(new Script('workLabel(roleStateOf(role, view, { id: "bot" }))').runInContext(context), '已完成',
+  assert.equal(workLabel(roleStateOf(role, view, { id: 'bot' })), '已完成',
     'the unread turn this workspace lists still badges the role')
-  context.view.work['unread-bot'].seen = true
-  assert.equal(new Script('workLabel(roleStateOf(role, view, { id: "bot" }))').runInContext(context), '',
+  view.work['unread-bot'].seen = true
+  assert.equal(workLabel(roleStateOf(role, view, { id: 'bot' })), '',
     'unread turns left in other projects and archived sessions leave no stranded label')
-  assert.equal(new Script('workLabel(roleStateOf(role, view, { id: "test" }))').runInContext(context), '已完成',
+  assert.equal(workLabel(roleStateOf(role, view, { id: 'test' })), '已完成',
     'the other project shows the badge its own session list can retire')
-  context.view.work['unread-test'].active = true
-  context.view.work['unread-test'].status = 'running'
-  assert.equal(new Script('workLabel(roleStateOf(role, view, { id: "bot" }))').runInContext(context), '运行中',
+  view.work['unread-test'].active = true
+  view.work['unread-test'].status = 'running'
+  assert.equal(workLabel(roleStateOf(role, view, { id: 'bot' })), '运行中',
     'a run or wait anywhere stays a global label')
 })
 
@@ -426,7 +487,7 @@ test('a finished role label only counts sessions the current workspace lists', (
 // the form in the body only through the form attribute: without that binding the
 // button saves nothing and no render check would notice.
 test('the settings dialog keeps its footer action bound to its own form', () => {
-  const source = readPanelSource()
+  const source = clientSource('engine-settings.js')
   const start = source.indexOf('function EngineSettingsDialog(')
   assert.ok(start > 0, 'the settings dialog exists')
   const dialog = source.slice(start, source.indexOf('\nfunction ', start + 1))
@@ -437,8 +498,6 @@ test('the settings dialog keeps its footer action bound to its own form', () => 
 })
 
 test('engine cards save defaults and check saved values in the current project', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function EngineSettingsDialog(')
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
   const view = {
@@ -447,18 +506,20 @@ test('engine cards save defaults and check saved values in the current project',
     workspaces: [{ id: 'w1', name: 'one', cwd: '/one' }, { id: 'w2', name: 'two', cwd: '/two' }], work: {},
   }
   let workspace = view.workspaces[0]
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { EngineSettingsDialog } = await loadClient('engine-settings.js', {
+    stubs: { 'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label } },
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', StateDot: 'StateDot',
-    IconSparkleRegular: 'Icon', IconCodeOutlineRegular: 'Icon', IconChevronDownOutlineRegular: 'Icon', IconRefreshOutlineRegular: 'Icon',
-    IconCheckOutlineRegular: 'Icon', EngineMark: 'EngineMark', engineDisplayName: item => item.label,
-    ENGINE_FORM: 'engine-form', runningOf: () => ({ active: false }),
+    primitives: {
+      Modal: 'Modal', Button: 'Button', Field: 'Field', StateDot: 'StateDot',
+      IconChevronDownOutlineRegular: 'Icon', IconRefreshOutlineRegular: 'Icon', IconCheckOutlineRegular: 'Icon',
+    },
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-detect') return ['codex', 'dsh'].map(id => ({ id, label: id, usable: true,
@@ -471,9 +532,8 @@ test('engine cards save defaults and check saved values in the current project',
       }
     },
   })
-  new Script(source.slice(start, source.indexOf('\n// Creating or editing a workspace', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.EngineSettingsDialog({ view, workspace, refresh: async () => {}, readOnly: false, onClose() {} })) }
+  const render = () => { cursor = 0; return nodes(EngineSettingsDialog({ view, workspace, refresh: async () => {}, readOnly: false, onClose() {} })) }
   const find = (type, label) => render().find(node => node.type === type && node.children.includes(label))
   const tick = () => new Promise(resolve => setImmediate(resolve))
   render(); mounted = true; effects.forEach(effect => effect()); await tick()
@@ -500,22 +560,23 @@ test('engine cards save defaults and check saved values in the current project',
 // The onboarding choice is what scopes the role dialog later, so bind the
 // settings page's enable toggles and the detection groups to the endpoint.
 test('settings cards group by detection and toggle the enabled set', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function EngineSettingsDialog(')
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
   const view = { profiles: [], prefs: { enabledEngines: ['codex'] }, workspaces: [], work: {} }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { EngineSettingsDialog } = await loadClient('engine-settings.js', {
+    stubs: { 'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label } },
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', StateDot: 'StateDot',
-    IconChevronDownOutlineRegular: 'Icon', IconRefreshOutlineRegular: 'Icon', IconCheckOutlineRegular: 'Icon', EngineMark: 'EngineMark', engineDisplayName: item => item.label,
-    ENGINE_FORM: 'engine-form', runningOf: () => ({ active: false }),
+    primitives: {
+      Modal: 'Modal', Button: 'Button', StateDot: 'StateDot',
+      IconChevronDownOutlineRegular: 'Icon', IconRefreshOutlineRegular: 'Icon', IconCheckOutlineRegular: 'Icon',
+    },
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-detect') return [
@@ -529,9 +590,8 @@ test('settings cards group by detection and toggle the enabled set', async () =>
       }
     },
   })
-  new Script(source.slice(start, source.indexOf('\n// Creating or editing a workspace', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.EngineSettingsDialog({ view, workspace: null, refresh: async () => {}, readOnly: false, onClose() {} })) }
+  const render = () => { cursor = 0; return nodes(EngineSettingsDialog({ view, workspace: null, refresh: async () => {}, readOnly: false, onClose() {} })) }
   const tick = () => new Promise(resolve => setImmediate(resolve))
   render(); mounted = true; effects.forEach(effect => effect()); await tick()
   const heads = render().filter(node => node.type === 'h3').map(node => node.children[0])
@@ -547,19 +607,19 @@ test('settings cards group by detection and toggle the enabled set', async () =>
 })
 
 test('first-run onboarding lists detected engines and stores the choice', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function OnboardingDialog(')
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, done = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { OnboardingDialog } = await loadClient('engine-settings.js', {
+    stubs: { 'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label } },
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', IconCheckOutlineRegular: 'Icon', EngineMark: 'EngineMark', engineDisplayName: item => item.label,
+    primitives: { Modal: 'Modal', Button: 'Button', IconCheckOutlineRegular: 'Icon' },
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-detect') return [
@@ -569,9 +629,8 @@ test('first-run onboarding lists detected engines and stores the choice', async 
       return { enabledEngines: payload.engines, onboardedAt: 1 }
     },
   })
-  new Script(source.slice(start, source.indexOf('\nfunction ', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.OnboardingDialog({ onDone: async () => { done++ } })) }
+  const render = () => { cursor = 0; return nodes(OnboardingDialog({ onDone: async () => { done++ } })) }
   const tick = () => new Promise(resolve => setImmediate(resolve))
   render(); mounted = true; effects.forEach(effect => effect()); await tick()
   const picks = () => render().filter(node => node.type === 'button' && node.props.className === 'nodo-engine-card nodo-engine-pick')
@@ -589,27 +648,26 @@ test('first-run onboarding lists detected engines and stores the choice', async 
 // An old or read-only host refuses both endpoints; the dialog must still let
 // the user through instead of blocking the page behind it.
 test('onboarding dismisses even when the host rejects detection and the write', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function OnboardingDialog(')
   const states = [], effects = [], errors = []
   let cursor = 0, mounted = false, done = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { OnboardingDialog } = await loadClient('engine-settings.js', {
+    stubs: { 'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label } },
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', IconCheckOutlineRegular: 'Icon', EngineMark: 'EngineMark', engineDisplayName: item => item.label,
+    primitives: { Modal: 'Modal', Button: 'Button', IconCheckOutlineRegular: 'Icon' },
     async call(endpoint) {
       if (endpoint === 'engine-enable-set') errors.push(endpoint)
       throw new Error(`Unknown endpoint ${endpoint}`)
     },
   })
-  new Script(source.slice(start, source.indexOf('\nfunction ', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.OnboardingDialog({ onDone: async () => { done++ } })) }
+  const render = () => { cursor = 0; return nodes(OnboardingDialog({ onDone: async () => { done++ } })) }
   const tick = () => new Promise(resolve => setImmediate(resolve))
   render(); mounted = true; effects.forEach(effect => effect()); await tick()
   assert.ok(render().some(node => node.props.className === 'nodo-dialog-hint'
@@ -624,18 +682,18 @@ test('onboarding dismisses even when the host rejects detection and the write', 
 // changes nothing, which no render check would notice, so bind every delete to
 // the endpoint that has to run.
 test('every delete path writes through the endpoint that owns it', () => {
-  const source = readPanelSource()
-  const block = (open, close) => {
+  const pageSource = clientSource('page.js')
+  const block = (source, open, close) => {
     const start = source.indexOf(open)
     assert.ok(start > 0, `${open} exists`)
-    const end = source.indexOf(close, start + open.length)
+    const end = close === undefined ? source.length : source.indexOf(close, start + open.length)
     assert.ok(end > start, `${open} ends`)
     return source.slice(start, end)
   }
-  assert.match(block('const deletedProfile', 'const renamedWorkspace'), /call\('profile-delete'/)
-  assert.match(block('const deletedWorkspace', 'const selectSession'), /call\('workspace-delete'/)
-  for (const dialog of ['ProfileDialog', 'WorkspaceDeleteDialog']) {
-    assert.match(block(`function ${dialog}(`, '\nfunction '), /await onDeleted\(/, `${dialog} hands its confirmation to the page`)
+  assert.match(block(pageSource, 'const deletedProfile', 'const renamedWorkspace'), /call\('profile-delete'/)
+  assert.match(block(pageSource, 'const deletedWorkspace', 'const select ='), /call\('workspace-delete'/)
+  for (const [dialog, file, close] of [['ProfileDialog', 'profile-dialogs.js', '\nexport function '], ['WorkspaceDeleteDialog', 'workspace-dialogs.js', undefined]]) {
+    assert.match(block(clientSource(file), `function ${dialog}(`, close), /await onDeleted\(/, `${dialog} hands its confirmation to the page`)
   }
 })
 
@@ -643,12 +701,12 @@ test('every delete path writes through the endpoint that owns it', () => {
 // missing from that list renders as undefined (a missing sidebar icon, a blank
 // row) without failing the bundle check, so guard the two directions here.
 test('every host UI kit member the page uses is destructured from the kit', () => {
-  const source = readPanelSource()
-  const require = source.indexOf("= require('@deepseek-ai/dsh-client-ui-primitives')")
-  assert.ok(require > 0, 'the kit is required')
-  const open = source.lastIndexOf('const {', require)
-  const close = source.lastIndexOf('}', require)
-  const imported = new Set(source.slice(open + 'const {'.length, close)
+  const source = clientSource('ui-shared.js')
+  const from = source.indexOf("from '@deepseek-ai/dsh-client-ui-primitives'")
+  assert.ok(from > 0, 'the kit is imported')
+  const open = source.lastIndexOf('import {', from)
+  const close = source.indexOf('}', from)
+  const imported = new Set(source.slice(open + 'import {'.length, close)
     .split(',').map(name => name.trim()).filter(Boolean))
   const members = ['Button', 'DisclosureRow', 'Input', 'MarkdownText', 'Menu', 'Modal',
     'StateDot', 'Tag', 'Tooltip', 'relativeTime']
@@ -658,34 +716,33 @@ test('every host UI kit member the page uses is destructured from the kit', () =
   }
 })
 
+// The role dialog loads with the real avatar module; each caller brings its own
+// hook fakes and call handler.
+const loadProfileDialog = async ({ react, call }) => loadClient(['profile-dialogs.js', 'avatar.tsx'], { react, call })
+
 test('role avatar selection and animation preview submit the selected template', async () => {
-  const source = readPanelSource()
-  const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
   const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, saved
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ProfileDialog, RoleAvatar } = await loadProfileDialog({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', Fragment: 'Fragment', ROLE_FORM: 'role-form', AVATAR_PICKER: 'nodo-avatar-picker',
-    async call(endpoint, payload) {
+    call: async (endpoint, payload) => {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-catalog') return [{ id: 'codex', label: 'Codex', catalog: { models: [] } }]
       return { id: 'saved', ...payload }
     },
   })
-  new Script(`const AVATAR_TEMPLATES = ${JSON.stringify(templates)};\nconst ROLE_PRESETS = ${JSON.stringify(presets)};\n${avatars}`).runInContext(context)
-  const start = source.indexOf('function ProfileDialog(')
-  new Script(source.slice(start, source.indexOf('\n// Settings is the host', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.ProfileDialog({ avatarSeed: 2, onSaved: item => { saved = item } })) }
-  const card = () => render().find(node => node.type === context.RoleAvatar && node.props.size === 72)
+  const render = () => { cursor = 0; return nodes(ProfileDialog({ avatarSeed: 2, onSaved: item => { saved = item } })) }
+  const card = () => render().find(node => node.type === RoleAvatar && node.props.size === 72)
   assert.equal(card().props.profile.avatarTemplate, templates[2].id, 'a new role previews the dango its creation order assigns')
   mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
   render().find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer').props.onChange({ target: { value: 'Cute coder' } })
@@ -707,22 +764,16 @@ test('role avatar selection and animation preview submit the selected template',
   assert.equal(Object.hasOwn(saved, 'previewRunning'), false)
 })
 
-test('sidebar avatar follows any active session and returns to idle when work ends', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: initial => [initial, () => {}], RoleAvatar: 'Avatar', layoutService: null,
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Input: 'Input', Button: 'Button', Menu: 'Menu', Fragment: 'Fragment',
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  const runningStart = source.indexOf('const workLabel =')
-  new Script(source.slice(runningStart, source.indexOf('\n// Session rows', runningStart))).runInContext(context)
-  const start = source.indexOf('const sectionHead =')
-  new Script(source.slice(start, source.indexOf('\nfunction Field(', start))).runInContext(context)
+// The rail loads with its real ui-shared helpers; kit members stand in as their
+// own names and hooks come from the caller's fakes.
+const loadRail = async react => loadClient(['session-rail.js', 'avatar.tsx', 'ui-shared.js'], { react })
+
+test('sidebar avatar follows any active session and returns to idle when work ends', async () => {
+  const { Rail, RoleAvatar } = await loadRail({ useState: initial => [initial, () => {}] })
   const profile = { id: 'one', name: 'One', avatarTemplate: 'mint', sessions: [{ id: 'a' }, { id: 'b' }] }
   const view = { profiles: [profile], workspaces: [], work: { a: { active: false }, b: { active: true } } }
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const avatar = () => nodes(context.Rail({ view, profile })).find(node => node.type === 'Avatar')
+  const avatar = () => nodes(Rail({ view, profile })).find(node => node.type === RoleAvatar)
   assert.equal(avatar().props.running, true)
   assert.equal(avatar().props.profile.avatarTemplate, 'mint')
   view.work.b.active = false
@@ -733,25 +784,14 @@ test('sidebar avatar follows any active session and returns to idle when work en
 
 // The role picker under the project picker narrows the session list to one role;
 // "全部角色" lifts the filter again. Only the list changes, never the role section.
-test('the rail filters sessions by the role picked under the project picker', () => {
-  const source = readPanelSource()
+test('the rail filters sessions by the role picked under the project picker', async () => {
   const slots = []
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: (initial) => {
-      const slot = cursor++
-      if (!(slot in slots)) slots[slot] = initial
-      return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
-    },
-    RoleAvatar: 'Avatar', NodoLogo: 'NodoLogo', layoutService: null,
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Input: 'Input', Button: 'Button', Menu: 'Menu', Tag: 'Tag', Fragment: 'Fragment',
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  const runningStart = source.indexOf('const workLabel =')
-  new Script(source.slice(runningStart, source.indexOf('\n// Session rows', runningStart))).runInContext(context)
-  const start = source.indexOf('const sectionHead =')
-  new Script(source.slice(start, source.indexOf('\nfunction Field(', start))).runInContext(context)
+  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
+    const slot = cursor++
+    if (!(slot in slots)) slots[slot] = initial
+    return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  } })
   const workspace = { id: 'w', name: 'bot', cwd: '/bot', createdAt: 1 }
   const view = { workspaces: [workspace], work: {}, profiles: [
     { id: 'fish', name: '大肥鱼', sessions: [{ id: 'a', name: '读当前任务', workspaceRef: 'w', updatedAt: 2 }] },
@@ -759,9 +799,9 @@ test('the rail filters sessions by the role picked under the project picker', ()
   ] }
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.Rail({ view, workspace, onSelect: () => {} })) }
+  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, onSelect: () => {} })) }
   const picker = tree => tree.find(node => node.type === 'Menu' && String(node.props.anchor?.props?.['aria-label'] ?? '').startsWith('按角色筛选'))
-  const rows = tree => tree.filter(node => node.type === context.SessionRow).map(node => `${node.props.role.name} · ${node.props.session.name}`)
+  const rows = tree => tree.filter(node => node.type === SessionRow).map(node => `${node.props.role.name} · ${node.props.session.name}`)
   const roles = tree => tree.filter(node => node.props?.className === 'nodo-role').map(node => node.props.key)
   let tree = render()
   assert.deepEqual(Array.from(picker(tree).props.items, item => item.label), ['全部角色', '大肥鱼', '贼 coder'])
@@ -782,25 +822,14 @@ test('the rail filters sessions by the role picked under the project picker', ()
 
 // A long plain list folds to the ten most recent sessions; searching lists every
 // match with no fold, and the toggle re-folds after expanding.
-test('the rail folds a long session list behind a show-more toggle', () => {
-  const source = readPanelSource()
+test('the rail folds a long session list behind a show-more toggle', async () => {
   const slots = []
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: (initial) => {
-      const slot = cursor++
-      if (!(slot in slots)) slots[slot] = initial
-      return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
-    },
-    RoleAvatar: 'Avatar', NodoLogo: 'NodoLogo', layoutService: null,
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Input: 'Input', Button: 'Button', Menu: 'Menu', Tag: 'Tag', Fragment: 'Fragment',
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  const runningStart = source.indexOf('const workLabel =')
-  new Script(source.slice(runningStart, source.indexOf('\n// Session rows', runningStart))).runInContext(context)
-  const start = source.indexOf('const sectionHead =')
-  new Script(source.slice(start, source.indexOf('\nfunction Field(', start))).runInContext(context)
+  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
+    const slot = cursor++
+    if (!(slot in slots)) slots[slot] = initial
+    return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  } })
   const workspace = { id: 'w', name: 'bot', cwd: '/bot', createdAt: 1 }
   const view = { workspaces: [workspace], work: {}, profiles: [
     { id: 'role', name: 'Coder', sessions: Array.from({ length: 12 }, (_, index) =>
@@ -808,8 +837,8 @@ test('the rail folds a long session list behind a show-more toggle', () => {
   ] }
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.Rail({ view, workspace, onSelect: () => {} })) }
-  const ids = tree => tree.filter(node => node.type === context.SessionRow).map(node => node.props.session.id)
+  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, onSelect: () => {} })) }
+  const ids = tree => tree.filter(node => node.type === SessionRow).map(node => node.props.session.id)
   const toggle = tree => tree.find(node => node.props?.className === 'nodo-show-more')
   let tree = render()
   assert.deepEqual(ids(tree), Array.from({ length: 10 }, (_, index) => `s${index}`), 'only the ten most recent sessions show')
@@ -847,25 +876,14 @@ test('the rail folds a long session list behind a show-more toggle', () => {
 
 // The unsent new-conversation draft lists as its own 新会话 row of its project,
 // above the sessions, so switching sessions cannot orphan the draft.
-test('the rail lists the pending draft as a 新会话 row that returns to it', () => {
-  const source = readPanelSource()
+test('the rail lists the pending draft as a 新会话 row that returns to it', async () => {
   const slots = []
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: (initial) => {
-      const slot = cursor++
-      if (!(slot in slots)) slots[slot] = initial
-      return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
-    },
-    RoleAvatar: 'Avatar', NodoLogo: 'NodoLogo', layoutService: null,
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Input: 'Input', Button: 'Button', Menu: 'Menu', Tag: 'Tag', Fragment: 'Fragment',
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  const runningStart = source.indexOf('const workLabel =')
-  new Script(source.slice(runningStart, source.indexOf('\n// Session rows', runningStart))).runInContext(context)
-  const start = source.indexOf('const sectionHead =')
-  new Script(source.slice(start, source.indexOf('\nfunction Field(', start))).runInContext(context)
+  const { Rail, SessionRow, RoleAvatar } = await loadRail({ useState: (initial) => {
+    const slot = cursor++
+    if (!(slot in slots)) slots[slot] = initial
+    return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  } })
   const workspace = { id: 'w', name: 'bot', cwd: '/bot', createdAt: 1 }
   const view = { workspaces: [workspace], work: {}, profiles: [
     { id: 'fish', name: '大肥鱼', sessions: [{ id: 'a', name: '读当前任务', workspaceRef: 'w', updatedAt: 2 }] },
@@ -875,15 +893,15 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', (
   const resumed = []
   const render = draft => {
     cursor = 0
-    return nodes(context.Rail({ view, workspace, draft, onResumeDraft: () => resumed.push(draft.id), onSelect: () => {} }))
+    return nodes(Rail({ view, workspace, draft, onResumeDraft: () => resumed.push(draft.id), onSelect: () => {} }))
   }
   const draftRow = tree => tree.find(node => node.props?.title === '新会话（草稿）')
   let tree = render({ id: 'd1', workspace: 'w', profile: 'fish' })
   const row = draftRow(tree)
   assert.ok(row, 'a draft of this project shows as its own row')
-  assert.equal(row.children[0].type, 'Avatar', 'the draft row carries the seeded role avatar')
+  assert.equal(row.children[0].type, RoleAvatar, 'the draft row carries the seeded role avatar')
   assert.deepEqual(row.children[1].children, ['新会话'])
-  const order = tree.filter(node => node.props?.title === '新会话（草稿）' || node.type === context.SessionRow)
+  const order = tree.filter(node => node.props?.title === '新会话（草稿）' || node.type === SessionRow)
     .map(node => node.props.title === '新会话（草稿）' ? 'draft' : node.props.session.id)
   assert.deepEqual(order, ['draft', 'a'], 'the draft row sits above the sessions')
   row.props.onClick()
@@ -900,18 +918,8 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', (
 // A running session in another project or branch must stay findable: the project
 // row carries a dot while another workspace is busy, and the picker marks each
 // busy workspace's icon.
-test('the project row and picker mark the workspaces with running sessions', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: initial => [initial, () => {}], RoleAvatar: 'Avatar', NodoLogo: 'NodoLogo', layoutService: null,
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Input: 'Input', Button: 'Button', Menu: 'Menu', Tag: 'Tag', Fragment: 'Fragment',
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  const runningStart = source.indexOf('const workLabel =')
-  new Script(source.slice(runningStart, source.indexOf('\n// Session rows', runningStart))).runInContext(context)
-  const start = source.indexOf('const sectionHead =')
-  new Script(source.slice(start, source.indexOf('\nfunction Field(', start))).runInContext(context)
+test('the project row and picker mark the workspaces with running sessions', async () => {
+  const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
   const workspaces = [{ id: 'main', name: 'bot', cwd: '/bot', createdAt: 1 }, { id: 'branch', name: 'feature', cwd: '/feature', worktree: { branch: 'feature' }, createdAt: 2 }]
   const view = { workspaces, work: { away: { active: true } }, profiles: [
     { id: 'role', name: 'Coder', sessions: [
@@ -921,7 +929,7 @@ test('the project row and picker mark the workspaces with running sessions', () 
   ] }
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const render = () => nodes(context.Rail({ view, workspace: workspaces[0], onSelect: () => {} }))
+  const render = () => nodes(Rail({ view, workspace: workspaces[0], onSelect: () => {} }))
   const picker = tree => tree.find(node => node.type === 'Menu' && String(node.props.anchor?.props?.['aria-label'] ?? '').startsWith('选择项目'))
   let tree = render()
   assert.ok(tree.find(node => node.props?.className === 'nodo-project-state'), 'the project row hints at a busy workspace elsewhere')
@@ -940,24 +948,15 @@ test('the project row and picker mark the workspaces with running sessions', () 
   assert.ok(items().every(item => typeof item.label === 'string'))
 })
 
-test('the project row exposes a worktree creation button and menu entry', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: initial => [initial, () => {}], RoleAvatar: 'Avatar', NodoLogo: 'NodoLogo', layoutService: null,
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Input: 'Input', Button: 'Button', Menu: 'Menu', Tag: 'Tag', Fragment: 'Fragment',
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  const runningStart = source.indexOf('const workLabel =')
-  new Script(source.slice(runningStart, source.indexOf('\n// Session rows', runningStart))).runInContext(context)
-  const start = source.indexOf('const sectionHead =')
-  new Script(source.slice(start, source.indexOf('\nfunction Field(', start))).runInContext(context)
+test('the project row exposes a worktree creation button and menu entry', async () => {
+  const source = clientSource('workspace-dialogs.js')
+  const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
   const workspace = { id: 'w', name: 'bot', cwd: '/bot', createdAt: 1 }
   const view = { workspaces: [workspace], work: {}, profiles: [] }
   let worktrees = 0
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const tree = nodes(context.Rail({ view, workspace, onSelect: () => {}, onNewWorktree: () => { worktrees++ }, busy: false, readOnly: false }))
+  const tree = nodes(Rail({ view, workspace, onSelect: () => {}, onNewWorktree: () => { worktrees++ }, busy: false, readOnly: false }))
   const button = tree.find(node => node.type === 'button' && node.props?.['aria-label'] === '从“bot”创建工作树')
   assert.ok(button, 'the project row offers a worktree button')
   button.props.onClick({ stopPropagation() {} })
@@ -971,7 +970,6 @@ test('the project row exposes a worktree creation button and menu entry', () => 
 })
 
 test('the worktree dialog selects a free existing branch or creates a new one', async () => {
-  const source = readPanelSource()
   let cursor = 0
   const calls = []
   const slots = [
@@ -979,26 +977,23 @@ test('the worktree dialog selects a free existing branch or creates a new one', 
       branches: [{ name: 'main', checkedOutAt: '/repo' }, { name: 'feat/login' }], tags: [] },
     '', 'new', 'main', false, 'nodo/test', '', false, '', '', '', true, false, '',
   ]
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    Fragment: 'Fragment', Modal: 'Modal', Button: 'Button', Field: 'Field', Menu: 'Menu',
-    IconChevronDownOutlineRegular: 'Icon', WORKTREE_FORM: 'form',
-    useState: (initial) => {
-      const slot = cursor++
-      if (!(slot in slots)) slots[slot] = typeof initial === 'function' ? initial() : initial
-      return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  const { WorktreeDialog } = await loadClient('workspace-dialogs.js', {
+    react: {
+      useState: (initial) => {
+        const slot = cursor++
+        if (!(slot in slots)) slots[slot] = typeof initial === 'function' ? initial() : initial
+        return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+      },
+      useEffect: () => {},
     },
-    useEffect: () => {},
     call: async (endpoint, payload) => {
       calls.push({ endpoint, payload })
       return { workspace: { id: 'w2' }, worktree: { path: '/repo/.nodo/worktrees/nodo/test' } }
     },
   })
-  const code = source.slice(source.indexOf('function WorktreeDialog('), source.indexOf('\n// Rename a workspace by name alone'))
-  new Script(code, { filename: 'worktree-dialog.js' }).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.WorktreeDialog({
+  const render = () => { cursor = 0; return nodes(WorktreeDialog({
     workspace: { id: 'w', cwd: '/repo' }, profile: { id: 'p' }, onCreated: async () => {}, onCancel() {},
   })) }
   let tree = render()
@@ -1023,22 +1018,19 @@ test('the worktree dialog selects a free existing branch or creates a new one', 
 // The composer picker writes model and thinking onto the role card and offers
 // no provider row — the engine is the role dialog's decision alone.
 test('the composer model picker drills model and level over one engine catalog', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function ModelPicker(')
-  assert.ok(start > 0, 'the picker exists')
   const states = [], requests = [], picked = [], effects = []
   let cursor = 0, mounted = false
   const profile = { id: 'coder', engine: 'zcode', model: '', thinking: '' }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ModelPicker } = await loadClient('feed.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }),
+      useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }),
-    useEffect(effect) { if (!mounted) effects.push(effect) },
-    Menu: 'Menu', IconChevronDownOutlineRegular: 'Down', IconChevronRightOutlineRegular: 'Right', IconDataOutlineRegular: 'Data',
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-catalog') return [{ id: 'zcode', label: 'ZCode', catalog: { defaultModel: 'glm-x', models: [
@@ -1048,8 +1040,7 @@ test('the composer model picker drills model and level over one engine catalog',
       if (endpoint === 'engine-scan') return { models: [] }
     },
   })
-  new Script(source.slice(start, source.indexOf('\n// The composer is', start))).runInContext(context)
-  const render = () => { cursor = 0; return context.ModelPicker({ profile, disabled: false, onChange: changes => picked.push(changes) }) }
+  const render = () => { cursor = 0; return ModelPicker({ profile, disabled: false, onChange: changes => picked.push(changes) }) }
   const tick = () => new Promise(resolve => setImmediate(resolve))
   render(); mounted = true; effects.forEach(effect => effect()); await tick(); await tick()
   assert.equal(render().props.anchor.props['aria-label'], '选择模型，当前 GLM X，推理等级 High', 'the trigger resolves labels on mount, before any open')
@@ -1087,39 +1078,35 @@ test('the composer model picker drills model and level over one engine catalog',
 // resolved picker shows afterwards, so the entry looks the same. The trigger
 // keeps the bare route when no route shape matches (a hand-typed model).
 test('the composer model trigger names a saved route before any catalog exists', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function ModelPicker(')
-  assert.ok(start > 0, 'the picker exists')
   const states = [], effects = []
   let cursor = 0, mounted = false
   const profile = { id: 'coder', engine: 'zcode', model: 'bigmodel-api$GLM-5.3-Flash', thinking: 'max' }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ModelPicker, modelName } = await loadClient('feed.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }),
+      useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }),
-    useEffect(effect) { if (!mounted) effects.push(effect) },
-    Menu: 'Menu', IconChevronDownOutlineRegular: 'Down', IconChevronRightOutlineRegular: 'Right', IconDataOutlineRegular: 'Data',
     // An engine whose catalog was never scanned: the mount fetch answers with it
     // and nothing else, exactly as the host does before the first open.
-    async call(endpoint) {
+    call: async endpoint => {
       if (endpoint === 'engine-catalog') return [{ id: 'zcode', label: 'ZCode CLI', catalog: null }]
       return { models: [] }
     },
   })
-  new Script(source.slice(start, source.indexOf('\n// The composer is', start))).runInContext(context)
-  const render = () => { cursor = 0; return context.ModelPicker({ profile, disabled: false, onChange: () => {} }) }
+  const render = () => { cursor = 0; return ModelPicker({ profile, disabled: false, onChange: () => {} }) }
   render(); mounted = true; effects.forEach(effect => effect())
   await new Promise(resolve => setImmediate(resolve))
   const anchor = render().props.anchor
   assert.equal(anchor.props['aria-label'], '选择模型，当前 GLM-5.3-Flash，推理等级 max', 'the route reads as the model name')
   assert.deepEqual(anchor.children.filter(Boolean).map(child => child.children).slice(1, 3), [['GLM-5.3-Flash'], ['max']], 'the name and level are the picker\'s own two words')
-  assert.equal(context.modelName('["mock","glm-x"]'), 'glm-x', 'the DSH JSON pair reads as its model')
-  assert.equal(context.modelName('anthropic/claude-sonnet-4'), 'anthropic/claude-sonnet-4', 'a plain id keeps its own wording')
-  assert.equal(context.modelName(''), '', 'an unset model stays empty')
+  assert.equal(modelName('["mock","glm-x"]'), 'glm-x', 'the DSH JSON pair reads as its model')
+  assert.equal(modelName('anthropic/claude-sonnet-4'), 'anthropic/claude-sonnet-4', 'a plain id keeps its own wording')
+  assert.equal(modelName(''), '', 'an unset model stays empty')
 })
 
 // Each composer menu card carries the geometry of the native menu of its kind:
@@ -1128,7 +1115,7 @@ test('the composer model trigger names a saved route before any catalog exists',
 // from the composer card's top edge at its width — inline, like ui-input-trigger
 // MenuView, so it never covers the draft and rides the card as it grows.
 test('the composer menu cards take the native card geometry', () => {
-  const source = readPanelSource()
+  const source = clientSource('styles.js')
   assert.match(source, /\.nodo-model-list\{[^}]*max-height:min\(360px,100vh - 96px\)[^}]*\}/, 'the model list takes the native picker cap')
   assert.match(source, /\.nodo-model-list\{[^}]*min-width:min\(240px,100vw - 32px\)[^}]*max-width:min\(420px,100vw - 32px\)[^}]*\}/, 'and the native card widths')
   assert.match(source, /\.nodo-add\{[^}]*bottom:calc\(100% \+ 4px\)[^}]*left:0;right:0[^}]*max-height:min\(400px,var\(--nodo-add-space,100vh\)\)[^}]*\}/, 'the add menu pins itself above the composer card at its width, capped at the native 400px and at the room above the card')
@@ -1140,21 +1127,17 @@ test('the composer menu cards take the native card geometry', () => {
 // lists the engine's scanned models with the selected one's levels, and a save
 // writes both onto the card.
 test('the role dialog offers the model and thinking defaults and saves them', async () => {
-  const source = readPanelSource()
-  const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
-  const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ProfileDialog, Field } = await loadProfileDialog({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', Fragment: 'Fragment', ROLE_FORM: 'role-form', AVATAR_PICKER: 'nodo-avatar-picker',
     async call(endpoint, payload) {
       requests.push({ endpoint, payload })
       if (endpoint === 'engine-catalog') return [{ id: 'zcode', label: 'ZCode', catalog: { defaultModel: 'glm-x', source: 'mock', models: [
@@ -1164,16 +1147,13 @@ test('the role dialog offers the model and thinking defaults and saves them', as
       return { id: 'saved' }
     },
   })
-  new Script(`const AVATAR_TEMPLATES = ${JSON.stringify(templates)};\nconst ROLE_PRESETS = ${JSON.stringify(presets)};\n${avatars}`).runInContext(context)
-  const start = source.indexOf('function ProfileDialog(')
-  new Script(source.slice(start, source.indexOf('\n// Settings is the host', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
   const profile = { id: 'coder', name: 'Coder', engine: 'zcode', model: 'glm-x', thinking: 'high', sessions: [] }
-  const render = held => { cursor = 0; return nodes(context.ProfileDialog({ profile: held, onSaved: () => {} })) }
-  const field = (held, label) => render(held).filter(node => node.type === 'Field').find(node => node.props.label === label)
+  const render = held => { cursor = 0; return nodes(ProfileDialog({ profile: held, onSaved: () => {} })) }
+  const field = (held, label) => render(held).filter(node => node.type === Field).find(node => node.props.label === label)
   const select = (held, label) => field(held, label).children.filter(Boolean).find(node => node.type === 'select')
   render(profile); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(render(profile).filter(node => node.type === 'Field').map(node => node.props.label),
+  assert.deepEqual(render(profile).filter(node => node.type === Field).map(node => node.props.label),
     ['头像模板', '名字', '身份', '身份信息', '调用 Agent', '模型', '思考档位'], 'the avatar leads, the identity pair follows, the run defaults close the card')
   assert.deepEqual(render(profile).filter(node => node.type === 'select').map(node => node.props.value), ['zcode', 'glm-x', 'high'],
     'the card shows the pair it already carries')
@@ -1212,32 +1192,26 @@ test('the role dialog offers the model and thinking defaults and saves them', as
 // The identity picker is the preset list plus one way out of it: a preset fills
 // the card's 身份 and 身份信息, and "+ 身份" hands the fields back to the user.
 test('the identity picker fills a preset identity and leaves "+ 身份" its own text', async () => {
-  const source = readPanelSource()
-  const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ProfileDialog } = await loadProfileDialog({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', Fragment: 'Fragment', ROLE_FORM: 'role-form', AVATAR_PICKER: 'nodo-avatar-picker',
-    async call(endpoint, payload) {
+    call: async (endpoint, payload) => {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-catalog') return [{ id: 'dsh', label: 'DSH' }]
       return { id: 'saved' }
     },
   })
-  new Script(`const AVATAR_TEMPLATES = ${JSON.stringify(templates)};\nconst ROLE_PRESETS = ${JSON.stringify(presets)};\n${avatars}`).runInContext(context)
-  const start = source.indexOf('function ProfileDialog(')
-  new Script(source.slice(start, source.indexOf('\n// Settings is the host', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.ProfileDialog({ onSaved: () => {} })) }
+  const render = () => { cursor = 0; return nodes(ProfileDialog({ onSaved: () => {} })) }
   render(); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
   const options = () => render().filter(node => node.props.className === 'nodo-identity-option')
   const pick = label => options().find(node => node.children.join('') === label).props.onClick()
@@ -1274,33 +1248,26 @@ test('the identity picker fills a preset identity and leaves "+ 身份" its own 
 // every later new role; the entry rides prefs, so deleting roles keeps it, and
 // the entry itself is deletable from the picker that selected it.
 test('the identity picker saves a customized identity and deletes the entry again', async () => {
-  const source = readPanelSource()
-  const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, refreshes = 0, savedEntries = []
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ProfileDialog, IdentityDeleteDialog } = await loadProfileDialog({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', Fragment: 'Fragment',
-    ROLE_FORM: 'role-form', AVATAR_PICKER: 'nodo-avatar-picker', IDENTITY_FORM: 'identity-form',
-    async call(endpoint, payload) {
+    call: async (endpoint, payload) => {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-catalog') return [{ id: 'echo', label: 'Echo' }]
       return {}
     },
   })
-  new Script(`const AVATAR_TEMPLATES = ${JSON.stringify(templates)};\nconst ROLE_PRESETS = ${JSON.stringify(presets)};\n${avatars}`).runInContext(context)
-  const start = source.indexOf('function ProfileDialog(')
-  new Script(source.slice(start, source.indexOf('\n// Settings is the host', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(context.ProfileDialog({
+  const render = () => { cursor = 0; return nodes(ProfileDialog({
     savedIdentities: savedEntries, refresh: force => { refreshes += force === true ? 1 : 0 }, onSaved: () => {},
   })) }
   const options = () => render().filter(node => node.props.className === 'nodo-identity-option')
@@ -1312,7 +1279,7 @@ test('the identity picker saves a customized identity and deletes the entry agai
   // The fake h leaves nested function components uninvoked; opening one means
   // calling it with the props the parent handed it.
   const dialog = title => {
-    const owned = render().find(node => node.type === context.IdentityDeleteDialog)
+    const owned = render().find(node => node.type === IdentityDeleteDialog)
     if (!owned) return undefined
     const modal = owned.type(owned.props)
     return modal.props.title === title ? modal : undefined
@@ -1362,31 +1329,25 @@ test('the identity picker saves a customized identity and deletes the entry agai
 // Editing a role keeps its engine, says when an identity change lands, and
 // confirms deletion in the dialog's own footer before handing it to the page.
 test('the role dialog edits an existing role and confirms its deletion inline', async () => {
-  const source = readPanelSource()
-  const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = []
   let cursor = 0, mounted = false, deleted
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { ProfileDialog } = await loadProfileDialog({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
-    Modal: 'Modal', Button: 'Button', Field: 'Field', Fragment: 'Fragment', ROLE_FORM: 'role-form',
-    async call(endpoint) { return endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : {} },
+    call: async endpoint => endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : {},
   })
-  new Script(`const AVATAR_TEMPLATES = ${JSON.stringify(templates)};\nconst ROLE_PRESETS = ${JSON.stringify(presets)};\n${avatars}`).runInContext(context)
-  const start = source.indexOf('function ProfileDialog(')
-  new Script(source.slice(start, source.indexOf('\n// Settings is the host', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
   const reviewer = presets.find(item => item.name === 'reviewer')
   const profile = { id: 'rev', name: 'Reviewer', engine: 'echo', role: reviewer.role, instructions: reviewer.instructions,
     sessions: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
-  const render = () => { cursor = 0; return nodes(context.ProfileDialog({ profile, onSaved() {}, onCancel() {}, onDeleted: async item => { deleted = item } })) }
+  const render = () => { cursor = 0; return nodes(ProfileDialog({ profile, onSaved() {}, onCancel() {}, onDeleted: async item => { deleted = item } })) }
   const modal = () => render().find(node => node.type === 'Modal')
   const footer = () => modal().props.footer.filter(Boolean)
   const footerButton = text => footer().find(node => node.type === 'Button' && node.children.join('') === text)
@@ -1419,31 +1380,26 @@ test('the role dialog edits an existing role and confirms its deletion inline', 
 // workspace's files and the plan tier, 指令 the compact command and the
 // engine's scanned commands; every pick lands in the draft as plain text.
 test('the composer add menu offers the native sections and inserts text picks into the draft', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function AddMenu(')
-  assert.ok(start > 0, 'the add menu exists')
   const states = [], effects = [], requests = [], inserted = [], tokened = [], changed = [], requested = []
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { AddMenu } = await loadClient('composer.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }),
+      useEffect(effect) { effects.push(effect) },
     },
-    useRef: initial => ({ current: initial }),
-    useEffect(effect) { effects.push(effect) },
-    Menu: 'Menu', IconPlusOutlineRegular: 'Plus', IconPaperclipOutlineRegular: 'Clip', IconGoalOutlineRegular: 'Goal', IconPlanOutlineRegular: 'Plan', IconCompactOutlineRegular: 'Compact', IconUsersOutlineRegular: 'Users',
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }] }
       if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] } }]
     },
   })
-  new Script(source.slice(source.indexOf('const addRow ='), source.indexOf('\n// The file mention being typed'))).runInContext(context)
-  new Script(source.slice(start, source.indexOf("\n// The composer's permission control", start))).runInContext(context)
   const tick = () => new Promise(resolve => setImmediate(resolve))
-  const render = (props = {}) => { cursor = 0; return context.AddMenu({ profile: { engine: 'claude', permission: '' }, workspace: { id: 'w1', name: 'one' }, disabled: false, trigger: null,
+  const render = (props = {}) => { cursor = 0; return AddMenu({ profile: { engine: 'claude', permission: '' }, workspace: { id: 'w1', name: 'one' }, disabled: false, trigger: null,
     onInsert: text => inserted.push(text), onToken: text => tokened.push(text), onModelChange: change => changed.push(change),
     onGoal: () => requested.push('goal'), onCompact: () => requested.push('compact'), ...props }) }
   const closed = render()
@@ -1512,88 +1468,90 @@ test('the composer add menu offers the native sections and inserts text picks in
 
 })
 
-test('the new composer offers references through @ without a recipient and enables reference-only messages', () => {
-  const source = readPanelSource()
+test('the new composer offers references through @ without a recipient and enables reference-only messages', async () => {
   const edits = [], opened = [], removed = []
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect() {},
-    Menu: 'Menu', Tooltip: 'Tooltip', AddMenu: 'AddMenu', IconUsersOutlineRegular: 'Users', ComposerGlyph: () => 'Send', addRow: label => label,
+  const { Composer, AddMenu } = await loadClient('composer.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: { useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect: () => {} },
+    uiShared: { ComposerGlyph: () => 'Send' },
   })
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
   const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
   const props = { workspace: { id: 'w' }, images: [], value: '请参考 @', onChange: value => edits.push(value), onSend() {},
     onReference: value => opened.push(value), onRemoveReference: id => removed.push(id) }
-  const tree = context.Composer(props), menu = all(tree).find(node => node.type === 'Menu')
+  const tree = Composer(props), menu = all(tree).find(node => node.type === 'Menu')
   assert.ok(menu.props.items.some(item => item.id === 'reference'))
   menu.props.onSelect('reference')
   assert.deepEqual(edits, ['请参考 '])
   assert.equal(opened.length, 1)
-  assert.equal(all(tree).find(node => node.type === 'AddMenu').props.profile.engine, '')
-  const attached = context.Composer({ ...props, value: '', references: [{ id: 'snapshot', label: 'Planner · Plan' }] })
+  assert.equal(all(tree).find(node => node.type === AddMenu).props.profile.engine, '')
+  const attached = Composer({ ...props, value: '', references: [{ id: 'snapshot', label: 'Planner · Plan' }] })
   assert.equal(all(attached).find(node => node.type === 'Tooltip').props.children.props.disabled, false)
   all(attached).find(node => node.props['aria-label'] === '移除引用 Planner · Plan').props.onClick()
   assert.deepEqual(removed, ['snapshot'])
 })
 
 test('the @ file card lists workspace files with the file glyph', async () => {
-  const source = readPanelSource()
   let cursor = 0
   const states = []
-  const state = initial => {
-    const at = cursor++
-    if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
-    return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
-  }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: state, useRef: initial => state(() => ({ current: initial }))[0],
-    useEffect: effect => { effect() }, setTimeout: fn => { fn(); return 0 }, clearTimeout() {},
-    Menu: 'Menu', Tooltip: 'Tooltip', AddMenu: 'AddMenu', IconUsersOutlineRegular: 'Users', IconPaperclipOutlineRegular: 'Clip', ComposerGlyph: () => 'Send',
-    call: async endpoint => endpoint === 'workspace-files' ? { files: ['docs/architecture.md'] } : { files: [] },
+  const { Composer } = await loadClient('composer.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: {
+      useState: initial => {
+        const at = cursor++
+        if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
+        return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
+      },
+      useRef: initial => ({ current: initial }),
+      useEffect: effect => { effect() },
+    },
+    globals: { setTimeout: fn => { fn(); return 0 }, clearTimeout() {} },
+    uiShared: { ComposerGlyph: () => 'Send', call: async endpoint => endpoint === 'workspace-files' ? { files: ['docs/architecture.md'] } : { files: [] } },
   })
-  new Script(source.slice(source.indexOf('const addRow ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
   const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
   const props = { workspace: { id: 'w' }, images: [], value: '@', onChange() {}, onSend() {} }
-  const render = () => { cursor = 0; return context.Composer(props) }
+  const render = () => { cursor = 0; return Composer(props) }
   render()
   await new Promise(resolve => setImmediate(resolve))
   const items = all(render()).find(node => node.type === 'Menu').props.items
   const row = items.find(item => item.id === 'file:docs/architecture.md')
-  assert.equal(row.icon.type, 'Clip', 'workspace file rows carry the file glyph like the native menu')
+  assert.equal(row.icon.type, 'IconPaperclipOutlineRegular', 'workspace file rows carry the file glyph like the native menu')
   assert.deepEqual(row.label.children.map(child => child.children).flat(), ['architecture.md', 'docs/architecture.md'])
 })
 
 test('the new conversation feeds picker files into the draft and sends documents as workspace paths', async () => {
-  const source = readFileSync(new URL('../src/client/new-conversation.js', import.meta.url), 'utf8')
   const calls = []
   let cursor = 0
-  const states = []
-  const state = initial => {
-    const at = cursor++
-    if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
-    return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
-  }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: state, useRef: initial => state(() => ({ current: initial }))[0], useEffect() {},
-    useStateView: () => ({ view: { profiles: [{ id: 'role', name: '开发', engine: 'echo', sessions: [] }], workspaces: [{ id: 'project', name: '项目', cwd: '/tmp' }] }, error: '' }),
-    useSyncExternalStore: (_subscribe, snapshot) => snapshot(), subscribeNavigation: () => {}, readNavigation: () => ({ profile: 'role', workspace: 'project' }),
-    heldImages: {}, readDrafts: () => ({}), setNavigation() {}, nativeRole: () => false,
-    readImage: async file => file, Composer: 'Composer', RolePicker: 'RolePicker', ReferenceDialog: 'ReferenceDialog', NodoLogo: 'NodoLogo',
-    crypto: { randomUUID: () => '00000000-0000-0000-0000-000000000000' },
-    localStorage: { getItem: () => null, setItem() {} },
-    call: async (endpoint, payload) => {
-      calls.push({ endpoint, payload })
-      if (endpoint === 'attachment-save') return { images: [], files: [{ id: '11111111-1111-1111-1111-111111111111', name: 'spec.pdf' }] }
-      if (endpoint === 'attachment-place') return { files: ['/tmp/.nodo/workflow-inputs/task-1/1-spec.pdf'], text: '## Attached files (user provided)\n- "/tmp/.nodo/workflow-inputs/task-1/1-spec.pdf"' }
-      if (endpoint === 'session-create') return { id: 'session-1' }
-      return {}
+  const view = { profiles: [{ id: 'role', name: '开发', engine: 'echo', sessions: [] }], workspaces: [{ id: 'project', name: '项目', cwd: '/tmp' }] }
+  const { createNewConversation, Composer } = await loadClient(['new-conversation.js', 'composer.js'], {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: {
+      useState: initial => {
+        const at = cursor++
+        if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
+        return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect: () => {},
+    },
+    uiShared: {
+      useStateView: () => ({ view, error: '' }),
+      readImage: async file => file,
+      call: async (endpoint, payload) => {
+        calls.push({ endpoint, payload })
+        if (endpoint === 'attachment-save') return { images: [], files: [{ id: '11111111-1111-1111-1111-111111111111', name: 'spec.pdf' }] }
+        if (endpoint === 'attachment-place') return { files: ['/tmp/.nodo/workflow-inputs/task-1/1-spec.pdf'], text: '## Attached files (user provided)\n- "/tmp/.nodo/workflow-inputs/task-1/1-spec.pdf"' }
+        if (endpoint === 'session-create') return { id: 'session-1' }
+        return {}
+      },
+    },
+    globals: {
+      crypto: { randomUUID: () => '00000000-0000-0000-0000-000000000000' },
+      localStorage: { getItem: key => key === 'nodo.navigation' ? JSON.stringify({ profile: 'role', workspace: 'project' }) : null, setItem() {} },
     },
   })
-  new Script(`${source}\nglobalThis.NewConversation = createNewConversation({ uiSession: { adapter: { current: { getSnapshot: () => ({ key: 'native-1' }) } } } }, { getSnapshot: () => ({ active: true }), showLegacy() {}, endDraft() {}, open() {} }, 'ReferenceDialog').NewConversation`).runInContext(context)
+  const states = []
+  const { NewConversation } = createNewConversation({ uiSession: { adapter: { current: { getSnapshot: () => ({ key: 'native-1' }) } } } }, { getSnapshot: () => ({ active: true }), showLegacy() {}, endDraft() {}, open() {} }, 'ReferenceDialog')
   const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
-  const render = () => { cursor = 0; return all(context.NewConversation({ sourceSessionId: 'native-1' })).find(node => node.type === 'Composer').props }
+  const render = () => { cursor = 0; return all(NewConversation({ sourceSessionId: 'native-1' })).find(node => node.type === Composer).props }
   const composer = render()
   await composer.onAttachFiles([
     { name: 'shot.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
@@ -1616,23 +1574,19 @@ test('the new conversation feeds picker files into the draft and sends documents
 })
 
 test('the responsibilities dialog retains the goal field and saves it trimmed', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('function GoalDialog(')
-  assert.ok(start > 0, 'the goal dialog exists')
   const states = [], saved = []
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { GoalDialog } = await loadClient('composer.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
     },
-    Modal: 'Modal', Button: 'Button', GOAL_FORM: 'nodo-goal-form',
   })
-  new Script(source.slice(start, source.indexOf('\nfunction NodoPage(', start))).runInContext(context)
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return context.GoalDialog({ profile: { goal: '  ship it  ' }, onSaved: value => saved.push(value), onCancel() {} }) }
+  const render = () => { cursor = 0; return GoalDialog({ profile: { goal: '  ship it  ' }, onSaved: value => saved.push(value), onCancel() {} }) }
   assert.equal(render().props.title, '角色职责')
   const box = nodes(render()).find(node => node.props?.className?.includes?.('nodo-dialog-textarea'))
   assert.equal(box.props.value, '  ship it  ', 'the dialog opens with the saved goal')
@@ -1643,19 +1597,17 @@ test('the responsibilities dialog retains the goal field and saves it trimmed', 
   assert.deepEqual([...saved], ['port the tests'])
 })
 
-test('shared composer accepts file paste, drop and picker input without changing ordinary image paste', () => {
-  const source = readPanelSource()
+test('shared composer accepts file paste, drop and picker input without changing ordinary image paste', async () => {
   const attachments = [], images = []
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect() {},
-    Menu: 'Menu', Tooltip: 'Tooltip', AddMenu: 'AddMenu', IconPaperclipOutlineRegular: 'Clip', ComposerGlyph: () => 'Send',
+  const { Composer, AddMenu } = await loadClient('composer.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: { useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect: () => {} },
+    uiShared: { ComposerGlyph: () => 'Send' },
   })
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
   const props = { profile: { engine: 'echo' }, value: '任务', images: [], files: [], readOnly: false, busy: false,
     onSend() {}, onChange() {}, onInsert() {}, onAttach: files => images.push(...files), onAttachFiles: files => attachments.push(...files) }
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
-  const tree = context.Composer(props)
+  const tree = Composer(props)
   const textarea = all(tree).find(item => item.type === 'textarea')
   const file = { name: 'requirements.pdf', type: 'application/pdf' }
   let prevented = 0
@@ -1673,90 +1625,87 @@ test('shared composer accepts file paste, drop and picker input without changing
   assert.equal(attachments.length, 3)
   let clicks = 0
   picker.props.ref.current = { click() { clicks++ } }
-  all(tree).find(item => item.type === 'AddMenu').props.onUpload()
+  all(tree).find(item => item.type === AddMenu).props.onUpload()
   assert.equal(clicks, 1)
   assert.equal(all(tree).find(item => item.type === 'Tooltip').props.children.props['aria-label'], '发送消息')
-  const ordinary = context.Composer({ ...props, onAttachFiles: undefined })
+  const ordinary = Composer({ ...props, onAttachFiles: undefined })
   const input = all(ordinary).find(item => item.type === 'textarea')
   input.props.onPaste(paste(file))
   assert.equal(attachments.length, 3)
   const image = { name: 'image.png', type: 'image/png' }
   input.props.onPaste(paste(image))
   assert.deepEqual(images, [image])
-  const readonly = context.Composer({ ...props, readOnly: true })
+  const readonly = Composer({ ...props, readOnly: true })
   all(readonly).find(item => item.type === 'textarea').props.onPaste(paste(file))
   assert.equal(attachments.length, 3)
 })
 
-test('a composer image thumbnail opens the host lightbox for the original image', () => {
-  const source = readPanelSource()
+test('a composer image thumbnail opens the host lightbox for the original image', async () => {
   let preview = null
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: value => value === null ? [preview, next => { preview = next }] : [value, () => {}], useRef: () => ({ current: null }), useEffect() {},
-    Menu: 'Menu', Tooltip: 'Tooltip', ImageLightbox: 'ImageLightbox', ComposerGlyph: () => 'Send',
+  const { Composer } = await loadClient('composer.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: { useState: value => value === null ? [preview, next => { preview = next }] : [value, () => {}], useRef: () => ({ current: null }), useEffect: () => {} },
+    primitives: { ImageLightbox: 'ImageLightbox' },
+    uiShared: { ComposerGlyph: () => 'Send' },
   })
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
   const props = { value: '', images: [{ name: 'shot.png', dataUrl: 'data:image/png;base64,AA' }, { name: 'loading.png' }], onChange() {}, onRemoveImage() {} }
-  const opens = all(context.Composer(props)).filter(item => item.props.className === 'nodo-composer-image-open')
+  const opens = all(Composer(props)).filter(item => item.props.className === 'nodo-composer-image-open')
   assert.equal(opens[1].props.disabled, true, 'an image still loading has nothing to enlarge')
-  assert.equal(all(context.Composer(props)).some(item => item.type === 'ImageLightbox'), false)
+  assert.equal(all(Composer(props)).some(item => item.type === 'ImageLightbox'), false)
   opens[0].props.onClick()
-  const lightbox = all(context.Composer(props)).find(item => item.type === 'ImageLightbox')
+  const lightbox = all(Composer(props)).find(item => item.type === 'ImageLightbox')
   assert.equal(lightbox.props.src, 'data:image/png;base64,AA')
   lightbox.props.onClose()
   assert.equal(preview, null)
 })
 
-test('the composer drops its submit button without onSend and leaves Enter to the textarea', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect() {},
-    Menu: 'Menu', Tooltip: 'Tooltip', ComposerGlyph: running => running ? 'Stop' : 'Send',
+test('the composer drops its submit button without onSend and leaves Enter to the textarea', async () => {
+  const { Composer } = await loadClient('composer.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: { useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect: () => {} },
+    uiShared: { ComposerGlyph: running => running ? 'Stop' : 'Send' },
   })
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
   const tooltip = tree => all(tree).find(item => item.type === 'Tooltip')
   const submit = tree => tooltip(tree).props.children
-  const silent = context.Composer({ value: '任务', images: [] })
+  const silent = Composer({ value: '任务', images: [] })
   assert.equal(tooltip(silent), undefined, 'no send or save button is drawn')
   assert.equal(all(silent).find(item => item.props.className === 'nodo-composer-row').children.at(-1).props.className, 'nodo-composer-target', 'the role and model group closes the row')
   all(silent).find(item => item.type === 'textarea').props.onKeyDown({ key: 'Enter', preventDefault() { assert.fail('Enter inserts a line break when there is nothing to send') } })
   silent.props.onSubmit({ preventDefault() {} })
   let sends = 0
   const props = { value: 'hello', images: [], onSend() { sends++ } }
-  let tree = context.Composer(props)
+  let tree = Composer(props)
   assert.equal(submit(tree).children[0], 'Send')
   assert.equal(submit(tree).props.disabled, false)
   tree.props.onSubmit({ preventDefault() {} })
   all(tree).find(item => item.type === 'textarea').props.onKeyDown({ key: 'Enter', preventDefault() {} })
   assert.equal(sends, 2)
   for (const blocked of [{ value: '' }, { readOnly: true }, { busy: true }]) {
-    tree = context.Composer({ ...props, ...blocked })
+    tree = Composer({ ...props, ...blocked })
     assert.equal(submit(tree).props.disabled, true)
     tree.props.onSubmit({ preventDefault() {} })
     all(tree).find(item => item.type === 'textarea').props.onKeyDown({ key: 'Enter', preventDefault() {} })
     assert.equal(sends, 2)
   }
-  assert.equal(submit(context.Composer({ value: '', images: [], running: true, onSend() {} })).children[0], 'Stop')
+  assert.equal(submit(Composer({ value: '', images: [], running: true, onSend() {} })).children[0], 'Stop')
 })
 
-test('the composer model trigger drops to its icon when the control row overflows', () => {
-  const source = readPanelSource()
+test('the composer model trigger drops to its icon when the control row overflows', async () => {
   const effects = [], observed = []
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect: effect => effects.push(effect),
-    Menu: 'Menu', Tooltip: 'Tooltip', ComposerGlyph: () => 'Send',
-    ResizeObserver: class { constructor(callback) { observed.push(callback) } observe() {} disconnect() {} },
-    MutationObserver: class { observe() {} disconnect() {} },
-    getComputedStyle: () => ({ columnGap: '12px', paddingLeft: '8px', paddingRight: '8px' }),
+  const { Composer } = await loadClient('composer.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: { useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect: effect => effects.push(effect) },
+    uiShared: { ComposerGlyph: () => 'Send' },
+    globals: {
+      ResizeObserver: class { constructor(callback) { observed.push(callback) } observe() {} disconnect() {} },
+      MutationObserver: class { observe() {} disconnect() {} },
+      getComputedStyle: () => ({ columnGap: '12px', paddingLeft: '8px', paddingRight: '8px' }),
+    },
   })
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
-  const tree = context.Composer({ value: '', images: [] })
+  const tree = Composer({ value: '', images: [] })
   const attributes = new Set(), widths = [200, 260, 34]
   let width = 600
   all(tree).find(item => item.props.className === 'nodo-composer-row').props.ref.current = {
@@ -1775,11 +1724,8 @@ test('the composer model trigger drops to its icon when the control row overflow
   assert.equal(attributes.has('data-model-compact'), false, 'the text returns once there is room')
 })
 
-test('the composer file card reads the @ being typed: at a line start or after a space, up to the first space', () => {
-  const source = readPanelSource()
-  const context = createContext({})
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf('\nfunction Composer('))).runInContext(context)
-  const mentionOf = value => new Script(`mentionOf(${JSON.stringify(value)})`).runInContext(context)
+test('the composer file card reads the @ being typed: at a line start or after a space, up to the first space', async () => {
+  const { mentionOf } = await loadClient('composer.js')
   assert.deepEqual({ ...mentionOf('@') }, { at: 0, query: '' })
   assert.deepEqual({ ...mentionOf('see @src/ma') }, { at: 4, query: 'src/ma' })
   assert.equal(mentionOf('mail@host'), null, 'an @ inside a word is plain text')
@@ -1787,11 +1733,8 @@ test('the composer file card reads the @ being typed: at a line start or after a
   assert.equal(mentionOf('plain text'), null)
 })
 
-test('the composer command token reads a / or $ from a line start or after a space, never inside a word', () => {
-  const source = readPanelSource()
-  const context = createContext({})
-  new Script(source.slice(source.indexOf('const mentionOf ='), source.indexOf('\nfunction Composer('))).runInContext(context)
-  const triggerOf = value => new Script(`triggerOf(${JSON.stringify(value)})`).runInContext(context)
+test('the composer command token reads a / or $ from a line start or after a space, never inside a word', async () => {
+  const { triggerOf } = await loadClient('composer.js')
   assert.deepEqual({ ...triggerOf('/') }, { char: '/', start: 0, query: '' })
   assert.deepEqual({ ...triggerOf('see /deploy') }, { char: '/', start: 4, query: 'deploy' })
   assert.deepEqual({ ...triggerOf('$') }, { char: '$', start: 0, query: '' })
@@ -1806,38 +1749,34 @@ test('the composer command token reads a / or $ from a line start or after a spa
 // and the native risk confirmation gating the full tier. The catalog is
 // re-read when a role moves engines, so a stale engine's tiers never show.
 test('the permission control copies the native select, glyphs and full-tier confirmation', async () => {
-  const source = readPanelSource()
-  const start = source.indexOf('const PERMISSION_LABELS')
-  assert.ok(start > 0, 'the permission control exists')
   const states = [], refs = [], requests = []
   let dshModes = ['workspace']
   let cursor = 0, refCursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState(initial) {
-      const index = cursor++
-      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
-      return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+  const { PermissionMenu } = await loadClient('composer.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef(initial) {
+        const index = refCursor++
+        if (!(index in refs)) refs[index] = { current: initial }
+        return refs[index]
+      },
     },
-    useRef(initial) {
-      const index = refCursor++
-      if (!(index in refs)) refs[index] = { current: initial }
-      return refs[index]
-    },
-    Fragment: 'Fragment', Menu: 'Menu', RiskConfirmation: 'Risk', IconChevronDownOutlineRegular: 'Down',
-    PermissionIconReadOnlyRegular: 'GlyphPlan', PermissionIconWorkspaceWriteRegular: 'GlyphWorkspace', PermissionIconFullAccessRegular: 'GlyphFull',
-    async call(endpoint, payload) {
+    primitives: { RiskConfirmation: 'Risk', PermissionIconReadOnlyRegular: 'GlyphPlan', PermissionIconWorkspaceWriteRegular: 'GlyphWorkspace', PermissionIconFullAccessRegular: 'GlyphFull' },
+    call: async (endpoint, payload) => {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-catalog') return [{ id: 'zcode', capabilities: { permissionModes: ['plan', 'workspace', 'full'] } },
         { id: 'dsh', capabilities: { permissionModes: dshModes } },
         { id: 'unavailable', capabilities: { permissionModes: [] } }]
     },
   })
-  new Script(source.slice(start, source.indexOf('\nfunction NodoPage(', start))).runInContext(context)
   const tick = () => new Promise(resolve => setImmediate(resolve))
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
   const changes = []
-  const render = profile => { cursor = 0; refCursor = 0; return nodes(context.PermissionMenu({ profile, disabled: false, onChange: change => changes.push(change) })) }
+  const render = profile => { cursor = 0; refCursor = 0; return nodes(PermissionMenu({ profile, disabled: false, onChange: change => changes.push(change) })) }
   const menuOf = tree => tree.find(node => node.type === 'Menu')
   const closed = render({ engine: 'zcode', permission: '' })
   assert.ok(menuOf(closed).props.anchor.props['aria-label'].includes('工作区内修改'), 'the default tier labels the trigger')
@@ -1891,25 +1830,21 @@ test('the permission control copies the native select, glyphs and full-tier conf
 // dialog it opens must leave out a figure the session has no data for instead of
 // showing a zero. The helpers and the three components share one slice so the
 // test exercises the real number words, not copies of them.
-const statsUi = (source) => {
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    Modal: 'Modal', Button: 'Button',
-    IconRefreshOutlineRegular: 'Refresh', IconDatabaseOutlineRegular: 'Database', IconGaugeOutlineRegular: 'Gauge',
+const statsUi = async () => {
+  const { SessionStats, TurnUsage, StatsDialog } = await loadClient('feed.js', {
+    primitives: { IconRefreshOutlineRegular: 'Refresh', IconDatabaseOutlineRegular: 'Database', IconGaugeOutlineRegular: 'Gauge' },
   })
-  new Script(source.slice(source.indexOf('const exactTokens ='), source.indexOf('function NodoLogo('))).runInContext(context)
-  new Script(source.slice(source.indexOf('function TurnUsage('), source.indexOf('\n// The composer is the host', source.indexOf('function TurnUsage(')))).runInContext(context)
-  return context
+  return { SessionStats, TurnUsage, StatsDialog }
 }
 
 const emptyStats = () => ({ turns: 0, steps: 0, llmMs: 0, toolMs: 0, ttftMs: 0, ttftSteps: 0, decodeMs: 0, decodeTokens: 0,
   inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextUsed: 0, contextSize: 0 })
 
-test('the statistics line shows the host chat groups and hides what the session lacks', () => {
-  const source = readPanelSource()
-  const context = statsUi(source)
+test('the statistics line shows the host chat groups and hides what the session lacks', async () => {
+  const source = clientSource('page.js')
+  const { SessionStats } = await statsUi()
   const opened = []
-  const groups = stats => context.SessionStats({ stats, onOpen: () => opened.push(true) })
+  const groups = stats => SessionStats({ stats, onOpen: () => opened.push(true) })
 
   const full = groups({ ...emptyStats(), turns: 2, steps: 134, decodeMs: 2000, decodeTokens: 132,
     inputTokens: 1000, cacheReadTokens: 900000, outputTokens: 5000, contextUsed: 1400, contextSize: 10000 })
@@ -1931,20 +1866,18 @@ test('the statistics line shows the host chat groups and hides what the session 
     'the composer always draws the statistics dock, empty or not')
 })
 
-test('the turn usage caption prints the buckets and stays away when there are none', () => {
-  const source = readPanelSource()
-  const context = statsUi(source)
-  const caption = context.TurnUsage({ usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 900000, cacheWriteTokens: 0 } })
+test('the turn usage caption prints the buckets and stays away when there are none', async () => {
+  const { TurnUsage } = await statsUi()
+  const caption = TurnUsage({ usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 900000, cacheWriteTokens: 0 } })
   assert.equal(caption.props.className, 'nodo-turn-usage')
   assert.deepEqual(caption.children, ['902K tok'], 'the caption counts every bucket')
-  assert.equal(context.TurnUsage({ usage: { inputTokens: 0, outputTokens: 0 } }), null)
-  assert.equal(context.TurnUsage({ usage: undefined }), null, 'a turn the engine reported nothing for keeps no caption')
+  assert.equal(TurnUsage({ usage: { inputTokens: 0, outputTokens: 0 } }), null)
+  assert.equal(TurnUsage({ usage: undefined }), null, 'a turn the engine reported nothing for keeps no caption')
 })
 
-test('the statistics dialog lists the buckets, times and speed the session has', () => {
-  const source = readPanelSource()
-  const context = statsUi(source)
-  const dialog = context.StatsDialog({ stats: { ...emptyStats(), turns: 2, steps: 134, llmMs: 65000, toolMs: 4000,
+test('the statistics dialog lists the buckets, times and speed the session has', async () => {
+  const { StatsDialog } = await statsUi()
+  const dialog = StatsDialog({ stats: { ...emptyStats(), turns: 2, steps: 134, llmMs: 65000, toolMs: 4000,
     ttftMs: 800, ttftSteps: 2, decodeMs: 2000, decodeTokens: 132, inputTokens: 1000, cacheReadTokens: 900000, cacheWriteTokens: 20,
     outputTokens: 5000, contextUsed: 1400, contextSize: 10000 }, onClose: () => {} })
   const sections = dialog.children[0].children.filter(node => node.props.className === 'nodo-stats-section')
@@ -1956,7 +1889,7 @@ test('the statistics dialog lists the buckets, times and speed the session has',
     ['轮次 / 步数', '2 轮 134 步'], ['模型用时', '1分5秒'], ['工具调用用时', '4秒'],
     ['首 token 平均（TTFT）', '0.4秒'], ['输出速度（TPS）', '66 tok/s'], ['上下文', '1,400 / 10,000（14%）'],
   ])
-  const hollow = context.StatsDialog({ stats: { ...emptyStats(), turns: 1, ttftSteps: 3 }, onClose: () => {} })
+  const hollow = StatsDialog({ stats: { ...emptyStats(), turns: 1, ttftSteps: 3 }, onClose: () => {} })
   const hollowRows = hollow.children[0].children.filter(node => node?.props?.className === 'nodo-stats-section')
     .flatMap(section => section.children.slice(1).filter(node => node?.props?.className === 'nodo-stats-row'))
   assert.ok(!hollowRows.some(row => row.children[0].children.includes('首 token 平均（TTFT）')),
@@ -1964,7 +1897,7 @@ test('the statistics dialog lists the buckets, times and speed the session has',
 })
 
 test('the reference dialog keeps its frame still and scrolls the reply pane', () => {
-  const source = readFileSync(new URL('../src/client/session-references.js', import.meta.url), 'utf8')
+  const source = clientSource('session-references.js')
   const rule = selector => source.match(new RegExp(`\\${selector}\\{([^}]*)\\}`))?.[1] ?? ''
   assert.match(rule('.nodo-reference-dialog'), /max-height:calc\(100vh - 120px\)/, 'the card must fit the viewport instead of growing past it')
   const layout = rule('.nodo-reference-layout')
@@ -1975,18 +1908,13 @@ test('the reference dialog keeps its frame still and scrolls the reply pane', ()
   assert.match(preview, /min-height:0/, 'a flex item needs min-height:0 before it can scroll on its own')
 })
 
-test('the run view lists each step and offers only what the run allows a person to do', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    Button: 'Button', Tag: 'Tag', StateDot: 'StateDot', ApprovalCard: 'ApprovalCard', Field: 'Field', RunningLine: 'RunningLine', sessionTime: () => '刚刚',
-  })
-  new Script(source.slice(source.indexOf('const RUN_STATUS ='), source.indexOf('const RECOMMENDED_LABEL'))).runInContext(context)
+test('the run view lists each step and offers only what the run allows a person to do', async () => {
+  const { RunDetail, RunningLine } = await loadClient(['run-cards.js', 'running.js'])
   const nodes = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(nodes)] : []
   const text = tree => nodes(tree).flatMap(node => node.children.filter(child => typeof child === 'string')).join('')
   const button = (tree, label) => nodes(tree).find(node => node.type === 'Button' && node.children.includes(label))
   const acts = [], opened = []
-  const render = (run, draft = { reason: '', text: '' }, extra = {}) => context.RunDetail({ run, draft, busy: false, readOnly: false,
+  const render = (run, draft = { reason: '', text: '' }, extra = {}) => RunDetail({ run, draft, busy: false, readOnly: false,
     canOpen: attempt => attempt.sessionId === 'live', onDraft() {}, onAct: (...args) => acts.push(args), onOpenSession: attempt => opened.push(attempt.sessionId), ...extra })
   const stuck = { id: 'r', workflowName: 'Brief', status: 'needs_reconcile', reason: 'end_unconfirmed', createdAt: 1, settle: 't2', tasks: [
     { id: 't1', name: 'research', kind: 'agent', status: 'done', reason: 'accepted: read it', provenance: 'human', output: 'Notes', more: true, attempts: [] },
@@ -2042,7 +1970,7 @@ test('the run view lists each step and offers only what the run allows a person 
   const working = { ...stuck, status: 'running', reason: undefined, settle: undefined, tasks: [{ id: 't4', name: 'write', kind: 'agent', status: 'active',
     attempts: [{ id: 'a2', n: 1, phase: 'running', profileName: 'Writer', sessionId: 'live' }] }] }
   const engine = { phase: 'tool', tool: 'Bash' }
-  const line = nodes(render(working, undefined, { work: { live: { active: true, since: 5, engine } } })).find(node => node.type === 'RunningLine')
+  const line = nodes(render(working, undefined, { work: { live: { active: true, since: 5, engine } } })).find(node => node.type === RunningLine)
   assert.deepEqual([line?.props.since, line?.props.engine], [5, engine], 'the step in progress shows what its engine is doing')
   assert.equal(nodes(render(working)).some(node => node.type === 'RunningLine'), false)
   assert.equal(nodes(render(stuck, undefined, { work: { live: { active: true } } })).some(node => node.type === 'RunningLine'), false, 'an ended attempt is not shown running')
@@ -2074,29 +2002,21 @@ test('the run view lists each step and offers only what the run allows a person 
 })
 
 test('the rail opens the workflow page and marks runs a person must look at', () => {
-  const source = readPanelSource()
-  assert.match(source, /onWorkflows: \(\) => layoutService\?\.selectPanel\('nodo-workflow'\), runsWaiting: \(view\.runs \?\? \[\]\)\.some\(needsPerson\)/)
-  assert.match(source, /register\(\{ name: 'main', key: 'nodo-workflow' \}, WorkflowEntry\)/)
-  assert.match(source, /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats, runs: answer\.runs/, 'an unchanged state answer still carries the run summaries')
+  assert.match(clientSource('page.js'), /onWorkflows: \(\) => layoutService\?\.selectPanel\('nodo-workflow'\), runsWaiting: \(view\.runs \?\? \[\]\)\.some\(needsPerson\)/)
+  assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-workflow' \}, WorkflowEntry\)/)
+  assert.match(clientSource('ui-shared.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats, runs: answer\.runs/, 'an unchanged state answer still carries the run summaries')
 })
 
-test('the original Nodo rail hosts workflow navigation under its existing logo and chrome', () => {
-  const source = readPanelSource()
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-    useState: initial => [initial, () => {}], NodoLogo: 'NodoLogo', layoutService: { selectPanel() {} },
-    Tooltip: 'Tooltip', StateDot: 'StateDot', Fragment: 'Fragment',
-    ARCHIVED_VIEWS: { hide: '隐藏已归档', all: '全部对话（显示已归档）', only: '仅显示已归档' }, SESSION_FOLD: 10,
-    ...Object.fromEntries([...new Set([...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0]))].map(name => [name, name])),
-  })
-  new Script(source.slice(source.indexOf('function Rail('), source.indexOf('\nfunction Field('))).runInContext(context)
+test('the original Nodo rail hosts workflow navigation under its existing logo and chrome', async () => {
+  const { Rail, setHostServices, NodoLogo } = await loadRail({ useState: initial => [initial, () => {}] })
+  setHostServices({ layoutService: { selectPanel() {} } })
   const navigation = { type: 'navigation', props: {}, children: ['工作流列表'] }
   let returned = false
-  const tree = context.Rail({ view: { profiles: [], workspaces: [] }, workflowNavigation: navigation, onBack: () => { returned = true } })
+  const tree = Rail({ view: { profiles: [], workspaces: [] }, workflowNavigation: navigation, onBack: () => { returned = true } })
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   assert.equal(tree.props['aria-label'], '工作流导航')
   assert.ok(nodes(tree).includes(navigation))
-  assert.equal(nodes(tree).filter(node => node.type === 'NodoLogo').length, 1)
+  assert.equal(nodes(tree).filter(node => node.type === NodoLogo).length, 1)
   assert.equal(nodes(tree).some(node => node.props['aria-label'] === '角色'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-search'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-workflow-entry'), false, 'the workflow page needs no entry to itself')

@@ -1,7 +1,11 @@
+import { h, useState, useEffect, useRef, useSyncExternalStore, useStateView, nativeSpace } from './ui-shared.js'
+import { RoleAvatar } from './avatar.tsx'
+import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
+
 const RUNNING_COLORS = [...AVATAR_TEMPLATES, ...AVATAR_TEMPLATES.slice(1, -1).reverse()]
 const RUNNING_COLOR_HOLD = 3160
 
-const runDuration = ms => {
+export const runDuration = ms => {
   const total = Math.max(0, Math.floor(ms / 1000))
   const parts = []
   const hours = Math.floor(total / 3600)
@@ -13,7 +17,7 @@ const runDuration = ms => {
   return parts.join(' ')
 }
 
-function nativeRunningSince(snapshot) {
+export function nativeRunningSince(snapshot) {
   let latest
   for (const turn of snapshot.views.get('chat')?.timeline.turns.values() ?? []) {
     if (!latest || turn.turn > latest.turn) latest = turn
@@ -21,7 +25,7 @@ function nativeRunningSince(snapshot) {
   return latest?.status === 'open' ? latest.start?.time : undefined
 }
 
-function NativeRunningDock({ sessionId, useSession, useConversation }) {
+export function NativeRunningDock({ sessionId, useSession, useConversation }) {
   const space = useSyncExternalStore(nativeSpace.subscribe, nativeSpace.getSnapshot)
   const { view } = useStateView()
   const work = Object.values(view?.profiles ?? {}).flatMap(profile => profile.sessions ?? []).find(session =>
@@ -34,7 +38,7 @@ function NativeRunningDock({ sessionId, useSession, useConversation }) {
     : null
 }
 
-function engineRunningLabel(engine, now) {
+export function engineRunningLabel(engine, now) {
   if (!engine) return '正在思考'
   const retryText = typeof engine.detail === 'string' && engine.detail ? `（${engine.detail.slice(0, 80)}）` : ''
   const label = ({ 'waiting-question': '等待回答', 'waiting-approval': '等待审批', tool: `正在执行 ${engine.tool ?? '工具'}`, thinking: '正在思考', responding: '正在回复', running: '等待 Agent',
@@ -43,7 +47,7 @@ function engineRunningLabel(engine, now) {
   return silent >= 30000 ? `${label} · ${runDuration(silent)} 未收到新事件` : label
 }
 
-function RunningLine({ since, engine }) {
+export function RunningLine({ since, engine }) {
   const clock = useRef({ since, at: Date.now() })
   if (clock.current.since !== since) clock.current = { since, at: Date.now() }
   const epoch = Number.isFinite(since) ? since : clock.current.at
@@ -87,7 +91,7 @@ function RunningLine({ since, engine }) {
         style: { '--nodo-running-stagger': `${120 + index * 170}ms` } })))))
 }
 
-const RUNNING_CSS = `
+export const RUNNING_CSS = `
 [data-conversation-content]:has([data-nodo-native-running]) [data-chat-running]{display:none}
 .nodo-running-dock{flex:none;padding:0 calc(var(--dsh-composer-side-clearance,16px) + 16px) 8px}
 .nodo-running-dock>.nodo-running{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto}

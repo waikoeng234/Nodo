@@ -1,9 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { Script, createContext } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 
-function harness() {
+async function harness() {
   const cleanups = []
   const listeners = new Set()
   const navigations = new Set()
@@ -20,14 +19,13 @@ function harness() {
     uiSession: { adapter: { current: { getSnapshot: () => ({ key: current }), subscribe: listener => { navigations.add(listener); return () => navigations.delete(listener) } } } },
     conversation: {},
   }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    Fragment: 'Fragment', useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useEffect() {},
-    useState: value => [value, () => {}], IconUsersOutlineRegular: 'Icon',
+  const { createSessionReferences } = await loadClient('session-references.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: { useState: value => [value, () => {}], useEffect: () => {} },
+    primitives: { IconUsersOutlineRegular: 'Icon' },
     call: async (endpoint, payload) => { requests.push({ endpoint, payload }); return { id: payload.id, target: payload.target } },
   })
-  new Script(readFileSync(new URL('../src/client/session-references.js', import.meta.url), 'utf8')).runInContext(context)
-  const ui = context.createSessionReferences(ctx, space)
+  const ui = createSessionReferences(ctx, space)
   const input = { draft: '', phase: 'plain', draftRev: 11, occurrences: [] }
   return { ui, requests, edits, input, get command() { return command }, get source() { return source },
     render: () => ui.ReferenceDock({ sessionId: 'target', useInput: fn => fn(input), inputActions: { insertText: (...args) => edits.push(args) } }),
@@ -37,8 +35,8 @@ function harness() {
   }
 }
 
-test('the native menu contribution is limited to Nodo and its picker closes on navigation', () => {
-  const h = harness()
+test('the native menu contribution is limited to Nodo and its picker closes on navigation', async () => {
+  const h = await harness()
   assert.equal(h.command.label(), '引用会话')
   assert.equal(h.command.available(), true)
   h.command.ui.run({ sessionId: 'target' })
@@ -54,7 +52,7 @@ test('the native menu contribution is limited to Nodo and its picker closes on n
 })
 
 test('native serialization retains its target when the user switches sessions during a send', async () => {
-  const h = harness()
+  const h = await harness()
   const ref = JSON.stringify({ id: 'snapshot-id', target: 'target' })
   h.navigate('other')
   const serialized = await h.source.codec.serialize(ref, new AbortController().signal)
@@ -67,8 +65,8 @@ test('native serialization retains its target when the user switches sessions du
   h.dispose()
 })
 
-test('removing a reference maps native chip coordinates without replacing text or other attachments', () => {
-  const h = harness()
+test('removing a reference maps native chip coordinates without replacing text or other attachments', async () => {
+  const h = await harness()
   h.input.occurrences = [
     { source: 'reference', offset: 2, length: 20 },
     { source: 'nodo-reference', ref: JSON.stringify({ id: 'snapshot', target: 'target' }), label: 'Planner · Plan', offset: 30, length: 60, occurrenceId: 2 },
@@ -83,26 +81,27 @@ test('removing a reference maps native chip coordinates without replacing text o
 
 // The dialog's 来源角色 select pairs with 来源项目: either alone narrows the
 // same session rows, and 全部角色 lifts the role side again.
-test('the reference dialog narrows source sessions by the picked role', () => {
-  const source = readFileSync(new URL('../src/client/session-references.js', import.meta.url), 'utf8')
+test('the reference dialog narrows source sessions by the picked role', async () => {
   const slots = []
   slots[0] = { workspaces: [{ id: 'w', name: 'bot' }], profiles: [
     { id: 'fish', name: '大肥鱼', sessions: [{ id: 's1', name: '读当前任务', workspaceRef: 'w', updatedAt: 2 }] },
     { id: 'coder', name: '贼 coder', sessions: [{ id: 's2', name: '删除新会话', workspaceRef: 'w', updatedAt: 3 }] },
   ] }
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: (initial) => {
-      const slot = cursor++
-      if (!(slot in slots)) slots[slot] = initial
-      return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  const { createSessionReferences } = await loadClient('session-references.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: {
+      useState: (initial) => {
+        const slot = cursor++
+        if (!(slot in slots)) slots[slot] = initial
+        return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+      },
+      useEffect: () => {},
     },
-    useEffect() {}, useSyncExternalStore: (_subscribe, snapshot) => snapshot(), Fragment: 'Fragment',
-    Modal: 'Modal', Button: 'Button', Input: 'Input', MarkdownText: 'MarkdownText', MARKDOWN_LABELS: {},
+    primitives: { Modal: 'Modal', Button: 'Button', Input: 'Input', MarkdownText: 'MarkdownText' },
     call: async () => ({}),
   })
-  new Script(source.slice(source.indexOf('function ReferenceDialog('), source.indexOf('\n  function ReferenceDock('))).runInContext(context)
+  const context = { ReferenceDialog: createSessionReferences({}, { getSnapshot: () => ({ active: true }), subscribe: () => () => {} }).ReferenceDialog }
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
   const render = () => { cursor = 0; return nodes(context.ReferenceDialog({ target: 't', snapshot: null, inputActions: {}, onClose: () => {} })) }
@@ -119,22 +118,24 @@ test('the reference dialog narrows source sessions by the picked role', () => {
 })
 
 test('an unbound draft can select a legacy reply without accessing a native input', async () => {
-  const source = readFileSync(new URL('../src/client/session-references.js', import.meta.url), 'utf8')
   const states = [], effects = new Map(), requests = [], picked = []
   let cursor = 0, pending = [], closed = 0
   const result = { source: { profileName: 'Planner', sessionName: 'Plan' }, messages: [{ id: 'reply', at: 1, text: 'Complete report' }] }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    useState: initial => { const at = cursor++; if (!(at in states)) states[at] = initial; return [states[at], value => { states[at] = value }] },
-    useEffect: (effect, deps) => { const at = cursor++, before = effects.get(at); if (!before || deps.some((value, i) => value !== before[i])) { effects.set(at, deps); pending.push(effect) } },
-    Modal: 'Modal', Fragment: 'Fragment', Button: 'Button', Input: 'Input', MarkdownText: 'MarkdownText', MARKDOWN_LABELS: {},
-    call: async (endpoint, payload) => {
-      requests.push({ endpoint, payload })
-      if (endpoint === 'state') return { workspaces: [{ id: 'w' }], profiles: [{ id: 'p', name: 'Planner', sessions: [{ id: 's', name: 'Plan', workspaceRef: 'w', updatedAt: 1 }] }] }
-      return endpoint === 'reference-create' ? { id: 'snapshot', ...result } : result
+  const call = async (endpoint, payload) => {
+    requests.push({ endpoint, payload })
+    if (endpoint === 'state') return { workspaces: [{ id: 'w' }], profiles: [{ id: 'p', name: 'Planner', sessions: [{ id: 's', name: 'Plan', workspaceRef: 'w', updatedAt: 1 }] }] }
+    return endpoint === 'reference-create' ? { id: 'snapshot', ...result } : result
+  }
+  const { createSessionReferences } = await loadClient('session-references.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: {
+      useState: initial => { const at = cursor++; if (!(at in states)) states[at] = initial; return [states[at], value => { states[at] = value }] },
+      useEffect: (effect, deps) => { const at = cursor++, before = effects.get(at); if (!before || deps.some((value, i) => value !== before[i])) { effects.set(at, deps); pending.push(effect) } },
     },
+    primitives: { Modal: 'Modal', Button: 'Button', Input: 'Input', MarkdownText: 'MarkdownText' },
+    call,
   })
-  new Script(source.slice(source.indexOf('function ReferenceDialog('), source.indexOf('\n  function ReferenceDock('))).runInContext(context)
+  const context = { ReferenceDialog: createSessionReferences({}, { getSnapshot: () => ({ active: true }), subscribe: () => () => {} }).ReferenceDialog }
   const all = node => node && typeof node === 'object' ? [node, ...Object.values(node.props ?? {}).flatMap(all), ...(node.children ?? []).flatMap(all)] : []
   const props = { draft: 'draft-id', workspaceId: 'w', onPick: value => picked.push(value), onClose: () => closed++ }
   const render = () => { cursor = 0; const tree = context.ReferenceDialog(props); const next = pending; pending = []; next.forEach(effect => effect()); return tree }

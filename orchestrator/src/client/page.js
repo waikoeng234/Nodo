@@ -1,26 +1,41 @@
+import {
+  h, useState, useEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
+  subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular,
+} from './ui-shared.js'
+import { RolePicker } from './role-seat.js'
+import { Rail } from './session-rail.js'
+import { RunningLine } from './running.js'
+import { Feed, SessionStats, StatsDialog } from './feed.js'
+import { Composer, GoalDialog } from './composer.js'
+import { ApprovalCard, needsPerson } from './run-cards.js'
+import { ProfileDialog } from './profile-dialogs.js'
+import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
+import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
+import { wfSubscribeSidebar, wfSidebarSnapshot } from './workflow.js'
+
 // Unsent drafts outlive the page: text is kept in localStorage across reloads,
 // pasted images (too large for storage) in memory across remounts.
-let heldImages = {}
-const readDrafts = () => {
+export let heldImages = {}
+export const readDrafts = () => {
   try { return JSON.parse(localStorage.getItem('nodo.drafts')) ?? {} } catch { return {} }
 }
 
 let navigationSnapshot
 const navigationListeners = new Set()
-const readNavigation = () => {
+export const readNavigation = () => {
   if (navigationSnapshot === undefined) {
     try { navigationSnapshot = JSON.parse(localStorage.getItem('nodo.navigation') ?? localStorage.getItem('orchestrator.navigation')) ?? {} } catch { navigationSnapshot = {} }
   }
   return navigationSnapshot
 }
-const subscribeNavigation = listener => { navigationListeners.add(listener); return () => navigationListeners.delete(listener) }
-const setNavigation = update => {
+export const subscribeNavigation = listener => { navigationListeners.add(listener); return () => navigationListeners.delete(listener) }
+export const setNavigation = update => {
   navigationSnapshot = typeof update === 'function' ? update(readNavigation()) : update
   try { localStorage.setItem('nodo.navigation', JSON.stringify(navigationSnapshot)) } catch {}
   for (const listener of navigationListeners) listener()
 }
-const nativeRole = profile => profile?.engine === 'dsh'
-const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
+export const nativeRole = profile => profile?.engine === 'dsh'
+export const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   if (!profile || !workspace) return
   const sessions = profile.sessions.filter(item => !item.archivedAt
     && (item.workspaceRef ?? workspaces.find(workspace => workspace.cwd === item.cwd)?.id ?? profile.workspaceId) === workspace.id)
@@ -29,7 +44,59 @@ const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
     ?? sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0]
 }
 
-function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation = null } = {}) {
+// The rail's session handlers keep the page's state in one object so the rail
+// wiring and tests drive the same path.
+export const selectSession = async (role, id, project, page) => {
+  const { workspace, busy, workspaces, navigation, sidebarOnly, readOnly, remember, refresh, setBusy, setActionError, setEditing } = page
+  project ??= workspace
+  if (busy) return
+  const origin = nativeSpace.getSnapshot()
+  const current = () => nativeSpace.getSnapshot() === origin
+  setBusy(true); setActionError('')
+  try {
+    id ??= sessionForWorkspace(role, project, workspaces, navigation.sessions?.[`${project?.id}:${role.id}`])?.id
+    if (!id) {
+      remember(role.id, project?.id); setEditing(null)
+      if (sidebarOnly) nativeSpace.showLegacy()
+      return
+    }
+    const native = nativeRole(role) && openNativeSession
+    if (!current()) return
+    if (native) {
+      const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
+      if (!current()) return
+      remember(role.id, project.id, opened.conversationId)
+      setEditing(null)
+      openNativeSession(opened.sessionId)
+      await refresh(true)
+      return
+    }
+    if (!readOnly) { await call('session-select', { profile: role.id, session: id }); await refresh(true) }
+    if (!current()) return
+    remember(role.id, project.id, id); setEditing(null)
+    if (sidebarOnly) nativeSpace.showLegacy()
+  } catch (failure) { setActionError(failure.message) }
+  finally { setBusy(false) }
+}
+
+export const startConversation = (roleId, page) => {
+  const { workspace, busy, readOnly, setEditing } = page
+  if (!workspace || busy || readOnly) return
+  setEditing(null)
+  nativeSpace.startDraft({ profile: roleId, workspace: workspace.id })
+}
+
+export const openInitialSidebarSession = page => {
+  const { sidebarOnly, initiallyOpened, profile, workspace, sessionId } = page
+  if (!sidebarOnly || initiallyOpened.current || !profile || !workspace) return
+  initiallyOpened.current = true
+  const state = nativeSpace.getSnapshot()
+  if (state.nodoSession || state.drafting) return
+  if (nativeRole(profile)) void selectSession(profile, sessionId, workspace, page)
+  else nativeSpace.showLegacy()
+}
+
+export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation = null } = {}) {
   const { view, error, refresh } = useStateView()
   const navigation = useSyncExternalStore(subscribeNavigation, readNavigation)
   const space = useSyncExternalStore(nativeSpace.subscribe, nativeSpace.getSnapshot)
@@ -169,36 +236,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     if (workspace?.id === id) setNavigation(current => ({ ...current, workspace: null }))
     setWorkspaceDialog(null)
   }
-  const selectSession = async (role, id, project = workspace) => {
-    if (busy) return
-    const origin = nativeSpace.getSnapshot()
-    const current = () => nativeSpace.getSnapshot() === origin
-    setBusy(true); setActionError('')
-    try {
-      id ??= sessionForWorkspace(role, project, workspaces, navigation.sessions?.[`${project?.id}:${role.id}`])?.id
-      if (!id) {
-        remember(role.id, project?.id); setEditing(null)
-        if (sidebarOnly) nativeSpace.showLegacy()
-        return
-      }
-      const native = nativeRole(role) && openNativeSession
-      if (!current()) return
-      if (native) {
-        const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
-        if (!current()) return
-        remember(role.id, project.id, opened.conversationId)
-        setEditing(null)
-        openNativeSession(opened.sessionId)
-        await refresh(true)
-        return
-      }
-      if (!readOnly) { await call('session-select', { profile: role.id, session: id }); await refresh(true) }
-      if (!current()) return
-      remember(role.id, project.id, id); setEditing(null)
-      if (sidebarOnly) nativeSpace.showLegacy()
-    } catch (failure) { setActionError(failure.message) }
-    finally { setBusy(false) }
-  }
+  const pageEnv = { workspace, busy, workspaces, navigation, sidebarOnly, readOnly, remember, refresh, setBusy, setActionError, setEditing }
+  const select = (role, id, project) => selectSession(role, id, project, pageEnv)
   const archiveSession = async (role, id, archived) => {
     if (busy || readOnly) return
     setBusy(true); setActionError('')
@@ -218,11 +257,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     await refresh(true)
     setSessionDialog(null)
   }
-  const startConversation = roleId => {
-    if (!workspace || busy || readOnly) return
-    setEditing(null)
-    nativeSpace.startDraft({ profile: roleId, workspace: workspace.id })
-  }
+  const startDraft = roleId => startConversation(roleId, pageEnv)
   const attach = async (files) => {    try {
       const added = await Promise.all(files.map(readImage))
       setPastedImages(current => ({ ...current, [draftKey]: [...(current[draftKey] ?? []), ...added] }))
@@ -311,12 +346,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
 
   const initiallyOpened = useRef(false)
   useEffect(() => {
-    if (!sidebarOnly || initiallyOpened.current || !profile || !workspace) return
-    initiallyOpened.current = true
-    const state = nativeSpace.getSnapshot()
-    if (state.nodoSession || state.drafting) return
-    if (nativeRole(profile)) void selectSession(profile, sessionId)
-    else nativeSpace.showLegacy()
+    openInitialSidebarSession({ sidebarOnly, initiallyOpened, profile, workspace, sessionId, ...pageEnv })
   }, [sidebarOnly, profile?.id, workspace?.id])
 
   return h('section', { className: `nodo-page${sidebarOnly ? ' nodo-space-sidebar' : ''}`, 'aria-label': sidebarOnly ? 'Nodo 空间' : 'Nodo' },
@@ -326,21 +356,21 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
         view: railView, profile, workspace, sessionId, editing, draft: space.draft, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, workflowNavigation,
         onSelect: id => {
           const role = view.profiles.find(item => item.id === id)
-          if (role && workspace) void selectSession(role)
+          if (role && workspace) void select(role)
           else { remember(id, workspace?.id); setActionError(''); setEditing(null); if (sidebarOnly) nativeSpace.showLegacy() }
         },
         onSelectWorkspace: id => {
           remember(profile?.id, id); setActionError(''); setEditing(null)
           if (profile) {
             const project = workspaces.find(item => item.id === id)
-            void selectSession(profile, undefined, project)
+            void select(profile, undefined, project)
           }
         },
-        onSelectSession: (role, id) => void selectSession(role, id),
+        onSelectSession: (role, id) => void select(role, id),
         onArchiveSession: (role, id, archived) => void archiveSession(role, id, archived),
         onRenameSession: (role, session) => setSessionDialog({ role, session }),
         onPinSession: (role, id, pinned) => void updateSession(role, id, { pinned }),
-        onNewSession: startConversation,
+        onNewSession: startDraft,
         onNewWorktree: () => { if (!readOnly) setWorktreeOpen(true) },
         onNewRole: () => setEditing({ kind: 'profile', profile: null }),
         onEditRole: item => setEditing({ kind: 'profile', profile: item }),
@@ -396,15 +426,15 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     )
 }
 
-function PanelIcon({ size = 16 }) {
+export function PanelIcon({ size = 16 }) {
   return h('span', { className: 'nodo-panel-logo' }, h(NodoLogo, { compact: size === 18, width: size === 18 ? size : 96 }))
 }
 
-function NativeWelcome({ sessionId }) {
+export function NativeWelcome({ sessionId }) {
   return h(NewConversation, { key: sessionId, sourceSessionId: sessionId })
 }
 
-function NodoEntry() {
+export function NodoEntry() {
   const state = useSyncExternalStore(nativeSpace.subscribe, nativeSpace.getSnapshot)
   useEffect(() => { nativeSpace.enter() }, [])
   // A kept draft only shows once reopened: otherwise the host session is on show.
@@ -412,7 +442,7 @@ function NodoEntry() {
     : state.drafting && state.draft ? h(NewConversation, { key: state.draft.id, draft: state.draft }) : null
 }
 
-function NodoSidebar({ collapsed }) {
+export function NodoSidebar({ collapsed }) {
   const workflowNavigation = useSyncExternalStore(wfSubscribeSidebar, wfSidebarSnapshot)
   const label = collapsed ? '展开侧边栏' : '收起侧边栏'
   return h('div', { className: 'nodo-space' },

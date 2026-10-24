@@ -31,8 +31,8 @@
   ],
   "scripts": {
     "build:drivers": "tsc -p agent-drivers",
-    "build": "npm run build:drivers && node scripts/build-client.mjs",
-    "build:check": "node scripts/check-drivers-build.mjs && node scripts/build-client.mjs --check",
+    "build": "npm run build:drivers && tsc -p src/client && node scripts/build-client.mjs",
+    "build:check": "node scripts/check-drivers-build.mjs && tsc -p src/client && node scripts/build-client.mjs --check",
     "verify:engine": "node scripts/verify-engine.mjs",
     "test": "npm run build:drivers && node --test test/*.test.js"
   },
@@ -53,6 +53,8 @@
   },
   "devDependencies": {
     "@types/node": "24.19.2",
+    "@types/react": "18.3.31",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2"
   }
 }

@@ -1,4 +1,4 @@
-function createCompletionTracker(storage, events) {
+export function createCompletionTracker(storage, events) {
   const key = 'nodo.completions.seen'
   const read = () => {
     try {

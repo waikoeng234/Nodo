@@ -1,3 +1,11 @@
+import {
+  h, Fragment, useState, useEffect, useRef, call, GOAL_FORM, Menu, Tooltip, ImageLightbox, RiskConfirmation, Button, Modal, ComposerGlyph,
+  IconPlusOutlineRegular, IconPaperclipOutlineRegular, IconGoalOutlineRegular, IconPlanOutlineRegular, IconCompactOutlineRegular,
+  IconUsersOutlineRegular, IconChevronDownOutlineRegular,
+  PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, PermissionIconFullAccessRegular,
+} from './ui-shared.js'
+import { ModelPicker } from './feed.js'
+
 // The composer is the host's InputBar: one card on the composer surface with the
 // text surface on top and the control row below it, Enter sending, Shift+Enter
 // breaking the line, and the same round primary button that turns into stop while
@@ -10,7 +18,7 @@ const addRow = (name, alias, description) => h('span', { className: 'nodo-add-ro
 
 // The file mention being typed: an '@' at the start or after a space, with no
 // space after it yet. Its text is the search for the file card.
-const mentionOf = value => {
+export const mentionOf = value => {
   const at = value.lastIndexOf('@')
   if (at === -1 || (at > 0 && !/\s/.test(value[at - 1])) || /\s/.test(value.slice(at + 1))) return null
   return { at, query: value.slice(at + 1) }
@@ -20,7 +28,7 @@ const mentionOf = value => {
 // running to the end of the draft — the native trigger's word-boundary rule, so
 // a slash inside a word or a path stays plain text. The character itself is
 // never swallowed; `start` keys Escape dismissal while the token keeps growing.
-const triggerOf = value => {
+export const triggerOf = value => {
   const cut = /\s\S*$/.exec(value)
   const start = cut === null ? 0 : cut.index + 1
   const token = value.slice(start)
@@ -28,7 +36,7 @@ const triggerOf = value => {
   return { char: token[0], start, query: token.slice(1) }
 }
 
-function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
@@ -183,7 +191,7 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
 // themselves, and an engine without a scannable source says so. Every listed
 // command sits in the engine's own scan roots, so its slash line resolves once
 // sent; the menu never offers a skill the engine would read as literal text.
-function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onGoal, onModelChange, onCompact, onUpload, onReference }) {
+export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onGoal, onModelChange, onCompact, onUpload, onReference }) {
   const [manual, setManual] = useState(false)
   const [dismissed, setDismissed] = useState(null)
   const [pane, setPane] = useState('root')
@@ -303,7 +311,7 @@ const FULL_ACCESS_CONFIRM = {
   closeLabel: '关闭',
   confirmLabel: '启用完全权限',
 }
-function PermissionMenu({ profile, disabled, onChange }) {
+export function PermissionMenu({ profile, disabled, onChange }) {
   const [open, setOpen] = useState(false)
   const [modes, setModes] = useState(null)
   const [confirming, setConfirming] = useState(null)
@@ -353,7 +361,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
 }
 
 // Responsibilities use the same identity injection as the role text.
-function GoalDialog({ profile, onSaved, onCancel }) {
+export function GoalDialog({ profile, onSaved, onCancel }) {
   const [goal, setGoal] = useState(profile.goal ?? '')
   const [busy, setBusy] = useState(false)
   const submit = event => {

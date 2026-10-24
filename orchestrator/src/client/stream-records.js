@@ -1,4 +1,7 @@
-function supportedStreamRecord(value) {
+import { h, useState, useEffect, useRef, call, DisclosureRow, DiffBlock, CodeBlock, Button, IconCodeOutlineRegular, TerminalBlock } from './ui-shared.js'
+import { TranscriptImage } from './feed.js'
+
+export function supportedStreamRecord(value) {
   return value?.version === 1 && ['tool', 'changes'].includes(value.kind) && value.mode === 'snapshot' && value.body && typeof value.body === 'object'
     && !Array.isArray(value.body) && typeof value.runId === 'string' && typeof value.entityId === 'string'
     && Number.isSafeInteger(value.revision) && value.revision >= 0
@@ -18,7 +21,7 @@ const RESOURCE_REASONS = { 'unsupported-type': '当前宿主不支持此内容�
   'storage-unavailable': '图片未能保存，仅保留来源信息', 'attachment-unavailable': '源附件不可读取', 'source-limit': '会话详情超过保存上限，图片未保存', 'no-reader': '宿主未提供读取或预览通道' }
 // A saved image loads through the same attachment route as pasted images; a
 // link is displayed but never fetched, and audio keeps no fake player.
-function ResourceItem({ resource }) {
+export function ResourceItem({ resource }) {
   const label = RESOURCE_LABELS[resource.kind] ?? '资源'
   const meta = [resource.mimeType, Number.isFinite(resource.bytes) ? streamSize(resource.bytes) : null].filter(Boolean).join(' · ')
   const suffix = [resource.name, meta].filter(Boolean).join(' · ')
@@ -47,7 +50,7 @@ function ResourceItem({ resource }) {
   return h('p', { 'data-nodo-resource': 'file', className: 'nodo-note' },
     `${label}${suffix ? ` · ${suffix}` : ''}：${RESOURCE_REASONS[resource.reason] ?? '仅保留引用。'}`)
 }
-function ResourceList({ resources }) {
+export function ResourceList({ resources }) {
   const items = Array.isArray(resources) ? resources.filter(resource => resource && typeof resource === 'object' && typeof resource.kind === 'string') : []
   if (items.length === 0) return null
   return h('div', { 'data-nodo-resources': '' }, items.map((resource, index) => h(ResourceItem, { key: index, resource })))
@@ -63,7 +66,7 @@ function streamProgress(progress) {
   return parts.length ? parts.join(' · ') : null
 }
 
-function ChangedFile({ file, load, loaded, available, root, request }) {
+export function ChangedFile({ file, load, loaded, available, root, request }) {
   const [open, setOpen] = useState(false)
   const [content, setContent] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -100,7 +103,7 @@ function ChangedFile({ file, load, loaded, available, root, request }) {
     children: h('div', null, edits, view) })
 }
 
-function FileChangesContent({ value, record, full, load, busy, available, request }) {
+export function FileChangesContent({ value, record, full, load, busy, available, request }) {
   const [expanded, setExpanded] = useState(false)
   useEffect(() => setExpanded(false), [record.runId, record.entityId, record.revision])
   const files = Array.isArray(value.body.files) ? value.body.files : []
@@ -122,7 +125,7 @@ function FileChangesContent({ value, record, full, load, busy, available, reques
       h(CodeBlock, { code: value.body.turnDiff, lang: 'diff', copyLabel: '复制', copiedLabel: '已复制' })))
 }
 
-function StreamRecordCard({ record, request }) {
+export function StreamRecordCard({ record, request }) {
   const [open, setOpen] = useState(false)
   const [full, setFull] = useState(null)
   const [busy, setBusy] = useState(false)

@@ -6,6 +6,15 @@
 // growth pins the floor only while the reader stays within FOLLOW_PX of it;
 // scrolling away pauses following, and the floating button or a sent message
 // resumes it.
+import {
+  h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, MarkdownText, StateDot,
+  Button, Menu, Modal, ComposerGlyph,
+  IconSparkleRegular, IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
+  IconDatabaseOutlineRegular, IconGaugeOutlineRegular, IconRefreshOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
+  billedTokens, cacheHitPercent, contextPercent, compactTokens, compactDuration, exactTokens, tokensPerSecond, turnTokens,
+} from './ui-shared.js'
+import { supportedStreamRecord, StreamRecordCard } from './stream-records.js'
+
 const FOLLOW_PX = 25
 
 const brief = text => (text ?? '').slice(0, 400)
@@ -34,7 +43,7 @@ const completedLead = text => {
 // leading glyph, the title, a separator dot and a one-line summary; opening it
 // shows the recorded text in the host's shapes — the tool IO card for a call, the
 // compact Markdown body for reasoning.
-function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error }) {
+export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error }) {
   const [open, setOpen] = useState(false)
   const text = typeof body === 'string' ? body.trim() : ''
   const expandable = text !== '' || Boolean(input) || Boolean(output) || Boolean(progress)
@@ -83,7 +92,7 @@ function progressText(progress) {
 
 // The engine's plan: one replaceable row per turn showing the step list the
 // source last sent — updates rewrite it in place, they never append.
-function PlanRow({ plan, running }) {
+export function PlanRow({ plan, running }) {
   const [open, setOpen] = useState(false)
   const steps = Array.isArray(plan.steps) ? plan.steps : []
   const active = steps.find(step => step.status === 'in_progress') ?? steps[0]
@@ -107,7 +116,7 @@ function PlanRow({ plan, running }) {
   })
 }
 
-function transcriptRows(lines) {
+export function transcriptRows(lines) {
   const rows = []
   const open = new Map()
   for (const [index, item] of lines.entries()) {
@@ -168,7 +177,7 @@ function processBlocks(rows) {
   return blocks
 }
 
-function ProcessGroup({ rows, running, children }) {
+export function ProcessGroup({ rows, running, children }) {
   const [open, setOpen] = useState(false)
   const thinking = rows.filter(item => item.kind === 'thinking').length
   const plans = rows.filter(item => item.kind === 'plan').length
@@ -187,7 +196,7 @@ function ProcessGroup({ rows, running, children }) {
   })
 }
 
-function Feed({ profile, session, revision, work, sentTick }) {
+export function Feed({ profile, session, revision, work, sentTick }) {
   const [feed, setFeed] = useState({ key: null, lines: [], error: '' })
   const [following, setFollowing] = useState(true)
   const [activeTurn, setActiveTurn] = useState(null)
@@ -380,8 +389,7 @@ function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
 // row exists here. Catalog values come from the engine's cached scan, fetched
 // on mount so the trigger can resolve labels without a first open; an engine
 // never scanned is scanned on first open.
-function ModelPicker({ profile, disabled, onChange }) {
-  const [open, setOpen] = useState(false)
+export function ModelPicker({ profile, disabled, onChange }) {  const [open, setOpen] = useState(false)
   const [pane, setPane] = useState('root')
   const [engines, setEngines] = useState([])
   const [scanning, setScanning] = useState(false)
@@ -476,7 +484,7 @@ function ModelPicker({ profile, disabled, onChange }) {
 // called: ZCode routes read `providerId$modelId` and the DSH pair a JSON array.
 // A route the catalog cannot explain yet — an engine never scanned — still shows
 // the model's own name, the same wording a resolved catalog label carries.
-function modelName(raw) {
+export function modelName(raw) {
   const id = typeof raw === 'string' ? raw : ''
   if (id.startsWith('[')) {
     try {
@@ -489,7 +497,7 @@ function modelName(raw) {
 }
 
 // Transcript images load by id on mount, so the transcript holds only references.
-function TranscriptImage({ image }) {
+export function TranscriptImage({ image }) {
   const [src, setSrc] = useState(null)
   const [error, setError] = useState(false)
   const [preview, setPreview] = useState(false)
@@ -527,7 +535,7 @@ function MessageTime({ at }) {
   return text === '' ? null : h('time', { className: 'nodo-msg-time', dateTime: new Date(at).toISOString() }, text)
 }
 
-function TurnUsage({ usage }) {
+export function TurnUsage({ usage }) {
   const total = turnTokens(usage ?? {})
   return total > 0 ? h('div', { className: 'nodo-turn-usage', title: '本轮用量' }, `${compactTokens(total)} tok`) : null
 }
@@ -537,7 +545,7 @@ function TurnUsage({ usage }) {
 // of the context window the newest request occupies. A figure the session has no
 // data for is left out rather than shown as a zero, and pressing the line opens
 // the session statistics dialog.
-function SessionStats({ stats, onOpen }) {
+export function SessionStats({ stats, onOpen }) {
   if (stats === undefined) return null
   const billed = billedTokens(stats)
   const total = billed + stats.outputTokens
@@ -570,7 +578,7 @@ function SessionStats({ stats, onOpen }) {
 // The dialog the statistics line opens: the host chat's own session statistics —
 // token usage per bucket, cache hit, model and tool wall time, the average first
 // token latency and the output speed. Only the figures this session has are shown.
-function StatsDialog({ stats, onClose }) {
+export function StatsDialog({ stats, onClose }) {
   const row = (label, value) => h('div', { key: label, className: 'nodo-stats-row' },
     h('span', { className: 'nodo-stats-row-label' }, label),
     h('span', { className: 'nodo-stats-row-value' }, value))

@@ -1,4 +1,6 @@
-function createNativeSpace(ctx, Sidebar) {
+import { heldImages } from './page.js'
+
+export function createNativeSpace(ctx, Sidebar) {
   let saved
   try { saved = JSON.parse(localStorage.getItem('nodo.space')) } catch {}
   let state = { active: false, legacy: saved?.legacy === true, nativeSession: saved?.nativeSession, nodoSession: saved?.nodoSession, draft: saved?.draft, drafting: saved?.drafting ?? !!saved?.draft }

@@ -1,4 +1,7 @@
-function RolePicker({ profiles, profile, disabled, onSelect }) {
+import { h, useState, Menu, IconChevronDownOutlineRegular, useStateView } from './ui-shared.js'
+import { RoleAvatar } from './avatar.tsx'
+
+export function RolePicker({ profiles, profile, disabled, onSelect }) {
   const [open, setOpen] = useState(false)
   const name = profile?.name ?? '选择角色'
   const face = [profile && h(RoleAvatar, { profile, size: 20 }), h('span', { className: 'nodo-role-seat-label' }, name)]
@@ -17,7 +20,7 @@ function RolePicker({ profiles, profile, disabled, onSelect }) {
   })
 }
 
-function createRoleSeat(ctx, space) {
+export function createRoleSeat(ctx, space) {
   function RoleSeat({ sessionId }) {
     const { view } = useStateView()
     const profile = view?.profiles.find(role => role.sessions.some(session =>

@@ -1,4 +1,8 @@
-const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + `
+import { AVATAR_CSS } from './avatar.tsx'
+import { ENGINE_LOGO_CSS } from './engine-logos.js'
+import { RUNNING_CSS } from './running.js'
+
+export const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-workflow-entry{flex:none;justify-content:center;gap:6px;width:100%;height:36px;margin-bottom:12px;border-radius:var(--dsw-radius-lg)}

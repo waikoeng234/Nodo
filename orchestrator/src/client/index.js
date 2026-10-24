@@ -1,17 +1,35 @@
-const inject = ['slots', 'uiWorkspace', 'uiSession', 'sessions', 'layout', 'modelDirectories', 'remote', 'remote.session', 'commandUi', 'inputTriggers', 'conversation']
+import { PANEL_ID, setHostServices } from './ui-shared.js'
+import { createNativeSpace } from './native-space.js'
+import { createNativeWelcome } from './native-welcome.js'
+import { createCompletionTracker } from './completion-tracker.js'
+import { createModelSeat } from './model-seat.js'
+import { createRoleSeat } from './role-seat.js'
+import { createSessionReferences, REFERENCE_CSS } from './session-references.js'
+import { createNewConversation } from './new-conversation.js'
+import { NativeRunningDock } from './running.js'
+import { CSS } from './styles.js'
+import { NodoSidebar, NodoEntry, PanelIcon, NativeWelcome } from './page.js'
+import { WorkflowEntry, WORKFLOW_CSS } from './workflow.js'
 
-function apply(ctx) {
-  nativePickDirectory = typeof ctx.uiWorkspace?.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : null
-  nativeSpace = createNativeSpace(ctx, NodoSidebar)
-  createModelSeat(ctx, nativeSpace)
-  createRoleSeat(ctx, nativeSpace)
-  const { ReferenceDock, ReferenceDialog, installHistory } = createSessionReferences(ctx, nativeSpace)
-  ;({ NewConversation } = createNewConversation(ctx, nativeSpace, ReferenceDialog))
-  nativeSessionState = ctx.uiSession.adapter.current
-  completionTracker = createCompletionTracker({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, window)
+export const inject = ['slots', 'uiWorkspace', 'uiSession', 'sessions', 'layout', 'modelDirectories', 'remote', 'remote.session', 'commandUi', 'inputTriggers', 'conversation']
+
+export function apply(ctx) {
+  const space = createNativeSpace(ctx, NodoSidebar)
+  createModelSeat(ctx, space)
+  createRoleSeat(ctx, space)
+  const { ReferenceDock, ReferenceDialog, installHistory } = createSessionReferences(ctx, space)
+  const { NewConversation } = createNewConversation(ctx, space, ReferenceDialog)
+  const completionTracker = createCompletionTracker({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, window)
+  setHostServices({
+    nativePickDirectory: typeof ctx.uiWorkspace?.pickDirectory === 'function' ? () => ctx.uiWorkspace.pickDirectory() : null,
+    openNativeSession: id => space.open(id),
+    nativeSpace: space,
+    completionTracker,
+    nativeSessionState: ctx.uiSession.adapter.current,
+    NewConversation,
+    layoutService: ctx.layout,
+  })
   ctx.effect(() => () => completionTracker.dispose(), 'nodo: completion read state')
-  openNativeSession = id => nativeSpace.open(id)
-  layoutService = ctx.layout
   ctx.effect(() => {
     const style = document.createElement('style')
     style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS
@@ -31,10 +49,8 @@ function apply(ctx) {
       ctx.slots.register({ name: 'main', key: 'nodo-workflow' }, WorkflowEntry)]
     return () => { for (const stop of stops) stop() }
   })
-  ctx.slots.inject('main.conversation', createNativeWelcome(ctx, nativeSpace, NativeWelcome))
+  ctx.slots.inject('main.conversation', createNativeWelcome(ctx, space, NativeWelcome))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist', id: PANEL_ID, order: 1, label: 'Nodo',
   }, PanelIcon))
 }
-
-module.exports = { inject, apply }

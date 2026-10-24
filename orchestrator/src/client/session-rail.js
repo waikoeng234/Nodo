@@ -1,7 +1,18 @@
+import {
+  h, Fragment, useState, Menu, Tooltip, Button, Input, StateDot, Tag, NodoLogo, sectionHead, workLabel, workDot,
+  sessionTime, workspaceIdOf, roleStateOf, ARCHIVED_VIEWS, SESSION_FOLD, layoutService,
+  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconBranchOutlineRegular, IconChevronDownOutlineRegular,
+  IconChevronLeftOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderOpenOutlineRegular,
+  IconNewChatOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconPlanOutlineRegular, IconPlusOutlineRegular,
+  IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
+  IconTrashOutlineRegular, IconUsersOutlineRegular, IconWorkspaceTreeOutlineRegular,
+} from './ui-shared.js'
+import { RoleAvatar } from './avatar.tsx'
+
 // One session row: the host row's title and meta, an archive button and a menu
 // for rename and pin. Archive is refused while the session runs; an archived row
 // cannot be opened until it is unarchived, the host sidebar's rule.
-function SessionRow({ role, session, current, work, busy, onSelect, onArchive, onRename, onPin }) {
+export function SessionRow({ role, session, current, work, busy, onSelect, onArchive, onRename, onPin }) {
   const [open, setOpen] = useState(false)
   const archived = !!session.archivedAt
   const pinned = !!session.pinnedAt
@@ -39,7 +50,7 @@ function SessionRow({ role, session, current, work, busy, onSelect, onArchive, o
 
 // The project picker of the rail, also used by the workflow canvas. `none` adds a
 // first item for no workspace; `button` draws the anchor as a small outline button.
-const workspacePicker = ({ workspaces, workspace, running = new Set(), open, setOpen, onSelect, none, button = false, label = '选择项目', disabled }) => {
+export const workspacePicker = ({ workspaces, workspace, running = new Set(), open, setOpen, onSelect, none, button = false, label = '选择项目', disabled }) => {
   const ordered = [...workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   const othersRunning = ordered.some(item => item.id !== workspace?.id && running.has(item.id))
   const name = workspace?.name ?? none
@@ -66,7 +77,7 @@ const workspacePicker = ({ workspaces, workspace, running = new Set(), open, set
   })
 }
 
-function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectWorkspace, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onWorkflows, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, workflowNavigation }) {
+export function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectWorkspace, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onWorkflows, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, workflowNavigation }) {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)

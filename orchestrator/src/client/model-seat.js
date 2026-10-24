@@ -1,5 +1,8 @@
+import { h, useState, useSyncExternalStore, Menu, StateDot, IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconDataOutlineRegular } from './ui-shared.js'
+import { modelName } from './feed.js'
+
 // External engine catalogs belong to Nodo; native providers use the host directory.
-function createModelSeat(ctx, space) {
+export function createModelSeat(ctx, space) {
   function ModelSeat(props) {
     const { sessionId, locked } = props
     const available = typeof ctx.sessions?.subagentAddress !== 'function' || ctx.sessions.subagentAddress(sessionId) === undefined

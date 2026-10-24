@@ -1,9 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { Script, createContext } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 
-function harness({ groups = [], current = null, status = 'ready', error = null, subagent = false, active = true } = {}) {
+async function harness({ groups = [], current = null, status = 'ready', error = null, subagent = false, active = true } = {}) {
   const selections = []
   const loads = []
   const registrations = []
@@ -33,31 +32,33 @@ function harness({ groups = [], current = null, status = 'ready', error = null, 
   }
   let cells = []
   let cursor = 0
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props, children: children.flat() }),
-    useState(init) {
-      const at = cursor++
-      if (cells[at] === undefined) cells[at] = { value: typeof init === 'function' ? init() : init }
-      const cell = cells[at]
-      return [cell.value, value => { cell.value = typeof value === 'function' ? value(cell.value) : value }]
+  const { createModelSeat } = await loadClient('model-seat.js', {
+    stubs: { 'feed.js': { modelName: raw => String(raw ?? '') } },
+    createElement: (type, props, ...children) => ({ type, props, children: children.flat() }),
+    react: {
+      useState(init) {
+        const at = cursor++
+        if (cells[at] === undefined) cells[at] = { value: typeof init === 'function' ? init() : init }
+        const cell = cells[at]
+        return [cell.value, value => { cell.value = typeof value === 'function' ? value(cell.value) : value }]
+      },
+      useSyncExternalStore: subscribe => { subscribe(() => {}); return state },
+      useEffect(callback, deps) {
+        const at = cursor++
+        if (cells[at]?.deps.every((value, index) => value === deps[index])) return
+        cells[at]?.stop?.()
+        cells[at] = { deps, stop: callback() }
+      },
     },
-    useSyncExternalStore: subscribe => { subscribe(() => {}); return state },
-    useEffect(callback, deps) {
-      const at = cursor++
-      if (cells[at]?.deps.every((value, index) => value === deps[index])) return
-      cells[at]?.stop?.()
-      cells[at] = { deps, stop: callback() }
+    primitives: {
+      Menu: props => ({ type: 'Menu', props }),
+      StateDot: props => ({ type: 'StateDot', props }),
+      IconChevronDownOutlineRegular: { icon: 'chevron' },
+      IconDataOutlineRegular: { icon: 'data' },
+      IconChevronRightOutlineRegular: { icon: 'right' },
     },
-    Menu: props => ({ type: 'Menu', props }),
-    StateDot: props => ({ type: 'StateDot', props }),
-    IconChevronDownOutlineRegular: { icon: 'chevron' },
-    IconDataOutlineRegular: { icon: 'data' },
-    IconChevronRightOutlineRegular: { icon: 'right' },
-    modelName: raw => String(raw ?? ''),
-    call: () => { throw new Error('The model seat uses the host directory') },
   })
-  new Script(readFileSync(new URL('../src/client/model-seat.js', import.meta.url), 'utf8')).runInContext(context)
-  const { ModelSeat } = context.createModelSeat(ctx, space)
+  const ModelSeat = createModelSeat(ctx, space).ModelSeat
   const render = () => { cursor = 0; return ModelSeat({ sessionId: 'session-1', locked: false }) }
   const flush = () => new Promise(resolve => setTimeout(resolve, 2))
   return { registrations, selections, loads, render, flush, dispose,
@@ -67,8 +68,8 @@ function harness({ groups = [], current = null, status = 'ready', error = null, 
 
 const HOST_GROUP = { id: 'deepseek-account', name: 'DSH', models: [{ id: 'm1', name: 'DeepSeek Flash' }] }
 
-test('the seat restores the native picker outside the Nodo native space and on disposal', () => {
-  const h = harness({ active: false })
+test('the seat restores the native picker outside the Nodo native space and on disposal', async () => {
+  const h = await harness({ active: false })
   assert.equal(h.registrations.length, 0, 'ordinary space must keep the host picker')
   h.setSpace({ active: true })
   assert.equal(h.registrations.length, 1)
@@ -91,7 +92,7 @@ test('the seat restores the native picker outside the Nodo native space and on d
 })
 
 test('a plain session lists the host provider directory', async () => {
-  const h = harness({ groups: [HOST_GROUP] })
+  const h = await harness({ groups: [HOST_GROUP] })
   let tree = h.render()
   tree.props.anchor.props.onClick()
   await h.flush()
@@ -105,7 +106,7 @@ test('a plain session lists the host provider directory', async () => {
 })
 
 test('a dsh role session keeps the plain-session list', async () => {
-  const h = harness({ groups: [HOST_GROUP] })
+  const h = await harness({ groups: [HOST_GROUP] })
   let tree = h.render()
   tree.props.anchor.props.onClick()
   await h.flush()
@@ -117,7 +118,7 @@ test('a dsh role session keeps the plain-session list', async () => {
 })
 
 test('native providers named opencode or codex are not filtered out', async () => {
-  const h = harness({ groups: [HOST_GROUP, { id: 'opencode', name: 'User OpenCode', models: [{ id: 'user-model', name: 'User model' }] }, { id: 'codex', name: 'User provider', models: [{ id: 'custom', name: 'Custom model' }] }] })
+  const h = await harness({ groups: [HOST_GROUP, { id: 'opencode', name: 'User OpenCode', models: [{ id: 'user-model', name: 'User model' }] }, { id: 'codex', name: 'User provider', models: [{ id: 'custom', name: 'Custom model' }] }] })
   let tree = h.render()
   tree.props.anchor.props.onClick()
   await h.flush()
@@ -128,7 +129,7 @@ test('native providers named opencode or codex are not filtered out', async () =
 })
 
 test('picks ride the native directory: model then reasoning effort', async () => {
-  const h = harness({ groups: [HOST_GROUP], current: { provider: 'deepseek-account', model: 'm1' } })
+  const h = await harness({ groups: [HOST_GROUP], current: { provider: 'deepseek-account', model: 'm1' } })
   let tree = h.render()
   tree.props.anchor.props.onClick()
   await h.flush()
@@ -143,7 +144,7 @@ test('picks ride the native directory: model then reasoning effort', async () =>
   assert.deepEqual(JSON.parse(JSON.stringify(h.selections.at(-1))), { provider: 'deepseek-account', model: 'm1' }, 'the default level sends no effort key')
 })
 
-test('a subagent session renders no seat at all', () => {
-  const h = harness({ subagent: true })
+test('a subagent session renders no seat at all', async () => {
+  const h = await harness({ subagent: true })
   assert.equal(h.render(), null)
 })

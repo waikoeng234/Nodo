@@ -1,15 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { readPanelSource } from './helpers/client-source.js'
-import { Script, createContext } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 import { withHost, until } from './helpers/host.js'
-
-const source = readFileSync(new URL('../src/client/workflow.js', import.meta.url), 'utf8')
-const taskTitles = readFileSync(new URL('../core/shared/task-titles.js', import.meta.url), 'utf8').replace(/^export /gm, '')
-const composerSource = readFileSync(new URL('../src/client/workflow-composer.js', import.meta.url), 'utf8')
-const index = readPanelSource()
-const running = readFileSync(new URL('../src/client/running.js', import.meta.url), 'utf8')
 const profile = { id: 'role', name: '开发伙伴', engine: 'echo', activeSessionId: 'session', sessions: [{ id: 'session', name: '开发会话', workspaceRef: 'project' }] }
 const viewOf = () => ({ profiles: [structuredClone(profile)], workspaces: [{ id: 'project', name: '项目', cwd: '/tmp' }], workflows: { definitions: [], running: null }, runs: [], approvals: [] })
 const draftOf = () => ({ name: '开发与验收', nodes: [
@@ -23,7 +15,7 @@ const text = tree => all(tree).flatMap(node => node.children.filter(child => typ
 const button = (tree, label) => all(tree).find(node => node.type === 'Button' && node.children.includes(label))
 const named = (tree, name) => all(tree).find(node => node.type?.name === name)
 
-function harness({ draft = draftOf(), definition, readOnly = false, api = async () => [], globals = {} } = {}) {
+async function harness({ draft = draftOf(), definition, readOnly = false, api = async () => [], globals = {}, uiShared = {}, react = {} } = {}) {
   let cursor = 0, pending = [], states = []
   const view = viewOf(), calls = [], storage = new Map()
   if (definition) view.workflows.definitions = [definition]
@@ -35,44 +27,45 @@ function harness({ draft = draftOf(), definition, readOnly = false, api = async 
     if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
     return [states[at], update => { states[at] = typeof update === 'function' ? update(states[at]) : update }]
   }
-  const context = createContext({
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(value => value !== false && value !== null && value !== undefined) }),
-    Fragment: 'Fragment', workspacePicker: props => ({ type: 'WorkspacePicker', props, children: [] }), Button: 'Button', Tag: 'Tag', Modal: 'Modal', Field: 'Field', RoleAvatar: 'RoleAvatar', NodoLogo: 'NodoLogo', ApprovalCard: 'ApprovalCard', RunDetail: 'RunDetail', Menu: 'Menu', Composer: 'Composer', RolePicker: 'RolePicker', avatarTemplateOf: () => ({ color: '#A3DEFF' }), readImage: async file => file,
-    IconPanelLeftOutlineRegular: 'Panel',
-    IconBranchOutlineRegular: 'Branch', IconCodeOutlineRegular: 'Code', IconUsersOutlineRegular: 'Users', IconChevronRightOutlineRegular: 'Next', IconGoalOutlineRegular: 'Goal', IconTrashOutlineRegular: 'Trash', StateDot: 'StateDot',
-    useState: state, useRef: initial => state(() => ({ current: initial }))[0], useId: () => 'test',
-    ResizeObserver: class { observe() {} disconnect() {} },
-    useEffect: (effect, deps) => {
-      const at = cursor++, before = effects.get(at)
-      if (!before || deps.some((value, i) => value !== before[i])) { effects.set(at, deps); pending.push(() => { cleanups.get(at)?.(); cleanups.set(at, effect()) }) }
+  const loaded = await loadClient(['avatar.tsx', 'running.js', 'workflow.js', 'workflow-composer.js', 'composer.js'], {
+    uiShared: {
+      call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return api(endpoint, payload, view) },
+      sessionTime: () => '刚刚', readImage: async file => file,
+      useStateView: () => ({ view, refresh: async () => {} }),
+      layoutService: null, ...uiShared,
     },
-    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-    sessionTime: () => '刚刚', statusLine: (status, reason) => `${status}${reason ?? ''}`, RUN_STATUS: {}, RUN_DOT: {}, taskName: task => task.name,
-    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return api(endpoint, payload, view) },
-    AVATAR_TEMPLATES: [], ...globals,
+    stubs: { 'session-rail.js': { workspacePicker: props => ({ type: 'WorkspacePicker', props, children: [] }) } },
+    react: {
+      useState: state, useRef: initial => state(() => ({ current: initial }))[0], useId: () => 'test',
+      useEffect: (effect, deps) => {
+        const at = cursor++, before = effects.get(at)
+        if (!before || deps.some((value, i) => value !== before[i])) { effects.set(at, deps); pending.push(() => { cleanups.get(at)?.(); cleanups.set(at, effect()) }) }
+      },
+      ...react,
+    },
+    globals: { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) }, ...globals },
   })
-  new Script(`${running}\n${taskTitles}\n${source}\n${composerSource}\nglobalThis.helpers = { wfGraph, wfNew, wfExits, wfValidate, wfHistoryGraph, wfDelivery, wfRemove, wfPositions, wfParticipants, wfSidebarSnapshot, wfSubscribeSidebar, wfPublishSidebar }`).runInContext(context)
   const flushEffects = () => { const run = pending; pending = []; run.forEach(effect => effect()) }
-  return { context, view, calls, storage,
+  return { loaded, view, calls, storage,
     remount() { for (const cleanup of cleanups.values()) cleanup?.(); states = []; effects.clear(); cleanups.clear() },
-    render() { cursor = 0; const tree = context.WorkflowPage({ view, readOnly, refresh: async () => {}, onOpenSession() {} }); flushEffects(); return tree },
-    side() { this.render(); return context.helpers.wfSidebarSnapshot() },
-    canvas(props) { cursor = 0; const tree = context.WorkflowCanvas(props); flushEffects(); return tree },
-    task(props) { cursor = 0; const tree = context.WorkflowTaskComposer({ view, ...props }); flushEffects(); return tree },
-    duration(run) { cursor = 0; const tree = context.WorkflowRunDuration({ run }); flushEffects(); return tree },
+    render() { cursor = 0; const tree = loaded.WorkflowPage({ view, readOnly, refresh: async () => {}, onOpenSession() {} }); flushEffects(); return tree },
+    side() { this.render(); return loaded.wfSidebarSnapshot() },
+    canvas(props) { cursor = 0; const tree = loaded.WorkflowCanvas(props); flushEffects(); return tree },
+    task(props) { cursor = 0; const tree = loaded.WorkflowTaskComposer({ view, ...props }); flushEffects(); return tree },
+    duration(run) { cursor = 0; const tree = loaded.WorkflowRunDuration({ run }); flushEffects(); return tree },
     async flush() { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)) },
     dispose() { for (const cleanup of cleanups.values()) cleanup?.() },
   }
 }
 
-test('the sidebar cast shows three avatars and an ellipsis for the rest', () => {
+test('the sidebar cast shows three avatars and an ellipsis for the rest', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
   definition.nodes = definition.nodes.slice(0, 1).concat(['a', 'b', 'c', 'd'].map(id => ({ id, name: id, kind: 'agent', profileId: id, task: 't' })), definition.nodes.at(-1))
-  const h = harness({ definition })
+  const h = await harness({ definition })
   h.view.profiles = ['a', 'b', 'c', 'd'].map(id => ({ ...profile, id, name: `角色${id}` }))
   h.render()
-  const cast = all(h.context.helpers.wfSidebarSnapshot()).find(node => node.props.className === 'nodo-wf-cast')
-  assert.equal(cast.children.filter(node => node.type === 'RoleAvatar').length, 3)
+  const cast = all(h.loaded.wfSidebarSnapshot()).find(node => node.props.className === 'nodo-wf-cast')
+  assert.equal(cast.children.filter(node => node.type === h.loaded.RoleAvatar).length, 3)
   assert.equal(text(cast), '…')
   assert.equal(cast.props.title, '角色a、角色b、角色c、角色d', 'the full cast stays readable on hover')
   h.dispose()
@@ -80,12 +73,12 @@ test('the sidebar cast shows three avatars and an ellipsis for the rest', () => 
 
 test('a saved flow is deleted from its rail row after confirming, and the open draft stays unsaved', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
-  const h = harness({ definition, api: async (endpoint, payload, view) => {
+  const h = await harness({ definition, api: async (endpoint, payload, view) => {
     if (endpoint === 'workflow-delete') view.workflows.definitions = view.workflows.definitions.filter(item => item.id !== payload.id)
     return endpoint === 'workflow-delete' ? true : []
   } })
   h.render()
-  const remove = all(h.context.helpers.wfSidebarSnapshot()).find(node => node.props['aria-label'] === `删除流程“${definition.name}”`)
+  const remove = all(h.loaded.wfSidebarSnapshot()).find(node => node.props['aria-label'] === `删除流程“${definition.name}”`)
   remove.props.onClick()
   const dialog = all(h.render()).find(node => node.type === 'Modal')
   assert.match(dialog.props.title, /删除流程/)
@@ -99,9 +92,9 @@ test('a saved flow is deleted from its rail row after confirming, and the open d
   h.dispose()
 })
 
-test('workflow navigation is published to the original rail instead of a second sidebar or logo', () => {
-  const definition = { ...draftOf(), id: 'flow', revision: 1 }, h = harness({ definition })
-  const tree = h.render(), { wfSidebarSnapshot, wfSubscribeSidebar, wfPublishSidebar } = h.context.helpers
+test('workflow navigation is published to the original rail instead of a second sidebar or logo', async () => {
+  const definition = { ...draftOf(), id: 'flow', revision: 1 }, h = await harness({ definition })
+  const tree = h.render(), { wfSidebarSnapshot, wfSubscribeSidebar, wfPublishSidebar } = h.loaded
   assert.equal(all(tree).some(node => node.props.className === 'nodo-wf-navigation'), false)
   assert.equal(all(tree).some(node => node.type === 'NodoLogo'), false)
   const toolbar = all(tree).find(node => node.props.className === 'nodo-wf-toolbar')
@@ -117,7 +110,7 @@ test('workflow navigation is published to the original rail instead of a second 
   assert.equal(navigation.props['aria-label'], '流程')
   assert.equal(text(navigation).includes('最近运行'), false, 'edit view lists flows only')
   const cast = all(navigation).find(node => node.props.className === 'nodo-wf-cast')
-  assert.equal(cast.children.filter(node => node.type === 'RoleAvatar').length, 1)
+  assert.equal(cast.children.filter(node => node.type === h.loaded.RoleAvatar).length, 1)
   assert.equal(text(cast), '', 'no ellipsis for a short cast')
   assert.ok(text(navigation).includes(definition.name))
   const select = all(navigation).find(node => node.type === 'button' && text(node) === definition.name)
@@ -134,8 +127,8 @@ test('workflow navigation is published to the original rail instead of a second 
   h.dispose()
 })
 
-test('the single top title follows the workflow view while switching preserves the editable draft', () => {
-  const h = harness()
+test('the single top title follows the workflow view while switching preserves the editable draft', async () => {
+  const h = await harness()
   let tree = h.render()
   const workspace = tree.children.find(node => node.props?.className === 'nodo-wf-workspace')
   const drawer = tree.children.find(node => node.props?.className === 'nodo-wf-drawer')
@@ -150,7 +143,7 @@ test('the single top title follows the workflow view while switching preserves t
   const header = all(tree).find(node => node.type === 'header' && node.props.className === 'nodo-wf-header')
   assert.equal(text(all(header).find(node => node.type === 'h1')), '运行记录')
   assert.equal(button(h.side(), '运行记录').props['aria-pressed'], true)
-  const rail = h.context.helpers.wfSidebarSnapshot()
+  const rail = h.loaded.wfSidebarSnapshot()
   assert.equal(rail.props['aria-label'], '运行记录')
   assert.ok(text(rail).includes('最近运行'))
   assert.equal(all(rail).some(node => node.props?.className === 'nodo-wf-definitions'), false, 'run view hides saved flows')
@@ -164,8 +157,8 @@ test('the single top title follows the workflow view while switching preserves t
   h.dispose()
 })
 
-test('the floating task composer has no heading or collapse control and the drawer preserves node edits', () => {
-  const h = harness()
+test('the floating task composer has no heading or collapse control and the drawer preserves node edits', async () => {
+  const h = await harness()
   let tree = h.render()
   assert.equal(all(tree).some(item => item.props.className === 'nodo-wf-validation'), false)
   assert.equal(text(h.canvas({ graph: draftOf(), view: h.view, positions: {}, onSelect() {} })).includes('拖动安排位置'), false)
@@ -193,9 +186,9 @@ test('the floating task composer has no heading or collapse control and the draw
   h.dispose()
 })
 
-test('task updates stay on their original node after selection changes and do not dispatch', () => {
+test('task updates stay on their original node after selection changes and do not dispatch', async () => {
   const draft = draftOf(); draft.nodes.splice(2, 0, { id: 'other', name: '另一任务', kind: 'agent', profileId: 'role', task: '原任务' })
-  const h = harness({ draft })
+  const h = await harness({ draft })
   const first = named(h.render(), 'WorkflowTaskComposer').props.onChange
   named(h.render(), 'WorkflowCanvas').props.onSelect('other')
   first(current => ({ files: [...(current.files ?? []), { id: 'file', name: 'plan.md' }] }))
@@ -210,12 +203,12 @@ test('task updates stay on their original node after selection changes and do no
 
 test('task composer reuses file intake and keeps choices local to the selected node', async () => {
   const ref = { id: 'image-id', mediaType: 'image/png', name: 'shot.png' }, file = { id: 'file-id', name: 'requirements.pdf' }
-  const h = harness({ api: async endpoint => endpoint === 'attachment-save' ? { images: [ref], files: [file] }
+  const h = await harness({ api: async endpoint => endpoint === 'attachment-save' ? { images: [ref], files: [file] }
     : endpoint === 'attachment' ? { mediaType: 'image/png', data: 'AAAA' } : [] })
   let node = draftOf().nodes[1], busy = []
   const props = () => ({ node, disabled: false, onBusy: value => busy.push(value),
     onChange: changes => { node = { ...node, ...(typeof changes === 'function' ? changes(node) : changes) } } })
-  let composer = all(h.task(props())).find(item => item.type === 'Composer').props
+  let composer = all(h.task(props())).find(item => item.type === h.loaded.Composer).props
   composer.onChange('编辑后的任务')
   composer.onModelChange({ model: 'picked', thinking: 'high', permission: '' })
   assert.equal(node.task, '编辑后的任务')
@@ -230,7 +223,7 @@ test('task composer reuses file intake and keeps choices local to the selected n
   assert.equal(node.files[0].id, file.id)
   assert.equal(h.calls.find(call => call.endpoint === 'attachment-save').payload.files[0].data, 'Qg==')
   h.task(props()); await h.flush()
-  composer = all(h.task(props())).find(item => item.type === 'Composer').props
+  composer = all(h.task(props())).find(item => item.type === h.loaded.Composer).props
   assert.equal(composer.images[0].dataUrl, 'data:image/png;base64,AAAA')
   assert.equal(composer.files[0].name, 'requirements.pdf')
   assert.equal(composer.onSend, undefined, 'the node composer has no save or send button')
@@ -240,8 +233,8 @@ test('task composer reuses file intake and keeps choices local to the selected n
   h.dispose()
 })
 
-test('node edits persist to the browser draft without a save button and survive switching nodes and remounting', () => {
-  const h = harness()
+test('node edits persist to the browser draft without a save button and survive switching nodes and remounting', async () => {
+  const h = await harness()
   let tree = h.render()
   const composer = () => named(tree, 'WorkflowTaskComposer').props
   const stored = () => JSON.parse(h.storage.get('nodo.workflow.draft')).draft.nodes.find(node => node.id === 'work')
@@ -274,25 +267,25 @@ test('node edits persist to the browser draft without a save button and survive 
   h.dispose()
 })
 
-test('entering workflow keeps an expanded rail and clears its content on exit without toggling it closed', () => {
+test('entering workflow keeps an expanded rail and clears its content on exit without toggling it closed', async () => {
   for (const collapsed of [false, true]) {
     let toggles = 0, cleanup
-    const h = harness()
-    h.context.useStateView = () => ({ view: h.view, refresh() {} })
-    h.context.useEffect = effect => { cleanup = effect() }
-    h.context.document = { querySelector: () => collapsed ? {} : null }
-    h.context.layoutService = { toggleSidebar() { toggles++ } }
-    h.context.WorkflowEntry()
+    const h = await harness({
+      globals: { document: { querySelector: () => collapsed ? {} : null } },
+      uiShared: { layoutService: { toggleSidebar() { toggles++ } } },
+      react: { useEffect: effect => { cleanup = effect() } },
+    })
+    h.loaded.WorkflowEntry()
     assert.equal(toggles, collapsed ? 1 : 0)
-    h.context.helpers.wfPublishSidebar({ test: true })
+    h.loaded.wfPublishSidebar({ test: true })
     cleanup()
-    assert.equal(h.context.helpers.wfSidebarSnapshot(), null)
+    assert.equal(h.loaded.wfSidebarSnapshot(), null)
     assert.equal(toggles, collapsed ? 1 : 0)
   }
 })
 
-test('editor validates connected exits, options-only questions, deliver sources and bounded back edges', () => {
-  const h = harness(), { wfValidate } = h.context.helpers
+test('editor validates connected exits, options-only questions, deliver sources and bounded back edges', async () => {
+  const h = await harness(); const { wfValidate } = h.loaded
   assert.equal(wfValidate(draftOf(), h.view).length, 0)
   for (const max of [0, 6, 1.5]) {
     const draft = draftOf(); draft.edges.at(-1).back.max = max
@@ -312,16 +305,16 @@ test('editor validates connected exits, options-only questions, deliver sources 
   assert.ok(wfValidate(long, h.view).some(error => error.message.includes('32000')))
 })
 
-test('node removal cleans references', () => {
-  const h = harness(), { wfRemove } = h.context.helpers
+test('node removal cleans references', async () => {
+  const h = await harness(); const { wfRemove } = h.loaded
   const draft = draftOf(), removed = wfRemove(draft, 'work')
   assert.equal(removed.nodes.at(-1).deliver, '')
   assert.ok(removed.edges.every(edge => edge.from !== 'work' && edge.to !== 'work'))
   assert.equal(draft.nodes.length, 4, 'the original is preserved')
 })
 
-test('the add bar collapses into one dropdown and the canvas context menu adds and removes nodes', () => {
-  const h = harness()
+test('the add bar collapses into one dropdown and the canvas context menu adds and removes nodes', async () => {
+  const h = await harness()
   const tree = h.render()
   const addbar = named(tree, 'WorkflowCanvas').props.tools
   assert.equal(addbar.props.className, 'nodo-wf-addbar', 'the add bar is the canvas tool row')
@@ -359,9 +352,9 @@ test('the add bar collapses into one dropdown and the canvas context menu adds a
   h.dispose()
 })
 
-test('dragging a wire into empty canvas offers creation and connects the selected node at that position', () => {
+test('dragging a wire into empty canvas offers creation and connects the selected node at that position', async () => {
   for (const kind of ['agent', 'human', 'end']) {
-    const page = harness(), canvas = harness()
+    const page = await harness(), canvas = await harness()
     let tree = page.render()
     const props = named(tree, 'WorkflowCanvas').props
     const original = JSON.parse(page.storage.get('nodo.workflow.draft')).draft
@@ -396,8 +389,8 @@ test('dragging a wire into empty canvas offers creation and connects the selecte
   }
 })
 
-test('node ports drag wires to targets, offer empty-drop creation and refuse starts and self', () => {
-  const h = harness()
+test('node ports drag wires to targets, offer empty-drop creation and refuse starts and self', async () => {
+  const h = await harness()
   const connects = [], contexts = []
   const base = { graph: draftOf(), view: h.view, selected: 'work', positions: {}, onSelect() {}, onPosition() {}, onConnect: (...args) => connects.push(args), onContext: info => contexts.push(info) }
   let live = h.canvas(base)
@@ -439,8 +432,8 @@ test('node ports drag wires to targets, offer empty-drop creation and refuse sta
   h.dispose()
 })
 
-test('node drags and right-click creation are unbounded toward the top left', () => {
-  const h = harness()
+test('node drags and right-click creation are unbounded toward the top left', async () => {
+  const h = await harness()
   const moved = []
   const base = { graph: draftOf(), view: h.view, selected: 'work', positions: {}, onSelect() {}, onPosition: (id, p) => moved.push([id, p]), onConnect() {}, onContext() {} }
   const tree = h.canvas(base)
@@ -450,7 +443,7 @@ test('node drags and right-click creation are unbounded toward the top left', ()
   assert.equal(moved.at(-1)[0], 'start')
   assert.deepEqual({ ...moved.at(-1)[1] }, { x: 64 - 2000, y: 120 - 2000 }, 'a node follows the pointer past the plane origin')
   h.dispose()
-  const page = harness()
+  const page = await harness()
   let tree2 = page.render()
   named(tree2, 'WorkflowCanvas').props.onContext({ clientX: 0, clientY: 0, plane: { x: -400, y: -260 }, node: null })
   tree2 = page.render()
@@ -462,8 +455,8 @@ test('node drags and right-click creation are unbounded toward the top left', ()
   page.dispose()
 })
 
-test('the canvas pans with the middle button and zooms without being bounded by the window', () => {
-  const h = harness()
+test('the canvas pans with the middle button and zooms without being bounded by the window', async () => {
+  const h = await harness()
   const base = { graph: draftOf(), view: h.view, positions: {}, onSelect() {}, onPosition() {} }
   let live = h.canvas(base)
   const viewport = () => all(live).find(node => node.props.className === 'nodo-wf-viewport')
@@ -492,8 +485,8 @@ test('the canvas pans with the middle button and zooms without being bounded by 
   h.dispose()
 })
 
-test('backspace or delete removes the selected node unless focus is in a field', () => {
-  const h = harness()
+test('backspace or delete removes the selected node unless focus is in a field', async () => {
+  const h = await harness()
   let tree = h.render()
   const fire = (key, target = {}) => tree.props.onKeyDown({ key, target, preventDefault() {} })
   named(tree, 'WorkflowCanvas').props.onSelect('work')
@@ -519,8 +512,8 @@ test('backspace or delete removes the selected node unless focus is in a field',
   h.dispose()
 })
 
-test('wiring selects the explicit exit, replaces its destination and infers bounded upstream rework', () => {
-  const h = harness()
+test('wiring selects the explicit exit, replaces its destination and infers bounded upstream rework', async () => {
+  const h = await harness()
   const wire = named(h.render(), 'WorkflowCanvas').props.onConnect
   wire('review', 'accept', 'work')
   wire('review', 'revise', 'end')
@@ -537,7 +530,7 @@ test('wiring selects the explicit exit, replaces its destination and infers boun
   assert.deepEqual(saved.edges.find(edge => edge.from === 'work'), { from: 'work', exit: 'done', to: 'review' })
   named(h.render(), 'WorkflowCanvas').props.onSelect('review')
   const inspector = named(h.render(), 'WorkflowInspector')
-  const tree = h.context.WorkflowInspector(inspector.props)
+  const tree = h.loaded.WorkflowInspector(inspector.props)
   assert.equal(all(tree).some(item => item.type === 'Field' && item.props.label === '下一节点'), false)
   assert.ok(text(tree).includes('↺ 编码实现'))
   assert.equal(button(tree, '断开连线'), undefined, 'wires are removed on the canvas')
@@ -549,11 +542,11 @@ test('wiring selects the explicit exit, replaces its destination and infers boun
   h.dispose()
 })
 
-test('the ready-to-drag rework interface creates agent conditions while keeping the normal destination', () => {
+test('the ready-to-drag rework interface creates agent conditions while keeping the normal destination', async () => {
   const draft = draftOf()
   draft.nodes[2] = { id: 'review', name: '代码审查', kind: 'agent', profileId: 'role', task: '检查实现' }
   draft.edges = draft.edges.slice(0, 2).concat({ from: 'review', exit: 'done', to: 'end' })
-  const page = harness({ draft }), canvas = harness()
+  const page = await harness({ draft }), canvas = await harness()
   const connect = named(page.render(), 'WorkflowCanvas').props.onConnect
   const base = { graph: draft, view: page.view, positions: {}, onSelect() {}, onPosition() {}, onConnect: connect }
   let tree = canvas.canvas(base)
@@ -574,7 +567,7 @@ test('the ready-to-drag rework interface creates agent conditions while keeping 
   assert.deepEqual(saved.edges.filter(edge => edge.from === 'review'), [
     { from: 'review', exit: 'done', to: 'end' }, { from: 'review', exit: 'rework', to: 'work', back: { max: 2 } },
   ])
-  assert.equal(page.context.helpers.wfValidate(saved, page.view).length, 0)
+  assert.equal(page.loaded.wfValidate(saved, page.view).length, 0)
   connect('review', '$rework', 'work')
   page.render()
   const repeated = JSON.parse(page.storage.get('nodo.workflow.draft')).draft
@@ -583,12 +576,12 @@ test('the ready-to-drag rework interface creates agent conditions while keeping 
   page.dispose(); canvas.dispose()
 })
 
-test('the rework interface wires a review forward to a fixer that loops back', () => {
+test('the rework interface wires a review forward to a fixer that loops back', async () => {
   const draft = draftOf()
   draft.nodes[2] = { id: 'review', name: '代码审查', kind: 'agent', profileId: 'role', task: '检查实现' }
   draft.nodes.push({ id: 'fix', name: '修复', kind: 'agent', profileId: 'role', task: '修复问题' })
   draft.edges = draft.edges.slice(0, 2).concat({ from: 'review', exit: 'done', to: 'end' })
-  const page = harness({ draft })
+  const page = await harness({ draft })
   const connect = (...args) => named(page.render(), 'WorkflowCanvas').props.onConnect(...args)
   const saved = () => JSON.parse(page.storage.get('nodo.workflow.draft')).draft
   connect('review', '$rework', 'fix')
@@ -610,15 +603,15 @@ test('the rework interface wires a review forward to a fixer that loops back', (
   assert.deepEqual(saved().edges.filter(edge => edge.to === 'fix' || edge.from === 'fix'), [
     { from: 'review', exit: 'rework', to: 'fix', back: { max: 2 } }, { from: 'fix', exit: 'done', to: 'review' },
   ], 'closing the loop turns the rework wire back and keeps the fixer forward')
-  assert.equal(page.context.helpers.wfValidate(saved(), page.view).length, 0)
+  assert.equal(page.loaded.wfValidate(saved(), page.view).length, 0)
   page.dispose()
 })
 
-test('midpoint deletion removes rework configuration and restores the normal single exit', () => {
+test('midpoint deletion removes rework configuration and restores the normal single exit', async () => {
   const draft = draftOf()
   draft.nodes[2] = { id: 'review', name: '代码审查', kind: 'agent', profileId: 'role', task: '检查实现' }
   draft.edges = draft.edges.slice(0, 2).concat({ from: 'review', exit: 'done', to: 'end' })
-  const page = harness({ draft }), canvas = harness()
+  const page = await harness({ draft }), canvas = await harness()
   named(page.render(), 'WorkflowCanvas').props.onConnect('review', '$rework', 'work')
   const props = named(page.render(), 'WorkflowCanvas').props
   let tree = canvas.canvas(props)
@@ -639,7 +632,7 @@ test('midpoint deletion removes rework configuration and restores the normal sin
   page.render()
   const saved = JSON.parse(page.storage.get('nodo.workflow.draft')).draft
   assert.deepEqual(saved, draft, 'deleting an automatic rework restores the original graph and task')
-  assert.equal(page.context.helpers.wfValidate(saved, page.view).length, 0)
+  assert.equal(page.loaded.wfValidate(saved, page.view).length, 0)
   remove.props.onClick({ stopPropagation() {} })
   page.render()
   assert.deepEqual(JSON.parse(page.storage.get('nodo.workflow.draft')).draft, draft, 'repeated deletion is harmless')
@@ -653,15 +646,15 @@ test('midpoint deletion removes rework configuration and restores the normal sin
   assert.ok(JSON.parse(page.storage.get('nodo.workflow.draft')).draft.nodes[2].exits.some(exit => exit.id === 'done'), 'the normal port remains available after its wire is deleted')
   named(page.render(), 'WorkflowCanvas').props.onConnect('review', 'done', 'end')
   page.render()
-  assert.equal(page.context.helpers.wfValidate(JSON.parse(page.storage.get('nodo.workflow.draft')).draft, page.view).length, 0)
+  assert.equal(page.loaded.wfValidate(JSON.parse(page.storage.get('nodo.workflow.draft')).draft, page.view).length, 0)
   page.dispose(); canvas.dispose()
 })
 
-test('deleting a named wire removes its rework conditions or human option and ignores stale targets', () => {
+test('deleting a named wire removes its rework conditions or human option and ignores stale targets', async () => {
   const draft = draftOf()
   draft.nodes[1].exits = [{ id: 'done', when: '通过' }, { id: 'rework', when: '返工' }]
   draft.edges.push({ from: 'work', exit: 'rework', to: 'end' })
-  const h = harness({ draft })
+  const h = await harness({ draft })
   const disconnect = named(h.render(), 'WorkflowCanvas').props.onDisconnect
   disconnect({ from: 'work', exit: 'rework', to: 'review' })
   h.render()
@@ -674,16 +667,16 @@ test('deleting a named wire removes its rework conditions or human option and ig
   assert.deepEqual(saved.nodes[2].options, [{ id: 'accept', label: '接受并完成' }])
   assert.equal(saved.nodes[2].question, draft.nodes[2].question)
   assert.deepEqual(saved.edges, draft.edges.filter(edge => edge.exit !== 'rework' && edge.exit !== 'revise'))
-  assert.equal(h.context.helpers.wfValidate(saved, h.view).length, 0)
-  const readOnly = harness({ draft, readOnly: true })
+  assert.equal(h.loaded.wfValidate(saved, h.view).length, 0)
+  const readOnly = await harness({ draft, readOnly: true })
   named(readOnly.render(), 'WorkflowCanvas').props.onDisconnect(draft.edges[0])
   readOnly.render()
   assert.deepEqual(JSON.parse(readOnly.storage.get('nodo.workflow.draft')).draft, draft)
   h.dispose(); readOnly.dispose()
 })
 
-test('branch outputs and converging inputs use distinct anchors for previews and saved wires', () => {
-  const h = harness(), graph = draftOf(), connects = []
+test('branch outputs and converging inputs use distinct anchors for previews and saved wires', async () => {
+  const h = await harness(), graph = draftOf(), connects = []
   const base = { graph, view: h.view, positions: { review: { x: 500, y: 200 }, work: { x: 200, y: 200 } }, onSelect() {}, onPosition() {}, onConnect: (...args) => connects.push(args) }
   let tree = h.canvas(base)
   const review = () => all(tree).find(node => node.props.className === 'nodo-wf-node' && node.props['data-kind'] === 'human')
@@ -711,8 +704,8 @@ test('branch outputs and converging inputs use distinct anchors for previews and
   h.dispose()
 })
 
-test('multiple rework inputs and outputs occupy separate bottom ports in history too', () => {
-  const h = harness(), graph = draftOf()
+test('multiple rework inputs and outputs occupy separate bottom ports in history too', async () => {
+  const h = await harness(), graph = draftOf()
   graph.nodes.push({ id: 'decision', name: '裁定', kind: 'agent', profileId: 'role', exits: [{ id: 'pass', when: '通过' }, { id: 'revise', when: '返工' }] })
   graph.edges.push({ from: 'decision', exit: 'revise', to: 'review', back: { max: 2 } })
   for (const history of [false, true]) {
@@ -725,8 +718,8 @@ test('multiple rework inputs and outputs occupy separate bottom ports in history
   h.dispose()
 })
 
-test('legacy steps convert without mutation and old history never borrows a same-named definition', () => {
-  const h = harness(), { wfGraph, wfHistoryGraph } = h.context.helpers
+test('legacy steps convert without mutation and old history never borrows a same-named definition', async () => {
+  const h = await harness(); const { wfGraph, wfHistoryGraph } = h.loaded
   const legacy = { id: 'old', name: '流程', steps: [{ name: '执行', profileId: 'role', task: '任务' }, { name: '验收', decide: true, question: '通过？' }] }
   const graph = wfGraph(legacy)
   assert.equal(graph.nodes.at(-1).deliver, 's1')
@@ -740,9 +733,9 @@ test('legacy steps convert without mutation and old history never borrows a same
   assert.equal(wfHistoryGraph([definition], { ...run, tasks: [{ name: '未知节点', kind: 'agent' }] }), null)
 })
 
-test('missing workspace still blocks launch and explains the association in the run control', () => {
+test('missing workspace still blocks launch and explains the association in the run control', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
-  const h = harness({ definition }); h.view.workspaces = []
+  const h = await harness({ definition }); h.view.workspaces = []
   const tree = h.render()
   assert.equal(button(tree, '运行').props.disabled, true)
   assert.match(button(tree, '运行').props.title, /需要已有的工作区和角色/)
@@ -751,33 +744,33 @@ test('missing workspace still blocks launch and explains the association in the 
   h.dispose()
 })
 
-test('an unused default session retains its real project association even when hidden from session lists', () => {
-  const h = harness()
+test('an unused default session retains its real project association even when hidden from session lists', async () => {
+  const h = await harness()
   h.view.profiles = [{ id: 'role', name: '伙伴', workspaceId: 'project', activeSessionId: 'role', sessions: [] }]
-  const participant = h.context.helpers.wfParticipants(draftOf(), h.view)[0]
+  const participant = h.loaded.wfParticipants(draftOf(), h.view)[0]
   assert.equal(participant.workspace.id, 'project')
   assert.equal(participant.session.id, 'role')
   assert.equal(participant.session.name, '默认会话')
 })
 
-test('delivery shows the last completed source task and keeps acceptance separate', () => {
-  const h = harness(), definition = { ...draftOf(), id: 'flow' }
+test('delivery shows the last completed source task and keeps acceptance separate', async () => {
+  const h = await harness(), definition = { ...draftOf(), id: 'flow' }
   const run = { workflowId: 'flow', status: 'done', tasks: [
     { id: 'old', kind: 'agent', name: '编码实现', status: 'done', output: '第一版' },
     { id: 'new', kind: 'agent', name: '编码实现', status: 'done', output: '返工后的实现' },
     { id: 'accept', kind: 'human', name: '人工验收', status: 'done', output: '接受并完成' },
   ] }
-  const graph = h.context.helpers.wfHistoryGraph([definition], run)
+  const graph = h.loaded.wfHistoryGraph([definition], run)
   assert.equal(graph.taken.has('review.accept'), true, 'a single completed end can be mapped despite its omitted task')
-  assert.equal(h.context.helpers.wfDelivery(graph, run).id, 'new')
-  assert.equal(h.context.helpers.wfDelivery(null, run), null)
-  assert.equal(h.context.helpers.wfDelivery(graph, { ...run, status: 'running' }), null)
+  assert.equal(h.loaded.wfDelivery(graph, run).id, 'new')
+  assert.equal(h.loaded.wfDelivery(null, run), null)
+  assert.equal(h.loaded.wfDelivery(graph, { ...run, status: 'running' }), null)
   graph.nodes.push({ id: 'other_end', kind: 'end', deliver: 'review' })
-  assert.equal(h.context.helpers.wfDelivery(graph, run), null, 'the API cannot identify which of several end nodes was taken')
+  assert.equal(h.loaded.wfDelivery(graph, run), null, 'the API cannot identify which of several end nodes was taken')
 })
 
-test('editing changes exit identifiers without losing destinations and persists across reopening', () => {
-  const h = harness(), first = h.render(), inspector = named(first, 'WorkflowInspector')
+test('editing changes exit identifiers without losing destinations and persists across reopening', async () => {
+  const h = await harness(), first = h.render(), inspector = named(first, 'WorkflowInspector')
   inspector.props.onChange({ exits: [{ id: 'complete', when: '完成' }] })
   const next = h.render(), changed = named(next, 'WorkflowInspector').props.draft
   assert.equal(changed.edges.find(edge => edge.from === 'work').exit, 'complete')
@@ -787,7 +780,7 @@ test('editing changes exit identifiers without losing destinations and persists 
 })
 
 test('the canvas picks the workspace the flow runs in, saved with the flow', async () => {
-  const h = harness({ api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'saved', revision: 1 } : [] })
+  const h = await harness({ api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'saved', revision: 1 } : [] })
   h.view.workspaces.push({ id: 'other', name: '另一个项目', cwd: '/other' })
   const picker = () => named(h.render(), 'WorkflowCanvas').props.trailing.props
   assert.equal(picker().workspace, undefined, 'a new flow follows each role\'s conversation')
@@ -795,7 +788,7 @@ test('the canvas picks the workspace the flow runs in, saved with the flow', asy
   assert.equal(picker().button, true)
   picker().onSelect('other')
   assert.equal(picker().workspace.id, 'other')
-  assert.equal(h.context.helpers.wfParticipants(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view)[0].workspace.id, 'other', 'every step checks against the flow\'s workspace')
+  assert.equal(h.loaded.wfParticipants(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view)[0].workspace.id, 'other', 'every step checks against the flow\'s workspace')
   button(h.side(), '保存').props.onClick(); await h.flush()
   assert.equal(h.calls.find(call => call.endpoint === 'workflow-create').payload.workspaceId, 'other')
   assert.equal(button(h.side(), '保存').props.disabled, true, 'the saved workspace is not a change')
@@ -806,7 +799,7 @@ test('the canvas picks the workspace the flow runs in, saved with the flow', asy
 })
 
 test('saving new graphs uses only workflow-create and strips empty choice arrays', async () => {
-  const h = harness({ api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'saved', revision: 1 } : [] })
+  const h = await harness({ api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'saved', revision: 1 } : [] })
   const tree = h.render()
   assert.equal(button(tree, '运行').props.disabled, false, 'an unsaved draft may run')
   assert.equal(button(tree, '运行').props.title, '运行前会先保存当前修改。')
@@ -822,7 +815,7 @@ test('saving new graphs uses only workflow-create and strips empty choice arrays
 
 test('an incomplete draft saves while launch names its first problem; a blank new flow has nothing to save', async () => {
   const draft = draftOf(); draft.nodes[1].task = ''
-  const h = harness({ draft, api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'draft', revision: 1 } : [] })
+  const h = await harness({ draft, api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'draft', revision: 1 } : [] })
   const tree = h.render()
   assert.equal(button(h.side(), '保存').props.disabled, false)
   assert.equal(button(h.side(), '保存').props.title, undefined)
@@ -832,12 +825,12 @@ test('an incomplete draft saves while launch names its first problem; a blank ne
   assert.equal(h.calls.find(call => call.endpoint === 'workflow-create').payload.nodes[1].task, '')
   assert.equal(button(h.render(), '运行').props.disabled, true, 'launch still waits for the task after saving')
   assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).source.id, 'draft')
-  const blank = harness({ draft: h.context.helpers.wfNew() })
+  const blank = await harness({ draft: h.loaded.wfNew() })
   h.dispose()
   const fresh = blank.render()
   assert.equal(button(blank.side(), '保存').props.disabled, true)
   assert.equal(all(fresh).some(node => node.props.className === 'nodo-wf-save-state'), false)
-  button(blank.context.helpers.wfSidebarSnapshot(), '+ 新建流程').props.onClick()
+  button(blank.loaded.wfSidebarSnapshot(), '+ 新建流程').props.onClick()
   assert.equal(all(blank.render()).some(node => node.type === 'Modal' && node.props.title === '替换当前草稿？'), false, 'a blank flow is replaced without asking')
   blank.dispose()
 })
@@ -846,7 +839,7 @@ test('saving a modified source refuses a stale or deleted version without replac
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
   for (const fresh of [[], [{ ...definition, revision: 2 }]]) {
     const draft = draftOf(); draft.name = '保存的修改'
-    const h = harness({ draft, definition, api: async endpoint => endpoint === 'state' ? { workflows: { definitions: fresh } } : [] })
+    const h = await harness({ draft, definition, api: async endpoint => endpoint === 'state' ? { workflows: { definitions: fresh } } : [] })
     button(h.side(), '保存').props.onClick(); await h.flush()
     assert.equal(h.calls.some(call => /workflow-(create|update)/.test(call.endpoint)), false)
     assert.match(text(h.render()), /草稿已保留/)
@@ -861,7 +854,7 @@ test('saving a modified source refuses a stale or deleted version without replac
 
 test('save overwrites the current flow at its revision; save-as copies it and switches to the copy', async () => {
   const definition = { ...draftOf(), id: 'old', revision: 1 }, draft = draftOf(); draft.nodes[1].task = '修改后的任务'
-  const h = harness({ definition, draft, api: async (endpoint, payload) => endpoint === 'state' ? { workflows: { definitions: [definition] } }
+  const h = await harness({ definition, draft, api: async (endpoint, payload) => endpoint === 'state' ? { workflows: { definitions: [definition] } }
     : endpoint === 'workflow-update' ? { ...payload, revision: payload.revision + 1 } : endpoint === 'workflow-create' ? { ...payload, id: 'new', revision: 1 } : [] })
   assert.equal(text(h.render()).includes('有未保存修改'), true)
   button(h.side(), '保存').props.onClick(); await h.flush()
@@ -893,10 +886,10 @@ test('pending cards float over the run canvas instead of the narrow drawer, whic
   const asking = { id: 'run', workflowId: 'flow', workflowName: definition.name, status: 'running', createdAt: 1, tasks: [
     { id: 't1', name: '编码实现', kind: 'agent', status: 'done', output: '实现完成', attempts: [{ id: 'a', n: 1, sessionId: 's', profileId: 'role' }] },
     { id: 't2', name: '人工验收', kind: 'human', status: 'active', card: 'run:run:q', attempts: [] }] }
-  const h = harness({ definition, api: async endpoint => endpoint === 'run-list' ? [asking] : endpoint === 'run-get' ? asking : [] })
+  const h = await harness({ definition, api: async endpoint => endpoint === 'run-list' ? [asking] : endpoint === 'run-get' ? asking : [] })
   h.view.approvals = [{ id: 'run:run:q', kind: 'question', detail: { exits: [] } }, { id: 'perm', kind: 'permission', profileId: 's' }, { id: 'other', kind: 'permission', profileId: 'elsewhere' }]
   button(h.side(), '运行记录').props.onClick(); h.render(); await h.flush(); h.render()
-  all(h.context.helpers.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
+  all(h.loaded.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
   h.render(); await h.flush()
   const docked = () => {
     const tree = h.render(), canvas = named(tree, 'WorkflowCanvas')
@@ -914,10 +907,10 @@ test('a run without its original definition keeps its pending cards in the main 
   const orphan = { id: 'run', workflowId: 'gone', workflowName: '已删除', status: 'running', createdAt: 1, tasks: [
     { id: 't1', name: '编码实现', kind: 'agent', status: 'done', output: '实现完成', attempts: [{ id: 'a', n: 1, sessionId: 's', profileId: 'role' }] },
     { id: 't2', name: '人工验收', kind: 'human', status: 'active', card: 'run:run:q', attempts: [] }] }
-  const h = harness({ api: async endpoint => endpoint === 'run-list' ? [orphan] : endpoint === 'run-get' ? orphan : [] })
+  const h = await harness({ api: async endpoint => endpoint === 'run-list' ? [orphan] : endpoint === 'run-get' ? orphan : [] })
   h.view.approvals = [{ id: 'run:run:q', kind: 'question', detail: { exits: [] } }]
   button(h.side(), '运行记录').props.onClick(); h.render(); await h.flush(); h.render()
-  all(h.context.helpers.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
+  all(h.loaded.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
   h.render(); await h.flush()
   const tree = h.render()
   assert.match(text(tree), /原定义已删除或节点名称无法唯一对应/)
@@ -934,9 +927,9 @@ test('the run drawer shows the whole run until one step is picked, and only that
   const done = { id: 'run', workflowId: 'flow', workflowName: definition.name, status: 'done', createdAt: 1, tasks: [
     { id: 't1', name: '编码实现', kind: 'agent', status: 'done', output: '实现完成', attempts: [{ id: 'a', n: 1, sessionId: 's' }] },
     { id: 't2', name: '人工验收', kind: 'human', status: 'done', output: 'accept', attempts: [] }] }
-  const h = harness({ definition, api: async endpoint => endpoint === 'run-list' ? [done] : endpoint === 'run-get' ? done : [] })
+  const h = await harness({ definition, api: async endpoint => endpoint === 'run-list' ? [done] : endpoint === 'run-get' ? done : [] })
   button(h.side(), '运行记录').props.onClick(); h.render(); await h.flush(); h.render()
-  all(h.context.helpers.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
+  all(h.loaded.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
   h.render(); await h.flush()
   const drawer = () => { const tree = h.render(); return { tree, aside: all(tree).find(node => node.props.className === 'nodo-wf-inspector nodo-wf-run-inspector'), detail: named(tree, 'RunDetail') ?? all(tree).find(node => node.type === 'RunDetail') } }
   let { tree, aside, detail } = drawer()
@@ -959,9 +952,9 @@ test('the run drawer shows the whole run until one step is picked, and only that
   h.dispose()
 })
 
-test('the overview clock advances through waits, freezes at the end and resumes with the run', () => {
+test('the overview clock advances through waits, freezes at the end and resumes with the run', async () => {
   let now = 100_000, nextTimer = 0
-  const timers = new Map(), h = harness({ globals: {
+  const timers = new Map(), h = await harness({ globals: {
     Date: { now: () => now },
     setInterval: (callback, ms) => { assert.equal(ms, 1000); timers.set(++nextTimer, callback); return nextTimer },
     clearInterval: id => timers.delete(id),
@@ -1011,7 +1004,7 @@ const confirmLaunch = async h => {
 test('launch sends the flow ID and task title once, then clears the step tasks from the saved flow', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
   definition.nodes[1].files = [{ id: 'f', name: 'spec.md' }]
-  const h = harness({ definition: structuredClone(definition), draft: structuredClone(definition), api: launchApi(definition) })
+  const h = await harness({ definition: structuredClone(definition), draft: structuredClone(definition), api: launchApi(definition) })
   await confirmLaunch(h)
   const calls = h.calls.filter(call => call.endpoint === 'workflow-run')
   assert.equal(calls.length, 1)
@@ -1029,7 +1022,7 @@ test('launch sends the flow ID and task title once, then clears the step tasks f
 
 test('the launch task title is editable, required and independent of the saved flow name', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
-  const h = harness({ definition: structuredClone(definition), api: launchApi(definition) })
+  const h = await harness({ definition: structuredClone(definition), api: launchApi(definition) })
   button(h.render(), '运行').props.onClick()
   const modal = () => all(h.render()).find(node => node.type === 'Modal' && node.props.title === '启动流程')
   const field = () => all(modal()).find(node => node.props['aria-label'] === '本次任务标题')
@@ -1048,7 +1041,7 @@ test('the launch task title is editable, required and independent of the saved f
 test('run navigation and its heading show the task title with the flow kept as source information', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }
   const run = { id: 'run', title: '修复登录白屏', workflowId: definition.id, workflowName: definition.name, createdAt: 1, status: 'done', tasks: [] }
-  const h = harness({ definition, api: async endpoint => endpoint === 'run-list' ? [run] : endpoint === 'run-get' ? run : [] })
+  const h = await harness({ definition, api: async endpoint => endpoint === 'run-list' ? [run] : endpoint === 'run-get' ? run : [] })
   h.render(); await h.flush()
   button(h.side(), '运行记录').props.onClick()
   const row = all(h.side()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row')
@@ -1064,7 +1057,7 @@ test('run navigation and its heading show the task title with the flow kept as s
 
 test('launching an unsaved draft creates the flow, runs it and saves the cleared tasks back', async () => {
   let saved = null
-  const h = harness({ api: async (endpoint, payload) => {
+  const h = await harness({ api: async (endpoint, payload) => {
     if (endpoint === 'workflow-create') { saved = { ...payload, id: 'saved', revision: 1 }; return saved }
     if (endpoint === 'state') return { workflows: { definitions: saved ? [saved] : [] } }
     if (endpoint === 'workflow-run') return { runId: 'run' }
@@ -1082,13 +1075,13 @@ test('launching an unsaved draft creates the flow, runs it and saves the cleared
   h.dispose()
 })
 
-test('the launch card lists every step in wire order with its role and routes', () => {
+test('the launch card lists every step in wire order with its role and routes', async () => {
   const agent = (id, name) => ({ id, name, kind: 'agent', profileId: 'role', task: 't', exits: id === 'review' ? [{ id: 'done', when: 'ok' }, { id: 'rework', when: 'bad' }] : undefined })
   const draft = { name: '修复', nodes: [{ id: 'start', name: '开始', kind: 'start' }, agent('commit', 'commit'), agent('docs', '同步文档'), agent('fix', 'fixbug'), agent('review', 'review'),
     { id: 'gate', name: '人工验收', kind: 'human', options: [{ id: 'go', label: '继续' }] }, { id: 'end', name: '完成交付', kind: 'end', deliver: 'commit' }],
   edges: [{ from: 'start', exit: 'done', to: 'review' }, { from: 'review', exit: 'done', to: 'docs' }, { from: 'review', exit: 'rework', to: 'fix' }, { from: 'fix', exit: 'done', to: 'docs' },
     { from: 'fix', exit: '$rework', to: 'review', back: { max: 2 } }, { from: 'docs', exit: 'done', to: 'gate' }, { from: 'gate', exit: 'go', to: 'commit' }, { from: 'commit', exit: 'done', to: 'end' }] }
-  const h = harness({ draft })
+  const h = await harness({ draft })
   button(h.render(), '运行').props.onClick()
   const modal = all(h.render()).find(node => node.type === 'Modal' && node.props.title === '启动流程')
   const list = all(modal).find(node => node.props?.className === 'nodo-dialog-fields nodo-wf-steps'), steps = list.children
@@ -1103,7 +1096,7 @@ test('the launch card lists every step in wire order with its role and routes', 
 
 test('launching a modified flow saves it in place first and runs that version', async () => {
   const definition = { ...draftOf(), id: 'flow', revision: 1 }, draft = draftOf(); draft.nodes[1].task = '本次的新任务'
-  const h = harness({ definition: structuredClone(definition), draft, api: launchApi(definition) })
+  const h = await harness({ definition: structuredClone(definition), draft, api: launchApi(definition) })
   assert.equal(button(h.render(), '运行').props.disabled, false)
   const modal = await confirmLaunch(h)
   assert.match(text(modal), /运行前先把修改保存到当前流程/)
@@ -1115,7 +1108,7 @@ test('launching a modified flow saves it in place first and runs that version', 
 })
 
 test('read-only mode requests no records and disables workflow writes', async () => {
-  const h = harness({ readOnly: true })
+  const h = await harness({ readOnly: true })
   const tree = h.render(); await h.flush()
   assert.equal(h.calls.length, 0)
   assert.equal(button(h.side(), '保存').props.disabled, true)
@@ -1126,17 +1119,20 @@ test('read-only mode requests no records and disables workflow writes', async ()
 
 test('options-only workflow questions hide custom text; stale answers refresh pending requests', async () => {
   let refreshed = 0
-  const h = harness()
-  const context = h.context
-  new Script(index.slice(index.indexOf('const RECOMMENDED_LABEL ='), index.indexOf('// The feed keeps'))).runInContext(context)
-  context.call = async () => { throw new Error('This card is no longer open') }
+  const h = await harness()
+  const rejected = async () => { throw new Error('This card is no longer open') }
+  const frozen = await loadClient('run-cards.js', {
+    react: { useState: value => [value, () => {}], useEffect: () => {} }, call: rejected,
+  })
   const card = { id: 'run:r:q:1', kind: 'question', reason: '是否通过？', detail: { options: ['通过', '修改'], allowText: false } }
-  let tree = context.ApprovalCard({ card, refresh: async () => { refreshed++ }, readOnly: false })
+  let tree = frozen.ApprovalCard({ card, refresh: async () => { refreshed++ }, readOnly: false })
   assert.equal(all(tree).some(node => node.type === 'textarea'), false)
   all(tree).find(node => node.props.role === 'radio').props.onClick()
   // ApprovalCard has its own hook sequence when called directly.
-  const independent = createContext({ ...context, useState: initial => [typeof initial === 'boolean' ? false : typeof initial === 'number' ? 0 : typeof initial === 'string' ? '' : { answer: '通过' }, () => {}] })
-  new Script(index.slice(index.indexOf('const RECOMMENDED_LABEL ='), index.indexOf('// The feed keeps'))).runInContext(independent)
+  const independent = await loadClient('run-cards.js', {
+    react: { useState: initial => [typeof initial === 'boolean' ? false : typeof initial === 'number' ? 0 : typeof initial === 'string' ? '' : { answer: '通过' }, () => {}] },
+    call: rejected,
+  })
   tree = independent.ApprovalCard({ card, refresh: async () => { refreshed++ }, readOnly: false })
   button(tree, '提交').props.onClick(); await h.flush()
   assert.equal(refreshed, 1)
@@ -1149,12 +1145,12 @@ test('editor graph is accepted by the real host and retains configured back edge
     const draft = draftOf(); draft.nodes[1].profileId = role.id
     draft.edges = draft.edges.filter(edge => !edge.back)
     draft.nodes[2].options = draft.nodes[2].options.slice(0, 1)
-    const h = harness({ draft })
+    const h = await harness({ draft })
     named(h.render(), 'WorkflowCanvas').props.onConnect('review', '$rework', 'work')
     h.render()
     const wired = JSON.parse(h.storage.get('nodo.workflow.draft')).draft
     const view = await host.api('state')
-    assert.equal(h.context.helpers.wfValidate(wired, view).length, 0)
+    assert.equal(h.loaded.wfValidate(wired, view).length, 0)
     const definition = await host.api('workflow-create', wired)
     assert.equal(definition.edges.at(-1).back.max, 2)
     assert.deepEqual(definition.nodes.find(node => node.id === 'review').options.at(-1), { id: 'rework', label: '返工' })
@@ -1165,7 +1161,7 @@ test('editor graph is accepted by the real host and retains configured back edge
     await host.api('approval-answer', { id: asking.card, decision: 'answer', value: '接受并完成' })
     await until(async () => (await host.api('run-get', { id: runId })).status === 'done')
     run = await host.api('run-get', { id: runId })
-    assert.ok(h.context.helpers.wfHistoryGraph([definition], run))
+    assert.ok(h.loaded.wfHistoryGraph([definition], run))
     assert.equal(run.tasks.find(task => task.kind === 'human').output, 'Decision "人工验收": 接受并完成')
   })
 })
@@ -1183,17 +1179,18 @@ test('a question card shows the step report, takes an exit with a note and sends
     const card = state.approvals.find(item => item.id.startsWith(`run:${runId}:`))
     assert.deepEqual(card.detail.exits, [{ id: 'accept', label: '接受并完成' }, { id: 'revise', label: '返回修改' }])
     assert.deepEqual([card.detail.back, card.detail.report.step], ['编码实现', '编码实现'])
-    const h = harness()
+    const h = await harness()
     const detail = await host.api('run-get', { id: runId })
-    assert.equal(h.context.helpers.wfHistoryGraph(state.workflows.definitions, detail).nodes.length, 4, 'a run draws the graph it snapshotted')
+    assert.equal(h.loaded.wfHistoryGraph(state.workflows.definitions, detail).nodes.length, 4, 'a run draws the graph it snapshotted')
     assert.deepEqual(detail.tasks.find(task => task.kind === 'agent').input, { text: '实现并验证' }, 'the run record keeps the task it was given')
-    new Script(index.slice(index.indexOf('const RECOMMENDED_LABEL ='), index.indexOf('// The feed keeps'))).runInContext(h.context)
-    assert.equal(h.context.ApprovalCard({ card, refresh: async () => {}, readOnly: false }).type, h.context.DecisionCard)
+    const cards = await loadClient('run-cards.js', { call: async () => ({}) })
+    assert.equal(cards.ApprovalCard({ card, refresh: async () => {}, readOnly: false }).type, cards.DecisionCard)
     const sent = [], slots = []
     let at = 0
-    const own = createContext({ ...h.context, useState: initial => { const i = at++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = value }] },
-      call: async (endpoint, body) => { sent.push(body) } })
-    new Script(index.slice(index.indexOf('const RECOMMENDED_LABEL ='), index.indexOf('// The feed keeps'))).runInContext(own)
+    const own = await loadClient('run-cards.js', {
+      react: { useState: initial => { const i = at++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = value }] } },
+      call: async (endpoint, body) => { sent.push(body) },
+    })
     const decide = () => { at = 0; return own.DecisionCard({ card, refresh: async () => {}, readOnly: false }) }
     let tree = decide()
     assert.match(text(all(tree).find(node => node.props?.className === 'nodo-question-report')), /编码实现 的产出/)
@@ -1209,13 +1206,14 @@ test('a question card shows the step report, takes an exit with a note and sends
 })
 
 test('a legacy question card offers going back or cancelling, not an answer', async () => {
-  const h = harness()
+  const h = await harness()
   const decide = async card => {
     const sent = [], slots = []
     let at = 0
-    const own = createContext({ ...h.context, useState: initial => { const i = at++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] },
-      call: async (endpoint, body) => { sent.push(body) } })
-    new Script(index.slice(index.indexOf('const RECOMMENDED_LABEL ='), index.indexOf('// The feed keeps'))).runInContext(own)
+    const own = await loadClient('run-cards.js', {
+      react: { useState: initial => { const i = at++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value }] } },
+      call: async (endpoint, body) => { sent.push(body) },
+    })
     return { sent, tree: own.DecisionCard({ card, refresh: async () => {}, readOnly: false }) }
   }
   const shown = await decide({ id: 'run:r:q:1', reason: '查看「编码实现」的产出', detail: { exits: [], legacy: true, back: '编码实现', report: { step: '编码实现', text: '产出文字' } } })
@@ -1232,7 +1230,7 @@ test('a legacy question card offers going back or cancelling, not an answer', as
   h.dispose()
 })
 
-test('a damaged browser draft drops what it cannot show and opens with its errors', () => {
+test('a damaged browser draft drops what it cannot show and opens with its errors', async () => {
   const draft = draftOf()
   draft.nodes.push(null, 'node', { id: 'gone', kind: 'unknown' }, { kind: 'agent' })
   draft.nodes[1].name = undefined
@@ -1241,7 +1239,7 @@ test('a damaged browser draft drops what it cannot show and opens with its error
   draft.nodes[1].choices = []
   draft.nodes[2].options.push(null, { id: 3, label: 4 })
   draft.edges.push(null, { from: 'work' })
-  const h = harness({ draft })
+  const h = await harness({ draft })
   const tree = h.render()
   const saved = JSON.parse(h.storage.get('nodo.workflow.draft')).draft
   assert.deepEqual(saved.nodes.map(node => node.id), ['start', 'work', 'review', 'end'])
@@ -1249,16 +1247,16 @@ test('a damaged browser draft drops what it cannot show and opens with its error
   assert.deepEqual(saved.nodes[1].images, [])
   assert.deepEqual(saved.nodes[1].files, [{ id: 'kept', name: '4' }])
   assert.deepEqual(saved.nodes[2].options.at(-1), { id: '3', label: '4' })
-  const errors = h.context.helpers.wfValidate(saved, h.view).map(error => error.message)
+  const errors = h.loaded.wfValidate(saved, h.view).map(error => error.message)
   assert.ok(errors.some(message => message.includes('请填写节点名称')))
   assert.ok(tree)
   h.dispose()
 })
 
-test('a question has no prompt field and lists each option as an exit group like a step\'s conditions', () => {
-  const h = harness({ draft: draftOf() })
+test('a question has no prompt field and lists each option as an exit group like a step\'s conditions', async () => {
+  const h = await harness({ draft: draftOf() })
   named(h.render(), 'WorkflowCanvas').props.onSelect('review')
-  const inspector = () => h.context.WorkflowInspector(named(h.render(), 'WorkflowInspector').props)
+  const inspector = () => h.loaded.WorkflowInspector(named(h.render(), 'WorkflowInspector').props)
   const group = title => all(inspector()).find(node => node.props.role === 'group' && node.props['aria-label'] === title)
   const field = title => all(group(title)).find(node => node.type === 'input')
   const options = () => h.render() && JSON.parse(h.storage.get('nodo.workflow.draft')).draft.nodes[2].options
@@ -1272,17 +1270,17 @@ test('a question has no prompt field and lists each option as an exit group like
   assert.deepEqual(options().map(option => option.id), ['accept', 'revise', 'choice_3'])
   all(group('选项 2')).find(node => node.props['aria-label'] === '删除选项 2').props.onClick()
   assert.deepEqual(options(), [{ id: 'accept', label: '通过' }, { id: 'choice_3', label: '' }])
-  assert.equal(h.context.helpers.wfValidate(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view).some(error => error.message.includes('问题')), false, 'a question needs no prompt')
+  assert.equal(h.loaded.wfValidate(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view).some(error => error.message.includes('问题')), false, 'a question needs no prompt')
   h.dispose()
 })
 
-test('a step with a rework wire lists pass and rework conditions in one card, suggestions shown as placeholders', () => {
+test('a step with a rework wire lists pass and rework conditions in one card, suggestions shown as placeholders', async () => {
   const draft = draftOf()
   draft.nodes[2] = { id: 'review', name: '代码审查', kind: 'agent', profileId: 'role', task: '检查实现' }
   draft.edges = draft.edges.slice(0, 2).concat({ from: 'review', exit: 'done', to: 'end' })
-  const h = harness({ draft })
+  const h = await harness({ draft })
   named(h.render(), 'WorkflowCanvas').props.onSelect('review')
-  const inspector = () => h.context.WorkflowInspector(named(h.render(), 'WorkflowInspector').props)
+  const inspector = () => h.loaded.WorkflowInspector(named(h.render(), 'WorkflowInspector').props)
   const group = title => all(inspector()).find(node => node.props['aria-label'] === title)
   const inputs = title => all(group(title)).filter(node => node.type === 'input')
   const exits = () => h.render() && JSON.parse(h.storage.get('nodo.workflow.draft')).draft.nodes[2].exits
@@ -1298,7 +1296,7 @@ test('a step with a rework wire lists pass and rework conditions in one card, su
   inputs('通过条件')[0].props.onChange({ target: { value: '功能符合需求' } })
   button(group('返工条件'), '+ 添加返工条件').props.onClick()
   h.render()
-  assert.ok(h.context.helpers.wfValidate(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view).some(error => error.message.includes('请填写每一条通过和返工条件')))
+  assert.ok(h.loaded.wfValidate(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view).some(error => error.message.includes('请填写每一条通过和返工条件')))
   inputs('返工条件')[2].props.onChange({ target: { value: '测试失败' } })
   assert.deepEqual(exits(), [{ id: 'done', when: '功能符合需求\n结果已验证，没有阻塞问题' }, { id: 'rework', when: '存在阻塞问题或未满足任务要求\n缺少继续所需的信息或材料\n测试失败' }])
   inputs('通过条件')[0].props.onChange({ target: { value: '' } })

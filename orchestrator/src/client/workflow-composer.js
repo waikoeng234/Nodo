@@ -1,4 +1,9 @@
-function WorkflowTaskComposer({ node, view, disabled, onChange, onBusy }) {
+import { h, Fragment, useState, useEffect, useRef, call, readImage } from './ui-shared.js'
+import { Composer } from './composer.js'
+import { RolePicker } from './role-seat.js'
+import { wfWorkspace, wfCurrentSession } from './workflow.js'
+
+export function WorkflowTaskComposer({ node, view, disabled, onChange, onBusy }) {
   const [previews, setPreviews] = useState({}), [error, setError] = useState('')
   const uploading = useRef(false)
   const profile = view.profiles.find(item => item.id === node.profileId)

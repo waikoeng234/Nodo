@@ -1,19 +1,33 @@
-const avatarTemplateOf = (profile = {}) => AVATAR_TEMPLATES.find(item => item.id === profile.avatarTemplate)
-  ?? AVATAR_TEMPLATES[Array.from(profile.id || profile.name || '').reduce((sum, letter) => sum + letter.codePointAt(0), 0) % AVATAR_TEMPLATES.length]
+import { h } from './ui-shared.js'
+import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 
-function RoleAvatar({ profile, running = false, size = 32 }) {
+export type AvatarTemplate = (typeof AVATAR_TEMPLATES)[number]
+export interface RoleAvatarProfile { avatarTemplate?: string; id?: string; name?: string }
+export interface RoleAvatarProps { profile: RoleAvatarProfile; running?: boolean; size?: number }
+
+export const avatarTemplateOf = (profile: RoleAvatarProfile = {}): AvatarTemplate =>
+  AVATAR_TEMPLATES.find(item => item.id === profile.avatarTemplate)
+  ?? AVATAR_TEMPLATES[Array.from(profile.id || profile.name || '').reduce((sum, letter) => sum + (letter.codePointAt(0) ?? 0), 0) % AVATAR_TEMPLATES.length]
+
+export function RoleAvatar({ profile, running = false, size = 32 }: RoleAvatarProps) {
   const template = avatarTemplateOf(profile)
-  return h('span', { className: 'nodo-avatar', 'data-running': running ? 'true' : undefined,
-    'data-template': template.id, 'aria-hidden': true, style: { width: size, height: size } },
-    h('svg', { className: 'nodo-avatar-art', viewBox: '0 0 64 64', width: size, height: size, focusable: false },
-      h('path', { d: template.shape, fill: template.color }),
-      h('g', { transform: `rotate(${template.tilt} 32 30)` },
-        h('g', { className: 'nodo-avatar-eyes', fill: '#172021' },
-          h('rect', { x: 21, y: 23, width: 5.5, height: 15, rx: 2.75 }),
-          h('rect', { x: 38, y: 23, width: 5.5, height: 15, rx: 2.75 })))))
+  return (
+    <span className="nodo-avatar" data-running={running ? 'true' : undefined}
+      data-template={template.id} aria-hidden style={{ width: size, height: size }}>
+      <svg className="nodo-avatar-art" viewBox="0 0 64 64" width={size} height={size} focusable={false}>
+        <path d={template.shape} fill={template.color} />
+        <g transform={`rotate(${template.tilt} 32 30)`}>
+          <g className="nodo-avatar-eyes" fill="#172021">
+            <rect x={21} y={23} width={5.5} height={15} rx={2.75} />
+            <rect x={38} y={23} width={5.5} height={15} rx={2.75} />
+          </g>
+        </g>
+      </svg>
+    </span>
+  )
 }
 
-const AVATAR_CSS = `
+export const AVATAR_CSS = `
 .nodo-avatar{display:inline-flex;align-items:center;justify-content:center;flex:none}
 .nodo-avatar-art{display:block;overflow:visible;transform-origin:50% 85%}
 .nodo-avatar-eyes{transform-box:fill-box;transform-origin:center}

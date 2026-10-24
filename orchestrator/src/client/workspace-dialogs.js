@@ -1,6 +1,12 @@
+import {
+  h, Fragment, useState, useEffect, useRef, call, nativePickDirectory, WORKSPACE_FORM, WORKTREE_FORM,
+  Menu, Modal, Button, IconChevronDownOutlineRegular,
+} from './ui-shared.js'
+import { Field } from './profile-dialogs.js'
+
 // Creating or editing a workspace uses the same modal as the role dialog, so no
 // rail entry ever replaces the conversation with a form page.
-function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
+export function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
   const [draft, setDraft] = useState({ name: workspace?.name ?? '', cwd: workspace?.cwd ?? '' })
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -61,7 +67,7 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
     error && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)))
 }
 
-function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
+export function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
   const [refs, setRefs] = useState(null)
   const [refsError, setRefsError] = useState('')
   const [mode, setMode] = useState('new')
@@ -237,7 +243,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
 
 // Rename a workspace by name alone, like dsh's own dialog: the folder itself is
 // not touched, and the name has to stay unique across the list.
-function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
+export function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
   const [draft, setDraft] = useState(workspace.name)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -274,7 +280,7 @@ function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
   error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
 }
 
-function SessionRenameDialog({ session, onCancel, onSaved }) {
+export function SessionRenameDialog({ session, onCancel, onSaved }) {
   const [draft, setDraft] = useState(session.name)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -309,7 +315,7 @@ function SessionRenameDialog({ session, onCancel, onSaved }) {
   error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
 }
 
-function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
+export function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const remove = async () => {

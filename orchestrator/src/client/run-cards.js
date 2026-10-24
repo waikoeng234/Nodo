@@ -1,12 +1,16 @@
+import { h, Fragment, useState, call, Button, Tag, StateDot, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular } from './ui-shared.js'
+import { Field } from './profile-dialogs.js'
+import { RunningLine } from './running.js'
+
 // A pending request takes the host's own composer takeover for the same thing:
 // a permission is the host's approval panel (warning strip, headline, reject /
 // allow once, Enter and Escape as shortcuts), a question is the host's question
 // composer (eyebrow + question, numbered options, custom answer, pager, submit).
 // Workflow runs: a list of definitions to start and runs to open, and one run's
 // steps with what a person can do about the step the run stopped on.
-const RUN_STATUS = { running: '运行中', waiting_human: '等待人工', paused: '已暂停', needs_reconcile: '待核对', done: '已完成', failed: '失败',
+export const RUN_STATUS = { running: '运行中', waiting_human: '等待人工', paused: '已暂停', needs_reconcile: '待核对', done: '已完成', failed: '失败',
   cancelled: '已取消', unreadable: '无法读取', pending: '待调度', active: '执行中' }
-const RUN_DOT = { running: 'ongoing', active: 'ongoing', waiting_human: 'warning', paused: 'warning', needs_reconcile: 'warning', done: 'done', failed: 'error', unreadable: 'error' }
+export const RUN_DOT = { running: 'ongoing', active: 'ongoing', waiting_human: 'warning', paused: 'warning', needs_reconcile: 'warning', done: 'done', failed: 'error', unreadable: 'error' }
 const RUN_REASONS = { interrupted: '执行中断', host_restarted: '宿主重启', workspace_occupied: '工作区被占用', workspace_missing: '工作区已删除', stop_unconfirmed: '停止未确认',
   end_unconfirmed: '结束未确认', profile_missing: '角色已删除', profile_changed: '角色配置已变', no_exit: '没有出口', blocked: '无法继续', back_limit: '返工次数已满', timeout: '超时',
   empty_reply: '空回复', missing_deliverable: '没有最终交付', cancelled: '已取消', no_pending_task: '没有待执行的步骤' }
@@ -15,17 +19,17 @@ const ATTEMPT_PHASE = { dispatching: '投递中', running: '执行中', parsing:
 const ATTEMPT_END = { done: '完成', error: '出错', interrupted: '中断', timeout: '超时' }
 const SETTLE = ['needs_reconcile', 'waiting_human']
 const STOPPABLE_RUN = ['running', 'waiting_human', 'paused', 'needs_reconcile']
-const needsPerson = run => SETTLE.includes(run.status)
-const taskName = task => ({ start: '开始', end: '结束' })[task.kind] ?? task.name
+export const needsPerson = run => SETTLE.includes(run.status)
+export const taskName = task => ({ start: '开始', end: '结束' })[task.kind] ?? task.name
 const OUTPUT_KINDS = ['agent', 'human']
 const reasonText = reason => RUN_REASONS[reason] ?? String(reason ?? '').replace(/^(retry|accepted|cancelled): /, (_, word) => REASON_WORDS[word])
-const statusLine = (status, reason) => h('span', { className: 'nodo-runs-meta' },
+export const statusLine = (status, reason) => h('span', { className: 'nodo-runs-meta' },
   h(StateDot, { state: RUN_DOT[status] ?? 'idle', size: 10 }), RUN_STATUS[status] ?? status, reason && reasonText(reason) !== (RUN_STATUS[status] ?? status) ? ` · ${reasonText(reason)}` : '')
 const attemptText = attempt => attempt.end
   ? `${ATTEMPT_END[attempt.end.reason] ?? attempt.end.reason}${attempt.end.unconfirmed ? '（未确认）' : ''}`
   : ATTEMPT_PHASE[attempt.phase] ?? attempt.phase
 
-function RunDetail({ run, work, draft, busy, readOnly, canOpen, onDraft, onAct, onOpenSession, exitHint, answerHint, step = false, onPick }) {
+export function RunDetail({ run, work, draft, busy, readOnly, canOpen, onDraft, onAct, onOpenSession, exitHint, answerHint, step = false, onPick }) {
   if (run.status === 'unreadable') return h('section', { className: 'nodo-run', 'aria-label': '运行详情' },
     h('p', { className: 'nodo-dialog-hint' }, '这条运行记录无法读取，文件保持原样。'))
   const settle = run.tasks.find(task => task.id === run.settle)
@@ -94,7 +98,7 @@ const optionText = label => RECOMMENDED_LABEL.test(label)
 
 // A workflow question: read the step's report, then take one of the exits with an
 // optional note, or send the report back to its step with what to change.
-function DecisionCard({ card, refresh, readOnly }) {
+export function DecisionCard({ card, refresh, readOnly }) {
   const { exits, back, report, legacy } = card.detail
   const [exit, setExit] = useState('')
   const [note, setNote] = useState('')
@@ -145,7 +149,7 @@ function DecisionCard({ card, refresh, readOnly }) {
           !legacy && h(Button, { variant: 'primary', disabled: blocked, onClick: () => void answer(exit) }, busy ? '提交中…' : '提交')))))
 }
 
-function ApprovalCard({ card, refresh, readOnly }) {
+export function ApprovalCard({ card, refresh, readOnly }) {
   if (card.detail?.exits) return h(DecisionCard, { card, refresh, readOnly })
   const questions = card.detail?.questions?.length
     ? card.detail.questions

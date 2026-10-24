@@ -1,37 +1,40 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createContext, Script } from 'node:vm'
+import { loadClient } from './helpers/client-module.js'
 
-const source = readFileSync(new URL('../src/client/running.js', import.meta.url), 'utf8')
 const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
 
-function mount(start = 0, reduce = false) {
+async function mount(start = 0, reduce = false) {
   const hooks = [], pending = [], timers = new Map(), listeners = new Set()
   let cursor = 0, now = start, serial = 0
   const media = { matches: reduce, addEventListener: (_, run) => listeners.add(run), removeEventListener: (_, run) => listeners.delete(run) }
-  const context = createContext({
-    AVATAR_TEMPLATES: templates, RoleAvatar: 'RoleAvatar', Date: { now: () => now },
-    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(child => child !== false) }),
-    useRef(initial) { return hooks[cursor++] ??= { current: initial } },
-    useState(initial) {
-      const index = cursor++
-      hooks[index] ??= { value: typeof initial === 'function' ? initial() : initial }
-      return [hooks[index].value, value => { hooks[index].value = value }]
+  const { RunningLine } = await loadClient('running.js', {
+    stubs: { 'avatar.tsx': { RoleAvatar: 'RoleAvatar' } },
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(child => child !== false) }),
+    react: {
+      useRef(initial) { return hooks[cursor++] ??= { current: initial } },
+      useState(initial) {
+        const index = cursor++
+        hooks[index] ??= { value: typeof initial === 'function' ? initial() : initial }
+        return [hooks[index].value, value => { hooks[index].value = value }]
+      },
+      useEffect(effect, deps) {
+        const index = cursor++, previous = hooks[index]
+        if (previous && deps.every((value, at) => value === previous.deps[at])) return
+        pending.push(() => { previous?.cleanup?.(); hooks[index] = { deps, cleanup: effect() } })
+      },
     },
-    useEffect(effect, deps) {
-      const index = cursor++, previous = hooks[index]
-      if (previous && deps.every((value, at) => value === previous.deps[at])) return
-      pending.push(() => { previous?.cleanup?.(); hooks[index] = { deps, cleanup: effect() } })
+    globals: {
+      Date: { now: () => now },
+      setInterval(run) { timers.set(++serial, run); return serial },
+      clearInterval: id => timers.delete(id), window: { matchMedia: () => media },
     },
-    setInterval(run) { timers.set(++serial, run); return serial },
-    clearInterval: id => timers.delete(id), window: { matchMedia: () => media },
   })
-  new Script(source).runInContext(context)
   return {
     render(since, engine) {
       cursor = 0
-      const tree = context.RunningLine({ since, engine })
+      const tree = RunningLine({ since, engine })
       pending.splice(0).forEach(run => run())
       return tree
     },
@@ -45,8 +48,8 @@ function mount(start = 0, reduce = false) {
 const all = tree => typeof tree === 'object' && tree !== null ? [tree, ...tree.children.flatMap(all)] : []
 const elapsedLabel = tree => all(tree).find(node => node.props['aria-label']?.startsWith('用时 '))?.props['aria-label']
 
-test('engine silence uses the last received event clock and clears when new activity arrives', () => {
-  const view = mount(1000)
+test('engine silence uses the last received event clock and clears when new activity arrives', async () => {
+  const view = await mount(1000)
   const statusLabel = tree => all(tree).find(node => node.props.className === 'nodo-running-label').props['aria-label']
   const engine = { phase: 'tool', tool: 'read', lastEventAt: 1000 }
   view.render(0, engine)
@@ -59,8 +62,8 @@ test('engine silence uses the last received event clock and clears when new acti
   view.dispose()
 })
 
-test('running status follows the six avatar colors forward and backward on the elapsed clock', () => {
-  const view = mount()
+test('running status follows the six avatar colors forward and backward on the elapsed clock', async () => {
+  const view = await mount()
   view.render(0)
   const expected = ['sky', 'peach', 'olive', 'mint', 'lavender', 'butter', 'lavender', 'mint', 'olive', 'peach', 'sky']
   expected.forEach((id, index) => {
@@ -75,8 +78,8 @@ test('running status follows the six avatar colors forward and backward on the e
   view.dispose()
 })
 
-test('reduced motion freezes the palette and its subscription and clock are cleaned up', () => {
-  const view = mount(6320, true)
+test('reduced motion freezes the palette and its subscription and clock are cleaned up', async () => {
+  const view = await mount(6320, true)
   view.render(0)
   assert.equal(view.render(0).props.style['--nodo-running-tint'], templates[0].color)
   view.motion(false)
@@ -92,8 +95,8 @@ test('reduced motion freezes the palette and its subscription and clock are clea
   assert.equal(view.listeners.size, 0)
 })
 
-test('missing and future start times stay valid and a new turn replaces the previous clock', () => {
-  const view = mount(5000)
+test('missing and future start times stay valid and a new turn replaces the previous clock', async () => {
+  const view = await mount(5000)
   assert.equal(elapsedLabel(view.render(undefined)), undefined)
   view.tick(8160)
   assert.equal(view.render(undefined).props.style['--nodo-running-tint'], templates[1].color)
