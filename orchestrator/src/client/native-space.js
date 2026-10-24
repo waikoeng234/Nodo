@@ -14,12 +14,14 @@ function createNativeSpace(ctx, Sidebar) {
   }
   const subscribe = listener => { listeners.add(listener); return () => listeners.delete(listener) }
   // An empty draft is worth nothing: any navigation away from it drops it. Text,
-  // images or pinned references count as input and keep it (and its rail row).
+  // images, pinned references or picked files count as input and keep it (and
+  // its rail row).
   const draftEmpty = draft => {
     const read = key => { try { return JSON.parse(localStorage.getItem(key)) } catch {} }
     const key = `new:${draft.id}`
     return String(read('nodo.drafts')?.[key] ?? '').trim() === ''
-      && !read('nodo.draft-options')?.[key]?.references?.length && !heldImages?.[key]?.length
+      && !read('nodo.draft-options')?.[key]?.references?.length && !read('nodo.draft-options')?.[key]?.files?.length
+      && !heldImages?.[key]?.length
   }
   const keptDraft = () => state.draft && draftEmpty(state.draft) ? { draft: undefined } : {}
   const away = () => ({ drafting: false, ...keptDraft() })

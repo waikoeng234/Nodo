@@ -190,12 +190,14 @@ function createNativeSpace(ctx, Sidebar) {
   }
   const subscribe = listener => { listeners.add(listener); return () => listeners.delete(listener) }
   // An empty draft is worth nothing: any navigation away from it drops it. Text,
-  // images or pinned references count as input and keep it (and its rail row).
+  // images, pinned references or picked files count as input and keep it (and
+  // its rail row).
   const draftEmpty = draft => {
     const read = key => { try { return JSON.parse(localStorage.getItem(key)) } catch {} }
     const key = `new:${draft.id}`
     return String(read('nodo.drafts')?.[key] ?? '').trim() === ''
-      && !read('nodo.draft-options')?.[key]?.references?.length && !heldImages?.[key]?.length
+      && !read('nodo.draft-options')?.[key]?.references?.length && !read('nodo.draft-options')?.[key]?.files?.length
+      && !heldImages?.[key]?.length
   }
   const keptDraft = () => state.draft && draftEmpty(state.draft) ? { draft: undefined } : {}
   const away = () => ({ drafting: false, ...keptDraft() })
@@ -484,7 +486,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const [reference, setReference] = useState(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
-    const pending = useRef(false), created = useRef(null)
+    const pending = useRef(false), created = useRef(null), uploading = useRef(false)
     const sourceRole = sourceSessionId && view?.profiles.find(role => role.sessions.some(session =>
       (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) === sourceSessionId))
     const sourceSession = sourceRole?.sessions.find(session => (session.nativeSessionId ?? session.driverSessionId) === sourceSessionId)
@@ -517,19 +519,21 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     // the draft inline, documents become stored references that only turn into
     // workspace paths — the one address every engine can read — when sent.
     const attach = async picked => {
-      if (disabled || !picked.length) return
-      setError('')
+      if (disabled || uploading.current || !picked.length) return
+      uploading.current = true; setError('')
       try {
         const data = await Promise.all(picked.map(readImage))
-        const images = data.filter(item => item.mediaType.startsWith('image/'))
-        if (images.length) changeImages(current => [...current, ...images])
+        const added = data.filter(item => item.mediaType.startsWith('image/'))
         const documents = data.filter(item => !item.mediaType.startsWith('image/'))
+        if (added.length + images.length > 8 || documents.length + files.length > 8) throw new Error('每条消息最多添加 8 张图片和 8 个文件。')
+        if (added.length) changeImages(current => [...current, ...added])
         if (documents.length) {
           const saved = await call('attachment-save', { images: [],
             files: documents.map(item => ({ name: item.name, mediaType: item.mediaType, data: item.dataUrl.slice(item.dataUrl.indexOf(',') + 1) })) })
           updateSelection(current => ({ ...current, files: [...(current.files ?? []), ...saved.files] }))
         }
       } catch (failure) { setError(failure.message) }
+      finally { uploading.current = false }
     }
     const send = async () => {
       if (disabled || pending.current || (!text.trim() && !images.length && !references.length && !files.length)) return

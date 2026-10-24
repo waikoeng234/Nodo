@@ -58,6 +58,8 @@ function harness({ defaultRole = 'a', readOnly = null, sourceSessionId } = {}) {
         return { id: `${payload.id}-bound`, target: payload.target }
       }
       if (endpoint === 'send') return { mode: 'turn' }
+      if (endpoint === 'attachment-save') return { images: [], files: (payload.files ?? []).map((file, index) => ({ id: `file-${index + 1}`, name: file.name })) }
+      if (endpoint === 'attachment-place') return { files: ['/tmp/attached'], text: '## Attached files (user provided)\n- "/tmp/attached"' }
       throw new Error(`Unexpected ${endpoint}`)
     },
   })
@@ -119,6 +121,16 @@ test('the final chosen role wins over the sidebar default on the first send', as
   assert.equal(h.navigation().profile, 'b')
   assert.equal(h.navigation().sessions['project:b'], 'session-1')
   assert.equal(JSON.parse(h.storage.get('nodo.drafts'))['new:draft'], '')
+})
+
+test('a native draft with picked files prompts the host session with the placed paths', async () => {
+  const h = harness()
+  h.composer().onChange('Review the spec')
+  await h.composer().onAttachFiles([{ name: 'spec.pdf', mediaType: 'application/pdf', dataUrl: 'data:application/pdf;base64,Qg==' }])
+  await h.send()
+  assert.deepEqual(h.calls.find(call => call.endpoint === 'attachment-place'), { endpoint: 'attachment-place',
+    files: [{ id: 'file-1', name: 'spec.pdf' }], workspace: 'project' })
+  assert.deepEqual(h.prompts[0].content, [{ type: 'text', text: 'Review the spec\n## Attached files (user provided)\n- "/tmp/attached"' }])
 })
 
 test('sending with the default role creates a fresh session for that role', async () => {

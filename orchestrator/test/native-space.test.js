@@ -81,6 +81,20 @@ test('legacy engine content retains the Nodo sidebar and can return to a native 
 
 const input = (storage, draft, text) => storage.set('nodo.drafts', JSON.stringify({ [`new:${draft.id}`]: text }))
 
+test('a draft holding only picked files survives navigation away', () => {
+  const h = harness()
+  h.space.enter()
+  h.space.startDraft({ workspace: 'project' })
+  const draft = h.space.getSnapshot().draft
+  h.storage.set('nodo.draft-options', JSON.stringify({ [`new:${draft.id}`]: { files: [{ id: '11111111-1111-1111-1111-111111111111', name: 'spec.pdf' }] } }))
+  h.space.open('native-role')
+  assert.equal(h.space.getSnapshot().draft, draft, 'picked files count as input and keep the draft')
+  h.storage.set('nodo.draft-options', JSON.stringify({ [`new:${draft.id}`]: {} }))
+  h.space.open('ordinary-session')
+  assert.equal(h.space.getSnapshot().draft, undefined, 'an emptied draft is still dropped')
+  h.dispose()
+})
+
 test('new conversation opens a local draft without a role and input keeps it across navigation', () => {
   const h = harness()
   h.space.enter()
