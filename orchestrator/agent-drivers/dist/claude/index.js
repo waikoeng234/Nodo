@@ -79,7 +79,7 @@ export function handshakeClaude({ executable, cwd, env }) {
                     peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: { behavior: 'deny', message: 'No active turn' } } }); },
                 onFrame: frame => {
                     if (frame.type === 'control_response' && frame.response?.request_id === 'orch-check')
-                        settle(resolve, { peer, models: Array.isArray(frame.response.response?.models) ? frame.response.response.models : [] });
+                        settle(resolve, { peer: peer, models: Array.isArray(frame.response.response?.models) ? frame.response.response.models : [] });
                 } });
             peer.write({ type: 'control_request', request_id: 'orch-check', request: { subtype: 'initialize' } });
         }
@@ -108,10 +108,10 @@ function claudeSettings(path) {
 // resolves its alias to the full versioned id, names it for display, and lists
 // the efforts that model takes. 'default' is the configured default, not a
 // distinct choice, and `value` is what --model accepts.
-const claudeCatalog = models => models.flatMap(model => {
+const claudeCatalog = (models) => models.flatMap(model => {
     if (typeof model?.value !== 'string' || model.value === '' || model.value === 'default')
         return [];
-    const levels = Array.isArray(model.supportedEffortLevels) ? model.supportedEffortLevels.filter(level => typeof level === 'string' && level !== '') : [];
+    const levels = Array.isArray(model.supportedEffortLevels) ? model.supportedEffortLevels.filter((level) => typeof level === 'string' && level !== '') : [];
     return [{ id: model.value, ...(typeof model.displayName === 'string' && model.displayName !== '' ? { label: model.displayName } : {}), ...(levels.length ? { thinking: levels.map(id => ({ id })) } : {}) }];
 });
 export async function scanClaude({ engineOptions = {}, cwd } = {}) {
@@ -212,7 +212,7 @@ const claudePromptTokens = (raw) => {
         : undefined;
 };
 export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
-    const emit = event => { try {
+    const emit = (event) => { try {
         onEvent?.(event);
     }
     catch { } };
@@ -246,7 +246,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             emit(turn.changes.snapshot(turn.id));
         emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) });
     };
-    const control = request => new Promise((resolve, reject) => {
+    const control = (request) => new Promise((resolve, reject) => {
         const request_id = `orch-${++controlSeq}`;
         const timer = setTimeout(() => { if (controls.delete(request_id))
             reject(new Error('Claude control request timed out')); }, 5000);
@@ -271,7 +271,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             emit({ type: 'tool', turnId: turn.id, callId: block.id, name: block.name ?? 'tool', phase: 'start', input: block.input,
                 ...(parentCallId ? { parentCallId } : {}) });
     };
-    const receive = frame => {
+    const receive = (frame) => {
         if (frame.type === 'control_response') {
             const pending = controls.get(frame.response?.request_id);
             if (!pending)
@@ -474,7 +474,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined);
         }
     };
-    const ask = frame => {
+    const ask = (frame) => {
         const request = frame.request ?? {};
         if (!peer)
             return;

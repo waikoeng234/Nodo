@@ -3,12 +3,20 @@
 // side writes user frames, control_requests and control_responses.
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import type { PermissionMode } from '../spi.js'
+
+export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode }
+export type ClaudeConnectOptions<Frame = unknown, Request = unknown> = {
+  executable: string; args?: string[]; cwd?: string; env?: NodeJS.ProcessEnv
+  onFrame?: (frame: Frame) => void; onRequest?: (frame: Request) => void; onClose?: (error: Error) => void
+}
+export type ClaudeConnection = { write(frame: unknown): void; running: Promise<void>; dispose(): void }
 
 // The flags every driver session needs: streaming both ways, partial chunks,
 // replayed user frames (they carry tool results), and prompts routed to us over
 // the control channel (--permission-prompt-tool=stdio is the value the Agent SDK
 // itself passes; the space-separated spelling does not arm the dispatcher).
-export function claudeArgs({ model, thinking, instructions, driverSessionId, permission } = {}) {
+export function claudeArgs({ model, thinking, instructions, driverSessionId, permission }: ClaudeArgsOptions = {}) {
   return [
     '--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
     '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',
@@ -23,21 +31,21 @@ export function claudeArgs({ model, thinking, instructions, driverSessionId, per
   ]
 }
 
-export function connectClaude({ executable, args, cwd, env, onFrame = () => {}, onRequest = () => {}, onClose = () => {} }) {
+export function connectClaude<Frame = unknown, Request = unknown>({ executable, args, cwd, env, onFrame = () => {}, onRequest = () => {}, onClose = () => {} }: ClaudeConnectOptions<Frame, Request>): ClaudeConnection {
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   let closed = false
   let stderrTail = ''
-  const write = frame => {
+  const write = (frame: unknown) => {
     if (closed || child.stdin.destroyed) throw new Error('Claude CLI connection is closed')
     child.stdin.write(`${JSON.stringify(frame)}\n`)
   }
-  const finish = error => {
+  const finish = (error: Error) => {
     if (closed) return
     closed = true
     onClose(error)
     if (child.exitCode === null) child.kill('SIGTERM')
   }
-  child.on('error', error => finish(new Error(`Cannot start Claude CLI (${error.code ?? 'spawn failed'})`)))
+  child.on('error', error => finish(new Error(`Cannot start Claude CLI (${(error as NodeJS.ErrnoException).code ?? 'spawn failed'})`)))
   child.stdin.on('error', () => finish(new Error('Cannot write to Claude CLI')))
   // stderr can carry configuration diagnostics; keep a short, secret-filtered tail.
   child.stderr.on('data', chunk => { stderrTail = `${stderrTail}${chunk}`.slice(-1024) })
@@ -47,18 +55,18 @@ export function connectClaude({ executable, args, cwd, env, onFrame = () => {}, 
   })
   // The CLI emits its session init only after the first user frame, so "the
   // process is up" is all a boot can wait for; the session id arrives later.
-  const running = new Promise((resolve, reject) => {
+  const running = new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve)
     child.once('error', reject)
     child.once('close', () => reject(new Error('Claude CLI exited during startup')))
   })
   createInterface({ input: child.stdout }).on('line', line => {
     if (closed) return
-    let frame
+    let frame: unknown
     try { frame = JSON.parse(line) } catch { return }
     try {
-      if (frame.type === 'control_request') onRequest(frame)
-      else onFrame(frame)
+      if ((frame as { type: string }).type === 'control_request') onRequest(frame as Request)
+      else onFrame(frame as Frame)
     } catch { finish(new Error('Invalid Claude protocol event')) }
   })
   return {

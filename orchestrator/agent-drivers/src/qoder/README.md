@@ -2,7 +2,7 @@
 
 This folder owns Qoder CLI discovery, launch and configuration on the
 stream-json control protocol (typed JSONL over stdio, wire protocol 1.5.0 as
-reported by the init frame). The transport mirrors `../claude/native.js` minus
+reported by the init frame). The transport mirrors `../claude/native.ts` minus
 the partial-message channel: the CLI has no `--include-partial-messages`, so
 assistant frames arrive whole and text is snapshot-only. No dependencies are
 added.
