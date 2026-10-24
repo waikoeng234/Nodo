@@ -10,6 +10,79 @@ import { connectZcode, findZcodeExecutable, parseZcodeModel } from './native.js'
 import { roleMcp } from '../role-mcp.js'
 import { zcodeInstructions } from './instructions.js'
 import { zcodeMcpServers } from './mcp.js'
+import type { Driver, DriverEvent, DriverImage, EngineInfo, EngineCheckResult, PermissionMode, SteerOutcome, Usage } from '../spi.js'
+import type { JsonRpcMessage, JsonRpcRequest, JsonRpcPeer, RpcId } from '../json-rpc-process.js'
+import type { FileChanges } from '../file-changes.js'
+import type { IdentityFiles } from '../identity-files.js'
+import type { Coverage } from '../coverage.js'
+import type { EngineScanOptions } from '../index.js'
+import type { SkillInventory, SkillCommand } from '../skills.js'
+import type { ZcodeIdentity } from './instructions.js'
+import type { ZcodeModelRoute } from './native.js'
+
+export type ZcodeOptions = { bin?: string }
+type ZcodeEvent = DriverEvent
+  | { type: 'request/stray'; kind: string; requestId?: RpcId }
+  | { type: 'request/missed'; id: string; connected: boolean; pending: string[] }
+export type ZcodeDriverOptions = {
+  onEvent?: (event: ZcodeEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
+  model?: unknown; thinking?: string; permission?: PermissionMode; driverSessionId?: string
+  instructions?: string; instructionDir?: string; identityFiles?: IdentityFiles; identityOwner?: string
+  allowEmptyResume?: boolean; healthIntervalMs?: number; healthTimeoutMs?: number
+}
+type ZcodeDriver = Driver & {
+  readonly instructionMode: ZcodeIdentity['mode']; readonly instructionTarget: ZcodeIdentity['target']
+  readonly instructionFallback: ZcodeIdentity['reason']; readonly coverage: Coverage
+}
+type ContextUsage = { used?: number; size?: number }
+type SessionSnapshot = {
+  sessionId?: string; session?: { sessionId?: string; status?: string }; messages?: unknown[]
+  contextUsage?: ContextUsage
+  runtime?: { contextUsage?: ContextUsage; pendingRequestIds?: RpcId[]; activeTurnId?: string }
+  projection?: { status?: string; lastError?: { message?: string } }
+  settings?: { model?: { available?: {
+    ref?: { providerId?: unknown; modelId?: unknown }; reasoning?: { defaultLevel?: unknown }
+  }[] } }
+}
+type ZcodePayload = {
+  kind: string; toolCallId?: string; toolName?: string; parentToolCallId?: string; input?: unknown
+  schedule?: { command?: string; description?: string }
+  inputId?: string; queryId?: string; pendingInputId?: string; assistantMessageId?: string
+  queryIds?: string[]; pendingInputIds?: string[]; drainedInputs?: { intent?: { sourceCommandId?: string } }[]
+  delta?: string; response?: string; resultType?: string; message?: string; error?: { message?: string }
+  result?: { success?: boolean; content?: unknown; error?: unknown }
+  modifiedInput?: unknown; requestId?: RpcId; contextUsage?: ContextUsage
+  runtime?: { contextUsage?: ContextUsage }; cacheStats?: { cacheReadTokens?: unknown }
+  usage?: {
+    inputTokens?: number; input?: number; outputTokens?: number; output?: number; totalTokens?: number; total?: number
+    cacheReadTokens?: number; cacheWriteTokens?: number; cache?: { read?: number; write?: number }
+  }
+  _meta?: { zcode?: { apiRetry?: { attempt: number; maxRetries: number; retryDelayMs?: number } } }
+  elapsedMs?: number; stdoutTail?: unknown; stderrTail?: unknown; stdoutBytes?: number
+  stderrBytes?: number; outputBytes?: number; outputPreview?: unknown
+}
+type PermissionOption = { response?: { decision?: string } }
+type ZcodeQuestion = {
+  question: string; header: string; multiSelect?: unknown
+  options?: (string | { label?: string; value?: string; description?: string })[]
+}
+type ZcodeParams = {
+  sessionId?: string; type?: string; payload?: ZcodePayload
+  requestId?: RpcId; toolCallId?: string; toolName?: string; riskLevel?: string; reason?: string
+  prompt?: string; options?: PermissionOption[]; questions?: ZcodeQuestion[]
+}
+type ZcodeRequest = JsonRpcRequest<ZcodeParams> & { params: ZcodeParams }
+type RunningTurn = {
+  id: string; started: boolean; messages: Set<string | undefined>; tools: Set<string>; completedTools: Set<string>
+  names: Map<string, string>; inputs: Map<string, unknown>; parents: Map<string, string>; parentEmitted: Set<string>
+  guides: Set<string | undefined>; guideIds: Map<string | undefined, string | undefined>; sawText: boolean; settle: (() => void) | null
+  changes: FileChanges; usage?: Usage; final?: string; unconfirmed?: boolean; checking?: boolean; interrupting?: boolean
+  lastEventAt: number; healthTimer?: ReturnType<typeof setInterval>; done?: Promise<void>; v4Inputs?: number
+  finished?: { reason: 'done'; error?: string }
+}
+type Compaction = { resolve(): void; reject(error: unknown): void; turnId: string; started: boolean }
+type CommandResult = { status: string; result?: { type?: string; inputId?: string } }
+type CompactResult = { compact?: { state?: string } }
 
 export { findZcodeExecutable } from './native.js'
 export { scanZcode } from './catalog.js'
@@ -22,18 +95,18 @@ export const zcodeInfo = {
     { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'providerId$modelId; blank uses ZCode settings' },
   ],
   capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] },
-}
+} satisfies EngineInfo
 
-export function validateZcodeOptions(raw = {}) {
+export function validateZcodeOptions(raw: Record<string, unknown> = {}): ZcodeOptions {
   for (const key of Object.keys(raw)) if (key !== 'bin') throw invalidConfig(`Unsupported ZCode option: ${key}`)
   const bin = validateBin(raw.bin)
   return bin ? { bin } : {}
 }
 
-export async function checkZcode({ cwd, engineOptions = {} } = {}) {
-  const checks = []
+export async function checkZcode({ cwd, engineOptions = {} }: EngineScanOptions = {}): Promise<EngineCheckResult> {
+  const checks: EngineCheckResult['checks'] = []
   try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
-  catch (error) { checks.push({ label: 'Working directory', ok: false, message: error.message }) }
+  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validateZcodeOptions(engineOptions)
   const executable = findZcodeExecutable(options.bin ?? 'zcode')
   if (!executable) return { engine: 'zcode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'ZCode executable not found. Install ZCode or enter its absolute path.' }] }
@@ -47,18 +120,18 @@ export async function checkZcode({ cwd, engineOptions = {} } = {}) {
   try {
     await peer.request('runtime/capabilities')
     checks.push({ label: 'Protocol', ok: true, message: 'ZCode app-server connected' })
-    const { sessions } = await peer.request('session/list', {})
+    const { sessions } = await peer.request<{ sessions: unknown }>('session/list', {})
     checks.push({ label: 'Session store', ok: true, message: `Readable (${Array.isArray(sessions) ? sessions.length : 0} existing sessions)` })
     checks.push({ label: 'Model / credentials', ok: null, message: 'The protocol has no credential query. The existing ZCode login is used; a conversation is needed to verify the model route.' })
   } catch (error) {
-    checks.push({ label: 'Protocol', ok: false, message: `Could not reach the ZCode app-server (${error.message}). Verify the installation; the first start may take a moment.` })
+    checks.push({ label: 'Protocol', ok: false, message: `Could not reach the ZCode app-server (${(error as Error).message}). Verify the installation; the first start may take a moment.` })
   } finally { peer.dispose() }
   return { engine: 'zcode', ok: checks.every(check => check.ok !== false), executable, version, checks }
 }
 
 // The thinking level ZCode itself would pick for a model, read from the session
 // snapshot that create/resume returned; undefined when the catalog is silent.
-const selectionDefault = (snapshot, selection) => (snapshot?.settings?.model?.available ?? [])
+const selectionDefault = (snapshot: SessionSnapshot, selection: ZcodeModelRoute) => (snapshot?.settings?.model?.available ?? [])
   .find(entry => entry?.ref?.providerId === selection.providerId && entry?.ref?.modelId === selection.modelId)?.reasoning?.defaultLevel
 
 // ZCode passes the provider's own usage object through and providers disagree on
@@ -67,7 +140,7 @@ const selectionDefault = (snapshot, selection) => (snapshot?.settings?.model?.av
 // `sessionCacheRead` is the growth of the whole-session cacheStats counter since
 // the previous observation, and the session runtime snapshot carries the context
 // occupancy with the window it is measured against.
-const zcodeUsage = (payload, context, sessionCacheRead) => {
+const zcodeUsage = (payload: ZcodePayload, context: ContextUsage | undefined, sessionCacheRead: number | undefined) => {
   const usage = payload?.usage ?? {}
   const outputTokens = usage.outputTokens ?? usage.output
   const total = usage.totalTokens ?? usage.total
@@ -89,39 +162,39 @@ const zcodeUsage = (payload, context, sessionCacheRead) => {
   })
 }
 
-const zcodeContext = payload => payload?.contextUsage ?? payload?.runtime?.contextUsage
+const zcodeContext = (payload: Pick<SessionSnapshot, 'contextUsage' | 'runtime'>) => payload?.contextUsage ?? payload?.runtime?.contextUsage
 
-export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000 } = {}) {
-  const emit = event => {
+export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000 }: ZcodeDriverOptions = {}): ZcodeDriver {
+  const emit = (event: ZcodeEvent) => {
     if (running && ['delta', 'thinking', 'tool', 'request/opened', 'request/closed'].includes(event.type)) running.lastEventAt = Date.now()
     try { onEvent?.(event) } catch {}
   }
-  let peer = null
-  let ready = null
+  let peer: JsonRpcPeer | null = null
+  let ready: Promise<void> | null = null
   let sessionId = driverSessionId
   let connected = false
   let disposed = false
   let sequence = 0
-  let running = null
-  let context
+  let running: RunningTurn | null = null
+  let context: ContextUsage | undefined
   let canRecreateEmpty = allowEmptyResume === true
-  let identity
-  let compaction
-  const requests = new Map()
-  const answeredRequests = new Set()
+  let identity: ZcodeIdentity | undefined
+  let compaction: Compaction | null | undefined
+  const requests = new Map<string, ZcodeRequest>()
+  const answeredRequests = new Set<RpcId | undefined>()
   const coverage = createCoverage('zcode')
 
   // `cacheStats` counts the whole engine session's cache read; a turn's own read
   // is its growth since the previous observation — nothing before a first
   // observation, or when the counter goes backwards.
-  let cacheStatsBasis
-  const grewCacheRead = to => {
+  let cacheStatsBasis: number | undefined
+  const grewCacheRead = (to: unknown) => {
     const from = cacheStatsBasis
     if (typeof to === 'number') cacheStatsBasis = to
     return typeof from === 'number' && typeof to === 'number' && to >= from ? to - from : undefined
   }
 
-  const finishCompact = error => {
+  const finishCompact = (error?: unknown) => {
     const pending = compaction
     compaction = null
     if (error) pending?.reject(error)
@@ -129,7 +202,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
   }
   // An accepted compaction reports its lifetime as a turn (spi.js); a lost
   // connection ends that turn so the host does not stay active on it.
-  const settleCompact = error => {
+  const settleCompact = (error: Error) => {
     if (!compaction) return
     const { turnId, started } = compaction
     finishCompact(error)
@@ -149,7 +222,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     requests.clear()
     answeredRequests.clear()
   }
-  const end = (reason, error, usage) => {
+  const end = (reason: 'done' | 'interrupted' | 'error', error?: string, usage?: Usage) => {
     if (!running) return
     const turn = running
     running = null
@@ -162,29 +235,29 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     emit(turn.changes.snapshot(turn.id))
     emit({ type: 'turn/end', turnId: turn.id, reason, ...(turn.final ? { text: turn.final } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) })
   }
-  const command = (type, payload, commandId = randomUUID(), timeout = 15000) => peer.request('v4/command', { commandId, clientId: 'nodo', sessionId, type, payload, issuedAt: Date.now() }, timeout)
-  const checkHealth = async turn => {
+  const command = (type: string, payload: unknown, commandId: string = randomUUID(), timeout = 15000) => peer!.request<CommandResult>('v4/command', { commandId, clientId: 'nodo', sessionId, type, payload, issuedAt: Date.now() }, timeout)
+  const checkHealth = async (turn: RunningTurn) => {
     if (running !== turn || turn.checking || turn.interrupting || Date.now() - turn.lastEventAt < healthIntervalMs) return
     turn.checking = true
     const connection = peer
     const checkedAt = turn.lastEventAt
     try {
-      const snapshot = await connection.request('session/read', { sessionId, contentProfile: 'index', messageLimit: 1 }, healthTimeoutMs)
+      const snapshot = await connection!.request<SessionSnapshot>('session/read', { sessionId, contentProfile: 'index', messageLimit: 1 }, healthTimeoutMs)
       if (running !== turn || peer !== connection || turn.interrupting || turn.lastEventAt !== checkedAt) return
       if (Array.isArray(snapshot.runtime?.pendingRequestIds)) {
-        if ([...answeredRequests].some(id => snapshot.runtime.pendingRequestIds.includes(id))) {
+        if ([...answeredRequests].some(id => snapshot.runtime!.pendingRequestIds!.includes(id as RpcId))) {
           end('error', 'ZCode 仍在等待已经答复的审批或提问，应答未获 Agent 确认，连接已关闭；请重发任务继续。')
           disconnect()
           return
         }
         answeredRequests.clear()
       }
-      if (snapshot.runtime && !snapshot.runtime.activeTurnId && ['idle', 'error', 'closed'].includes(snapshot.projection?.status ?? snapshot.session?.status)) {
+      if (snapshot.runtime && !snapshot.runtime.activeTurnId && ['idle', 'error', 'closed'].includes(snapshot.projection?.status ?? snapshot.session?.status as string)) {
         end('error', snapshot.projection?.lastError?.message ?? 'ZCode 已停止运行，但未收到本轮结束事件；请重发任务继续。')
       }
     } catch (error) {
       if (running !== turn || peer !== connection || turn.interrupting || turn.lastEventAt !== checkedAt) return
-      if (error.code === -32601) {
+      if ((error as { code?: unknown }).code === -32601) {
         clearInterval(turn.healthTimer)
         return
       }
@@ -192,8 +265,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       disconnect()
     } finally { turn.checking = false }
   }
-  const startTool = payload => {
-    const turn = running
+  const startTool = (payload: ZcodePayload) => {
+    const turn = running!
     const id = payload.toolCallId
     if (!id || turn.completedTools.has(id)) return
     if (payload.toolName) turn.names.set(id, payload.toolName)
@@ -214,7 +287,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       input: turn.inputs.get(id), brief: payload.schedule?.command ?? payload.schedule?.description,
       ...(turn.parents.get(id) ? { parentCallId: turn.parents.get(id) } : {}) })
   }
-  const receive = ({ method, params = {} }) => {
+  const receive = ({ method, params = {} }: JsonRpcMessage<ZcodeParams>) => {
     // Known surfaces the receive does not consume stay silent; anything else
     // counts by category, with no name or payload retained.
     if (method !== 'session/event') {
@@ -224,7 +297,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     const event = params
     if (event.sessionId && event.sessionId !== sessionId) return
     if (event.type !== undefined && !DECLARED.zcode.variants[event.type]) coverage.count('unknown-variant')
-    const payload = event.payload ?? {}
+    const payload: ZcodePayload = event.payload ?? {} as ZcodePayload
     const reported = zcodeContext(payload)
     if (reported) context = reported
     if (compaction && event.type === 'turn.completed') {
@@ -266,7 +339,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       const existed = id ? turn.tools.has(id) : false
       startTool(payload)
       if (id && existed && !turn.completedTools.has(id)) {
-        const base = { type: 'tool', turnId: turn.id, callId: id, name: turn.names.get(id) ?? payload.toolName ?? 'tool', phase: 'update',
+        const base: Extract<DriverEvent, { type: 'tool' }> = { type: 'tool', turnId: turn.id, callId: id, name: turn.names.get(id) ?? payload.toolName ?? 'tool', phase: 'update',
           ...(turn.parents.get(id) ? { parentCallId: turn.parents.get(id) } : {}) }
         // The delta field is the model stream's own partial input JSON; it is a
         // character stream, not the final parsed input carried by tool_call.
@@ -310,7 +383,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         let input = turn.inputs.get(payload.toolCallId)
         if (typeof input === 'string') { try { input = JSON.parse(input) } catch { input = undefined } }
         const name = turn.names.get(payload.toolCallId)
-        const path = ['Write', 'Edit'].includes(name) ? input?.file_path : undefined
+        const path = ['Write', 'Edit'].includes(name as string) ? (input as { file_path?: unknown } | undefined)?.file_path : undefined
         turn.changes.add(payload.toolCallId, typeof path === 'string' ? [{ path, edit: { operation: name === 'Edit' ? 'update' : 'unknown' } }] : [],
           payload.kind === 'result' && payload.result?.success === true)
         emit({ type: 'tool', turnId: turn.id, callId: payload.toolCallId, name: turn.names.get(payload.toolCallId) ?? 'tool', phase: 'end',
@@ -339,20 +412,20 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     }
     if (event.type === 'turn.failed') end('error', payload.error?.message ?? payload.message ?? 'ZCode turn failed')
   }
-  const ask = (message) => {
+  const ask = (message: JsonRpcRequest<ZcodeParams>) => {
     const { id, method, params = {} } = message
     if (!DECLARED.zcode.requests[method]) coverage.count('unknown-request')
     // Refusing runtime preferences makes the server apply its documented defaults.
-    if (method === 'session/requestRuntimePreferences') return peer.refuse(id)
+    if (method === 'session/requestRuntimePreferences') return peer!.refuse(id)
     // Empty headers keep the protocol flowing; desktop-authenticated MCP tools
     // will surface their own auth errors when called.
-    if (method === 'interaction/requestOfficialMcpAuthHeaders') return peer.reply(id, { headers: {} })
-    if (!running || (params.sessionId && params.sessionId !== sessionId)) return peer.refuse(id, 'No matching active turn')
+    if (method === 'interaction/requestOfficialMcpAuthHeaders') return peer!.reply(id, { headers: {} })
+    if (!running || (params.sessionId && params.sessionId !== sessionId)) return peer!.refuse(id, 'No matching active turn')
     const permission = method === 'interaction/requestPermission'
-    if (method !== 'interaction/requestUserInput' && !permission) return peer.refuse(id)
-    if (permission && (!Array.isArray(params.options) || params.options.length === 0)) return peer.refuse(id, 'No permission choices supplied')
+    if (method !== 'interaction/requestUserInput' && !permission) return peer!.refuse(id)
+    if (permission && (!Array.isArray(params.options) || params.options.length === 0)) return peer!.refuse(id, 'No permission choices supplied')
     const cardId = `zcode:${sessionId}:${params.requestId ?? id}`
-    requests.set(cardId, message)
+    requests.set(cardId, message as ZcodeRequest)
     // The approval panel renders only the reason line, so tool and risk level ride inside it.
     const label = permission ? [params.toolName, params.riskLevel ? `${params.riskLevel} risk` : null].filter(Boolean).join(' · ') : ''
     // AskUserQuestion arrives as `questions` ({question, header, options, multiSelect});
@@ -375,7 +448,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
   }
   const boot = () => {
     if (ready) return ready
-    let connection
+    let connection: JsonRpcPeer | undefined
     const pending = (async () => {
       if (disposed) throw new Error('ZCode driver disposed')
       validateWorkspace(cwd, true)
@@ -410,25 +483,25 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         : permission === 'workspace' ? 'guarded' : 'build'
       let resumed = Boolean(sessionId)
       const createParams = { workspace: { workspacePath: cwd, workspaceKey: cwd }, mode }
-      const inherited = instructions ? zcodeMcpServers({ cwd, env }) : []
+      const inherited = instructions ? zcodeMcpServers({ cwd: cwd!, env }) : []
       if (!inherited) identity.reason = 'mcp-config-not-representable'
       const roleServers = inherited ? roleMcp(instructions, identity.path, identity).map(server => ({ ...server, isolation: 'session', protocolVersion: 'legacy' })) : []
       const mcpServers = [...(inherited ?? []), ...roleServers]
       let attached = Boolean(roleServers.length)
-      const attach = async (method, params) => {
-        try { return await peer.request(method, { ...params, ...(mcpServers.length ? { mcpServers } : {}) }) }
+      const attach = async (method: string, params: { sessionId?: string } | typeof createParams) => {
+        try { return await peer!.request<SessionSnapshot>(method, { ...params, ...(mcpServers.length ? { mcpServers } : {}) }) }
         catch (error) {
-          if (!mcpServers.length || error.code !== -32602 || !/unknown field\s+[`'"]?mcpServers\b/i.test(error.message)) throw error
+          if (!mcpServers.length || (error as { code?: unknown }).code !== -32602 || !/unknown field\s+[`'"]?mcpServers\b/i.test((error as Error).message)) throw error
           attached = false
-          identity.reason = 'mcp-field-unsupported'
-          return peer.request(method, params)
+          identity!.reason = 'mcp-field-unsupported'
+          return peer!.request<SessionSnapshot>(method, params)
         }
       }
       let result
       try { result = await attach(resumed ? 'session/resume' : 'session/create', resumed ? { sessionId } : createParams) }
       catch (error) {
         // ZCode does not persist a blank session until its first task.
-        if (!resumed || !canRecreateEmpty || error.code !== -32004 || error.message !== `Session not found: ${sessionId}`) throw error
+        if (!resumed || !canRecreateEmpty || (error as { code?: unknown }).code !== -32004 || (error as Error).message !== `Session not found: ${sessionId}`) throw error
         canRecreateEmpty = false
         result = await attach('session/create', createParams)
         resumed = false
@@ -469,24 +542,24 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     get instructionFallback() { return identity?.reason },
     get coverage() { return coverage },
     openSession: boot,
-    async sendTurn(text, images = []) {
+    async sendTurn(text, images: (DriverImage & { name?: string })[] = []) {
       if (disposed) throw new Error('ZCode driver disposed')
       if (compaction) throw new Error('ZCode is compacting this session')
       if (running) throw new Error('ZCode already has a running turn')
-      const turn = running = { id: `zcode-${++sequence}`, started: false, messages: new Set(), tools: new Set(), completedTools: new Set(), names: new Map(), inputs: new Map(), parents: new Map(), parentEmitted: new Set(), guides: new Set(), guideIds: new Map(), sawText: false, settle: null }
+      const turn: RunningTurn = running = { id: `zcode-${++sequence}`, started: false, messages: new Set(), tools: new Set(), completedTools: new Set(), names: new Map(), inputs: new Map(), parents: new Map(), parentEmitted: new Set(), guides: new Set(), guideIds: new Map(), sawText: false, settle: null } as RunningTurn
       turn.changes = createFileChanges(cwd)
       try {
         await boot()
         if (disposed || running !== turn) return turn.id
         const attachments = images.map(image => ({ kind: 'image', filename: image.name || 'image', mimeType: image.mediaType, dataBase64: image.data, sizeBytes: Buffer.from(image.data, 'base64').length }))
         canRecreateEmpty = false
-        await peer.request('session/send', { sessionId, content: String(text), ...(attachments.length > 0 ? { attachments } : {}) })
+        await peer!.request('session/send', { sessionId, content: String(text), ...(attachments.length > 0 ? { attachments } : {}) })
         if (running !== turn) return turn.id
         turn.started = true
         turn.lastEventAt = Date.now()
         turn.healthTimer = setInterval(() => { void checkHealth(turn) }, healthIntervalMs)
         turn.healthTimer.unref?.()
-        turn.done = new Promise(resolve => { turn.settle = resolve })
+        turn.done = new Promise<void>(resolve => { turn.settle = resolve })
         emit({ type: 'turn/start', turnId: turn.id })
         return turn.id
       } catch (error) { if (running === turn) running = null; throw error }
@@ -496,11 +569,11 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       if (disposed) throw new Error('ZCode driver disposed')
       await boot()
       if (running || compaction) throw new Error('ZCode already has a running turn or compaction')
-      const completion = new Promise((resolve, reject) => { compaction = { resolve, reject, turnId: `zcode-compact-${++sequence}`, started: false } })
+      const completion = new Promise<void>((resolve, reject) => { compaction = { resolve, reject, turnId: `zcode-compact-${++sequence}`, started: false } })
       completion.catch(() => {})
       try {
-        const result = await peer.request('session/compact', { sessionId })
-        if (result.compact?.state && compaction) { compaction.started = true; emit({ type: 'turn/start', turnId: compaction.turnId }) }
+        const result = await peer!.request<CompactResult>('session/compact', { sessionId })
+        if (result.compact?.state && compaction) { (compaction as Compaction).started = true; emit({ type: 'turn/start', turnId: (compaction as Compaction).turnId }) }
         else finishCompact()
         await completion
         return result
@@ -512,7 +585,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       const inputId = randomUUID()
       turn.guides.add(inputId)
       turn.v4Inputs = (turn.v4Inputs ?? 0) + 1
-      let outcome = STEER.REFUSED
+      let outcome: SteerOutcome = STEER.REFUSED
       try {
         const ack = await command('sendText', { text: String(text), requestedDelivery: 'guide' }, inputId)
         if (ack.status === 'accepted' && ack.result?.type === 'inputAccepted' && ack.result.inputId === inputId) {
@@ -535,10 +608,10 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         if (turn.v4Inputs) {
           const ack = await command('stop', {}, undefined, 5000)
           if (!['accepted', 'noop'].includes(ack.status)) throw new Error('ZCode refused to stop')
-        } else await peer.request('session/stop', { sessionId }, 5000)
+        } else await peer!.request('session/stop', { sessionId }, 5000)
       }
       catch { drop(); return }
-      let timer
+      let timer: ReturnType<typeof setTimeout> | undefined
       await Promise.race([turn.done, new Promise(resolve => { timer = setTimeout(resolve, 5000) })])
       clearTimeout(timer)
       if (running === turn) drop()
@@ -560,11 +633,11 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         const questions = Array.isArray(request.params.questions) ? request.params.questions : []
         const parts = questions.map(() => answer)
         if (questions.length > 1) {
-          let values
+          let values: Record<string, unknown>
           try { values = JSON.parse(answer) } catch { throw new Error('Answer each question using the form') }
           if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Answer each question using the form')
           questions.forEach((item, index) => {
-            parts[index] = Array.isArray(values[`q${index}`]) ? values[`q${index}`].filter(Boolean).join('\n') : String(values[`q${index}`] ?? '').trim()
+            parts[index] = Array.isArray(values[`q${index}`]) ? (values[`q${index}`] as unknown[]).filter(Boolean).join('\n') : String(values[`q${index}`] ?? '').trim()
           })
           if (parts.some(part => !part)) throw new Error('Answer every question first')
         }
@@ -573,7 +646,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
           : { answer }
         peer.reply(request.id, { action: 'accept', content })
       } else {
-        if (!['allow', 'deny'].includes(decision)) return false
+        if (!['allow', 'deny'].includes(decision as string)) return false
         const offered = (request.params.options ?? []).map(option => option.response?.decision)
         if (offered.length > 0 && !offered.includes(decision)) throw new Error('ZCode did not offer this permission decision')
         peer.reply(request.id, { decision })
@@ -594,17 +667,17 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
 // The composer's /-menu inventory: the machine's shared skill directory and
 // the installed plugin caches, the locations the CLI itself loads skills from.
 // A plugin cache keeps every downloaded version; only the newest is listed.
-export async function scanZcodeCommands({ engineOptions = {} } = {}) {
+export async function scanZcodeCommands({ engineOptions = {} }: EngineScanOptions = {}): Promise<SkillInventory<SkillCommand>> {
   validateZcodeOptions(engineOptions)
   const found = collector()
-  const scanSkills = (dir, owner, scope) => {
+  const scanSkills = (dir: string, owner?: string, scope?: string) => {
     for (const path of listDirs(dir)) found.add(join(path, 'SKILL.md'), basename(path), owner, scope)
   }
   scanSkills(join(homedir(), '.agents', 'skills'))
   const cache = join(homedir(), '.zcode', 'cli', 'plugins', 'cache')
   for (const org of listDirs(cache)) for (const plugin of listDirs(org)) {
     const versions = listDirs(plugin).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-    if (versions.length > 0) scanSkills(join(versions.at(-1), 'skills'), basename(plugin), 'plugin')
+    if (versions.length > 0) scanSkills(join(versions.at(-1)!, 'skills'), basename(plugin), 'plugin')
   }
   return found.list('ZCode skills')
 }

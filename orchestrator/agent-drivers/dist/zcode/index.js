@@ -101,9 +101,9 @@ const zcodeUsage = (payload, context, sessionCacheRead) => {
         contextUsed: used, contextSize: context?.size,
     });
 };
-const zcodeContext = payload => payload?.contextUsage ?? payload?.runtime?.contextUsage;
+const zcodeContext = (payload) => payload?.contextUsage ?? payload?.runtime?.contextUsage;
 export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000 } = {}) {
-    const emit = event => {
+    const emit = (event) => {
         if (running && ['delta', 'thinking', 'tool', 'request/opened', 'request/closed'].includes(event.type))
             running.lastEventAt = Date.now();
         try {
@@ -129,13 +129,13 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     // is its growth since the previous observation — nothing before a first
     // observation, or when the counter goes backwards.
     let cacheStatsBasis;
-    const grewCacheRead = to => {
+    const grewCacheRead = (to) => {
         const from = cacheStatsBasis;
         if (typeof to === 'number')
             cacheStatsBasis = to;
         return typeof from === 'number' && typeof to === 'number' && to >= from ? to - from : undefined;
     };
-    const finishCompact = error => {
+    const finishCompact = (error) => {
         const pending = compaction;
         compaction = null;
         if (error)
@@ -145,7 +145,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     };
     // An accepted compaction reports its lifetime as a turn (spi.js); a lost
     // connection ends that turn so the host does not stay active on it.
-    const settleCompact = error => {
+    const settleCompact = (error) => {
         if (!compaction)
             return;
         const { turnId, started } = compaction;
@@ -221,7 +221,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
             turn.checking = false;
         }
     };
-    const startTool = payload => {
+    const startTool = (payload) => {
         const turn = running;
         const id = payload.toolCallId;
         if (!id || turn.completedTools.has(id))
@@ -501,7 +501,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 : permission === 'workspace' ? 'guarded' : 'build';
             let resumed = Boolean(sessionId);
             const createParams = { workspace: { workspacePath: cwd, workspaceKey: cwd }, mode };
-            const inherited = instructions ? zcodeMcpServers({ cwd, env }) : [];
+            const inherited = instructions ? zcodeMcpServers({ cwd: cwd, env }) : [];
             if (!inherited)
                 identity.reason = 'mcp-config-not-representable';
             const roleServers = inherited ? roleMcp(instructions, identity.path, identity).map(server => ({ ...server, isolation: 'session', protocolVersion: 'legacy' })) : [];

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { findExecutable, invalidConfig } from '../cli.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
 // The CLI ships inside the Desktop app bundle and is normally not on PATH.
-const bundleCandidates = home => [
+const bundleCandidates = (home) => [
     join(home, 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
     '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
 ];

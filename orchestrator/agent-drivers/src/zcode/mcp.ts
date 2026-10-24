@@ -2,14 +2,25 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-const read = path => {
-  try { return JSON.parse(readFileSync(path, 'utf8')) } catch (error) { if (error.code === 'ENOENT') return {}; throw error }
+type ConfigServer = {
+  enabled: boolean; type: string; command: string; args?: unknown; env?: unknown
+  url: string; headers?: unknown; oauth?: unknown; timeoutMs?: unknown; protocolVersion?: unknown
 }
-const entries = object => Object.entries(object ?? {}).map(([name, value]) => ({ name, value }))
+type Config = { features?: { mcp?: unknown }; mcp?: { servers?: Record<string, ConfigServer> } }
+type NamedValue = { name: string; value: unknown }
+export type ZcodeMcpServer = { name: string; timeoutMs?: unknown; protocolVersion?: unknown } & (
+  { command: string; args: unknown; env: NamedValue[] } |
+  { type: string; url: string; headers: NamedValue[]; oauth?: unknown }
+)
+
+const read = (path: string): Config => {
+  try { return JSON.parse(readFileSync(path, 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error }
+}
+const entries = (object: unknown): NamedValue[] => Object.entries(object ?? {}).map(([name, value]) => ({ name, value }))
 
 // session mcpServers replaces configured servers; never discard an option the
 // protocol cannot carry, or bypass project-specific cwd and trust handling.
-export function zcodeMcpServers({ cwd, env = {} }) {
+export function zcodeMcpServers({ cwd, env = {} }: { cwd: string; env?: NodeJS.ProcessEnv }): ZcodeMcpServer[] | undefined {
   try {
     for (let path = resolve(cwd); ; path = dirname(path)) {
       for (const file of ['zcode.json', '.zcode/config.json']) if (Object.keys(read(join(path, file)).mcp?.servers ?? {}).length) return
@@ -17,7 +28,7 @@ export function zcodeMcpServers({ cwd, env = {} }) {
     }
     const config = read(join(env.HOME ?? process.env.HOME ?? homedir(), '.zcode/cli/config.json'))
     if (config.features?.mcp === false || Object.hasOwn(config.mcp?.servers ?? {}, 'nodo_role')) return
-    const servers = []
+    const servers: ZcodeMcpServer[] = []
     for (const [name, server] of Object.entries(config.mcp?.servers ?? {})) {
       if (server.enabled === false) continue
       const stdio = server.type === 'stdio' || (!server.type && server.command)

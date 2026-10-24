@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-const read = path => {
+const read = (path) => {
     try {
         return JSON.parse(readFileSync(path, 'utf8'));
     }
@@ -11,7 +11,7 @@ const read = path => {
         throw error;
     }
 };
-const entries = object => Object.entries(object ?? {}).map(([name, value]) => ({ name, value }));
+const entries = (object) => Object.entries(object ?? {}).map(([name, value]) => ({ name, value }));
 // session mcpServers replaces configured servers; never discard an option the
 // protocol cannot carry, or bypass project-specific cwd and trust handling.
 export function zcodeMcpServers({ cwd, env = {} }) {

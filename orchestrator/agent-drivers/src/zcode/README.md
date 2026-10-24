@@ -1,7 +1,7 @@
 # ZCode driver
 
-This folder owns ZCode discovery/model parsing (`native.js`), the
-ZCode-Protocol-to-SPI adapter (`index.js`) and model discovery (`catalog.js`).
+This folder owns ZCode discovery/model parsing (`native.ts`), the
+ZCode-Protocol-to-SPI adapter (`index.ts`) and model discovery (`catalog.ts`).
 It uses the shared JSON-RPC process transport and the official MCP SDK for its
 session identity service. It launches the installed ZCode CLI
 with `zcode app-server` (stdio, NDJSON, no `jsonrpc` field).
@@ -66,7 +66,7 @@ and exact wire behavior are verified separately by the real CLI probe.
 
 HOME, USERPROFILE, shell startup, user instructions, plugins, credentials and
 storage locations are unchanged. Because the protocol's mcpServers replaces
-configured servers, mcp.js carries forward representable user-level server
+configured servers, mcp.ts carries forward representable user-level server
 definitions in memory before appending the session role service. It writes no
 copies of those settings. Project MCP configuration, unsupported server fields
 such as cwd, disabled MCP or a reserved-name conflict leave the original MCP

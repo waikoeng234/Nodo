@@ -6,11 +6,23 @@
 import { homedir } from 'node:os'
 import { isAbsolute } from 'node:path'
 import { connectZcode, findZcodeExecutable } from './native.js'
+import type { EngineScanOptions, ModelCatalog } from '../index.js'
 
-const route = (providerId, modelId) => `${providerId}$${modelId}`
+type CatalogSnapshot = {
+  session?: { sessionId?: unknown }; sessionId?: unknown
+  settings?: { model?: {
+    current?: { providerId?: unknown; modelId?: unknown }
+    available?: {
+      ref?: { providerId?: unknown; modelId?: unknown }; label?: unknown; providerLabel?: unknown
+      reasoning?: { levels?: { value?: unknown; label?: unknown }[]; defaultLevel?: unknown }
+    }[]
+  } }
+}
 
-export async function scanZcode({ engineOptions = {}, cwd } = {}) {
-  const executable = findZcodeExecutable(engineOptions.bin ?? 'zcode')
+const route = (providerId: unknown, modelId: unknown) => `${providerId}$${modelId}`
+
+export async function scanZcode({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<Omit<ModelCatalog, 'engine'>> {
+  const executable = findZcodeExecutable(engineOptions.bin as string ?? 'zcode')
   if (!executable) return { source: 'ZCode CLI not found', models: [] }
   const workdir = typeof cwd === 'string' && isAbsolute(cwd) ? cwd : homedir()
   const peer = connectZcode({ executable, cwd: workdir, onRequest: (request) => {
@@ -19,9 +31,9 @@ export async function scanZcode({ engineOptions = {}, cwd } = {}) {
     return peer.refuse(request.id)
   } })
   try {
-    const created = await peer.request('session/create', { workspace: { workspacePath: workdir, workspaceKey: workdir }, mode: 'build' })
+    const created = await peer.request<CatalogSnapshot>('session/create', { workspace: { workspacePath: workdir, workspaceKey: workdir }, mode: 'build' })
     const sessionId = created.session?.sessionId ?? created.sessionId
-    const models = []
+    const models: ModelCatalog['models'] = []
     for (const entry of created.settings?.model?.available ?? []) {
       const providerId = entry?.ref?.providerId
       const modelId = entry?.ref?.modelId
