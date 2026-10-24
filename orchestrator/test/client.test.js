@@ -279,6 +279,43 @@ test('conversation selection restores its records without creating a new draft',
   }
 })
 
+test('conversation controls allow next-turn settings while this or another session is running', async () => {
+  const calls = []
+  const view = { profiles: [{ id: 'role', engine: 'codex', model: 'm1', activeSessionId: 'conversation', sessions: [
+    { id: 'conversation', workspaceRef: 'project' }, { id: 'sibling', workspaceRef: 'project' },
+  ] }], workspaces: [{ id: 'project' }], work: { conversation: { active: true }, sibling: { active: true } }, stats: {}, prefs: { onboardedAt: 1 } }
+  const loaded = await loadClient('page.js', {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
+      subscribeNativeSession() {}, readNativeSession: () => null, runningOf: () => ({ active: true }),
+      call: async (endpoint, payload) => { calls.push(JSON.parse(JSON.stringify({ endpoint, payload }))); return { id: 'role', activeSessionId: 'conversation' } },
+    },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      localStorage: { getItem: key => key === 'nodo.navigation'
+        ? JSON.stringify({ profile: 'role', workspace: 'project', sessions: { 'project:role': 'conversation' } }) : null, setItem() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const render = () => { loaded.host.reset(); return all(loaded.NodoPage({ contentOnly: true })) }
+  const composer = () => render().find(node => node.props?.onModelChange)
+  assert.equal(composer().props.running, true)
+  assert.equal(composer().props.modelDisabled, false)
+  view.work.conversation = { active: false }
+  assert.equal(composer().props.modelDisabled, false, 'another running session must not lock these controls')
+  for (const changes of [{ permission: 'plan' }, { model: 'm2', thinking: 'high' }]) {
+    await composer().props.onModelChange(changes)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(calls.at(-1), { endpoint: 'session-update', payload: { profile: 'role', session: 'conversation', changes } })
+  }
+  composer().props.onGoal()
+  render().find(node => node.props?.key === 'goal:role').props.onSaved('Ship it')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls.at(-1), { endpoint: 'profile-update', payload: { id: 'role', changes: { goal: 'Ship it' } } }, 'the goal stays a role setting')
+})
+
 test('role selection restores a conversation within the current workspace', async () => {
   const { sessionForWorkspace: choose } = await loadClient('page.js')
   const workspaces = [{ id: 'main', cwd: '/main' }, { id: 'branch', cwd: '/branch' }]

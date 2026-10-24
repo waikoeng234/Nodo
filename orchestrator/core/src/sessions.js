@@ -132,19 +132,8 @@ export function install(rt) {
   }
   const updateSession = async (profileId, id, changes) => {
     const { profile, session } = conversation(profileId, id)
-    // Model, thinking and tier are per-conversation run settings: a pick made in
-    // the conversation window belongs to this conversation from now on, and the
-    // role card keeps serving only the conversations opened after it.
-    if (changes.model !== undefined || changes.thinking !== undefined) {
-      if (rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the task before changing this conversation\'s model'), { code: 'orch/busy' })
-      const model = cleanModel(changes.model)
-      const thinking = cleanThinking(changes.thinking)
-      if (model === undefined) delete session.model
-      else session.model = model
-      if (thinking === undefined) delete session.thinking
-      else session.thinking = thinking
-      await rt.save()
-    }
+    const choices = cleanSessionChoices(profile, Object.fromEntries(['model', 'thinking', 'permission']
+      .filter(key => changes[key] !== undefined).map(key => [key, changes[key]])))
     let taskState
     if (changes.taskState !== undefined) {
       if (rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the task before editing its saved context'), { code: 'orch/busy' })
@@ -163,6 +152,11 @@ export function install(rt) {
     if (changes.taskState !== undefined) {
       session.taskState = taskState
       session.restoreContext = true
+    }
+    // The live driver keeps this turn's settings; the next turn reads these choices.
+    for (const [key, value] of Object.entries(choices)) {
+      if (value === '' && key !== 'permission') delete session[key]
+      else session[key] = value
     }
     await rt.save()
     return session

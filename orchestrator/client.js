@@ -6005,7 +6005,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     setBusy(true);
     setActionError("");
     try {
-      if (sessionId && (changes.model !== void 0 || changes.thinking !== void 0)) {
+      if (sessionId && ["model", "thinking", "permission"].some((key) => changes[key] !== void 0)) {
         await call("session-update", { profile: profile.id, session: sessionId, changes });
         remember(profile.id, workspace?.id, sessionId);
       } else {
@@ -6211,7 +6211,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
       running: work?.active === true,
       busy: sessionBusy,
       readOnly: readOnly || !workspace,
-      modelDisabled: sessionBusy || readOnly || runningOf(profile, view.work).active,
+      modelDisabled: sessionBusy || readOnly,
       onChange: (value) => setDrafts((current) => ({ ...current, [draftKey]: value })),
       onSend: () => void send(),
       onStop: () => void interrupt(),

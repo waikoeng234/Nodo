@@ -169,15 +169,15 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   // picker and the role dialog both write it, so each surface follows the
   // other, and the view lands on the respawned active session either way.
   const savedProfile = async saved => { await refresh(true); remember(saved.id, workspace?.id, saved.activeSessionId); setEditing(null) }
-  // The role card seeds new conversations; the conversation window's own model
-  // and thinking picks belong to the open session (the native model seat's
+  // The role card seeds new conversations; the conversation window's own model,
+  // thinking and permission picks belong to the open session (the native model seat's
   // semantics), so they write the session and never retune the card behind it.
   const updateEngineChoice = async changes => {
     if (!profile || sessionBusy || readOnly) return
     setBusy(true)
     setActionError('')
     try {
-      if (sessionId && (changes.model !== undefined || changes.thinking !== undefined)) {
+      if (sessionId && ['model', 'thinking', 'permission'].some(key => changes[key] !== undefined)) {
         await call('session-update', { profile: profile.id, session: sessionId, changes })
         remember(profile.id, workspace?.id, sessionId)
       } else {
@@ -323,7 +323,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     ...(view.approvals ?? []).filter(card => card.profileId == null || card.profileId === sessionId).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly })),
     h(Composer, {
       profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true, busy: sessionBusy, readOnly: readOnly || !workspace,
-      modelDisabled: sessionBusy || readOnly || runningOf(profile, view.work).active,
+      modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
       onInsert: insertDraft,

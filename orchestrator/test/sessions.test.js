@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { boot, until } from './helpers/host.js'
 import { install as installSessions } from '../core/src/sessions.js'
+import { registerEngine } from '../agent-drivers/dist/index.js'
 
 const nativeHost = (withInstructions = true, response = 'Native reply') => {
   const listeners = new Map()
@@ -697,6 +698,83 @@ test('a conversation-level model pick updates the session without touching the r
     assert.equal(profile.sessions.find(item => item.id === session.id).thinking, undefined, 'an empty level reads the model default again')
     const refused = await host.post('session-update', { profile: role.id, session: session.id, changes: { model: 'bad\nname' } })
     assert.equal(refused.error.code, 'orch/invalid')
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('running conversation settings leave the current driver intact and apply on the next send', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'orch-next-turn-settings-'))
+  const drivers = []
+  registerEngine('turn-settings', {
+    info: { id: 'turn-settings', label: 'Turn settings', capabilities: { resume: true, permissionModes: ['plan', 'workspace', 'full'] } },
+    validate: raw => raw,
+    create(options) {
+      const driver = {
+        options, running: false, disposed: false, steers: 0,
+        hasSession: () => !!options.driverSessionId,
+        async openSession() { options.onEvent({ type: 'session', state: 'ready', sessionId: options.driverSessionId ?? 'settings-thread' }) },
+        async sendTurn() { driver.running = true; options.onEvent({ type: 'turn/start', turnId: `turn-${drivers.length}` }) },
+        async steer() { driver.steers++; return 'steered' },
+        async interruptTurn() { driver.complete() },
+        async respondToRequest() { return false },
+        onEvent() {},
+        complete() { driver.running = false; options.onEvent({ type: 'turn/end', reason: 'done' }) },
+        dispose() { driver.disposed = true },
+      }
+      drivers.push(driver)
+      return driver
+    },
+  })
+  const host = boot(home)
+  try {
+    const rt = await host.runtime
+    const workspace = await host.api('workspace-create', { name: 'Settings', cwd: home })
+    const role = await host.api('profile-create', { name: 'Settings', engine: 'turn-settings', model: 'm1', thinking: 'low', permission: 'full' })
+    const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true, choices: { permission: 'plan' } })
+    const sibling = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const send = async () => {
+      const count = drivers.length
+      await host.api('send', { profile: role.id, session: session.id, text: 'Continue' })
+      await until(() => drivers.length > count && drivers.at(-1).running)
+      return drivers.at(-1)
+    }
+    const choices = driver => Object.fromEntries(['model', 'thinking', 'permission'].map(key => [key, driver.options[key]]))
+    const first = await send()
+    assert.deepEqual(choices(first), { model: 'm1', thinking: 'low', permission: 'plan' })
+    const updated = await host.api('session-update', { profile: role.id, session: session.id, changes: { model: 'm2', thinking: 'high', permission: 'full' } })
+    assert.deepEqual({ model: updated.model, thinking: updated.thinking, permission: updated.permission }, { model: 'm2', thinking: 'high', permission: 'full' })
+    assert.equal(rt.driverOf(session.id), first)
+    assert.equal(first.disposed, false)
+    assert.equal(first.running, true)
+    assert.deepEqual(choices(first), { model: 'm1', thinking: 'low', permission: 'plan' })
+    const rejected = await host.post('session-update', { profile: role.id, session: session.id, changes: { model: 'invalid-pick', permission: 'unknown' } })
+    assert.equal(rejected.error.code, 'orch/invalid')
+    const busy = await host.post('session-update', { profile: role.id, session: session.id, changes: { model: 'blocked-pick', taskState: { objective: 'Changed' } } })
+    assert.equal(busy.error.code, 'orch/busy')
+    const queued = await host.api('send', { profile: role.id, session: session.id, text: 'Use the new settings' })
+    assert.equal(queued.mode, 'queued', 'changed settings require a new turn instead of steering into the old one')
+    assert.equal(first.steers, 0)
+    assert.equal(first.running, true)
+    assert.equal(first.disposed, false)
+    first.complete()
+    await until(() => drivers.length === 2 && drivers[1].running)
+    const second = drivers[1]
+    assert.deepEqual(choices(second), { model: 'm2', thinking: 'high', permission: 'full' })
+    assert.equal(first.disposed, true)
+    assert.equal(second.options.driverSessionId, 'settings-thread', 'retuning resumes the same engine conversation')
+    await host.api('session-update', { profile: role.id, session: session.id, changes: { permission: '' } })
+    assert.equal(second.running, true)
+    assert.equal(second.disposed, false)
+    second.complete()
+    await until(() => !rt.workView()[session.id].active)
+    const third = await send()
+    assert.deepEqual(choices(third), { model: 'm2', thinking: 'high', permission: 'workspace' }, 'clearing the tier uses the engine default instead of the role tier')
+    third.complete()
+    await until(() => !rt.workView()[session.id].active)
+    const saved = (await host.api('state')).profiles.find(item => item.id === role.id)
+    assert.deepEqual({ model: saved.model, thinking: saved.thinking, permission: saved.permission }, { model: 'm1', thinking: 'low', permission: 'full' })
+    assert.equal(saved.sessions.find(item => item.id === sibling.id).model, 'm1')
+    assert.equal(saved.activeSessionId, sibling.id, 'editing a conversation does not move the active session pointer')
+    assert.equal(saved.sessions.length, 2)
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 

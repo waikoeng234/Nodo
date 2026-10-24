@@ -13,6 +13,7 @@ const readable = (value, imageOutput = false) => projectContent(value, imageOutp
 
 export function install(rt) {
   const { ctx } = rt
+  const settingsOf = (profile, session = profile) => JSON.stringify([session.model, session.thinking, session.permission ?? profile.permission])
   /** @type {Map<string, {starting:boolean, active:boolean, turnId:?string, seq:number, buffer:string, toolOpen:string|null, queued:{text:string, images:object[], seq:number, resolve:Function}[], waiters:{seq:number, resolve:Function}[], binds:{seq:number, resolve:Function}[], idleTimer:?Object}>} */
   const turns = new Map()
   const stateOf = (profileId) => {
@@ -381,6 +382,7 @@ export function install(rt) {
       let restoreContext
       try {
         const profile = await rt.prepareConversation(profileId)
+        st.settings = settingsOf(profile)
         driver = await rt.ensureDriver(profile)
         st.watched = driver.watchdog !== false
         if (!st.watched) disarmIdle(st)
@@ -424,7 +426,7 @@ export function install(rt) {
   // meant for another step.
   const occupied = (profileId, st) => st.starting || st.active || st.finishing || rt.isCompacting(profileId)
   const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files } = {}) => {
-    const { session } = rt.conversation(profileId, sessionId)
+    const { profile, session } = rt.conversation(profileId, sessionId)
     profileId = session.id
     const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
     refuseBusy()
@@ -460,7 +462,7 @@ export function install(rt) {
     if (occupied(profileId, st)) {
       // SPI STEER values, as strings: the drivers package may be absent.
       const host = st.seq
-      const outcome = images.length === 0 && !rt.isCompacting(profileId)
+      const outcome = images.length === 0 && !rt.isCompacting(profileId) && st.settings === settingsOf(profile, session)
         ? await Promise.resolve().then(() => rt.driverOf(profileId)?.steer(input)).catch(() => undefined) : undefined
       if (outcome === 'steered' || outcome === 'indeterminate') {
         say(profileId, { who: 'system', kind: 'note', text: outcome === 'steered' ? 'steered into the running turn' : UNCONFIRMED_STEER })
