@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { boot, withHost } from './helpers/host.js'
-import templates from '../src/shared/avatar-templates.json' with { type: 'json' }
+import templates from '../core/shared/avatar-templates.json' with { type: 'json' }
 
 test('avatar selections persist across restart and an avatar-only edit keeps conversations', async () => {
   const home = mkdtempSync(join(tmpdir(), 'orch-avatars-'))

@@ -7,8 +7,8 @@ import { registerEngine } from '../agent-drivers/dist/index.js'
 import { STEER } from '../agent-drivers/dist/spi.js'
 import { checkEcho, echoInfo, validateEchoOptions } from './helpers/echo-driver.js'
 import { boot, until } from './helpers/host.js'
-import { advance, halt } from '../src/host/workflows.js'
-import { workflowSessionTitle } from '../src/shared/task-titles.js'
+import { advance, halt } from '../core/src/workflows.js'
+import { workflowSessionTitle } from '../core/shared/task-titles.js'
 
 // An engine whose every turn ends in an error.
 registerEngine('broken', {

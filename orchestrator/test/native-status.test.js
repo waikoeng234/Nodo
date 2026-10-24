@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { install } from '../src/host/native-status.js'
-import { install as installDispatch } from '../src/host/dispatch.js'
-import { install as installSessions } from '../src/host/sessions.js'
+import { install as installDispatch } from '../core/src/dispatch.js'
+import { install as installSessions } from '../core/src/sessions.js'
 import { boot } from './helpers/host.js'
 
 function nativeHost() {

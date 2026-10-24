@@ -24,7 +24,7 @@
     "orchestrator/index.js",
     "orchestrator/src/host/",
     "orchestrator/src/client/",
-    "orchestrator/src/shared/",
+    "orchestrator/core/",
     "orchestrator/agent-drivers/",
     "orchestrator/cordis.patch.yml",
     "orchestrator/client.js",

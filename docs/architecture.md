@@ -6,7 +6,7 @@ This document describes Nodo's code structure and runtime behavior for contribut
 
 Nodo is a dsh plugin with three parts:
 
-- **Host** (`index.js`, `src/host/`): runs in the dsh process, manages projects, roles, conversations, approvals, and workflows, and starts Agents.
+- **Host** (`index.js`, `core/`, `src/host/`): runs in the dsh process, manages projects, roles, conversations, approvals, and workflows, and starts Agents.
 - **Client** (`client.js`, generated from `src/client/`): runs in the dsh web interface and mounts the sidebar, conversation panel, and workflow canvas into host-provided UI slots.
 - **Agent adapter layer** (`agent-drivers/`): normalizes public Agent protocols into a common driver interface.
 
@@ -27,10 +27,10 @@ flowchart LR
 
 ```text
 orchestrator/
-  index.js             Host plugin entry and module loading
-  src/host/            State storage, conversations, Agent bridging, approvals, and workflows
+  index.js             dsh plugin entry: data home, then core plus the dsh-only modules
+  core/                Embedded host package: host modules under src/, plus shared/ used by host and client
+  src/host/            dsh-only host modules: native session status and HTTP route
   src/client/          Sidebar, conversations, settings, and workflow UI
-  src/shared/          Data and utilities shared by host and client
   agent-drivers/       Agent registration, protocol adapters, and capability interfaces
   scripts/             Build, check, and verification scripts
   test/                Automated tests, simulated CLIs, and test helpers
@@ -40,16 +40,16 @@ orchestrator/
 
 ## Host modules
 
-Each module under `src/host/` exports `install(rt)` and attaches its functions to the shared `rt` object. `MODULES` in `index.js` loads modules in order: `diag` comes first and provides the shared `rt.warn`; `channel` comes last and exposes interfaces over the other modules. Modules do not call each other during installation; they interact through `rt` only at runtime.
+Each module under `core/src/` exports `install(rt)` and attaches its functions to the shared `rt` object. `MODULES` in `core/src/index.js` loads modules in order: `diag` comes first and provides the shared `rt.warn`; `channel` comes last and exposes interfaces over the other modules. The dsh plugin's own modules (`src/host/native-status.js`, `src/host/route.js`) install after the core modules. Modules do not call each other during installation; they interact through `rt` only at runtime.
 
 | Responsibility | Modules |
 | --- | --- |
 | State and data | `store` (`state.json` reads and writes), `home-lock` (single-writer lock), `runs` (workflow run records), `secrets` (credentials and redaction) |
 | Projects and roles | `workspaces` (project directories), `worktrees` (Git worktrees), `profiles` (roles), `sessions` (conversations) |
 | Agent bridging | `drivers` (driver process lifecycle), `engine-settings` (Agent settings), `dispatch` (sending, steering, and queuing messages), `approvals` (approval cards) |
-| Conversation content | `prompt` (rendering role briefs, references, and handoffs), `session-references` (conversation references), `attachments` (images and attachments), `stream-records` (tool details), `stats` (conversation statistics), `context`, `native-status` |
+| Conversation content | `prompt` (rendering role briefs, references, and handoffs), `session-references` (conversation references), `attachments` (images and attachments), `stream-records` (tool details), `stats` (conversation statistics), `context`, `native-status` (plugin module in `src/host/`) |
 | Workflows | `workflows` (definitions and execution), `workflow-materials` (writing handoff materials to disk) |
-| Interface | `channel` (`POST /api/nodo`, called by the client) |
+| Interface | `channel` (answers `POST /api/nodo`, called by the client), `route` (plugin module in `src/host/`, registers the HTTP route) |
 
 ## Message paths
 
@@ -61,7 +61,7 @@ Each module under `src/host/` exports `install(rt)` and attaches its functions t
 
 ## Client
 
-`scripts/build-client.mjs` concatenates `src/client/` and `src/shared/` into `client.js` in a fixed order and inlines assets such as icons. dsh loads `client.js` as a plain script. React and UI components are supplied by the host and are not bundled separately.
+`scripts/build-client.mjs` concatenates `src/client/` and `core/shared/` into `client.js` in a fixed order and inlines assets such as icons. dsh loads `client.js` as a plain script. React and UI components are supplied by the host and are not bundled separately.
 
 The client mounts its parts through host UI slots, including run status and references above the composer, conversation message nodes, and tool detail views. UI state such as drafts and navigation is saved in the browser's `localStorage`.
 

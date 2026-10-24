@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
-import { install } from '../src/host/stats.js'
+import { install } from '../core/src/stats.js'
 import { until, withHost } from './helpers/host.js'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))

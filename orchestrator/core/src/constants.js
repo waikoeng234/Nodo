@@ -1,6 +1,4 @@
-// Routes, limits and notes shared by the host modules.
-
-export const ROUTE = '/api/nodo'
+// Limits and notes shared by the host modules.
 // Per-profile transcript lines kept in state.json; older lines drop off the tail.
 export const TRANSCRIPT_MAX = 800
 export const TRANSCRIPT_TEXT_MAX = 16_000

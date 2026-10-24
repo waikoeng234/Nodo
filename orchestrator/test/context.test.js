@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { install as installPrompt } from '../src/host/prompt.js'
-import { HANDOFF_CONTEXT_MAX, TASK_TEXT_MAX } from '../src/host/constants.js'
+import { install as installPrompt } from '../core/src/prompt.js'
+import { HANDOFF_CONTEXT_MAX, TASK_TEXT_MAX } from '../core/src/constants.js'
 import { boot, until, withHost } from './helpers/host.js'
 
 test('reference envelopes preserve hostile text as data and keep the current assignment outside it', () => {

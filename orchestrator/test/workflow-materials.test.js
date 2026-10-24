@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { materializeHandoff } from '../src/host/workflow-materials.js'
-import { install as installPrompt } from '../src/host/prompt.js'
+import { materializeHandoff } from '../core/src/workflow-materials.js'
+import { install as installPrompt } from '../core/src/prompt.js'
 
 const withMaterials = async work => {
   const home = mkdtempSync(join(tmpdir(), 'orch-materials-'))

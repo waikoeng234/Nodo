@@ -26,7 +26,7 @@ Nodo 只使用各 Agent 公开的接口。需要修改 Agent 程序本身，或�
 1. **先开 Issue 讨论。** 新增依赖、改公共接口或数据格式、较大的功能改动，请先开 Issue 确认方向。小的修复和文档修改可以直接提交 PR。
 2. **Fork 并创建分支。** 从 `main` 创建分支，一个 PR 只做一件事，不要夹带无关的格式化或重构。
 3. **开发与测试。** 环境、构建、测试和代码约定见[开发指南（英文）](docs/development.md)，代码结构见[架构说明（英文）](docs/architecture.md)。新增或扩展 Agent 请按 [Agent 接入流程（英文）](orchestrator/agent-drivers/ENGINE_INTAKE.md) 进行。
-4. **修改客户端时重新构建。** 改了 `src/client/` 或 `src/shared/` 后运行 `npm run build`，把生成的 `client.js` 一起提交。
+4. **修改客户端时重新构建。** 改了 `src/client/` 或 `core/shared/` 后运行 `npm run build`，把生成的 `client.js` 一起提交。
 5. **提交 PR。** 在 PR 中说明：
    - 改动范围和原因，以及关联的 Issue；
    - 运行过的测试及结果；

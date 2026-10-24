@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { boot, until } from './helpers/host.js'
-import { install as installSessions } from '../src/host/sessions.js'
+import { install as installSessions } from '../core/src/sessions.js'
 
 const nativeHost = (withInstructions = true, response = 'Native reply') => {
   const listeners = new Map()

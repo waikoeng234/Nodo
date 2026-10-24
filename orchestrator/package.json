@@ -22,7 +22,7 @@
     "index.js",
     "src/host/",
     "src/client/",
-    "src/shared/",
+    "core/",
     "agent-drivers/",
     "cordis.patch.yml",
     "client.js",

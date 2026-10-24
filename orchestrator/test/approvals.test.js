@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { install } from '../src/host/approvals.js'
+import { install } from '../core/src/approvals.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const harness = answerRequest => {

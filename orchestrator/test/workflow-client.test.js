@@ -6,7 +6,7 @@ import { Script, createContext } from 'node:vm'
 import { withHost, until } from './helpers/host.js'
 
 const source = readFileSync(new URL('../src/client/workflow.js', import.meta.url), 'utf8')
-const taskTitles = readFileSync(new URL('../src/shared/task-titles.js', import.meta.url), 'utf8').replace(/^export /gm, '')
+const taskTitles = readFileSync(new URL('../core/shared/task-titles.js', import.meta.url), 'utf8').replace(/^export /gm, '')
 const composerSource = readFileSync(new URL('../src/client/workflow-composer.js', import.meta.url), 'utf8')
 const index = readPanelSource()
 const running = readFileSync(new URL('../src/client/running.js', import.meta.url), 'utf8')

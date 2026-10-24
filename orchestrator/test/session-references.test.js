@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { install, nativeReplies, transcriptReplies } from '../src/host/session-references.js'
-import { install as installPrompt } from '../src/host/prompt.js'
+import { install, nativeReplies, transcriptReplies } from '../core/src/session-references.js'
+import { install as installPrompt } from '../core/src/prompt.js'
 import { until, withHost } from './helpers/host.js'
 
 const reply = (turn, text, seq = turn * 3) => ({ type: 'assistant/message', seq, time: seq,

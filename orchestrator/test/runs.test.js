@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
-import { install } from '../src/host/runs.js'
-import { redactDeep, redactor } from '../src/host/secrets.js'
-import { RUN_LIMITS } from '../src/host/constants.js'
-import { workflowSessionTitle } from '../src/shared/task-titles.js'
+import { install } from '../core/src/runs.js'
+import { redactDeep, redactor } from '../core/src/secrets.js'
+import { RUN_LIMITS } from '../core/src/constants.js'
+import { workflowSessionTitle } from '../core/shared/task-titles.js'
 
 const store = (home, readOnly = () => undefined) => {
   const rt = {

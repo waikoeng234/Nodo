@@ -1,7 +1,6 @@
 // POST /api/nodo: one endpoint name and payload per request, answered as
 // { ok: true, value } or { ok: false, error }. `state` returns only the live parts
 // while the client's revision is current.
-import { ROUTE } from './constants.js'
 
 const failure = (message, code) => Object.assign(new Error(message), { code })
 const invalid = message => failure(message, 'orch/invalid')
@@ -68,7 +67,7 @@ export function install(rt) {
       case 'state':
         await rt.driversReady()
         await rt.loadSecrets()
-        await rt.refreshNativeStatus()
+        await rt.refreshNativeStatus?.()
         if (body.since === state.revision) return { revision: state.revision, unchanged: true, ...(await live()) }
         return { ...view(), ...(await live()) }
       case 'engines':
@@ -232,16 +231,7 @@ export function install(rt) {
     return { ok: false, error: { code, message, details: {} } }
   })
 
-  // The browser reaches these routes with its dsh session cookie; /api/orchestrator is the old name.
-  for (const path of [ROUTE, '/api/orchestrator']) ctx.effect(() => ctx.connection.fetch.register({
-    path,
-    methods: ['POST'],
-    requestBody: 'buffered',
-    fetch: async (request) => {
-      const { endpoint, payload } = (await request.json().catch(() => null)) ?? {}
-      return Response.json(await handle(String(endpoint ?? ''), payload))
-    },
-  }), 'nodo: api route')
+  rt.handle = handle
 
   ctx.effect(() => {
     rt.load().catch(() => {})

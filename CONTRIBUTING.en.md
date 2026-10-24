@@ -25,7 +25,7 @@ Nodo uses only public Agent interfaces. Features that require changing an Agent 
 1. **Discuss the change in an issue first.** Open an issue before adding dependencies, changing public interfaces or data formats, or making substantial feature changes. Small fixes and documentation changes can go directly to a PR.
 2. **Fork and create a branch.** Branch from `main`. Keep each PR focused on one change, without unrelated formatting or refactoring.
 3. **Develop and test.** See the [development guide](docs/development.md) for the environment, build, testing, and coding conventions, and the [architecture guide](docs/architecture.md) for the code structure. Follow the [Agent intake workflow](orchestrator/agent-drivers/ENGINE_INTAKE.md) when adding or extending an Agent.
-4. **Rebuild after client changes.** After changing `src/client/` or `src/shared/`, run `npm run build` and include the generated `client.js` in your commit.
+4. **Rebuild after client changes.** After changing `src/client/` or `core/shared/`, run `npm run build` and include the generated `client.js` in your commit.
 5. **Submit a PR.** Describe:
    - The scope and reason for the change, and any related issue.
    - Tests actually run and their results.

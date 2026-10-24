@@ -661,8 +661,8 @@ test('every host UI kit member the page uses is destructured from the kit', () =
 test('role avatar selection and animation preview submit the selected template', async () => {
   const source = readPanelSource()
   const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../src/shared/avatar-templates.json', import.meta.url), 'utf8'))
-  const presets = JSON.parse(readFileSync(new URL('../src/shared/role-presets.json', import.meta.url), 'utf8'))
+  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
+  const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, saved
   const context = createContext({
@@ -1142,8 +1142,8 @@ test('the composer menu cards take the native card geometry', () => {
 test('the role dialog offers the model and thinking defaults and saves them', async () => {
   const source = readPanelSource()
   const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../src/shared/avatar-templates.json', import.meta.url), 'utf8'))
-  const presets = JSON.parse(readFileSync(new URL('../src/shared/role-presets.json', import.meta.url), 'utf8'))
+  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
+  const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
   const context = createContext({
@@ -1214,8 +1214,8 @@ test('the role dialog offers the model and thinking defaults and saves them', as
 test('the identity picker fills a preset identity and leaves "+ 身份" its own text', async () => {
   const source = readPanelSource()
   const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../src/shared/avatar-templates.json', import.meta.url), 'utf8'))
-  const presets = JSON.parse(readFileSync(new URL('../src/shared/role-presets.json', import.meta.url), 'utf8'))
+  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
+  const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
   const context = createContext({
@@ -1276,8 +1276,8 @@ test('the identity picker fills a preset identity and leaves "+ 身份" its own 
 test('the identity picker saves a customized identity and deletes the entry again', async () => {
   const source = readPanelSource()
   const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../src/shared/avatar-templates.json', import.meta.url), 'utf8'))
-  const presets = JSON.parse(readFileSync(new URL('../src/shared/role-presets.json', import.meta.url), 'utf8'))
+  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
+  const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, refreshes = 0, savedEntries = []
   const context = createContext({
@@ -1364,8 +1364,8 @@ test('the identity picker saves a customized identity and deletes the entry agai
 test('the role dialog edits an existing role and confirms its deletion inline', async () => {
   const source = readPanelSource()
   const avatars = readFileSync(new URL('../src/client/avatar.js', import.meta.url), 'utf8')
-  const templates = JSON.parse(readFileSync(new URL('../src/shared/avatar-templates.json', import.meta.url), 'utf8'))
-  const presets = JSON.parse(readFileSync(new URL('../src/shared/role-presets.json', import.meta.url), 'utf8'))
+  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
+  const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = []
   let cursor = 0, mounted = false, deleted
   const context = createContext({

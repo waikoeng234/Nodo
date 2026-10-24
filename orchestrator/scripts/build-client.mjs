@@ -17,7 +17,7 @@ const json = path => JSON.stringify(JSON.parse(read(path)))
 const SOURCES = ['avatar', 'engine-logos', 'running', 'native-space', 'native-welcome', 'completion-tracker', 'model-seat',
   'role-seat', 'new-conversation', 'session-references', 'stream-records', 'shared:task-titles', 'workflow', 'workflow-composer']
 const sourceText = name => (name.startsWith('shared:')
-  ? read(`src/shared/${name.slice(7)}.js`).replace(/^export /gm, '')
+  ? read(`core/shared/${name.slice(7)}.js`).replace(/^export /gm, '')
   : read(`src/client/${name}.js`)).trimEnd()
 
 const logo = readFileSync(join(PLUGIN, 'src/client/assets/nodo-logo.png')).toString('base64')
@@ -27,8 +27,8 @@ const engineSvgs = Object.fromEntries(readdirSync(join(PLUGIN, 'src/client/asset
 
 const body = [
   'const module = { exports: {} }',
-  `const AVATAR_TEMPLATES = ${json('src/shared/avatar-templates.json')}`,
-  `const ROLE_PRESETS = ${json('src/shared/role-presets.json')}`,
+  `const AVATAR_TEMPLATES = ${json('core/shared/avatar-templates.json')}`,
+  `const ROLE_PRESETS = ${json('core/shared/role-presets.json')}`,
   `const NODO_LOGO = 'data:image/png;base64,${logo}'`,
   `const ENGINE_LOGO_SVGS = ${JSON.stringify(engineSvgs)}`,
   `const ENGINE_NAMES = ${JSON.stringify(Object.fromEntries(engineMetadata().map(entry => [entry.id, entry.name])))}`,

@@ -20,7 +20,7 @@ npm run build:check
 
 When installing a third-party plugin on the dsh plugin page, enter the local path to `orchestrator/`. Reload the plugin and page after changing the code.
 
-`client.js` is the browser entry generated from `src/client/` and `src/shared/`. The host loads it directly, so include it with the source in your commit. Do not edit `client.js` manually. After changing client source, run `npm run build`, then `npm run build:check` to confirm the generated file is current.
+`client.js` is the browser entry generated from `src/client/` and `core/shared/`. The host loads it directly, so include it with the source in your commit. Do not edit `client.js` manually. After changing client source, run `npm run build`, then `npm run build:check` to confirm the generated file is current.
 
 ## Testing
 

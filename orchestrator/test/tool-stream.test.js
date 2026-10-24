@@ -1,9 +1,9 @@
 import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import { install } from '../src/host/dispatch.js'
-import { TURN_IDLE_TIMEOUT_MS } from '../src/host/constants.js'
-import { toolText } from '../src/host/text.js'
-import { redactDeep, redactor } from '../src/host/secrets.js'
+import { install } from '../core/src/dispatch.js'
+import { TURN_IDLE_TIMEOUT_MS } from '../core/src/constants.js'
+import { toolText } from '../core/src/text.js'
+import { redactDeep, redactor } from '../core/src/secrets.js'
 
 test('tool transcript retains bounded, redacted input and output with call identity', () => {
   const lines = []

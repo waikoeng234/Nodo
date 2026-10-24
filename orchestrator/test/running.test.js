@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createContext, Script } from 'node:vm'
 
 const source = readFileSync(new URL('../src/client/running.js', import.meta.url), 'utf8')
-const templates = JSON.parse(readFileSync(new URL('../src/shared/avatar-templates.json', import.meta.url), 'utf8'))
+const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
 
 function mount(start = 0, reduce = false) {
   const hooks = [], pending = [], timers = new Map(), listeners = new Set()

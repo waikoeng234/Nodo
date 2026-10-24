@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { install } from '../src/host/drivers.js'
+import { install } from '../core/src/drivers.js'
 
 const harness = () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-drivers-'))

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { withHost } from './helpers/host.js'
-import presets from '../src/shared/role-presets.json' with { type: 'json' }
+import presets from '../core/shared/role-presets.json' with { type: 'json' }
 
 test('a new installation creates no roles, before or after onboarding', async () => {
   await withHost(async ({ api, home }) => {

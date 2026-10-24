@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { createDriver, registerEngine } from '../agent-drivers/dist/index.js'
 import { createFileChanges, normalizeChanges, CHANGE_LIMITS } from '../agent-drivers/dist/file-changes.js'
 import { claudeFileChanges } from '../agent-drivers/dist/claude/file-changes.js'
-import { changesTool, createRecordTracker, previewRecord } from '../src/host/stream-records.js'
+import { changesTool, createRecordTracker, previewRecord } from '../core/src/stream-records.js'
 import { boot, until } from './helpers/host.js'
 
 const edit = (newText = 'after') => ({ path: 'x', edit: { operation: 'update', oldText: 'before', newText } })
