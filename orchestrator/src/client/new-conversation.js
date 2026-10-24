@@ -20,6 +20,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     })
     const choices = selection.choices
     const references = selection.references ?? []
+    const files = selection.files ?? []
     const [reference, setReference] = useState(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
@@ -51,9 +52,27 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const held = profile && { permission: profile.sessions.slice().reverse().find(session =>
       !(session.draftedAt && !session.briefSent) && session.permission !== undefined)?.permission ?? profile.permission }
     const composerProfile = profile && { ...profile, ...held, ...choices }
-    const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
+    const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
+    // The picker's files split the way the workflow composer's do: images ride
+    // the draft inline, documents become stored references that only turn into
+    // workspace paths — the one address every engine can read — when sent.
+    const attach = async picked => {
+      if (disabled || !picked.length) return
+      setError('')
+      try {
+        const data = await Promise.all(picked.map(readImage))
+        const images = data.filter(item => item.mediaType.startsWith('image/'))
+        if (images.length) changeImages(current => [...current, ...images])
+        const documents = data.filter(item => !item.mediaType.startsWith('image/'))
+        if (documents.length) {
+          const saved = await call('attachment-save', { images: [],
+            files: documents.map(item => ({ name: item.name, mediaType: item.mediaType, data: item.dataUrl.slice(item.dataUrl.indexOf(',') + 1) })) })
+          updateSelection(current => ({ ...current, files: [...(current.files ?? []), ...saved.files] }))
+        }
+      } catch (failure) { setError(failure.message) }
+    }
     const send = async () => {
-      if (disabled || pending.current || (!text.trim() && !images.length && !references.length)) return
+      if (disabled || pending.current || (!text.trim() && !images.length && !references.length && !files.length)) return
       if (!profile) { setError('请选择接收消息的角色。'); return }
       if (!workspace) { setError('请先添加或选择项目。'); return }
       pending.current = true; setBusy(true); setError('')
@@ -66,13 +85,14 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         if (!active()) return
         const session = created.current.session
         if (nativeRole(profile)) {
+          const placed = files.length ? await call('attachment-place', { files, workspace: workspace.id }) : { text: '' }
           const opened = await call('session-open', { profile: profile.id, session: session.id, workspace: workspace.id })
           await ctx.sessions.using(opened.sessionId, { source: 'controllerOperation' }, async reference => {
             const binding = await reference.ready
             if (!active()) return
             const bound = await Promise.all(references.map(item => call('reference-bind', { id: item.id, draft: selection.referenceDraft, target: opened.sessionId })))
             if (!active()) return
-            const input = [text, ...bound.map(item => `[引用会话](nodo-reference:${item.id})`)].filter(Boolean).join('\n')
+            const input = [text, placed.text, ...bound.map(item => `[引用会话](nodo-reference:${item.id})`)].filter(Boolean).join('\n')
             const result = await binding.session.prompt([
               ...(input.trim() ? [{ type: 'text', text: input }] : []),
               ...images.map(image => ({ type: 'image', mediaType: image.mediaType, name: image.name,
@@ -87,7 +107,9 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         } else {
           const bound = await Promise.all(references.map(item => call('reference-bind', { id: item.id, draft: selection.referenceDraft, target: session.id })))
           if (!active()) return
-          await call('send', { profile: profile.id, session: session.id, text: text || (references.length ? '请参考引用的会话结果。' : ''),
+          await call('send', { profile: profile.id, session: session.id,
+            text: text || (references.length ? '请参考引用的会话结果。' : ''),
+            ...(files.length ? { files } : {}),
             ...(bound.length ? { references: bound.map(item => ({ id: item.id })) } : {}),
             images: images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })) })
           setNavigation(value => ({ ...value, profile: profile.id, workspace: workspace.id,
@@ -102,10 +124,11 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       h('div', { className: 'nodo-welcome-body' },
         h('header', { className: 'nodo-welcome-hero' }, h(NodoLogo, { width: 160 })),
         h(Composer, {
-          profile: composerProfile, workspace, value: text, images, references, busy, readOnly: disabled, modelDisabled: disabled,
+          profile: composerProfile, workspace, value: text, images, files, references, busy, readOnly: disabled, modelDisabled: disabled,
           onChange: changeText, onSend: () => void send(),
-          onAttach: files => { void Promise.all(files.map(readImage)).then(added => changeImages(current => [...current, ...added])).catch(failure => setError(failure.message)) },
+          onAttachFiles: attach,
           onRemoveImage: index => changeImages(images.filter((_, position) => position !== index)),
+          onRemoveFile: index => updateSelection(current => ({ ...current, files: (current.files ?? []).filter((_, at) => at !== index) })),
           onInsert: profile ? value => changeText(`${text}${text && !/\s$/.test(text) ? ' ' : ''}${value}`) : undefined,
           onGoal: () => setError('请在角色配置中修改职责说明。'), onCompact: () => setError('发送后可压缩会话上下文。'),
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,

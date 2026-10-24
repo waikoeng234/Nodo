@@ -1479,6 +1479,12 @@ test('the composer add menu offers the native sections and inserts text picks in
   assert.equal(inserted.at(-1), '@', 'the file row types an @ that opens the composer file card')
   const file = render({ workspace: null }).props.items.find(item => item.id === 'file')
   assert.equal(file.disabled, true, 'a file row without a workspace is disabled')
+  const uploads = []
+  const pickerMenu = render({ onUpload: () => uploads.push('picker') })
+  assert.deepEqual([...pickerMenu.props.items].map(item => item.id).filter(id => id === 'upload' || id === 'file'), ['upload'],
+    'with an upload channel the 文件 row is the system picker, not the @ card')
+  pickerMenu.props.onSelect('upload')
+  assert.deepEqual([...uploads], ['picker'])
   effects.length = 0
   const dollar = render({ trigger: { char: '$', start: 4, query: '' } })
   assert.equal(dollar.props.open, true, 'a live $ token holds the menu open')
@@ -1492,6 +1498,9 @@ test('the composer add menu offers the native sections and inserts text picks in
   referenced.props.onSelect('reference')
   assert.deepEqual([...tokened], ['/deploy ', ''], 'an action picked from a typed token consumes the token')
   assert.equal(requested.pop(), 'reference')
+  render({ onUpload: () => uploads.push('picker'), trigger: { char: '/', start: 0, query: '' } }).props.onSelect('upload')
+  assert.deepEqual([...tokened], ['/deploy ', '', ''], 'the picker row picked from a typed token consumes the token too')
+  assert.deepEqual([...uploads], ['picker', 'picker'])
   const slash = render({ trigger: { char: '/', start: 0, query: 'dep' } })
   assert.deepEqual([...slash.props.items].map(item => item.id), ['cmd-title', 'cmd:deploy'], 'the text after the trigger narrows the command rows')
   const missed = render({ trigger: { char: '/', start: 0, query: 'zz' } })
@@ -1526,6 +1535,85 @@ test('the new composer offers references through @ without a recipient and enabl
   assert.equal(all(attached).find(node => node.type === 'Tooltip').props.children.props.disabled, false)
   all(attached).find(node => node.props['aria-label'] === '移除引用 Planner · Plan').props.onClick()
   assert.deepEqual(removed, ['snapshot'])
+})
+
+test('the @ file card lists workspace files with the file glyph', async () => {
+  const source = readPanelSource()
+  let cursor = 0
+  const states = []
+  const state = initial => {
+    const at = cursor++
+    if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
+    return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
+  }
+  const context = createContext({
+    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    useState: state, useRef: initial => state(() => ({ current: initial }))[0],
+    useEffect: effect => { effect() }, setTimeout: fn => { fn(); return 0 }, clearTimeout() {},
+    Menu: 'Menu', Tooltip: 'Tooltip', AddMenu: 'AddMenu', IconUsersOutlineRegular: 'Users', IconPaperclipOutlineRegular: 'Clip', ComposerGlyph: () => 'Send',
+    call: async endpoint => endpoint === 'workspace-files' ? { files: ['docs/architecture.md'] } : { files: [] },
+  })
+  new Script(source.slice(source.indexOf('const addRow ='), source.indexOf("// The composer's add menu,"))).runInContext(context)
+  const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
+  const props = { workspace: { id: 'w' }, images: [], value: '@', onChange() {}, onSend() {} }
+  const render = () => { cursor = 0; return context.Composer(props) }
+  render()
+  await new Promise(resolve => setImmediate(resolve))
+  const items = all(render()).find(node => node.type === 'Menu').props.items
+  const row = items.find(item => item.id === 'file:docs/architecture.md')
+  assert.equal(row.icon.type, 'Clip', 'workspace file rows carry the file glyph like the native menu')
+  assert.deepEqual(row.label.children.map(child => child.children).flat(), ['architecture.md', 'docs/architecture.md'])
+})
+
+test('the new conversation feeds picker files into the draft and sends documents as workspace paths', async () => {
+  const source = readFileSync(new URL('../src/client/new-conversation.js', import.meta.url), 'utf8')
+  const calls = []
+  let cursor = 0
+  const states = []
+  const state = initial => {
+    const at = cursor++
+    if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
+    return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
+  }
+  const context = createContext({
+    h: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    useState: state, useRef: initial => state(() => ({ current: initial }))[0], useEffect() {},
+    useStateView: () => ({ view: { profiles: [{ id: 'role', name: '开发', engine: 'echo', sessions: [] }], workspaces: [{ id: 'project', name: '项目', cwd: '/tmp' }] }, error: '' }),
+    useSyncExternalStore: (_subscribe, snapshot) => snapshot(), subscribeNavigation: () => {}, readNavigation: () => ({ profile: 'role', workspace: 'project' }),
+    heldImages: {}, readDrafts: () => ({}), setNavigation() {}, nativeRole: () => false,
+    readImage: async file => file, Composer: 'Composer', RolePicker: 'RolePicker', ReferenceDialog: 'ReferenceDialog', NodoLogo: 'NodoLogo',
+    crypto: { randomUUID: () => '00000000-0000-0000-0000-000000000000' },
+    localStorage: { getItem: () => null, setItem() {} },
+    call: async (endpoint, payload) => {
+      calls.push({ endpoint, payload })
+      if (endpoint === 'attachment-save') return { images: [], files: [{ id: '11111111-1111-1111-1111-111111111111', name: 'spec.pdf' }] }
+      if (endpoint === 'attachment-place') return { files: ['/tmp/.nodo/workflow-inputs/task-1/1-spec.pdf'], text: '## Attached files (user provided)\n- "/tmp/.nodo/workflow-inputs/task-1/1-spec.pdf"' }
+      if (endpoint === 'session-create') return { id: 'session-1' }
+      return {}
+    },
+  })
+  new Script(`${source}\nglobalThis.NewConversation = createNewConversation({ uiSession: { adapter: { current: { getSnapshot: () => ({ key: 'native-1' }) } } } }, { getSnapshot: () => ({ active: true }), showLegacy() {}, endDraft() {}, open() {} }, 'ReferenceDialog').NewConversation`).runInContext(context)
+  const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
+  const render = () => { cursor = 0; return all(context.NewConversation({ sourceSessionId: 'native-1' })).find(node => node.type === 'Composer').props }
+  const composer = render()
+  await composer.onAttachFiles([
+    { name: 'shot.png', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' },
+    { name: 'spec.pdf', mediaType: 'application/pdf', dataUrl: 'data:application/pdf;base64,Qg==' },
+  ])
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.find(call => call.endpoint === 'attachment-save').payload.files)), [{ name: 'spec.pdf', mediaType: 'application/pdf', data: 'Qg==' }])
+  const loaded = render()
+  assert.equal(loaded.images[0].name, 'shot.png', 'images ride the draft inline')
+  assert.equal(loaded.files[0].name, 'spec.pdf')
+  loaded.onRemoveFile(0)
+  await render().onAttachFiles([{ name: 'spec.pdf', mediaType: 'application/pdf', dataUrl: 'data:application/pdf;base64,Qg==' }])
+  render().onChange('看下这份规格')
+  render().onSend()
+  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(calls.some(call => call.endpoint === 'attachment-place'), false, 'the plugin route hands refs to send; placement stays host-side')
+  const sent = calls.find(call => call.endpoint === 'send')
+  assert.equal(sent.payload.text, '看下这份规格', 'the echoed text stays clean; the path block never reaches the bubble')
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.payload.files)), [{ id: '11111111-1111-1111-1111-111111111111', name: 'spec.pdf' }])
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.payload.images)), [{ mediaType: 'image/png', name: 'shot.png', data: 'AAAA' }])
 })
 
 test('the responsibilities dialog retains the goal field and saves it trimmed', async () => {

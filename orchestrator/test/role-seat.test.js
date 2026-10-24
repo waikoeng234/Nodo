@@ -91,7 +91,7 @@ test('role selection keeps text and images in the unbound draft and creates noth
   const h = harness()
   h.composer().onChange('请审查')
   const image = { name: 'photo', mediaType: 'image/png', dataUrl: 'data:image/png;base64,AAAA' }
-  h.composer().onAttach([image])
+  h.composer().onAttachFiles([image])
   await new Promise(resolve => setImmediate(resolve))
   h.composer().rolePicker.props.onSelect('b')
   assert.equal(h.composer().profile.id, 'b')

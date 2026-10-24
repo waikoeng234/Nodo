@@ -52,6 +52,11 @@ export function install(rt) {
   // after it that runs again may go on in its own (`rerun`).
   // The user's answers on the way are instructions, kept apart from the reports.
   const renderDecision = ({ source, decision }) => [`### ${source.step}`, ...(decision.question ? [`Question: ${decision.question}`] : []), `Answer: ${decision.choice}`, ...(decision.note ? [`Note:\n${decision.note}`] : [])].join('\n')
+  // The attached-files block a prompt carries when the user picked files from
+  // outside the workspace: materialized paths are the one address every engine
+  // reads, while the transcript's echoed text and file chips stay clean.
+  const fileLines = (files = []) => files.length > 0
+    ? ['', '## Attached files (user provided)', ...files.map(file => `- ${JSON.stringify(file)}`)] : []
   const renderHandoff = ({ workflowName, stepName, index, of, task, artifacts, materials, files = [], exits, rework, rerun, retry }) => {
     const decisions = artifacts.filter(item => item.decision), reports = artifacts.filter(item => !item.decision)
     if (reports.length && !materials?.index) throw new Error('Workflow report files are unavailable')
@@ -61,7 +66,7 @@ export function install(rt) {
       '',
       `Workflow: "${workflowName}" — step ${index} of ${of}: ${stepName}.`,
       ...(decisions.length > 0 ? ['', '## User decisions', 'These are the user\'s own instructions: follow them, and where they differ from the step above, they take precedence.', ...decisions.map(renderDecision)] : []),
-      ...(files.length > 0 ? ['', '## Attached files (user provided)', ...files.map(file => `- ${JSON.stringify(file)}`)] : []),
+      ...fileLines(files),
       '',
       '## Execution context',
       ...(rework === 'resumed' ? ['This step was sent back: your earlier report for it is above in this conversation, and the referenced report or user decision sent it back. Rework the step accordingly and report again.']
@@ -98,5 +103,5 @@ export function install(rt) {
     return text
   }
 
-  Object.assign(rt, { renderIdentity, renderReference, renderTask, renderRecovery, renderHandoff })
+  Object.assign(rt, { renderIdentity, renderReference, renderTask, renderRecovery, renderHandoff, fileLines })
 }

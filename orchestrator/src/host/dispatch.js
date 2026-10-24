@@ -423,7 +423,7 @@ export function install(rt) {
   // instead of steering or queueing: a workflow task must not absorb a message
   // meant for another step.
   const occupied = (profileId, st) => st.starting || st.active || st.finishing || rt.isCompacting(profileId)
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files } = {}) => {
     const { session } = rt.conversation(profileId, sessionId)
     profileId = session.id
     const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
@@ -431,14 +431,15 @@ export function install(rt) {
     const text = String(rawText ?? '').trim()
     if (text.length > TASK_TEXT_MAX) throw Object.assign(new Error(`Task exceeds ${TASK_TEXT_MAX} characters`), { code: 'orch/invalid' })
     const images = rt.admitImages(rawImages)
-    if (text === '' && images.length === 0 && !handoff?.files?.length) throw Object.assign(new Error('Nothing to send'), { code: 'orch/invalid' })
+    if (text === '' && images.length === 0 && !handoff?.files?.length && !files?.paths?.length) throw Object.assign(new Error('Nothing to send'), { code: 'orch/invalid' })
     if (!Array.isArray(references) || references.length > 4) throw Object.assign(new Error('Choose at most four reference sessions'), { code: 'orch/invalid' })
     const sources = []
     for (const ref of references) sources.push(ref?.id
       ? await rt.readReference({ id: ref.id, target: session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : session.id) })
       : await rt.sessionReference(ref))
     if (handoff) sources.push(...rt.redactDeepSecrets(handoff.artifacts))
-    const input = handoff ? rt.renderHandoff({ ...handoff, task: text, artifacts: sources }) : rt.renderTask(text, sources)
+    const input = handoff ? rt.renderHandoff({ ...handoff, task: text, artifacts: sources })
+      : [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
     if (!session.briefSent) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {
@@ -454,7 +455,8 @@ export function install(rt) {
     const seq = ++st.nextSeq
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
-    say(profileId, { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}) })
+    say(profileId, { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
+      ...(files?.refs?.length > 0 ? { files: files.refs } : {}) })
     if (occupied(profileId, st)) {
       // SPI STEER values, as strings: the drivers package may be absent.
       const host = st.seq

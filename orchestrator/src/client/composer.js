@@ -107,7 +107,7 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
   const fileMenu = h(Menu, {
     open: fileOpen, onClose: () => setDismissed(mention?.at ?? null), className: 'nodo-file-anchor', listClassName: 'nodo-add',
     items: [...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []), ...(files === null ? [{ type: 'label', id: 'hint', text: '正在搜索…' }]
-      : files.length ? files.map(file => ({ id: `file:${file}`, label: addRow(file.split('/').pop(), '', file) }))
+      : files.length ? files.map(file => ({ id: `file:${file}`, icon: h(IconPaperclipOutlineRegular), label: addRow(file.split('/').pop(), '', file) }))
         : [{ type: 'label', id: 'hint', text: '没有匹配的文件' }])],
     onSelect: id => {
       if (id === 'reference') { setDismissed(mention.at); onChange(value.slice(0, mention.at)); onReference(); return }
@@ -173,11 +173,13 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
 
 // The composer's add menu, a copy of the host's own trigger menu
 // (dsh-client-ui-input-trigger): sectioned rows with the kit's icons and the
-// native zh faces. 添加 holds the workspace's files, the role's responsibilities
-// and the plan tier; 指令 holds the host's compact command and the engine's
-// invocable commands, scanned per engine like the model catalog. Files and
-// skills land in the draft as plain text — paths and slash lines are what every
-// agent resolves — while goal, plan and compact act on the profile and session
+// native zh faces. 添加 holds files — the system picker where the page has an
+// upload channel, otherwise the '@' workspace card — the role's
+// responsibilities and the plan tier; 指令 holds the host's compact command and
+// the engine's invocable commands, scanned per engine like the model catalog.
+// Workspace files and skills land in the draft as plain text — paths and slash
+// lines are what every agent resolves — while picker files ride the send as
+// attachments, and goal, plan and compact act on the profile and session
 // themselves, and an engine without a scannable source says so. Every listed
 // command sits in the engine's own scan roots, so its slash line resolves once
 // sent; the menu never offers a skill the engine would read as literal text.
@@ -260,9 +262,11 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     : matched.length === 0 ? [{ type: 'label', id: 'hint', text: '没有匹配的指令' }] : matched
   const items = pane === 'root' && query === '' ? [
     { type: 'label', id: 'add-title', text: '添加' },
-    { id: 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !workspace || !onInsert },
-    ...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: row('引用会话', '', '选择其他角色的一条回复') }] : []),
-    ...(onUpload ? [{ id: 'upload', icon: h(IconPaperclipOutlineRegular), label: row('上传图片或文件') }] : []),
+    // With an upload channel the 文件 row is the system picker, the way the
+    // host's own add menu works; without one it types the '@' that opens the
+    // workspace file card.
+    { id: onUpload ? 'upload' : 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !onUpload && (!workspace || !onInsert) },
+    ...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []),
     ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
     ...(engine?.capabilities?.permissionModes?.includes('plan') ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
     { type: 'label', id: 'cmd-title', text: '指令' },

@@ -169,7 +169,10 @@ export function install(rt) {
       case 'send': {
         await rt.load()
         const profile = resolveProfileRef(body.profile)
-        const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references)
+        const { session } = rt.conversation(profile.id, body.session)
+        const files = body.files?.length ? { refs: rt.cleanFileRefs(body.files),
+          paths: await rt.materializeFiles(body.files, session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd) } : undefined
+        const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined, { files })
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
       }
       case 'attachment':
@@ -177,6 +180,13 @@ export function install(rt) {
       case 'attachment-save': {
         const images = rt.admitImages(body.images), files = rt.admitFiles(body.files)
         return { images: await rt.saveImages(images), files: await rt.saveFiles(files) }
+      }
+      case 'attachment-place': {
+        const cwd = rt.findWorkspace(body.workspace)?.cwd
+        if (cwd === undefined) throw invalid(`No workspace "${body.workspace}"`)
+        const files = await rt.materializeFiles(body.files, cwd)
+        return { files, text: files.length > 0
+          ? ['## Attached files (user provided)', ...files.map(file => `- ${JSON.stringify(file)}`)].join('\n') : '' }
       }
       case 'interrupt': {
         await rt.load()

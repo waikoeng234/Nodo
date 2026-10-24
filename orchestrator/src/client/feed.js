@@ -286,7 +286,10 @@ function Feed({ profile, session, revision, work, sentTick }) {
     if (item.kind === 'usage') return lines[index - 1]?.who === 'agent' && lines[index - 1].kind === 'text' ? null : h(TurnUsage, { key: index, usage: item.usage })
     if (item.who === 'user') {
       return h('div', { key: index, className: 'nodo-user', 'data-flow': 'user', 'data-nodo-turn': index },
-        h('div', { className: 'nodo-bubble' }, item.images?.map(image => h(TranscriptImage, { key: image.id, image })), item.text),
+        h('div', { className: 'nodo-bubble' },
+          item.files?.length > 0 && h('span', { className: 'nodo-user-files' }, item.files.map((file, at) => h('span', { key: file.id ?? at, className: 'nodo-composer-file' },
+            h(IconPaperclipOutlineRegular, { size: 14 }), h('span', { title: file.name }, file.name)))),
+          item.images?.map(image => h(TranscriptImage, { key: image.id, image })), item.text),
         h(MessageTime, { at: item.at }))
     }
     if (item.who === 'agent') {

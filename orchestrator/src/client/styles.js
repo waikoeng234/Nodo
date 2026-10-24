@@ -244,6 +244,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-composer-target:last-child{max-width:100%}
 .nodo-composer-images{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px;max-height:90px;overflow:auto}
+.nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
 .nodo-composer-file>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .nodo-composer-file button{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit}

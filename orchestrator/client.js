@@ -480,6 +480,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     })
     const choices = selection.choices
     const references = selection.references ?? []
+    const files = selection.files ?? []
     const [reference, setReference] = useState(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
@@ -511,9 +512,27 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const held = profile && { permission: profile.sessions.slice().reverse().find(session =>
       !(session.draftedAt && !session.briefSent) && session.permission !== undefined)?.permission ?? profile.permission }
     const composerProfile = profile && { ...profile, ...held, ...choices }
-    const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
+    const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
+    // The picker's files split the way the workflow composer's do: images ride
+    // the draft inline, documents become stored references that only turn into
+    // workspace paths — the one address every engine can read — when sent.
+    const attach = async picked => {
+      if (disabled || !picked.length) return
+      setError('')
+      try {
+        const data = await Promise.all(picked.map(readImage))
+        const images = data.filter(item => item.mediaType.startsWith('image/'))
+        if (images.length) changeImages(current => [...current, ...images])
+        const documents = data.filter(item => !item.mediaType.startsWith('image/'))
+        if (documents.length) {
+          const saved = await call('attachment-save', { images: [],
+            files: documents.map(item => ({ name: item.name, mediaType: item.mediaType, data: item.dataUrl.slice(item.dataUrl.indexOf(',') + 1) })) })
+          updateSelection(current => ({ ...current, files: [...(current.files ?? []), ...saved.files] }))
+        }
+      } catch (failure) { setError(failure.message) }
+    }
     const send = async () => {
-      if (disabled || pending.current || (!text.trim() && !images.length && !references.length)) return
+      if (disabled || pending.current || (!text.trim() && !images.length && !references.length && !files.length)) return
       if (!profile) { setError('请选择接收消息的角色。'); return }
       if (!workspace) { setError('请先添加或选择项目。'); return }
       pending.current = true; setBusy(true); setError('')
@@ -526,13 +545,14 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         if (!active()) return
         const session = created.current.session
         if (nativeRole(profile)) {
+          const placed = files.length ? await call('attachment-place', { files, workspace: workspace.id }) : { text: '' }
           const opened = await call('session-open', { profile: profile.id, session: session.id, workspace: workspace.id })
           await ctx.sessions.using(opened.sessionId, { source: 'controllerOperation' }, async reference => {
             const binding = await reference.ready
             if (!active()) return
             const bound = await Promise.all(references.map(item => call('reference-bind', { id: item.id, draft: selection.referenceDraft, target: opened.sessionId })))
             if (!active()) return
-            const input = [text, ...bound.map(item => `[引用会话](nodo-reference:${item.id})`)].filter(Boolean).join('\n')
+            const input = [text, placed.text, ...bound.map(item => `[引用会话](nodo-reference:${item.id})`)].filter(Boolean).join('\n')
             const result = await binding.session.prompt([
               ...(input.trim() ? [{ type: 'text', text: input }] : []),
               ...images.map(image => ({ type: 'image', mediaType: image.mediaType, name: image.name,
@@ -547,7 +567,9 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         } else {
           const bound = await Promise.all(references.map(item => call('reference-bind', { id: item.id, draft: selection.referenceDraft, target: session.id })))
           if (!active()) return
-          await call('send', { profile: profile.id, session: session.id, text: text || (references.length ? '请参考引用的会话结果。' : ''),
+          await call('send', { profile: profile.id, session: session.id,
+            text: text || (references.length ? '请参考引用的会话结果。' : ''),
+            ...(files.length ? { files } : {}),
             ...(bound.length ? { references: bound.map(item => ({ id: item.id })) } : {}),
             images: images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })) })
           setNavigation(value => ({ ...value, profile: profile.id, workspace: workspace.id,
@@ -562,10 +584,11 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       h('div', { className: 'nodo-welcome-body' },
         h('header', { className: 'nodo-welcome-hero' }, h(NodoLogo, { width: 160 })),
         h(Composer, {
-          profile: composerProfile, workspace, value: text, images, references, busy, readOnly: disabled, modelDisabled: disabled,
+          profile: composerProfile, workspace, value: text, images, files, references, busy, readOnly: disabled, modelDisabled: disabled,
           onChange: changeText, onSend: () => void send(),
-          onAttach: files => { void Promise.all(files.map(readImage)).then(added => changeImages(current => [...current, ...added])).catch(failure => setError(failure.message)) },
+          onAttachFiles: attach,
           onRemoveImage: index => changeImages(images.filter((_, position) => position !== index)),
+          onRemoveFile: index => updateSelection(current => ({ ...current, files: (current.files ?? []).filter((_, at) => at !== index) })),
           onInsert: profile ? value => changeText(`${text}${text && !/\s$/.test(text) ? ' ' : ''}${value}`) : undefined,
           onGoal: () => setError('请在角色配置中修改职责说明。'), onCompact: () => setError('发送后可压缩会话上下文。'),
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
@@ -3899,7 +3922,10 @@ function Feed({ profile, session, revision, work, sentTick }) {
     if (item.kind === 'usage') return lines[index - 1]?.who === 'agent' && lines[index - 1].kind === 'text' ? null : h(TurnUsage, { key: index, usage: item.usage })
     if (item.who === 'user') {
       return h('div', { key: index, className: 'nodo-user', 'data-flow': 'user', 'data-nodo-turn': index },
-        h('div', { className: 'nodo-bubble' }, item.images?.map(image => h(TranscriptImage, { key: image.id, image })), item.text),
+        h('div', { className: 'nodo-bubble' },
+          item.files?.length > 0 && h('span', { className: 'nodo-user-files' }, item.files.map((file, at) => h('span', { key: file.id ?? at, className: 'nodo-composer-file' },
+            h(IconPaperclipOutlineRegular, { size: 14 }), h('span', { title: file.name }, file.name)))),
+          item.images?.map(image => h(TranscriptImage, { key: image.id, image })), item.text),
         h(MessageTime, { at: item.at }))
     }
     if (item.who === 'agent') {
@@ -4319,7 +4345,7 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
   const fileMenu = h(Menu, {
     open: fileOpen, onClose: () => setDismissed(mention?.at ?? null), className: 'nodo-file-anchor', listClassName: 'nodo-add',
     items: [...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []), ...(files === null ? [{ type: 'label', id: 'hint', text: '正在搜索…' }]
-      : files.length ? files.map(file => ({ id: `file:${file}`, label: addRow(file.split('/').pop(), '', file) }))
+      : files.length ? files.map(file => ({ id: `file:${file}`, icon: h(IconPaperclipOutlineRegular), label: addRow(file.split('/').pop(), '', file) }))
         : [{ type: 'label', id: 'hint', text: '没有匹配的文件' }])],
     onSelect: id => {
       if (id === 'reference') { setDismissed(mention.at); onChange(value.slice(0, mention.at)); onReference(); return }
@@ -4385,11 +4411,13 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
 
 // The composer's add menu, a copy of the host's own trigger menu
 // (dsh-client-ui-input-trigger): sectioned rows with the kit's icons and the
-// native zh faces. 添加 holds the workspace's files, the role's responsibilities
-// and the plan tier; 指令 holds the host's compact command and the engine's
-// invocable commands, scanned per engine like the model catalog. Files and
-// skills land in the draft as plain text — paths and slash lines are what every
-// agent resolves — while goal, plan and compact act on the profile and session
+// native zh faces. 添加 holds files — the system picker where the page has an
+// upload channel, otherwise the '@' workspace card — the role's
+// responsibilities and the plan tier; 指令 holds the host's compact command and
+// the engine's invocable commands, scanned per engine like the model catalog.
+// Workspace files and skills land in the draft as plain text — paths and slash
+// lines are what every agent resolves — while picker files ride the send as
+// attachments, and goal, plan and compact act on the profile and session
 // themselves, and an engine without a scannable source says so. Every listed
 // command sits in the engine's own scan roots, so its slash line resolves once
 // sent; the menu never offers a skill the engine would read as literal text.
@@ -4472,9 +4500,11 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     : matched.length === 0 ? [{ type: 'label', id: 'hint', text: '没有匹配的指令' }] : matched
   const items = pane === 'root' && query === '' ? [
     { type: 'label', id: 'add-title', text: '添加' },
-    { id: 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !workspace || !onInsert },
-    ...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: row('引用会话', '', '选择其他角色的一条回复') }] : []),
-    ...(onUpload ? [{ id: 'upload', icon: h(IconPaperclipOutlineRegular), label: row('上传图片或文件') }] : []),
+    // With an upload channel the 文件 row is the system picker, the way the
+    // host's own add menu works; without one it types the '@' that opens the
+    // workspace file card.
+    { id: onUpload ? 'upload' : 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !onUpload && (!workspace || !onInsert) },
+    ...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []),
     ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
     ...(engine?.capabilities?.permissionModes?.includes('plan') ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
     { type: 'label', id: 'cmd-title', text: '指令' },
@@ -5261,6 +5291,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-composer-target:last-child{max-width:100%}
 .nodo-composer-images{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px;max-height:90px;overflow:auto}
+.nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
 .nodo-composer-file>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .nodo-composer-file button{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit}
