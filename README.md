@@ -29,7 +29,7 @@ Nodo 以插件形式运行在 DeepSeek Harness（下称 dsh）中。
 
 - dsh 0.2.0-rc.1 或更高版本。
 - 至少一个已完成登录或模型配置的 Agent。目前已接入 Codex、Claude Code、DeepSeek Harness、ZCode、CodeBuddy、OpenCode、Qoder 和 Pi（实验性），具体可用功能取决于 Agent 版本及其公开接口。
-- 从源码安装时，还需要 Node.js 20.3.0 或更高版本。
+- 从源码安装时，还需要 Node.js 24 或更高版本。
 
 
 

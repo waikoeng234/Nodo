@@ -8,7 +8,7 @@ Nodo is a dsh plugin with three parts:
 
 - **Host** (`index.js`, `core/`, `src/host/`): runs in the dsh process, manages projects, roles, conversations, approvals, and workflows, and starts Agents.
 - **Client** (`client.js`, generated from `src/client/`): runs in the dsh web interface and mounts the sidebar, conversation panel, and workflow canvas into host-provided UI slots.
-- **Agent adapter layer** (`agent-drivers/`): normalizes public Agent protocols into a common driver interface.
+- **Agent adapter layer** (`agent-drivers/`, TypeScript compiled to the committed `dist/`): normalizes public Agent protocols into a common driver interface.
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,7 @@ The client mounts its parts through host UI slots, including run status and refe
 
 ## Agent adapter layer
 
-`agent-drivers/` is a separate package embedded in the plugin and can be patched and versioned independently. Each driver implements the same eight primitives: `openSession`, `sendTurn`, `steer`, `interruptTurn`, `respondToRequest`, `onEvent`, `hasSession`, and `dispose`. Agents are registered in `ENGINES` in `agent-drivers/src/index.js`; the registration metadata also serves client builds and verification scripts.
+`agent-drivers/` is a separate package embedded in the plugin and can be patched and versioned independently. Each driver implements the same eight primitives: `openSession`, `sendTurn`, `steer`, `interruptTurn`, `respondToRequest`, `onEvent`, `hasSession`, and `dispose`. Agents are registered in `ENGINES` in `agent-drivers/src/index.ts`; the registration metadata also serves client builds and verification scripts.
 
 See the [Agent adapter overview](../orchestrator/agent-drivers/README.md), [driver interface and event protocol](../orchestrator/agent-drivers/PROTOCOL.md), and [Agent intake workflow](../orchestrator/agent-drivers/ENGINE_INTAKE.md).
 

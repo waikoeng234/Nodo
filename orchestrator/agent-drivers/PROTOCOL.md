@@ -1,6 +1,6 @@
 # Driver protocol reference
 
-This document describes the normalized driver interface, event semantics and Agent mappings used by Nodo. The contract is defined in [src/spi.js](src/spi.js), with driver validation in [src/index.js](src/index.js). Implementation steps belong in [ENGINE_INTAKE.md](ENGINE_INTAKE.md).
+This document describes the normalized driver interface, event semantics and Agent mappings used by Nodo. The contract is defined in [src/spi.ts](src/spi.ts), with driver validation in [src/index.ts](src/index.ts). Implementation steps belong in [ENGINE_INTAKE.md](ENGINE_INTAKE.md).
 
 ## Driver interface
 

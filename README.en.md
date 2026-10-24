@@ -29,7 +29,7 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 
 - dsh 0.2.0-rc.1 or later.
 - At least one Agent with login or model configuration completed. Current integrations include Codex, Claude Code, DeepSeek Harness, ZCode, CodeBuddy, OpenCode, Qoder, and Pi (experimental). Available features depend on the Agent version and its public interfaces.
-- Node.js 20.3.0 or later when installing from source.
+- Node.js 24 or later when installing from source.
 
 ### Install the plugin
 

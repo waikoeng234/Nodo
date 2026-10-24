@@ -36,7 +36,7 @@ The driver implements exactly:
 | `hasSession() → boolean` | Agent holds a live/known conversation |
 | `dispose()` | end the process and the turn |
 
-Event shapes are documented in `src/spi.js`. See `../test/helpers/echo-driver.js` for a complete
+Event shapes are documented in `src/spi.ts`. See `../test/helpers/echo-driver.js` for a complete
 reference implementation.
 
 ## Agents
@@ -106,7 +106,7 @@ Registration also owns `name`, `shared` and optional `tests` metadata
 for client display names and verification selection. See the workflow
 for field meanings. Optional SVG assets are discovered by the client build.
 
-Add one Agent folder with an `index.js` entry, and a registry entry in `src/index.js` with:
+Add one Agent folder with an `index.ts` entry, and a registry entry in `src/index.ts` with:
 
 - `info`: serializable `id`, `label`, `description`, `requiresCwd`, optional
   executable `command`, `capabilities`, and `fields`.
@@ -168,10 +168,10 @@ field into a catalog select and adds the thinking-level select under it;
 still returns ids. Common profile fields and driver-session persistence stay
 host-owned. Credentials never belong in field metadata or diagnostics.
 
-`src/json-rpc-process.js` provides bounded request timeouts, process disposal,
+`src/json-rpc-process.ts` provides bounded request timeouts, process disposal,
 and stdio response/notification/request routing for JSONL protocols;
-`src/cli.js` provides executable discovery and absolute workspace validation.
-ACP consumers reuse `src/acp/core.js` for session flow and standard event/request
+`src/cli.ts` provides executable discovery and absolute workspace validation.
+ACP consumers reuse `src/acp/core.ts` for session flow and standard event/request
 mapping. Agent modules keep launch, configuration and verified compatibility
 differences. Other protocols keep their translations in each adapter.
 

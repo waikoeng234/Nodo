@@ -7,8 +7,8 @@ Adapters use only public Agent protocols and capabilities. Declare unsupported f
 ## Adding an Agent
 
 1. **Confirm the protocol and session behavior.** Record the CLI version, public protocol sources, launch and authentication requirements, and session creation, restoration, and writer ownership. Claims of sharing sessions with the Agent's own application require verification of the same session ID and live observation.
-2. **Implement the driver.** Add `index.js` and a README under `src/<engine>/`. Implement the eight required SPI primitives and provide `info/create/validate/check`, plus optional entries such as `scan/commands` where supported. ACP drivers reuse the [shared ACP core](src/acp/README.md); other JSON-RPC protocols can reuse `src/json-rpc-process.js`.
-3. **Register the Agent.** Register the driver and metadata in `ENGINES` in [src/index.js](src/index.js). Reuse the common configuration form and model picker. Keep Agent-specific launch, configuration, and compatibility logic in its own directory.
+2. **Implement the driver.** Add `index.ts` and a README under `src/<engine>/`. Implement the eight required SPI primitives and provide `info/create/validate/check`, plus optional entries such as `scan/commands` where supported. ACP drivers reuse the [shared ACP core](src/acp/README.md); other JSON-RPC protocols can reuse `src/json-rpc-process.ts`.
+3. **Register the Agent.** Register the driver and metadata in `ENGINES` in [src/index.ts](src/index.ts). Reuse the common configuration form and model picker. Keep Agent-specific launch, configuration, and compatibility logic in its own directory.
 4. **Add tests.** Add `../test/<engine>.test.js` and `../test/fixtures/<engine>-cli.cjs`. Cover final replies, cancellation and workflow handoffs through the driver and workflow tests.
 5. **Verify and submit a PR.** Run automated checks through the `--route new` entry below. Describe the support scope, test results, and real-environment verification in the PR.
 
@@ -37,7 +37,7 @@ In addition to the driver entry, `ENGINES` supports the following metadata:
 
 ## Automated verification
 
-Install dependencies in `orchestrator/` before running these commands. Run `npm run build` first after changing client code or Agent display names.
+Install dependencies in `orchestrator/` before running these commands. Run `npm run build` first after changing driver code, client code or Agent display names.
 
 ```sh
 # New Agent: check all capability scopes

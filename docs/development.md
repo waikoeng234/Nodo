@@ -4,7 +4,7 @@ This guide is for contributors modifying Nodo source code or submitting PRs. See
 
 ## Environment
 
-- Node.js 20.3.0 or later, and npm.
+- Node.js 24 or later, and npm.
 - A working dsh 0.2.0-rc.1 or later.
 - The relevant Agent CLI and authentication configuration when real-environment verification is needed.
 
@@ -19,6 +19,8 @@ npm run build:check
 ```
 
 When installing a third-party plugin on the dsh plugin page, enter the local path to `orchestrator/`. Reload the plugin and page after changing the code.
+
+`agent-drivers/` is written in TypeScript; `npm run build` compiles it into `agent-drivers/dist/`, which is committed with the source. Do not edit `dist/` manually.
 
 `client.js` is the browser entry generated from `src/client/` and `core/shared/`. The host loads it directly, so include it with the source in your commit. Do not edit `client.js` manually. After changing client source, run `npm run build`, then `npm run build:check` to confirm the generated file is current.
 
