@@ -2514,9 +2514,10 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDra
     readOnly && h('p', { className: 'nodo-rail-foot' }, h(Tag, { tone: 'neutral' }, '只读模式')))
 }
 
-function Field({ label, children, group = false }) {
+function Field({ label, children, group = false, required = false }) {
   return h(group ? 'div' : 'label', { className: 'nodo-field', role: group ? 'group' : undefined,
-    'aria-label': group ? label : undefined }, h('span', null, label), children)
+    'aria-label': group ? label : undefined },
+  h('span', null, label, required && h('span', { className: 'nodo-field-required', 'aria-hidden': true }, '*')), children)
 }
 
 function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, onSaved, onCancel, onDeleted }) {
@@ -2705,7 +2706,7 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
                 onClick: () => setDraft(current => ({ ...current, avatarTemplate: item.id })) },
               h(RoleAvatar, { profile: { avatarTemplate: item.id }, size: 30 }), item.label))))),
         h('div', { className: 'nodo-role-main' },
-          h(Field, { label: '名字' }, h('input', {
+          h(Field, { label: '名字', required: true }, h('input', {
             className: 'nodo-dialog-input', 'data-modal-autofocus': true, disabled, value: draft.name, onChange: edit('name'),
             required: true, maxLength: 40, placeholder: '例如 Coder 或 Reviewer',
           })),
@@ -3076,11 +3077,11 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
     ],
   },
   h('form', { id: WORKSPACE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': workspace ? '编辑工作区' : '新建工作区' },
-    h(Field, { label: '名字' }, h('input', {
+    h(Field, { label: '名字', required: true }, h('input', {
       className: 'nodo-dialog-input', 'data-modal-autofocus': true, disabled: busy, value: draft.name, onChange: edit('name'),
       required: true, maxLength: 40, placeholder: '例如 Website',
     })),
-    h(Field, { label: '工作区目录' },
+    h(Field, { label: '工作区目录', required: true },
       nativePickDirectory
         ? h('div', { className: 'nodo-dialog-pick' },
           h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() },
@@ -3243,7 +3244,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
           ? `无法读取分支列表，可直接输入分支名、tag 或 commit。${refsError}`
           : refs?.truncated ? '下拉只列出最近 200 个引用，可直接输入完整名称。'
             : '从本地分支、标签或 commit 开始；不会 fetch 远端。'),
-        h(Field, { label: '新分支' }, h('input', {
+        h(Field, { label: '新分支', required: true }, h('input', {
           className: 'nodo-dialog-input', value: branch, disabled: busy, required: true, maxLength: 200,
           onChange: event => setBranch(event.target.value), placeholder: '例如 feature/login',
         }))),
@@ -5356,6 +5357,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-welcome-hero{margin:0;display:flex;flex-direction:column;align-items:center}
 .nodo-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .nodo-field>span{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+.nodo-field-required{margin-left:2px;color:var(--dsw-alias-state-error-primary)}
 /* Every form in the panel is the host's modal, settings included. The card, the
    input metrics and the field rhythm below are the host's own values
    (Modal.module.css, settings-form/fields.module.css). The modal is portaled out

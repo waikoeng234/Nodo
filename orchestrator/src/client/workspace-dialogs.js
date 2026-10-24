@@ -44,11 +44,11 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
     ],
   },
   h('form', { id: WORKSPACE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': workspace ? '编辑工作区' : '新建工作区' },
-    h(Field, { label: '名字' }, h('input', {
+    h(Field, { label: '名字', required: true }, h('input', {
       className: 'nodo-dialog-input', 'data-modal-autofocus': true, disabled: busy, value: draft.name, onChange: edit('name'),
       required: true, maxLength: 40, placeholder: '例如 Website',
     })),
-    h(Field, { label: '工作区目录' },
+    h(Field, { label: '工作区目录', required: true },
       nativePickDirectory
         ? h('div', { className: 'nodo-dialog-pick' },
           h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() },
@@ -211,7 +211,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
           ? `无法读取分支列表，可直接输入分支名、tag 或 commit。${refsError}`
           : refs?.truncated ? '下拉只列出最近 200 个引用，可直接输入完整名称。'
             : '从本地分支、标签或 commit 开始；不会 fetch 远端。'),
-        h(Field, { label: '新分支' }, h('input', {
+        h(Field, { label: '新分支', required: true }, h('input', {
           className: 'nodo-dialog-input', value: branch, disabled: busy, required: true, maxLength: 200,
           onChange: event => setBranch(event.target.value), placeholder: '例如 feature/login',
         }))),

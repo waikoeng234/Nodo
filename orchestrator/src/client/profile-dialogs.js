@@ -1,6 +1,7 @@
-function Field({ label, children, group = false }) {
+function Field({ label, children, group = false, required = false }) {
   return h(group ? 'div' : 'label', { className: 'nodo-field', role: group ? 'group' : undefined,
-    'aria-label': group ? label : undefined }, h('span', null, label), children)
+    'aria-label': group ? label : undefined },
+  h('span', null, label, required && h('span', { className: 'nodo-field-required', 'aria-hidden': true }, '*')), children)
 }
 
 function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, onSaved, onCancel, onDeleted }) {
@@ -189,7 +190,7 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
                 onClick: () => setDraft(current => ({ ...current, avatarTemplate: item.id })) },
               h(RoleAvatar, { profile: { avatarTemplate: item.id }, size: 30 }), item.label))))),
         h('div', { className: 'nodo-role-main' },
-          h(Field, { label: '名字' }, h('input', {
+          h(Field, { label: '名字', required: true }, h('input', {
             className: 'nodo-dialog-input', 'data-modal-autofocus': true, disabled, value: draft.name, onChange: edit('name'),
             required: true, maxLength: 40, placeholder: '例如 Coder 或 Reviewer',
           })),

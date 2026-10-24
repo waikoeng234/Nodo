@@ -338,6 +338,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-welcome-hero{margin:0;display:flex;flex-direction:column;align-items:center}
 .nodo-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .nodo-field>span{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+.nodo-field-required{margin-left:2px;color:var(--dsw-alias-state-error-primary)}
 /* Every form in the panel is the host's modal, settings included. The card, the
    input metrics and the field rhythm below are the host's own values
    (Modal.module.css, settings-form/fields.module.css). The modal is portaled out
