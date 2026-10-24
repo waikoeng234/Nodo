@@ -20,6 +20,10 @@ export type EngineInfo = {
   capabilities?: EngineCapabilities
   nativeRuntime?: boolean
 }
+export type EngineCheckResult = {
+  engine: string; ok: boolean; executable?: string; version?: string
+  checks: { label: string; ok: boolean | null; message?: string }[]
+}
 
 export type Usage = {
   inputTokens?: number

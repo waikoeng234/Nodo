@@ -1,16 +1,16 @@
 import type { JsonRpcPeer } from '../json-rpc-process.js'
 
 export type AcpConfigChoice = { value?: unknown; name?: unknown; group?: unknown; options?: unknown }
-export type AcpConfigOption = { id?: string; currentValue?: unknown; options?: unknown }
+export type AcpConfigOption<Id = string> = { id?: Id; currentValue?: unknown; options?: unknown }
 export type AcpThinkingLevels = { thinking?: { id: string; label?: string }[]; defaultThinking?: string }
 export type AcpModel = AcpThinkingLevels & { id: string; label?: string; group?: string }
-export type AcpModelCatalogOptions = { peer: JsonRpcPeer; sessionId: string; configOptions?: AcpConfigOption[] | null; modelConfigId?: string; effortConfigId?: string }
+export type AcpModelCatalogOptions = { peer: JsonRpcPeer; sessionId: unknown; configOptions?: AcpConfigOption<unknown>[] | null; modelConfigId?: string; effortConfigId?: string }
 
 // ACP engines advertise their model catalog as session config options, where the
 // thinking-level option is rebuilt for whichever model is selected. A scan
 // therefore selects every candidate in turn inside one throwaway session and
 // reads the levels off each recomputed option set.
-const choicesOf = (option?: AcpConfigOption): AcpConfigChoice[] => (Array.isArray(option?.options) ? option.options as AcpConfigChoice[] : [])
+const choicesOf = (option?: AcpConfigOption<unknown>): AcpConfigChoice[] => (Array.isArray(option?.options) ? option.options as AcpConfigChoice[] : [])
   .flatMap(item => (Array.isArray(item?.options) ? item.options as AcpConfigChoice[] : [item]))
 
 // The thinking levels of one model: `efforts` are {id, name} pairs and `preferred`
@@ -25,7 +25,7 @@ export const levelsOf = (efforts?: { id?: unknown; name?: unknown }[] | null, pr
   return { ...(thinking.length ? { thinking } : {}), ...(thinking.some(level => level.id === wanted) ? { defaultThinking: wanted } : {}) }
 }
 
-const levelsFromOptions = (configOptions: AcpConfigOption[] | null | undefined, effortConfigId?: string) => {
+const levelsFromOptions = (configOptions: AcpConfigOption<unknown>[] | null | undefined, effortConfigId?: string) => {
   const option = (configOptions ?? []).find(item => item.id === effortConfigId)
   return levelsOf(choicesOf(option).filter(level => typeof level?.value === 'string' && level.value !== '')
     .map(level => ({ id: level.value, name: level.name })), option?.currentValue)
@@ -57,7 +57,7 @@ export async function acpModelCatalog({ peer, sessionId, configOptions, modelCon
       seen.add(choice.value)
       let current = configOptions
       if (choice.value !== modelOption!.currentValue) {
-        try { current = (await peer.request<{ configOptions?: AcpConfigOption[] }>('session/set_config_option', { sessionId, configId: modelConfigId, value: choice.value })).configOptions }
+        try { current = (await peer.request<{ configOptions?: AcpConfigOption<unknown>[] }>('session/set_config_option', { sessionId, configId: modelConfigId, value: choice.value })).configOptions }
         catch { current = undefined }
       }
       models.push({ id: choice.value, ...sectionOf(choice.value, String(choice.name ?? ''), group), ...(current ? levelsFromOptions(current, effortConfigId) : {}) })

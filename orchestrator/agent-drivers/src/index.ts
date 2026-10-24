@@ -41,7 +41,7 @@ const ENGINES: Record<string, EngineEntry> = {
   qoder: { name: 'Qoder', adapter: true, create: createQoderDriver, info: qoderInfo as EngineInfo, validate: validateQoderOptions, check: checkQoder, findExecutable: findQoderExecutable, scan: scanQoder, commands: scanQoderCommands },
   pi: { name: 'Pi', adapter: true, create: createPiDriver, info: piInfo, validate: validatePiOptions, check: checkPi, scan: scanPi, commands: scanPiCommands },
   zcode: { name: 'ZCode', adapter: true, create: createZcodeDriver, info: zcodeInfo as EngineInfo, validate: validateZcodeOptions, check: checkZcode, findExecutable: findZcodeExecutable, scan: scanZcode, commands: scanZcodeCommands },
-  opencode: { name: 'OpenCode', adapter: true, shared: ['acp'], create: createOpencodeDriver, info: opencodeInfo as EngineInfo, validate: validateOpencodeOptions, check: checkOpencode, scan: scanOpencode, commands: scanOpencodeCommands },
+  opencode: { name: 'OpenCode', adapter: true, shared: ['acp'], create: createOpencodeDriver, info: opencodeInfo, validate: validateOpencodeOptions, check: checkOpencode, scan: scanOpencode, commands: scanOpencodeCommands },
   codebuddy: { name: 'CodeBuddy', adapter: true, shared: ['acp'], create: createCodebuddyDriver, info: codebuddyInfo, validate: validateCodebuddyOptions, check: checkCodebuddy, scan: scanCodebuddy },
 }
 

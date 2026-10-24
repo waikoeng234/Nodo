@@ -105,7 +105,7 @@ const opencodeConfigDir = () => join(process.env.XDG_CONFIG_HOME || join(homedir
 // compatibility trees it also loads (.claude, .agents), then the global config
 // directory. Command roots hold flat markdown files; skill roots hold one
 // directory per skill or a flat markdown skill, symlinks followed.
-const opencodeRoots = cwd => [
+const opencodeRoots = (cwd) => [
     { dir: join(cwd ?? '.', '.opencode', 'command'), skills: false, scope: 'project' },
     { dir: join(cwd ?? '.', '.opencode', 'commands'), skills: false, scope: 'project' },
     { dir: join(cwd ?? '.', '.opencode', 'skill'), skills: true, scope: 'project' },
@@ -177,7 +177,7 @@ export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, t
         question: formElicitation,
         async configure({ peer, sessionId, attached, permission }) {
             let configOptions = attached.configOptions;
-            const current = id => (configOptions ?? []).find(item => item?.id === id)?.currentValue;
+            const current = (id) => (configOptions ?? []).find(item => item?.id === id)?.currentValue;
             // The autonomy tier is opencode's own session mode; the engine offers no
             // full-auto tier, so the capability list honestly stops at workspace.
             const mode = permission === 'plan' ? 'plan' : 'build';

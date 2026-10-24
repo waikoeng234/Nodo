@@ -6,10 +6,10 @@ import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type SkillCommand = { id: string; description?: string; path: string; scope: string; origin: string }
-export type SkillInventory = { source: string; commands: SkillCommand[] }
+export type SkillInventory = { source?: string; commands: SkillCommand[] }
 export interface SkillCollector {
   add(path: string, id: string, owner?: string, scope?: string): void
-  list(source: string): SkillInventory
+  list(source?: string): SkillInventory
 }
 
 const frontmatter = (path: string): { name?: string; description?: string } => {

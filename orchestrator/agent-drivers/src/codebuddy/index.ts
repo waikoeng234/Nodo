@@ -6,7 +6,7 @@ import { UnsupportedCapabilityError } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import type { AcpAttached, AcpDriverOptions, AcpParams, AcpSupport } from '../acp/core.js'
 import type { AcpConfigOption } from '../acp/catalog.js'
-import type { EngineInfo } from '../spi.js'
+import type { EngineCheckResult, EngineInfo } from '../spi.js'
 import type { EngineScanOptions, ModelCatalog } from '../index.js'
 import type { JsonRpcPeer } from '../json-rpc-process.js'
 
@@ -14,10 +14,7 @@ export type CodebuddyOptions = { bin?: string }
 export type CodebuddyDriverOptions = AcpDriverOptions & {
   bin?: string; env?: NodeJS.ProcessEnv; model?: string; thinking?: string; instructions?: string
 }
-export type CodebuddyCheckResult = {
-  engine: 'codebuddy'; ok: boolean; executable?: string; version?: string
-  checks: { label: string; ok: boolean | null; message?: string }[]
-}
+export type CodebuddyCheckResult = EngineCheckResult & { engine: 'codebuddy' }
 type CodebuddyQuestionInput = {
   questions?: { question?: unknown; multiSelect?: unknown; options?: { label?: unknown; description?: unknown }[] }[]
 }

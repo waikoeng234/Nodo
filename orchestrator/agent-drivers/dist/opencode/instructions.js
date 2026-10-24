@@ -12,7 +12,7 @@ export function opencodeInstructions(instructions, env = {}, directory, identity
     catch {
         throw invalidConfig('OpenCode inline configuration must be valid JSON');
     }
-    const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+    const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
     if (!object(config) || (config.agent !== undefined && !object(config.agent)))
         throw invalidConfig('Invalid OpenCode inline configuration');
     const agent = { ...config.agent };
