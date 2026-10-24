@@ -5,6 +5,16 @@ import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspa
 import { jsonRpcProcess } from '../json-rpc-process.js'
 import { initializeAcp } from '../acp/core.js'
 import { nativeDshPermissions, nativeDshCompaction } from './native-services.js'
+import type { FindExecutableOptions } from '../cli.js'
+import type { JsonRpcPeer, JsonRpcProcessOptions } from '../json-rpc-process.js'
+import type { AcpParams } from '../acp/core.js'
+import type { EngineCheckResult, EngineInfo, PermissionMode } from '../spi.js'
+import type { EngineScanOptions } from '../index.js'
+import type { DshNativeHost } from './native-services.js'
+
+export type DshOptions = { bin?: string; profile: string; home?: string }
+export type DshScanOptions = Omit<EngineScanOptions, 'nativeHost'> & { nativeHost?: DshNativeHost }
+type DshConnectOptions = Omit<JsonRpcProcessOptions<AcpParams>, 'bin' | 'args' | 'jsonrpc'> & { executable: string; options: DshOptions; patch?: string }
 
 export const dshInfo = {
   id: 'dsh', label: 'DeepSeek Harness CLI', command: 'dsh', requiresCwd: true,
@@ -16,13 +26,13 @@ export const dshInfo = {
     { name: 'model', target: 'profile', label: 'Model selector (optional)', type: 'text', placeholder: 'Use DSH settings; or ACP value such as ["deepseek","deepseek-chat"]' },
   ],
   capabilities: { resume: true, steer: false, permissions: true, questions: false, commands: true, permissionModes: [] },
-}
+} satisfies EngineInfo
 
-export function describeDsh(host) {
+export function describeDsh(host?: DshNativeHost): EngineInfo {
   if (!host?.workspaceRegistry || !host?.sessionController) return dshInfo
   return { ...dshInfo, label: 'DeepSeek Harness (native)', command: undefined, nativeRuntime: true,
     capabilities: { ...dshInfo.capabilities, steer: true,
-      permissionModes: Object.keys(nativeDshPermissions(host)),
+      permissionModes: Object.keys(nativeDshPermissions(host)) as PermissionMode[],
       compact: typeof nativeDshCompaction(host)?.compactNow === 'function',
     },
     description: 'Uses Desktop workspace/session services and its existing model settings.',
@@ -30,7 +40,7 @@ export function describeDsh(host) {
   }
 }
 
-export function validateDshOptions(raw = {}) {
+export function validateDshOptions(raw: Record<string, unknown> = {}): DshOptions {
   for (const key of Object.keys(raw)) if (!['bin', 'profile', 'home'].includes(key)) throw invalidConfig(`Unsupported DSH option: ${key}`)
   const bin = validateBin(raw.bin)
   const profile = raw.profile ?? 'acp'
@@ -41,7 +51,7 @@ export function validateDshOptions(raw = {}) {
 
 // Reuse an already installed npm CLI when Desktop has no dsh on PATH. Never
 // invoke npx, install a package, or import Desktop's private runtime files.
-export function findDshExecutable(bin = 'dsh', { home = homedir(), path = process.env.PATH, defaults } = {}) {
+export function findDshExecutable(bin = 'dsh', { home = homedir(), path = process.env.PATH, defaults }: FindExecutableOptions = {}) {
   const direct = findExecutable(bin, { home, path, defaults })
   if (direct || bin !== 'dsh') return direct
   const cache = join(home, '.npm/_npx')
@@ -49,7 +59,7 @@ export function findDshExecutable(bin = 'dsh', { home = homedir(), path = proces
     return readdirSync(cache).flatMap(id => {
       try {
         const root = join(cache, id, 'node_modules')
-        const manifest = JSON.parse(readFileSync(join(root, '@deepseek-ai/dsh/package.json'), 'utf8'))
+        const manifest: { name?: unknown } = JSON.parse(readFileSync(join(root, '@deepseek-ai/dsh/package.json'), 'utf8'))
         const executable = findExecutable(join(root, '.bin/dsh'))
         return manifest.name === '@deepseek-ai/dsh' && executable ? [{ executable, at: statSync(join(root, '@deepseek-ai/dsh/package.json')).mtimeMs }] : []
       } catch { return [] }
@@ -57,20 +67,22 @@ export function findDshExecutable(bin = 'dsh', { home = homedir(), path = proces
   } catch { return undefined }
 }
 
-export function connectDsh({ executable, cwd, env = {}, options, patch, ...callbacks }) {
+export function connectDsh({ executable, cwd, env = {}, options, patch, ...callbacks }: DshConnectOptions) {
   return jsonRpcProcess({ bin: executable, args: ['--profile', options.profile, ...(patch ? ['--patch', patch] : [])], cwd,
     env: { ...env, ...(options.home ? { DSH_HOME: options.home } : {}) }, jsonrpc: '2.0', ...callbacks })
 }
 
-export async function initializeDsh(peer) {
+export async function initializeDsh(peer: JsonRpcPeer) {
   return initializeAcp(peer, {}, { name: 'dsh-nodo', version: '0.1.0' })
 }
 
-export async function checkDsh({ cwd, engineOptions = {}, nativeHost } = {}) {
+export function checkDsh(options?: DshScanOptions): Promise<EngineCheckResult>
+export function checkDsh(options: DshScanOptions): Promise<EngineCheckResult>
+export async function checkDsh({ cwd, engineOptions = {}, nativeHost }: DshScanOptions = {}): Promise<EngineCheckResult> {
   if (nativeHost?.workspaceRegistry && nativeHost?.sessionController) return { engine: 'dsh', ok: true, checks: [{ label: 'Native runtime', ok: true, message: 'Desktop workspace/session controller is available; model credentials are verified by a conversation.' }] }
-  const checks = []
+  const checks: EngineCheckResult['checks'] = []
   try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
-  catch (error) { checks.push({ label: 'Working directory', ok: false, message: error.message }) }
+  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validateDshOptions(engineOptions)
   const executable = findDshExecutable(options.bin)
   if (!executable) return { engine: 'dsh', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'DSH executable not found. Enter the path to an installed dsh CLI.' }] }

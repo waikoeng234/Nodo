@@ -28,8 +28,8 @@ export function nativeDshChanges(host, sessionId, seq, turn, turnId) {
                     continue;
                 if (['binary', 'oversized'].includes(diff.kind))
                     file.edit.availability = diff.kind;
-                else if (diff.kind === 'text' && Array.isArray(diff.hunks) && diff.hunks.every(hunk => hunk && ['oldStart', 'oldLines', 'newStart', 'newLines'].every(key => Number.isSafeInteger(hunk[key]) && hunk[key] >= 0)
-                    && Array.isArray(hunk.lines) && hunk.lines.every(line => typeof line === 'string'))) {
+                else if (diff.kind === 'text' && Array.isArray(diff.hunks) && diff.hunks.every((hunk) => hunk && ['oldStart', 'oldLines', 'newStart', 'newLines'].every(key => Number.isSafeInteger(hunk[key]) && hunk[key] >= 0)
+                    && Array.isArray(hunk.lines) && hunk.lines.every((line) => typeof line === 'string'))) {
                     const text = diff.hunks.map(hunk => `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n${hunk.lines.join('\n')}`).join('\n');
                     bytes += Buffer.byteLength(text);
                     if (bytes > CHANGE_LIMITS.bytes / 2) {

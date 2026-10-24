@@ -8,7 +8,7 @@ export { scanDsh } from './catalog.js';
 export { scanDshCommands } from './skills.js';
 export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, ...options } = {}) {
     if (nativeHost?.workspaceRegistry && nativeHost?.sessionController)
-        return createNativeDshDriver({ ...options, nativeHost, name, sessionName, workspaceId, workspaceName });
+        return createNativeDshDriver({ ...options, nativeHost: nativeHost, name, sessionName, workspaceId, workspaceName });
     if (nativeHost && !options.bin)
         throw new Error('DSH native workspace/session services are unavailable on this host');
     return createAcpDshDriver(options);

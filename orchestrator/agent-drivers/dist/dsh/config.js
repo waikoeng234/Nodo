@@ -22,11 +22,9 @@ export function describeDsh(host) {
     return { ...dshInfo, label: 'DeepSeek Harness (native)', command: undefined, nativeRuntime: true,
         capabilities: { ...dshInfo.capabilities, steer: true,
             permissionModes: Object.keys(nativeDshPermissions(host)),
-            compact: typeof nativeDshCompaction(host)?.compactNow === 'function',
-        },
+            compact: typeof nativeDshCompaction(host)?.compactNow === 'function', },
         description: 'Uses Desktop workspace/session services and its existing model settings.',
-        fields: dshInfo.fields.filter(field => field.name === 'model').map(field => ({ ...field, placeholder: 'Use Desktop model settings; or ["provider","model"]' })),
-    };
+        fields: dshInfo.fields.filter(field => field.name === 'model').map(field => ({ ...field, placeholder: 'Use Desktop model settings; or ["provider","model"]' })), };
 }
 export function validateDshOptions(raw = {}) {
     for (const key of Object.keys(raw))

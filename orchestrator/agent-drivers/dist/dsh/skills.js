@@ -26,7 +26,7 @@ export async function scanDshCommands({ engineOptions = {}, cwd } = {}) {
             return;
         }
         const body = /^---\r?\n([\s\S]*?)\r?\n---/.exec(head)?.[1] ?? '';
-        const line = key => new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(body)?.[1]?.trim();
+        const line = (key) => new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(body)?.[1]?.trim();
         const name = line('name');
         if (!name || !SKILL_NAME.test(name) || !line('description') || LEGACY.test(body))
             return;

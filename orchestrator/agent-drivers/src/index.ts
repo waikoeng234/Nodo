@@ -36,7 +36,7 @@ type RawCommand = { id?: unknown; description?: unknown; path?: unknown; origin?
 
 const ENGINES: Record<string, EngineEntry> = {
   codex: { name: 'Codex', adapter: true, tests: ['engines'], create: createCodexDriver, info: codexInfo, validate: validateCodexOptions, check: checkCodex, scan: scanCodex, commands: scanCodexCommands },
-  dsh: { name: 'DeepSeek Harness', shared: ['acp'], create: createDshDriver, info: dshInfo, describe: describeDsh as EngineEntry['describe'], validate: validateDshOptions, check: checkDsh, findExecutable: findDshExecutable, scan: scanDsh, commands: scanDshCommands },
+  dsh: { name: 'DeepSeek Harness', shared: ['acp'], create: createDshDriver, info: dshInfo, describe: describeDsh, validate: validateDshOptions, check: checkDsh, findExecutable: findDshExecutable, scan: scanDsh, commands: scanDshCommands },
   claude: { name: 'Claude Code', adapter: true, create: createClaudeDriver, info: claudeInfo as EngineInfo, validate: validateClaudeOptions, check: checkClaude, scan: scanClaude, commands: scanClaudeCommands },
   qoder: { name: 'Qoder', adapter: true, create: createQoderDriver, info: qoderInfo as EngineInfo, validate: validateQoderOptions, check: checkQoder, findExecutable: findQoderExecutable, scan: scanQoder, commands: scanQoderCommands },
   pi: { name: 'Pi', adapter: true, create: createPiDriver, info: piInfo, validate: validatePiOptions, check: checkPi, scan: scanPi, commands: scanPiCommands },

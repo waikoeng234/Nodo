@@ -3,7 +3,7 @@ import { STEER, addUsage, steerFailed, timingOf, usageOf } from '../spi.js';
 import { nativeDshPermissions, nativeDshCompaction } from './native-services.js';
 import { nativeDshChanges } from './native-changes.js';
 export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName, workspaceId, workspaceName, driverSessionId, model, thinking, permission, instructions, onEvent } = {}) {
-    const emit = event => { try {
+    const emit = (event) => { try {
         onEvent?.(event);
     }
     catch { } };
@@ -96,7 +96,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
         pending.then(settled, settled);
         return pending;
     };
-    const stop = turn => {
+    const stop = (turn) => {
         if (turn.stopping)
             return turn.stopping;
         turn.cancelled = true;
@@ -111,7 +111,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
                 await agent.whenIdle();
             }
             end(turn, 'interrupted');
-        })().catch(error => end(turn, 'interrupted', error?.message, true))
+        })().catch((error) => end(turn, 'interrupted', error?.message, true))
             .finally(() => { if (stopping === operation)
             stopping = undefined; });
         stopping = turn.stopping = operation;
@@ -177,7 +177,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
             return;
         }
         if (event.type === 'todo/write' && Array.isArray(event.data?.todos)) {
-            emit({ type: 'plan', turnId: running.id, steps: event.data.todos.filter(todo => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
+            emit({ type: 'plan', turnId: running.id, steps: event.data.todos.filter((todo) => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
                     .map(todo => ({ text: todo.content, status: todo.status === 'in_progress' ? 'in_progress' : todo.status === 'completed' ? 'completed' : 'pending' })) });
             return;
         }
@@ -248,7 +248,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
             const finish = () => end(turn, reason.kind === 'completed' ? 'done' : ['interrupted', 'aborted'].includes(reason.kind) ? 'interrupted' : 'error', reason.error?.message);
             if (turn.pending.size)
                 Promise.allSettled([...turn.pending]).then(() => agent.whenIdle()).then(() => { if (!turn.cancelled && turn.nativeTurn === nativeTurn)
-                    finish(); }, error => end(turn, 'error', error?.message, true));
+                    finish(); }, (error) => end(turn, 'error', error?.message, true));
             else
                 finish();
         }
@@ -265,7 +265,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
             return 'cancelled';
         const id = `dsh:${sessionId}:${randomUUID()}`;
         return new Promise(resolve => {
-            const finish = value => {
+            const finish = (value) => {
                 if (!requests.delete(id))
                     return;
                 request.signal?.removeEventListener('abort', abort);
@@ -301,7 +301,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
                 emit({ type: 'request/closed', id });
                 reject(Object.assign(new Error('ask_user_question was aborted before the user answered'), { name: 'UserQuestionError', code: 'ASK_ABORTED' }));
             };
-            const finish = answer => {
+            const finish = (answer) => {
                 if (!requests.delete(id))
                     return;
                 request.signal?.removeEventListener('abort', abort);

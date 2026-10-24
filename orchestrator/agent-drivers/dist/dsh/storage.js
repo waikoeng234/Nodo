@@ -9,14 +9,14 @@ export function dshStorage(storageDir, driverSessionId) {
     const sessionId = isolated ? driverSessionId.slice(PREFIX.length) : driverSessionId;
     // Existing unprefixed sessions retain their original location.
     if (!storageDir || (driverSessionId && !isolated))
-        return { sessionId, savedId: id => id };
+        return { sessionId, savedId: (id) => id };
     if (!isAbsolute(storageDir))
         throw new Error('DSH agent storage directory must be absolute');
     const dir = join(storageDir, 'dsh');
     mkdirSync(dir, { recursive: true });
     const patch = join(dir, 'sessions.patch.json');
     writeFileSync(patch, JSON.stringify([{ id: 'session-persistence-jsonl', config: { root: join(dir, 'sessions') } }]));
-    return { sessionId, patch, savedId: id => PREFIX + id };
+    return { sessionId, patch, savedId: (id) => PREFIX + id };
 }
 export function dshInstructionsPatch(directory, patch, instructions) {
     // personaPrefix is a strict template; literal template examples run without identity.

@@ -1,4 +1,4 @@
-export function dshError(error) {
+export function dshError(error: { method?: unknown; code?: unknown; data?: { details?: unknown }; message?: unknown }) {
   const prefix = `DSH ${error.method ?? 'connection'} failed${error.code ? ` (ACP ${error.code})` : ''}`
   const detail = typeof error.data?.details === 'string' ? error.data.details : ''
   const format = detail.match(/uses log format v(\d+), but this harness reads only v(\d+)/)

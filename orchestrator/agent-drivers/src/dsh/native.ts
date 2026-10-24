@@ -2,19 +2,36 @@ import { randomUUID } from 'node:crypto'
 import { STEER, addUsage, steerFailed, timingOf, usageOf } from '../spi.js'
 import { nativeDshPermissions, nativeDshCompaction } from './native-services.js'
 import { nativeDshChanges } from './native-changes.js'
+import type { Driver, DriverEvent, PermissionMode, Usage } from '../spi.js'
+import type { DshNativeRuntime } from './native-services.js'
 
-export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName, workspaceId, workspaceName, driverSessionId, model, thinking, permission, instructions, onEvent } = {}) {
-  const emit = event => { try { onEvent?.(event) } catch {} }
+export type NativeDshDriverOptions = {
+  nativeHost: DshNativeRuntime; cwd?: string; name?: string; sessionName?: string; workspaceId?: string; workspaceName?: string
+  driverSessionId?: string; model?: string; thinking?: string; permission?: PermissionMode; instructions?: string
+  onEvent?: (event: DriverEvent) => void
+}
+type NativeAgent = Awaited<ReturnType<DshNativeRuntime['sessionController']['resolveAgent']>>['agent']
+type NativeProjections = Record<string, Record<string, unknown> | undefined>
+type NativeTurn = {
+  id: string; controller: AbortController; pending: Set<Promise<unknown>>; opening?: Promise<void>; stopping?: Promise<void>
+  started?: boolean; cancelled?: boolean; nativeTurn?: unknown; changeSeq?: number; usage?: Usage; final?: string; basis?: NativeProjections
+}
+type NativeQuestion = { id: string; question: string; multiSelect?: unknown; options?: { label: string }[] }
+type NativeRequest = { questions?: never; resolve(value: unknown): void } | { questions: NativeQuestion[]; resolve(value: unknown): void; abort(): void }
+type NativeTodo = { content?: unknown; status: string }
+
+export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName, workspaceId, workspaceName, driverSessionId, model, thinking, permission, instructions, onEvent }: NativeDshDriverOptions = {} as NativeDshDriverOptions): Driver & { readonly instructionMode: string; watchdog: false } {
+  const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   let sessionId = driverSessionId
-  let agent
-  let ready
-  let running
+  let agent: NativeAgent | undefined
+  let ready: Promise<void> | null | undefined
+  let running: NativeTurn | null | undefined
   let disposed = false
-  let stopInstructions
-  let compacting
-  let stopping
+  let stopInstructions: (() => void) | undefined
+  let compacting: AbortController | undefined
+  let stopping: Promise<void> | undefined
   const compaction = nativeDshCompaction(host)
-  const requests = new Map()
+  const requests = new Map<string, NativeRequest>()
   const closeRequests = () => {
     for (const request of requests.values()) {
       if (request.questions) request.abort()
@@ -31,10 +48,10 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
   const projected = () => {
     try { return host.get?.('sessionProjections')?.snapshot?.(agent?.session, PROJECTIONS)?.values } catch { return undefined }
   }
-  const projectedTurn = (basis) => {
+  const projectedTurn = (basis?: NativeProjections) => {
     const now = projected()
     if (now === undefined) return {}
-    const grew = (key, field) => {
+    const grew = (key: string, field: string) => {
       const from = basis?.[key]?.[field]
       const to = now[key]?.[field]
       return typeof from === 'number' && typeof to === 'number' && to >= from ? to - from : undefined
@@ -58,7 +75,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       }),
     }
   }
-  const end = (turn, reason, error, unconfirmed = false) => {
+  const end = (turn: NativeTurn, reason: 'done' | 'interrupted' | 'error', error?: unknown, unconfirmed = false) => {
     if (running !== turn) return
     const turnId = turn.id
     const changes = turn.changeSeq === undefined ? null : nativeDshChanges(host, sessionId, turn.changeSeq, turn.nativeTurn, turnId)
@@ -72,7 +89,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
     if (changes) changes.then(snapshot => { if (snapshot) emit(snapshot) }, () => {}).finally(finish)
     else finish()
   }
-  const prompt = (turn, request) => {
+  const prompt = (turn: NativeTurn, request: Parameters<DshNativeRuntime['sessionController']['prompt']>[0]) => {
     const pending = Promise.resolve().then(() => {
       turn.controller.signal.throwIfAborted()
       return host.sessionController.prompt(request, AbortSignal.any([turn.controller.signal, AbortSignal.timeout(30000)]))
@@ -82,7 +99,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
     pending.then(settled, settled)
     return pending
   }
-  const stop = turn => {
+  const stop = (turn: NativeTurn): Promise<void> => {
     if (turn.stopping) return turn.stopping
     turn.cancelled = true
     closeRequests()
@@ -93,26 +110,26 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       await Promise.allSettled([...turn.pending])
       if (turn.started) {
         await host.sessionController.cancel({ sessionId })
-        await agent.whenIdle()
+        await agent!.whenIdle()
       }
       end(turn, 'interrupted')
-    })().catch(error => end(turn, 'interrupted', error?.message, true))
+    })().catch((error: unknown) => end(turn, 'interrupted', (error as Error)?.message, true))
       .finally(() => { if (stopping === operation) stopping = undefined })
     stopping = turn.stopping = operation
     return operation
   }
-  const off = []
+  const off: (() => void)[] = []
   // One tool call is two host events; the result carries only the call id, so the
   // wire name recorded at call time keeps the transcript row named like the call.
-  const toolNames = new Map()
+  const toolNames = new Map<unknown, string>()
   const SUMMARY_KEYS = ['command', 'description', 'path', 'file_path', 'filePath', 'query', 'pattern', 'url', 'prompt']
   // One line for the collapsed tool row: the first summary-shaped argument.
-  const briefOf = (args) => {
+  const briefOf = (args: unknown) => {
     if (typeof args !== 'string' || args.trim() === '') return undefined
-    let parsed
+    let parsed: unknown
     try { parsed = JSON.parse(args) } catch { return args.trim().slice(0, 200) }
     if (parsed === null || typeof parsed !== 'object') return String(parsed).slice(0, 200)
-    const first = SUMMARY_KEYS.map(key => parsed[key]).find(value => typeof value === 'string' && value !== '')
+    const first = SUMMARY_KEYS.map(key => (parsed as Record<string, unknown>)[key]).find(value => typeof value === 'string' && value !== '')
       ?? Object.values(parsed).find(value => typeof value === 'string' && value !== '')
     return typeof first === 'string' ? first.slice(0, 200) : undefined
   }
@@ -141,7 +158,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       const failure = event.data?.failure
       const counts = [event.data?.retry, event.data?.maxRetries].filter(Number.isFinite)
       emit({ type: 'lifecycle', turnId: running.id, kind: 'retry', phase: 'start', ...(event.data?.retryId ? { entityId: String(event.data.retryId) } : {}),
-        detail: [counts.length ? `第 ${counts.join('/')} 次` : null, Number.isFinite(event.data?.delayMs) ? `等待 ${Math.round(event.data.delayMs / 1000)} 秒` : null,
+        detail: [counts.length ? `第 ${counts.join('/')} 次` : null, Number.isFinite(event.data?.delayMs) ? `等待 ${Math.round((event.data.delayMs as number) / 1000)} 秒` : null,
           typeof failure?.message === 'string' && failure.message ? failure.message : null].filter(Boolean).join('，') || undefined })
       return
     }
@@ -150,7 +167,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       return
     }
     if (event.type === 'todo/write' && Array.isArray(event.data?.todos)) {
-      emit({ type: 'plan', turnId: running.id, steps: event.data.todos.filter(todo => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
+      emit({ type: 'plan', turnId: running.id, steps: event.data.todos.filter((todo): todo is NativeTodo & { content: string } => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
         .map(todo => ({ text: todo.content, status: todo.status === 'in_progress' ? 'in_progress' : todo.status === 'completed' ? 'completed' : 'pending' })) })
       return
     }
@@ -176,7 +193,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       emit({ type: 'activity', turnId: running.id, phase: 'end', entityId: String(event.data.runId) })
       return
     }
-    if (event.type === 'workspace/changes' && event.data.turn === running.nativeTurn && Number.isSafeInteger(event.seq)) running.changeSeq = event.seq
+    if (event.type === 'workspace/changes' && event.data.turn === running.nativeTurn && Number.isSafeInteger(event.seq)) running.changeSeq = event.seq as number
     if (event.type === 'assistant/message') {
       const blocks = event.data.message.content
       // One assembled message is one model call; its TokenUsage counts are
@@ -213,7 +230,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       const nativeTurn = event.data.turn
       const reason = event.data.reason
       const finish = () => end(turn, reason.kind === 'completed' ? 'done' : ['interrupted', 'aborted'].includes(reason.kind) ? 'interrupted' : 'error', reason.error?.message)
-      if (turn.pending.size) Promise.allSettled([...turn.pending]).then(() => agent.whenIdle()).then(() => { if (!turn.cancelled && turn.nativeTurn === nativeTurn) finish() }, error => end(turn, 'error', error?.message, true))
+      if (turn.pending.size) Promise.allSettled([...turn.pending]).then(() => agent!.whenIdle()).then(() => { if (!turn.cancelled && turn.nativeTurn === nativeTurn) finish() }, (error: unknown) => end(turn, 'error', (error as Error)?.message, true))
       else finish()
     }
   }))
@@ -225,8 +242,8 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
     if (request.agent !== agent || !running) return next()
     if (running.cancelled) return 'cancelled'
     const id = `dsh:${sessionId}:${randomUUID()}`
-    return new Promise(resolve => {
-      const finish = value => {
+    return new Promise<unknown>(resolve => {
+      const finish = (value: unknown) => {
         if (!requests.delete(id)) return
         request.signal?.removeEventListener('abort', abort)
         emit({ type: 'request/closed', id }); resolve(value)
@@ -247,14 +264,14 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
     const questions = Array.isArray(request.questions) ? request.questions : []
     if (questions.length === 0 || questions.some(question => question.multiSelect)) return next()
     const id = `dsh:${sessionId}:${randomUUID()}`
-    return new Promise((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       const abort = () => {
         if (!requests.delete(id)) return
         request.signal?.removeEventListener('abort', abort)
         emit({ type: 'request/closed', id })
         reject(Object.assign(new Error('ask_user_question was aborted before the user answered'), { name: 'UserQuestionError', code: 'ASK_ABORTED' }))
       }
-      const finish = answer => {
+      const finish = (answer: unknown) => {
         if (!requests.delete(id)) return
         request.signal?.removeEventListener('abort', abort)
         emit({ type: 'request/closed', id })
@@ -285,13 +302,13 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       const preset = nativeDshPermissions(host)[permission]
       if (!preset) throw new Error(`DSH native runtime does not offer permission tier "${permission}"`)
       const service = host.get('permissionPresets')
-      if (service.current(agent.session) !== preset) {
+      if (service!.current(agent.session) !== preset) {
         if (agent.status !== 'idle') throw new Error('DSH is busy in its native window; wait before changing permissions')
-        service.set(agent.session, preset)
+        service!.set(agent.session, preset)
       }
     }
     if (model || thinking) {
-      let route
+      let route: unknown
       if (model) {
         try { route = JSON.parse(model) } catch { throw new Error('DSH model must be ["provider","model"]') }
       } else {
@@ -322,21 +339,21 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       async compact() {
         await boot()
         if (disposed) throw new Error('DSH driver disposed')
-        if (running || stopping || compacting || agent.status !== 'idle') throw new Error('Stop or finish the task before compacting this DSH session')
+        if (running || stopping || compacting || agent!.status !== 'idle') throw new Error('Stop or finish the task before compacting this DSH session')
         const operation = new AbortController()
         compacting = operation
-        try { return await compaction.compactNow(agent, operation.signal) }
+        try { return await compaction.compactNow(agent!, operation.signal) }
         finally { if (compacting === operation) compacting = undefined }
       },
     } : {}),
     async sendTurn(text, images = []) {
       if (disposed) throw new Error('DSH driver disposed')
       if (running || stopping || compacting) throw new Error('DSH already has a running turn or compaction, or is still stopping')
-      const turn = running = { id: randomUUID(), controller: new AbortController(), pending: new Set() }
+      const turn: NativeTurn = running = { id: randomUUID(), controller: new AbortController(), pending: new Set() }
       try {
         await (turn.opening = boot())
         if (disposed || turn.cancelled || running !== turn) return turn.id
-        if (agent.status === 'running') throw new Error('DSH is busy in its native window; wait for that turn to finish')
+        if (agent!.status === 'running') throw new Error('DSH is busy in its native window; wait for that turn to finish')
         turn.basis = projected()
         turn.started = true
         emit({ type: 'turn/start', turnId: turn.id })
@@ -360,8 +377,8 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       compacting?.abort()
       const turn = running
       if (!turn) return
-      let timer
-      try { await Promise.race([stop(turn), new Promise(resolve => { timer = setTimeout(() => { end(turn, 'interrupted', undefined, true); resolve() }, 5000) })]) }
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try { await Promise.race([stop(turn), new Promise<void>(resolve => { timer = setTimeout(() => { end(turn, 'interrupted', undefined, true); resolve() }, 5000) })]) }
       finally { clearTimeout(timer) }
     },
     async respondToRequest(id, { decision, value } = {}) {
@@ -369,18 +386,18 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
       if (!request) return false
       if (request.questions) {
         if (decision !== 'answer') return false
-        let picks
+        let picks: unknown
         if (request.questions.length === 1) picks = { [request.questions[0].id]: String(value ?? '') }
-        else { try { picks = JSON.parse(value) } catch { throw new Error('Answer each question using the form') } }
+        else { try { picks = JSON.parse(value!) } catch { throw new Error('Answer each question using the form') } }
         request.resolve({ answers: request.questions.map(question => {
-          const pick = String(picks?.[question.id] ?? '').trim()
+          const pick = String((picks as Record<string, unknown> | null | undefined)?.[question.id] ?? '').trim()
           if (pick === '') throw new Error('Answer every question first')
           const chosen = (question.options ?? []).some(option => option.label === pick)
           return chosen ? { id: question.id, selected: [pick] } : { id: question.id, selected: [], custom: pick }
         }) })
         return true
       }
-      if (!['allow', 'deny'].includes(decision)) return false
+      if (!(['allow', 'deny'] as readonly unknown[]).includes(decision)) return false
       request.resolve(decision === 'allow' ? 'allowed-once' : 'rejected')
       return true
     },
