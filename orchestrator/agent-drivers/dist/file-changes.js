@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
 export const CHANGE_LIMITS = Object.freeze({ files: 512, edits: 1024, bytes: 1024 * 1024 });
 const operations = ['add', 'update', 'delete', 'move', 'unknown'];
-const validPath = value => typeof value === 'string' && value.length > 0 && value.length <= 2000 && !value.includes('\0');
-const size = value => Buffer.byteLength(JSON.stringify(value));
+const validPath = (value) => typeof value === 'string' && value.length > 0 && value.length <= 2000 && !value.includes('\0');
+const size = (value) => Buffer.byteLength(JSON.stringify(value));
 export function normalizeChanges(value) {
     if (!['edit-tools', 'workspace-snapshot'].includes(value?.scope) || value.coverage !== 'partial' || !Array.isArray(value.files))
         return null;

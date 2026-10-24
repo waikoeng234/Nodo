@@ -7,8 +7,10 @@ import { jsonRpcProcess } from '../json-rpc-process.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { collector, listDirs } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
+import type { Coverage } from '../coverage.js'
 import { connectCodex, ensureCodexWorkspace } from './native.js'
 import { createFileChanges } from '../file-changes.js'
+import type { FileChanges } from '../file-changes.js'
 import type { Driver, DriverEvent, Usage } from '../spi.js'
 import type { CodexPeer, RpcId } from './native.js'
 
@@ -98,7 +100,7 @@ type RunningTurn = {
   texts: Map<string, string>
   thoughts: Map<string, { channel: 'summary' | 'content'; parts: Map<number, string> }>
   tools?: Map<string, string>
-  changes?: ReturnType<typeof createFileChanges>
+  changes?: FileChanges
   final?: string
   usage?: Usage
   unconfirmed?: boolean
@@ -227,7 +229,7 @@ export async function scanCodex({ engineOptions = {} }: CodexOptions = {}) {
 // Only the blocking request_user_input reaches this client as a card.
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.'
 
-export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions }: DriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: ReturnType<typeof createCoverage> } {
+export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions }: DriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const emit = (event: CodexEvent) => { try { onEvent?.(event) } catch {} }
   let peer: CodexPeer | null = null
   let ready: Promise<void> | null = null
@@ -249,7 +251,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     const turn = running
     running = null
     closeRequests()
-    if (!turn.compacting && turn.started) emit(turn.changes!.snapshot(turn.id) as Extract<DriverEvent, { type: 'changes' }>)
+    if (!turn.compacting && turn.started) emit(turn.changes!.snapshot(turn.id))
     turn.settle?.()
     emit({ type: 'turn/end', turnId: turn.id, reason, ...(turn.final !== undefined ? { text: turn.final } : {}), ...(error ? { error } : {}), ...(turn.usage ? { usage: turn.usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) })
   }
@@ -274,7 +276,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
   const receive = ({ method, params = {} as CodexParams }: CodexMessage) => {
     // Notifications outside the declared schema count by category only; the
     // raw method name and payload go nowhere.
-    if (method !== undefined && !(DECLARED.codex.notifications as Record<string, unknown>)[method]) { coverage.count('unknown-notification'); return }
+    if (method !== undefined && !DECLARED.codex.notifications[method]) { coverage.count('unknown-notification'); return }
     if (method === 'serverRequest/resolved') {
       for (const [id, request] of requests) if (request.id === params.requestId) { requests.delete(id); emit({ type: 'request/closed', id }) }
       return
@@ -363,7 +365,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         const channel = running.thoughts.get(item.id)?.channel ?? (item.summary?.some(text => text) ? 'summary' : 'content')
         const parts = item[channel]?.length ? item[channel] : typeof item.text === 'string' ? [item.text] : []
         parts.forEach((text, index) => thought(item.id, channel, index, text))
-      } else if (!(DECLARED.codex.variants as Record<string, unknown>)[item.type]) coverage.count('unknown-variant')
+      } else if (!DECLARED.codex.variants[item.type]) coverage.count('unknown-variant')
     }
     if (method === 'thread/tokenUsage/updated') {
       // The notification carries the request that just finished, so a turn that
@@ -388,7 +390,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
   }
   const ask = (message: CodexRequest) => {
     const { id, method, params = {} as CodexParams } = message
-    const declared = (DECLARED.codex.requests as Record<string, unknown>)[method]
+    const declared = DECLARED.codex.requests[method]
     if (!declared) coverage.count('unknown-request')
     if (!running || params.threadId !== threadId) return peer!.refuse(id, 'No matching active turn')
     const permission = ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(method)

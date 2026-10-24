@@ -21,6 +21,32 @@ export type Timing = {
   decodeTokens?: number
 }
 
+export type FileChangeEdit = {
+  operation: 'add' | 'update' | 'delete' | 'move' | 'unknown'
+  availability?: 'binary' | 'oversized' | 'coarse' | 'unavailable'
+  fromPath?: string
+  oldText?: string | null
+  newText?: string
+  diffText?: string
+}
+export type FileChange = { path: string; edits: FileChangeEdit[] }
+export type FileChangesBody = {
+  scope: 'edit-tools' | 'workspace-snapshot'
+  coverage: 'partial'
+  fileCount: number
+  files: FileChange[]
+  cwd?: string
+  turnDiff?: string
+}
+export type ChangesPresentation = {
+  version: 1
+  kind: 'changes'
+  mode: 'snapshot'
+  body: FileChangesBody
+  capture?: 'complete' | 'partial' | 'unavailable'
+  reason?: string
+}
+
 export type DriverEvent =
   | { type: 'session'; state: 'starting' | 'ready' | 'closed'; sessionId?: string; workspaceId?: string; detail?: unknown }
   | { type: 'turn/start'; turnId: string }
@@ -29,7 +55,7 @@ export type DriverEvent =
       input?: unknown; inputText?: string; inputDelta?: string; output?: unknown; outputText?: string; outputDelta?: string;
       progress?: { elapsedMs?: number; message?: string; stdoutTail?: string; stderrTail?: string; stdoutBytes?: number; stderrBytes?: number; outputBytes?: number };
       brief?: string; isError?: boolean; presentation?: unknown }
-  | { type: 'changes'; turnId: string; presentation: unknown }
+  | { type: 'changes'; turnId: string; presentation: ChangesPresentation }
   | { type: 'plan'; turnId: string; entityId?: string; title?: string; explanation?: string; text?: string;
       steps?: { text: string; status: 'pending' | 'in_progress' | 'completed' }[]; removed?: boolean }
   | { type: 'activity'; turnId: string; phase: 'start' | 'update' | 'end'; entityId: string;

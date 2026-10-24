@@ -2,18 +2,13 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
 import { jsonRpcProcess } from '../json-rpc-process.js'
+import type { JsonRpcPeer } from '../json-rpc-process.js'
 import { hostWebSocket } from '../websocket.js'
 
 const execute = promisify(execFile)
 
-export type RpcId = string | number
-export interface CodexPeer {
-  request<Result = unknown>(method: string, params?: unknown, timeout?: number | null): Promise<Result>
-  notify(method: string, params?: unknown): void
-  reply(id: RpcId, result: unknown): void
-  refuse(id: RpcId, message?: string): void
-  dispose(): void
-}
+export type { RpcId } from '../json-rpc-process.js'
+export type CodexPeer = JsonRpcPeer
 
 type ConnectOptions = {
   executable: string
@@ -34,7 +29,7 @@ export async function connectCodex({ executable, cwd, env, socket, start = true,
   // when this call actually starts the daemon, and an existing shared daemon
   // keeps whatever config it was started with.
   if (start && !socket) await execute(executable, ['app-server', 'daemon', 'start', '-c', 'features.default_mode_request_user_input=true'], { env: { ...process.env, ...env }, timeout: 15000, maxBuffer: 16384 }).catch(() => { throw new Error('Cannot start the shared Codex runtime. Verify codex app-server daemon start in your terminal.') })
-  return (jsonRpcProcess as unknown as (options: Record<string, unknown>) => CodexPeer)({ bin: executable, args: ['app-server', 'proxy', ...(socket ? ['--sock', socket] : [])], cwd, env, WebSocket: hostWebSocket(), ...callbacks })
+  return jsonRpcProcess({ bin: executable, args: ['app-server', 'proxy', ...(socket ? ['--sock', socket] : [])], cwd, env, WebSocket: hostWebSocket(), ...callbacks })
 }
 
 export async function ensureCodexWorkspace(peer: CodexPeer, { cwd, name, workspaceId }: { cwd: string; name?: string; workspaceId?: string }) {

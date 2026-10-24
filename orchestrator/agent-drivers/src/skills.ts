@@ -5,23 +5,30 @@
 import { readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 
-const frontmatter = (path) => {
+export type SkillCommand = { id: string; description?: string; path: string; scope: string; origin: string }
+export type SkillInventory = { source: string; commands: SkillCommand[] }
+export interface SkillCollector {
+  add(path: string, id: string, owner?: string, scope?: string): void
+  list(source: string): SkillInventory
+}
+
+const frontmatter = (path: string): { name?: string; description?: string } => {
   let head
   try { head = readFileSync(path, 'utf8').slice(0, 4096) } catch { return {} }
   const body = /^---\r?\n([\s\S]*?)\r?\n---/.exec(head)?.[1] ?? ''
-  const line = key => new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(body)?.[1]?.trim()
+  const line = (key: string) => new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(body)?.[1]?.trim()
   return { name: line('name'), description: line('description') }
 }
 
 // The subdirectories of one directory, [] when it is missing; the shared shape
 // behind the plugin-cache walks (every engine caches one dir per version).
-export const listDirs = (dir) => {
+export const listDirs = (dir: string) => {
   try { return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(dir, entry.name)) } catch { return [] }
 }
 
 // The plain files of one directory, [] when it is missing; the flat-markdown
 // shape next to the directory bundles above.
-export const listFiles = (dir) => {
+export const listFiles = (dir: string) => {
   try { return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => join(dir, entry.name)) } catch { return [] }
 }
 
@@ -30,9 +37,9 @@ export const listFiles = (dir) => {
 // (`path`, realpath-resolved so a symlinked skill lists once) and who answers
 // for it (`scope`, `origin`) — what the UI labels and a merged view would group by.
 export const COMMAND_NAME = /^[A-Za-z0-9][\w:.-]{0,99}$/
-export const collector = () => {
-  const found = new Map()
-  const seen = new Set()
+export const collector = (): SkillCollector => {
+  const found = new Map<string, SkillCommand>()
+  const seen = new Set<string>()
   return {
     add(path, id, owner, scope = 'global') {
       let at = path

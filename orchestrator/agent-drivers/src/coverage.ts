@@ -5,14 +5,37 @@
 // Trackers count unknown discriminants by finite category only; the raw name
 // and payload of an unknown event never reach a log, storage or this module.
 
-export const STATUS = Object.freeze(['mapped', 'partial', 'excluded', 'unmapped'])
-export const CATEGORIES = Object.freeze(['unknown-notification', 'unknown-request', 'unknown-variant'])
+export type CoverageStatus = 'mapped' | 'partial' | 'excluded' | 'unmapped'
+export type CoverageCategory = 'unknown-notification' | 'unknown-request' | 'unknown-variant'
+export type CoverageDeclaration = {
+  revision: string
+  closureOpen: boolean
+  verified: { versions: string[]; protocol?: number }
+  notifications: Readonly<Record<string, CoverageStatus>>
+  requests: Readonly<Record<string, CoverageStatus>>
+  variants: Readonly<Record<string, CoverageStatus>>
+  openTypes?: number
+}
+export type CoverageIdentity = { transport?: string; protocolVersion?: string | number; cliVersion?: string; [key: string]: unknown }
+export type CoverageSnapshot = {
+  engine: string; scope: string; identity: CoverageIdentity | null; counts: Record<string, number>
+  closureOpen: boolean; branchesConcluded: boolean
+}
+export interface Coverage {
+  setIdentity(facts: CoverageIdentity): void
+  count(category: string): void
+  drain(): string[]
+  snapshot(): CoverageSnapshot
+}
+
+export const STATUS = Object.freeze(['mapped', 'partial', 'excluded', 'unmapped'] as const)
+export const CATEGORIES: readonly string[] = Object.freeze(['unknown-notification', 'unknown-request', 'unknown-variant'])
 const MILESTONE = 50
 
 // notifications/requests: wire methods or frame types. variants: the declared
 // second-level enums (ACP sessionUpdate, claude system subtype, codex item
 // type, zcode event tag). verified: the versions the review actually checked.
-const INDEX = {
+const INDEX: Record<string, CoverageDeclaration> = {
   acp: {
     revision: '2026-10-17 · SDK 1.4.0分发 · sources.json',
     closureOpen: true,
@@ -202,21 +225,21 @@ const INDEX = {
   },
 }
 
-for (const entry of Object.values(INDEX)) for (const channel of ['notifications', 'requests', 'variants']) entry[channel] = Object.freeze(entry[channel])
+for (const entry of Object.values(INDEX)) for (const channel of ['notifications', 'requests', 'variants'] as const) entry[channel] = Object.freeze(entry[channel])
 export const DECLARED = Object.freeze(Object.fromEntries(Object.entries(INDEX).map(([engine, entry]) => [engine, entry])))
 
-const branchesConcluded = entry => Object.values(entry.notifications).every(status => STATUS.includes(status))
+const branchesConcluded = (entry: CoverageDeclaration) => Object.values(entry.notifications).every(status => STATUS.includes(status))
   && Object.values(entry.requests).every(status => STATUS.includes(status))
   && Object.values(entry.variants).every(status => STATUS.includes(status))
 
 /** One tracker per driver instance, so counts never cross sessions. */
-export function createCoverage(engine, scope = engine) {
+export function createCoverage(engine: string, scope = engine): Coverage {
   const entry = INDEX[scope]
   if (!entry) throw new Error(`No coverage index for scope ${scope}`)
-  const counts = new Map()
-  const nextMilestone = new Map()
-  const pending = new Set()
-  let identity = null
+  const counts = new Map<string, number>()
+  const nextMilestone = new Map<string, number>()
+  const pending = new Set<string>()
+  let identity: CoverageIdentity | null = null
   let identityReported = false
   return {
     setIdentity(facts) { identity = { ...facts } },

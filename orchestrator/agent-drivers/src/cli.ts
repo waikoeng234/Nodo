@@ -2,12 +2,15 @@ import { accessSync, constants, statSync } from 'node:fs'
 import { isAbsolute, join, delimiter } from 'node:path'
 import { homedir } from 'node:os'
 import { execFile } from 'node:child_process'
+import type { ExecFileOptions } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execute = promisify(execFile)
-export const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' })
+export type FindExecutableOptions = { path?: string; home?: string; defaults?: string[] }
+export type CliVersionOptions = Omit<ExecFileOptions, 'encoding'> & { encoding?: BufferEncoding }
+export const invalidConfig = (message: string) => Object.assign(new Error(message), { code: 'orch/invalid' })
 
-export function validateWorkspace(cwd, required = false) {
+export function validateWorkspace(cwd: unknown, required = false) {
   if (cwd === undefined || cwd === null || cwd === '') {
     if (required) throw invalidConfig('Choose an absolute working directory for this engine')
     return undefined
@@ -18,7 +21,7 @@ export function validateWorkspace(cwd, required = false) {
   return cwd
 }
 
-export function validateBin(bin) {
+export function validateBin(bin: unknown) {
   if (bin === undefined || bin === null || bin === '') return undefined
   if (typeof bin !== 'string' || bin.length > 1000 || bin.includes('\0')) throw invalidConfig('Invalid CLI executable')
   const clean = bin.trim()
@@ -26,7 +29,7 @@ export function validateBin(bin) {
   return clean || undefined
 }
 
-export function findExecutable(command, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'] } = {}) {
+export function findExecutable(command: unknown, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'] }: FindExecutableOptions = {}) {
   const bin = validateBin(command)
   if (!bin) return undefined
   const dirs = [...path.split(delimiter), ...defaults].filter(dir => isAbsolute(dir))
@@ -36,7 +39,7 @@ export function findExecutable(command, { path = process.env.PATH ?? '', home = 
   })
 }
 
-export async function cliVersion(bin, options = {}) {
+export async function cliVersion(bin: string, options: CliVersionOptions = {}) {
   const { stdout } = await execute(bin, ['--version'], { ...options, ...(options.env ? { env: { ...process.env, ...options.env } } : {}), timeout: 5000, maxBuffer: 16_384, windowsHide: true })
   return stdout.trim().split('\n')[0].slice(0, 120)
 }

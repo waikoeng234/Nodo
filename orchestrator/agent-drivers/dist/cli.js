@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const execute = promisify(execFile);
-export const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' });
+export const invalidConfig = (message) => Object.assign(new Error(message), { code: 'orch/invalid' });
 export function validateWorkspace(cwd, required = false) {
     if (cwd === undefined || cwd === null || cwd === '') {
         if (required)

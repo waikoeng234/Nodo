@@ -203,7 +203,7 @@ for (const entry of Object.values(INDEX))
     for (const channel of ['notifications', 'requests', 'variants'])
         entry[channel] = Object.freeze(entry[channel]);
 export const DECLARED = Object.freeze(Object.fromEntries(Object.entries(INDEX).map(([engine, entry]) => [engine, entry])));
-const branchesConcluded = entry => Object.values(entry.notifications).every(status => STATUS.includes(status))
+const branchesConcluded = (entry) => Object.values(entry.notifications).every(status => STATUS.includes(status))
     && Object.values(entry.requests).every(status => STATUS.includes(status))
     && Object.values(entry.variants).every(status => STATUS.includes(status));
 /** One tracker per driver instance, so counts never cross sessions. */

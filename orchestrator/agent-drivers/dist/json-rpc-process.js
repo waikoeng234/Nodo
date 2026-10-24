@@ -71,7 +71,7 @@ export function jsonRpcProcess({ bin, args, cwd, env, jsonrpc, WebSocket, onNoti
         exitTimer = setTimeout(exited, 1000, code, signal);
         exitTimer.unref();
     });
-    const receive = line => {
+    const receive = (line) => {
         if (closed)
             return;
         let message;

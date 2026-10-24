@@ -13,7 +13,7 @@ const frontmatter = (path) => {
         return {};
     }
     const body = /^---\r?\n([\s\S]*?)\r?\n---/.exec(head)?.[1] ?? '';
-    const line = key => new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(body)?.[1]?.trim();
+    const line = (key) => new RegExp(`^${key}:[ \\t]*(.+)$`, 'm').exec(body)?.[1]?.trim();
     return { name: line('name'), description: line('description') };
 };
 // The subdirectories of one directory, [] when it is missing; the shared shape
