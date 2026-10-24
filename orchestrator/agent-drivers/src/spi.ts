@@ -66,6 +66,7 @@ export type ChangesPresentation = {
 }
 
 export type DriverEvent =
+  | { type: 'note'; text: string }
   | { type: 'session'; state: 'starting' | 'ready' | 'closed'; sessionId?: string; workspaceId?: string; detail?: unknown }
   | { type: 'turn/start'; turnId: string }
   | { type: 'delta' | 'text' | 'thinking'; turnId: string; text: string }

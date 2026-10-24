@@ -3,7 +3,7 @@ import { validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges } from '../file-changes.js'
 import type { Driver, DriverEvent, PermissionMode, Usage } from '../spi.js'
-import type { JsonRpcPeer, JsonRpcProcessOptions, RpcId } from '../json-rpc-process.js'
+import type { JsonRpcMessage, JsonRpcPeer, JsonRpcProcessOptions, JsonRpcRequest, RpcId } from '../json-rpc-process.js'
 import type { FileChanges } from '../file-changes.js'
 import type { Coverage } from '../coverage.js'
 import type { AcpConfigOption } from './catalog.js'
@@ -12,7 +12,7 @@ import type { ElicitationParams } from './elicitation.js'
 export type AcpDriverOptions = { onEvent?: (event: DriverEvent) => void; cwd?: string; driverSessionId?: string; permission?: PermissionMode }
 export type AcpCapabilities = { promptCapabilities?: { image?: boolean }; sessionCapabilities?: { resume?: boolean }; loadSession?: boolean; [key: string]: unknown }
 export type AcpAttached = { sessionId?: string; configOptions?: AcpConfigOption[]; [key: string]: unknown }
-export type AcpCallbacks = Required<Pick<JsonRpcProcessOptions, 'onNotification' | 'onRequest' | 'onClose'>>
+export type AcpCallbacks = Required<Pick<JsonRpcProcessOptions<AcpParams>, 'onNotification' | 'onRequest' | 'onClose'>>
 export type AcpQuestionContext = { method: string; params: AcpParams; tool?: string }
 export type AcpQuestionResponse = { peer: JsonRpcPeer; sessionId: string; id: RpcId; value?: string }
 export type AcpQuestion = { card: { reason?: string; detail?: unknown } } & (
@@ -48,14 +48,14 @@ type AcpPlanEntry = { content?: string; status?: unknown }
 type AcpUpdate = {
   sessionUpdate?: string; _meta?: AcpMeta; content?: unknown; messageId?: string; toolCallId?: string
   name?: string; title?: string; rawInput?: unknown; rawOutput?: unknown; kind?: string; locations?: unknown; status?: string
-  used?: unknown; size?: unknown; entries?: unknown
+  used?: unknown; size?: unknown; entries?: unknown; configOptions?: unknown
   plan?: { type?: string; entries?: unknown; content?: unknown; planId?: unknown }; planId?: unknown
   compactionId?: unknown; error?: unknown
 }
 export type AcpParams = ElicitationParams & {
   sessionId?: unknown; _meta?: AcpMeta; update?: AcpUpdate
   options?: { kind?: string; optionId?: string }[]
-  toolCall?: { name?: string; title?: string; toolCallId?: string }
+  toolCall?: { name?: string; title?: string; toolCallId?: string; rawInput?: unknown; _meta?: AcpMeta }
   [key: string]: unknown
 }
 type AcpTool = { name: string; input?: unknown; output?: unknown; rawOutput?: unknown; content?: unknown; kind?: string; locations?: unknown }
@@ -163,7 +163,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
     connection?.dispose()
     if (connection) emit({ type: 'session', state: 'closed' })
   }
-  const receive = ({ method, params: raw }: { method?: string; params?: unknown }) => {
+  const receive = ({ method, params: raw }: JsonRpcMessage<AcpParams>) => {
     const params = objectOf<AcpParams>(raw)
     // A notification outside the declared set counts by category only; its raw
     // name and payload go nowhere. Declared-but-unmapped methods stay silent.
@@ -306,7 +306,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
         isError: compaction.status === 'failed' && !cancelled, cancelled })
     }
   }
-  const ask = ({ id: requestId, method, params: raw }: { id: RpcId; method: string; params?: unknown }) => {
+  const ask = ({ id: requestId, method, params: raw }: JsonRpcRequest<AcpParams>) => {
     const params = objectOf<AcpParams>(raw)
     if (!peer) return
     if (!DECLARED.acp.requests[method]) coverage.count('unknown-request')
@@ -343,7 +343,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       if (disposed) throw new Error(`${label} driver disposed`)
       validateWorkspace(cwd, true)
       emit({ type: 'session', state: 'starting' })
-      connection = support.connect({ onNotification: receive as (message: unknown) => void, onRequest: ask as (message: unknown) => void, onClose(error) {
+      connection = support.connect({ onNotification: receive, onRequest: ask, onClose(error) {
         if (peer !== connection) return
         peer = null; ready = null; connected = false
         if (running?.started) end(running, running.cancelled ? 'interrupted' : 'error', running.cancelled ? undefined : translateError(error).message)

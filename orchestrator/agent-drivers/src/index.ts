@@ -42,7 +42,7 @@ const ENGINES: Record<string, EngineEntry> = {
   pi: { name: 'Pi', adapter: true, create: createPiDriver, info: piInfo, validate: validatePiOptions, check: checkPi, scan: scanPi, commands: scanPiCommands },
   zcode: { name: 'ZCode', adapter: true, create: createZcodeDriver, info: zcodeInfo as EngineInfo, validate: validateZcodeOptions, check: checkZcode, findExecutable: findZcodeExecutable, scan: scanZcode, commands: scanZcodeCommands },
   opencode: { name: 'OpenCode', adapter: true, shared: ['acp'], create: createOpencodeDriver, info: opencodeInfo as EngineInfo, validate: validateOpencodeOptions, check: checkOpencode, scan: scanOpencode, commands: scanOpencodeCommands },
-  codebuddy: { name: 'CodeBuddy', adapter: true, shared: ['acp'], create: createCodebuddyDriver, info: codebuddyInfo as EngineInfo, validate: validateCodebuddyOptions, check: checkCodebuddy, scan: scanCodebuddy },
+  codebuddy: { name: 'CodeBuddy', adapter: true, shared: ['acp'], create: createCodebuddyDriver, info: codebuddyInfo, validate: validateCodebuddyOptions, check: checkCodebuddy, scan: scanCodebuddy },
 }
 
 export function listEngines() {

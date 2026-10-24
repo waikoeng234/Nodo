@@ -417,7 +417,8 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                         end('error', error.message);
                     }
                     emit({ type: 'session', state: 'closed' });
-                }, });
+                },
+            });
             if (disposed) {
                 connection.dispose();
                 throw new Error('Codex driver disposed');

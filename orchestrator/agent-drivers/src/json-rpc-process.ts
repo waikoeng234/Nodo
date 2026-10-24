@@ -7,15 +7,17 @@ import { Duplex } from 'node:stream'
 import type { HostWebSocketConstructor } from './websocket.js'
 
 export type RpcId = string | number
-export type JsonRpcProcessOptions = {
+export type JsonRpcMessage<Params = unknown> = { id?: RpcId; method: string; params?: Params }
+export type JsonRpcRequest<Params = unknown> = JsonRpcMessage<Params> & { id: RpcId }
+export type JsonRpcProcessOptions<Params = unknown> = {
   bin: string
   args?: readonly string[]
   cwd?: string
   env?: NodeJS.ProcessEnv
   jsonrpc?: string
   WebSocket?: HostWebSocketConstructor
-  onNotification?: (message: unknown) => void
-  onRequest?: (message: unknown) => void
+  onNotification?: (message: JsonRpcMessage<Params>) => void
+  onRequest?: (message: JsonRpcRequest<Params>) => void
   onClose?: (error: Error) => void
 }
 export interface JsonRpcPeer {
@@ -29,7 +31,7 @@ type PendingRequest = { resolve: (result: unknown) => void; reject: (error: unkn
 type RpcMessage = { method?: unknown; id?: unknown; error?: unknown; result?: unknown }
 type RpcError = { message?: string; code?: unknown; data?: unknown }
 
-export function jsonRpcProcess({ bin, args, cwd, env, jsonrpc, WebSocket, onNotification = () => {}, onRequest = () => {}, onClose = () => {} }: JsonRpcProcessOptions): JsonRpcPeer {
+export function jsonRpcProcess<Params = unknown>({ bin, args, cwd, env, jsonrpc, WebSocket, onNotification = () => {}, onRequest = () => {}, onClose = () => {} }: JsonRpcProcessOptions<Params>): JsonRpcPeer {
   const child = spawn(bin, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   const pending = new Map<unknown, PendingRequest>()
   let sequence = 0
@@ -91,8 +93,8 @@ export function jsonRpcProcess({ bin, args, cwd, env, jsonrpc, WebSocket, onNoti
     if (message === null || typeof message !== 'object') return
     if ((message as RpcMessage).method) {
       try {
-        if ((message as RpcMessage).id !== undefined) onRequest(message)
-        else onNotification(message)
+        if ((message as RpcMessage).id !== undefined) onRequest(message as JsonRpcRequest<Params>)
+        else onNotification(message as JsonRpcMessage<Params>)
       } catch { finish(new Error('Invalid CLI protocol event')) }
       return
     }

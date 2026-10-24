@@ -25,10 +25,10 @@ export function validateCodebuddyOptions(raw = {}) {
 // the private question capability; the engine has no other elicitation trigger.
 const clientCapabilities = { elicitation: { form: {} }, _meta: { 'codebuddy.ai': { question: true } } };
 const backgroundLimit = 'Nodo does not support CodeBuddy Multitask or cross-turn worker questions. Use a session without active background workers and reopen it in Nodo.';
-const hasMultitask = options => Array.isArray(options) && options.some(option => ['multitask', '_codebuddy.ai/multitask'].includes(option?.id) && option.currentValue === true);
+const hasMultitask = (options) => Array.isArray(options) && options.some((option) => ['multitask', '_codebuddy.ai/multitask'].includes(option?.id) && option.currentValue === true);
 // Spawn the ACP server once and prove the initialize handshake round-trips.
 async function handshakeCodebuddy({ executable, cwd }) {
-    const peer = jsonRpcProcess({ bin: executable, args: ['--acp'], cwd, jsonrpc: '2.0', onRequest: ({ id }) => peer.refuse(id) });
+    const peer = jsonRpcProcess({ bin: executable, args: ['--acp'], cwd, jsonrpc: '2.0', onRequest: message => peer.refuse(message.id) });
     try {
         await initializeAcp(peer, clientCapabilities);
         return peer;
@@ -122,7 +122,7 @@ const askQuestions = ({ method, params, tool }) => {
     });
     if (questions.length === 0)
         return undefined;
-    const answersOf = value => {
+    const answersOf = (value) => {
         let values;
         if (questions.length === 1)
             values = { [questions[0].id]: String(value ?? '').trim() };
@@ -140,7 +140,7 @@ const askQuestions = ({ method, params, tool }) => {
             throw new Error('Answer every question first');
         return Object.fromEntries(questions.map(question => {
             const value = values[question.id];
-            return [question.id, Array.isArray(value) ? value.map(item => String(item).trim()).filter(Boolean) : String(value).trim()];
+            return [question.id, Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : String(value).trim()];
         }));
     };
     return {
@@ -210,7 +210,7 @@ export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model,
             let configOptions = attached.configOptions;
             if (hasMultitask(configOptions))
                 throw new UnsupportedCapabilityError(backgroundLimit);
-            const current = id => (configOptions ?? []).find(item => item?.id === id)?.currentValue;
+            const current = (id) => (configOptions ?? []).find(item => item?.id === id)?.currentValue;
             // The autonomy tiers mirror the claude channel this CLI derives from.
             const mode = permission === 'plan' ? 'plan' : permission === 'full' ? 'bypassPermissions' : 'auto';
             if (current('mode') !== mode) {

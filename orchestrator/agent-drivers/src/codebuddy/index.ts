@@ -4,6 +4,23 @@ import { formElicitation } from '../acp/elicitation.js'
 import { jsonRpcProcess } from '../json-rpc-process.js'
 import { UnsupportedCapabilityError } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
+import type { AcpAttached, AcpDriverOptions, AcpParams, AcpSupport } from '../acp/core.js'
+import type { AcpConfigOption } from '../acp/catalog.js'
+import type { EngineInfo } from '../spi.js'
+import type { EngineScanOptions, ModelCatalog } from '../index.js'
+import type { JsonRpcPeer } from '../json-rpc-process.js'
+
+export type CodebuddyOptions = { bin?: string }
+export type CodebuddyDriverOptions = AcpDriverOptions & {
+  bin?: string; env?: NodeJS.ProcessEnv; model?: string; thinking?: string; instructions?: string
+}
+export type CodebuddyCheckResult = {
+  engine: 'codebuddy'; ok: boolean; executable?: string; version?: string
+  checks: { label: string; ok: boolean | null; message?: string }[]
+}
+type CodebuddyQuestionInput = {
+  questions?: { question?: unknown; multiSelect?: unknown; options?: { label?: unknown; description?: unknown }[] }[]
+}
 
 export { findExecutable } from '../cli.js'
 
@@ -15,9 +32,9 @@ export const codebuddyInfo = {
     { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'e.g. deepseek-v4.1-flash; blank uses Auto' },
   ],
   capabilities: { resume: true, steer: false, permissions: true, questions: true, permissionModes: ['plan', 'workspace', 'full'] },
-}
+} satisfies EngineInfo
 
-export function validateCodebuddyOptions(raw = {}) {
+export function validateCodebuddyOptions(raw: Record<string, unknown> = {}): CodebuddyOptions {
   for (const key of Object.keys(raw)) if (key !== 'bin') throw invalidConfig(`Unsupported CodeBuddy option: ${key}`)
   const bin = validateBin(raw.bin)
   return bin ? { bin } : {}
@@ -27,32 +44,32 @@ export function validateCodebuddyOptions(raw = {}) {
 // the private question capability; the engine has no other elicitation trigger.
 const clientCapabilities = { elicitation: { form: {} }, _meta: { 'codebuddy.ai': { question: true } } }
 const backgroundLimit = 'Nodo does not support CodeBuddy Multitask or cross-turn worker questions. Use a session without active background workers and reopen it in Nodo.'
-const hasMultitask = options => Array.isArray(options) && options.some(option => ['multitask', '_codebuddy.ai/multitask'].includes(option?.id) && option.currentValue === true)
+const hasMultitask = (options: unknown) => Array.isArray(options) && options.some((option: AcpConfigOption) => ['multitask', '_codebuddy.ai/multitask'].includes(option?.id!) && option.currentValue === true)
 
 // Spawn the ACP server once and prove the initialize handshake round-trips.
-async function handshakeCodebuddy({ executable, cwd }) {
-  const peer = jsonRpcProcess({ bin: executable, args: ['--acp'], cwd, jsonrpc: '2.0', onRequest: ({ id }) => peer.refuse(id) })
+async function handshakeCodebuddy({ executable, cwd }: { executable: string; cwd?: string }): Promise<JsonRpcPeer> {
+  const peer = jsonRpcProcess({ bin: executable, args: ['--acp'], cwd, jsonrpc: '2.0', onRequest: message => peer.refuse(message.id) })
   try { await initializeAcp(peer, clientCapabilities); return peer }
   catch (error) { peer.dispose(); throw error }
 }
 
-export async function checkCodebuddy({ cwd, engineOptions = {} } = {}) {
-  const checks = []
+export async function checkCodebuddy({ cwd, engineOptions = {} }: EngineScanOptions = {}): Promise<CodebuddyCheckResult> {
+  const checks: CodebuddyCheckResult['checks'] = []
   try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
-  catch (error) { checks.push({ label: 'Working directory', ok: false, message: error.message }) }
+  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validateCodebuddyOptions(engineOptions)
   const executable = findExecutable(options.bin ?? 'codebuddy')
   if (!executable) return { engine: 'codebuddy', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'CodeBuddy executable not found. Install CodeBuddy or enter its absolute path.' }] }
   let version
   try { version = await cliVersion(executable); checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` }) }
   catch { return { engine: 'codebuddy', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] } }
-  let peer
+  let peer: JsonRpcPeer | undefined
   try {
     peer = await handshakeCodebuddy({ executable, cwd })
     checks.push({ label: 'Protocol', ok: true, message: 'CodeBuddy ACP server connected' })
     checks.push({ label: 'Model / credentials', ok: null, message: 'The handshake needs no login; run the CLI once to log in first. A conversation is needed to verify the model route.' })
   } catch (error) {
-    checks.push({ label: 'Protocol', ok: false, message: `Could not reach the CodeBuddy ACP server (${error.message}). Verify the installation.` })
+    checks.push({ label: 'Protocol', ok: false, message: `Could not reach the CodeBuddy ACP server (${(error as Error).message}). Verify the installation.` })
   } finally { peer?.dispose() }
   return { engine: 'codebuddy', ok: checks.every(check => check.ok !== false), executable, version, checks }
 }
@@ -60,16 +77,16 @@ export async function checkCodebuddy({ cwd, engineOptions = {} } = {}) {
 // Model discovery through a throwaway session: the model option carries the
 // account's catalog, and selecting each candidate recomputes the thought levels
 // for that model.
-export async function scanCodebuddy({ engineOptions = {}, cwd } = {}) {
+export async function scanCodebuddy({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<Omit<ModelCatalog, 'engine'>> {
   const options = validateCodebuddyOptions(engineOptions)
   const executable = findExecutable(options.bin ?? 'codebuddy')
   if (!executable) return { source: 'CodeBuddy CLI not found', models: [] }
   try {
     const peer = await handshakeCodebuddy({ executable, cwd: cwd ?? process.cwd() })
     try {
-      const session = await peer.request('session/new', { cwd: cwd ?? process.cwd(), mcpServers: [] }, 30_000)
+      const session = await peer.request<AcpAttached>('session/new', { cwd: cwd ?? process.cwd(), mcpServers: [] }, 30_000)
       const modelOption = (session?.configOptions ?? []).find(item => item?.id === 'model')
-      const models = await acpModelCatalog({ peer, sessionId: session.sessionId, configOptions: session?.configOptions, modelConfigId: 'model', effortConfigId: 'thought_level' })
+      const models = await acpModelCatalog({ peer, sessionId: session.sessionId!, configOptions: session?.configOptions, modelConfigId: 'model', effortConfigId: 'thought_level' })
       return { source: 'CodeBuddy session config', ...(modelOption?.currentValue ? { defaultModel: String(modelOption.currentValue) } : {}), models }
     } finally { peer.dispose() }
   } catch {
@@ -84,10 +101,10 @@ export async function scanCodebuddy({ engineOptions = {}, cwd } = {}) {
 // the ask tool (any ordinary tool may take a `questions` input) stays a
 // permission; an unresolvable name promotes, since the gate can precede the
 // streamed call only in an ordering race.
-const askQuestions = ({ method, params, tool }) => {
+const askQuestions: AcpSupport['question'] = ({ method, params, tool }) => {
   if (method !== 'session/request_permission') return formElicitation({ method, params })
   if (tool !== undefined && !/askuserquestion/i.test(tool.replace(/[\s_-]/g, ''))) return undefined
-  const raw = Array.isArray(params.toolCall?.rawInput?.questions) ? params.toolCall.rawInput.questions : []
+  const raw = Array.isArray((params.toolCall?.rawInput as CodebuddyQuestionInput | undefined)?.questions) ? (params.toolCall!.rawInput as CodebuddyQuestionInput).questions! : []
   const questions = raw.flatMap((item, index) => {
     const text = typeof item?.question === 'string' ? item.question.trim() : ''
     if (text === '') return []
@@ -98,17 +115,17 @@ const askQuestions = ({ method, params, tool }) => {
       }) }]
   })
   if (questions.length === 0) return undefined
-  const answersOf = value => {
-    let values
+  const answersOf = (value?: string) => {
+    let values: unknown
     if (questions.length === 1) values = { [questions[0].id]: String(value ?? '').trim() }
     else {
-      try { values = JSON.parse(value) } catch { throw new Error('Answer each question using the form') }
+      try { values = JSON.parse(value!) } catch { throw new Error('Answer each question using the form') }
       if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Answer each question using the form')
     }
-    if (questions.some(question => String(values?.[question.id] ?? '').trim() === '')) throw new Error('Answer every question first')
+    if (questions.some(question => String((values as Record<string, unknown>)?.[question.id] ?? '').trim() === '')) throw new Error('Answer every question first')
     return Object.fromEntries(questions.map(question => {
-      const value = values[question.id]
-      return [question.id, Array.isArray(value) ? value.map(item => String(item).trim()).filter(Boolean) : String(value).trim()]
+      const value = (values as Record<string, unknown>)[question.id]
+      return [question.id, Array.isArray(value) ? value.map((item: unknown) => String(item).trim()).filter(Boolean) : String(value).trim()]
     }))
   }
   return {
@@ -119,15 +136,15 @@ const askQuestions = ({ method, params, tool }) => {
     // retry instead of closing onto a hanging turn.
     async respond({ peer, sessionId, value }) {
       const answers = answersOf(value)
-      const result = await peer.request('_codebuddy.ai/resolveInterruption', { sessionId, toolCallId: params.toolCall?.toolCallId, decision: 'allow', answers })
+      const result = await peer.request<{ resolved?: unknown }>('_codebuddy.ai/resolveInterruption', { sessionId, toolCallId: params.toolCall?.toolCallId, decision: 'allow', answers })
       if (result?.resolved !== true) throw new Error('CodeBuddy did not confirm this answer; the question may have expired. Retry or stop the turn.')
     },
   }
 }
 
-export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model, thinking, instructions, ...options } = {}) {
+export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model, thinking, instructions, ...options }: CodebuddyDriverOptions = {}) {
   let nativeSessionId = options.driverSessionId
-  let backgroundError
+  let backgroundError: UnsupportedCapabilityError | undefined
   return createAcpDriver({ ...options, cwd, onEvent(event) {
     options.onEvent?.(backgroundError && event.type === 'turn/end' ? { ...event, unconfirmed: true } : event)
   } }, {
@@ -142,7 +159,7 @@ export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model,
         callbacks.onClose(backgroundError)
         peer.dispose()
       }
-      const peer = jsonRpcProcess({ bin: executable, args: ['--acp', ...(instructions ? ['--append-system-prompt', instructions] : [])], cwd, env, jsonrpc: '2.0', ...callbacks,
+      const peer = jsonRpcProcess<AcpParams>({ bin: executable, args: ['--acp', ...(instructions ? ['--append-system-prompt', instructions] : [])], cwd, env, jsonrpc: '2.0', ...callbacks,
         onNotification(message) {
           if (nativeSessionId && message.method === 'session/update' && message.params?.sessionId === nativeSessionId) {
             const update = message.params.update
@@ -168,15 +185,15 @@ export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model,
       nativeSessionId = sessionId
       let configOptions = attached.configOptions
       if (hasMultitask(configOptions)) throw new UnsupportedCapabilityError(backgroundLimit)
-      const current = id => (configOptions ?? []).find(item => item?.id === id)?.currentValue
+      const current = (id: string) => (configOptions ?? []).find(item => item?.id === id)?.currentValue
       // The autonomy tiers mirror the claude channel this CLI derives from.
       const mode = permission === 'plan' ? 'plan' : permission === 'full' ? 'bypassPermissions' : 'auto'
       if (current('mode') !== mode) {
-        const result = await peer.request('session/set_config_option', { sessionId, configId: 'mode', value: mode })
+        const result = await peer.request<Pick<AcpAttached, 'configOptions'>>('session/set_config_option', { sessionId, configId: 'mode', value: mode })
         configOptions = result.configOptions ?? configOptions
       }
       if (model && current('model') !== model) {
-        const result = await peer.request('session/set_config_option', { sessionId, configId: 'model', value: model })
+        const result = await peer.request<Pick<AcpAttached, 'configOptions'>>('session/set_config_option', { sessionId, configId: 'model', value: model })
         configOptions = result.configOptions ?? configOptions
       }
       if (thinking && current('thought_level') !== thinking) await peer.request('session/set_config_option', { sessionId, configId: 'thought_level', value: thinking })

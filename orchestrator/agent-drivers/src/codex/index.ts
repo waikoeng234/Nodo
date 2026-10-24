@@ -12,6 +12,7 @@ import { connectCodex, ensureCodexWorkspace } from './native.js'
 import { createFileChanges } from '../file-changes.js'
 import type { FileChanges } from '../file-changes.js'
 import type { Driver, DriverEvent, EngineInfo, Usage } from '../spi.js'
+import type { JsonRpcMessage, JsonRpcRequest } from '../json-rpc-process.js'
 import type { CodexPeer, RpcId } from './native.js'
 
 type CodexOptions = { cwd?: string; engineOptions?: Record<string, unknown> }
@@ -91,8 +92,8 @@ type CodexParams = {
   cwd?: string
   availableDecisions?: string[]
 }
-type CodexMessage = { id: RpcId; method: string; params?: CodexParams }
-type CodexRequest = CodexMessage & { params: CodexParams }
+type CodexMessage = JsonRpcMessage<CodexParams>
+type CodexRequest = JsonRpcRequest<CodexParams>
 type RunningTurn = {
   id: string
   started: boolean
@@ -421,7 +422,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     if (!executable) throw new Error('Codex executable not found. Edit the profile CLI path or install the CLI separately.')
     emit({ type: 'session', state: 'starting' })
     connection = await connectCodex({ executable, cwd, env, socket,
-      onNotification: receive as (message: unknown) => void, onRequest: ask as (message: unknown) => void,
+      onNotification: receive, onRequest: ask,
       onClose(error) {
         if (peer !== connection) return
         connected = false; ready = null; closeRequests()
@@ -534,7 +535,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
       if (!request || !peer) return Promise.resolve(false)
       let result
       if (request.method === 'item/tool/requestUserInput') {
-        const questions = request.params.questions
+        const questions = request.params!.questions
         let values: Record<string, unknown>
         if (questions.length === 1) values = { [questions[0].id]: [String(value ?? '')] }
         else {
@@ -548,7 +549,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
       } else {
         if (!['allow', 'deny'].includes(decision!)) return Promise.resolve(false)
         const chosen = decision === 'allow' ? 'accept' : 'decline'
-        if (request.params.availableDecisions && !request.params.availableDecisions.includes(chosen)) return Promise.reject(new Error('This approval requires a decision not supported by this client'))
+        if (request.params!.availableDecisions && !request.params!.availableDecisions.includes(chosen)) return Promise.reject(new Error('This approval requires a decision not supported by this client'))
         result = { decision: chosen }
       }
       peer.reply(request.id, result)
