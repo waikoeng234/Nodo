@@ -16,7 +16,7 @@ import type { JsonRpcMessage, JsonRpcRequest } from '../json-rpc-process.js'
 import type { CodexPeer, RpcId } from './native.js'
 
 type CodexOptions = { cwd?: string; engineOptions?: Record<string, unknown> }
-type CodexEvent = DriverEvent | { type: 'delta' | 'text'; text: string; turnId?: string } | { type: 'note'; text: string }
+type CodexEvent = DriverEvent | { type: 'delta' | 'text'; text: string; turnId?: string }
 type DriverOptions = {
   onEvent?: (event: CodexEvent) => void
   bin?: string
@@ -240,7 +240,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
   let sequence = 0
   let instructionMode = 'none'
   let running: RunningTurn | null = null
-  const requests = new Map<string, CodexRequest>()
+  const requests = new Map<string, CodexRequest & { params: CodexParams }>()
   const coverage = createCoverage('codex')
 
   const closeRequests = () => {
@@ -404,7 +404,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     }
     if (question && (!Array.isArray(params.questions) || params.questions.length === 0)) return peer!.refuse(id, 'No questions supplied')
     const cardId = `codex:${threadId}:${typeof id}:${id}`
-    requests.set(cardId, message)
+    requests.set(cardId, message as CodexRequest & { params: CodexParams })
     emit({
       type: 'request/opened', id: cardId, kind: question ? 'question' : 'permission',
       tool: permission ? method.split('/')[1] : undefined,
@@ -535,7 +535,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
       if (!request || !peer) return Promise.resolve(false)
       let result
       if (request.method === 'item/tool/requestUserInput') {
-        const questions = request.params!.questions
+        const questions = request.params.questions
         let values: Record<string, unknown>
         if (questions.length === 1) values = { [questions[0].id]: [String(value ?? '')] }
         else {
@@ -549,7 +549,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
       } else {
         if (!['allow', 'deny'].includes(decision!)) return Promise.resolve(false)
         const chosen = decision === 'allow' ? 'accept' : 'decline'
-        if (request.params!.availableDecisions && !request.params!.availableDecisions.includes(chosen)) return Promise.reject(new Error('This approval requires a decision not supported by this client'))
+        if (request.params.availableDecisions && !request.params.availableDecisions.includes(chosen)) return Promise.reject(new Error('This approval requires a decision not supported by this client'))
         result = { decision: chosen }
       }
       peer.reply(request.id, result)

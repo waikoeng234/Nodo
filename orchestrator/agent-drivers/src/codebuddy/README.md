@@ -1,7 +1,7 @@
 # CodeBuddy driver
 
 This folder owns CodeBuddy discovery, launch and configuration on top of the
-shared ACP core (`../acp/core.js`). It launches an installed CLI with
+shared ACP core (`../acp/core.ts`). It launches an installed CLI with
 `codebuddy --acp` (stdio ndJSON, protocol version 1); sessions live in the CLI's
 own storage and are restored with `session/load`. No dependencies are added.
 

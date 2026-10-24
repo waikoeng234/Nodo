@@ -3,7 +3,7 @@
 `createAcpDriver(options, support)` translates ACP v1 into the existing eight
 SPI primitives. It owns startup, capability-aware new/load/resume, live updates,
 prompt completion, requests, cancellation, reconnect and disposal. Transport
-stays in `../json-rpc-process.js`; Agent configuration stays in each Agent
+stays in `../json-rpc-process.ts`; Agent configuration stays in each Agent
 folder. This helper is internal and does not register arbitrary CLI commands.
 
 `options` supplies `cwd`, `onEvent` and the Agent-native `driverSessionId`.
@@ -36,7 +36,7 @@ allow-always option implicitly. Unanswered requests are cancelled on stop/dispos
 an unacknowledged session cancel closes this driver's connection after five seconds.
 With a shared-runtime proxy, its disposal must close the proxy, not the shared owner.
 
-`formElicitation` in `elicitation.js` preserves OpenCode's form translation and
+`formElicitation` in `elicitation.ts` preserves OpenCode's form translation and
 free-text `*_custom` fields. Agents opt in by advertising form capability and
 supplying that translator; unsupported requests receive an error.
 

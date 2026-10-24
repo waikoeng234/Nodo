@@ -16,7 +16,7 @@ import type { FileChanges } from '../file-changes.js'
 import type { IdentityFiles } from '../identity-files.js'
 import type { Coverage } from '../coverage.js'
 import type { EngineScanOptions } from '../index.js'
-import type { SkillInventory, SkillCommand } from '../skills.js'
+import type { SkillInventory } from '../skills.js'
 import type { ZcodeIdentity } from './instructions.js'
 import type { ZcodeModelRoute } from './native.js'
 
@@ -667,7 +667,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
 // The composer's /-menu inventory: the machine's shared skill directory and
 // the installed plugin caches, the locations the CLI itself loads skills from.
 // A plugin cache keeps every downloaded version; only the newest is listed.
-export async function scanZcodeCommands({ engineOptions = {} }: EngineScanOptions = {}): Promise<SkillInventory<SkillCommand>> {
+export async function scanZcodeCommands({ engineOptions = {} }: EngineScanOptions = {}): Promise<SkillInventory> {
   validateZcodeOptions(engineOptions)
   const found = collector()
   const scanSkills = (dir: string, owner?: string, scope?: string) => {

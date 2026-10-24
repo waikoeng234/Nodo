@@ -7,11 +7,10 @@ import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges } from '../file-changes.js'
 import { qoderArgs, connectQoder } from './native.js'
 import type { QoderConnection } from './native.js'
-import type { Driver, DriverEvent, DriverResponse, EngineCheckResult, EngineInfo, PermissionMode, Usage } from '../spi.js'
+import type { Driver, DriverEvent, DriverResponse, EngineCheckResult, EngineCommandInventory, EngineInfo, PermissionMode, Usage } from '../spi.js'
 import type { Coverage } from '../coverage.js'
 import type { FileChanges } from '../file-changes.js'
 import type { EngineScanOptions, ModelCatalog } from '../index.js'
-import type { SkillInventory } from '../skills.js'
 
 export type QoderOptions = { bin?: string }
 export type QoderDriverOptions = {
@@ -176,7 +175,7 @@ export async function scanQoder({ engineOptions = {}, cwd }: EngineScanOptions =
 }
 
 // The initialize response's command table is the protocol's own /-menu listing.
-export async function scanQoderCommands({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<SkillInventory> {
+export async function scanQoderCommands({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<EngineCommandInventory> {
   const options = validateQoderOptions(engineOptions)
   const executable = findQoderExecutable(options.bin)
   if (!executable) return { source: 'Qoder CLI', commands: [] }

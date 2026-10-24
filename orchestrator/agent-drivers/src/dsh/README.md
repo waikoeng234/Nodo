@@ -1,10 +1,10 @@
 # DeepSeek Harness driver
 
-This folder owns DSH configuration/discovery (`config.js`), native controller
-integration (`native.js`), ACP-specific configuration (`index.js`), session
-storage (`storage.js`), safe errors (`errors.js`) and model discovery (`catalog.js`).
+This folder owns DSH configuration/discovery (`config.ts`), native controller
+integration (`native.ts`), ACP-specific configuration (`index.ts`), session
+storage (`storage.ts`), safe errors (`errors.ts`) and model discovery (`catalog.ts`).
 Desktop/Web uses the host's `workspaceRegistry` and `sessionController`, including
-the native agent and its writer. Standalone ACP reuses `../acp/core.js` and the
+the native agent and its writer. Standalone ACP reuses `../acp/core.ts` and the
 shared JSON-RPC transport. It launches an installed CLI with `dsh --profile acp`;
 custom profiles must also expose ACP on stdio. No dependencies are added.
 
@@ -170,7 +170,7 @@ and `node scripts/check-native-dsh.mjs`, plus that script's `--native-changes` a
 Its session registry declares 62 known events: `job/registered`, `job/settled` and
 `working-directory/change` are new and unmapped, nothing was removed, the six ACP
 projections are unchanged and the payload declarations the driver reads stayed
-byte-identical or gained optional fields only. `agent-drivers/src/coverage.js` lists
+byte-identical or gained optional fields only. `agent-drivers/src/coverage.ts` lists
 this version as verified. Real DeepSeek model calls, real tool approvals and visual
 Desktop UI interaction were not run.
 

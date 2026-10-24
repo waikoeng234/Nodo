@@ -13,7 +13,7 @@ are added.
 |---|---|
 | Installed CLI | npm-global `@earendil-works/pi-coding-agent` 1.4.0 (Node runtime); open source at github.com/earendil-works/pi with in-package docs and examples |
 | Login | Provider API keys / OAuth via `pi auth`; `pi auth check --provider <p> --json --no-refresh` reports readiness without emitting credentials (probe: `{"status":"ready","authType":"api_key"}` for the configured provider) |
-| Protocol | `--mode rpc`: commands/responses correlate by `id`; no ACP, no JSON-RPC, so the connector is its own (`native.js`) |
+| Protocol | `--mode rpc`: commands/responses correlate by `id`; no ACP, no JSON-RPC, so the connector is its own (`native.ts`) |
 | Continuity | `--session-id <id>` reuses or creates that exact project session (get_state echoes it; an empty session writes no file until the first append). Cross-process cold resume is maintainer acceptance |
 | Native session store | `~/.pi/agent/sessions/--<escaped-cwd>--/<timestamp>_<id>.jsonl`, format v3 tree; CLI-only tool — no desktop app shares it |
 | Models / thinking | `get_available_models` returns full catalog rows (cost, context window, `thinkingLevelMap`); the scan keys entries as `provider/id`, the one spelling both `--model` and `set_model` accept; thinking levels come from `thinkingLevelMap` keys |
@@ -36,7 +36,7 @@ real runs prove live behavior. Developer probes against the real 1.4.0 CLI
 | Check | Protocol source & version / implementation | Automated verification | Maintainer live results |
 |---|---|---|---|
 | Route, Agent/version, capability scope, unsupported items | Route A; pi 1.4.0, RPC protocol per in-package docs (`src/pi/`); unsupported: native approvals, permission tiers, plain-file attachments | `npm run verify:engine -- --engine pi --route new` → 334 tests: 333 passed, 1 failed (a pre-existing `workflows.test.js` failure, also reproduced on a clean HEAD tree and unrelated to this Agent); separate handoff and build checks passed | Not run |
-| Start/connect, negotiation, install/auth check edges | `--mode rpc --no-approve` spawn (`native.js`); `checkPi` = workspace + version + `get_state` handshake + configured-model fact | check tests in `test/pi.test.js` passed | Not run (auth readiness against real providers) |
+| Start/connect, negotiation, install/auth check edges | `--mode rpc --no-approve` spawn (`native.ts`); `checkPi` = workspace + version + `get_state` handshake + configured-model fact | check tests in `test/pi.test.js` passed | Not run (auth readiness against real providers) |
 | Runtime & writer, native workspace ownership, real session id | `~/.pi/agent/sessions/…` v3 tree written by the CLI; session id from `get_state`, echoed as `--session-id` on respawn | fixture asserts the session id and the respawn flag | Not run |
 | Two consecutive turns, two sessions, cold resume | `--session-id <id>` on respawn | fixture resume test passed | Not run (cross-process cold resume) |
 | Native UI integration; Agent app discovery/live observation | Session opens through the adapter route, like the other adapter Agents; pi has no separate host app (CLI/TUI only) | `test/engine-registration.test.js`, `npm run build` + `--check` passed | Not applicable (no separate host application); CLI session files can be observed offline |
@@ -47,7 +47,7 @@ real runs prove live behavior. Developer probes against the real 1.4.0 CLI
 | Images, plain attachments, commands/skills; missing-capability notices | `prompt` accepts base64 images; `@file` is CLI-only and RPC rejects it (no plain attachments); commands from `get_commands` (`scanPiCommands`) | image + commands scan tests passed | Not run |
 | Plans, subtasks, compaction/retry, usage, file changes, rich media | `compact` command + compaction/retry lifecycle events; usage folding; write/edit-derived file changes; no plan or subagent channels mapped | compaction/retry/usage/file tests passed | Not run |
 | Turn final text & last reply, error/cancel, serial handoff | `agent_settled` settles done/error/interrupted; HANDOFF/WAIT fixture scenarios | `node scripts/check-handoff-capabilities.mjs --engine pi` → 8 passed / 1 skipped (DSH-only) / 0 failed | Not run |
-| Registration, name, routing, icon or generic fallback, build | `src/index.js` Agents entry (name `Pi`, adapter); `assets/engines/pi.svg` (mark from the pi.dev favicon, see `THIRD_PARTY_NOTICES.txt`) | registration tests, client bundle consistency check passed | Not run |
+| Registration, name, routing, icon or generic fallback, build | `src/index.ts` Agents entry (name `Pi`, adapter); `assets/engines/pi.svg` (mark from the pi.dev favicon, see `THIRD_PARTY_NOTICES.txt`) | registration tests, client bundle consistency check passed | Not run |
 | Change scope, automated commands, results, pending maintainer items | Scope: `src/pi/`, registration, coverage index, tests, docs; commands listed above | results as listed per row | Pending acceptance: cross-process cold resume, real-model turns (steer delivery timing, usage shape, dialog behavior), permission-free semantics in shared workspaces |
 
 ## Setup

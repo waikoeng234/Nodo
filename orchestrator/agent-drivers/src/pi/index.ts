@@ -6,11 +6,10 @@ import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges } from '../file-changes.js'
 import { piArgs, connectPi } from './native.js'
 import type { PiConnection } from './native.js'
-import type { Driver, DriverEvent, DriverImage, DriverResponse, EngineCheckResult, EngineInfo, PermissionMode, Usage } from '../spi.js'
+import type { Driver, DriverEvent, DriverImage, DriverResponse, EngineCheckResult, EngineCommandInventory, EngineInfo, PermissionMode, Usage } from '../spi.js'
 import type { Coverage } from '../coverage.js'
 import type { FileChanges } from '../file-changes.js'
 import type { EngineScanOptions, ModelCatalog } from '../index.js'
-import type { SkillInventory } from '../skills.js'
 
 export type PiOptions = { bin?: string }
 export type PiDriverOptions = {
@@ -163,7 +162,7 @@ export async function scanPi({ engineOptions = {}, cwd }: EngineScanOptions = {}
 
 // The RPC command catalog merges extension commands, prompt templates and
 // skills; each runs through the prompt channel as /name.
-export async function scanPiCommands({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<SkillInventory> {
+export async function scanPiCommands({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<EngineCommandInventory> {
   const options = validatePiOptions(engineOptions)
   const executable = findExecutable(options.bin ?? 'pi')
   if (!executable) return { source: 'pi CLI', commands: [] }

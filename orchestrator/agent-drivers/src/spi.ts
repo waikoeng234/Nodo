@@ -25,6 +25,11 @@ export type EngineCheckResult = {
   checks: { label: string; ok: boolean | null; message?: string }[]
 }
 
+export type EngineCommandInventory = {
+  source?: string
+  commands: { id: string; description?: string; path?: string; scope?: string; origin?: string }[]
+}
+
 export type Usage = {
   inputTokens?: number
   outputTokens?: number

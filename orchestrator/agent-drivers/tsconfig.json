@@ -5,8 +5,6 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "target": "es2024",
-    "allowJs": true,
-    "checkJs": false,
     "strict": true,
     "noEmitOnError": true,
     "verbatimModuleSyntax": true,
