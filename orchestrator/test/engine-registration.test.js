@@ -6,15 +6,12 @@ import { engineMetadata, registerEngine } from '../agent-drivers/dist/index.js'
 import { createEchoDriver, echoInfo, validateEchoOptions, checkEcho } from './helpers/echo-driver.js'
 
 registerEngine('intake-fixture', {
-  name: 'Intake fixture', adapter: true, shared: ['acp'],
+  name: 'Intake fixture', shared: ['acp'],
   info: { ...echoInfo, id: 'intake-fixture', label: 'Fixture CLI' },
   create: createEchoDriver, validate: validateEchoOptions, check: checkEcho,
 })
-const { ADAPTER_ENGINES } = await import('../src/host/adapter/registry.js')
 
-test('one registration supplies the host adapter route and shared-core membership', () => {
-  assert.ok(ADAPTER_ENGINES.includes('intake-fixture'))
-  assert.ok(!ADAPTER_ENGINES.includes('dsh'), 'DSH keeps its owning native controller')
+test('one registration supplies display metadata and shared-core membership', () => {
   const entry = engineMetadata().find(item => item.id === 'intake-fixture')
   assert.equal(entry.name, 'Intake fixture')
   entry.shared.push('changed')

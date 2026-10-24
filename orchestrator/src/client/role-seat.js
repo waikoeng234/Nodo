@@ -21,7 +21,7 @@ function createRoleSeat(ctx, space) {
   function RoleSeat({ sessionId }) {
     const { view } = useStateView()
     const profile = view?.profiles.find(role => role.sessions.some(session =>
-      (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) === sessionId))
+      (session.engine === 'dsh' ? session.driverSessionId : undefined) === sessionId))
     if (typeof ctx.sessions.subagentAddress === 'function' && ctx.sessions.subagentAddress(sessionId) !== undefined) return null
     return h(RolePicker, { profiles: view?.profiles ?? [], profile })
   }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Adapter-route fixture: a fake OpenCode CLI speaking ACP (JSON-RPC 2.0) over
-// stdio (handoff P3). Scripted per-turn output selected by markers in the prompt:
+// A fake OpenCode CLI speaking ACP (JSON-RPC 2.0) over stdio.
+// Scripted per-turn output selected by markers in the prompt:
 //   FLOW        thought → text → tool_call ×2 → end_turn + usage
 //   ASK_FLOW    session/request_permission → (allow: tool completed + text / reject: cancelled)
 //   QUESTION    elicitation/create form → answer echoed back as text
@@ -11,7 +11,7 @@
 const { createInterface } = require('node:readline')
 const { join } = require('node:path')
 const { appendFileSync } = require('node:fs')
-if (process.argv.includes('--version')) { console.log('opencode-adapter fixture 1.0'); process.exit(0) }
+if (process.argv.includes('--version')) { console.log('opencode-flow fixture 1.0'); process.exit(0) }
 const HANG_MS = Number(process.env.CODEX_FIXTURE_HANG_MS) || 60000
 const write = message => process.stdout.write(JSON.stringify(message) + '\n')
 const reply = (id, result) => write({ id, result })
@@ -126,7 +126,7 @@ const receive = line => {
         toolCall('cmd-two', 'echo two', 'completed')
         later(10, () => { say('FLOW done'); settle('end_turn', { inputTokens: 1245, outputTokens: 45 }) })
       })
-    } else later(10, () => { say('Adapter fixture: ' + text.split('\n')[0].slice(0, 40)); settle('end_turn', { inputTokens: 1245, outputTokens: 45 }) })
+    } else later(10, () => { say('Flow fixture: ' + text.split('\n')[0].slice(0, 40)); settle('end_turn', { inputTokens: 1245, outputTokens: 45 }) })
     return
   }
   if (method === 'session/cancel') { log({ method: 'interrupt' }); settle('cancelled'); return }

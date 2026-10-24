@@ -131,8 +131,7 @@ for the native durable result, preserves native identity, refuses overlapping
 work, and forwards interruption/disposal to the compaction signal. The plugin
 can reopen a saved conversation before compacting without a warm-up message.
 Standalone ACP retains its existing workspace-only declaration and no compact
-method. These native controls do not grant equivalent capabilities to external
-Agents running behind an LLM adapter.
+method. These native controls apply to the dsh engine.
 
 Run `node scripts/check-native-dsh.mjs --native-controls` for the isolated real
 Web-host check with a local mock provider, including permission changes, a

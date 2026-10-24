@@ -13,7 +13,7 @@ const edit = (newText = 'after') => ({ path: 'x', edit: { operation: 'update', o
 const withDriver = async (engine, run) => {
   const cwd = mkdtempSync(join(tmpdir(), 'nodo-es05-driver-'))
   const bin = join(cwd, engine)
-  copyFileSync(new URL(`./fixtures/${engine === 'opencode' ? 'opencode-adapter-cli' : engine + '-cli'}.cjs`, import.meta.url), bin)
+  copyFileSync(new URL(`./fixtures/${engine === 'opencode' ? 'opencode-flow-cli' : engine + '-cli'}.cjs`, import.meta.url), bin)
   chmodSync(bin, 0o755)
   const events = []
   const driver = createDriver(engine, { bin, cwd, onEvent: event => events.push(event) })

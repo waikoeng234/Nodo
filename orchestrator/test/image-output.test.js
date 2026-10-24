@@ -10,7 +10,6 @@ import { install as installAttachments } from '../src/host/attachments.js'
 import { install as installDispatch } from '../src/host/dispatch.js'
 import { createRecordTracker, createStreamDetailStore } from '../src/host/stream-records.js'
 import { materializeResources, projectContent } from '../src/host/resources.js'
-import { createPump } from '../src/host/adapter/pump.js'
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 const fixture = async run => {
@@ -113,66 +112,30 @@ test('local image failures retain an explicit unavailable resource without readi
   assert.equal(value.body.resources[1].kind, 'link')
 })
 
-test('reply images persist as plugin references and native attachment blocks, bounded and decoder checked', async () => {
+test('reply images persist as plugin references, bounded and decoder checked', async () => {
   await fixture(async ({ home, cwd, path }) => {
-    const native = { attachmentId: 'fixture', mediaType: 'image/png', bytes: Buffer.byteLength(PNG, 'base64'), width: 1, height: 1 }
-    const rt = { home, ctx: { attachments: { validateImage: async () => {}, saveImages: async images => {
-      assert.equal(images[0].data.toString('base64'), PNG)
-      return [native]
-    } } }, conversationOf: id => id === 's' ? { profile: {}, session: {} } : undefined,
+    const rt = { home, ctx: { attachments: { validateImage: async () => {} } }, conversationOf: id => id === 's' ? { profile: {}, session: {} } : undefined,
       sessionWorkspace: () => ({ cwd }), readOnly: () => undefined }
     installAttachments(rt)
     const text = `![图](<${path}>)\n![重复](<${path}>)`
     const refs = await rt.saveReplyImages('s', text)
     assert.equal(refs.length, 1)
     assert.equal((await rt.imageOf(refs[0])).data, PNG)
-    assert.deepEqual(await rt.saveReplyImages('s', text, true), [native])
     assert.deepEqual(await rt.saveReplyImages('foreign', text), [])
-    rt.ctx.attachments.saveImages = async () => []
-    assert.deepEqual(await rt.saveReplyImages('s', text, true), [])
     delete rt.ctx.attachments.validateImage
     assert.deepEqual(await rt.saveReplyImages('s', text), [])
   })
 })
 
-test('native replies emit durable image blocks after streamed text, with unique indexes and usage before finish', async () => {
-  const attachment = { attachmentId: 'fixture', mediaType: 'image/png', bytes: 68, width: 1, height: 1 }
-  const texts = []
-  let pump
-  pump = createPump({ driver: { sendTurn: async () => {
-    pump.receive({ type: 'delta', text: '![图](' })
-    pump.receive({ type: 'delta', text: '/tmp/shot.png)' })
-    pump.receive({ type: 'turn/end', reason: 'done', usage: { outputTokens: 2 } })
-  } }, saveReplyImages: async text => { texts.push(text); return [attachment] } })
-  try {
-    const chunks = []
-    for await (const chunk of pump.stream({ messages: [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'draw' }] }] })) chunks.push(chunk)
-    assert.deepEqual(texts, ['![图](/tmp/shot.png)'])
-    const blocks = chunks.filter(chunk => chunk.type === 'block-end')
-    assert.deepEqual(blocks.map(chunk => [chunk.index, chunk.block.type]), [[0, 'text'], [1, 'image']])
-    assert.deepEqual(blocks[1].block.attachment, attachment)
-    assert.deepEqual(chunks.slice(-2).map(chunk => chunk.type), ['usage', 'finish'])
-    assert.doesNotMatch(JSON.stringify(chunks), /iVBOR/)
-  } finally { pump.dispose() }
-})
-
-test('generated image bytes never become legacy tool text or a model-facing mirror result', async () => {
+test('generated image bytes never become legacy tool text', async () => {
   const lines = [], effects = []
   const rt = { ctx: { effect: factory => effects.push(factory()) }, appendLine: (_id, line) => { lines.push(line); return line },
     redactDeepSecrets: value => value, save: async () => {}, statsTool() {} }
   installDispatch(rt)
-  let pump
-  pump = createPump({ driver: { sendTurn: async () => {
-    pump.receive({ type: 'tool', name: 'imageGeneration', callId: 'a', phase: 'start' })
-    pump.receive({ type: 'tool', name: 'imageGeneration', callId: 'a', phase: 'end', output: PNG })
-    pump.receive({ type: 'turn/end', reason: 'done' })
-  } } })
   try {
     rt.driverSink('s', { type: 'tool', name: 'imageGeneration', callId: 'a', phase: 'end', output: PNG })
     assert.doesNotMatch(JSON.stringify(lines), /iVBOR/)
-    for await (const _chunk of pump.stream({ messages: [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'draw' }] }] })) {}
-    assert.doesNotMatch(JSON.stringify(await pump.takeMirror().done), /iVBOR/)
-  } finally { pump.dispose(); for (const dispose of effects) dispose?.() }
+  } finally { for (const dispose of effects) dispose?.() }
 })
 
 test('legacy final replies wait for saved image references before the turn settles', async () => {

@@ -102,8 +102,8 @@ use fixtures; real CLI, model and Desktop acceptance belongs to the project main
 Protocol fixtures, installed-CLI checks and native integration evidence have
 different scopes; keep their results separate.
 
-Registration also owns `name`, `adapter`, `shared` and optional `tests` metadata
-for host routes, client display names and verification selection. See the workflow
+Registration also owns `name`, `shared` and optional `tests` metadata
+for client display names and verification selection. See the workflow
 for field meanings. Optional SVG assets are discovered by the client build.
 
 Add one Agent folder with an `index.js` entry, and a registry entry in `src/index.js` with:

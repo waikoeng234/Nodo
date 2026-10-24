@@ -19,7 +19,7 @@ const setNavigation = update => {
   try { localStorage.setItem('nodo.navigation', JSON.stringify(navigationSnapshot)) } catch {}
   for (const listener of navigationListeners) listener()
 }
-const nativeRole = profile => ['codex', 'claude', 'zcode', 'opencode', 'codebuddy', 'qoder', 'pi', 'dsh'].includes(profile?.engine)
+const nativeRole = profile => profile?.engine === 'dsh'
 const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   if (!profile || !workspace) return
   const sessions = profile.sessions.filter(item => !item.archivedAt
@@ -83,7 +83,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission }
     : profile
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
-    ? view?.profiles.flatMap(role => role.sessions).find(item => (item.nativeSessionId ?? (item.engine === 'dsh' ? item.driverSessionId : null)) === currentNativeSession) : null
+    ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
   useEffect(() => {
     if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq)
@@ -182,10 +182,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
         return
       }
       const native = nativeRole(role) && openNativeSession
-      const dispatched = native && id && role.engine !== 'dsh' && !role.sessions?.find(item => item.id === id)?.nativeSessionId
-        && (await call('transcript', { profile: role.id, session: id })).some(line => line.who === 'user')
       if (!current()) return
-      if (native && !dispatched) {
+      if (native) {
         const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
         if (!current()) return
         remember(role.id, project.id, opened.conversationId)

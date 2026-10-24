@@ -52,7 +52,7 @@ export function install(rt) {
 
   // Endpoints a read-only host still serves. Cards are answered from this host's
   // memory, not the file, so a reading window keeps them.
-  const READS = new Set(['state', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-file', 'worktree-refs', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'adapter-models', 'attachment'])
+  const READS = new Set(['state', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-file', 'worktree-refs', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment'])
 
   const resolveProfileRef = (ref) => {
     const profile = rt.findProfile(ref)
@@ -152,12 +152,6 @@ export function install(rt) {
         return rt.deleteRolePreset(body)
       case 'session-create':
         return rt.createSession(resolveProfileRef(body.profile).id, body.name, body.workspace, body.lazy === true, body.draft === true, body.choices)
-      case 'adapter-session-open':
-        return rt.openAdapterSession(body)
-      case 'adapter-models':
-        return rt.adapterModels(body)
-      case 'adapter-model-select':
-        return rt.selectAdapterModel(body)
       case 'session-open':
         return rt.openNativeSession(body)
       case 'session-select':

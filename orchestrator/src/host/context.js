@@ -30,7 +30,7 @@ export function install(rt) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw invalid('Reference limit must be between 1 and 20')
     const { session } = rt.conversation(profile.id, id)
     await rt.loadSecrets()
-    const nativeId = session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)
+    const nativeId = session.engine === 'dsh' ? session.driverSessionId : undefined
     const reports = nativeId && typeof rt.ctx.sessionController?.inspect === 'function'
       ? (await rt.referenceReplies({ profile: profile.id, session: session.id })).messages.slice(0, limit).reverse()
       : transcriptReplies(rt.transcriptOf(session.id)).slice(-limit)

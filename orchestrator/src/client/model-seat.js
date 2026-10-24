@@ -7,16 +7,7 @@ function createModelSeat(ctx, space) {
     const state = useSyncExternalStore(directory.store.subscribe, directory.store.getSnapshot)
     const [open, setOpen] = useState(false)
     const [pane, setPane] = useState('root')
-    const [adapter, setAdapter] = useState(null)
-    const [selecting, setSelecting] = useState(false)
     const [error, setError] = useState('')
-    useEffect(() => {
-      let live = true
-      void call('adapter-models', { sessionId }).then(value => {
-        if (live) setAdapter({ sessionId, value })
-      }).catch(failure => { if (live) setError(failure.message) })
-      return () => { live = false }
-    }, [sessionId, open])
     if (!available) return null
     const close = () => { setOpen(false); setPane('root') }
     const openMenu = () => {
@@ -24,8 +15,7 @@ function createModelSeat(ctx, space) {
       setOpen(true)
       void directory.load().catch(() => {})
     }
-    const privateCatalog = adapter?.sessionId === sessionId ? adapter.value : null
-    const catalog = privateCatalog ?? state
+    const catalog = state
     const groups = (catalog?.groups ?? []).filter(group => group.models.length > 0)
     const current = catalog?.current ?? null
     const currentModel = groups.find(group => group.id === current?.provider)?.models.find(model => model.id === current?.model)
@@ -33,17 +23,13 @@ function createModelSeat(ctx, space) {
     const modelText = current ? currentModel?.name ?? modelName(current.model) : state?.status === 'ready' ? '选择模型' : '模型'
     const efforts = currentModel?.reasoning?.efforts ?? []
     const effortText = current?.reasoningEffort ? efforts.find(level => level.id === current.reasoningEffort)?.name ?? current.reasoningEffort : ''
-    const busy = selecting || state?.status === 'loading' || state?.status === 'selecting'
+    const busy = state?.status === 'loading' || state?.status === 'selecting'
     const select = selection => {
       setError('')
       // The menu stays open until the pick is accepted: a rejected selection
       // must be visible where it was made, not silently snap back to the
       // previous value after the menu closes.
-      if (!privateCatalog) { void directory.select(selection).then(() => close()).catch(failure => setError(failure.message)); return }
-      setSelecting(true)
-      void call('adapter-model-select', { sessionId, ...selection }).then(value => { setAdapter({ sessionId, value }); close() })
-        .catch(failure => setError(failure.message))
-        .finally(() => setSelecting(false))
+      void directory.select(selection).then(() => close()).catch(failure => setError(failure.message))
     }
     const pick = id => {
       if (id === 'model') { setPane('model'); return }

@@ -7,13 +7,13 @@ import { engineMetadata } from '../agent-drivers/dist/index.js'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const CAPABILITIES = {
-  session: ['drivers', 'sessions', 'context', 'adapter', 'preset-heal'],
+  session: ['drivers', 'sessions', 'context'],
   models: ['model-seat'],
-  identity: ['identity-files', 'role-mcp', 'adapter'],
-  interaction: ['adapter', 'adapter-steering'],
+  identity: ['identity-files', 'role-mcp'],
+  interaction: ['sessions', 'approvals'],
   stream: ['coverage', 'tool-stream', 'stream-records', 'stream-records-client', 'file-changes', 'stats', 'native-running', 'native-status'],
-  attachments: ['attachments', 'adapter-input'],
-  commands: ['adapter-skills'],
+  attachments: ['attachments'],
+  commands: ['engines'],
   handoff: ['workflows', 'workflow-materials'],
 }
 const SHARED = { acp: ['acp'] }
@@ -41,16 +41,11 @@ export function engineCheckPlan({ engine, route, capability = [], shared = [] },
   }
   for (const value of capabilities) for (const name of CAPABILITIES[value]) tests.add(`test/${name}.test.js`)
   for (const file of tests) if (!existsSync(join(root, file))) throw new Error(`Required test is missing: ${file}`)
-  const handoff = capabilities.includes('handoff') ? engines.map(entry => entry.id) : []
-  for (const id of handoff) {
-    const fixture = `test/fixtures/${id}-cli.cjs`
-    if (!existsSync(join(root, fixture))) throw new Error(`Required handoff fixture is missing: ${fixture}`)
-  }
-  return { engine, route, capabilities, engines: engines.map(entry => entry.id), tests: [...tests].sort(), handoff }
+  return { engine, route, capabilities, engines: engines.map(entry => entry.id), tests: [...tests].sort() }
 }
 
 export function runEngineChecks(plan, execute = spawnSync) {
-  const commands = [['--test', ...plan.tests], ...plan.handoff.map(id => ['scripts/check-handoff-capabilities.mjs', '--engine', id]), ['scripts/build-client.mjs', '--check']]
+  const commands = [['--test', ...plan.tests], ['scripts/build-client.mjs', '--check']]
   for (const args of commands) {
     const result = execute(process.execPath, args, { cwd: ROOT, stdio: 'inherit' })
     if (result.error) throw result.error

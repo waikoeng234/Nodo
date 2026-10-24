@@ -12,7 +12,6 @@
 import { randomUUID } from 'node:crypto'
 import { INSTRUCTIONS_MAX, MAX_PROFILES, NAME_MAX, ROLE_MAX } from './constants.js'
 import { normalize, unquote } from './text.js'
-import { ADAPTER_ENGINES } from './adapter/registry.js'
 import avatarTemplates from '../shared/avatar-templates.json' with { type: 'json' }
 import builtInPresets from '../shared/role-presets.json' with { type: 'json' }
 
@@ -98,7 +97,6 @@ export function install(rt) {
       updatedAt: Date.now(),
     }
     state.profiles[profile.id] = profile
-    await rt.syncAdapterPreset?.(profile)
     await rt.save()
     rt.releaseDriver?.(profile.id)
     return profileView(profile)
@@ -109,7 +107,7 @@ export function install(rt) {
     await rt.driversReady()
     const profile = state.profiles[String(id ?? '')]
     if (profile === undefined) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
-    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active || rt.adapterBusy?.(session))) throw Object.assign(new Error('Stop or finish the running task before editing this profile'), { code: 'orch/busy' })
+    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before editing this profile'), { code: 'orch/busy' })
     // Validate the complete candidate before mutating the live record or driver.
     const next = { ...profile }
     if (changes.name !== undefined) next.name = cleanName(changes.name, profile.id)
@@ -141,17 +139,15 @@ export function install(rt) {
       }
     }
     Object.assign(profile, next, { updatedAt: Date.now() })
-    await rt.syncAdapterPreset?.(profile)
-    await rt.refreshAdapterBindings?.(profile)
     if (profile.model === undefined) delete profile.model
     if (profile.thinking === undefined) delete profile.thinking
-    if ((respawn || permissionChanged) && !ADAPTER_ENGINES.includes(profile.engine)) {
+    if (respawn || permissionChanged) {
       const active = rt.sessionsOf(profile).find(item => item.id === profile.activeSessionId)
       // The card's model/thinking pair is the default for conversations it opens
       // later: a started conversation keeps its own pair, an unsent draft adopts
       // the card in place. Any other card change outlives a started conversation,
       // so only a session that has not sent its first message yet adopts the full
-      // card. Adapter sessions are excluded: their identity propagates in place.
+      // card.
       const retuned = respawn ? respawnKeys.every(key => key === 'model' || key === 'thinking') : true
       if (!active || respawnKeys.includes('workspaceId') || (!retuned && active.briefSent)) await rt.restartConversations(profile)
       else if (retuned) {
@@ -186,9 +182,8 @@ export function install(rt) {
     await rt.load()
     const profile = state.profiles[String(id ?? '')]
     if (profile === undefined) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
-    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active || rt.adapterBusy?.(session))) throw Object.assign(new Error('Stop or finish the running task before deleting this profile'), { code: 'orch/busy' })
+    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before deleting this profile'), { code: 'orch/busy' })
     await rt.dropStreamDetails?.(profile.id)
-    await rt.dropAdapterProfile?.(profile)
     for (const session of rt.sessionsOf(profile)) { rt.cancelApprovals?.(session.id); rt.releaseDriver?.(session.id); rt.statsDrop?.(session.id); delete state.transcripts[session.id] }
     delete state.profiles[profile.id]
     delete state.transcripts[profile.id]

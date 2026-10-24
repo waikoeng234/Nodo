@@ -113,7 +113,7 @@ export function install(rt) {
     return { mediaType, data: bytes.toString('base64') }
   }
 
-  const saveReplyImages = async (conversationId, text, native = false) => {
+  const saveReplyImages = async (conversationId, text) => {
     const found = rt.conversationOf(conversationId)
     if (!found || rt.readOnly() !== undefined) return []
     const saved = []
@@ -125,10 +125,10 @@ export function install(rt) {
         return true
       },
       saveImage: async image => {
-        const [ref] = native ? await rt.ctx.attachments.saveImages([{ ...image, data: Buffer.from(image.data, 'base64') }]) : await saveImages([image])
-        if (!(native ? ref?.attachmentId : ref?.id)) throw new Error('storage-unavailable')
+        const [ref] = await saveImages([image])
+        if (!ref?.id) throw new Error('storage-unavailable')
         saved.push(ref)
-        return { id: ref.id ?? ref.attachmentId, mediaType: ref.mediaType }
+        return { id: ref.id, mediaType: ref.mediaType }
       },
     })
     return saved

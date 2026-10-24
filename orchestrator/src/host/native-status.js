@@ -36,7 +36,7 @@ export function install(rt) {
   const entries = new Map()
   const stops = []
   let disposed = false
-  const nativeId = session => session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)
+  const nativeId = session => session.engine === 'dsh' ? session.driverSessionId : undefined
   const bound = id => typeof id === 'string' && Object.values(rt.state.profiles).some(profile => rt.sessionsOf(profile).some(session => nativeId(session) === id))
   const entryOf = id => {
     if (!entries.has(id)) entries.set(id, { state: empty(), requests: new Map(), loaded: false })
@@ -116,16 +116,12 @@ export function install(rt) {
     const agent = ctx.agents?.get(id)
     const state = entry.state
     const active = agent ? agent.status === 'running' : false
-    const engine = active ? rt.adapterWork?.(id) : null
     const waits = [...entry.requests.values()].map(close => close.status)
-    // Driver approvals never enter the host chain; the pump phase is their
-    // only signal here, so a pending card must lift the status off running.
-    const status = active ? waits.includes('waiting-question') || engine?.phase === 'waiting-question' ? 'waiting-question'
-      : waits.includes('waiting-approval') || state.approvals.size > 0 || engine?.phase === 'waiting-approval' ? 'waiting-approval' : 'running'
+    const status = active ? waits.includes('waiting-question') ? 'waiting-question'
+      : waits.includes('waiting-approval') || state.approvals.size > 0 ? 'waiting-approval' : 'running'
       : state.turn !== null ? 'stopped' : entry.unavailable ? 'unavailable' : state.status
     return { source: 'native', active, status, since: active ? state.since : null, finishedAt: state.finishedAt, completionSeq: state.completionSeq, lastAt: state.lastAt,
       tool: active ? [...state.tools.values()].at(-1) ?? null : null,
-      ...(engine ? { engine } : {}),
       buffer: null, queued: (agent?.inbox?.nextTurn.length ?? 0) + (agent?.inbox?.nextStep.length ?? 0) }
   }
   ctx.effect(() => () => {

@@ -50,7 +50,7 @@ function createSessionReferences(ctx, space) {
       else void call('state').then(value => {
         if (!live) return
         setView(value)
-        const current = value.profiles.flatMap(profile => profile.sessions).find(session => (session.nativeSessionId ?? session.driverSessionId) === target)
+        const current = value.profiles.flatMap(profile => profile.sessions).find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === target)
         setWorkspace(workspaceId ?? current?.workspaceRef ?? '')
       }).catch(failure => { if (live) setError(failure.message) })
       return () => { live = false }
@@ -84,7 +84,7 @@ function createSessionReferences(ctx, space) {
       finally { setBusy(false) }
     }
     const rows = view?.profiles.flatMap(profile => profile.sessions.filter(session => !session.archivedAt
-      && (target === undefined || (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) !== target))
+      && (target === undefined || (session.engine === 'dsh' ? session.driverSessionId : undefined) !== target))
       .map(session => ({ profile, session }))).filter(row => (!workspace || row.session.workspaceRef === workspace) && (!role || row.profile.id === role)
         && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .sort((a, b) => b.session.updatedAt - a.session.updatedAt) ?? []

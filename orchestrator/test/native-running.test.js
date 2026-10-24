@@ -39,7 +39,7 @@ test('native animation appears only for a running session in the native Nodo spa
 
 test('native running status selects the current session engine health from the polled work view', () => {
   context.space = { active: true, legacy: false }
-  context.view = { profiles: [{ sessions: [{ id: 'local', nativeSessionId: 'native' }, { id: 'other', nativeSessionId: 'foreign' }] }],
+  context.view = { profiles: [{ sessions: [{ id: 'local', engine: 'dsh', driverSessionId: 'native' }, { id: 'other', engine: 'dsh', driverSessionId: 'foreign' }] }],
     work: { local: { engine: { phase: 'tool', tool: 'read', lastEventAt: 9000 } }, other: { engine: { phase: 'thinking' } } } }
   const props = { sessionId: 'native', useSession: select => select({ running: true }), useConversation: select => select(snapshot([current])) }
   const engine = context.NativeRunningDock(props).children[0].props.engine
@@ -53,12 +53,12 @@ test('native running status selects the current session engine health from the p
   assert.equal(context.engineRunningLabel(undefined, 90000), '正在思考')
 })
 
-test('an external session without live engine health does not claim it is thinking', () => {
+test('native running ignores stale external session pointers', () => {
   context.space = { active: true, legacy: false }
   context.view = { profiles: [{ sessions: [{ id: 'local', nativeSessionId: 'native', engine: 'zcode' }] }], work: {} }
   const props = { sessionId: 'native', useSession: select => select({ running: true }), useConversation: select => select(snapshot([current])) }
   const engine = context.NativeRunningDock(props).children[0].props.engine
-  assert.equal(context.engineRunningLabel(engine, 90000), '等待 Agent')
+  assert.equal(engine, undefined)
   context.view.profiles[0].sessions[0].engine = 'dsh'
   assert.equal(context.NativeRunningDock(props).children[0].props.engine, undefined)
 })

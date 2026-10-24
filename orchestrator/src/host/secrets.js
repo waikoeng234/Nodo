@@ -4,7 +4,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ADAPTER_ENGINES } from './adapter/registry.js'
 
 export const SECRET_NAME = /^[A-Z][A-Z0-9_]{0,63}$/
 export const ENV_PREFIX = 'ORCH_SECRET_'
@@ -165,10 +164,6 @@ export function install(rt) {
       throw error
     }
     await rt.save()
-    // The brief lists each profile's keys; native sessions hold it in their binding.
-    for (const profile of Object.values(rt.state.profiles)) {
-      if (ADAPTER_ENGINES.includes(profile.engine)) await rt.refreshAdapterBindings?.(profile)
-    }
   }
 
   // A saved key may leave out `value` to change only its purpose or scope.

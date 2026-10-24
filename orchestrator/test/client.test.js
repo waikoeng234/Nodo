@@ -69,12 +69,11 @@ test('client registers matching sidebar/main seats after the shell declares them
     },
   })
   assert.equal(registrations.length, 0, 'wait for the shell-owned slot declarations')
-  assert.deepEqual([...pending.keys()], ['sidebar', 'conversation.input.model', 'conversation.input.right', 'conversation.input.dock', 'conversation.chat.node', 'tool.call.toolview', 'main', 'main.conversation', 'sidebar.panellist'])
+  assert.deepEqual([...pending.keys()], ['sidebar', 'conversation.input.model', 'conversation.input.right', 'conversation.input.dock', 'conversation.chat.node', 'main', 'main.conversation', 'sidebar.panellist'])
   for (const factory of pending.values()) disposers.push(factory())
   const page = registrations.find(row => row.options.name === 'main')
   const nav = registrations.find(row => row.options.name === 'sidebar.panellist')
   const seat = registrations.find(row => row.options.name === 'conversation.input.model')
-  assert.equal(registrations.find(row => row.options.name === 'tool.call.toolview').options.key, 'engine_action')
   assert.equal(seat, undefined, 'ordinary space must keep the native model picker')
   assert.equal(page.options.key, 'nodo')
   assert.equal(nav.options.id, page.options.key)
@@ -211,16 +210,16 @@ test('conversation selection restores its records without creating a new draft',
     { engine: 'zcode', transcript: [{ who: 'user', text: 'Task' }], legacy: true },
     { engine: 'codex', transcript: [{ who: 'user', text: 'Task' }, { who: 'agent', kind: 'text', text: 'Reply' }], legacy: true },
     { engine: 'claude', transcript: [{ who: 'user', text: 'Task' }], legacy: true, readOnly: true },
-    { engine: 'zcode', transcript: [], legacy: false },
-    { engine: 'opencode', transcript: [{ who: 'system', kind: 'note', text: 'closed' }], legacy: false },
+    { engine: 'zcode', transcript: [], legacy: true },
+    { engine: 'opencode', transcript: [{ who: 'system', kind: 'note', text: 'closed' }], legacy: true },
     { engine: 'dsh', transcript: [{ who: 'user', text: 'Task' }], legacy: false },
     { engine: 'qoder', transcript: [{ who: 'user', text: 'Task' }], legacy: true },
-    { engine: 'qoder', hosted: true, transcript: [{ who: 'user', text: 'Workflow step' }], legacy: false },
+    { engine: 'qoder', hosted: true, transcript: [{ who: 'user', text: 'Workflow step' }], legacy: true },
     { engine: 'zcode', fresh: true, transcript: [], legacy: true },
-    { engine: 'zcode', restore: true, transcript: [], legacy: false },
-    { engine: 'zcode', hosted: true, transcript: [{ who: 'user', text: 'Workflow step' }], legacy: false },
+    { engine: 'zcode', restore: true, transcript: [], legacy: true },
+    { engine: 'zcode', hosted: true, transcript: [{ who: 'user', text: 'Workflow step' }], legacy: true },
     { engine: 'codex', draft: true, transcript: [{ who: 'user', text: 'Old task' }], legacy: true },
-    { engine: 'codex', draft: true, transcript: [], legacy: false },
+    { engine: 'codex', draft: true, transcript: [], legacy: true },
   ]) {
     const calls = [], remembered = [], opened = [], panels = []
     const errors = [], busy = []
@@ -269,7 +268,7 @@ test('conversation selection restores its records without creating a new draft',
     assert.deepEqual(opened, scenario.legacy ? [] : ['native'])
     assert.equal(panels.at(-1), scenario.legacy ? 'nodo' : null)
     assert.equal(calls.some(call => call.endpoint === 'session-select'), scenario.legacy && !scenario.readOnly && !scenario.fresh)
-    assert.ok(calls.every(call => ['transcript', 'session-open', 'session-select'].includes(call.endpoint)), 'viewing must not send, stop or recreate the engine task')
+    assert.ok(calls.every(call => ['session-open', 'session-select'].includes(call.endpoint)), 'viewing must not send, stop or recreate the engine task')
     if (scenario.fresh) {
       assert.deepEqual(calls, [], 'selecting an empty role must not persist a draft or open an engine session')
       context.profile = role
@@ -333,7 +332,7 @@ test('pending conversation selection cannot replace a newer draft or its opened 
   const code = source.slice(source.indexOf('const nativeRole ='), source.indexOf('function NodoPage('))
     + source.slice(source.indexOf('  const selectSession = async (role,'), source.indexOf('  const archiveSession ='))
     + '\nglobalThis.select = selectSession'
-  for (const endpoint of ['transcript', 'session-open', 'session-select']) for (const sent of [false, true]) {
+  for (const endpoint of ['session-open', 'session-select']) for (const sent of [false, true]) {
     const calls = [], remembered = [], opened = [], errors = []
     let release, state = { active: true }
     const waiting = new Promise(resolve => { release = resolve })
@@ -351,7 +350,7 @@ test('pending conversation selection cannot replace a newer draft or its opened 
       },
     })
     new Script(code).runInContext(context)
-    const pending = context.select({ id: 'role', engine: 'codex', sessions: [] }, 'old-conversation')
+    const pending = context.select({ id: 'role', engine: endpoint === 'session-open' ? 'dsh' : 'codex', sessions: [] }, 'old-conversation')
     while (!calls.includes(endpoint)) await new Promise(resolve => setImmediate(resolve))
     state = { ...state, draft: { id: 'new-draft', workspace: 'project' }, drafting: true }
     if (sent) state = { ...state, draft: undefined, nodoSession: 'native-new' }

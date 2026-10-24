@@ -27,20 +27,6 @@ const descendants = node => {
   return [node, ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(descendants)]
 }
 
-test('native tool renderer uses its mounted session, preserves old results and ignores unknown formats', () => {
-  const { context } = harness()
-  const record = sample()
-  const view = context.NativeEngineAction({ phase: 'result', sessionId: 'mounted-session', block: { meta: { nodoRecord: record } } })
-  assert.equal(view.props.request.target, 'mounted-session')
-  assert.equal(view.props.record, record)
-  for (const meta of [{}, { nodoRecord: { ...record, version: 2 } }]) {
-    const fallback = context.NativeEngineAction({ phase: 'result', block: { call: { argsRaw: '{"name":"Old tool","input":"old input"}' }, content: [{ type: 'text', text: 'old output' }], meta } })
-    assert.equal(fallback.type, 'ProcessRow')
-    assert.equal(fallback.props.title, 'Old tool')
-    assert.equal(fallback.props.output, 'old output')
-  }
-})
-
 test('structured view exposes external error state and fetches saved details without changing ownership', async () => {
   const record = sample(), requests = []
   const h = harness(async (endpoint, payload) => { requests.push({ endpoint, payload }); return { ...record, body: { outputText: 'retained full output' } } })

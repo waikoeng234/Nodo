@@ -26,7 +26,6 @@ function apply(ctx) {
     return () => { for (const stop of stops) stop() }
   })
   ctx.slots.inject('conversation.chat.node', installHistory)
-  ctx.slots.inject('tool.call.toolview', () => installStreamToolView(ctx))
   ctx.slots.inject('main', () => {
     const stops = [ctx.slots.register({ name: 'main', key: PANEL_ID }, NodoEntry),
       ctx.slots.register({ name: 'main', key: 'nodo-workflow' }, WorkflowEntry)]

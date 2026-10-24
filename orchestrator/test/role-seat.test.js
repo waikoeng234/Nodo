@@ -9,8 +9,8 @@ const client = readPanelSource()
 const find = (tree, type) => tree?.type === type ? tree : tree?.children?.map(child => find(child, type)).find(Boolean)
 
 function harness({ defaultRole = 'a', readOnly = null, sourceSessionId } = {}) {
-  const roles = ['a', 'b'].map(id => ({ id, name: `角色 ${id}`, engine: id === 'a' ? 'codex' : 'dsh',
-    sessions: id === 'a' ? [{ id: 'history', nativeSessionId: 'native-a', model: 'previous', thinking: 'high' }] : [] }))
+  const roles = ['a', 'b'].map(id => ({ id, name: `角色 ${id}`, engine: 'dsh',
+    sessions: id === 'a' ? [{ id: 'history', engine: 'dsh', driverSessionId: 'native-a', model: 'previous', thinking: 'high' }] : [] }))
   const view = { profiles: roles, workspaces: [{ id: 'project' }], readOnly }
   let navigation = {}, state = { active: true, legacy: false, drafting: true, draft: { id: 'draft', profile: defaultRole, workspace: 'project' } }
   if (sourceSessionId) state.draft = undefined
@@ -172,6 +172,7 @@ test('a native blank entry keeps its own project when the recipient changes', as
 
 test('draft model choices come from the card, reset when the recipient changes, and travel on creation', async () => {
   const h = harness()
+  h.roles[0].engine = 'codex'
   h.roles[0].model = 'card'; h.roles[0].thinking = 'medium'
   assert.deepEqual({ model: h.composer().profile.model, thinking: h.composer().profile.thinking }, { model: 'card', thinking: 'medium' },
     'the card seeds a new conversation, not the previous session')
@@ -254,19 +255,31 @@ test('new drafts keep references across recipient changes and remounts without c
   assert.deepEqual(plain(h.composer().references), [])
 })
 
-test('every native engine keeps the native first-send route when a new draft contains references', async () => {
-  for (const engine of ['codex', 'claude', 'zcode', 'opencode', 'codebuddy', 'qoder', 'dsh']) {
+test('new drafts route references through native DSH or direct external sends', async () => {
+  for (const engine of ['codex', 'claude', 'zcode', 'opencode', 'codebuddy', 'qoder', 'pi', 'dsh']) {
     const h = harness()
     h.roles[0].engine = engine
     h.composer().onChange('Review this')
     h.pickReference()
     await h.send()
-    assert.deepEqual(h.calls.map(call => call.endpoint), ['session-create', 'session-open', 'reference-bind'], engine)
+    const native = engine === 'dsh'
+    assert.deepEqual(h.calls.map(call => call.endpoint), native
+      ? ['session-create', 'session-open', 'reference-bind'] : ['session-create', 'reference-bind', 'send'], engine)
     assert.equal(h.calls[0].session, undefined, 'a new draft never selects a historical role session')
-    assert.equal(h.calls[1].session, 'session-1')
-    assert.equal(h.calls[2].target, h.prompts[0].id)
-    assert.equal(h.prompts[0].id, h.opened[0])
-    assert.deepEqual(h.legacy, [], `${engine} must not enter the legacy panel`)
+    const bound = h.calls.find(call => call.endpoint === 'reference-bind')
+    assert.equal(bound.target, native ? 'native-a' : 'session-1')
+    if (native) {
+      assert.equal(h.calls[1].session, 'session-1')
+      assert.equal(h.prompts[0].id, h.opened[0])
+      assert.deepEqual(h.legacy, [])
+    } else {
+      assert.equal(h.prompts.length, 0)
+      assert.deepEqual(h.opened, [])
+      assert.deepEqual(h.calls.at(-1).references, [{ id: 'snapshot-bound' }])
+      assert.equal(h.calls.at(-1).text, 'Review this')
+      assert.equal(h.calls.at(-1).session, 'session-1')
+      assert.equal(h.legacy.length, 1)
+    }
   }
 })
 

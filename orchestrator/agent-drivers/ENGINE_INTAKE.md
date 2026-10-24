@@ -9,7 +9,7 @@ Adapters use only public Agent protocols and capabilities. Declare unsupported f
 1. **Confirm the protocol and session behavior.** Record the CLI version, public protocol sources, launch and authentication requirements, and session creation, restoration, and writer ownership. Claims of sharing sessions with the Agent's own application require verification of the same session ID and live observation.
 2. **Implement the driver.** Add `index.js` and a README under `src/<engine>/`. Implement the eight required SPI primitives and provide `info/create/validate/check`, plus optional entries such as `scan/commands` where supported. ACP drivers reuse the [shared ACP core](src/acp/README.md); other JSON-RPC protocols can reuse `src/json-rpc-process.js`.
 3. **Register the Agent.** Register the driver and metadata in `ENGINES` in [src/index.js](src/index.js). Reuse the common configuration form and model picker. Keep Agent-specific launch, configuration, and compatibility logic in its own directory.
-4. **Add tests.** Add `../test/<engine>.test.js` and `../test/fixtures/<engine>-cli.cjs`. Handoff fixtures must support `HANDOFF` and `WAIT` scenarios; refer to existing fixtures and `../scripts/check-handoff-capabilities.mjs`.
+4. **Add tests.** Add `../test/<engine>.test.js` and `../test/fixtures/<engine>-cli.cjs`. Cover final replies, cancellation and workflow handoffs through the driver and workflow tests.
 5. **Verify and submit a PR.** Run automated checks through the `--route new` entry below. Describe the support scope, test results, and real-environment verification in the PR.
 
 Optional brand icons go in `../src/client/assets/engines/<engine>.svg` and are discovered by the build; otherwise a generic icon is used. Update the [third-party notices](../THIRD_PARTY_NOTICES.txt) when adding assets.
@@ -30,11 +30,10 @@ In addition to the driver entry, `ENGINES` supports the following metadata:
 | Field | Purpose |
 | --- | --- |
 | `name` | Product display name; defaults to `info.label` |
-| `adapter: true` | Uses the Nodo host adapter route; omitted for DSH, which uses the host's native controller directly |
 | `shared: ['acp']` | Identifies a shared protocol core so the verification entry can select regression coverage |
 | `tests` | Overrides the default `test/<id>.test.js` test name for nonstandard layouts |
 
-`engineMetadata()` supplies registration data to host routes, client builds, and verification scripts. See the [driver package overview](README.md) for optional entries such as model scanning.
+`engineMetadata()` supplies registration data to client builds and verification scripts. See the [driver package overview](README.md) for optional entries such as model scanning.
 
 ## Automated verification
 
@@ -56,16 +55,16 @@ npm run verify:engine -- --engine <id> --route new --plan
 
 | `--capability` | Verification scope |
 | --- | --- |
-| `session` | Session creation, restoration, isolation, and preset association |
+| `session` | Session creation, restoration, and isolation |
 | `models` | Model and thinking-level scanning and selection |
 | `identity` | Role identity, identity files, and identity MCP |
 | `interaction` | Approvals, questions, steering, and cancellation |
 | `stream` | Streaming, status, usage, file changes, and restored display |
 | `attachments` | Images and ordinary file inputs |
-| `commands` | Command and skill catalogs and host mappings |
+| `commands` | Command and skill catalogs |
 | `handoff` | Turn output, final reply, stop reason, and workflow handoff |
 
-The entry combines tests for the selected driver, shared core, and capabilities, runs handoff checks where applicable, and finally checks client build consistency. Failures return a nonzero status; `--plan` only lists the plan.
+The entry combines tests for the selected driver, shared core, and capabilities, including workflow handoffs, and finally checks client build consistency. Failures return a nonzero status; `--plan` only lists the plan.
 
 The automated entry uses protocol fixtures and a mock host. It does not install dependencies or start real CLIs or models, and does not replace real-environment verification.
 

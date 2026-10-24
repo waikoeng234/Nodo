@@ -43,14 +43,15 @@ test('role responsibilities retain the goal field and appear in the role identit
   })
 })
 
-test('adapter roles keep their conversation on an identity edit and never change engine', async () => {
+test('direct roles adopt identity edits in an unsent conversation and never change engine', async () => {
   await withHost(async ({ api, post, home }) => {
-    const workspace = await api('workspace-create', { name: 'Adapter', cwd: join(home, 'adapter-ws') })
-    const profile = await api('profile-create', { name: 'Adapter', engine: 'codex' })
+    const workspace = await api('workspace-create', { name: 'Direct', cwd: join(home, 'direct-ws') })
+    const profile = await api('profile-create', { name: 'Direct', engine: 'codex' })
     const session = await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })
     const edited = await api('profile-update', { id: profile.id, changes: { instructions: 'Standards to keep' } })
     assert.equal(edited.sessions.length, 1)
     assert.equal(edited.activeSessionId, session.id)
+    assert.equal(edited.sessions[0].instructions, 'Standards to keep')
     const refused = await post('profile-update', { id: profile.id, changes: { engine: 'dsh' } })
     assert.equal(refused.error.code, 'orch/invalid')
     assert.match(refused.error.message, /fixed once a role is created/)

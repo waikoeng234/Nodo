@@ -91,7 +91,7 @@ Nodo 与 Subagent 也不冲突：各Agent 在 Nodo 中仍可以运行自己的 [
 ```mermaid
 flowchart LR
     U[你] --> N[Nodo 工作台<br/>角色 · 会话 · 工作流]
-    N --> D[agent-drivers 适配层]
+    N --> D[agent-drivers 驱动层]
     D --> A1[Codex]
     D --> A2[Claude Code]
     D --> A3[OpenCode]
@@ -102,6 +102,8 @@ flowchart LR
 
 
 
+
+Codex、Claude Code、Qoder、Pi、ZCode、OpenCode 和 CodeBuddy 通过各自驱动直连，会话显示在 Nodo Feed 中；dsh 角色使用 dsh 原生会话视图。
 
 ### 接入：Nodo 不替 Agent 干活
 

@@ -89,9 +89,8 @@ function NativeRunningDock({ sessionId, useSession, useConversation }) {
   const space = useSyncExternalStore(nativeSpace.subscribe, nativeSpace.getSnapshot)
   const { view } = useStateView()
   const work = Object.values(view?.profiles ?? {}).flatMap(profile => profile.sessions ?? []).find(session =>
-    (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : null)) === sessionId)
-  const engine = work ? view.work?.[work.id]?.engine
-    ?? (['codex', 'claude', 'zcode', 'opencode', 'qoder', 'codebuddy', 'pi'].includes(work.engine) ? { phase: 'running' } : undefined) : undefined
+    (session.engine === 'dsh' ? session.driverSessionId : null) === sessionId)
+  const engine = work ? view.work?.[work.id]?.engine : undefined
   const running = useSession(session => session.running)
   const since = useConversation(nativeRunningSince)
   return space.active && !space.legacy && running
@@ -318,16 +317,7 @@ function createModelSeat(ctx, space) {
     const state = useSyncExternalStore(directory.store.subscribe, directory.store.getSnapshot)
     const [open, setOpen] = useState(false)
     const [pane, setPane] = useState('root')
-    const [adapter, setAdapter] = useState(null)
-    const [selecting, setSelecting] = useState(false)
     const [error, setError] = useState('')
-    useEffect(() => {
-      let live = true
-      void call('adapter-models', { sessionId }).then(value => {
-        if (live) setAdapter({ sessionId, value })
-      }).catch(failure => { if (live) setError(failure.message) })
-      return () => { live = false }
-    }, [sessionId, open])
     if (!available) return null
     const close = () => { setOpen(false); setPane('root') }
     const openMenu = () => {
@@ -335,8 +325,7 @@ function createModelSeat(ctx, space) {
       setOpen(true)
       void directory.load().catch(() => {})
     }
-    const privateCatalog = adapter?.sessionId === sessionId ? adapter.value : null
-    const catalog = privateCatalog ?? state
+    const catalog = state
     const groups = (catalog?.groups ?? []).filter(group => group.models.length > 0)
     const current = catalog?.current ?? null
     const currentModel = groups.find(group => group.id === current?.provider)?.models.find(model => model.id === current?.model)
@@ -344,17 +333,13 @@ function createModelSeat(ctx, space) {
     const modelText = current ? currentModel?.name ?? modelName(current.model) : state?.status === 'ready' ? '选择模型' : '模型'
     const efforts = currentModel?.reasoning?.efforts ?? []
     const effortText = current?.reasoningEffort ? efforts.find(level => level.id === current.reasoningEffort)?.name ?? current.reasoningEffort : ''
-    const busy = selecting || state?.status === 'loading' || state?.status === 'selecting'
+    const busy = state?.status === 'loading' || state?.status === 'selecting'
     const select = selection => {
       setError('')
       // The menu stays open until the pick is accepted: a rejected selection
       // must be visible where it was made, not silently snap back to the
       // previous value after the menu closes.
-      if (!privateCatalog) { void directory.select(selection).then(() => close()).catch(failure => setError(failure.message)); return }
-      setSelecting(true)
-      void call('adapter-model-select', { sessionId, ...selection }).then(value => { setAdapter({ sessionId, value }); close() })
-        .catch(failure => setError(failure.message))
-        .finally(() => setSelecting(false))
+      void directory.select(selection).then(() => close()).catch(failure => setError(failure.message))
     }
     const pick = id => {
       if (id === 'model') { setPane('model'); return }
@@ -443,7 +428,7 @@ function createRoleSeat(ctx, space) {
   function RoleSeat({ sessionId }) {
     const { view } = useStateView()
     const profile = view?.profiles.find(role => role.sessions.some(session =>
-      (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) === sessionId))
+      (session.engine === 'dsh' ? session.driverSessionId : undefined) === sessionId))
     if (typeof ctx.sessions.subagentAddress === 'function' && ctx.sessions.subagentAddress(sessionId) !== undefined) return null
     return h(RolePicker, { profiles: view?.profiles ?? [], profile })
   }
@@ -488,8 +473,8 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const [error, setError] = useState('')
     const pending = useRef(false), created = useRef(null), uploading = useRef(false)
     const sourceRole = sourceSessionId && view?.profiles.find(role => role.sessions.some(session =>
-      (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) === sourceSessionId))
-    const sourceSession = sourceRole?.sessions.find(session => (session.nativeSessionId ?? session.driverSessionId) === sourceSessionId)
+      (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId))
+    const sourceSession = sourceRole?.sessions.find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId)
     const profile = view?.profiles.find(role => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : undefined)))
     const workspace = view?.workspaces.find(item => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view?.workspaces[0]
     const disabled = busy || !view || view.readOnly != null
@@ -663,7 +648,7 @@ function createSessionReferences(ctx, space) {
       else void call('state').then(value => {
         if (!live) return
         setView(value)
-        const current = value.profiles.flatMap(profile => profile.sessions).find(session => (session.nativeSessionId ?? session.driverSessionId) === target)
+        const current = value.profiles.flatMap(profile => profile.sessions).find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === target)
         setWorkspace(workspaceId ?? current?.workspaceRef ?? '')
       }).catch(failure => { if (live) setError(failure.message) })
       return () => { live = false }
@@ -697,7 +682,7 @@ function createSessionReferences(ctx, space) {
       finally { setBusy(false) }
     }
     const rows = view?.profiles.flatMap(profile => profile.sessions.filter(session => !session.archivedAt
-      && (target === undefined || (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) !== target))
+      && (target === undefined || (session.engine === 'dsh' ? session.driverSessionId : undefined) !== target))
       .map(session => ({ profile, session }))).filter(row => (!workspace || row.session.workspaceRef === workspace) && (!role || row.profile.id === role)
         && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .sort((a, b) => b.session.updatedAt - a.session.updatedAt) ?? []
@@ -995,21 +980,6 @@ function StreamRecordCard({ record, request }) {
         !available && record.status !== 'running' && h('p', { className: 'nodo-note' }, STREAM_REASON[record.details?.reason] ?? '详情不可用。'),
         error && h('p', { role: 'alert', className: 'nodo-error-line' }, error)),
     }))
-}
-
-function NativeEngineAction({ phase, block, sessionId }) {
-  let args = {}
-  try { args = JSON.parse(phase === 'result' ? block.call?.argsRaw ?? '{}' : block.argsRaw ?? '{}') } catch {}
-  const record = phase === 'result' ? block.meta?.nodoRecord : args.presentation
-  if (supportedStreamRecord(record)) return h(StreamRecordCard, { record, request: { target: sessionId } })
-  const output = phase === 'result' ? (block.content ?? []).filter(item => item.type === 'text').map(item => item.text).join('\n') : ''
-  return h(ProcessRow, { kind: 'tool', title: args.name || block.meta?.name || '工具', summary: args.brief,
-    input: args.input || (phase === 'start' ? block.argsRaw : ''), output,
-    running: phase !== 'result', error: block.isError === true || block.meta?.status === 'error' })
-}
-
-function installStreamToolView(ctx) {
-  return ctx.slots.register({ name: 'tool.call.toolview', key: 'engine_action' }, NativeEngineAction)
 }
 const identity = text => text
 
@@ -1847,8 +1817,7 @@ function WorkflowEntry() {
     if (!session) return
     const workspace = wfWorkspace(view, profile, session)
     const native = nativeRole(profile) && openNativeSession
-    const dispatched = native && profile.engine !== 'dsh' && !session.nativeSessionId && (await call('transcript', { profile: profile.id, session: session.id })).some(line => line.who === 'user')
-    if (native && !dispatched) {
+    if (native) {
       const opened = await call('session-open', { profile: profile.id, session: session.id, workspace: workspace?.id })
       openNativeSession(opened.sessionId)
     } else {
@@ -4642,7 +4611,7 @@ const setNavigation = update => {
   try { localStorage.setItem('nodo.navigation', JSON.stringify(navigationSnapshot)) } catch {}
   for (const listener of navigationListeners) listener()
 }
-const nativeRole = profile => ['codex', 'claude', 'zcode', 'opencode', 'codebuddy', 'qoder', 'pi', 'dsh'].includes(profile?.engine)
+const nativeRole = profile => profile?.engine === 'dsh'
 const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   if (!profile || !workspace) return
   const sessions = profile.sessions.filter(item => !item.archivedAt
@@ -4706,7 +4675,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission }
     : profile
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
-    ? view?.profiles.flatMap(role => role.sessions).find(item => (item.nativeSessionId ?? (item.engine === 'dsh' ? item.driverSessionId : null)) === currentNativeSession) : null
+    ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
   useEffect(() => {
     if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq)
@@ -4805,10 +4774,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
         return
       }
       const native = nativeRole(role) && openNativeSession
-      const dispatched = native && id && role.engine !== 'dsh' && !role.sessions?.find(item => item.id === id)?.nativeSessionId
-        && (await call('transcript', { profile: role.id, session: id })).some(line => line.who === 'user')
       if (!current()) return
-      if (native && !dispatched) {
+      if (native) {
         const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
         if (!current()) return
         remember(role.id, project.id, opened.conversationId)
@@ -5579,7 +5546,6 @@ function apply(ctx) {
     return () => { for (const stop of stops) stop() }
   })
   ctx.slots.inject('conversation.chat.node', installHistory)
-  ctx.slots.inject('tool.call.toolview', () => installStreamToolView(ctx))
   ctx.slots.inject('main', () => {
     const stops = [ctx.slots.register({ name: 'main', key: PANEL_ID }, NodoEntry),
       ctx.slots.register({ name: 'main', key: 'nodo-workflow' }, WorkflowEntry)]

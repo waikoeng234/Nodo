@@ -3,13 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Script, createContext } from 'node:vm'
 
-// The seat is one component over one data shape: the shared host catalog
-// filtered per session. The harness drives it hook-by-hook so the filtering,
-// the pick wiring and the native selection path are asserted directly.
-function harness({ groups = [], current = null, status = 'ready', error = null, profiles = [], subagent = false, active = true } = {}) {
+function harness({ groups = [], current = null, status = 'ready', error = null, subagent = false, active = true } = {}) {
   const selections = []
   const loads = []
-  const privateSelections = []
   const registrations = []
   const listeners = new Set()
   let spaceState = { active, legacy: false }
@@ -18,12 +14,7 @@ function harness({ groups = [], current = null, status = 'ready', error = null, 
     getSnapshot: () => spaceState,
     subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener) },
   }
-  const state = { current, groups: groups.filter(group => !group.id.startsWith('nodo:')), failures: [], status, error, pending: null }
-  let privateCurrent
-  const privateCatalog = () => {
-    const profile = profiles.find(profile => profile.engine !== 'dsh' && profile.sessions.some(item => item.nativeSessionId === 'session-1'))
-    return profile ? { groups: groups.filter(group => group.id === `nodo:${profile.engine}`), current: privateCurrent ?? { provider: `nodo:${profile.engine}`, model: 'gpt' } } : null
-  }
+  const state = { current, groups, failures: [], status, error, pending: null }
   const ctx = {
     sessions: { subagentAddress: () => (subagent ? 'sub' : undefined) },
     modelDirectories: {
@@ -63,24 +54,18 @@ function harness({ groups = [], current = null, status = 'ready', error = null, 
     IconDataOutlineRegular: { icon: 'data' },
     IconChevronRightOutlineRegular: { icon: 'right' },
     modelName: raw => String(raw ?? ''),
-    call: async (endpoint, payload) => {
-      if (endpoint === 'adapter-model-select') { privateSelections.push(payload); const { sessionId, ...selection } = payload; privateCurrent = selection }
-      else assert.equal(endpoint, 'adapter-models')
-      return privateCatalog()
-    },
+    call: () => { throw new Error('The model seat uses the host directory') },
   })
   new Script(readFileSync(new URL('../src/client/model-seat.js', import.meta.url), 'utf8')).runInContext(context)
   const { ModelSeat } = context.createModelSeat(ctx, space)
   const render = () => { cursor = 0; return ModelSeat({ sessionId: 'session-1', locked: false }) }
   const flush = () => new Promise(resolve => setTimeout(resolve, 2))
-  return { registrations, selections, privateSelections, loads, render, flush, dispose,
+  return { registrations, selections, loads, render, flush, dispose,
     setSpace(changes) { spaceState = { ...spaceState, ...changes }; for (const listener of listeners) listener() },
   }
 }
 
 const HOST_GROUP = { id: 'deepseek-account', name: 'DSH', models: [{ id: 'm1', name: 'DeepSeek Flash' }] }
-const CODEX_GROUP = { id: 'nodo:codex', name: 'Codex', models: [{ id: 'gpt', name: 'GPT' }] }
-const ROLE = { name: 'Coder', engine: 'codex', sessions: [{ nativeSessionId: 'session-1', engine: 'codex' }] }
 
 test('the seat restores the native picker outside the Nodo native space and on disposal', () => {
   const h = harness({ active: false })
@@ -105,8 +90,8 @@ test('the seat restores the native picker outside the Nodo native space and on d
   assert.equal(h.registrations.length, 0, 'disposing also removes the space subscription')
 })
 
-test('a plain session lists host providers with the adapter routes hidden', async () => {
-  const h = harness({ groups: [HOST_GROUP, CODEX_GROUP] })
+test('a plain session lists the host provider directory', async () => {
+  const h = harness({ groups: [HOST_GROUP] })
   let tree = h.render()
   tree.props.anchor.props.onClick()
   await h.flush()
@@ -119,21 +104,8 @@ test('a plain session lists host providers with the adapter routes hidden', asyn
   assert.ok(!text.includes('Codex') && !text.includes('GPT'), 'another engine must never be offered here')
 })
 
-test('a role session lists only its own engine group', async () => {
-  const h = harness({ groups: [HOST_GROUP, CODEX_GROUP], profiles: [ROLE] })
-  let tree = h.render()
-  tree.props.anchor.props.onClick()
-  await h.flush()
-  tree = h.render()
-  tree.props.onSelect('model')
-  tree = h.render()
-  const text = JSON.stringify(tree.props.items)
-  assert.ok(text.includes('Codex') && text.includes('GPT'), 'the role engine stays offered')
-  assert.ok(!text.includes('DSH'), 'a role cannot be handed a host model either')
-})
-
 test('a dsh role session keeps the plain-session list', async () => {
-  const h = harness({ groups: [HOST_GROUP, CODEX_GROUP], profiles: [{ name: 'Big', engine: 'dsh', sessions: [{ driverSessionId: 'session-1' }] }] })
+  const h = harness({ groups: [HOST_GROUP] })
   let tree = h.render()
   tree.props.anchor.props.onClick()
   await h.flush()
@@ -153,21 +125,6 @@ test('native providers named opencode or codex are not filtered out', async () =
   tree.props.onSelect('model')
   assert.match(JSON.stringify(h.render().props.items), /User model/)
   assert.match(JSON.stringify(h.render().props.items), /Custom model/)
-})
-
-test('external role selection uses the private catalog and updates its current model', async () => {
-  const h = harness({ groups: [HOST_GROUP, CODEX_GROUP], profiles: [ROLE] })
-  h.render()
-  await h.flush()
-  let tree = h.render()
-  tree.props.onSelect(`model:${JSON.stringify(['nodo:codex', 'gpt'])}`)
-  await h.flush()
-  assert.equal(h.selections.length, 0, 'the native catalog cannot select private models')
-  assert.deepEqual(JSON.parse(JSON.stringify(h.privateSelections)), [{ sessionId: 'session-1', provider: 'nodo:codex', model: 'gpt' }])
-  tree = h.render()
-  tree.props.onSelect('thinking:high')
-  await h.flush()
-  assert.equal(h.privateSelections.at(-1).reasoningEffort, 'high')
 })
 
 test('picks ride the native directory: model then reasoning effort', async () => {

@@ -87,13 +87,15 @@ Consider a “plan → implement → review” workflow: `decider` plans with Co
 ```mermaid
 flowchart LR
     U[You] --> N[Nodo workbench<br/>Roles · Conversations · Workflows]
-    N --> D[agent-drivers adapter layer]
+    N --> D[agent-drivers driver layer]
     D --> A1[Codex]
     D --> A2[Claude Code]
     D --> A3[OpenCode]
     A1 & A2 & A3 --> M[Their configured model services]
     A1 & A2 & A3 --> P[(Project directory<br/>.nodo/ handoff reports)]
 ```
+
+Codex, Claude Code, Qoder, Pi, ZCode, OpenCode and CodeBuddy connect through their own drivers and display conversations in the Nodo Feed. DSH roles use the dsh native conversation view.
 
 ### Integration: Agents do the work
 

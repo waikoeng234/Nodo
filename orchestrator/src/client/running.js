@@ -25,9 +25,8 @@ function NativeRunningDock({ sessionId, useSession, useConversation }) {
   const space = useSyncExternalStore(nativeSpace.subscribe, nativeSpace.getSnapshot)
   const { view } = useStateView()
   const work = Object.values(view?.profiles ?? {}).flatMap(profile => profile.sessions ?? []).find(session =>
-    (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : null)) === sessionId)
-  const engine = work ? view.work?.[work.id]?.engine
-    ?? (['codex', 'claude', 'zcode', 'opencode', 'qoder', 'codebuddy', 'pi'].includes(work.engine) ? { phase: 'running' } : undefined) : undefined
+    (session.engine === 'dsh' ? session.driverSessionId : null) === sessionId)
+  const engine = work ? view.work?.[work.id]?.engine : undefined
   const running = useSession(session => session.running)
   const since = useConversation(nativeRunningSince)
   return space.active && !space.legacy && running

@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, copyFileSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync, unlinkSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync, unlinkSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running this check')
-const runtime = createRequire(realpathSync(executable))
 const changesProbe = process.argv.includes('--changes')
-const WebSocket = runtime('ws')
-const { parseRemoteStreamServerMessage, REMOTE_STREAM_MUX_PATH } = await import(pathToFileURL(runtime.resolve('@deepseek-ai/dsh-api-gateway/stream-protocol')))
 const home = mkdtempSync(join(tmpdir(), 'nodo-es03-'))
 const plugin = join(home, 'fixture')
 const cwd = join(home, 'workspace')
@@ -25,7 +21,7 @@ const drivers = new URL('../agent-drivers/dist/index.js', import.meta.url).href
 writeFileSync(join(plugin, 'index.js'), `
 import { registerEngine } from ${JSON.stringify(drivers)}
 const snapshot = (body, revision) => ({ version: 1, kind: 'tool', mode: 'snapshot', body, revision })
-for (const id of ['codex', 'es03-legacy']) registerEngine(id, {
+for (const id of ['es03-legacy']) registerEngine(id, {
   info: { id, label: 'ES03 local fixture', requiresCwd: true, capabilities: { permissionModes: ['workspace'] } },
   validate: value => value, check: async () => ({ ok: true, checks: [] }),
   scan: async () => ({ source: 'local-fixture', defaultModel: 'es03-fixture', models: [{ id: 'es03-fixture' }] }),
@@ -57,7 +53,7 @@ writeFileSync(join(plugin, 'client.js'), `window.__ModuleLoader__.load({ id: 'no
 } }) })`)
 if (changesProbe) {
   const bin = join(plugin, 'opencode.cjs')
-  copyFileSync(new URL('../test/fixtures/opencode-adapter-cli.cjs', import.meta.url), bin)
+  copyFileSync(new URL('../test/fixtures/opencode-flow-cli.cjs', import.meta.url), bin)
   chmodSync(bin, 0o755)
   writeFileSync(join(plugin, 'index.js'), `import { registerEngine, createDriver } from ${JSON.stringify(drivers)}
 registerEngine('es03-legacy', { info: { id: 'es03-legacy', label: 'ES05 protocol fixture', requiresCwd: true }, validate: value => value,
@@ -126,61 +122,20 @@ const api = async (endpoint, payload) => {
   assert.equal(result.ok, true, `Nodo ${endpoint} failed (${result.error?.code}): ${String(result.error?.message ?? '').replaceAll(home, '<isolated-home>').slice(0, 250)}`)
   return result.value
 }
-const native = async (method, args) => {
-  const { result } = await post(method, { type: 'client-request', rpcId: 'es03-check', method, payload: { args } })
-  assert.equal(result?.ok, true, `Native ${method} failed (${result?.error?.code})`)
-  return result.value
-}
-const observe = async sessionId => {
-  const socket = new WebSocket(`${url.replace('http:', 'ws:')}${REMOTE_STREAM_MUX_PATH}`, { headers: { Origin: url, Cookie: cookie } })
-  const frames = []
-  socket.on('error', () => {})
-  socket.on('message', data => { frames.push(parseRemoteStreamServerMessage(data.toString())) })
-  await once(socket, 'open')
-  socket.send(JSON.stringify({ type: 'open', streamId: 'es03', endpoint: 'session/follow',
-    payload: { args: { request: { address: { kind: 'session', sessionId }, assistantStream: true } } } }))
-  await until(() => frames.some(frame => frame.type === 'item' && frame.value.type === 'snapshot'))
-  return { frames, close: () => socket.terminate() }
-}
-const findRecords = value => {
-  if (!value || typeof value !== 'object') return []
-  if (value.nodoRecord) return [value.nodoRecord]
-  return Object.values(value).flatMap(findRecords)
-}
 try {
   start(); await authorize()
   await until(async () => (await api('state')).readOnly == null)
-  const engine = changesProbe ? 'opencode' : 'codex'
+  const engine = changesProbe ? 'opencode' : 'es03-legacy'
   const model = changesProbe ? 'fixture/fixture-model' : 'es03-fixture'
   if (changesProbe) await api('engine-config-set', { engine, engineOptions: { bin: join(plugin, 'opencode.cjs') } })
   await api('engine-scan', { engine })
   const workspace = await api('workspace-create', { name: 'ES03 fixture workspace', cwd })
-  const role = await api('profile-create', { name: changesProbe ? 'ES05 native changes' : 'ES03 native fixture', engine, workspace: workspace.id, model })
-  const opened = await api('adapter-session-open', { profile: role.id, workspace: workspace.id })
-  const observer = await observe(opened.sessionId)
-  await native('session/prompt', { request: { requestId: 'es03-run', sessionId: opened.sessionId, mode: 'queue', content: [{ type: 'text', text: changesProbe ? 'FILES_FLOW' : 'ES03_LOCAL_FIXTURE' }] } })
-  await until(() => observer.frames.some(frame => frame.value?.event?.type === 'turn/end'))
-  const records = findRecords(observer.frames)
-  assert.equal(records.length, changesProbe ? 1 : 2, 'Structured native results must reach public metadata')
-  const terminal = records.find(record => changesProbe ? record.kind === 'changes' : record.entityId === 'terminal')
-  assert.equal(terminal.status, changesProbe ? 'done' : 'error'); assert.equal(terminal.details.state, 'stored'); assert.equal(terminal.truncated, true)
-  const full = await api('stream-detail', { target: opened.sessionId, ref: terminal.details.ref })
-  if (changesProbe) { assert.equal(terminal.body.fileCount, 10); assert.equal(terminal.body.files.length, 3); assert.equal(full.body.files.length, 10) }
-  else assert.ok(full.body.outputText.endsWith('ES03_FULL_DETAIL_END'))
-  const resultFrames = observer.frames.filter(frame => frame.value?.event?.type === 'tool/result')
-  assert.equal(new Set(resultFrames.map(frame => frame.value.event.data.message.toolCallId)).size, changesProbe ? 5 : 2, 'Native tools must retain independent call identities')
-  assert.ok(!JSON.stringify(resultFrames.map(frame => frame.value.event.data.message.content)).includes('ES03_FULL_DETAIL_END'))
-  observer.close()
   const legacyRole = await api('profile-create', { name: changesProbe ? 'ES05 legacy changes' : 'ES03 legacy fixture', engine: 'es03-legacy', workspace: workspace.id, model })
   await api('send', { profile: legacyRole.id, text: changesProbe ? 'FILES_FLOW' : 'ES03_LEGACY_FIXTURE' })
   await until(async () => !(await api('state')).work[legacyRole.id]?.active)
   const legacyLines = await api('transcript', { profile: legacyRole.id })
   assert.equal(legacyLines.filter(line => (changesProbe ? line.kind === 'changes' : line.phase === 'end') && line.presentation?.details?.state === 'stored').length, changesProbe ? 1 : 2)
   await stop(); start(); await authorize()
-  const restored = await observe(opened.sessionId)
-  assert.deepEqual(findRecords(restored.frames), records, 'Native replay must preserve the exact immutable references')
-  restored.close()
-  assert.deepEqual(await api('stream-detail', { target: opened.sessionId, ref: terminal.details.ref }), full)
   const legacyAfter = await api('transcript', { profile: legacyRole.id })
   assert.deepEqual(legacyAfter.slice(0, legacyLines.length), legacyLines)
   assert.ok(legacyAfter.slice(legacyLines.length).every(line => line.kind === 'note' && line.text === 'engine session closed'))
@@ -190,12 +145,10 @@ try {
   const legacyFull = await api('stream-detail', { profile: legacyRole.id, session: legacySession, ref: legacyRef })
   if (changesProbe) assert.equal(legacyFull.body.files.length, 10)
   else assert.ok(legacyFull.body.outputText.endsWith('ES03_FULL_DETAIL_END'))
-  const denied = await post('nodo', { endpoint: 'stream-detail', payload: { profile: legacyRole.id, session: legacySession, ref: terminal.details.ref } })
-  assert.equal(denied.ok, false)
   assert.equal(unexpectedModelCalls, 0, 'This check must never call a model endpoint')
-  detailFile = join(home, 'nodo', 'stream-details', `${terminal.details.ref}.json`)
-  facts = { result: 'passed', login: `${relayUrl}/login`, relay: relayUrl, host: url, nativeSession: opened.sessionId, legacyProfile: legacyRole.id,
-    legacySession, legacyRef, workspace: workspace.id, changesProbe, checks: ['native meta', 'bounded model content', 'full detail', 'native restart replay', 'legacy restart replay', 'owner rejection'], modelCalls: unexpectedModelCalls }
+  detailFile = join(home, 'nodo', 'stream-details', `${legacyRef}.json`)
+  facts = { result: 'passed', login: `${relayUrl}/login`, relay: relayUrl, host: url, legacyProfile: legacyRole.id,
+    legacySession, legacyRef, workspace: workspace.id, changesProbe, checks: ['full detail', 'legacy restart replay'], modelCalls: unexpectedModelCalls }
   console.log(JSON.stringify(facts))
   if (process.argv.includes('--serve')) await new Promise(resolve => {
     process.once('SIGINT', resolve); process.once('SIGTERM', resolve)

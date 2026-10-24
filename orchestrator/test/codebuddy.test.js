@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/dist/index.js'
 import { until } from './helpers/host.js'
-import { createPump } from '../src/host/adapter/pump.js'
 
 const withFixture = async (run) => {
   const dir = mkdtempSync(join(tmpdir(), 'orch-codebuddy-fixture-'))
@@ -325,28 +324,5 @@ test('CodeBuddy reports and disconnects on idle worker questions and drain turns
       await assert.rejects(driver.sendTurn('AGAIN'), /not support.*Multitask/)
     } finally { driver.dispose() }
     assert.equal(wire(cwd).filter(entry => entry.method === 'session/prompt').length, 1)
-  })
-})
-
-test('CodeBuddy capabilities and parent-only replies survive the native pump boundary', async () => {
-  await withFixture(async ({ bin, cwd }) => {
-    let pump
-    const driver = createDriver('codebuddy', { bin, cwd, onEvent: event => pump.receive(event) })
-    pump = createPump({ driver })
-    const input = text => ({ messages: [{ id: text, role: 'user', content: [{ type: 'text', text }] }] })
-    const collect = async text => {
-      const chunks = []
-      for await (const chunk of pump.stream(input(text))) chunks.push(chunk)
-      return chunks
-    }
-    try {
-      await assert.rejects(collect('/multitask'), /not support.*Multitask/)
-      const chunks = await collect('MEMBER_CHUNKS')
-      assert.equal(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.text).join(''), 'Parent final')
-      assert.equal(pump.active, false)
-      await assert.rejects(collect('ENABLE_MULTITASK'), /not support.*Multitask/)
-      assert.equal(pump.active, false)
-      await assert.rejects(collect('AGAIN'), /not support.*Multitask/)
-    } finally { driver.dispose(); pump.dispose() }
   })
 })

@@ -26,8 +26,8 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const [error, setError] = useState('')
     const pending = useRef(false), created = useRef(null), uploading = useRef(false)
     const sourceRole = sourceSessionId && view?.profiles.find(role => role.sessions.some(session =>
-      (session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)) === sourceSessionId))
-    const sourceSession = sourceRole?.sessions.find(session => (session.nativeSessionId ?? session.driverSessionId) === sourceSessionId)
+      (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId))
+    const sourceSession = sourceRole?.sessions.find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId)
     const profile = view?.profiles.find(role => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : undefined)))
     const workspace = view?.workspaces.find(item => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view?.workspaces[0]
     const disabled = busy || !view || view.readOnly != null

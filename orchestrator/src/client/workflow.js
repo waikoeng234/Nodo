@@ -792,8 +792,7 @@ function WorkflowEntry() {
     if (!session) return
     const workspace = wfWorkspace(view, profile, session)
     const native = nativeRole(profile) && openNativeSession
-    const dispatched = native && profile.engine !== 'dsh' && !session.nativeSessionId && (await call('transcript', { profile: profile.id, session: session.id })).some(line => line.who === 'user')
-    if (native && !dispatched) {
+    if (native) {
       const opened = await call('session-open', { profile: profile.id, session: session.id, workspace: workspace?.id })
       openNativeSession(opened.sessionId)
     } else {

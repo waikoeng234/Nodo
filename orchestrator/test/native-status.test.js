@@ -59,38 +59,38 @@ function setup() {
   const host = nativeHost()
   host.on('user-questions/request', (request, next) => request.answer ? request.answer() : next())
   const disposers = []
-  const sessions = ['dsh', 'codex', 'claude', 'zcode', 'opencode'].map(engine => ({ id: `nodo-${engine}`, engine,
-    ...(engine === 'dsh' ? { driverSessionId: engine } : { nativeSessionId: engine }) }))
+  const sessions = ['dsh', 'codex', 'claude', 'zcode', 'opencode'].map(id => ({ id: `nodo-${id}`, engine: 'dsh', driverSessionId: id }))
   const rt = { ctx: { ...host, effect: factory => disposers.push(factory()) },
     state: { profiles: { role: { id: 'role', sessions } } }, sessionsOf: profile => profile.sessions, isCompacting: () => false,
     redactSecrets: text => text, redactDeepSecrets: value => value }
-  for (const session of sessions) host.add(session.engine)
+  for (const session of sessions) host.add(session.driverSessionId)
   installDispatch(rt)
   install(rt)
   return { rt, host, sessions, dispose: () => disposers.reverse().forEach(stop => stop()) }
 }
 
-test('native sends from all five engines drive the existing work view and remain session-scoped', async () => {
+test('native sends from multiple DSH sessions drive the existing work view and remain session-scoped', async () => {
   const { rt, host, sessions, dispose } = setup()
   try {
     host.add('ordinary')
+    rt.state.profiles.external = { id: 'external', sessions: [{ id: 'external-conv', engine: 'codex', nativeSessionId: 'ordinary' }] }
     host.agents.get('ordinary').status = 'running'
     host.event('ordinary', 'turn/start', { turn: 1 })
     for (const session of sessions) {
-      const agent = host.agents.get(session.engine)
+      const agent = host.agents.get(session.driverSessionId)
       agent.status = 'running'
       host.event(agent.id, 'turn/start', { turn: 1 })
       host.event(agent.id, 'tool/call', { turn: 1, callId: 'same-id', name: `${agent.id}-tool` })
       agent.inbox.nextTurn.push({})
     }
     await rt.refreshNativeStatus()
-    assert.deepEqual(host.reads.sort(), sessions.map(session => session.engine).sort())
+    assert.deepEqual(host.reads.sort(), sessions.map(session => session.driverSessionId).sort())
     for (const session of sessions) {
       const work = rt.workView()[session.id]
       assert.equal(work.active, true)
       assert.equal(work.status, 'running')
       assert.equal(work.source, 'native')
-      assert.equal(work.tool, `${session.engine}-tool`)
+      assert.equal(work.tool, `${session.driverSessionId}-tool`)
       assert.equal(work.queued, 1)
       assert.equal(work.since, 1000)
     }
@@ -102,38 +102,9 @@ test('native sends from all five engines drive the existing work view and remain
     assert.equal(rt.workView()['nodo-claude'].active, true)
     assert.equal(rt.workView()['nodo-claude'].tool, 'claude-tool')
     assert.equal(rt.workView().ordinary, undefined)
+    assert.equal(rt.nativeWork(rt.state.profiles.external.sessions[0]), null)
     await rt.refreshNativeStatus()
     assert.equal(host.reads.length, 5, 'polling does not reread complete histories')
-  } finally { dispose() }
-})
-
-test('native work includes live engine health only for the active adapter session', () => {
-  const { rt, host, dispose } = setup()
-  try {
-    rt.adapterWork = id => id === 'opencode' ? { lastEventAt: 1234, phase: 'tool', tool: 'read' } : null
-    host.agents.get('opencode').status = 'running'
-    const view = rt.workView()
-    assert.deepEqual(view['nodo-opencode'].engine, { lastEventAt: 1234, phase: 'tool', tool: 'read' })
-    assert.equal(view['nodo-codex'].engine, undefined)
-    host.agents.get('opencode').status = 'idle'
-    assert.equal(rt.workView()['nodo-opencode'].engine, undefined)
-  } finally { dispose() }
-})
-
-test('a driver approval or question waiting on the pump lifts the session status off running', () => {
-  const { rt, host, dispose } = setup()
-  try {
-    for (const [engine, phase, expected] of [
-      ['codex', 'waiting-approval', 'waiting-approval'],
-      ['claude', 'waiting-question', 'waiting-question'],
-      ['zcode', 'tool', 'running'],
-    ]) {
-      rt.adapterWork = id => id === engine ? { lastEventAt: 1234, phase } : null
-      host.agents.get(engine).status = 'running'
-      host.event(engine, 'turn/start', { turn: 1 })
-      assert.equal(rt.workView()[`nodo-${engine}`].status, expected)
-      host.agents.get(engine).status = 'idle'
-    }
   } finally { dispose() }
 })
 

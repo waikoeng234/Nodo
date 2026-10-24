@@ -185,18 +185,3 @@ function StreamRecordCard({ record, request }) {
         error && h('p', { role: 'alert', className: 'nodo-error-line' }, error)),
     }))
 }
-
-function NativeEngineAction({ phase, block, sessionId }) {
-  let args = {}
-  try { args = JSON.parse(phase === 'result' ? block.call?.argsRaw ?? '{}' : block.argsRaw ?? '{}') } catch {}
-  const record = phase === 'result' ? block.meta?.nodoRecord : args.presentation
-  if (supportedStreamRecord(record)) return h(StreamRecordCard, { record, request: { target: sessionId } })
-  const output = phase === 'result' ? (block.content ?? []).filter(item => item.type === 'text').map(item => item.text).join('\n') : ''
-  return h(ProcessRow, { kind: 'tool', title: args.name || block.meta?.name || '工具', summary: args.brief,
-    input: args.input || (phase === 'start' ? block.argsRaw : ''), output,
-    running: phase !== 'result', error: block.isError === true || block.meta?.status === 'error' })
-}
-
-function installStreamToolView(ctx) {
-  return ctx.slots.register({ name: 'tool.call.toolview', key: 'engine_action' }, NativeEngineAction)
-}

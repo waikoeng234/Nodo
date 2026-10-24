@@ -6,13 +6,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { engineCheckPlan, runEngineChecks } from '../scripts/verify-engine.mjs'
 
-test('new engine route includes the driver, all capability gates and handoff checks', () => {
+test('new engine route includes the driver and all capability tests', () => {
   const plan = engineCheckPlan({ engine: 'zcode', route: 'new' })
   assert.ok(plan.tests.includes('test/zcode.test.js'))
   assert.ok(plan.tests.includes('test/zcode-instructions.test.js'))
-  assert.ok(plan.tests.includes('test/adapter-input.test.js'))
+  assert.ok(plan.tests.includes('test/attachments.test.js'))
   assert.ok(plan.tests.includes('test/workflows.test.js'))
-  assert.deepEqual(plan.handoff, ['zcode'])
   assert.deepEqual(plan.engines, ['zcode'])
 })
 
@@ -23,7 +22,6 @@ test('capability route scopes tests and includes the selected shared protocol', 
   assert.ok(plan.tests.includes('test/model-seat.test.js'))
   assert.ok(!plan.tests.includes('test/attachments.test.js'))
   assert.ok(!plan.tests.includes('test/workflows.test.js'))
-  assert.deepEqual(plan.handoff, [])
 })
 
 test('changing the ACP core selects every registered consumer', () => {
@@ -58,7 +56,7 @@ test('verification stops on a failing check and propagates exit and signal failu
   assert.throws(() => runEngineChecks(plan, () => ({ error: new Error('spawn failed') })), /spawn failed/)
   calls.length = 0
   assert.equal(runEngineChecks(plan, (_bin, args) => { calls.push(args); return { status: 0 } }), 0)
-  assert.deepEqual(calls.at(-2), ['scripts/check-handoff-capabilities.mjs', '--engine', 'codex'])
+  assert.deepEqual(calls.at(-2), ['--test', ...plan.tests])
   assert.deepEqual(calls.at(-1), ['scripts/build-client.mjs', '--check'])
 })
 

@@ -435,7 +435,7 @@ export function install(rt) {
     if (!Array.isArray(references) || references.length > 4) throw Object.assign(new Error('Choose at most four reference sessions'), { code: 'orch/invalid' })
     const sources = []
     for (const ref of references) sources.push(ref?.id
-      ? await rt.readReference({ id: ref.id, target: session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : session.id) })
+      ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
     if (handoff) sources.push(...rt.redactDeepSecrets(handoff.artifacts))
     const input = handoff ? rt.renderHandoff({ ...handoff, task: text, artifacts: sources })
@@ -445,7 +445,7 @@ export function install(rt) {
       if (named !== session.name) {
         session.name = named
         delete session.draftedAt
-        const twin = session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : null)
+        const twin = session.engine === 'dsh' ? session.driverSessionId : null
         if (twin && session.profileName) rt.renameHostSession?.(twin, `${session.profileName} · ${named}`)
       }
     }

@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, realpath } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
-import { ADAPTER_ENGINES } from './adapter/registry.js'
 import { cleanModel, cleanThinking } from './profiles.js'
 
 export function install(rt) {
@@ -108,7 +107,6 @@ export function install(rt) {
   }
   const openNativeSession = async ({ profile: ref, session: id, workspace }) => {
     const profile = rt.findProfile(ref)
-    if (ADAPTER_ENGINES.includes(profile?.engine)) return rt.openAdapterSession({ profile: profile.id, session: id, workspace })
     if (profile?.engine !== 'dsh') throw new Error('This engine does not expose a native host session')
     const session = id ? await selectSession(profile.id, id) : await createSession(profile.id, undefined, workspace, true, true)
     const sessionId = nativeTwinOf(session)
@@ -141,13 +139,6 @@ export function install(rt) {
       if (rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the task before changing this conversation\'s model'), { code: 'orch/busy' })
       const model = cleanModel(changes.model)
       const thinking = cleanThinking(changes.thinking)
-      const native = session.nativeSessionId
-      const binding = native && rt.adapterMap.of(native)
-      if (binding?.profileId === profile.id) {
-        if (model === undefined) throw Object.assign(new Error('Choose a model for this conversation'), { code: 'orch/invalid' })
-        await rt.selectAdapterModel({ sessionId: native, provider: `nodo:${profile.engine}`, model, ...(thinking ? { reasoningEffort: thinking } : {}) })
-        return session
-      }
       if (model === undefined) delete session.model
       else session.model = model
       if (thinking === undefined) delete session.thinking
@@ -194,7 +185,7 @@ export function install(rt) {
     return typeof content === 'string' ? content
       : Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => block.text).join('') : ''
   }
-  const nativeTwinOf = session => session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : null)
+  const nativeTwinOf = session => session.engine === 'dsh' ? session.driverSessionId : null
   const titleSessionFromNative = async (nativeSessionId, data) => {
     for (const profile of Object.values(rt.state.profiles)) {
       const session = rt.sessionsOf(profile).find(item => nativeTwinOf(item) === nativeSessionId)

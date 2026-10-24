@@ -12,7 +12,6 @@
 // switching this specifier.
 import { join } from 'node:path'
 import { createIdentityFiles } from '../../agent-drivers/dist/identity-files.js'
-import { ADAPTER_ENGINES } from './adapter/registry.js'
 
 const DRIVERS_SPECIFIER = '../../agent-drivers/dist/index.js'
 const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' })
@@ -53,15 +52,6 @@ export function install(rt) {
       instances.delete(profile.id)
       try { existing.driver.dispose() } catch { /* a half-dead engine is fine to drop */ }
     }
-    // An adapter-route engine runs inside its native host session, whose preset
-    // carries the role; conversations that already hold a direct engine thread keep it.
-    if (rt.adapterSessionOf && ADAPTER_ENGINES.includes(profile.engine) && (profile.nativeSessionId || !profile.driverSessionId)) {
-      const driverSessionId = await rt.adapterSessionOf(profile.id)
-      const driver = Object.create(api.createDriver('dsh', { nativeHost: ctx, cwd: profile.cwd, name: profile.name, sessionName: profile.sessionName, driverSessionId,
-        onEvent: event => rt.driverSink?.(profile.id, event) }), { instructionMode: { value: 'native' } })
-      instances.set(profile.id, { driver, signature })
-      return driver
-    }
     const driver = api.createDriver(profile.engine, {
       ...(profile.engineOptions ?? {}),
       cwd: profile.cwd,
@@ -97,13 +87,6 @@ export function install(rt) {
   }
 
   const driverOf = (profileId) => instances.get(profileId)?.driver
-  // A driver outside the per-profile instance table (adapter route: one per
-  // native session, lifecycle owned by the caller).
-  const createEngineDriver = async (engine, options) => {
-    await driversReady()
-    if (api === null) throw Object.assign(new Error(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`), { code: 'orch/no-drivers' })
-    return api.createDriver(engine, options)
-  }
   const releaseDriver = (profileId) => {
     const entry = instances.get(profileId)
     if (entry === undefined) return
@@ -169,7 +152,7 @@ export function install(rt) {
   }, 'nodo: drivers')
 
   Object.assign(rt, {
-    driversReady, listEngines: () => engines.slice(), ensureDriver, driverOf, createEngineDriver, releaseDriver, collectIdentityFiles, answerRequest, interruptDriver, compactDriver, runProbe,
+    driversReady, listEngines: () => engines.slice(), ensureDriver, driverOf, releaseDriver, collectIdentityFiles, answerRequest, interruptDriver, compactDriver, runProbe,
     isCompacting: id => compactions.has(id),
     engineCatalog: () => api?.engineCatalog(ctx) ?? [],
     requiresWorkspace: engine => api?.requiresWorkspace(engine) ?? false,

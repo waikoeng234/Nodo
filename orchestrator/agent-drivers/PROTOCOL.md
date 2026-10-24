@@ -112,8 +112,7 @@ after restart; refused saves never leave images promising future storage.
 Explicit local raster image links are copied from the session workspace, OS
 temporary directories or Codex's `generated_images` directory. Reads check
 resolved paths, file type and size; the protected DSH directory is excluded.
-Reply image links use the same validation and limits: legacy replies store
-plugin image references, and native replies emit durable image attachment blocks.
+Reply image links use the same validation and limits and store plugin image references.
 Remote `uri` values remain references; audio has no player; embedded text stays in
 `outputText` with its resource metadata; a blob with no displayable type or a
 DSH file attachment stays a reference. Unknown or invalid shapes fall back to
@@ -143,11 +142,8 @@ second execution and the host never counts it as one. The fields are:
   it in the event and transcript row but does not invent a hierarchy.
 
 The host merges updates into the running row/record in memory; only the final
-record enters the immutable detail path. The legacy transcript row is updated
-before the tool ends. The native `engine_action` card has no public live-update
-hook (the host exposes `presentCall`/`presentResult` only), so it shows the
-final content; live progress there is a documented degradation, not a second
-execution or a fabricated call.
+record enters the immutable detail path. The Nodo transcript row is updated
+before the tool ends.
 
 | Source | Update channel | Semantics |
 |---|---|---|
@@ -212,12 +208,8 @@ bounded status line, not an ongoing spinner.
 
 `item/plan/delta` and the Codex `plan` text item stay unmapped: the structured
 snapshot channel is authoritative and streaming both would duplicate the row.
-The native surface has no live plan/subagent views (the engine_action card has
-no refresh hook, as with tool updates), so pump shows statuses and member
-start/end as bounded notes plus one final plan row on successful turns. Failed
-or cancelled turns retain a bounded final-plan note, without creating a mirror
-tool boundary after cancellation. The legacy transcript carries replaceable
-rows, including the final plan on failed/cancelled turns.
+The Nodo transcript carries replaceable plan and subagent rows, including the
+final plan on failed/cancelled turns.
 
 ## Confirmed edit-file snapshots
 

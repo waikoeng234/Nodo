@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { install, nativeReplies, transcriptReplies } from '../src/host/session-references.js'
 import { install as installPrompt } from '../src/host/prompt.js'
-import { newestUserPrompt } from '../src/host/adapter/pump.js'
 import { until, withHost } from './helpers/host.js'
 
 const reply = (turn, text, seq = turn * 3) => ({ type: 'assistant/message', seq, time: seq,
@@ -15,8 +14,8 @@ const end = (turn, kind = 'completed') => ({ type: 'turn/end', data: { turn, rea
 function harness() {
   const home = mkdtempSync(join(tmpdir(), 'nodo-references-'))
   const listeners = new Map()
-  const sessions = [{ id: 'source', name: 'Plan', profileName: 'Planner', nativeSessionId: 'native-source' },
-    { id: 'target', name: 'Build', nativeSessionId: 'native-target' }]
+  const sessions = [{ id: 'source', name: 'Plan', profileName: 'Planner', engine: 'dsh', driverSessionId: 'native-source' },
+    { id: 'target', name: 'Build', engine: 'dsh', driverSessionId: 'native-target' }]
   let events = [reply(1, 'Selected report SECRET_VALUE\n\n## Details\n- step one'), end(1), reply(2, 'New report'), end(2)]
   const rt = { home, state: { profiles: { planner: { id: 'planner', name: 'Planner' } } }, load: async () => {},
     findProfile: id => rt.state.profiles[id], conversation: (_id, id) => {
@@ -89,8 +88,8 @@ test('draft snapshots stay immutable and bind only to an owned final recipient',
     assert.deepEqual(bound.messages, snapshot.messages)
     assert.deepEqual(await h.rt.readReference({ id: snapshot.id, draft }), snapshot, 'binding keeps the draft available for a retry or recipient change')
     const prepared = await h.prepare([{ id: 'input', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: `[引用会话](nodo-reference:${bound.id})` }] }])
-    assert.ok(newestUserPrompt(prepared.messages).includes('Selected report [redacted]'))
-    assert.ok(!newestUserPrompt(prepared.messages).includes('Changed source'))
+    assert.ok(prepared.messages[1].content[0].text.includes('Selected report [redacted]'))
+    assert.ok(!prepared.messages[1].content[0].text.includes('Changed source'))
     await assert.rejects(h.rt.readReference({ id: bound.id, target: 'source' }), /另一个/)
   } finally { h.dispose() }
 })
@@ -141,7 +140,7 @@ test('a draft-selected snapshot reaches a legacy first turn through the send API
   await assert.rejects(rt.send(profile.id, 'Wrong target', profile.id, [], [{ id: bound.id }]), /另一个/)
 }))
 
-test('native admission keeps the task and attachments and persists immutable reference context for every engine', async () => {
+test('native DSH admission keeps the task and attachments and persists immutable reference context', async () => {
   const h = harness()
   try {
     const snapshot = await h.rt.createReference({ target: 'native-target', profile: 'planner', session: 'source', messageId: 'reply-1' })
@@ -155,10 +154,9 @@ test('native admission keeps the task and attachments and persists immutable ref
     assert.equal(context.source.kind, 'session-reference')
     assert.equal(context.source.references[0].label, 'Planner · Plan')
     assert.equal(context.source.references[0].capturedThroughSeq, 3)
-    const enginePrompt = newestUserPrompt(prepared.messages)
+    const enginePrompt = prepared.messages[1].content[0].text
     assert.ok(enginePrompt.includes('Selected report [redacted]\n\n## Details\n- step one'), 'the body renders verbatim markdown')
     assert.equal(enginePrompt.includes('\\n'), false)
-    assert.ok(enginePrompt.endsWith('# Current task\nImplement'))
     assert.ok(!enginePrompt.includes('New report'))
     h.setEvents([
       { seq: 7, type: 'user/message', data: prepared.messages[0] },
@@ -168,11 +166,10 @@ test('native admission keeps the task and attachments and persists immutable ref
     ])
     assert.deepEqual(await h.rt.referenceHistory({ target: 'native-target', seq: 7 }), [snapshot])
     assert.deepEqual(await h.rt.referenceHistory({ target: 'ordinary-session', seq: 7 }), [])
-    assert.equal(newestUserPrompt([...prepared.messages, { ...human, content: [{ type: 'text', text: 'Next task' }] }]), 'Next task')
     const emptyTask = await h.prepare([{ ...human, content: [{ type: 'text', text: token }] }])
-    assert.ok(newestUserPrompt(emptyTask.messages).includes('请参考引用的会话结果。'))
+    assert.ok(emptyTask.messages[0].content.some(block => block.text?.includes('请参考引用的会话结果。')))
     const imageTask = await h.prepare([{ ...human, content: [{ type: 'text', text: token }, image] }])
-    assert.ok(newestUserPrompt(imageTask.messages).includes('Selected report [redacted]'))
+    assert.ok(imageTask.messages[1].content[0].text.includes('Selected report [redacted]'))
     assert.equal(imageTask.messages[0].content[1], image)
     await assert.rejects(h.prepare([{ ...human, content: [{ type: 'text', text: Array(5).fill(token).join('\n') }] }]), /最多引用四条/)
     const cancelled = new AbortController(); cancelled.abort()

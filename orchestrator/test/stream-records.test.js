@@ -6,8 +6,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRecordTracker, createStreamDetailStore, normalizePresentation, previewRecord, STREAM_LIMITS } from '../src/host/stream-records.js'
 import { RESOURCE_LIMITS, materializeResources, projectContent } from '../src/host/resources.js'
-import { createPump } from '../src/host/adapter/pump.js'
-import { registerMirrorTool } from '../src/host/adapter/mirror-tools.js'
 import { redactDeep, redactor } from '../src/host/secrets.js'
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { boot, until, withHost } from './helpers/host.js'
@@ -23,7 +21,7 @@ const withStore = async (run, limits) => {
     redactDeepSecrets: value => value, save: async () => writeFile(join(home, 'state.json'), JSON.stringify(state)),
     conversationOf: id => ['s', 's2'].includes(id) ? { profile: { id: 'p' }, session: { id, engine: 'fixture' } } : undefined,
     conversation: (p, s) => { if (p !== 'p' || !['s', 's2'].includes(s)) throw new Error('no owner'); return { profile: { id: p }, session: { id: s } } },
-    sessionsOf: () => [{ id: 's', nativeSessionId: 'native-s' }, { id: 's2', nativeSessionId: 'native-s2' }],
+    sessionsOf: () => [{ id: 's', engine: 'dsh', driverSessionId: 'native-s' }, { id: 's2', engine: 'dsh', driverSessionId: 'native-s2' }],
   }
   try { await run({ home, rt, store: createStreamDetailStore(rt, limits) }) }
   finally { await rm(home, { recursive: true, force: true }) }
@@ -204,31 +202,6 @@ test('read-only, filesystem and index failures cannot publish stored references 
     assert.equal(result.details.reason, 'write-failed')
     assert.deepEqual(rt.state.streamDetails, {})
   })
-})
-
-test('pump carries structured details through the same tool claim without inventing an execution', async () => {
-  const output = 'long output '.repeat(3000)
-  let pump
-  pump = createPump({ createRecords: tracker, driver: { sendTurn: async () => {
-    pump.receive(event('start', presentation({ command: 'echo fixture', inputText: 'fixture' }, 0)))
-    pump.receive({ ...event('end', presentation({ command: 'echo fixture', outputText: output, exitCode: 0 }, 1)), output })
-    pump.receive({ type: 'turn/end', reason: 'done' })
-  } } })
-  const chunks = []
-  for await (const chunk of pump.stream({ messages: [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'run' }] }] })) chunks.push(chunk)
-  const call = chunks.find(chunk => chunk.block?.type === 'tool-call').block
-  assert.equal(JSON.parse(call.arguments).presentation.body.command, 'echo fixture')
-  const result = await pump.takeMirror().done
-  assert.equal(result.presentation.body.outputText, output)
-  assert.ok(result.detail.length < output.length)
-  let definition
-  registerMirrorTool({ tools: { register: value => { definition = value } } }, () => {})
-  const projected = { ...result, presentation: previewRecord(result.presentation) }
-  const meta = definition.output.presentationMeta({}, projected)
-  assert.equal(meta.nodoRecord.status, 'done')
-  assert.doesNotMatch(JSON.stringify(definition.output.render({ name: 'Fixture' }, { status: 'done', presentation: projected.presentation })), /long output/)
-  assert.equal(definition.presentResult({}, { meta }).card, 'terminal')
-  pump.dispose()
 })
 
 test('legacy API retains structured detail across archive and restart, then revokes it on role deletion', async () => {
@@ -467,7 +440,7 @@ test('media limits and unreadable sources stay visible without pretending to dis
     rt.ctx = { attachments: { validateImage: async () => {}, readImage: async ref => { reads.push(ref); return { ref: { mediaType: 'image/png', name: 'native.png' }, data: Buffer.from(PNG, 'base64') } } } }
     const reference = { attachmentId: 'sha256:fixed', mediaType: 'image/png', bytes: 68, width: 96, height: 64, name: 'native.png' }
     const conversationOf = rt.conversationOf
-    rt.conversationOf = id => ({ ...conversationOf(id), session: { id, nativeSessionId: 'native-s' } })
+    rt.conversationOf = id => ({ ...conversationOf(id), session: { id, engine: 'dsh', driverSessionId: 'native-s' } })
     rt.ctx.sessionController = { inspect: async id => {
       assert.equal(id, 'native-s')
       return { events: [{ type: 'tool/result', data: { message: { content: [{ type: 'image', attachment: reference }] } } }] }
@@ -486,7 +459,7 @@ test('host attachments must be present in the owning session before their bytes 
   await withStore(async ({ rt, store }) => {
     const reference = { attachmentId: 'sha256:foreign', mediaType: 'image/png', bytes: 68, width: 1, height: 1 }
     const conversationOf = rt.conversationOf
-    rt.conversationOf = id => ({ ...conversationOf(id), session: { id, nativeSessionId: `native-${id}` } })
+    rt.conversationOf = id => ({ ...conversationOf(id), session: { id, engine: 'dsh', driverSessionId: `native-${id}` } })
     let reads = 0
     rt.ctx = {
       sessionController: { inspect: async id => ({ events: id === 'native-s2'

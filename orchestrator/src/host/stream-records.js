@@ -337,7 +337,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
         },
         readAttachment: async attachment => {
           const signal = AbortSignal.timeout(ATTACHMENT_READ_TIMEOUT)
-          const nativeId = found.session.nativeSessionId ?? (found.session.engine === 'dsh' ? found.session.driverSessionId : undefined)
+          const nativeId = found.session.engine === 'dsh' ? found.session.driverSessionId : undefined
           if (!nativeId) throw new Error('attachment-unavailable')
           if (!sessionAttachments) {
             const inspected = await rt.ctx?.sessionController?.inspect?.(nativeId, signal)
@@ -389,7 +389,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
       if (!UUID.test(ref ?? '')) throw invalid()
       if (target) {
         const found = Object.values(rt.state.profiles).flatMap(p => rt.sessionsOf(p).map(s => ({ profile: p.id, session: s.id,
-          native: s.nativeSessionId ?? (s.engine === 'dsh' ? s.driverSessionId : undefined) }))).find(item => item.native === target)
+          native: s.engine === 'dsh' ? s.driverSessionId : undefined }))).find(item => item.native === target)
         if (!found) throw invalid()
         profile = found.profile; session = found.session
       }

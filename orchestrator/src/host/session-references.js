@@ -33,7 +33,7 @@ export const transcriptReplies = lines => lines.flatMap((line, index) => {
 
 export function install(rt) {
   const folder = join(rt.home, 'references')
-  const nativeId = session => session.nativeSessionId ?? (session.engine === 'dsh' ? session.driverSessionId : undefined)
+  const nativeId = session => session.engine === 'dsh' ? session.driverSessionId : undefined
   const owns = id => typeof id === 'string' && Object.values(rt.state.profiles).some(profile => rt.sessionsOf(profile).some(session => session.id === id || nativeId(session) === id))
   const saveReference = async snapshot => {
     await mkdir(folder, { recursive: true })

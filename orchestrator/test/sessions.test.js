@@ -725,25 +725,17 @@ test('first-send choices belong to the fresh session and leave the role defaults
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
-test('a model pick on a native role session routes through the adapter selection', async () => {
+test('external model picks ignore stale native pointers and update only the conversation', async () => {
   const state = { profiles: { role: { id: 'role', name: 'Rho', engine: 'claude', sessions: [{ id: 'conv', name: 'S', nativeSessionId: 'native-1' }] } } }
-  const calls = []
-  const rt = {
-    state,
-    workView: () => ({}),
-    save: async () => {},
-    adapterMap: { of: id => id === 'native-1' ? { profileId: 'role' } : null },
-    selectAdapterModel: async request => {
-      if (!['opus', 'sonnet'].includes(request.model)) throw new Error('This engine does not offer the selected model')
-      calls.push(request)
-      return {}
-    },
-  }
+  const rt = { state, workView: () => ({}), save: async () => {}, findProfile: () => state.profiles.role }
   installSessions(rt)
   await rt.updateSession('role', 'conv', { model: 'sonnet', thinking: 'medium' })
-  assert.deepEqual(calls, [{ sessionId: 'native-1', provider: 'nodo:claude', model: 'sonnet', reasoningEffort: 'medium' }])
-  await assert.rejects(rt.updateSession('role', 'conv', { model: 'missing' }), /does not offer/)
-  assert.equal(calls.length, 1, 'a rejected pick never reaches the engine')
+  const session = state.profiles.role.sessions[0]
+  assert.equal(session.model, 'sonnet')
+  assert.equal(session.thinking, 'medium')
+  assert.equal(session.nativeSessionId, 'native-1')
+  assert.equal(state.profiles.role.model, undefined)
+  await assert.rejects(rt.openNativeSession({ profile: 'role', session: 'conv' }), /This engine does not expose a native host session/)
 })
 
 test('shared native DSH role keeps plugin workspace references separate from native workspace IDs', async () => {

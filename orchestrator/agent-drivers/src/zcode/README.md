@@ -168,12 +168,6 @@ model selection and a task outliving the handshake timeout.
 Run `node scripts/check-zcode.mjs [absolute-zcode-path]` from `orchestrator/`
 for the opt-in real CLI check. It is read-only and creates no session.
 
-Run `node scripts/check-zcode-flow.mjs [absolute-zcode-path]` for the isolated
-real-CLI flow check through the Nodo adapter registry and pump. It uses a
-temporary HOME/workspace and a local mock model to verify file tools, multiple
-approvals, a retried request, cancellation, same-session recovery and terminal
-failure. It makes no paid model calls and removes its temporary session store.
-
 Run `node scripts/check-zcode-identity.mjs /absolute/path/to/zcode.cjs` for the
 opt-in identity check. It runs the installed CLI with a temporary HOME, dummy
 provider settings and a local mock model, without real login data or remote

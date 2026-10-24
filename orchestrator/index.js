@@ -24,8 +24,6 @@ import * as sessionReferences from './src/host/session-references.js'
 import * as secrets from './src/host/secrets.js'
 import * as drivers from './src/host/drivers.js'
 import * as engineSettings from './src/host/engine-settings.js'
-import * as adapter from './src/host/adapter/registry.js'
-import * as adapterMap from './src/host/adapter/session-map.js'
 import * as attachments from './src/host/attachments.js'
 import * as stats from './src/host/stats.js'
 import * as dispatch from './src/host/dispatch.js'
@@ -37,15 +35,14 @@ import * as workflows from './src/host/workflows.js'
 import * as channel from './src/host/channel.js'
 
 export const name = 'nodo'
-export const inject = ['connection', 'workspaceRegistry', 'sessionController', 'llm', 'tools', 'approval', 'agents', 'agentPresets', 'permissionPresets', 'userQuestions', 'systemPrompt', 'agentDefaultModel', 'attachments']
+export const inject = ['connection', 'workspaceRegistry', 'sessionController', 'llm', 'agents', 'agentPresets', 'permissionPresets', 'systemPrompt', 'agentDefaultModel', 'attachments']
 
-const MODULES = [diag, store, workspaces, worktrees, profiles, sessions, streamRecords, context, sessionReferences, secrets, drivers, engineSettings, adapterMap, adapter, attachments, stats, dispatch, nativeStatus, approvals, prompt, runs, workflows, channel]
+const MODULES = [diag, store, workspaces, worktrees, profiles, sessions, streamRecords, context, sessionReferences, secrets, drivers, engineSettings, attachments, stats, dispatch, nativeStatus, approvals, prompt, runs, workflows, channel]
 
 export async function createRuntime(ctx, config = {}) {
   // The data directory keeps its old name so saved roles and sessions carry over.
   const rt = { ctx, config, home: config.home ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'orchestrator') }
   for (const module of MODULES) module.install(rt)
-  await rt.initializeAdapters?.()
   await rt.recoverRuns()
   return rt
 }

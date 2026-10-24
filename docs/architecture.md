@@ -12,12 +12,11 @@ Nodo is a dsh plugin with three parts:
 
 ```mermaid
 flowchart LR
-    UI[dsh UI<br/>client.js] -->|Native conversations| S[dsh session controller]
+    UI[dsh UI<br/>client.js] -->|DSH conversations| S[dsh session controller]
     UI -->|POST /api/nodo| C[channel.js]
-    S --> AR[adapter/<br/>LLM adapter routes]
     C --> H[Host modules<br/>Conversations · Workflows · Approvals]
-    AR --> D[drivers.js]
-    H --> D
+    S --> ESH[DSH native agent]
+    H --> D[drivers.js]
     D --> AD[agent-drivers]
     AD --> E[Codex · Claude Code · OpenCode …]
     H --> F[(Plugin data directory)]
@@ -30,7 +29,6 @@ flowchart LR
 orchestrator/
   index.js             Host plugin entry and module loading
   src/host/            State storage, conversations, Agent bridging, approvals, and workflows
-  src/host/adapter/    Adapter routes connecting Agents to dsh native conversations
   src/client/          Sidebar, conversations, settings, and workflow UI
   src/shared/          Data and utilities shared by host and client
   agent-drivers/       Agent registration, protocol adapters, and capability interfaces
@@ -55,9 +53,9 @@ Each module under `src/host/` exports `install(rt)` and attaches its functions t
 
 ## Message paths
 
-Agent conversations have two entry paths. Both ultimately create an agent-drivers driver through `drivers.js`.
+**Agent conversations.** Codex, Claude Code, Qoder, Pi, ZCode, OpenCode and CodeBuddy use their own drivers through `drivers.js` and `dispatch.js`. Nodo displays their messages, tool activity and approval cards in its Feed. These roles do not register dsh model providers or Agent presets.
 
-**Native conversations.** `src/host/adapter/` uses dsh's `llm.registerAdapter` to register each Agent as a model provider, `nodo:<engine>`, and each role as an Agent preset, `nodo:<engine>:<role id>`. When the user sends a message in a dsh native conversation, `pump.js` forwards it unchanged to the driver and returns Agent text and reasoning to the host. Agent tool activity and approval requests appear as the mirror tool `engine_action` and native approval cards; the host does not execute operations on the Agent's behalf. The mapping between native conversations and Agent threads is saved in plugin state, allowing the same thread to be restored after a host restart. dsh itself uses the host's native session controller directly and does not follow this adapter route.
+**DSH conversations.** The dsh driver uses the host's public native session controller. Its `driverSessionId` identifies the native conversation, which opens in the host view. Native status and references use that same identifier.
 
 **Workflow steps.** `workflows.js` creates a separate conversation for each execution step and sends its task exclusively through `rt.send`; `dispatch.js` passes it to the role's driver. `workflow-materials.js` writes the previous step's reports and human decisions under the project's `.nodo/`, and `prompt.js` renders them into the next task. Client messages sent through `channel.js` also use `rt.send`.
 
@@ -69,7 +67,7 @@ The client mounts its parts through host UI slots, including run status and refe
 
 ## Agent adapter layer
 
-`agent-drivers/` is a separate package embedded in the plugin and can be patched and versioned independently. Each driver implements the same eight primitives: `openSession`, `sendTurn`, `steer`, `interruptTurn`, `respondToRequest`, `onEvent`, `hasSession`, and `dispose`. Agents are registered in `ENGINES` in `agent-drivers/src/index.js`; the registration metadata also serves host routing, client builds, and verification scripts.
+`agent-drivers/` is a separate package embedded in the plugin and can be patched and versioned independently. Each driver implements the same eight primitives: `openSession`, `sendTurn`, `steer`, `interruptTurn`, `respondToRequest`, `onEvent`, `hasSession`, and `dispose`. Agents are registered in `ENGINES` in `agent-drivers/src/index.js`; the registration metadata also serves client builds and verification scripts.
 
 See the [Agent adapter overview](../orchestrator/agent-drivers/README.md), [driver interface and event protocol](../orchestrator/agent-drivers/PROTOCOL.md), and [Agent intake workflow](../orchestrator/agent-drivers/ENGINE_INTAKE.md).
 

@@ -86,7 +86,7 @@ export function install(rt) {
     const profiles = profilesIn(workspace)
     const work = rt.workView()
     if (profiles.some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id
-      && (work[session.id]?.active || rt.adapterBusy?.(session))))) throw Object.assign(new Error('请先停止或完成此工作区中正在运行的任务，再删除工作区'), { code: 'orch/busy' })
+      && work[session.id]?.active))) throw Object.assign(new Error('请先停止或完成此工作区中正在运行的任务，再删除工作区'), { code: 'orch/busy' })
     for (const profile of profiles) {
       profile.sessions ??= rt.sessionsOf(profile)
       for (const session of profile.sessions) {
@@ -141,7 +141,7 @@ export function install(rt) {
     let found
     if (target !== undefined) {
       found = Object.values(rt.state.profiles).flatMap(item => rt.sessionsOf(item).map(owned => ({ profile: item, session: owned })))
-        .find(item => (item.session.nativeSessionId ?? (item.session.engine === 'dsh' ? item.session.driverSessionId : undefined) ?? item.session.id) === target)
+        .find(item => ((item.session.engine === 'dsh' ? item.session.driverSessionId : undefined) ?? item.session.id) === target)
       if (!found) throw Object.assign(new Error('No such session'), { code: 'orch/not-found' })
     } else {
       try { found = rt.conversation(profile, session) } catch { throw Object.assign(new Error('No such session'), { code: 'orch/not-found' }) }

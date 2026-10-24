@@ -10,15 +10,13 @@ import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running this check')
 const runtime = createRequire(realpathSync(executable))
-const WebSocket = runtime('ws')
 const sharp = runtime('sharp')
-const { parseRemoteStreamServerMessage, REMOTE_STREAM_MUX_PATH } = await import(pathToFileURL(runtime.resolve('@deepseek-ai/dsh-api-gateway/stream-protocol')))
 
 const home = mkdtempSync(join(tmpdir(), 'nodo-es08-'))
 const pixels = Buffer.alloc(96 * 64 * 3)
@@ -156,27 +154,6 @@ const api = async (endpoint, payload) => {
   assert.equal(result.ok, true, `Nodo ${endpoint} failed (${result.error?.code}): ${String(result.error?.message ?? '').replaceAll(home, '<isolated-home>').slice(0, 250)}`)
   return result.value
 }
-const native = async (method, args) => {
-  const { result } = await post(method, { type: 'client-request', rpcId: 'es08-check', method, payload: { args } })
-  assert.equal(result?.ok, true, `Native ${method} failed (${result?.error?.code})`)
-  return result.value
-}
-const observe = async sessionId => {
-  const socket = new WebSocket(`${url.replace('http:', 'ws:')}${REMOTE_STREAM_MUX_PATH}`, { headers: { Origin: url, Cookie: cookie } })
-  const frames = []
-  socket.on('error', () => {})
-  socket.on('message', data => { frames.push(parseRemoteStreamServerMessage(data.toString())) })
-  await once(socket, 'open')
-  socket.send(JSON.stringify({ type: 'open', streamId: 'es08', endpoint: 'session/follow',
-    payload: { args: { request: { address: { kind: 'session', sessionId }, assistantStream: true } } } }))
-  await until(() => frames.some(frame => frame.type === 'item' && frame.value.type === 'snapshot'))
-  return { frames, close: () => socket.terminate() }
-}
-const findRecords = value => {
-  if (!value || typeof value !== 'object') return []
-  if (value.nodoRecord) return [value.nodoRecord]
-  return Object.values(value).flatMap(findRecords)
-}
 const PREVIEW_RESOURCES = [['image', 'stored'], ['image', 'stored'], ['link', 'reference'], ['text', 'reference']]
 const FULL_RESOURCES = [...PREVIEW_RESOURCES, ['audio', 'unsupported'], ['image', 'unsupported'], ['image', 'unavailable'], ['image', 'unavailable']]
 let nativeRef
@@ -226,34 +203,9 @@ try {
   assert.doesNotMatch(JSON.stringify(legacyDetail), /iVBORw0KGgo/)
   assert.doesNotMatch(readFileSync(join(home, 'nodo', 'state.json'), 'utf8'), /iVBORw0KGgo/, 'state.json keeps references only')
 
-  const opened = await api('adapter-session-open', { profile: role.id, workspace: workspace.id })
-  const observer = await observe(opened.sessionId)
-  await native('session/prompt', { request: { requestId: 'es08-run', sessionId: opened.sessionId, mode: 'queue',
-    content: [{ type: 'text', text: 'ES08_NATIVE_MEDIA' }, { type: 'image', mediaType: 'image/png', data: NATIVE_PNG, name: 'native-shot.png' }] } })
-  await until(() => observer.frames.some(frame => frame.value?.event?.type === 'turn/end'))
-  const records = findRecords(observer.frames)
-  assert.equal(records.length, 2, 'native metadata carries both tools')
-  const media = records.find(record => record.entityId === 'media')
-  assertMedia(media, 'native engine_action', false, true)
-  assert.equal(media.details.state, 'stored')
-  assert.deepEqual(await api('attachment', { id: media.body.resources[0].ref.id, mediaType: 'image/png' }), { mediaType: 'image/png', data: PNG })
-  assert.equal(Buffer.from((await api('attachment', { id: media.body.resources[1].ref.id, mediaType: 'image/png' })).data, 'base64').length,
-    nativeRef.bytes, 'the native card points at the saved DSH image')
-  const nativeDetail = await api('stream-detail', { target: opened.sessionId, ref: media.details.ref })
-  assertMedia(nativeDetail, 'native saved detail', true, true)
-  assert.equal(nativeDetail.body.resources[0].ref.id, media.body.resources[0].ref.id)
-  assert.equal(nativeDetail.body.resources[1].ref.id, media.body.resources[1].ref.id)
-  const resultFrames = observer.frames.filter(frame => frame.value?.event?.type === 'tool/result')
-  assert.ok(!JSON.stringify(resultFrames.map(frame => frame.value.event.data.message.content)).includes(PNG.slice(0, 24)),
-    'the model-facing tool result never receives raw image bytes')
-  observer.close()
-
   await stop()
   start()
   await authorize()
-  const restored = await observe(opened.sessionId)
-  assert.deepEqual(findRecords(restored.frames), records, 'native replay keeps the exact saved references')
-  restored.close()
   assert.deepEqual(await api('attachment', { id: legacyRef.id, mediaType: legacyRef.mediaType }), { mediaType: 'image/png', data: PNG })
   const restoredLines = await api('transcript', { profile: role.id, session: legacySession })
   const restoredMedia = restoredLines.find(line => line.callId === 'media' && line.phase === 'end').presentation
@@ -262,14 +214,12 @@ try {
   const restoredDetail = await api('stream-detail', { profile: role.id, session: legacySession, ref: restoredMedia.details.ref })
   assert.equal(restoredDetail.body.resources[0].ref.id, legacyRef.id)
   assert.equal(restoredDetail.body.resources[1].reason, 'attachment-unavailable')
-  assert.equal(Buffer.from((await api('attachment', { id: media.body.resources[1].ref.id, mediaType: media.body.resources[1].ref.mediaType })).data, 'base64').length,
-    nativeRef.bytes, 'restart keeps the saved native image bytes')
   assert.doesNotMatch(JSON.stringify(restoredLines), /iVBORw0KGgo/)
   assert.equal(unexpectedModelCalls, 0, 'this check must never call a model endpoint')
-  facts = { result: 'passed', checkedAt: new Date().toISOString(), login: `${relayUrl}/login`, host: url, nativeSession: opened.sessionId,
+  facts = { result: 'passed', checkedAt: new Date().toISOString(), login: `${relayUrl}/login`, host: url,
     legacyProfile: role.id, legacySession, legacyRef: legacyRef.id, workspace: workspace.id,
     checks: ['legacy transcript resources', 'saved attachment bytes', 'session-scoped DSH native attachment and foreign-reference refusal', 'saved detail resources', 'no inline bytes in state',
-      'native engine_action resources', 'bounded model-facing tool result', 'restart replay', 'restart legacy restore'],
+      'restart legacy restore'],
     modelCalls: unexpectedModelCalls }
   console.log(JSON.stringify(facts))
   if (process.argv.includes('--serve')) {

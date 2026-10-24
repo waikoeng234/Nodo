@@ -1,4 +1,4 @@
-// Engine registration owns driver factories, display names and host adapter routes.
+// Engine registration owns driver factories and display names.
 import { createCodexDriver, codexInfo, validateCodexOptions, checkCodex, scanCodex, scanCodexCommands } from './codex/index.js';
 import { createDshDriver, dshInfo, validateDshOptions, checkDsh, findDshExecutable, describeDsh, scanDsh, scanDshCommands } from './dsh/index.js';
 import { createZcodeDriver, zcodeInfo, validateZcodeOptions, checkZcode, findZcodeExecutable, scanZcode, scanZcodeCommands } from './zcode/index.js';
@@ -10,21 +10,21 @@ import { createCodebuddyDriver, codebuddyInfo, validateCodebuddyOptions, checkCo
 import { findExecutable, invalidConfig } from './cli.js';
 import { missingPrimitives, OPTIONAL_METHODS, hasOptionalMethod } from './spi.js';
 const ENGINES = {
-    codex: { name: 'Codex', adapter: true, tests: ['engines'], create: createCodexDriver, info: codexInfo, validate: validateCodexOptions, check: checkCodex, scan: scanCodex, commands: scanCodexCommands },
+    codex: { name: 'Codex', tests: ['engines'], create: createCodexDriver, info: codexInfo, validate: validateCodexOptions, check: checkCodex, scan: scanCodex, commands: scanCodexCommands },
     dsh: { name: 'DeepSeek Harness', shared: ['acp'], create: createDshDriver, info: dshInfo, describe: describeDsh, validate: validateDshOptions, check: checkDsh, findExecutable: findDshExecutable, scan: scanDsh, commands: scanDshCommands },
-    claude: { name: 'Claude Code', adapter: true, create: createClaudeDriver, info: claudeInfo, validate: validateClaudeOptions, check: checkClaude, scan: scanClaude, commands: scanClaudeCommands },
-    qoder: { name: 'Qoder', adapter: true, create: createQoderDriver, info: qoderInfo, validate: validateQoderOptions, check: checkQoder, findExecutable: findQoderExecutable, scan: scanQoder, commands: scanQoderCommands },
-    pi: { name: 'Pi', adapter: true, create: createPiDriver, info: piInfo, validate: validatePiOptions, check: checkPi, scan: scanPi, commands: scanPiCommands },
-    zcode: { name: 'ZCode', adapter: true, create: createZcodeDriver, info: zcodeInfo, validate: validateZcodeOptions, check: checkZcode, findExecutable: findZcodeExecutable, scan: scanZcode, commands: scanZcodeCommands },
-    opencode: { name: 'OpenCode', adapter: true, shared: ['acp'], create: createOpencodeDriver, info: opencodeInfo, validate: validateOpencodeOptions, check: checkOpencode, scan: scanOpencode, commands: scanOpencodeCommands },
-    codebuddy: { name: 'CodeBuddy', adapter: true, shared: ['acp'], create: createCodebuddyDriver, info: codebuddyInfo, validate: validateCodebuddyOptions, check: checkCodebuddy, scan: scanCodebuddy },
+    claude: { name: 'Claude Code', create: createClaudeDriver, info: claudeInfo, validate: validateClaudeOptions, check: checkClaude, scan: scanClaude, commands: scanClaudeCommands },
+    qoder: { name: 'Qoder', create: createQoderDriver, info: qoderInfo, validate: validateQoderOptions, check: checkQoder, findExecutable: findQoderExecutable, scan: scanQoder, commands: scanQoderCommands },
+    pi: { name: 'Pi', create: createPiDriver, info: piInfo, validate: validatePiOptions, check: checkPi, scan: scanPi, commands: scanPiCommands },
+    zcode: { name: 'ZCode', create: createZcodeDriver, info: zcodeInfo, validate: validateZcodeOptions, check: checkZcode, findExecutable: findZcodeExecutable, scan: scanZcode, commands: scanZcodeCommands },
+    opencode: { name: 'OpenCode', shared: ['acp'], create: createOpencodeDriver, info: opencodeInfo, validate: validateOpencodeOptions, check: checkOpencode, scan: scanOpencode, commands: scanOpencodeCommands },
+    codebuddy: { name: 'CodeBuddy', shared: ['acp'], create: createCodebuddyDriver, info: codebuddyInfo, validate: validateCodebuddyOptions, check: checkCodebuddy, scan: scanCodebuddy },
 };
 export function listEngines() {
     return Object.keys(ENGINES).sort();
 }
 export function engineMetadata() {
     return Object.entries(ENGINES).map(([id, entry]) => ({
-        id, name: entry.name ?? entry.info.label, adapter: entry.adapter === true,
+        id, name: entry.name ?? entry.info.label,
         shared: [...(entry.shared ?? [])], tests: [...(entry.tests ?? [id])],
     }));
 }
@@ -95,7 +95,7 @@ export async function checkEngine(config) {
     return entry.check({ ...config, engineOptions: validateEngineOptions(config.engine, config.engineOptions) });
 }
 // Model discovery: the models an engine can be told to use, each with the
-// thinking levels (reasoning effort, thought level) it accepts. An adapter gets
+// thinking levels (reasoning effort, thought level) it accepts. A driver gets
 // these from its own protocol when it can and falls back to the CLI's local
 // configuration file; `source` says which one answered, so the UI can be honest.
 // `models` may be empty: the caller then keeps a free-text model field.

@@ -5,7 +5,6 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/dist/index.js'
 import { claudeArgs } from '../agent-drivers/dist/claude/native.js'
-import { createPump } from '../src/host/adapter/pump.js'
 import { withHost, boot, until } from './helpers/host.js'
 
 const withFixture = async (run) => {
@@ -767,28 +766,6 @@ test('Codex closes an answered card while the turn runs on', async () => {
       assert.equal(end.reason, 'done')
       assert.equal(events.filter(event => event.type === 'request/closed').length, 1, 'the daemon\'s resolved must not close the deleted request again')
     } finally { driver.dispose() }
-  })
-})
-
-test('Codex lifts the pump waiting status the moment the card is answered', async () => {
-  await withFixture(async ({ bin, cwd }) => {
-    let pump
-    const events = []
-    const driver = createDriver('codex', { bin, cwd, onEvent: event => { events.push(event); pump.receive(event) } })
-    pump = createPump({ driver })
-    try {
-      const chunks = []
-      for await (const chunk of pump.stream({ sessionId: 'pump-fixture',
-        messages: [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'ASK_PERMISSION' }] }] })) chunks.push(chunk)
-      const opened = await until(() => events.find(event => event.type === 'request/opened'))
-      const claim = pump.takeMirror()
-      assert.equal(claim.approvalId, opened.id)
-      assert.equal(pump.status.phase, 'waiting-approval')
-      assert.equal(await pump.respondApproval(claim, 'allow'), true)
-      assert.equal(pump.active, true, 'the turn still runs after the answer')
-      assert.notEqual(pump.status.phase, 'waiting-approval', 'the answered card must lift the waiting status before the turn ends')
-      await until(() => pump.status === null)
-    } finally { pump.dispose(); driver.dispose() }
   })
 })
 

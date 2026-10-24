@@ -80,7 +80,7 @@ test('deleting a workspace preserves drafts and archived sessions without moving
   })
 })
 
-test('workspace deletion refuses running tasks and native activity without changing role bindings', async () => {
+test('workspace deletion refuses running tasks without changing role bindings', async () => {
   await withHost(async ({ api, post, home, runtime }) => {
     const workspace = await api('workspace-create', { name: 'Busy', cwd: join(home, 'busy') })
     const role = await api('profile-create', { name: 'Waiting', engine: 'echo', workspace: workspace.id, engineOptions: { script: [{ kind: 'ask' }] } })
@@ -91,10 +91,6 @@ test('workspace deletion refuses running tasks and native activity without chang
     assert.equal(rt.state.profiles[role.id].workspaceId, workspace.id)
     await api('interrupt', { profile: role.id })
     await until(async () => !(await api('state')).work[role.id]?.active)
-    const adapterBusy = rt.adapterBusy
-    rt.adapterBusy = () => true
-    assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
-    rt.adapterBusy = adapterBusy
     assert.equal(await api('workspace-delete', { id: workspace.id }), true)
     assert.ok(rt.state.profiles[role.id])
   })
