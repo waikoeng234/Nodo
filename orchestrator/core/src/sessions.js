@@ -61,7 +61,7 @@ export function install(rt) {
     return Object.fromEntries(Object.entries(choices).filter(([, value]) => value !== undefined).map(([key, value]) => [key,
       (key === 'model' ? cleanModel(value) : key === 'thinking' ? cleanThinking(value) : rt.cleanPermission(profile.engine, value)) ?? '']))
   }
-  const createSession = async (profileId, name, workspaceRef, lazy = false, draft = false, choices = {}, source) => {
+  const createSession = async (profileId, name, workspaceRef, lazy = false, draft = false, choices = {}, source, { activate = true } = {}) => {
     const profile = rt.state.profiles[profileId]
     if (!profile) throw new Error('No such profile')
     choices = cleanSessionChoices(profile, choices)
@@ -76,7 +76,7 @@ export function install(rt) {
     if (draft && name === undefined) {
       const reuse = profile.sessions.find(session => session.draftedAt && !session.briefSent && !session.archivedAt
         && (session.workspaceRef ?? sessionWorkspace(profile, session)?.id) === workspace.id)
-      if (reuse) { profile.activeSessionId = reuse.id; await rt.save(); return reuse }
+      if (reuse) { if (activate) profile.activeSessionId = reuse.id; await rt.save(); return reuse }
     }
     const inherited = sessionChoices(profile)
     const model = choices.model !== undefined ? cleanModel(choices.model) : inherited.model
@@ -90,7 +90,7 @@ export function install(rt) {
       ...(draft && name === undefined ? { draftedAt: Date.now() } : {}) }
     snapshotIdentity(profile, session)
     profile.sessions.push(session)
-    profile.activeSessionId = session.id
+    if (activate) profile.activeSessionId = session.id
     rt.transcriptOf(session.id)
     await rt.save()
     if (!lazy) {

@@ -3730,6 +3730,7 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
     engine: profile?.engine ?? "",
     role: profile?.role ?? "",
     instructions: profile?.instructions ?? "",
+    lead: profile?.lead === true,
     avatarTemplate: profile ? avatarTemplateOf(profile).id : avatar_templates_default[avatarSeed % avatar_templates_default.length].id,
     identity: allPresets.find((item) => item.instructions === profile?.instructions)?.name ?? "custom",
     model: profile?.model ?? "",
@@ -4090,6 +4091,18 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
             (0, import_react.createElement)(
               "div",
               { className: "nodo-role-run", role: "group", "aria-label": "\u8FD0\u884C" },
+              (0, import_react.createElement)(
+                Field,
+                { label: "\u4E3B\u63A7" },
+                (0, import_react.createElement)("input", {
+                  type: "checkbox",
+                  role: "switch",
+                  "aria-label": "\u4E3B\u63A7",
+                  checked: draft.lead,
+                  disabled,
+                  onChange: (event) => setDraft((current) => ({ ...current, lead: event.target.checked }))
+                })
+              ),
               (0, import_react.createElement)(
                 Field,
                 { label: "\u8C03\u7528 Agent" },
@@ -9004,6 +9017,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-role-dialog .nodo-role-run .nodo-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);align-items:center;column-gap:12px;row-gap:2px;padding:8px 8px 8px 14px}
 .nodo-role-dialog .nodo-role-run .nodo-field+.nodo-field{border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-role-dialog .nodo-role-run .nodo-field>span{font-size:13px;color:var(--dsw-alias-label-primary)}
+.nodo-role-dialog .nodo-role-run input[role=switch]{justify-self:start;width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
 .nodo-role-dialog .nodo-dialog-error{margin:0}
 @media(max-width:640px){.nodo-role-layout{grid-template-columns:minmax(0,1fr);gap:16px}.nodo-role-aside{position:static}.nodo-role-fields{max-height:64vh;gap:16px}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}.nodo-role-dialog .nodo-role-run .nodo-field{grid-template-columns:minmax(0,1fr)}}

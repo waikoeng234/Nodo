@@ -3,8 +3,32 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { boot, withHost } from './helpers/host.js'
+import { boot, until, withHost } from './helpers/host.js'
 import templates from '../core/shared/avatar-templates.json' with { type: 'json' }
+
+test('lead flags normalize, persist only when true and keep the existing conversation and driver', () => withHost(async ({ api, runtime, home }) => {
+  const rt = await runtime
+  const workspace = await api('workspace-create', { name: 'Lead flag', cwd: join(home, 'ws') })
+  const profile = await api('profile-create', { name: 'Lead', engine: 'echo', lead: true, engineOptions: { script: [{ kind: 'text', text: 'Done' }] } })
+  assert.equal(profile.lead, true)
+  const session = await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })
+  await api('send', { profile: profile.id, session: session.id, text: 'Question' })
+  await until(() => !rt.workView()[session.id]?.active && rt.conversation(profile.id, session.id).session.briefSent)
+  const driver = rt.driverOf(session.id)
+  const before = (await api('state')).profiles.find(item => item.id === profile.id)
+  for (const lead of [false, 1, 'yes', 'false', true, null]) {
+    const edited = await api('profile-update', { id: profile.id, changes: { lead } })
+    assert.equal(edited.lead, lead === true ? true : undefined)
+    assert.equal(Object.hasOwn(rt.findProfile(profile.id), 'lead'), lead === true)
+    assert.deepEqual(edited.sessions, before.sessions)
+    assert.equal(edited.activeSessionId, session.id)
+    assert.equal(await rt.ensureDriver(await rt.prepareConversation(session.id)), driver)
+  }
+  for (const lead of [false, 1, 'yes', 'false', null]) {
+    const ordinary = await api('profile-create', { name: `Ordinary ${typeof lead} ${lead}`, engine: 'echo', lead })
+    assert.equal(Object.hasOwn(ordinary, 'lead'), false)
+  }
+}))
 
 test('avatar selections persist across restart and an avatar-only edit keeps conversations', async () => {
   const home = mkdtempSync(join(tmpdir(), 'orch-avatars-'))

@@ -165,7 +165,12 @@ export function install(rt) {
         const { session } = rt.conversation(profile.id, body.session)
         const files = body.files?.length ? { refs: rt.cleanFileRefs(body.files),
           paths: await rt.materializeFiles(body.files, session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd) } : undefined
-        const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined, { files })
+        const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined,
+          { files, ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
+        if (profile.lead) {
+          rt.resetLead(session.id)
+          void rt.followLead(profile.id, session.id, placed)
+        }
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
       }
       case 'attachment':
