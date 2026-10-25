@@ -14,6 +14,10 @@ export const FILE_BYTES_MAX = 20 * 1024 * 1024
 export const FILES_MAX = 8
 export const ANSWER_TEXT_MAX = 8000
 export const MAX_PROFILES = 24
+// Task-type catalog bounds for lead routing.
+export const TASK_TYPES_MAX = 20
+export const TASK_TYPE_NAME_MAX = 20
+export const TASK_TYPE_WHEN_MAX = 200
 // How long a driver spawn may take to say anything before a turn is failed.
 export const TURN_IDLE_TIMEOUT_MS = 120_000
 // Workflow run defaults, fixed into each run's snapshot when it starts.

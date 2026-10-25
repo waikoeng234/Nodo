@@ -30,6 +30,34 @@ test('lead flags normalize, persist only when true and keep the existing convers
   }
 }))
 
+test('task type and hard settings persist, validate and keep the existing conversation and driver', () => withHost(async ({ api, runtime, home }) => {
+  const rt = await runtime
+  const workspace = await api('workspace-create', { name: 'Routing card', cwd: join(home, 'ws') })
+  await assert.rejects(api('profile-create', { name: 'Router', engine: 'echo', taskTypes: ['docs', 'feature', 'docs'], hard: { model: ' hard-model ', thinking: 'high', extra: 1 } }), { code: 'orch/invalid' })
+  const card = await api('profile-create', { name: 'Router', engine: 'echo', taskTypes: ['docs', 'feature', 'docs'], hard: { model: ' hard-model ', thinking: 'high' } })
+  assert.deepEqual(card.taskTypes, ['docs', 'feature'])
+  assert.deepEqual(card.hard, { model: 'hard-model', thinking: 'high' })
+  const session = await api('session-create', { profile: card.id, workspace: workspace.id, lazy: true })
+  await api('send', { profile: card.id, session: session.id, text: 'Question' })
+  await until(() => !rt.workView()[session.id]?.active && rt.conversation(card.id, session.id).session.briefSent)
+  const driver = rt.driverOf(session.id)
+  for (const [changes, expected] of [
+    [{ taskTypes: ['bug-fix'] }, { taskTypes: ['bug-fix'], hard: { model: 'hard-model', thinking: 'high' } }],
+    [{ hard: {} }, { taskTypes: ['bug-fix'], hard: {} }],
+    [{ hard: null }, { taskTypes: ['bug-fix'] }],
+    [{ taskTypes: null }, {}],
+    [{ taskTypes: ['docs'], hard: { thinking: 'low' } }, { taskTypes: ['docs'], hard: { thinking: 'low' } }],
+  ]) {
+    const edited = await api('profile-update', { id: card.id, changes })
+    assert.deepEqual([edited.taskTypes, edited.hard], [expected.taskTypes, expected.hard])
+    assert.equal(await rt.ensureDriver(await rt.prepareConversation(session.id)), driver)
+  }
+  await assert.rejects(api('profile-update', { id: card.id, changes: { taskTypes: ['no-such-type'] } }), { code: 'orch/invalid' })
+  await assert.rejects(api('profile-update', { id: card.id, changes: { taskTypes: 'docs' } }), { code: 'orch/invalid' })
+  await assert.rejects(api('profile-update', { id: card.id, changes: { hard: { engine: 'echo' } } }), { code: 'orch/invalid' })
+  await assert.rejects(api('profile-update', { id: card.id, changes: { hard: 'yes' } }), { code: 'orch/invalid' })
+}))
+
 test('avatar selections persist across restart and an avatar-only edit keeps conversations', async () => {
   const home = mkdtempSync(join(tmpdir(), 'orch-avatars-'))
   let host = boot(home)

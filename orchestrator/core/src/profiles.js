@@ -36,6 +36,14 @@ export const cleanThinking = raw => {
   return raw.trim() === 'default' ? undefined : raw.trim()
 }
 
+// The settings a role applies when it takes a hard task through lead routing;
+// an empty object means it takes hard tasks on its own card settings.
+export const cleanHard = raw => {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).some(key => !['model', 'thinking'].includes(key))) throw Object.assign(new Error('Invalid hard settings'), { code: 'orch/invalid' })
+  return Object.fromEntries(['model', 'thinking'].map(key => [key, key === 'model' ? cleanModel(raw[key]) : cleanThinking(raw[key])]).filter(([, value]) => value !== undefined))
+}
+
 export function install(rt) {
   const { state } = rt
 
@@ -68,13 +76,22 @@ export function install(rt) {
     if (workspace === undefined) throw Object.assign(new Error(`No workspace "${raw}"`), { code: 'orch/invalid' })
     return workspace.id
   }
+  const cleanTaskTypes = raw => {
+    if (raw === undefined || raw === null || raw === '') return undefined
+    if (!Array.isArray(raw)) throw Object.assign(new Error('taskTypes must be a list of task type ids'), { code: 'orch/invalid' })
+    const ids = [...new Set(raw)]
+    if (ids.some(id => typeof id !== 'string' || !rt.taskTypes().some(type => type.id === id))) throw Object.assign(new Error('taskTypes contains an unknown task type id'), { code: 'orch/invalid' })
+    return ids.length > 0 ? ids : undefined
+  }
 
-  const createProfile = async ({ name, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate, lead }) => {
+  const createProfile = async ({ name, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate, taskTypes, hard, lead }) => {
     await rt.load()
     await rt.driversReady()
     if (Object.keys(state.profiles).length >= MAX_PROFILES) throw Object.assign(new Error(`At most ${MAX_PROFILES} profiles`), { code: 'orch/invalid' })
     engine = cleanEngine(engine)
     const workspaceId = workspace === undefined ? undefined : cleanWorkspace(workspace)
+    const chosenTaskTypes = cleanTaskTypes(taskTypes)
+    const chosenHard = cleanHard(hard)
     const defaults = rt.engineConfig(engine)
     const chosenModel = cleanModel(model === undefined ? defaults.model : model)
     const chosenThinking = cleanThinking(thinking === undefined ? defaults.thinking : thinking)
@@ -91,6 +108,8 @@ export function install(rt) {
       ...(chosenModel !== undefined ? { model: chosenModel } : {}),
       ...(chosenThinking !== undefined ? { thinking: chosenThinking } : {}),
       ...(chosenPermission !== undefined ? { permission: chosenPermission } : {}),
+      ...(chosenTaskTypes !== undefined ? { taskTypes: chosenTaskTypes } : {}),
+      ...(chosenHard !== undefined ? { hard: chosenHard } : {}),
       engineOptions: rt.validateEngineOptions(engine, engineOptions === undefined ? defaults.engineOptions : engineOptions),
       instructions: String(instructions ?? '').slice(0, INSTRUCTIONS_MAX),
       goal: String(goal ?? '').slice(0, INSTRUCTIONS_MAX),
@@ -124,6 +143,8 @@ export function install(rt) {
     next.thinking = cleanThinking(changes.thinking !== undefined ? changes.thinking : profile.thinking)
     next.permission = cleanPermission(next.engine, changes.permission !== undefined ? changes.permission : profile.permission)
     next.engineOptions = rt.validateEngineOptions(next.engine, changes.engineOptions !== undefined ? changes.engineOptions : profile.engineOptions)
+    if (changes.taskTypes !== undefined) next.taskTypes = cleanTaskTypes(changes.taskTypes)
+    if (changes.hard !== undefined) next.hard = cleanHard(changes.hard)
     if (changes.instructions !== undefined) next.instructions = String(changes.instructions ?? '').slice(0, INSTRUCTIONS_MAX)
     if (changes.goal !== undefined) next.goal = String(changes.goal ?? '').slice(0, INSTRUCTIONS_MAX)
     // permission is absent on purpose: every engine applies the tier when its
@@ -143,6 +164,8 @@ export function install(rt) {
     Object.assign(profile, next, { updatedAt: Date.now() })
     if (profile.model === undefined) delete profile.model
     if (profile.thinking === undefined) delete profile.thinking
+    if (profile.taskTypes === undefined) delete profile.taskTypes
+    if (profile.hard === undefined) delete profile.hard
     if (!profile.lead) delete profile.lead
     if (respawn || permissionChanged) {
       const active = rt.sessionsOf(profile).find(item => item.id === profile.activeSessionId)
