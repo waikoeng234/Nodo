@@ -62,7 +62,7 @@ function setup() {
   const sessions = ['dsh', 'codex', 'claude', 'zcode', 'opencode'].map(id => ({ id: `nodo-${id}`, engine: 'dsh', driverSessionId: id }))
   const rt = { ctx: { ...host, effect: factory => disposers.push(factory()) },
     state: { profiles: { role: { id: 'role', sessions } } }, sessionsOf: profile => profile.sessions, isCompacting: () => false,
-    redactSecrets: text => text, redactDeepSecrets: value => value }
+    redactSecrets: text => text, redactDeepSecrets: value => value, appendLine: (_id, line) => line, save: async () => {} }
   for (const session of sessions) host.add(session.driverSessionId)
   installDispatch(rt)
   install(rt)

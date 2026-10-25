@@ -195,8 +195,11 @@ test('dispatch: a refused steer queues the message and it runs after the turn', 
     const lines = await api('transcript', { profile: profile.id })
     const userTexts = lines.filter(entry => entry.who === 'user').map(entry => entry.text)
     assert.deepEqual(userTexts, ['first task', 'second task'])
-    // Both messages each got a report: two agent text lines.
-    assert.equal(lines.filter(entry => entry.who === 'agent' && entry.kind === 'text').length, 2)
+    const replies = lines.filter(entry => entry.who === 'agent' && entry.kind === 'text' && entry.reply === true)
+    assert.equal(replies.length, 2)
+    assert.deepEqual(replies.map(entry => [entry.turnId, entry.text]), [
+      ['turn-1', 'Approved path taken; finishing.'], ['turn-2', 'Approved path taken; finishing.'],
+    ])
   })
 })
 

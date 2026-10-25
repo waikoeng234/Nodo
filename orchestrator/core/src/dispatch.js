@@ -8,6 +8,7 @@ import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, UNCONFIRMED_S
 import { clip } from './text.js'
 import { projectContent } from './resources.js'
 import { changesTool, normalizeProgress, planObservation, previewRecord } from './stream-records.js'
+import { createMessageStream } from './message-stream.js'
 
 const readable = (value, imageOutput = false) => projectContent(value, imageOutput).text
 
@@ -19,7 +20,7 @@ export function install(rt) {
   const stateOf = (profileId) => {
     let entry = turns.get(profileId)
     if (entry === undefined) {
-      entry = { starting: false, active: false, finishing: false, turnId: null, endedTurn: null, startedAt: null, task: null, seq: 0, nextSeq: 0, joined: [], buffer: '', think: '', thinkLine: null, planLine: null, planTurn: null, toolOpen: null, tools: new Map(), closedTools: new Set(), queued: [], waiters: [], binds: [], idleTimer: null, watched: true }
+      entry = { starting: false, active: false, finishing: false, turnId: null, endedTurn: null, startedAt: null, task: null, seq: 0, nextSeq: 0, joined: [], buffer: '', messages: null, planLine: null, planTurn: null, toolOpen: null, tools: new Map(), closedTools: new Set(), queued: [], waiters: [], binds: [], idleTimer: null, watched: true }
       turns.set(profileId, entry)
     }
     return entry
@@ -32,23 +33,19 @@ export function install(rt) {
     return saved
   }
 
-  // Drivers emit new reasoning text; the next output or tool closes its row.
-  const openThink = (profileId, st, text) => {
-    if (st.think.length <= TRANSCRIPT_TEXT_MAX) st.think += text
-    const body = clip(rt.redactDeepSecrets(st.think), TRANSCRIPT_TEXT_MAX, 'long reasoning')
-    if (st.thinkLine !== null) {
-      st.thinkLine.text = body
-      st.thinkLine.at = Date.now()
-    } else {
-      st.thinkLine = rt.appendLine(profileId, { who: 'agent', kind: 'thinking', text: body, open: true })
-    }
-    void rt.save().catch(() => {})
-  }
-  const closeThink = (st) => {
-    if (st.thinkLine === null) return
-    st.thinkLine.open = false
-    st.thinkLine = null
-    st.think = ''
+  const messagesOf = (profileId, st) => st.messages ??= createMessageStream({
+    append: line => rt.appendLine(profileId, line), redact: rt.redactDeepSecrets,
+    save: () => { void rt.save().catch(() => {}) },
+  })
+  const closeMessages = st => st.messages?.close()
+
+  const settleRequest = (profileId, st, id, request, cancelled = false) => {
+    if (request.closed) return
+    request.closed = true
+    closeMessages(st)
+    request.line = say(profileId, { who: 'system', kind: 'request', requestId: id, requestKind: request.kind, phase: 'end',
+      ...(cancelled ? { cancelled: true } : {}),
+      ...(request.turnId !== null ? { turnId: request.turnId } : {}) })
   }
 
   // A message's turn id is known only once its turn starts; it resolves null if
@@ -114,11 +111,11 @@ export function install(rt) {
         st.turnId = event.turnId ?? null
         bindTurn(st, st.seq, st.turnId)
         st.buffer = ''
-        st.think = ''
-        st.thinkLine = null
+        st.messages = null
+        st.lifecycles = new Map()
         // A plan that raced in before this turn's start owns the row already;
         // anything else is the previous turn's history, not this row.
-        if (st.planTurn === null || String(st.planTurn) !== String(event.turnId ?? '')) st.planLine = null
+        if (st.planTurn === null || String(st.planTurn) !== String(event.turnId ?? '')) { st.planLine = null; st.planLines = new Map() }
         st.planTurn = null
         st.tools = new Map()
         st.closedTools = new Set()
@@ -127,25 +124,17 @@ export function install(rt) {
         armIdle(profileId, st)
         return
       case 'thinking':
-        if (foreign(st, event) || st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        if (typeof event.text === 'string' && event.text !== '') {
-          rt.statsOutput(profileId)
-          openThink(profileId, st, event.text)
-          armIdle(profileId, st)
-        }
-        return
       case 'delta':
       case 'text':
         if (foreign(st, event)) return
         if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        closeThink(st)
-        if (typeof event.text === 'string' && event.text !== '') {
-          rt.statsOutput(profileId)
-          st.buffer = event.type === 'delta' ? st.buffer + event.text : st.buffer === '' ? event.text : `${st.buffer}\n${event.text}`
-          armIdle(profileId, st)
-        }
+        messagesOf(profileId, st).accept(event)
+        if (typeof event.text === 'string' && event.text !== '') rt.statsOutput(profileId)
+        armIdle(profileId, st)
         return
       case 'changes': {
+        if (foreign(st, event) || st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
+        closeMessages(st)
         const tool = changesTool(event)
         st.records ??= rt.newStreamRun?.(profileId)
         const record = tool && st.records?.accept(tool)
@@ -155,21 +144,26 @@ export function install(rt) {
         return
       }
       case 'plan': {
-        // A plan update is the whole plan: it replaces the turn's one plan row
-        // instead of appending another transcript line, so restore never
-        // duplicates and a replaced plan leaves no stale steps behind.
+        // Snapshots replace only the same source plan; unidentified plans use
+        // the turn's default plan slot.
         if (foreign(st, event)) return
         if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        closeThink(st)
+        closeMessages(st)
+        const entityId = typeof event.entityId === 'string' && event.entityId !== '' ? event.entityId : undefined
+        st.planLines ??= new Map()
+        const prior = entityId ? st.planLines.get(entityId) : st.planLine
         const steps = (Array.isArray(event.steps) ? event.steps : []).slice(0, 50)
           .map(step => ({ text: clip(rt.redactDeepSecrets(String(step?.text ?? '')), 500, 'long plan step'), status: ['pending', 'in_progress', 'completed'].includes(step?.status) ? step.status : 'pending' }))
           .filter(step => step.text !== '')
         const removed = event.removed === true || (Array.isArray(event.steps) && steps.length === 0)
         const text = clip(rt.redactDeepSecrets(String(event.explanation ?? event.text ?? event.title ?? '')), TRANSCRIPT_TEXT_MAX, 'long plan')
-        if (st.planLine) {
-          Object.assign(st.planLine, removed ? { steps: [], text: '', removed: true } : { steps, text, removed: false, at: Date.now() })
+        if (prior) {
+          Object.assign(prior, removed ? { steps: [], text: '', removed: true } : { steps, text, removed: false })
         } else if (!removed) {
-          st.planLine = rt.appendLine(profileId, { who: 'agent', kind: 'plan', text, steps })
+          const line = rt.appendLine(profileId, { who: 'agent', kind: 'plan', text, steps,
+            ...(event.turnId !== undefined ? { turnId: event.turnId } : {}), ...(entityId ? { entityId } : {}) })
+          if (entityId) st.planLines.set(entityId, line)
+          else st.planLine = line
           st.planTurn = event.turnId !== undefined ? String(event.turnId) : null
         }
         void rt.save().catch(() => {})
@@ -182,7 +176,7 @@ export function install(rt) {
         if (foreign(st, event)) return
         if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
         if (event.entityId === undefined || event.entityId === null || event.entityId === '') return
-        closeThink(st)
+        closeMessages(st)
         // A name rides only when the source sent one (or on the row-opening
         // start), so an update never renames the merged row. The source's own
         // ids (parent run, child session, tool call) stay on the row.
@@ -196,9 +190,20 @@ export function install(rt) {
           isError: event.isError === true, noRecord: true })
       }
       case 'lifecycle':
-        // Retry waits and compaction ride the running animation, not transcript
-        // lines; they still count as engine liveness for the idle watchdog.
-        if (event.turnId === undefined || st.turnId === null || String(event.turnId) === String(st.turnId)) armIdle(profileId, st)
+        if (!foreign(st, event) && !st.finishing && (st.active || st.starting || event.turnId === undefined)) {
+          closeMessages(st)
+          const line = say(profileId, { who: 'system', kind: 'lifecycle', event: event.kind, phase: event.phase,
+            ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
+            ...(event.entityId !== undefined ? { entityId: event.entityId } : {}),
+            ...(event.detail ? { text: clip(rt.redactDeepSecrets(String(event.detail)), 2000, 'long lifecycle detail') } : {}), ...(event.isError ? { isError: true } : {}), ...(event.cancelled ? { cancelled: true } : {}) })
+          if (event.turnId !== undefined || event.kind === 'retry') {
+            st.lifecycles ??= new Map()
+            const key = JSON.stringify([event.kind, event.entityId ?? null])
+            if (event.phase === 'start') st.lifecycles.set(key, line)
+            else st.lifecycles.delete(key)
+          }
+          armIdle(profileId, st)
+        }
         return
       case 'tool':
       {
@@ -209,7 +214,7 @@ export function install(rt) {
         // driver event always names its turn; legacy fixtures without one keep
         // the old direct-sink behaviour.
         if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        closeThink(st)
+        closeMessages(st)
         const phase = event.phase === 'end' ? 'end' : event.phase === 'update' ? 'update' : 'start'
         const key = event.callId === undefined ? null : String(event.callId)
         // A call id that already reached its end stays terminal until the next
@@ -240,7 +245,8 @@ export function install(rt) {
         if (event.noRecord !== true) rt.statsTool(profileId, phase === 'end' ? 'end' : 'start')
         const record = event.noRecord ? null : st.records?.accept(event)
         const line = say(profileId, {
-          who: 'agent', kind: 'tool', name: String(event.name ?? 'tool'), phase,
+          who: 'agent', kind: 'tool', name: String(event.name ?? 'tool'), phase, timeline: true,
+          ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
           ...(event.noRecord === true ? { activity: true } : {}),
           ...(key !== null ? { callId: key } : {}),
           ...(event.parentCallId !== undefined ? { parentCallId: String(event.parentCallId) } : {}),
@@ -262,16 +268,44 @@ export function install(rt) {
         armIdle(profileId, st)
         return
       }
-      case 'request/opened':
-        closeThink(st)
-        rt.openApproval(profileId, event)
+      case 'request/opened': {
+        if (st.requests?.has(event.id)) return
+        closeMessages(st)
+        let request
+        if (st.active || st.starting) {
+          st.requests ??= new Map()
+          request = { kind: event.kind, turnId: st.turnId }
+          st.requests.set(event.id, request)
+          say(profileId, { who: 'system', kind: 'request', requestId: event.id, requestKind: event.kind, phase: 'start',
+            ...(st.turnId !== null ? { turnId: st.turnId } : {}), text: clip(rt.redactDeepSecrets(String(event.reason ?? event.tool ?? '')), 2000, 'long request') })
+        }
+        rt.openApproval(profileId, event, request ? async reply => {
+          settleRequest(profileId, st, event.id, request)
+          const questions = Array.isArray(event.detail?.questions) ? event.detail.questions.slice(0, 50)
+            .filter(question => typeof question?.id === 'string')
+            .map(question => ({ id: question.id.slice(0, 200), label: String(question.header ?? question.question ?? question.id).slice(0, 2000) })) : []
+          if (request.line) {
+            delete request.line.cancelled
+            request.line.response = rt.redactDeepSecrets({ ...reply,
+              ...(questions.length > 1 && JSON.stringify(questions).length <= 4000 ? { questions } : {}) })
+          }
+          if (st.requests.get(event.id) === request) st.requests.delete(event.id)
+          await rt.save()
+        } : undefined)
         armIdle(profileId, st)
         return
+      }
       case 'request/closed':
+        if (st.requests?.has(event.id)) {
+          const request = st.requests.get(event.id)
+          settleRequest(profileId, st, event.id, request, event.cancelled === true)
+          st.requests.delete(event.id)
+        }
         rt.closeApproval(event.id)
         armIdle(profileId, st)
         return
       case 'note':
+        closeMessages(st)
         if (typeof event.text === 'string' && event.text) say(profileId, { who: 'system', kind: 'note', text: event.text })
         armIdle(profileId, st)
         return
@@ -280,25 +314,35 @@ export function install(rt) {
         st.finishing = true
         const ended = st.turnId ?? event.turnId
         if (ended !== undefined && ended !== null) st.endedTurn = String(ended)
+        for (const [id, request] of st.requests ?? []) {
+          settleRequest(profileId, st, id, request, event.reason === 'interrupted')
+          rt.closeApproval(id)
+        }
+        st.requests?.clear()
+        for (const line of st.lifecycles?.values() ?? []) {
+          say(profileId, { who: 'system', kind: 'lifecycle', event: line.event, phase: 'end',
+            ...(line.entityId !== undefined ? { entityId: line.entityId } : {}), ...(ended != null ? { turnId: ended } : {}),
+            ...(event.reason === 'interrupted' ? { cancelled: true } : {}), ...(event.reason === 'error' ? { isError: true } : {}) })
+        }
+        st.lifecycles?.clear()
         for (const record of st.records?.close(event.reason === 'interrupted' ? 'interrupted' : 'unknown') ?? []) {
           const line = say(profileId, { who: 'agent', kind: 'tool', name: record.title, callId: record.entityId, phase: 'end',
+            timeline: true, ...(ended != null ? { turnId: ended } : {}),
             isError: true, brief: 'Agent 未确认执行结果', presentation: previewRecord(record) })
           if (line) saveRecord(profileId, st, line, record)
         }
         const seq = st.seq
-        const flushed = st.buffer
-        rt.recordTaskOutcome(profileId, st.task, event.reason, flushed || event.text)
+        const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
+        const flushed = st.messages.text()
+        rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
         st.task = null
-        if (flushed !== '') {
-          const final = typeof event.text === 'string' && event.text.trim() !== '' && event.text !== flushed ? event.text : undefined
-          const line = say(profileId, { who: 'agent', kind: 'text', text: clip(rt.redactDeepSecrets(flushed), TRANSCRIPT_TEXT_MAX, 'long reply'), reason: event.reason,
-            ...(final !== undefined ? { final: clip(rt.redactDeepSecrets(final), TRANSCRIPT_TEXT_MAX, 'long reply') } : {}) })
-          if (line && rt.saveReplyImages) st.recordWrites = Promise.resolve(st.recordWrites).then(async () => {
+        for (const line of replyLines) {
+          if (rt.saveReplyImages) st.recordWrites = Promise.resolve(st.recordWrites).then(async () => {
             const images = await rt.saveReplyImages(profileId, line.text)
             if (images.length) line.images = images
           }).catch(() => rt.warn?.('nodo: reply images could not be persisted'))
-          st.buffer = ''
         }
+        st.buffer = ''
         if (event.reason === 'error' && typeof event.error === 'string') {
           say(profileId, { who: 'agent', kind: 'error', text: rt.redactDeepSecrets(String(event.error)).slice(0, 2000) })
         }
@@ -306,7 +350,7 @@ export function install(rt) {
           say(profileId, { who: 'system', kind: 'usage', usage: event.usage })
         }
         rt.statsEnd(profileId, event.usage, event.timing)
-        closeThink(st)
+        closeMessages(st)
         disarmIdle(st)
         const finish = reason => {
           st.active = false
@@ -314,6 +358,7 @@ export function install(rt) {
           st.finishing = false
           st.records = null
           st.planLine = null
+          st.planLines = new Map()
           st.planTurn = null
           st.tools = new Map()
           st.closedTools = new Set()
@@ -501,13 +546,17 @@ export function install(rt) {
 
   // The live slice the client polls: what runs now and what waits.
   const workView = () => {
-    const view = Object.fromEntries([...turns.entries()].map(([profileId, st]) => [profileId, {
-    active: st.active || st.starting || st.finishing || rt.isCompacting(profileId),
-    tool: st.toolOpen,
-    since: st.startedAt,
-    buffer: st.buffer === '' ? null : clip(rt.redactDeepSecrets(st.buffer), 4000, 'live reply'),
-    queued: st.queued.length,
-    }]))
+    const view = Object.fromEntries([...turns.entries()].map(([profileId, st]) => {
+      const buffer = st.active || st.starting ? st.messages?.text() ?? st.buffer : ''
+      return [profileId, {
+        active: st.active || st.starting || st.finishing || rt.isCompacting(profileId),
+        tool: st.toolOpen,
+        since: st.startedAt,
+        buffer: buffer === '' ? null : clip(rt.redactDeepSecrets(buffer), 4000, 'live reply'),
+        timeline: st.messages != null,
+        queued: st.queued.length,
+      }]
+    }))
     for (const profile of Object.values(rt.state.profiles)) {
       view[profile.id] ??= { active: false, since: null, buffer: null, queued: 0 }
       for (const session of rt.sessionsOf(profile)) {

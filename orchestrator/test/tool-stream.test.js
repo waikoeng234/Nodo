@@ -298,7 +298,7 @@ test('subagent activity merges into one row per entity and never becomes turn st
   } finally { cleanup() }
 })
 
-test('compaction and retry statuses never write transcript lines', async () => {
+test('compaction and retry retain their source lifecycle order while stale turn events stay excluded', async () => {
   const { rt, lines, cleanup } = harness()
   try {
     rt.driverSink('profile', { type: 'turn/start', turnId: 't1' })
@@ -316,7 +316,12 @@ test('compaction and retry statuses never write transcript lines', async () => {
     rt.driverSink('profile', { type: 'lifecycle', turnId: 't1', kind: 'compaction', phase: 'start' })
     rt.driverSink('profile', { type: 'turn/end', reason: 'done' })
     await tick()
-    assert.equal(lines.length, 0, 'statuses ride the running animation, not the transcript')
+    assert.deepEqual(lines.map(line => [line.event, line.phase, line.turnId]), [
+      ['retry', 'start', 't1'], ['retry', 'end', 't1'], ['compaction', 'start', 't1'], ['compaction', 'end', 't1'],
+      ['compaction', 'start', undefined], ['compaction', 'end', undefined], ['retry', 'start', 't2'], ['retry', 'end', 't2'],
+    ])
+    assert.equal(lines[3].isError, true)
+    assert.equal(lines[5].cancelled, true)
   } finally { cleanup() }
 })
 

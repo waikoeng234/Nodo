@@ -12,7 +12,7 @@ export function install(rt) {
   const answering = new Map()
 
   // A driver wants permission. The card settles; the engine is told.
-  const openApproval = (profileId, event) => {
+  const openApproval = (profileId, event, onAnswered) => {
     if (typeof event?.id !== 'string' || event.id === '') return
     if (pending.has(event.id)) return
     const entry = {
@@ -24,6 +24,7 @@ export function install(rt) {
       reason: String(event.reason ?? '').slice(0, 500),
       detail: event.detail ?? null,
       at: Date.now(),
+      onAnswered,
     }
     pending.set(entry.id, entry)
     // The card leaves at the first answer, so a second click cannot answer the
@@ -72,18 +73,22 @@ export function install(rt) {
         throw Object.assign(new Error('Type an answer first'), { code: 'orch/invalid' })
       }
     }
-    await entry.answer({ decision, value: typeof value === 'string' ? value.slice(0, ANSWER_TEXT_MAX) : undefined, ...(held.has(id) ? { exit } : {}) })
+    const reply = { decision, value: typeof value === 'string' ? value.slice(0, ANSWER_TEXT_MAX) : undefined }
+    await entry.answer({ ...reply, ...(held.has(id) ? { exit } : {}) })
+    if (!entry.cancelled) await entry.onAnswered?.(reply)
   }
 
   // A profile gone or its driver disposed: settle its cards as denied so neither
   // the engine nor a workflow keeps waiting on a screen that will not answer.
   const cancelApprovals = (profileId) => {
-    for (const entry of pending.values()) {
+    for (const entry of [...pending.values(), ...answering.values()]) {
       if (entry.profileId !== profileId) continue
-      if (entry.kind === 'permission') {
-        pending.delete(entry.id)
-        void rt.answerRequest(profileId, entry.id, { decision: 'deny' }).catch(() => {})
-      } else void entry.answer?.({ decision: 'answer', value: '' }).catch(() => {})
+      const unanswered = pending.delete(entry.id)
+      entry.closed = true
+      entry.cancelled = true
+      rt.driverSink?.(profileId, { type: 'request/closed', id: entry.id, cancelled: true })
+      if (unanswered) void rt.answerRequest(profileId, entry.id,
+        entry.kind === 'permission' ? { decision: 'deny' } : { decision: 'answer', value: '' }).catch(() => {})
     }
   }
 
