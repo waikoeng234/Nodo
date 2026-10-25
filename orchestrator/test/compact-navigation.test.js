@@ -25,7 +25,7 @@ async function mount(pendingEndpoint = 'session-compact', engine = 'zcode', side
       completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       openNativeSession: engine === 'dsh' ? id => { opened.push(id); space = { ...space, legacy: false, drafting: false, nodoSession: id } } : null,
       runningOf: () => ({ active: false }),
-      workLabel: () => '', sessionTime: () => '',
+      workLabel: () => '', workDot: () => 'idle', sessionTime: () => '',
       workspaceIdOf: (_view, role, session) => session.workspaceRef ?? role.workspaceId,
       roleStateOf: (role, view) => ({ active: role.sessions.some(session => view.work[session.id]?.active) }),
       sectionHead: (_title, action) => action,
@@ -55,7 +55,9 @@ async function mount(pendingEndpoint = 'session-compact', engine = 'zcode', side
   const render = () => { cursor = 0; return nodes(loaded.NodoPage({ sidebarOnly })) }
   return { loaded, view, role, calls, requests, opened, render, space: () => space,
     composer: () => render().find(node => node.type === loaded.Composer).props,
-    rail: () => render().find(node => node.type === loaded.Rail).props }
+    rail: () => render().find(node => node.type === loaded.Rail).props,
+    // Rail state lives past the page's own slots so repeated rail renders keep it.
+    railTree: props => { cursor = 1000; return nodes(loaded.Rail(props)) } }
 }
 
 test('a pending compact leaves session navigation available and locks only that session composer', async () => {
@@ -117,11 +119,19 @@ test('a pending send keeps sidebar actions and other session composers available
   assert.equal(h.composer().busy, true)
   const rail = h.rail()
   assert.equal(rail.busy, false)
-  const tree = nodes(h.loaded.Rail(rail))
-  for (const label of ['添加角色', '添加项目', '从“Project”创建工作树', '在“Project”中新建会话', '工作区“Project”的操作', '配置角色 Idle']) {
+  const props = { ...rail, onSelect() {} }
+  const tree = h.railTree(props)
+  for (const label of ['添加角色', '添加项目', '在“Project”中新建会话', '工作区“Project”的操作']) {
     assert.equal(!!tree.find(node => node.props['aria-label'] === label).props.disabled, false, label)
   }
-  assert.equal(tree.find(node => node.props['aria-label'] === '配置角色 Role').props.disabled, true)
+  assert.equal(tree.find(node => node.type === 'Menu' && node.props.items?.some(item => item.id === 'worktree')).props.items
+    .some(item => item.disabled), false, 'the project menu stays available')
+  const config = name => {
+    h.railTree(props).find(node => node.props.className === 'nodo-roster-item' && node.props.title === name).props.onClick()
+    return h.railTree(props).find(node => node.props['aria-label'] === `配置角色 ${name}`)
+  }
+  assert.equal(!!config('Idle').props.disabled, false)
+  assert.equal(config('Role').props.disabled, true)
   for (const session of h.role.sessions) {
     const row = nodes(h.loaded.SessionRow({ role: h.role, session, busy: rail.busy, work: h.view.work[session.id] }))
     assert.equal(row.find(node => node.props.className === 'nodo-row nodo-session').props.disabled, false)

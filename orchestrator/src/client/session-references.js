@@ -1,5 +1,11 @@
 import { h, Fragment, useState, useEffect, useSyncExternalStore, call, MARKDOWN_LABELS, IconUsersOutlineRegular, Modal, Button, Input, MarkdownText } from './ui-shared.js'
 
+export const referenceHistory = references => h('details', { className: 'nodo-reference-history' },
+  h('summary', null, `查看本条消息的引用（${references.length}）`),
+  references.map((value, index) => h('section', { key: value.id ?? index },
+    h('strong', null, [value.source?.profileName, value.source?.sessionName, value.source?.step].filter(Boolean).join(' · ')),
+    h(MarkdownText, { text: (value.messages ?? []).map(message => message.text).join('\n\n'), labels: MARKDOWN_LABELS }))))
+
 export function createSessionReferences(ctx, space) {
   const source = 'nodo-reference'
   let dialog = null
@@ -162,10 +168,7 @@ export function createSessionReferences(ctx, space) {
             .then(value => { if (live) setReferences(value) }).catch(() => {})
           return () => { live = false }
         }, [sessionId, node.data.seq, hasReferences])
-        return h(Fragment, null, h(native.component, props), references.length > 0 && h('details', { className: 'nodo-reference-history' },
-          h('summary', null, `查看本条消息的引用（${references.length}）`),
-          references.map(value => h('section', { key: value.id }, h('strong', null, `${value.source.profileName} · ${value.source.sessionName}`),
-            h(MarkdownText, { text: value.messages.map(message => message.text).join('\n\n'), labels: MARKDOWN_LABELS })))))
+        return h(Fragment, null, h(native.component, props), references.length > 0 && referenceHistory(references))
       }
       stops.push(ctx.slots.register({ name: 'conversation.chat.node', key, priority: -100, locale: native.locale, inject: native.inject }, ReferencedMessage))
     }

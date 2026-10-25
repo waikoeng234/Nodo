@@ -14,7 +14,7 @@ import {
   Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
-  IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
+  IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
@@ -31,7 +31,7 @@ export {
   Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
-  IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
+  IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
@@ -212,10 +212,6 @@ export const sessionTime = at => {
   if (unit === 'now') return TIME_WORDS.now
   return TIME_WORDS.ago.replace('{t}', TIME_WORDS[unit].replace('{n}', String(n)))
 }
-
-// 角色与项目共用同一行小节标题：标题居中，添加入口贴右，两节因此完全对齐。
-export const sectionHead = (title, action) => h('div', { className: 'nodo-section-head' },
-  h('h2', { className: 'nodo-section-title' }, title), action)
 
 // The host chat's own number words for the statistics line: exact below a
 // thousand, then K/M with its rounding, grouped digits for the dialog, and

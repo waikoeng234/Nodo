@@ -153,3 +153,17 @@ test('nonempty file summaries appear after completion and in history while empty
   }
   assert.equal(JSON.stringify(feed.lines), before, 'hiding a card does not delete saved events')
 })
+
+test('a user message sent with session references shows the referenced replies under it', async () => {
+  const feed = { key: 'p:s', error: '', lines: [
+    { who: 'user', text: 'use the review', references: [{ id: 'r1', source: { profileName: '大肥鱼', sessionName: '审查' }, messages: [{ text: 'reviewed reply' }] }] },
+    { who: 'user', text: 'plain task' },
+  ] }
+  const { Feed } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
+  const history = nodes(tree).filter(node => node.props?.className === 'nodo-reference-history')
+  assert.equal(history.length, 1)
+  assert.ok(nodes(history[0]).some(node => node.type === 'summary' && node.children.includes('查看本条消息的引用（1）')))
+  assert.ok(nodes(history[0]).some(node => node.type === 'strong' && node.children.includes('大肥鱼 · 审查')))
+  assert.ok(nodes(history[0]).some(node => node.props?.text === 'reviewed reply'))
+})

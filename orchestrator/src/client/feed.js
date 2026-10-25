@@ -14,6 +14,7 @@ import {
 } from './ui-shared.js'
 import { supportedStreamRecord, StreamRecordCard } from './stream-records.js'
 import { StreamingText } from './streaming-text.tsx'
+import { referenceHistory } from './session-references.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
 
@@ -349,7 +350,8 @@ export function Feed({ profile, session, revision, work, sentTick }) {
           item.files?.length > 0 && h('span', { className: 'nodo-user-files' }, item.files.map((file, at) => h('span', { key: file.id ?? at, className: 'nodo-composer-file' },
             h(IconPaperclipOutlineRegular, { size: 14 }), h('span', { title: file.name }, file.name)))),
           item.images?.map(image => h(TranscriptImage, { key: image.id, image })), item.text),
-        h(MessageTime, { at: item.at }))
+        h(MessageTime, { at: item.at }),
+        item.references?.length > 0 && referenceHistory(item.references))
     }
     if (item.who === 'agent') {
       const streaming = item.timeline === true && item.open === true && work?.active === true

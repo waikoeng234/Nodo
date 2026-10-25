@@ -94,11 +94,11 @@ export const selectSession = async (role, id, project, page) => {
   } catch (failure) { if (current()) setActionError(failure.message) }
 }
 
-export const startConversation = (roleId, page) => {
-  const { workspace, busy, readOnly, setEditing } = page
-  if (!workspace || busy || readOnly) return
+export const startConversation = (roleId, page, project = page.workspace) => {
+  const { busy, readOnly, setEditing } = page
+  if (!project || busy || readOnly) return
   setEditing(null)
-  nativeSpace.startDraft({ profile: roleId, workspace: workspace.id })
+  nativeSpace.startDraft({ profile: roleId, workspace: project.id })
 }
 
 export const openInitialSidebarSession = page => {
@@ -286,7 +286,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     await refresh(true)
     setSessionDialog(null)
   }
-  const startDraft = roleId => startConversation(roleId, pageEnv)
+  const startDraft = (roleId, project) => startConversation(roleId, pageEnv, project)
   const attach = async (files) => {    try {
       const added = await Promise.all(files.map(readImage))
       setPastedImages(current => ({ ...current, [draftKey]: [...(current[draftKey] ?? []), ...added] }))
@@ -343,13 +343,11 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
 
   const conversation = () => h('div', { className: 'nodo-conversation' },
     // The host conversation header: the session's own name in the window-chrome
-    // row, the view tab under it, and one hairline closing the block.
+    // row and one hairline closing the block.
     h('header', { className: 'nodo-head' },
       h('div', { className: 'nodo-title-row' },
         h('span', { className: 'nodo-crumb', title: session?.name ?? workspace?.name ?? profile.name },
-          session?.name ?? workspace?.name ?? profile.name)),
-      h('div', { className: 'nodo-tabs', role: 'tablist', 'aria-label': '会话视图' },
-        h('button', { type: 'button', role: 'tab', 'aria-selected': 'true', className: 'nodo-tab' }, '对话'))),
+          session?.name ?? workspace?.name ?? profile.name))),
     h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since })),
@@ -392,19 +390,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
           if (role && workspace) void select(role)
           else { remember(id, workspace?.id); setActionError(''); setEditing(null); if (sidebarOnly) nativeSpace.showLegacy() }
         },
-        onSelectWorkspace: id => {
-          remember(profile?.id, id); setActionError(''); setEditing(null)
-          if (profile) {
-            const project = workspaces.find(item => item.id === id)
-            void select(profile, undefined, project)
-          }
-        },
-        onSelectSession: (role, id) => void select(role, id),
+        onSelectSession: (role, id, project) => void select(role, id, project),
         onArchiveSession: (role, id, archived) => void archiveSession(role, id, archived),
         onRenameSession: (role, session) => setSessionDialog({ role, session }),
         onPinSession: (role, id, pinned) => void updateSession(role, id, { pinned }),
         onNewSession: startDraft,
-        onNewWorktree: () => { if (!readOnly) setWorktreeOpen(true) },
+        onNewWorktree: project => { if (!readOnly) setWorktreeOpen(project) },
         onNewRole: () => edit({ kind: 'profile', profile: null }),
         onEditRole: item => edit({ kind: 'profile', profile: item }),
         onSettings: () => edit({ kind: 'settings' }),
@@ -428,8 +419,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
       onCancel: () => setWorkspaceDialog(null),
       ...(workspaceDialog.kind === 'rename' ? { onSaved: renamedWorkspace } : { onDeleted: deletedWorkspace }),
     }),
-    worktreeOpen && workspace && h(WorktreeDialog, {
-      key: `worktree:${workspace.id}`, workspace, profile,
+    worktreeOpen && h(WorktreeDialog, {
+      key: `worktree:${worktreeOpen.id}`, workspace: worktreeOpen, profile,
       onCancel: () => setWorktreeOpen(false), onCreated: createdWorktree,
     }),
     goalOpen && profile && h(GoalDialog, {

@@ -33,7 +33,7 @@ export const AVATAR_CSS = `
 .nodo-avatar-eyes{transform-box:fill-box;transform-origin:center}
 .nodo-avatar[data-running=true] .nodo-avatar-art{animation:nodo-avatar-hop 1.6s ease-in-out infinite}
 .nodo-avatar[data-running=true] .nodo-avatar-eyes{animation:nodo-avatar-blink 3.8s ease-in-out infinite}
-.nodo-role-select:hover .nodo-avatar:not([data-running]) .nodo-avatar-art{animation:nodo-avatar-greet .45s ease-in-out}
+.nodo-roster-item:hover .nodo-avatar:not([data-running]) .nodo-avatar-art{animation:nodo-avatar-greet .45s ease-in-out}
 .nodo-avatar-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .nodo-avatar-option{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:78px;padding:10px 4px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
 .nodo-avatar-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}

@@ -849,9 +849,9 @@ test('sidebar avatar follows any active session and returns to idle when work en
   assert.equal(avatar().props.running, true)
 })
 
-// The role picker under the project picker narrows the session list to one role;
-// "全部角色" lifts the filter again. Only the list changes, never the role section.
-test('the rail filters sessions by the role picked under the project picker', async () => {
+// A roster avatar narrows the session list to one role; pressing it again or
+// 全部 lifts the filter. Only the list changes, never the roster.
+test('the rail filters sessions by the role picked in the roster', async () => {
   const slots = []
   let cursor = 0
   const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
@@ -866,25 +866,42 @@ test('the rail filters sessions by the role picked under the project picker', as
   ] }
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, onSelect: () => {} })) }
-  const picker = tree => tree.find(node => node.type === 'Menu' && String(node.props.anchor?.props?.['aria-label'] ?? '').startsWith('按角色筛选'))
+  const selected = [], edited = []
+  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, onSelect: id => selected.push(id), onEditRole: role => edited.push(role.id) })) }
   const rows = tree => tree.filter(node => node.type === SessionRow).map(node => `${node.props.role.name} · ${node.props.session.name}`)
-  const roles = tree => tree.filter(node => node.props?.className === 'nodo-role').map(node => node.props.key)
+  const roster = tree => tree.filter(node => node.props?.className === 'nodo-roster-item')
+  const name = node => node.children[1].children[0]
+  const press = label => roster(render()).find(node => name(node) === label).props.onClick()
+  const pressed = tree => roster(tree).filter(node => node.props['aria-pressed']).map(name)
+  const edit = (tree, label) => tree.find(node => node.props?.className === 'nodo-roster-edit' && node.props['aria-label'] === `配置角色 ${label}`)
   let tree = render()
-  assert.deepEqual(Array.from(picker(tree).props.items, item => item.label), ['全部角色', '大肥鱼', '贼 coder'])
-  assert.equal(picker(tree).props.selectedId, 'all')
+  assert.deepEqual(roster(tree).map(name), ['全部', '大肥鱼', '贼 coder'])
+  assert.deepEqual(pressed(tree), ['全部'])
   assert.deepEqual(rows(tree), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
-  picker(tree).props.onSelect('coder')
+  assert.ok(edit(tree, '大肥鱼') && edit(tree, '贼 coder'), 'every role carries its own config entry')
+  edit(tree, '贼 coder').props.onClick()
+  assert.deepEqual([selected, edited], [[], ['coder']], 'the config entry opens the role card without picking the role')
+  assert.equal(tree.some(node => node.props?.className === 'nodo-roster-detail'), false, 'picking a role opens no detail bar')
+  press('贼 coder')
   tree = render()
-  assert.equal(picker(tree).props.selectedId, 'coder')
-  assert.equal(picker(tree).props.anchor.props['aria-label'], '按角色筛选会话，当前 贼 coder')
+  assert.deepEqual(selected, ['coder'], 'pressing a role also selects it')
+  assert.deepEqual(pressed(tree), ['贼 coder'])
   assert.deepEqual(rows(tree), ['贼 coder · 删除新会话'])
-  assert.deepEqual(roles(tree), ['fish', 'coder'], 'the role section stays complete')
-  picker(tree).props.onSelect('all')
-  assert.deepEqual(rows(render()), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
+  assert.deepEqual(roster(tree).map(name), ['全部', '大肥鱼', '贼 coder'], 'the roster stays complete')
+  assert.equal(tree.some(node => node.props?.className === 'nodo-roster-detail'), false, 'picking a role opens no detail bar')
+  const fold = () => render().find(node => node.props?.className === 'nodo-project-select' && node.props.title === '/bot').props.onClick()
+  fold()
+  assert.deepEqual(rows(render()), [], 'a role filter still lets a project fold')
+  fold()
+  assert.deepEqual(rows(render()), ['贼 coder · 删除新会话'])
+  press('贼 coder')
   tree = render()
-  tree.filter(node => node.props?.className === 'nodo-role-select')[1].props.onClick()
-  assert.deepEqual(rows(render()), ['贼 coder · 删除新会话'], 'clicking a role applies its filter')
+  assert.deepEqual(pressed(tree), ['全部'], 'pressing the role again lifts its filter')
+  assert.deepEqual(rows(tree), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
+  press('大肥鱼')
+  assert.deepEqual(rows(render()), ['大肥鱼 · 读当前任务'])
+  press('全部')
+  assert.deepEqual(rows(render()), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
 })
 
 // A long plain list folds to the ten most recent sessions; searching lists every
@@ -916,30 +933,36 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   toggle(render()).props.onClick()
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'folding again hides the tail')
   const views = tree.find(node => node.props?.className === 'nodo-rail-switch')
-  assert.deepEqual(views.children.map(node => [node.children[0], node.props['aria-pressed']]), [['会话', true], ['Workflow', false]], 'the header switch replaces the logo and the workflow entry')
-  assert.equal(tree.some(node => node.type === 'Input'), false, 'the search field stays folded behind its icon')
-  const searchIcon = () => tree.find(node => node.type === 'button' && node.props['aria-label'] === '搜索当前项目会话')
-  searchIcon().props.onClick({ stopPropagation() {} })
+  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['Workflow', false]], 'the dock switch replaces the logo and the workflow entry')
+  const search = () => tree.find(node => node.type === 'Input')
+  const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'search'))
+  assert.equal(search(), undefined, 'search waits in the project menu')
+  menu().props.onSelect('search')
   tree = render()
-  assert.equal(searchIcon(), undefined, 'the search field takes over the project row')
-  assert.equal(tree.some(node => String(node.props?.['aria-label'] ?? '').startsWith('选择项目')), false)
-  tree.find(node => node.type === 'Input').props.onChange({ target: { value: '会话0' } })
+  assert.equal(search().props['aria-label'], '搜索“bot”的会话')
+  search().props.onChange({ target: { value: '会话0' } })
   tree = render()
   assert.deepEqual(ids(tree), ['s0'], 'a search sees every match')
   assert.equal(toggle(tree), undefined, 'a search never folds')
-  tree.find(node => node.type === 'Input').props.onKeyDown({ key: 'Escape' })
+  search().props.onKeyDown({ key: 'Escape' })
   tree = render()
-  assert.equal(tree.some(node => node.type === 'Input'), false, 'Escape folds the search back into its icon and clears it')
-  assert.ok(searchIcon())
+  assert.equal(search(), undefined, 'Escape clears and closes the search')
   assert.equal(ids(tree).length, 10)
+  menu().props.onSelect('archived:only')
+  tree = render()
+  assert.equal(menu().props.selectedId, 'archived:only', 'the project menu marks its archived view')
+  assert.deepEqual(ids(tree), [])
+  assert.ok(tree.some(node => node.props?.role === 'status' && node.children.includes('暂无已归档会话')), 'the project stays listed with an empty note')
+  menu().props.onSelect('archived:hide')
+  tree = render()
   // A role filter still folds: only the ten most recent matches show.
-  const rolePicker = () => tree.find(node => node.type === 'Menu' && String(node.props.anchor?.props?.['aria-label'] ?? '').startsWith('按角色筛选'))
-  rolePicker().props.onSelect('role')
+  const press = label => tree.find(node => node.props?.className === 'nodo-roster-item' && node.children[1].children[0] === label).props.onClick()
+  press('Coder')
   tree = render()
   assert.deepEqual(ids(tree), Array.from({ length: 10 }, (_, index) => `s${index}`), 'a role filter keeps the fold')
   assert.equal(toggle(tree).children[0], '显示更多')
-  rolePicker().props.onSelect('all')
-  assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), '「全部角色」keeps the collapsed state')
+  press('全部')
+  assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), '「全部」keeps the collapsed state')
 })
 
 // The unsent new-conversation draft lists as its own 新会话 row of its project,
@@ -977,16 +1000,14 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   assert.equal(draftRow(render({ id: 'd1', workspace: 'elsewhere' })), undefined, 'another project keeps its own list clean')
   tree = render({ id: 'd1', workspace: 'w' })
   assert.equal(draftRow(tree).children[0].type, 'span', 'a draft without a role falls back to the new-chat icon')
-  const rolePicker = () => tree.find(node => node.type === 'Menu' && String(node.props.anchor?.props?.['aria-label'] ?? '').startsWith('按角色筛选'))
-  rolePicker().props.onSelect('fish')
+  tree.find(node => node.props?.className === 'nodo-roster-item' && node.props.title === '大肥鱼').props.onClick()
   assert.ok(draftRow(render({ id: 'd1', workspace: 'w', profile: 'fish' })), 'the draft survives its own role filter')
   assert.equal(draftRow(render({ id: 'd1', workspace: 'w', profile: 'other' })), undefined, 'a role filter hides foreign drafts')
 })
 
-// A running session in another project or branch must stay findable: the project
-// row carries a dot while another workspace is busy, and the picker marks each
-// busy workspace's icon.
-test('the project row and picker mark the workspaces with running sessions', async () => {
+// A running session in a collapsed project or branch must stay findable: its tree
+// row says how many sessions run, or that one waits for a person.
+test('the project tree marks collapsed workspaces with running sessions', async () => {
   const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
   const workspaces = [{ id: 'main', name: 'bot', cwd: '/bot', createdAt: 1 }, { id: 'branch', name: 'feature', cwd: '/feature', worktree: { branch: 'feature' }, createdAt: 2 }]
   const view = { workspaces, work: { away: { active: true } }, profiles: [
@@ -998,25 +1019,24 @@ test('the project row and picker mark the workspaces with running sessions', asy
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
   const render = () => nodes(Rail({ view, workspace: workspaces[0], onSelect: () => {} }))
-  const picker = tree => tree.find(node => node.type === 'Menu' && String(node.props.anchor?.props?.['aria-label'] ?? '').startsWith('选择项目'))
+  const childNodes = node => node.children.find(child => child?.props?.className === 'nodo-tree-children').children
+    .filter(child => child?.props?.className === 'nodo-tree-node')
+  const top = tree => childNodes(tree.find(node => node.type === 'nav').children[0])
+  const toggleOf = node => node.children[0].children[0]
+  const state = tree => tree.find(node => node.props?.className === 'nodo-tree-state')
   let tree = render()
-  assert.ok(tree.find(node => node.props?.className === 'nodo-project-state'), 'the project row hints at a busy workspace elsewhere')
-  // orderedWorkspaces sort by createdAt desc: the branch (busy) comes first.
-  const items = () => picker(tree).props.items
-  const names = () => Array.from(items(), item => typeof item.label === 'string' ? item.label : item.label.children[0])
-  assert.deepEqual(names(), ['feature', 'bot'])
-  const busyLabel = items()[0].label
-  assert.equal(busyLabel.props.className, 'nodo-menu-label', 'the busy name carries the marker')
-  assert.equal(busyLabel.children[1].children[0].type, 'StateDot', 'the marker is the running dot after the name')
-  assert.equal(items()[0].icon.type, 'IconBranchOutlineRegular', 'the branch glyph stays plain')
+  // Workspaces sort by createdAt desc: the branch (busy) comes first.
+  assert.deepEqual(top(tree).map(node => node.props.key), ['branch', 'main'])
+  assert.deepEqual(top(tree).map(node => toggleOf(node).props['aria-expanded']), [false, true], 'only the current project opens')
+  assert.equal(toggleOf(top(tree)[0]).children[1].children[0].type, 'IconBranchOutlineRegular')
+  assert.deepEqual(state(tree).children.map(child => child.props?.state ?? child), ['ongoing', '1 个运行中'])
+  view.work.away = { active: true, status: 'waiting-approval' }
+  assert.deepEqual(state(render()).children.map(child => child.props?.state ?? child), ['warning', '待处理'])
   view.work.away.active = false
-  tree = render()
-  assert.equal(tree.find(node => node.props?.className === 'nodo-project-state'), undefined, 'an all-idle rail carries no hint')
-  assert.deepEqual(names(), ['feature', 'bot'], 'idle labels are plain strings')
-  assert.ok(items().every(item => typeof item.label === 'string'))
+  assert.equal(state(render()), undefined, 'an all-idle tree carries no hint')
 })
 
-test('the project row exposes a worktree creation button and menu entry', async () => {
+test('the project tree adds projects at its root and creates worktrees from the project menu', async () => {
   const source = clientSource('workspace-dialogs.js')
   const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
   const workspace = { id: 'w', name: 'bot', cwd: '/bot', createdAt: 1 }
@@ -1024,15 +1044,17 @@ test('the project row exposes a worktree creation button and menu entry', async 
   let worktrees = 0
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-  const tree = nodes(Rail({ view, workspace, onSelect: () => {}, onNewWorktree: () => { worktrees++ }, busy: false, readOnly: false }))
-  const button = tree.find(node => node.type === 'button' && node.props?.['aria-label'] === '从“bot”创建工作树')
-  assert.ok(button, 'the project row offers a worktree button')
-  button.props.onClick({ stopPropagation() {} })
-  assert.equal(worktrees, 1)
+  let added = 0
+  const tree = nodes(Rail({ view, workspace, onSelect: () => {}, onNewWorktree: () => { worktrees++ }, onNewWorkspace: () => { added++ }, busy: false, readOnly: false }))
+  const projects = tree.find(node => node.type === 'nav').children[0]
+  assert.equal(projects.children[0].children[0].children[1].children[0], '项目', 'every project sits under one 项目 row')
+  nodes(projects.children[0]).find(node => node.type === 'button' && node.props['aria-label'] === '添加项目').props.onClick({ stopPropagation() {} })
+  assert.equal(added, 1)
+  assert.equal(tree.some(node => node.type === 'button' && node.props?.['aria-label'] === '从“bot”创建工作树'), false, 'the row keeps no separate worktree button')
   const menu = tree.find(node => node.type === 'Menu' && node.props?.items?.some(item => item.id === 'worktree'))
-  assert.ok(menu, 'the project menu repeats the action')
+  assert.ok(menu, 'the project menu offers the action')
   menu.props.onSelect('worktree')
-  assert.equal(worktrees, 2)
+  assert.equal(worktrees, 1)
   assert.match(source, /使用已有分支/, 'the dialog offers direct existing-branch checkout')
   assert.match(source, /mode: 'existing'/, 'the dialog sends the existing-branch mode')
 })
@@ -2085,12 +2107,12 @@ test('the original Nodo rail hosts workflow navigation under its header switch',
   assert.equal(tree.props['aria-label'], '工作流导航')
   assert.ok(nodes(tree).includes(navigation))
   assert.equal(nodes(tree).some(node => node.type === NodoLogo), false, 'the header carries no logo')
-  const [sessions, workflows] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children
+  const [sessions, workflows] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
   assert.equal(workflows.props['aria-pressed'], true)
   assert.equal(workflows.props.onClick, undefined, 'the current view is not a link to itself')
   sessions.props.onClick()
-  assert.equal(nodes(tree).some(node => node.props['aria-label'] === '角色'), false)
-  assert.equal(nodes(tree).some(node => node.props.className === 'nodo-search'), false)
+  assert.equal(nodes(tree).some(node => node.props.className === 'nodo-roster'), false)
+  assert.equal(nodes(tree).some(node => node.props.className === 'nodo-rail-search'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-workflow-entry'), false, 'the workflow page needs no entry to itself')
   const back = nodes(tree).find(node => node.type === 'Tooltip' && node.props.label === '返回普通空间').children[0]
   assert.equal(back.props.disabled, false)
