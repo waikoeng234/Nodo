@@ -81,6 +81,19 @@ const receive = line => {
     appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
     turn = 'turn-' + ++next
     const text = params.input[0].text
+    if (text === 'EARLY_TIMELINE') {
+      const startedTurn = turn
+      note('item/agentMessage/delta', { turnId: 'foreign-turn', itemId: 'foreign', delta: 'foreign' })
+      send({ id: 8000 + next, method: 'item/commandExecution/requestApproval', params: { threadId: thread, turnId: 'foreign-turn', itemId: 'foreign-cmd', command: 'foreign command' } })
+      const requestId = 7000 + next
+      send({ id: requestId, method: 'item/commandExecution/requestApproval', params: { threadId: thread, turnId: turn, itemId: 'cmd', command: 'echo fixture', availableDecisions: ['accept', 'decline'] } })
+      note('serverRequest/resolved', { requestId })
+      note('item/agentMessage/delta', { turnId: turn, itemId: 'early-answer', delta: 'Early answer' })
+      note('item/completed', { turnId: turn, item: { id: 'early-answer', type: 'agentMessage', phase: 'final_answer', text: 'Early answer' } })
+      done()
+      send({ id, result: { turn: { id: startedTurn, status: 'inProgress' } } })
+      return
+    }
     send({ id, result: { turn: { id: turn, status: 'inProgress' } } })
     note('turn/started', { turn: { id: turn, status: 'inProgress' } })
     if (text.includes('FOREIGN_START')) note('turn/started', { turn: { id: 'foreign-' + next, status: 'inProgress' } })
@@ -95,6 +108,21 @@ const receive = line => {
         done(outcome === 'error' ? 'failed' : 'completed')
       }, 30)
       return
+    }
+    if (text === 'TIMELINE') {
+      const message = (id, phase, body) => {
+        note('item/started', { turnId: turn, item: { id, type: 'agentMessage', phase } })
+        note('item/agentMessage/delta', { turnId: turn, itemId: id, delta: body })
+        note('item/completed', { turnId: turn, item: { id, type: 'agentMessage', phase, text: body } })
+      }
+      message('intro', 'commentary', 'First explanation')
+      note('item/reasoning/summaryTextDelta', { turnId: turn, itemId: 'reason', summaryIndex: 0, delta: 'Read the file' })
+      note('item/completed', { turnId: turn, item: { id: 'reason', type: 'reasoning', summary: ['Read the file'] } })
+      note('item/started', { turnId: turn, item: { id: 'read', type: 'commandExecution', command: 'echo fixture', status: 'inProgress' } })
+      message('middle', 'commentary', 'While the tool runs')
+      note('item/completed', { turnId: turn, item: { id: 'read', type: 'commandExecution', command: 'echo fixture', status: 'completed', aggregatedOutput: 'fixture result' } })
+      message('answer', 'final_answer', 'Final answer')
+      return done('completed')
     }
     if (text === 'FILES_MALFORMED') {
       note('item/completed', { turnId: turn, item: { id: 'invalid', type: 'fileChange', status: 'completed', changes: 'unsupported shape' } })

@@ -344,9 +344,11 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
       const messageId = frame.message?.id
       const seen = messageId && turn.messages.has(messageId)
       for (const [index, block] of (Array.isArray(frame.message?.content) ? frame.message.content : []).entries()) {
-        if (block.type === 'text' && block.text && !seen) { turn.textEmitted = true; emit({ type: 'text', turnId: turn.id, text: block.text }) }
+        if (block.type === 'text' && block.text && !seen) { turn.textEmitted = true; emit({ type: 'text', turnId: turn.id, text: block.text, messageId, blockIndex: index,
+          ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) }) }
         if (block.type === 'tool_use') startTool(block, frame.parent_tool_use_id ?? undefined)
-        if (block.type === 'thinking' && block.thinking && !seen) emit({ type: 'thinking', turnId: turn.id, text: block.thinking })
+        if (block.type === 'thinking' && block.thinking && !seen) emit({ type: 'thinking', turnId: turn.id, text: block.thinking, messageId, blockIndex: index, boundary: 'end',
+          ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
       }
       if (messageId) turn.messages.add(messageId)
       return

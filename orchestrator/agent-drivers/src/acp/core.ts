@@ -201,16 +201,15 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
     }
     if (update.sessionUpdate === 'agent_message_chunk' && (update.content as AcpBlock | null | undefined)?.type === 'text') {
       if (update.messageId && !turn.messages.has(update.messageId)) {
-        if (turn.messages.size) emit({ type: 'delta', turnId: turn.id, text: '\n' })
         turn.messages.set(update.messageId, '')
       }
       if ((update.content as AcpBlock).text) {
         if (update.messageId) turn.messages.set(update.messageId, turn.messages.get(update.messageId)! + (update.content as AcpBlock).text!)
         else turn.unbounded = true
-        emit({ type: 'delta', turnId: turn.id, text: (update.content as AcpBlock).text! })
+        emit({ type: 'delta', turnId: turn.id, text: (update.content as AcpBlock).text!, ...(update.messageId ? { messageId: update.messageId } : {}) })
       }
     }
-    if (support.thoughts !== false && update.sessionUpdate === 'agent_thought_chunk' && (update.content as AcpBlock | null | undefined)?.type === 'text') emit({ type: 'thinking', turnId: turn.id, text: (update.content as AcpBlock).text! })
+    if (support.thoughts !== false && update.sessionUpdate === 'agent_thought_chunk' && (update.content as AcpBlock | null | undefined)?.type === 'text') emit({ type: 'thinking', turnId: turn.id, text: (update.content as AcpBlock).text!, ...(update.messageId ? { messageId: update.messageId } : {}) })
     if (['tool_call', 'tool_call_update'].includes(update.sessionUpdate!)) {
       const key = update.toolCallId
       if (!key || turn.completedTools.has(key)) return

@@ -15,6 +15,55 @@ const withFixture = async (run) => {
   try { await run({ bin, cwd: dir }) } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 
+test('Codex source messages and interleaved results survive the host transcript and a saved-session reload', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const folder = join(cwd, 'plugin')
+    let host = boot(folder)
+    try {
+      const workspace = await host.api('workspace-create', { name: 'Timeline', cwd })
+      const role = await host.api('profile-create', { name: 'Timeline', engine: 'codex', workspace: workspace.id, engineOptions: { bin } })
+      await host.api('send', { profile: role.id, text: 'TIMELINE' })
+      await until(async () => !(await host.api('state')).work[role.id].active)
+      const project = lines => lines.filter(line => line.who === 'agent' && ['text', 'thinking', 'tool'].includes(line.kind))
+        .map(line => [line.kind, line.messageId ?? line.callId, line.channel ?? line.phase, line.text ?? line.output ?? line.input])
+      const before = await host.api('transcript', { profile: role.id })
+      const expected = [
+        ['text', 'intro', 'commentary', 'First explanation'], ['thinking', 'reason', 'summary', 'Read the file'],
+        ['tool', 'read', 'start', 'echo fixture'], ['text', 'middle', 'commentary', 'While the tool runs'],
+        ['tool', 'read', 'end', 'fixture result'], ['text', 'answer', 'final_answer', 'Final answer'],
+      ]
+      assert.deepEqual(project(before), expected)
+      assert.equal(before.filter(line => line.reply).length, 1)
+      assert.equal((await host.api('state')).profiles[0].sessions[0].lastTurn.report, 'Final answer')
+      host.dispose()
+      host = boot(folder)
+      assert.deepEqual(project(await host.api('transcript', { profile: role.id })), expected)
+    } finally { host.dispose() }
+  })
+})
+
+test('Codex queues early runtime notifications and requests until its own turn receipt confirms ownership', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        events.length = 0
+        const id = await driver.sendTurn('EARLY_TIMELINE')
+        await until(() => events.some(event => event.type === 'turn/end'))
+        const runtime = events.filter(event => event.type !== 'session' && event.type !== 'changes')
+        assert.deepEqual(runtime.map(event => event.type), ['turn/start', 'request/opened', 'request/closed', 'delta', 'delta', 'turn/end'])
+        assert.equal(runtime[0].turnId, id)
+        assert.equal(runtime.at(-1).turnId, id)
+        assert.equal(runtime.at(-1).text, 'Early answer')
+        assert.equal(runtime.filter(event => event.type === 'delta').map(event => event.text).join(''), 'Early answer')
+        assert.ok(!events.some(event => event.text === 'foreign'))
+        assert.ok(!events.some(event => event.turnId?.startsWith('starting-')))
+      }
+    } finally { driver.dispose() }
+  })
+})
+
 test('Codex installs identity on start and resume while every task stays free of identity text', async () => {
   await withFixture(async ({ bin, cwd }) => {
     let host = boot(join(cwd, 'plugin'))
@@ -762,7 +811,9 @@ test('Codex forwards current reasoning fields without snapshot duplication and i
     try {
       await driver.sendTurn('EVENTS')
       await until(() => events.some(event => event.type === 'turn/end'))
-      assert.equal(events.filter(event => event.type === 'thinking').map(event => event.text).join(''), 'Check route.\n\nRun tool.')
+      assert.equal(events.filter(event => event.type === 'thinking' && event.blockIndex === 0).map(event => event.text).join(''), 'Check route.')
+      assert.equal(events.filter(event => event.type === 'thinking' && event.blockIndex === 1).map(event => event.text).join(''), 'Run tool.')
+      assert.ok(events.filter(event => event.type === 'thinking').every(event => event.messageId === 'r1'))
       const tools = events.filter(event => event.type === 'tool')
       assert.deepEqual(tools.map(event => [event.callId, event.phase]), [['commandExecution', 'start'], ['commandExecution', 'update'], ['commandExecution', 'update'],
         ['commandExecution', 'end'], ['collabAgentToolCall', 'start'], ['collabAgentToolCall', 'end'], ['mcp', 'start'], ['mcp', 'update'], ['mcp', 'end']])
@@ -775,7 +826,8 @@ test('Codex forwards current reasoning fields without snapshot duplication and i
       events.length = 0
       await driver.sendTurn('THOUGHT_FALLBACK')
       await until(() => events.some(event => event.type === 'turn/end'))
-      assert.equal(events.filter(event => event.type === 'thinking').map(event => event.text).join(''), 'First paragraph.\n\nSecond paragraph.')
+      assert.deepEqual([0, 1].map(index => events.filter(event => event.type === 'thinking' && event.blockIndex === index).map(event => event.text).join('')),
+        ['First paragraph.', 'Second paragraph.'])
     } finally { driver.dispose() }
   })
 })

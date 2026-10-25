@@ -218,16 +218,15 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
                     contextUsed: (usage.inputTokens ?? 0) + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0),
                 }));
             }
-            // One reasoning block is one paragraph of the native feed; the chat's
-            // markdown folds single newlines into spaces, so blocks need a blank line.
-            const thinking = blocks.filter(block => block.type === 'reasoning').map(block => block.text).join('\n\n');
-            if (thinking)
-                emit({ type: 'thinking', turnId: running.id, text: thinking });
             const text = blocks.filter(block => block.type === 'text').map(block => block.text).join('');
-            if (text) {
+            if (text)
                 running.final = text;
-                emit({ type: 'text', turnId: running.id, text });
-            }
+            blocks.forEach((block, blockIndex) => {
+                if ((block.type === 'reasoning' || block.type === 'text') && block.text) {
+                    emit({ type: block.type === 'reasoning' ? 'thinking' : 'text', turnId: running.id,
+                        messageId: event.data.message.id, blockIndex, text: block.text, boundary: 'end' });
+                }
+            });
         }
         if (event.type === 'tool/call') {
             toolNames.set(event.data.callId, event.data.name);

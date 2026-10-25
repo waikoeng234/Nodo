@@ -78,7 +78,8 @@ export type DriverEvent =
   | { type: 'note'; text: string }
   | { type: 'session'; state: 'starting' | 'ready' | 'closed'; sessionId?: string; workspaceId?: string; detail?: unknown }
   | { type: 'turn/start'; turnId: string }
-  | { type: 'delta' | 'text' | 'thinking'; turnId: string; text: string }
+  | { type: 'delta' | 'text' | 'thinking'; turnId: string; text: string;
+      messageId?: string; blockIndex?: number; channel?: string; parentCallId?: string; boundary?: 'start' | 'end' }
   | ({ type: 'tool'; turnId: string; callId?: string; parentCallId?: string;
       input?: unknown; inputText?: string; inputDelta?: string; output?: unknown; outputText?: string; outputDelta?: string;
       progress?: { elapsedMs?: number; message?: string; stdoutTail?: string; stderrTail?: string; stdoutBytes?: number; stderrBytes?: number; outputBytes?: number };

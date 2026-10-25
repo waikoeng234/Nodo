@@ -428,7 +428,7 @@ test('a host without the projection service falls back to the per-message usage'
   driver.dispose()
 })
 
-test('reasoning blocks of one message keep their paragraph breaks', async () => {
+test('native reasoning and text retain their source block order instead of being regrouped by type', async () => {
   const { agent, events, driver, emitTo } = harness({ projected: false })
   await driver.openSession()
   await driver.sendTurn('think')
@@ -439,7 +439,9 @@ test('reasoning blocks of one message keep their paragraph breaks', async () => 
       { type: 'reasoning', text: '再改字段。' },
     ],
   })
-  assert.deepEqual(events.filter(event => event.type === 'thinking').map(event => event.text), ['先确认链路。\n\n再改字段。'])
+  assert.deepEqual(events.filter(event => ['thinking', 'text'].includes(event.type)).map(event => [event.type, event.blockIndex, event.text]), [
+    ['thinking', 0, '先确认链路。'], ['text', 1, '好的'], ['thinking', 2, '再改字段。'],
+  ])
   assert.deepEqual(events.filter(event => event.type === 'text').map(event => event.text), ['好的'])
   driver.dispose()
 })

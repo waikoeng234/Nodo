@@ -480,7 +480,8 @@ test('ZCode driver streams replies, tracks tools and usage, resumes and refuses 
       events.length = 0
       await driver.sendTurn('TWO LEAK')
       await until(() => events.some(event => event.type === 'turn/end'))
-      assert.equal(events.filter(event => event.type === 'delta').map(event => event.text).join(''), 'Hello\nworld')
+      assert.deepEqual(events.filter(event => event.type === 'delta').map(event => event.text), ['Hello', 'world'])
+      assert.equal(new Set(events.filter(event => event.type === 'delta').map(event => event.messageId)).size, 2)
 
       events.length = 0
       await driver.sendTurn('WAIT')

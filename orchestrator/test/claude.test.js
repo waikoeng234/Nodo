@@ -60,7 +60,8 @@ test('Claude preserves streamed and assembled thinking and tool input/results wi
     try {
       await driver.sendTurn('EVENTS')
       await until(() => events.some(event => event.type === 'turn/end'))
-      assert.deepEqual(events.filter(event => event.type === 'thinking').map(event => event.text), ['Check ', 'route.', ' More.', 'Fallback thought.'])
+      assert.deepEqual(events.filter(event => event.type === 'thinking' && event.text).map(event => event.text), ['Check ', 'route.', ' More.', 'Fallback thought.'])
+      assert.ok(events.some(event => event.type === 'thinking' && event.boundary === 'start' && event.blockIndex === 0))
       const tools = events.filter(event => event.type === 'tool')
       assert.deepEqual(tools.map(event => [event.callId, event.phase]), [['stream-tool', 'start'], ['stream-tool', 'update'], ['stream-tool', 'update'],
         ['stream-tool', 'update'], ['stream-tool', 'update'], ['stream-tool', 'end'], ['assembled-tool', 'start'], ['assembled-tool', 'end']])

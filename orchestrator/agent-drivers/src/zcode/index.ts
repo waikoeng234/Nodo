@@ -327,13 +327,12 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     }
     if (event.type === 'model.streaming' && payload.kind === 'text_delta' && payload.delta) {
       if (!turn.messages.has(payload.assistantMessageId)) {
-        if (turn.messages.size > 0) emit({ type: 'delta', turnId: turn.id, text: '\n' })
         turn.messages.add(payload.assistantMessageId)
       }
       turn.sawText = true
-      emit({ type: 'delta', turnId: turn.id, text: payload.delta })
+      emit({ type: 'delta', turnId: turn.id, text: payload.delta, ...(payload.assistantMessageId ? { messageId: payload.assistantMessageId } : {}) })
     }
-    if (event.type === 'model.streaming' && payload.kind === 'reasoning_delta' && payload.delta) emit({ type: 'thinking', turnId: turn.id, text: payload.delta })
+    if (event.type === 'model.streaming' && payload.kind === 'reasoning_delta' && payload.delta) emit({ type: 'thinking', turnId: turn.id, text: payload.delta, ...(payload.assistantMessageId ? { messageId: payload.assistantMessageId } : {}) })
     if (event.type === 'model.streaming' && ['tool_input_start', 'tool_input_delta', 'tool_input_end', 'tool_call'].includes(payload.kind)) {
       const id = payload.toolCallId
       const existed = id ? turn.tools.has(id) : false

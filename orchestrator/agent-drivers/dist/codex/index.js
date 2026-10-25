@@ -197,9 +197,20 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     const start = (id) => {
         if (!running || running.started)
             return;
-        running.id = id;
-        running.started = true;
+        const turn = running;
+        turn.id = id;
+        turn.started = true;
         emit({ type: 'turn/start', turnId: id });
+        const pending = turn.pending ?? [];
+        turn.pending = [];
+        for (const event of pending) {
+            if (running !== turn)
+                break;
+            if (event.kind === 'notification')
+                receive(event.message);
+            else
+                ask(event.message);
+        }
     };
     const thought = (itemId, channel, index, text, delta = false) => {
         if (typeof text !== 'string' || !text)
@@ -213,9 +224,8 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         const suffix = delta ? text : text.startsWith(previous) ? text.slice(previous.length) : '';
         if (!suffix)
             return;
-        const separator = !item.parts.has(index) && item.parts.size ? '\n\n' : '';
         item.parts.set(index, previous + suffix);
-        emit({ type: 'thinking', turnId: running.id, text: separator + suffix });
+        emit({ type: 'thinking', turnId: running.id, messageId: itemId, blockIndex: index, channel, text: suffix });
     };
     const receive = ({ method, params = {} }) => {
         // Notifications outside the declared schema count by category only; the
@@ -225,6 +235,10 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             return;
         }
         if (method === 'serverRequest/resolved') {
+            if (running && !running.started) {
+                (running.pending ??= []).push({ kind: 'notification', message: { method, params } });
+                return;
+            }
             for (const [id, request] of requests)
                 if (request.id === params.requestId) {
                     requests.delete(id);
@@ -234,6 +248,10 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         }
         if (!running || params.threadId !== threadId)
             return;
+        if (!running.started) {
+            (running.pending ??= []).push({ kind: 'notification', message: { method, params } });
+            return;
+        }
         if (running.started && params.turnId && params.turnId !== running.id)
             return;
         // turn ids come only from the driver's own turn/start result: a notification
@@ -276,23 +294,21 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         }
         if (method === 'item/agentMessage/delta') {
             const previous = running.texts.get(params.itemId) ?? '';
-            if (!running.texts.has(params.itemId) && running.texts.size > 0)
-                emit({ type: 'delta', text: '\n' });
             running.texts.set(params.itemId, previous + params.delta);
-            emit({ type: 'delta', turnId: running.id, text: params.delta });
+            emit({ type: 'delta', turnId: running.id, messageId: params.itemId, text: params.delta });
         }
         if (method === 'item/started' || method === 'item/completed') {
             const item = params.item ?? {};
-            if (item.type === 'agentMessage' && method === 'item/completed') {
+            if (item.type === 'agentMessage') {
                 const previous = running.texts.get(item.id);
+                const snapshot = method === 'item/completed' && (previous === undefined || !item.text?.startsWith(previous));
                 if (item.phase === 'final_answer' && typeof item.text === 'string' && item.text !== '')
                     running.final = item.text;
-                if (previous === undefined) {
-                    running.texts.set(item.id, item.text ?? '');
-                    emit({ type: 'text', text: item.text ?? '' });
-                }
-                else if (item.text?.startsWith(previous) && item.text.length > previous.length)
-                    emit({ type: 'delta', text: item.text.slice(previous.length) });
+                if (method === 'item/completed' && typeof item.text === 'string')
+                    running.texts.set(item.id, item.text);
+                emit({ type: snapshot ? 'text' : 'delta', turnId: running.id, messageId: item.id,
+                    text: method === 'item/started' ? '' : snapshot ? item.text ?? '' : item.text?.slice(previous?.length ?? 0) ?? '', boundary: method === 'item/started' ? 'start' : 'end',
+                    ...(item.phase ? { channel: item.phase } : {}) });
             }
             else if (item.type === 'subAgentActivity') {
                 // An engine-declared subagent record, not a tool call: its source ids
@@ -337,6 +353,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 const channel = running.thoughts.get(item.id)?.channel ?? (item.summary?.some(text => text) ? 'summary' : 'content');
                 const parts = item[channel]?.length ? item[channel] : typeof item.text === 'string' ? [item.text] : [];
                 parts.forEach((text, index) => thought(item.id, channel, index, text));
+                parts.forEach((_text, index) => emit({ type: 'thinking', turnId: running.id, messageId: item.id, blockIndex: index, channel, text: '', boundary: 'end' }));
             }
             else if (!DECLARED.codex.variants[item.type])
                 coverage.count('unknown-variant');
@@ -364,10 +381,14 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     };
     const ask = (message) => {
         const { id, method, params = {} } = message;
+        if (running && !running.started && params.threadId === threadId) {
+            (running.pending ??= []).push({ kind: 'request', message });
+            return;
+        }
         const declared = DECLARED.codex.requests[method];
         if (!declared)
             coverage.count('unknown-request');
-        if (!running || params.threadId !== threadId)
+        if (!running || params.threadId !== threadId || params.turnId !== undefined && params.turnId !== running.id)
             return peer.refuse(id, 'No matching active turn');
         const permission = ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(method);
         const question = method === 'item/tool/requestUserInput';

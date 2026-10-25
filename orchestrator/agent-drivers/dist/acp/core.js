@@ -154,8 +154,6 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         }
         if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
             if (update.messageId && !turn.messages.has(update.messageId)) {
-                if (turn.messages.size)
-                    emit({ type: 'delta', turnId: turn.id, text: '\n' });
                 turn.messages.set(update.messageId, '');
             }
             if (update.content.text) {
@@ -163,11 +161,11 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                     turn.messages.set(update.messageId, turn.messages.get(update.messageId) + update.content.text);
                 else
                     turn.unbounded = true;
-                emit({ type: 'delta', turnId: turn.id, text: update.content.text });
+                emit({ type: 'delta', turnId: turn.id, text: update.content.text, ...(update.messageId ? { messageId: update.messageId } : {}) });
             }
         }
         if (support.thoughts !== false && update.sessionUpdate === 'agent_thought_chunk' && update.content?.type === 'text')
-            emit({ type: 'thinking', turnId: turn.id, text: update.content.text });
+            emit({ type: 'thinking', turnId: turn.id, text: update.content.text, ...(update.messageId ? { messageId: update.messageId } : {}) });
         if (['tool_call', 'tool_call_update'].includes(update.sessionUpdate)) {
             const key = update.toolCallId;
             if (!key || turn.completedTools.has(key))

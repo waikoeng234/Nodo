@@ -70,7 +70,7 @@ type ClaudeTool = { name: string; input?: unknown; parentCallId?: string }
 type ClaudeBlock = ClaudeToolUse & { json: string; parentCallId?: string }
 type ClaudeTurn = {
   id: string; started: boolean; tools: Map<string, ClaudeTool>; completedTools: Set<string>; blocks: Map<number, ClaudeBlock>
-  thinking: Map<number | undefined, string>; messages: Set<string>; steers: Set<string | undefined>; sawText: boolean
+  thinking: Map<number | undefined, string>; texts: Map<number | undefined, string>; messages: Set<string>; steers: Set<string | undefined>; sawText: boolean
   interrupting: boolean; settle: (() => void) | null; changes?: FileChanges; done?: Promise<void>
   compacting?: boolean; messageId?: string; contextUsed?: number; usage?: Usage; unconfirmed?: boolean
 }
@@ -353,6 +353,17 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         turn.messageId = event.message?.id
         turn.blocks.clear()
         turn.thinking.clear()
+        turn.texts.clear()
+        emit({ type: 'delta', turnId: turn.id, messageId: turn.messageId, text: '', boundary: 'start',
+          ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
+      }
+      if (event.type === 'content_block_start' && (event.content_block?.type === 'text' || event.content_block?.type === 'thinking')) {
+        const block = event.content_block
+        const text = block.type === 'text' ? block.text : block.thinking
+        if (block.type === 'text') turn.texts.set(event.index, text)
+        else turn.thinking.set(event.index, text)
+        emit({ type: block.type === 'text' ? 'delta' : 'thinking', turnId: turn.id, messageId: turn.messageId,
+          blockIndex: event.index, text, boundary: 'start', ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
       }
       if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
         turn.blocks.set(event.index, { ...event.content_block, json: '', parentCallId: frame.parent_tool_use_id ?? undefined })
@@ -360,10 +371,16 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       }
       if (event.type === 'content_block_delta') {
         const delta: Partial<ClaudeDelta> = event.delta ?? {}
-        if (delta.type === 'text_delta' && delta.text) { turn.sawText = true; emit({ type: 'delta', turnId: turn.id, text: delta.text }) }
+        if (delta.type === 'text_delta' && delta.text) {
+          turn.sawText = true
+          turn.texts.set(event.index, (turn.texts.get(event.index) ?? '') + delta.text)
+          emit({ type: 'delta', turnId: turn.id, text: delta.text, messageId: turn.messageId, blockIndex: event.index,
+            ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
+        }
         if (delta.type === 'thinking_delta' && delta.thinking) {
           turn.thinking.set(event.index, (turn.thinking.get(event.index) ?? '') + delta.thinking)
-          emit({ type: 'thinking', turnId: turn.id, text: delta.thinking })
+          emit({ type: 'thinking', turnId: turn.id, text: delta.thinking, messageId: turn.messageId, blockIndex: event.index,
+            ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
         }
         if (delta.type === 'input_json_delta' && turn.blocks.has(event.index)) {
           const block = turn.blocks.get(event.index)!
@@ -378,6 +395,11 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         }
       }
       if (event.type === 'content_block_stop') {
+        if (turn.texts.has(event.index) || turn.thinking.has(event.index)) {
+          emit({ type: turn.texts.has(event.index) ? 'delta' : 'thinking', turnId: turn.id, text: '',
+            messageId: turn.messageId, blockIndex: event.index, boundary: 'end',
+            ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
+        }
         const block = turn.blocks.get(event.index)
         if (block?.json) {
           try {
@@ -411,7 +433,14 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       const messageId = frame.message?.id
       const seen = messageId && turn.messages.has(messageId)
       for (const [index, block] of (Array.isArray(frame.message?.content) ? frame.message.content : []).entries()) {
-        if (block.type === 'text' && block.text && !turn.sawText) emit({ type: 'text', turnId: turn.id, text: block.text })
+        if (block.type === 'text' && block.text && !seen) {
+          const previous = !turn.messageId || turn.messageId === messageId ? turn.texts.get(index) ?? turn.texts.get(undefined) : undefined
+          if (previous === undefined || !block.text.startsWith(previous)) emit({ type: 'text', turnId: turn.id, text: block.text, messageId, blockIndex: index,
+            ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
+          else emit({ type: 'delta', turnId: turn.id, text: block.text.slice(previous.length), messageId: turn.messageId ? messageId : undefined,
+            blockIndex: turn.texts.has(index) ? index : undefined, boundary: 'end',
+            ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
+        }
         if (block.type === 'tool_use') {
           const before = turn.tools.get(block.id)
           startTool(block, frame.parent_tool_use_id ?? undefined)
@@ -426,7 +455,8 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         if (block.type === 'thinking' && block.thinking && !seen) {
           const previous = !turn.messageId || turn.messageId === messageId ? turn.thinking.get(index) ?? turn.thinking.get(undefined) ?? '' : ''
           const text = block.thinking.startsWith(previous) ? block.thinking.slice(previous.length) : ''
-          if (text) emit({ type: 'thinking', turnId: turn.id, text })
+          emit({ type: 'thinking', turnId: turn.id, text, messageId, blockIndex: index, boundary: 'end',
+            ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
         }
       }
       if (messageId) turn.messages.add(messageId)
@@ -521,7 +551,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     async sendTurn(text, images = []) {
       if (disposed) throw new Error('Claude driver disposed')
       if (running) throw new Error('Claude already has a running turn')
-      const turn: ClaudeTurn = running = { id: `claude-${++sequence}`, started: false, tools: new Map(), completedTools: new Set(), blocks: new Map(), thinking: new Map(), messages: new Set(), steers: new Set(), sawText: false, interrupting: false, settle: null }
+      const turn: ClaudeTurn = running = { id: `claude-${++sequence}`, started: false, tools: new Map(), completedTools: new Set(), blocks: new Map(), thinking: new Map(), texts: new Map(), messages: new Set(), steers: new Set(), sawText: false, interrupting: false, settle: null }
       if (text !== '/compact') turn.changes = createFileChanges(cwd)
       try {
         await boot()

@@ -26,7 +26,7 @@ type NativeSessionEvent =
   | ({ type: 'todo/write' } & NativeEvent<{ todos?: NativeTodo[] }>)
   | ({ type: 'tool-workflow/run-start' | 'tool-workflow/run-end' | 'tool-workflow/agent-start' | 'tool-workflow/agent-end' } & NativeEvent<{ runId?: unknown; seq?: unknown; name?: unknown; label?: unknown; childId?: unknown }>)
   | ({ type: 'workspace/changes' } & NativeEvent<{ turn: unknown }>)
-  | ({ type: 'assistant/message' } & NativeEvent<{ message: { content: { type: string; text: string }[] }; usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number } }>)
+  | ({ type: 'assistant/message' } & NativeEvent<{ message: { id?: string; content: { type: string; text: string }[] }; usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number } }>)
   | ({ type: 'tool/call' } & NativeEvent<{ callId: string; name: string; arguments: unknown }>)
   | ({ type: 'tool/result' } & NativeEvent<{ message: { toolCallId: string; content: unknown; isError?: boolean } }>)
   | ({ type: 'turn/end' } & NativeEvent<{ turn: unknown; reason: { kind: string; error?: { message: string } } }>)

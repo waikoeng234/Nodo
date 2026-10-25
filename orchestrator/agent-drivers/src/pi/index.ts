@@ -31,7 +31,7 @@ type PiUpdate =
   | { type: 'text_delta' | 'thinking_delta' | 'toolcall_delta'; delta?: unknown; contentIndex?: number }
   | { type: 'toolcall_start'; id?: unknown; toolName?: string; contentIndex?: number }
   | { type: 'toolcall_end'; toolCall?: { id?: unknown; name: string; arguments: PiInput } }
-  | { type: 'start' | 'done' | 'error' | 'text_start' | 'text_end' | 'thinking_start' | 'thinking_end' }
+  | { type: 'start' | 'done' | 'error' | 'text_start' | 'text_end' | 'thinking_start' | 'thinking_end'; contentIndex?: number }
 type PiResponse = { type: 'response'; id: string; success: boolean; data?: PiData; error?: string }
 type PiRequest = { type: 'extension_ui_request'; id: string; method: string; title?: unknown; options?: unknown; message?: unknown; placeholder?: unknown }
 type PiFrame =
@@ -286,20 +286,28 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
       return
     }
     if (record.type === 'message_start') {
-      if (record.message?.role === 'assistant') turn.openMessage = { sawDelta: false }
+      if (record.message?.role === 'assistant') {
+        turn.openMessage = { sawDelta: false }
+        emit({ type: 'delta', turnId: turn.id, text: '', boundary: 'start' })
+      }
       turn.blocks.clear() // contentIndex restarts per message
       return
     }
     if (record.type === 'message_update') {
       if (record.usage && turn.openMessage) turn.openMessage.usage = record.usage
       const update = record.assistantMessageEvent ?? {} as PiUpdate
+      const blockIndex = 'contentIndex' in update ? update.contentIndex : undefined
       if (!DECLARED.pi.variants[update.type] && !['start', 'done', 'error'].includes(update.type)) coverage.count('unknown-variant')
       if (update.type === 'text_delta' && typeof update.delta === 'string' && update.delta !== '') {
         if (turn.openMessage) turn.openMessage.sawDelta = true
-        emit({ type: 'delta', turnId: turn.id, text: update.delta })
+        emit({ type: 'delta', turnId: turn.id, text: update.delta, blockIndex: update.contentIndex })
       }
       if (update.type === 'thinking_delta' && typeof update.delta === 'string' && update.delta !== '')
-        emit({ type: 'thinking', turnId: turn.id, text: update.delta })
+        emit({ type: 'thinking', turnId: turn.id, text: update.delta, blockIndex: update.contentIndex })
+      if (['text_start', 'text_end', 'thinking_start', 'thinking_end'].includes(update.type)) {
+        emit({ type: update.type.startsWith('thinking') ? 'thinking' : 'delta', turnId: turn.id, text: '',
+          boundary: update.type.endsWith('start') ? 'start' : 'end', blockIndex })
+      }
       if (update.type === 'toolcall_start' && typeof update.id === 'string') {
         startTool(update.id, update.toolName)
         if (update.contentIndex !== undefined) turn.blocks.set(update.contentIndex, update.id)
@@ -328,6 +336,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
         turn.lastText = text
         if (!turn.openMessage?.sawDelta) emit({ type: 'text', turnId: turn.id, text })
       }
+      emit({ type: 'delta', turnId: turn.id, text: '', boundary: 'end' })
       turn.openMessage = null
       return
     }

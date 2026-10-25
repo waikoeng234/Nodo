@@ -88,7 +88,7 @@ test('ACP shares session flow, filters replay and keeps tool lifecycles isolated
       events.length = 0
       await driver.sendTurn(text)
       await until(() => ended(events))
-      assert.equal(events.filter(event => event.type === 'delta').map(event => event.text).join(''), `${text}\ntail`)
+      assert.deepEqual(events.filter(event => event.type === 'delta').map(event => [event.messageId, event.text]), [['a', text], ['b', 'tail']])
       assert.deepEqual(events.filter(event => event.type === 'tool').map(event => [event.name, event.phase]), [['Read', 'start'], ['Read', 'update'], ['Read', 'end']])
       const update = events.find(event => event.type === 'tool' && event.phase === 'update')
       assert.deepEqual(update.output, [{ type: 'content', content: { type: 'text', text: 'file contents' } }])
@@ -109,7 +109,7 @@ test('ACP shares session flow, filters replay and keeps tool lifecycles isolated
     await until(() => ended(events))
     assert.equal(events.find(event => event.state === 'ready').sessionId, 'saved-session')
     assert.ok(wire().some(message => message.method === (env.ACP_RESUME ? 'session/resume' : 'session/load')))
-    assert.equal(events.filter(event => event.type === 'delta').map(event => event.text).join(''), 'RESUMED\ntail')
+    assert.deepEqual(events.filter(event => event.type === 'delta').map(event => [event.messageId, event.text]), [['a', 'RESUMED'], ['b', 'tail']])
   }, { env, driverSessionId: 'saved-session' })
 })
 

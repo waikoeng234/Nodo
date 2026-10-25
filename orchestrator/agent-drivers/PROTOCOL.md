@@ -46,6 +46,29 @@ Events use the factory callback. Optional fields remain absent when the source c
 
 Complete text may be emitted without deltas. Final snapshots must not duplicate streamed content. `turn/end.text`, when available, is the final assistant message used for workflow handoff, distinct from accumulated text.
 
+Text and reasoning events optionally carry `messageId`, `blockIndex`, `channel`,
+`parentCallId`, and `boundary: start / end`. These identify source messages and
+content blocks; absent source fields stay absent. A boundary may have empty text.
+`text` replaces the identified block with a complete snapshot; `delta` and
+`thinking` append new text to their identified block. Adapters forward only the
+unseen suffix when the completed snapshot extends a streamed prefix. Independent
+messages are not joined with synthetic newline deltas. Where the protocol has no
+message identity, explicit boundaries and intervening events delimit local display
+segments without inventing source message IDs or final-answer phases.
+
+The host stores message blocks when they arrive, interleaved with calls, plans,
+requests and lifecycle events. Content updates retain the source block's position.
+A tool result separated from its start by other visible events retains its result
+position and call identity. The complete turn text remains available for legacy
+completion consumers; the feed renders individual blocks and references select
+the completed turn's final reply. Existing flattened transcripts remain readable
+and cannot recover missing message boundaries without the source records.
+
+Codex notifications and requests arriving before the `turn/start` response are
+queued until that response confirms the owning turn ID, then replayed in receipt
+order. Notifications cannot establish ownership by themselves; foreign turns
+remain excluded.
+
 An unacknowledged stop may end locally with `unconfirmed: true`; the Agent may still be running. A cancellation request alone is not confirmation. Requests that pause execution must surface as cards; settled requests must not be answered again.
 
 ### Usage and timing
