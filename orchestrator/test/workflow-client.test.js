@@ -14,6 +14,9 @@ const all = tree => tree && typeof tree === 'object' ? [tree, ...[...(tree.child
 const text = tree => all(tree).flatMap(node => node.children.filter(child => typeof child === 'string')).join('')
 const button = (tree, label) => all(tree).find(node => node.type === 'Button' && node.children.includes(label))
 const named = (tree, name) => all(tree).find(node => node.type?.name === name)
+const saveButton = tree => all(tree).find(node => node.type === 'Button' && node.props['aria-label'] === '保存')
+const saveMenu = tree => all(tree).find(node => node.type === 'Menu' && node.props.items?.some(item => item.id === 'saveAs'))
+const newFlow = tree => all(tree).find(node => node.type === 'button' && node.props['aria-label'] === '新建流程')
 
 async function harness({ draft = draftOf(), definition, readOnly = false, api = async () => [], globals = {}, uiShared = {}, react = {} } = {}) {
   let cursor = 0, pending = [], states = []
@@ -34,7 +37,7 @@ async function harness({ draft = draftOf(), definition, readOnly = false, api = 
       useStateView: () => ({ view, refresh: async () => {} }),
       layoutService: null, ...uiShared,
     },
-    stubs: { 'session-rail.js': { workspacePicker: props => ({ type: 'WorkspacePicker', props, children: [] }) } },
+    stubs: { 'session-rail.tsx': { workspacePicker: props => ({ type: 'WorkspacePicker', props, children: [] }) } },
     react: {
       useState: state, useRef: initial => state(() => ({ current: initial }))[0], useId: () => 'test',
       useEffect: (effect, deps) => {
@@ -88,7 +91,7 @@ test('a saved flow is deleted from its rail row after confirming, and the open d
   const after = h.render()
   assert.equal(all(after).some(node => node.type === 'Modal'), false)
   assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).source, null)
-  assert.equal(button(h.side(), '保存').props.disabled, false, 'the deleted flow’s graph can be saved again as a new one')
+  assert.equal(saveButton(h.render()).props.disabled, false, 'the deleted flow’s graph can be saved again as a new one')
   h.dispose()
 })
 
@@ -98,15 +101,15 @@ test('workflow navigation is published to the original rail instead of a second 
   assert.equal(all(tree).some(node => node.props.className === 'nodo-wf-navigation'), false)
   assert.equal(all(tree).some(node => node.type === 'NodoLogo'), false)
   const toolbar = all(tree).find(node => node.props.className === 'nodo-wf-toolbar')
-  assert.deepEqual(all(toolbar).filter(node => node.type === 'Button').map(text), ['运行'], 'only run stays in the header')
+  assert.deepEqual(toolbar.children.map(node => node.props['aria-label']), ['保存', '运行'], 'save sits beside run in the header')
+  assert.deepEqual(Array.from(saveMenu(toolbar).props.items, item => item.label), ['保存', '另存为新流程…'])
   assert.equal(all(named(tree, 'WorkflowCanvas').props.tools).some(node => node.props.role === 'group'), false, 'the canvas keeps only 添加节点')
   const navigation = wfSidebarSnapshot()
   assert.deepEqual(all(navigation).filter(node => node.props.role === 'group').map(group => [group.props['aria-label'], ...all(group).filter(node => node.type === 'Button').map(text)]), [
-    ['视图', '编排', '运行记录'], ['保存', '保存', '另存为'],
-  ], 'the view switch leads the rail and the save capsule sits above 新建流程')
+    ['视图', '编排', '运行记录'],
+  ], 'the view switch leads the rail and saving lives in the header')
   assert.equal(navigation.children[0].props['aria-label'], '视图')
-  const foot = all(navigation).find(node => node.props.className === 'nodo-wf-side-foot')
-  assert.deepEqual(foot.children.map(node => node.props.className), ['nodo-wf-save', 'nodo-wf-new'])
+  assert.ok(all(navigation).find(node => node.props.className === 'nodo-wf-side-title').children.includes(newFlow(navigation)), '新建流程 sits beside the flow list title')
   assert.equal(navigation.props['aria-label'], '流程')
   assert.equal(text(navigation).includes('最近运行'), false, 'edit view lists flows only')
   const cast = all(navigation).find(node => node.props.className === 'nodo-wf-cast')
@@ -147,8 +150,8 @@ test('the single top title follows the workflow view while switching preserves t
   assert.equal(rail.props['aria-label'], '运行记录')
   assert.ok(text(rail).includes('最近运行'))
   assert.equal(all(rail).some(node => node.props?.className === 'nodo-wf-definitions'), false, 'run view hides saved flows')
-  assert.equal(button(rail, '+ 新建流程'), undefined)
-  assert.equal(button(rail, '保存'), undefined, 'run view has no save capsule')
+  assert.equal(newFlow(rail), undefined)
+  assert.equal(saveButton(tree), undefined, 'run view has no save group')
   assert.ok(button(rail, '编排'), 'the view switch stays in the run rail')
   button(h.side(), '编排').props.onClick()
   tree = h.render()
@@ -789,12 +792,12 @@ test('the canvas picks the workspace the flow runs in, saved with the flow', asy
   picker().onSelect('other')
   assert.equal(picker().workspace.id, 'other')
   assert.equal(h.loaded.wfParticipants(JSON.parse(h.storage.get('nodo.workflow.draft')).draft, h.view)[0].workspace.id, 'other', 'every step checks against the flow\'s workspace')
-  button(h.side(), '保存').props.onClick(); await h.flush()
+  saveButton(h.render()).props.onClick(); await h.flush()
   assert.equal(h.calls.find(call => call.endpoint === 'workflow-create').payload.workspaceId, 'other')
-  assert.equal(button(h.side(), '保存').props.disabled, true, 'the saved workspace is not a change')
+  assert.equal(saveButton(h.render()).props.disabled, true, 'the saved workspace is not a change')
   picker().onSelect('')
   assert.equal(picker().workspace, undefined)
-  assert.equal(button(h.side(), '保存').props.disabled, false)
+  assert.equal(saveButton(h.render()).props.disabled, false)
   h.dispose()
 })
 
@@ -803,8 +806,8 @@ test('saving new graphs uses only workflow-create and strips empty choice arrays
   const tree = h.render()
   assert.equal(button(tree, '运行').props.disabled, false, 'an unsaved draft may run')
   assert.equal(button(tree, '运行').props.title, '运行前会先保存当前修改。')
-  assert.equal(button(h.side(), '另存为').props.disabled, true, 'a new draft has nothing to copy')
-  button(h.side(), '保存').props.onClick(); await h.flush()
+  assert.equal(saveMenu(h.render()).props.items.find(item => item.id === 'saveAs').disabled, true, 'a new draft has nothing to copy')
+  saveButton(h.render()).props.onClick(); await h.flush()
   const create = h.calls.find(call => call.endpoint === 'workflow-create')
   assert.equal(create.payload.nodes.length, 4)
   assert.equal(create.payload.edges.at(-1).back.max, 2)
@@ -817,20 +820,20 @@ test('an incomplete draft saves while launch names its first problem; a blank ne
   const draft = draftOf(); draft.nodes[1].task = ''
   const h = await harness({ draft, api: async (endpoint, payload) => endpoint === 'workflow-create' ? { ...payload, id: 'draft', revision: 1 } : [] })
   const tree = h.render()
-  assert.equal(button(h.side(), '保存').props.disabled, false)
-  assert.equal(button(h.side(), '保存').props.title, undefined)
+  assert.equal(saveButton(h.render()).props.disabled, false)
+  assert.equal(saveButton(h.render()).props.title, '保存')
   assert.equal(button(tree, '运行').props.disabled, true)
   assert.match(button(tree, '运行').props.title, /请填写任务说明/)
-  button(h.side(), '保存').props.onClick(); await h.flush()
+  saveButton(h.render()).props.onClick(); await h.flush()
   assert.equal(h.calls.find(call => call.endpoint === 'workflow-create').payload.nodes[1].task, '')
   assert.equal(button(h.render(), '运行').props.disabled, true, 'launch still waits for the task after saving')
   assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).source.id, 'draft')
   const blank = await harness({ draft: h.loaded.wfNew() })
   h.dispose()
   const fresh = blank.render()
-  assert.equal(button(blank.side(), '保存').props.disabled, true)
+  assert.equal(saveButton(blank.render()).props.disabled, true)
   assert.equal(all(fresh).some(node => node.props.className === 'nodo-wf-save-state'), false)
-  button(blank.loaded.wfSidebarSnapshot(), '+ 新建流程').props.onClick()
+  newFlow(blank.loaded.wfSidebarSnapshot()).props.onClick()
   assert.equal(all(blank.render()).some(node => node.type === 'Modal' && node.props.title === '替换当前草稿？'), false, 'a blank flow is replaced without asking')
   blank.dispose()
 })
@@ -840,14 +843,14 @@ test('saving a modified source refuses a stale or deleted version without replac
   for (const fresh of [[], [{ ...definition, revision: 2 }]]) {
     const draft = draftOf(); draft.name = '保存的修改'
     const h = await harness({ draft, definition, api: async endpoint => endpoint === 'state' ? { workflows: { definitions: fresh } } : [] })
-    button(h.side(), '保存').props.onClick(); await h.flush()
+    saveButton(h.render()).props.onClick(); await h.flush()
     assert.equal(h.calls.some(call => /workflow-(create|update)/.test(call.endpoint)), false)
     assert.match(text(h.render()), /草稿已保留/)
     assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).draft.name, draft.name)
     button(h.render(), '转为独立草稿').props.onClick()
     const independent = h.render()
     assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).source, null)
-    assert.equal(button(h.side(), '保存').props.disabled, false)
+    assert.equal(saveButton(h.render()).props.disabled, false)
     h.dispose()
   }
 })
@@ -857,13 +860,13 @@ test('save overwrites the current flow at its revision; save-as copies it and sw
   const h = await harness({ definition, draft, api: async (endpoint, payload) => endpoint === 'state' ? { workflows: { definitions: [definition] } }
     : endpoint === 'workflow-update' ? { ...payload, revision: payload.revision + 1 } : endpoint === 'workflow-create' ? { ...payload, id: 'new', revision: 1 } : [] })
   assert.equal(text(h.render()).includes('有未保存修改'), true)
-  button(h.side(), '保存').props.onClick(); await h.flush()
+  saveButton(h.render()).props.onClick(); await h.flush()
   const saved = h.calls.find(call => call.endpoint === 'workflow-update').payload
   assert.equal(saved.id, 'old'); assert.equal(saved.revision, 1); assert.equal(saved.nodes[1].task, '修改后的任务')
   h.render()
   assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).source.revision, 2)
-  assert.equal(button(h.side(), '保存').props.disabled, true, 'nothing left to save')
-  button(h.side(), '另存为').props.onClick()
+  assert.equal(saveButton(h.render()).props.disabled, true, 'nothing left to save')
+  saveMenu(h.render()).props.onSelect('saveAs')
   const dialog = () => all(h.render()).find(node => node.type === 'Modal' && node.props.title === '另存为新流程')
   const field = () => all(dialog()).find(node => node.type === 'input')
   const confirmSave = () => dialog().props.footer.find(node => node.children.includes('保存'))
@@ -1111,7 +1114,7 @@ test('read-only mode requests no records and disables workflow writes', async ()
   const h = await harness({ readOnly: true })
   const tree = h.render(); await h.flush()
   assert.equal(h.calls.length, 0)
-  assert.equal(button(h.side(), '保存').props.disabled, true)
+  assert.equal(saveButton(h.render()).props.disabled, true)
   assert.equal(button(tree, '运行').props.disabled, true)
   assert.match(text(tree), /只读窗口不读取运行记录/)
   h.dispose()

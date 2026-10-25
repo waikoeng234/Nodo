@@ -1,11 +1,14 @@
 import { AVATAR_CSS } from './avatar.tsx'
 import { ENGINE_LOGO_CSS } from './engine-logos.js'
 import { RUNNING_CSS } from './running.js'
+import { TOOL_CALL_CSS } from './tool-call.tsx'
+import { TOOL_TIMELINE_CSS } from './tool-timeline.tsx'
+import { CODE_DIFF_CSS } from './code-diff.tsx'
+import { FILE_CHANGES_SUMMARY_CSS } from './file-changes-summary.tsx'
 
-export const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + `
+export const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
-.nodo-workflow-entry{flex:none;justify-content:center;gap:6px;width:100%;height:36px;margin-bottom:12px;border-radius:var(--dsw-radius-lg)}
 .nodo-runs-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
 .nodo-runs-row:hover,.nodo-runs-row[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-runs-row strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
@@ -51,13 +54,19 @@ export const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + `
    icon buttons and 16px row actions that only appear on hover. */
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
-.nodo-rail{display:flex;flex-direction:column;flex:none;width:312px;min-height:0;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) 12px 6px;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+.nodo-rail{display:flex;flex-direction:column;flex:none;width:312px;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
 .nodo-rail-head{display:flex;align-items:center;gap:8px;height:60px;margin-bottom:4px;padding:8px 0 8px 4px;flex:none;overflow:hidden}
-.nodo-rail-title{flex:1;min-width:0;font-size:18px;font-weight:600;line-height:24px;letter-spacing:.04em}
+.nodo-rail-switch{display:flex;flex:1;min-width:0;gap:2px;padding:3px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-overlay)}
+.nodo-rail-switch>button{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:1;min-width:0;height:28px;padding:0 8px;border:0;border-radius:calc(var(--dsw-radius-lg) - 3px);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;line-height:20px;cursor:pointer}
+.nodo-rail-switch>button:hover{color:var(--dsw-alias-label-primary)}
+.nodo-rail-switch>button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);cursor:default}
 .nodo-logo{display:block;max-width:100%;height:auto;color:var(--dsw-alias-label-primary)}
 .nodo-panel-logo{display:inline-flex;align-items:center}
 button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo)){display:none}
-.nodo-rail-list{flex:1;min-height:0;overflow-y:auto;padding-bottom:16px}
+.nodo-rail-list{display:flex;flex-direction:column;flex:1;min-height:0;padding-bottom:16px}
+.nodo-roles{display:flex;flex-direction:column;flex:0 3 auto;min-height:0}
+.nodo-project-body{display:flex;flex-direction:column;flex:1;min-height:0}
+.nodo-role-list,.nodo-sessions{min-height:0;overflow-y:auto;margin-inline:calc(-1 * var(--nodo-rail-inset));padding-inline:var(--nodo-rail-inset)}
 .nodo-rail-foot{flex:none;padding:8px 0}
 .nodo-search{display:flex;flex:1;min-width:0;animation:nodo-search-open .16s ease-out}
 .nodo-search-input{width:100%;min-width:0}
@@ -66,9 +75,10 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-section-head{display:flex;align-items:center;justify-content:flex-end;gap:4px;height:36px;margin-bottom:4px;padding-left:4px;flex:none}
 .nodo-section-head>.nodo-section-title{flex:none;max-width:45%}
 .nodo-section-head>h2.nodo-section-title{flex:1;min-width:0;max-width:none;text-align:left}
-.nodo-projects{margin-top:12px}
+.nodo-projects{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;margin-top:12px;padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-role{display:flex;align-items:center;gap:4px;min-height:48px;padding:4px 8px;border-radius:var(--dsw-radius-lg)}
-.nodo-role:hover,.nodo-role[data-selected=true]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role[data-selected=true]{background:var(--dsw-specific-sidebar-nav-item-active)}
 .nodo-role-select{display:flex;align-items:center;gap:8px;flex:1;min-width:0;align-self:stretch;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-role-text{display:flex;flex-direction:column;flex:1;min-width:0}
 .nodo-role-description{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px}
@@ -78,6 +88,13 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-rail-empty{padding:10px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project,.nodo-row{display:flex;align-items:center;gap:6px;width:100%;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-project{height:34px;padding:0 4px}
+.nodo-project-field{height:36px;margin-bottom:6px;padding:0 10px 0 4px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 0 0 .5px var(--dsw-alias-border-l2)}
+.nodo-project-field:has(.nodo-search){padding:0;background:0 0;box-shadow:none}
+.nodo-project-field .nodo-row-actions{display:inline-flex}
+.nodo-role-filter{width:auto;height:28px;margin-bottom:4px;padding:0}
+.nodo-role-filter .nodo-picker{flex:none}
+.nodo-role-filter .nodo-project-select{flex:none;gap:4px;padding:0 8px 0 6px;border-radius:14px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.nodo-role-filter .nodo-row-title{font-size:12px;line-height:16px}
 .nodo-picker{display:flex;flex:1;min-width:0}
 .nodo-project-select{display:flex;align-items:center;gap:6px;flex:1;min-width:0;height:100%;padding:0 4px;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .nodo-chevron{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-caption);transition:transform .15s var(--ds-ease-in-out)}
@@ -95,18 +112,19 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-row-action{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;padding:0;border:0;border-radius:var(--dsw-radius-xs);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-row-action:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
 .nodo-folder{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-deep-diving)}
-.nodo-sessions{display:flex;flex-direction:column;gap:2px}
-.nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 30px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
+.nodo-sessions{display:flex;flex-direction:column;flex:1;gap:2px;padding-block:2px}
+.nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 32px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
 .nodo-show-more:hover{color:var(--dsw-alias-label-primary)}
-.nodo-row{height:32px;padding:0 8px 0 30px}
-.nodo-session-empty{padding:10px 12px 10px 30px}
+.nodo-row{height:36px;padding:0 8px}
+.nodo-session-empty{padding:10px 12px 10px 32px}
 .nodo-session-item{display:flex;align-items:center;gap:2px;width:100%}
 .nodo-session-item>.nodo-session{flex:1;min-width:0}
 .nodo-session-item:hover .nodo-row-actions,.nodo-session-item:focus-within .nodo-row-actions,.nodo-session-item[data-menu=open] .nodo-row-actions{display:inline-flex}
 .nodo-session[data-archived]{color:var(--dsw-alias-label-tertiary)}
 .nodo-row-archived{display:inline-flex;align-items:center;gap:4px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px}
 .nodo-section-head .nodo-icon-btn[data-active]{color:var(--dsw-alias-state-business-primary)}
-.nodo-row:hover,.nodo-row[aria-current=page]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
 .nodo-session .nodo-avatar{flex:none}
@@ -147,11 +165,17 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-user{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .nodo-bubble{max-width:min(calc(var(--dsh-chat-content-width,748px) * .702),82%);padding:10px 16px;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(22px + var(--dsh-content-font-delta,0px));white-space:pre-wrap;word-break:break-word}
 .nodo-reply{min-width:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
+.nodo-streaming-text{position:relative;min-width:0}
+.nodo-streaming-caret{position:absolute;width:2px;margin-left:2px;border-radius:1px;background:var(--dsw-alias-state-business-primary);pointer-events:none;animation:nodo-streaming-pulse 1s ease-in-out infinite}
+.nodo-streaming-caret[hidden]{display:none}
+@keyframes nodo-streaming-pulse{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){.nodo-streaming-caret{animation:none}}
 .nodo-row-content{flex:1;min-width:0}
 .nodo-row-content-layout{min-width:0}
 .nodo-tool-sep{flex:none;width:2px;height:2px;margin:0 8px;border-radius:1px;background:var(--dsw-alias-label-caption)}
 .nodo-row-summary{flex:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-row-summary[data-error]{color:var(--dsw-alias-state-error-primary)}
+.nodo-request-answer{white-space:pre-wrap;overflow-wrap:anywhere}
 .nodo-plan-list{display:flex;flex-direction:column;gap:2px;margin:4px 0 4px 4px;padding:0}
 .nodo-plan-step{display:flex;gap:8px;align-items:baseline;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
 .nodo-plan-mark{flex:none;width:14px;text-align:center;color:var(--dsw-alias-label-tertiary)}
@@ -160,7 +184,6 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-plan-text{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .nodo-think-summary{flex:auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
 .nodo-think-summary[data-streaming]{mask-image:linear-gradient(90deg,black calc(100% - 48px),transparent)}
-.nodo-process-group{display:flex;flex-direction:column;padding-left:22px;min-width:0}
 .nodo-think-body{padding:4px 0 4px calc(22px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-secondary)}
 .nodo-image-preview{display:inline-block;max-width:100%;padding:0;border:0;background:transparent;color:inherit;cursor:zoom-in}
 .nodo-image-preview:disabled{cursor:wait}

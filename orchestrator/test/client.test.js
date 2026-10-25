@@ -51,9 +51,13 @@ test('client registers matching sidebar/main seats after the shell declares them
   const registrations = []
   const pending = new Map()
   const disposers = []
+  const listeners = new Set(), attributes = new Set()
   const document = {
     createElement: tag => ({ tag, removed: false, remove() { this.removed = true } }),
     head: { appendChild: node => styles.push(node) },
+    documentElement: { toggleAttribute: (name, on) => on ? attributes.add(name) : attributes.delete(name), removeAttribute: name => attributes.delete(name) },
+    addEventListener: (type, listener) => listeners.add(listener),
+    removeEventListener: (type, listener) => listeners.delete(listener),
   }
   const entry = load({ document, fetch: () => { throw new Error('page must stay lazy until selected') } })
   entry.apply({
@@ -99,10 +103,12 @@ test('client registers matching sidebar/main seats after the shell declares them
   for (const dispose of disposers.reverse()) dispose()
   assert.equal(styles[0].removed, true)
   assert.equal(registrations.length, 0)
+  assert.equal(listeners.size, 0, 'the scroll listener leaves with the plugin')
+  assert.equal(attributes.size, 0)
 })
 
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
-  const { transcriptRows, ProcessRow } = await loadClient('feed.js', {
+  const { transcriptRows, ProcessRow, ToolCall } = await loadClient(['feed.js', 'tool-call.tsx'], {
     uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' } } },
     react: { useState: () => [false, () => {}] },
     createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
@@ -120,7 +126,9 @@ test('tool rows preserve separate input and output for concurrent calls with the
   assert.equal(rows[1].item.output, 'B output')
   assert.equal(rows[1].error, true)
   const rendered = ProcessRow({ kind: 'tool', input: rows[0].item.input, output: rows[0].item.output })
-  assert.equal(rendered.props.expandable, true)
+  assert.equal(rendered.type, ToolCall)
+  assert.equal(rendered.props.open, false)
+  assert.equal(rendered.props.status, 'done')
   const sections = rendered.props.children.children
   assert.deepEqual(sections.map(section => section.children[0].children[0]), ['输入', '输出'])
   assert.deepEqual(sections.map(section => section.children[1].children[0]), ['A input', 'A output'])
@@ -172,9 +180,7 @@ test('committed client bundle matches its source', () => {
 })
 
 test('source parent ids render bounded nesting within one turn and activities have their own count', async () => {
-  const source = clientSource('feed.js')
   const { transcriptRows, ProcessGroup } = await loadClient('feed.js', {
-    uiShared: { DisclosureRow: 'DisclosureRow' },
     primitives: { IconSparkleRegular: () => 'icon' },
     react: { useState: () => [false, () => {}] },
     createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
@@ -198,8 +204,7 @@ test('source parent ids render bounded nesting within one turn and activities ha
   assert.equal(rows.find(row => row.item.callId === 'a').depth, 0, 'a cycle cannot invent a hierarchy')
   assert.ok(rows.every(row => !row.depth || row.depth <= 8), 'cycles cannot grow indentation indefinitely')
   const group = ProcessGroup({ rows: [{ kind: 'thinking' }, { kind: 'tool', activity: true }, { kind: 'tool' }, { kind: 'plan' }] })
-  assert.match(JSON.stringify(group.props.collapsedContent), /思考 1 · 工具 1 · 子任务 1 · 计划 1/)
-  assert.match(source, /'data-nodo-depth': row.depth/)
+  assert.equal(group.props.summary, '思考 1 · 工具 1 · 子任务 1 · 计划 1')
 })
 
 test('conversation selection restores its records without creating a new draft', async () => {
@@ -259,7 +264,7 @@ test('conversation selection restores its records without creating a new draft',
     ] : scenario.hosted ? [{ id: 'conversation', workspaceRef: 'branch', nativeSessionId: 'native' }] : [] }
     await selectSession(role, scenario.fresh || scenario.restore ? undefined : 'conversation', undefined, page)
     assert.deepEqual(errors, [])
-    assert.deepEqual(busy, [true, false])
+    assert.deepEqual(busy, [], 'session selection must not lock the entire page')
     assert.equal(space.getSnapshot().legacy, scenario.legacy)
     assert.equal(welcomes, scenario.legacy ? 0 : 1, 'dispatch records release the welcome overlay')
     assert.deepEqual(remembered.at(-1), scenario.fresh ? ['role', 'branch'] : ['role', 'branch', 'conversation'])
@@ -803,7 +808,7 @@ test('role avatar selection and animation preview submit the selected template',
 
 // The rail loads with its real ui-shared helpers; kit members stand in as their
 // own names and hooks come from the caller's fakes.
-const loadRail = async react => loadClient(['session-rail.js', 'avatar.tsx', 'ui-shared.js'], { react })
+const loadRail = async react => loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], { react })
 
 test('sidebar avatar follows any active session and returns to idle when work ends', async () => {
   const { Rail, RoleAvatar } = await loadRail({ useState: initial => [initial, () => {}] })
@@ -885,7 +890,8 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   assert.deepEqual(toggle(render()).children, ['收起'])
   toggle(render()).props.onClick()
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'folding again hides the tail')
-  assert.ok(tree.find(node => node.props?.className === 'nodo-workflow-entry').children.includes('Workflow'), 'the workflow entry sits under the header as a labelled capsule')
+  const views = tree.find(node => node.props?.className === 'nodo-rail-switch')
+  assert.deepEqual(views.children.map(node => [node.children[0], node.props['aria-pressed']]), [['会话', true], ['Workflow', false]], 'the header switch replaces the logo and the workflow entry')
   assert.equal(tree.some(node => node.type === 'Input'), false, 'the search field stays folded behind its icon')
   const searchIcon = () => tree.find(node => node.type === 'button' && node.props['aria-label'] === '搜索当前项目会话')
   searchIcon().props.onClick({ stopPropagation() {} })
@@ -2044,21 +2050,25 @@ test('the rail opens the workflow page and marks runs a person must look at', ()
   assert.match(clientSource('ui-shared.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats, runs: answer\.runs/, 'an unchanged state answer still carries the run summaries')
 })
 
-test('the original Nodo rail hosts workflow navigation under its existing logo and chrome', async () => {
+test('the original Nodo rail hosts workflow navigation under its header switch', async () => {
   const { Rail, setHostServices, NodoLogo } = await loadRail({ useState: initial => [initial, () => {}] })
   setHostServices({ layoutService: { selectPanel() {} } })
   const navigation = { type: 'navigation', props: {}, children: ['工作流列表'] }
-  let returned = false
-  const tree = Rail({ view: { profiles: [], workspaces: [] }, workflowNavigation: navigation, onBack: () => { returned = true } })
+  const calls = []
+  const tree = Rail({ view: { profiles: [], workspaces: [] }, workflowNavigation: navigation, onBack: () => calls.push('back'), onSessions: () => calls.push('sessions'), onWorkflows: () => calls.push('workflows') })
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   assert.equal(tree.props['aria-label'], '工作流导航')
   assert.ok(nodes(tree).includes(navigation))
-  assert.equal(nodes(tree).filter(node => node.type === NodoLogo).length, 1)
+  assert.equal(nodes(tree).some(node => node.type === NodoLogo), false, 'the header carries no logo')
+  const [sessions, workflows] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children
+  assert.equal(workflows.props['aria-pressed'], true)
+  assert.equal(workflows.props.onClick, undefined, 'the current view is not a link to itself')
+  sessions.props.onClick()
   assert.equal(nodes(tree).some(node => node.props['aria-label'] === '角色'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-search'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-workflow-entry'), false, 'the workflow page needs no entry to itself')
-  const back = nodes(tree).find(node => node.type === 'Tooltip' && node.props.label === '返回 Nodo 会话').props.children
+  const back = nodes(tree).find(node => node.type === 'Tooltip' && node.props.label === '返回普通空间').children[0]
   assert.equal(back.props.disabled, false)
   back.props.onClick()
-  assert.equal(returned, true)
+  assert.deepEqual(calls, ['sessions', 'back'])
 })

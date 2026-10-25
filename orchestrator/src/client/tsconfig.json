@@ -9,6 +9,7 @@
     "jsxFactory": "h",
     "jsxFragmentFactory": "Fragment",
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "checkJs": false,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,

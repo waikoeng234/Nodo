@@ -2,12 +2,13 @@ import {
   h, Fragment, useState, useEffect, useRef, useId, useStateView, call, sessionTime, layoutService, openNativeSession, nativeSpace,
   Button, Menu, Modal, Tag, StateDot, IconPanelLeftOutlineRegular, IconTrashOutlineRegular, IconBranchOutlineRegular,
   IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconUsersOutlineRegular, IconGoalOutlineRegular,
+  IconPlusOutlineRegular, IconChevronDownOutlineRegular,
 } from './ui-shared.js'
 import { avatarTemplateOf, RoleAvatar } from './avatar.tsx'
 import { runDuration } from './running.js'
 import { RUN_STATUS, RUN_DOT, statusLine, taskName, RunDetail, ApprovalCard } from './run-cards.js'
 import { Field } from './profile-dialogs.js'
-import { workspacePicker } from './session-rail.js'
+import { workspacePicker } from './session-rail.tsx'
 import { nativeRole, setNavigation } from './page.js'
 import { WorkflowTaskComposer } from './workflow-composer.js'
 import { workflowTaskTitle } from '../../core/shared/task-titles.js'
@@ -519,7 +520,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
   const [launch, setLaunch] = useState(false), [runTitle, setRunTitle] = useState('')
   const [checks, setChecks] = useState({}), [confirm, setConfirm] = useState(null)
   const [addOpen, setAddOpen] = useState(false), [menu, setMenu] = useState(null), [placeOpen, setPlaceOpen] = useState(false)
-  const [inputBusy, setInputBusy] = useState(false)
+  const [inputBusy, setInputBusy] = useState(false), [saveOpen, setSaveOpen] = useState(false)
   const inspectorCollapsed = saved.inspectorCollapsed === true
   const gate = useRef(false), request = useRef(0)
   const definitions = view.workflows?.definitions ?? []
@@ -651,7 +652,9 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
     h(Button, { variant: 'ghost', size: 'sm', className: 'nodo-wf-mode', 'aria-pressed': mode === 'run', onClick: () => setMode('run') }, '运行记录'))
   const navigation = h('div', { className: 'nodo-wf-navigation', role: 'navigation', 'aria-label': mode === 'edit' ? '流程' : '运行记录' },
         views,
-        mode === 'edit' && h('div', { className: 'nodo-wf-side-title' }, h('strong', null, '流程')),
+        mode === 'edit' && h('div', { className: 'nodo-wf-side-title' }, h('strong', null, '流程'),
+          h('button', { type: 'button', className: 'nodo-icon-btn nodo-visible', 'aria-label': '新建流程', title: '新建流程', disabled: blocked,
+            onClick: () => replace(() => setSaved({ draft: wfNew(), source: null, selected: 'start', positions: {} })) }, h(IconPlusOutlineRegular, { size: 16 }))),
         mode === 'edit' && h('div', { className: 'nodo-wf-definitions' }, ...definitions.map(item => {
           const cast = wfParticipants(wfGraph(item), view).filter(entry => entry.profile)
           return h('div', { key: item.id, className: 'nodo-session-item' },
@@ -668,12 +671,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
         mode === 'run' && h('div', { className: 'nodo-wf-side-title' }, h('strong', null, '最近运行'), loading && h('span', { role: 'status' }, '读取中…')),
         mode === 'run' && h('div', { className: 'nodo-wf-runs' }, ...runs.map(item => h('button', { key: item.id, type: 'button', className: 'nodo-runs-row', 'aria-pressed': mode === 'run' && runId === item.id, disabled: blocked, onClick: () => selectRun(item.id) },
           h('strong', { title: `${item.title ?? '未命名任务'}\n流程：${item.workflowName ?? '未知流程'}` }, item.title ?? '未命名任务'), statusLine(item.status), h('time', null, sessionTime(item.createdAt)))),
-          !runs.length && h('p', { className: 'nodo-dialog-hint' }, readOnly ? '请在主窗口查看。' : '还没有运行记录。保存流程后即可启动。')),
-        mode === 'edit' && h('div', { className: 'nodo-wf-side-foot' },
-          h('div', { className: 'nodo-wf-save', role: 'group', 'aria-label': '保存' },
-            h(Button, { variant: 'ghost', size: 'sm', disabled: blocked || !dirty, onClick: () => save(false) }, busy === 'save' ? '保存中…' : '保存'),
-            h(Button, { variant: 'ghost', size: 'sm', disabled: blocked || !source, title: '保存为新流程，当前编辑切换到新流程', onClick: () => setConfirm({ kind: 'saveAs', name: copyName() }) }, '另存为')),
-          h(Button, { variant: 'outline', size: 'sm', className: 'nodo-wf-new', disabled: blocked, onClick: () => replace(() => { setSaved({ draft: wfNew(), source: null, selected: 'start', positions: {} }); setMode('edit') }) }, '+ 新建流程')))
+          !runs.length && h('p', { className: 'nodo-dialog-hint' }, readOnly ? '请在主窗口查看。' : '还没有运行记录。保存流程后即可启动。')))
   useEffect(() => { wfPublishSidebar(navigation) }, [navigation])
   return h('section', { className: 'nodo-page nodo-workflow', 'aria-label': 'Workflow 工作流', onKeyDown: event => {
     if (mode !== 'edit' || blocked || menu || event.nativeEvent?.isComposing) return
@@ -692,8 +690,18 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
           (dirty || source) && h('span', { className: 'nodo-wf-save-state', role: 'status' }, dirty ? source ? '有未保存修改' : '未保存草稿' : '已保存'))
           : shown && h('span', { className: 'nodo-wf-meta' }, h('span', null, `流程：${shown.workflowName ?? '未知流程'}`), statusLine(shown.status, shown.reason), h('time', null, sessionTime(shown.createdAt)))),
       h('div', { className: 'nodo-wf-toolbar' },
+        mode === 'edit' && h('div', { className: 'nodo-wf-save', role: 'group', 'aria-label': '保存' },
+          h(Button, { variant: 'ghost', size: 'sm', 'aria-label': '保存', title: busy === 'save' ? '保存中…' : '保存', disabled: blocked || !dirty, onClick: () => save(false),
+            icon: h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
+              h('path', { d: 'M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z' }),
+              h('path', { d: 'M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7' })) }),
+          h(Menu, { open: saveOpen, onClose: () => setSaveOpen(false), portal: true, align: 'end',
+            items: [{ id: 'save', label: '保存', disabled: blocked || !dirty }, { id: 'saveAs', label: '另存为新流程…', disabled: blocked || !source }],
+            onSelect: id => { setSaveOpen(false); if (id === 'save') save(false); else setConfirm({ kind: 'saveAs', name: copyName() }) },
+            anchor: h(Button, { variant: 'ghost', size: 'sm', className: 'nodo-wf-save-more', 'aria-label': '更多保存选项', 'aria-haspopup': 'menu', 'aria-expanded': saveOpen,
+              disabled: blocked, icon: h(IconChevronDownOutlineRegular, { size: 12 }), onClick: () => setSaveOpen(open => !open) }) })),
         h('div', { className: 'nodo-wf-action-group', role: 'group', 'aria-label': '运行' },
-          h(Button, { variant: 'primary', size: 'sm', disabled: blocked || !!errors.length || !!missing.length || !!view.workflows?.running,
+          h(Button, { variant: 'outline', size: 'sm', disabled: blocked || !!errors.length || !!missing.length || !!view.workflows?.running,
             title: missing.length ? '需要已有的工作区和角色，请在输入栏为节点选择已关联项目的角色。' : errors[0]?.message
               ?? (view.workflows?.running ? '已有流程正在运行。' : dirty ? '运行前会先保存当前修改。' : undefined),
             onClick: () => { setRunTitle(workflowTaskTitle(draft)); setLaunch(true) } },
@@ -828,12 +836,13 @@ export const WORKFLOW_CSS = `
 .nodo-wf-meta{display:flex;align-items:center;gap:8px;min-width:0;font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;color:var(--dsw-alias-label-tertiary)}
 .nodo-wf-save-state::before{content:'· '}
 .nodo-wf-toolbar{margin-left:auto;display:flex;flex:none;align-items:center;gap:12px;max-width:calc(100% - 92px);overflow-x:auto}
-.nodo-wf-views{display:flex;flex:none;padding:3px;border-radius:999px;background:var(--dsw-alias-bg-overlay)}
-.nodo-wf-views .nodo-wf-mode{border-radius:999px}
-.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:1px 1px 0 var(--nodo-wf-shadow)}
+.nodo-wf-views{display:flex;flex:none;gap:20px;padding:0 8px;border-bottom:.5px solid var(--dsw-alias-border-l2)}
+.nodo-wf-views .nodo-wf-mode{height:32px;padding:0;border-radius:0;background:0 0;color:var(--dsw-alias-label-tertiary);box-shadow:inset 0 -2px transparent}
+.nodo-wf-views .nodo-wf-mode:hover,.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{background:0 0;color:var(--dsw-alias-label-primary)}
+.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{box-shadow:inset 0 -2px var(--dsw-alias-label-primary)}
 .nodo-wf-action-group{display:flex;align-items:center;gap:6px;flex:none}
 .nodo-wf-action-group button{border-radius:999px}
-.nodo-wf-action-group svg{margin-right:4px}
+.nodo-wf-action-group svg{margin-right:4px;color:var(--dsw-alias-state-business-primary)}
 .nodo-wf-body{display:flex;flex:1;min-height:0;min-width:0}
 .nodo-wf-navigation{display:flex;flex-direction:column;gap:12px;padding:18px 0 8px;flex:1;min-height:0}
 .nodo-wf-side-title{display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:13px;flex:none}
@@ -846,11 +855,6 @@ export const WORKFLOW_CSS = `
 .nodo-wf-cast{display:flex;flex:none}
 .nodo-wf-cast>*+*{margin-left:-5px}
 .nodo-wf-cast>.nodo-wf-cast-more{margin-left:2px;color:var(--dsw-alias-label-tertiary);line-height:18px}
-.nodo-wf-navigation>.nodo-wf-views .nodo-wf-mode{flex:1;justify-content:center}
-.nodo-wf-side-foot{display:flex;flex-direction:column;gap:8px;margin-top:auto;padding-top:4px;flex:none}
-.nodo-wf-side-foot>.nodo-wf-save{box-sizing:border-box;height:36px}
-.nodo-wf-side-foot>.nodo-wf-save button{flex:1;justify-content:center}
-.nodo-wf-side-foot>.nodo-wf-new{height:36px;border-style:dashed}
 .nodo-wf-outline{max-height:24%;overflow:auto;font-size:11px;color:var(--dsw-alias-label-secondary);flex-shrink:0}
 .nodo-wf-outline summary{padding:4px 8px;cursor:pointer}
 .nodo-wf-runs{flex:1;min-height:0;overflow:auto}
@@ -879,8 +883,9 @@ export const WORKFLOW_CSS = `
 .nodo-wf-title{font:inherit;font-size:14px;font-weight:600;min-width:0;width:100%;margin:0;border:0;background:transparent;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 0;outline:none}
 .nodo-wf-title:focus-visible{box-shadow:0 1px var(--dsw-alias-state-business-primary)}
 .nodo-wf-addbar{display:flex}
-.nodo-wf-save{display:flex;flex:none;align-items:center;padding:3px;border-radius:999px;background:var(--dsw-alias-bg-overlay)}
+.nodo-wf-save{display:flex;flex:none;align-items:center;gap:1px;padding:2px;border:.5px solid var(--dsw-alias-border-l2);border-radius:999px}
 .nodo-wf-save button{border-radius:999px}
+.nodo-wf-save .nodo-wf-save-more{min-width:0;width:22px;padding:0}
 .nodo-wf-addbar button{border-radius:999px;background:var(--dsw-alias-bg-base);box-shadow:1px 1px 0 var(--nodo-wf-shadow)}
 .nodo-wf-stage{position:relative;flex:1;min-height:140px;min-width:0;overflow:hidden;background-image:radial-gradient(var(--dsw-alias-border-l2) 1px,transparent 1.2px);background-size:22px 22px}
 .nodo-wf-viewport{height:100%;overflow:hidden;touch-action:none}

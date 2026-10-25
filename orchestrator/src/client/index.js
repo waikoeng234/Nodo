@@ -8,6 +8,7 @@ import { createSessionReferences, REFERENCE_CSS } from './session-references.js'
 import { createNewConversation } from './new-conversation.js'
 import { NativeRunningDock } from './running.js'
 import { CSS } from './styles.js'
+import { SCROLLBAR_CSS, installScrollbars } from './scrollbars.ts'
 import { NodoSidebar, NodoEntry, PanelIcon, NativeWelcome } from './page.js'
 import { WorkflowEntry, WORKFLOW_CSS } from './workflow.js'
 
@@ -32,10 +33,18 @@ export function apply(ctx) {
   ctx.effect(() => () => completionTracker.dispose(), 'nodo: completion read state')
   ctx.effect(() => {
     const style = document.createElement('style')
-    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS
+    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS + SCROLLBAR_CSS
     document.head.appendChild(style)
     return () => style.remove()
   }, 'nodo: page styles')
+  ctx.effect(() => {
+    const root = document.documentElement
+    const mark = () => root.toggleAttribute('data-nodo-space', space.getSnapshot().active)
+    const stop = space.subscribe(mark)
+    const dispose = installScrollbars(document)
+    mark()
+    return () => { stop(); dispose(); root.removeAttribute('data-nodo-space') }
+  }, 'nodo: scrollbars')
   ctx.slots.inject('conversation.input.dock', () => {
     const stops = [
       ctx.slots.register({ name: 'conversation.input.dock', id: 'nodo-running', order: -100 }, NativeRunningDock),

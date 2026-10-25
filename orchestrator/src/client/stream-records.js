@@ -1,5 +1,8 @@
-import { h, useState, useEffect, useRef, call, DisclosureRow, DiffBlock, CodeBlock, Button, IconCodeOutlineRegular, TerminalBlock } from './ui-shared.js'
+import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock } from './ui-shared.js'
 import { TranscriptImage } from './feed.js'
+import { ToolCall, toolCallQuery } from './tool-call.tsx'
+import { CodeDiff } from './code-diff.tsx'
+import { FileChangesSummary } from './file-changes-summary.tsx'
 
 export function supportedStreamRecord(value) {
   return value?.version === 1 && ['tool', 'changes'].includes(value.kind) && value.mode === 'snapshot' && value.body && typeof value.body === 'object'
@@ -12,7 +15,6 @@ const STREAM_REASON = { unsupported: '当前内容格式尚不支持', 'source-l
   'detail-limit': '详情超过保存上限', quota: '此会话的详情存储已达上限', 'write-failed': '详情未能保存', 'read-only': '当前窗口无法保存新详情',
   conflict: '来源版本存在冲突', unconfirmed: 'Agent 未确认执行结果' }
 const STREAM_CODE_LABELS = { copy: '复制', copied: '已复制' }
-const STREAM_DIFF_LABELS = { ...STREAM_CODE_LABELS, collapseAria: '收起差异', expandAria: n => `展开其余 ${n} 行`, collapse: '收起', expand: n => `展开其余 ${n} 行` }
 const STREAM_TERMINAL_LABELS = { ...STREAM_CODE_LABELS, signal: value => `信号 ${value}`, exitCode: value => `退出码 ${value}`, noExitCode: '退出码未知',
   running: '运行中', failed: '失败', done: '已完成', noOutput: '无输出', collapseAria: '收起输出', expandAria: n => `展开其余 ${n} 行`, collapse: '收起', expand: n => `展开其余 ${n} 行` }
 const streamSize = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -66,7 +68,7 @@ function streamProgress(progress) {
   return parts.length ? parts.join(' · ') : null
 }
 
-export function ChangedFile({ file, load, loaded, available, root, request }) {
+export function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch }) {
   const [open, setOpen] = useState(false)
   const [content, setContent] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -82,12 +84,12 @@ export function ChangedFile({ file, load, loaded, available, root, request }) {
     catch (failure) { setContent({ error: failure.message || '文件内容读取失败。' }) }
     finally { setBusy(false) }
   }
-  const edits = file.edits.map((edit, index) => h('div', { key: index },
+  const edits = patch ? h(CodeDiff, { filename: path, patch, cycle }) : file.edits.map((edit, index) => h('div', { key: index },
     h('p', { className: 'nodo-note' }, ({ add: '新增', update: '修改', delete: '删除', move: '移动', unknown: '编辑' })[edit.operation], edit.fromPath ? ` · 来自 ${edit.fromPath}` : ''),
     edit.availability && h('p', { className: 'nodo-note' }, ({ binary: '二进制文件，来源不提供文本差异。', oversized: '文件超过来源大小上限，差异不可得。', coarse: '来源比较超时，以下为整段替换的粗略差异。', unavailable: '来源未能提供此文件的差异。' })[edit.availability]),
     typeof edit.newText === 'string' && (typeof edit.oldText === 'string' || edit.oldText === null && edit.operation === 'add')
-      ? h(DiffBlock, { diffs: [{ path, oldText: edit.oldText, newText: edit.newText }], labels: STREAM_DIFF_LABELS })
-      : typeof edit.diffText === 'string' ? h(CodeBlock, { code: edit.diffText, lang: 'diff', copyLabel: '复制', copiedLabel: '已复制' })
+      ? h(CodeDiff, { filename: path, diff: { path, oldText: edit.oldText, newText: edit.newText }, cycle })
+      : typeof edit.diffText === 'string' ? h(CodeDiff, { filename: path, patch: edit.diffText, cycle })
         : typeof edit.newText === 'string' ? h('div', null, h('p', { className: 'nodo-note' }, '来源未提供修改前内容，以下为修改后内容。'),
           h(CodeBlock, { code: edit.newText, copyLabel: '复制', copiedLabel: '已复制' }))
           : h('p', { className: 'nodo-note' }, '此编辑的差异详情不可得。')))
@@ -99,33 +101,12 @@ export function ChangedFile({ file, load, loaded, available, root, request }) {
     typeof content?.text === 'string' && h('div', null,
       content.truncated && h('p', { className: 'nodo-note' }, '文件超过展示上限，仅显示开头部分。'),
       h(CodeBlock, { code: content.text, copyLabel: '复制', copiedLabel: '已复制' })))
+  if (inline) return h('div', { 'data-nodo-tool-file': file.path }, patch || edits.length ? edits : h('p', { className: 'nodo-note' }, '来源未提供此文件的差异详情。'), view)
   return h(DisclosureRow, { title: path, open, expandable: true, expandOnRowClick: true, keepContentWhenOpen: true, onToggle: () => void toggle(),
     children: h('div', null, edits, view) })
 }
 
-export function FileChangesContent({ value, record, full, load, busy, available, request }) {
-  const [expanded, setExpanded] = useState(false)
-  useEffect(() => setExpanded(false), [record.runId, record.entityId, record.revision])
-  const files = Array.isArray(value.body.files) ? value.body.files : []
-  const count = record.body.fileCount
-  const toggle = async () => {
-    if (!expanded && files.length < count && !full) { if (!available || !await load()) return }
-    setExpanded(current => !current)
-  }
-  return h('div', { 'data-nodo-changes': '' },
-    h('p', { className: 'nodo-note' }, value.body.scope === 'workspace-snapshot'
-      ? '来自宿主工作区快照，可能包含其他会话或进程的修改；受忽略规则和文件上限限制，不能据此归因于当前 Agent。'
-      : '仅覆盖 Agent 确认完成的编辑工具；可能遗漏命令或其他来源写入。以下按编辑记录展示，不代表本轮净差异。'),
-    count === 0 && h('p', { className: 'nodo-note' }, value.body.scope === 'workspace-snapshot' ? '宿主汇总未列出文件，不能据此判断本轮没有文件变更。' : '未收到已确认的编辑文件，不能据此判断本轮没有文件变更。'),
-    (expanded ? files : files.slice(0, 3)).map(file => h(ChangedFile, { key: file.path, file, load, loaded: Boolean(full), available, root: value.body.cwd, request })),
-    count > 3 && h(Button, { size: 'sm', variant: 'outline', disabled: busy || !expanded && files.length < count && !available, onClick: () => void toggle() },
-      expanded ? '收起文件列表' : `展开其余 ${count - 3} 项`),
-    (full || !available) && files.length < count && h('p', { className: 'nodo-note' }, `仅保存了 ${files.length} / ${count} 项，其余内容不可得。`),
-    typeof value.body.turnDiff === 'string' && h('div', null, h('p', { className: 'nodo-note' }, 'Agent 提供的轮次差异文本（文件列表仍为部分覆盖）。'),
-      h(CodeBlock, { code: value.body.turnDiff, lang: 'diff', copyLabel: '复制', copiedLabel: '已复制' })))
-}
-
-export function StreamRecordCard({ record, request }) {
+export function StreamRecordCard({ record, request, eventPhase }) {
   const [open, setOpen] = useState(false)
   const [full, setFull] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -147,34 +128,39 @@ export function StreamRecordCard({ record, request }) {
     } catch (failure) { if (generation.current === current) setError(failure.message || '工具详情读取失败。') }
     finally { if (generation.current === current) setBusy(false) }
   }
-  const value = full ?? record
+  const currentFull = full?.runId === record.runId && full?.entityId === record.entityId && full?.revision === record.revision ? full : null
+  const value = currentFull ?? record
   const body = value.body
   const failed = ['error', 'denied', 'unknown'].includes(record.status)
   const available = ['stored', 'truncated'].includes(record.details?.state) && record.details?.ref
+  if (record.kind === 'changes') return h(FileChangesSummary, { value, record, full: currentFull, load, busy, available, error,
+    renderFile: (file, patch) => h(ChangedFile, { key: file.path, file, patch, inline: true, root: body.cwd, request, cycle: record.revision }) })
   const status = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown
   const notice = record.capture !== 'complete' ? STREAM_REASON[record.reason] ?? '来源内容不完整' : null
   const progress = record.status === 'running' ? streamProgress(body.progress) : null
   const terminal = typeof body.command === 'string'
   const diffs = Array.isArray(body.diffs) ? body.diffs.filter(diff => typeof diff.path === 'string' && typeof diff.newText === 'string'
     && (typeof diff.oldText === 'string' || diff.oldText === null && diff.created === true)) : []
+  const disclosure = {
+    label: `${eventPhase === 'start' ? '调用 · ' : eventPhase === 'end' ? '结果 · ' : ''}${record.title || '工具'}`,
+    activeLabel: `正在调用 ${record.title || '工具'}`, query: toolCallQuery(body.command ?? body.input ?? body.inputText),
+    status: eventPhase === 'start' ? 'started' : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : 'unknown', onOpenChange: setOpen,
+  }
   return h('div', { 'data-nodo-stream-record': record.entityId, 'data-record-status': record.status },
-    h(DisclosureRow, {
-      icon: h(IconCodeOutlineRegular, { size: 14 }), title: record.kind === 'changes' ? `${record.body.scope === 'workspace-snapshot' ? '宿主工作区变更' : '已确认的编辑文件'} ${record.body.fileCount} · 部分覆盖` : record.title || '工具', open, expandable: true,
-      running: record.status === 'running', expandOnRowClick: true, keepContentWhenOpen: true,
-      onToggle: () => setOpen(value => !value),
-      collapsedContent: record.kind === 'changes' ? null : h('span', { className: 'nodo-row-summary', 'data-error': failed ? '' : undefined }, status),
+    h(ToolCall, {
+      ...disclosure, open,
       children: h('div', { className: 'nodo-stream-content' },
-        record.kind !== 'changes' && h('p', { className: 'nodo-note', 'data-error': failed ? '' : undefined }, status),
+        h('p', { className: 'nodo-note', 'data-error': failed ? '' : undefined }, status),
         progress && h('p', { className: 'nodo-note', 'data-nodo-progress': '' }, progress),
         notice && h('p', { className: 'nodo-note' }, notice),
         !full && record.truncated && h('p', { className: 'nodo-note' }, '当前显示摘要。'),
-        record.kind !== 'changes' && h(ResourceList, { resources: body.resources }),
-        record.kind === 'changes' ? h(FileChangesContent, { value, record, full, load, busy, available, request }) : terminal ? h(TerminalBlock, { command: body.command, cwd: body.cwd, output: body.outputText,
+        h(ResourceList, { resources: body.resources }),
+        terminal ? h(TerminalBlock, { command: body.command, cwd: body.cwd, output: body.outputText,
           exitCode: body.exitCode, signal: body.signal, running: record.status === 'running', runStateDot: false, labels: STREAM_TERMINAL_LABELS })
           : h('div', { className: 'nodo-io-card' }, [['输入', body.inputText ?? (body.input !== undefined ? JSON.stringify(body.input, null, 2) : '')], ['输出', body.outputText]]
             .filter(([, text]) => text).map(([label, text]) => h('div', { key: label, className: 'nodo-io-section' },
               h('span', { className: 'nodo-io-label' }, label), h('span', { className: 'nodo-io-text', 'data-error': failed && label === '输出' ? '' : undefined }, text)))),
-        diffs.length > 0 && h(DiffBlock, { diffs, labels: STREAM_DIFF_LABELS }),
+        diffs.map((diff, index) => h(CodeDiff, { key: index, filename: diff.path, diff, cycle: record.revision })),
         record.status === 'running' && body.progress?.outputPreview && h('div', { className: 'nodo-io-section' },
           h('span', { className: 'nodo-io-label' }, '输出预览'), h('span', { className: 'nodo-io-text' }, body.progress.outputPreview)),
         record.status === 'running' && body.progress?.stdoutTail && h('div', { className: 'nodo-io-section' },

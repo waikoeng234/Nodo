@@ -1,0 +1,133 @@
+import { h, useEffect, useId, useMemo, useRef, useState, IconCodeOutlineRegular, IconChevronDownOutlineRegular } from './ui-shared.js'
+import type { ReactNode } from './ui-shared.js'
+import { CodeDiff } from './code-diff.tsx'
+import { relativeFile, summarizeChanges } from './file-diffs.ts'
+import type { ChangedFileData, ChangesBody, DiffCounts } from './file-diffs.ts'
+
+interface ChangeRecord {
+  runId: string
+  entityId: string
+  revision: number
+  body: ChangesBody
+  capture?: string
+  truncated?: boolean
+}
+interface FileChangesSummaryProps {
+  record: ChangeRecord
+  value: ChangeRecord
+  full: unknown
+  busy?: boolean
+  available?: unknown
+  error?: string
+  load: () => Promise<unknown>
+  renderFile: (file: ChangedFileData, patch?: string) => ReactNode
+}
+
+function Counts({ value }: { value?: DiffCounts }) {
+  return value ? <span className="nodo-changes-counts" aria-label={`新增 ${value.added} 行，删除 ${value.removed} 行`}>
+    <span className="nodo-changes-added">+{value.added.toLocaleString()}</span>
+    <span className="nodo-changes-removed">−{value.removed.toLocaleString()}</span>
+  </span> : null
+}
+
+export function FileChangesSummary({ record, value, full, load, busy = false, available, error, renderFile }: FileChangesSummaryProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<string | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const detailsId = `nodo-changes-${useId()}`
+  const { files, totals } = useMemo(() => summarizeChanges(value.body), [value.body])
+  const count = record.body.fileCount
+  const workspace = record.body.scope === 'workspace-snapshot'
+  const canLoad = Boolean(available) && !full
+  useEffect(() => { setExpanded(false); setOpen(false); setSelected(null) }, [record.runId, record.entityId, record.revision])
+  useEffect(() => {
+    if (!canLoad || !record.truncated || !count) return
+    if (typeof IntersectionObserver === 'undefined') { void load(); return }
+    let requested = false
+    const observer = new IntersectionObserver(entries => {
+      if (requested || !entries.some(entry => entry.isIntersecting)) return
+      requested = true
+      observer.disconnect()
+      void load()
+    }, { rootMargin: '200px' })
+    if (box.current) observer.observe(box.current)
+    return () => { requested = true; observer.disconnect() }
+  }, [record.runId, record.entityId, record.revision, canLoad])
+  const show = async (path: string | null) => {
+    if (open && selected === path) { setOpen(false); return }
+    if (canLoad && record.truncated && !await load()) return
+    if (path === null) setExpanded(true)
+    setSelected(path)
+    setOpen(true)
+  }
+  const more = async () => {
+    if (!expanded && files.length < count && canLoad && !await load()) return
+    if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setOpen(false)
+    setExpanded(current => !current)
+  }
+  return <div className="nodo-changes-card" ref={box} data-nodo-changes-summary="">
+    <div className="nodo-changes-header">
+      <span className="nodo-changes-icon" aria-hidden><IconCodeOutlineRegular size={22} /></span>
+      <div className="nodo-changes-heading">
+        <div className="nodo-changes-title">{workspace ? '工作区变更' : '已编辑'} {count} 个文件
+          <span className="nodo-changes-coverage" title={workspace
+            ? '宿主工作区快照，可能包含其他会话或进程的修改。'
+            : '仅包含来源确认的编辑记录，可能不完整；没有轮次差异时，数字按已保存的编辑记录统计。'}>{workspace ? '工作区' : '部分记录'}</span>
+        </div>
+        <Counts value={totals} />
+      </div>
+      <button type="button" className="nodo-changes-view" disabled={busy} aria-expanded={open && selected === null}
+        aria-controls={detailsId} onClick={() => show(null)}>{busy ? '加载中…' : open && selected === null ? '收起变更' : '查看变更'}</button>
+    </div>
+    <div id={detailsId} className="nodo-changes-files">
+      {(expanded ? files : files.slice(0, 3)).map(({ file, counts, patch }, index) => {
+        const visible = open && (selected === null || selected === file.path)
+        const fileDetailsId = `${detailsId}-${index}`
+        return <div key={file.path} className="nodo-changes-file-entry">
+          <button type="button" className="nodo-changes-file" disabled={busy} aria-expanded={visible} aria-controls={fileDetailsId}
+            onClick={() => show(file.path)}>
+            <span className="nodo-changes-path" title={file.path}>{relativeFile(file.path, value.body.cwd)}</span><Counts value={counts} />
+          </button>
+          {visible && <div id={fileDetailsId} className="nodo-changes-details" role="region" aria-label={`${relativeFile(file.path, value.body.cwd)} 变更详情`}>
+            {renderFile(file, patch)}
+          </div>}
+        </div>
+      })}
+    </div>
+    {count > 3 && <button type="button" className="nodo-changes-more" disabled={busy || !expanded && files.length <= 3 && !canLoad}
+      aria-expanded={expanded} onClick={() => more()}>{expanded ? '收起文件列表' : `再显示 ${count - 3} 个文件`}
+      <IconChevronDownOutlineRegular size={14} style={expanded ? { transform: 'rotate(180deg)' } : undefined} /></button>}
+    {files.length < count && !canLoad && <div className="nodo-changes-notice">仅保存 {files.length} / {count} 个文件</div>}
+    {error && <div className="nodo-changes-notice" role="alert">{error}</div>}
+    {open && files.length === 0 && value.body.turnDiff && <div className="nodo-changes-details" role="region" aria-label="文件变更详情">
+      <CodeDiff filename="轮次差异" patch={value.body.turnDiff} cycle={record.revision} />
+    </div>}
+  </div>
+}
+
+export const FILE_CHANGES_SUMMARY_CSS = `
+.nodo-changes-card{min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-changes-header{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 16px}
+.nodo-changes-icon{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary)}
+.nodo-changes-heading{flex:1;min-width:0}
+.nodo-changes-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:var(--dsh-content-font-size,14px);font-weight:600;line-height:24px}
+.nodo-changes-coverage{font-size:11px;line-height:18px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-counts{display:inline-flex;flex:none;gap:6px;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.nodo-changes-added{color:var(--dsw-alias-state-success-primary)}
+.nodo-changes-removed{color:var(--dsw-alias-state-error-primary)}
+.nodo-changes-view{flex:none;padding:5px 10px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-weight:500;cursor:pointer}
+.nodo-changes-files{border-top:.5px solid var(--dsw-alias-border-l1);padding:2px 0}
+.nodo-changes-file-entry{min-width:0}
+.nodo-changes-file{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;width:100%;padding:9px 16px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;cursor:pointer}
+.nodo-changes-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size,14px);line-height:20px}
+.nodo-changes-more{display:flex;align-items:center;gap:8px;width:100%;padding:10px 16px;border:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;text-align:left;cursor:pointer}
+.nodo-changes-view:hover:not(:disabled),.nodo-changes-file:hover:not(:disabled),.nodo-changes-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-changes-card button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
+.nodo-changes-card button:disabled{opacity:.5;cursor:default}
+.nodo-changes-notice{padding:6px 16px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-changes-notice[role=alert]{color:var(--dsw-alias-state-error-primary)}
+.nodo-changes-details{min-width:0;border-top:.5px solid var(--dsw-alias-border-l1);padding:8px 12px 12px}
+.nodo-changes-details .nodo-code-diff{border-radius:var(--dsw-radius-md)}
+@media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-file{padding-inline:12px}.nodo-changes-coverage{display:none}}
+`

@@ -3,7 +3,7 @@ import {
   subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular,
 } from './ui-shared.js'
 import { RolePicker } from './role-seat.js'
-import { Rail } from './session-rail.js'
+import { Rail } from './session-rail.tsx'
 import { RunningLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
@@ -47,12 +47,12 @@ export const sessionForWorkspace = (profile, workspace, workspaces, selected) =>
 // The rail's session handlers keep the page's state in one object so the rail
 // wiring and tests drive the same path.
 export const selectSession = async (role, id, project, page) => {
-  const { workspace, busy, workspaces, navigation, sidebarOnly, readOnly, remember, refresh, setBusy, setActionError, setEditing } = page
+  const { workspace, workspaces, work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing } = page
   project ??= workspace
-  if (busy) return
-  const origin = nativeSpace.getSnapshot()
-  const current = () => nativeSpace.getSnapshot() === origin
-  setBusy(true); setActionError('')
+  const request = selection ? ++selection.current : undefined
+  let origin = nativeSpace.getSnapshot()
+  const current = () => nativeSpace.getSnapshot() === origin && (!selection || selection.current === request)
+  setActionError('')
   try {
     id ??= sessionForWorkspace(role, project, workspaces, navigation.sessions?.[`${project?.id}:${role.id}`])?.id
     if (!id) {
@@ -62,6 +62,18 @@ export const selectSession = async (role, id, project, page) => {
     }
     const native = nativeRole(role) && openNativeSession
     if (!current()) return
+    const twin = native && role.sessions.find(session => session.id === id)?.driverSessionId
+    if (work?.[id]?.active === true && (!native || twin)) {
+      remember(role.id, project.id, id); setEditing(null)
+      if (native) openNativeSession(twin)
+      else if (sidebarOnly) nativeSpace.showLegacy()
+      origin = nativeSpace.getSnapshot()
+      if (!readOnly) {
+        await call('session-select', { profile: role.id, session: id })
+        if (current()) await refresh(true)
+      }
+      return
+    }
     if (native) {
       const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
       if (!current()) return
@@ -71,12 +83,15 @@ export const selectSession = async (role, id, project, page) => {
       await refresh(true)
       return
     }
-    if (!readOnly) { await call('session-select', { profile: role.id, session: id }); await refresh(true) }
+    if (!readOnly) {
+      await call('session-select', { profile: role.id, session: id })
+      if (!current()) return
+      await refresh(true)
+    }
     if (!current()) return
     remember(role.id, project.id, id); setEditing(null)
     if (sidebarOnly) nativeSpace.showLegacy()
-  } catch (failure) { setActionError(failure.message) }
-  finally { setBusy(false) }
+  } catch (failure) { if (current()) setActionError(failure.message) }
 }
 
 export const startConversation = (roleId, page) => {
@@ -129,6 +144,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   // the host could not persist the flag, so it can never block the page.
   const [onboardDone, setOnboardDone] = useState(false)
   const [busy, setBusy] = useState(false)
+  const selection = useRef(0)
+  const [pending, setPending] = useState([])
   const [compacting, setCompacting] = useState([])
   // Bumped on every accepted send: the feed answers it by resuming tail follow,
   // the host chat's rule that submitted input supersedes reader position.
@@ -140,8 +157,9 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   const navigationKey = `${workspace?.id}:${profile?.id}`
   const session = sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey])
   const sessionId = session?.id
-  const sessionBusy = busy || compacting.includes(sessionId)
   const draftKey = sessionId ?? `new:${navigationKey}`
+  const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId)
+  const setSessionBusy = value => setPending(current => value ? [...current, draftKey] : current.filter(key => key !== draftKey))
   const readOnly = view !== null && view.readOnly != null
   const work = sessionId ? view.work[sessionId] : null
   // The composer shows the conversation's own choices: a session runs the model,
@@ -164,7 +182,17 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   }, [profile?.id, workspace?.id, sessionId])
   const remember = (roleId, projectId, id) => setNavigation(current => ({ ...current, profile: roleId, workspace: projectId,
     sessions: { ...current.sessions, ...(id ? { [`${projectId}:${roleId}`]: id } : {}) } }))
+  const trackSelection = (sameSession = false) => {
+    const origin = nativeSpace.getSnapshot(), request = selection.current
+    return () => {
+      const next = readNavigation()
+      return nativeSpace.getSnapshot() === origin && (sameSession || selection.current === request)
+        && next.profile === profile?.id && next.workspace === workspace?.id
+        && next.sessions?.[navigationKey] === navigation.sessions?.[navigationKey]
+    }
+  }
   const cancelEditing = () => setEditing(null)
+  const edit = value => { selection.current++; setEditing(value) }
   // The role card is the single configuration record: the composer's model
   // picker and the role dialog both write it, so each surface follows the
   // other, and the view lands on the respawned active session either way.
@@ -174,20 +202,21 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   // semantics), so they write the session and never retune the card behind it.
   const updateEngineChoice = async changes => {
     if (!profile || sessionBusy || readOnly) return
-    setBusy(true)
+    setSessionBusy(true)
     setActionError('')
+    const current = trackSelection()
+    const relevant = trackSelection(true)
     try {
       if (sessionId && ['model', 'thinking', 'permission'].some(key => changes[key] !== undefined)) {
         await call('session-update', { profile: profile.id, session: sessionId, changes })
-        remember(profile.id, workspace?.id, sessionId)
       } else {
         const saved = await call('profile-update', { id: profile.id, changes })
-        remember(saved.id, workspace?.id, saved.activeSessionId)
+        if (current()) remember(saved.id, workspace?.id, saved.activeSessionId)
       }
       await refresh(true)
     }
-    catch (failure) { setActionError(failure.message) }
-    finally { setBusy(false) }
+    catch (failure) { if (relevant()) setActionError(failure.message) }
+    finally { setSessionBusy(false) }
   }
   const savedWorkspace = async saved => { await refresh(true); remember(profile?.id, saved.id); setEditing(null) }
   const createdWorktree = async created => {
@@ -236,7 +265,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     if (workspace?.id === id) setNavigation(current => ({ ...current, workspace: null }))
     setWorkspaceDialog(null)
   }
-  const pageEnv = { workspace, busy, workspaces, navigation, sidebarOnly, readOnly, remember, refresh, setBusy, setActionError, setEditing }
+  const pageEnv = { workspace, busy, workspaces, work: view?.work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing }
   const select = (role, id, project) => selectSession(role, id, project, pageEnv)
   const archiveSession = async (role, id, archived) => {
     if (busy || readOnly) return
@@ -274,27 +303,30 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     const text = (drafts[draftKey] ?? '').trim()
     const images = pastedImages[draftKey] ?? []
     if (!profile || !workspace || (!text && images.length === 0) || sessionBusy || readOnly) return
-    setBusy(true)
+    setSessionBusy(true)
     setActionError('')
+    const current = trackSelection()
+    const relevant = trackSelection(true)
     try {
       const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })).id
       const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) }))
       await call('send', { profile: profile.id, session: id, text, images: payload })
-      setSentTick(tick => tick + 1)
+      if (current()) setSentTick(tick => tick + 1)
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
       await refresh(true)
-      remember(profile.id, workspace.id, id)
-    } catch (failure) { setActionError(failure.message) }
-    finally { setBusy(false) }
+      if (current()) remember(profile.id, workspace.id, id)
+    } catch (failure) { if (relevant()) setActionError(failure.message) }
+    finally { setSessionBusy(false) }
   }
   const interrupt = async () => {
-    if (!profile || busy || readOnly) return
-    setBusy(true)
+    if (!profile || sessionBusy || readOnly) return
+    setSessionBusy(true)
     setActionError('')
+    const current = trackSelection(true)
     try { await call('interrupt', { profile: profile.id, session: sessionId }); await refresh(true) }
-    catch (failure) { setActionError(failure.message) }
-    finally { setBusy(false) }
+    catch (failure) { if (current()) setActionError(failure.message) }
+    finally { setSessionBusy(false) }
   }
   // Compaction runs the engine's own channel; there is nothing to show in the
   // feed afterwards — the engine's context shrinks, the transcript stays.
@@ -303,8 +335,9 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     if (!sessionId) { setActionError('先开始一个会话，再压缩上下文'); return }
     setCompacting(current => [...current, sessionId])
     setActionError('')
+    const current = trackSelection(true)
     try { await call('session-compact', { profile: profile.id, session: sessionId }); await refresh(true) }
-    catch (failure) { setActionError(failure.message) }
+    catch (failure) { if (current()) setActionError(failure.message) }
     finally { setCompacting(current => current.filter(id => id !== sessionId)) }
   }
 
@@ -372,12 +405,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
         onPinSession: (role, id, pinned) => void updateSession(role, id, { pinned }),
         onNewSession: startDraft,
         onNewWorktree: () => { if (!readOnly) setWorktreeOpen(true) },
-        onNewRole: () => setEditing({ kind: 'profile', profile: null }),
-        onEditRole: item => setEditing({ kind: 'profile', profile: item }),
-        onSettings: () => setEditing({ kind: 'settings' }),
+        onNewRole: () => edit({ kind: 'profile', profile: null }),
+        onEditRole: item => edit({ kind: 'profile', profile: item }),
+        onSettings: () => edit({ kind: 'settings' }),
         onWorkflows: () => layoutService?.selectPanel('nodo-workflow'), runsWaiting: (view.runs ?? []).some(needsPerson),
-        onBack: () => workflowNavigation ? nativeSpace.showLegacy() : nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null),
-        onNewWorkspace: () => setEditing({ kind: 'workspace', id: 'new', workspace: null }),
+        onSessions: () => nativeSpace.showLegacy(), onBack: () => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null),
+        onNewWorkspace: () => edit({ kind: 'workspace', id: 'new', workspace: null }),
         onRenameWorkspace: workspace => setWorkspaceDialog({ kind: 'rename', workspace }),
         onDeleteWorkspace: workspace => setWorkspaceDialog({ kind: 'delete', workspace }),
       }),

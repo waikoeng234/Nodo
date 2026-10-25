@@ -5,12 +5,13 @@
 // takes its color, radius, shadow and type scale from the --dsw-* / --dsh-*
 // variables the shell already publishes, so the page follows the product look in
 // light, dark and any font-size setting.
-import { createElement as h, Fragment, useState, useEffect, useRef, useId, useSyncExternalStore } from 'react'
+import { createElement as h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore } from 'react'
+/** @typedef {import('react').ReactNode} ReactNode */
 // The shell seeds this UI kit in the same module table as React, so the panel
 // reuses the host's own controls, rows, markdown renderer and icon artwork (the
 // native packages require it the same way).
 import {
-  Button, CodeBlock, DisclosureRow, DiffBlock, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
+  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
@@ -25,9 +26,9 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import NODO_LOGO from './assets/nodo-logo.png'
 
-export { h, Fragment, useState, useEffect, useRef, useId, useSyncExternalStore }
+export { h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore }
 export {
-  Button, CodeBlock, DisclosureRow, DiffBlock, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
+  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,

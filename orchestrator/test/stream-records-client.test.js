@@ -6,7 +6,7 @@ const sample = () => ({ version: 1, kind: 'tool', mode: 'snapshot', runId: 'run'
   title: 'Fixture', status: 'error', body: { command: 'echo fixture', outputText: 'partial' }, capture: 'complete', truncated: true,
   details: { state: 'stored', ref: 'fixed-ref' } })
 const harness = async call => {
-  const { StreamRecordCard, FileChangesContent, ChangedFile, ResourceList, ResourceItem, host } = await loadClient('stream-records.js', {
+  const { StreamRecordCard, FileChangesSummary, ChangedFile, ResourceList, ResourceItem, CodeDiff, host } = await loadClient(['stream-records.js', 'code-diff.tsx', 'file-changes-summary.tsx'], {
     stubs: { 'feed.js': { TranscriptImage: 'TranscriptImage', ProcessRow: 'ProcessRow' } },
     primitives: {
       DisclosureRow: 'DisclosureRow', IconCodeOutlineRegular: 'Icon', TerminalBlock: 'TerminalBlock',
@@ -14,8 +14,8 @@ const harness = async call => {
     },
     call,
   })
-  return { context: { ChangedFile, ResourceList, ResourceItem }, state: host.cells, render: props => { host.reset(); return StreamRecordCard(props) },
-    renderChanges: props => { host.reset(); return FileChangesContent(props) }, renderFile: props => { host.reset(); return ChangedFile(props) }, effects: host.effects }
+  return { context: { ChangedFile, ResourceList, ResourceItem, CodeDiff, FileChangesSummary }, state: host.cells, render: props => { host.reset(); return StreamRecordCard(props) },
+    renderChanges: props => { host.reset(); return FileChangesSummary(props) }, renderFile: props => { host.reset(); return ChangedFile(props) }, effects: host.effects }
 }
 const descendants = node => {
   if (!node || typeof node !== 'object') return []
@@ -62,18 +62,20 @@ test('file summary distinguishes ten source files, three preview entries and sev
   const files = Array.from({ length: 10 }, (_, i) => ({ path: `file-${i}`, edits: [] }))
   const record = { ...sample(), kind: 'changes', status: 'done', body: { scope: 'edit-tools', coverage: 'partial', fileCount: 10, files: files.slice(0, 3) } }
   const view = await harness()
-  assert.match(descendants(view.render({ record, request: { target: 'native' } })).find(node => node.type === 'DisclosureRow').props.title, /10.*部分覆盖/)
+  const summary = view.render({ record, request: { target: 'native' } })
+  assert.equal(summary.type, view.context.FileChangesSummary)
+  assert.equal(summary.props.record.body.fileCount, 10)
   let loaded = false
-  const props = { record, value: record, full: null, available: true, busy: false, load: async () => { loaded = true; return { body: { files } } } }
+  const props = { record, value: record, full: null, available: true, busy: false, load: async () => { loaded = true; return { body: { files } } }, renderFile: () => null }
   let tree = view.renderChanges(props)
-  assert.equal(descendants(tree).filter(node => node.type === view.context.ChangedFile).length, 3)
-  assert.match(JSON.stringify(tree), /展开其余 7 项/)
-  descendants(tree).find(node => node.type === 'Button').props.onClick()
+  assert.equal(descendants(tree).filter(node => node.props.className === 'nodo-changes-file').length, 3)
+  assert.match(JSON.stringify(tree), /再显示.*7/)
+  descendants(tree).find(node => node.props.className === 'nodo-changes-more').props.onClick()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(loaded, true)
   tree = view.renderChanges({ ...props, full: {}, value: { body: { files } } })
-  assert.equal(descendants(tree).filter(node => node.type === view.context.ChangedFile).length, 10)
-  assert.match(JSON.stringify(tree), /不代表本轮净差异/)
+  assert.equal(descendants(tree).filter(node => node.props.className === 'nodo-changes-file').length, 10)
+  assert.match(JSON.stringify(tree), /仅包含来源确认的编辑记录/)
 })
 
 test('unknown before-images render known after text and raw patches without inventing a full-file addition', async () => {
@@ -82,20 +84,28 @@ test('unknown before-images render known after text and raw patches without inve
   const tree = view.context.ChangedFile({ file, loaded: true })
   assert.equal(descendants(tree).filter(node => node.type === 'DiffBlock').length, 0)
   assert.match(JSON.stringify(tree), /来源未提供修改前内容/)
-  assert.equal(descendants(tree).find(node => node.type === 'CodeBlock' && node.props.lang === 'diff').props.code, '@@ original patch')
+  const diff = descendants(tree).find(node => node.type === view.context.CodeDiff)
+  assert.equal(diff.props.patch, '@@ original patch')
+  assert.equal(diff.props.diff, undefined)
 })
 
 test('workspace snapshots retain their own attribution and explain binary, oversized and coarse differences', async () => {
   const view = await harness()
-  const record = { ...sample(), kind: 'changes', body: { scope: 'workspace-snapshot', fileCount: 1, files: [{ path: '/workspace/x', edits: [] }] } }
-  assert.match(descendants(view.render({ record, request: {} })).find(node => node.type === 'DisclosureRow').props.title, /宿主工作区变更 1/)
-  const content = view.renderChanges({ value: record, record })
+  const record = { ...sample(), kind: 'changes', body: { scope: 'workspace-snapshot', fileCount: 1, files: [{ path: '/workspace/x', edits: ['binary', 'oversized', 'coarse', 'unavailable'].map(availability => ({ operation: 'unknown', availability })) }] } }
+  const summary = view.render({ record, request: {} })
+  assert.equal(summary.type, view.context.FileChangesSummary)
+  assert.equal(summary.props.value.body.scope, 'workspace-snapshot')
+  const content = view.renderChanges({ ...summary.props })
   assert.match(JSON.stringify(content), /可能包含其他会话或进程的修改/)
-  assert.doesNotMatch(JSON.stringify(content), /仅覆盖 Agent 确认完成/)
-  const file = view.context.ChangedFile({ file: { path: 'x', edits: ['binary', 'oversized', 'coarse'].map(availability => ({ operation: 'unknown', availability })) }, loaded: true })
+  const entry = summary.props.renderFile(record.body.files[0])
+  assert.equal(entry.props.inline, true)
+  assert.deepEqual(entry.props.request, {})
+  const file = view.context.ChangedFile(entry.props)
   assert.match(JSON.stringify(file), /二进制文件/)
   assert.match(JSON.stringify(file), /超过来源大小上限/)
   assert.match(JSON.stringify(file), /粗略差异/)
+  assert.match(JSON.stringify(file), /来源未能提供此文件的差异/)
+  assert.ok(descendants(file).some(node => node.type === 'Button' && node.children.includes('查看当前内容')))
 })
 
 test('a running record shows only the progress facts the source supplied, then drops them at the end', async () => {

@@ -37,8 +37,10 @@ export function fakeHost({ react = {}, primitives = {} } = {}) {
       if (!(at in cells)) cells[at] = typeof initial === 'function' ? initial() : initial
       return [cells[at], value => { cells[at] = typeof value === 'function' ? value(cells[at]) : value }]
     },
+    useMemo: calculate => calculate(),
     useRef: initial => ({ current: initial }),
     useEffect: effect => { effects.push(effect) },
+    useLayoutEffect: effect => { effects.push(effect) },
     useId: () => 'test',
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     ...react,

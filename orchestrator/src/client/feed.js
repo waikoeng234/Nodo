@@ -1,23 +1,45 @@
 // The feed keeps the host's message grammar: the user's own text is a right
 // aligned bubble, the agent's reply is the host's Markdown renderer, and one tool
-// call or thinking block is the host's own 24px disclosure row — a 14px family
-// glyph, the name, a one-line summary, and the recorded text in the host's
-// tool-output block once opened. Scrolling follows the host chat's follow policy:
+// call has a compact disclosure with its request and result. Thinking uses the
+// host's disclosure row. Scrolling follows the host chat's follow policy:
 // growth pins the floor only while the reader stays within FOLLOW_PX of it;
 // scrolling away pauses following, and the floating button or a sent message
 // resumes it.
 import {
   h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, MarkdownText, StateDot,
   Button, Menu, Modal, ComposerGlyph,
-  IconSparkleRegular, IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
+  IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
   IconDatabaseOutlineRegular, IconGaugeOutlineRegular, IconRefreshOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
   billedTokens, cacheHitPercent, contextPercent, compactTokens, compactDuration, exactTokens, tokensPerSecond, turnTokens,
 } from './ui-shared.js'
 import { supportedStreamRecord, StreamRecordCard } from './stream-records.js'
+import { StreamingText } from './streaming-text.tsx'
+import { ToolCall, toolCallQuery } from './tool-call.tsx'
+import { ToolTimeline } from './tool-timeline.tsx'
 
 const FOLLOW_PX = 25
 
 const brief = text => (text ?? '').slice(0, 400)
+
+export function requestReply(item) {
+  const response = item.phase === 'end' && ['allow', 'deny', 'answer'].includes(item.response?.decision) ? item.response : undefined
+  const status = item.phase === 'start' ? '等待回答'
+    : item.cancelled ? '已取消' : ({ allow: '已允许', deny: '已拒绝', answer: '已回答' })[response?.decision] ?? '已关闭'
+  let text = typeof response?.value === 'string' ? response.value : item.text ?? ''
+  if (response?.decision === 'answer' && response.questions?.length > 1) {
+    try {
+      const answers = JSON.parse(text)
+      const questions = response.questions
+      if (answers && typeof answers === 'object' && !Array.isArray(answers)
+        && Object.keys(answers).length === questions.length
+        && questions.every(question => typeof answers[question.id] === 'string'
+          || Array.isArray(answers[question.id]) && answers[question.id].every(answer => typeof answer === 'string'))) {
+        text = questions.map(question => `${question.label}：${Array.isArray(answers[question.id]) ? answers[question.id].join('、') : answers[question.id]}`).join('\n')
+      }
+    } catch {}
+  }
+  return { status, text }
+}
 
 // The host ReasoningRow's streaming summary: while a block grows, it reads the
 // first line of the latest completed paragraph; once settled, the block's own
@@ -39,11 +61,7 @@ const completedLead = text => {
   }
 }
 
-// One tool call or thinking block is the host's own 24px disclosure row: a 14px
-// leading glyph, the title, a separator dot and a one-line summary; opening it
-// shows the recorded text in the host's shapes — the tool IO card for a call, the
-// compact Markdown body for reasoning.
-export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error }) {
+export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status, timeline }) {
   const [open, setOpen] = useState(false)
   const text = typeof body === 'string' ? body.trim() : ''
   const expandable = text !== '' || Boolean(input) || Boolean(output) || Boolean(progress)
@@ -55,14 +73,20 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
       ? h('span', { key: 'summary', className: 'nodo-think-summary', 'data-streaming': streaming ? '' : undefined }, summary)
       : h('span', { key: 'summary', className: 'nodo-row-summary', 'data-error': error ? '' : undefined }, summary),
   ] : null
-  return h(DisclosureRow, {
-    icon: (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
+  const disclosure = kind === 'thinking' ? {
+    icon: timeline ? undefined : (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
     title, open, expandable, running: streaming, expandOnRowClick: true, keepContentWhenOpen: true,
     contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
     onToggle: () => setOpen(current => !current),
     collapsedContent: collapsed,
+  } : {
+    label: title || '工具调用', activeLabel: `${title || '工具调用'}中`, query: toolCallQuery(input, summary ?? ''),
+    status: error ? 'error' : streaming ? 'running' : status ?? 'done', open, onOpenChange: setOpen,
+  }
+  return h(kind === 'thinking' ? DisclosureRow : ToolCall, {
+    ...disclosure,
     children: kind === 'thinking'
-      ? h('div', { className: 'nodo-think-body' }, h(MarkdownText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact' }))
+      ? h('div', { className: 'nodo-think-body' }, h(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact' }))
       : h('div', { className: 'nodo-io-card' },
         ...(progressNote ? [h('p', { className: 'nodo-note' }, progressNote)] : []),
         ...(input || output ? [['输入', input], ['输出', output]] : [[streaming ? '输入' : '输出', body]])
@@ -92,7 +116,7 @@ function progressText(progress) {
 
 // The engine's plan: one replaceable row per turn showing the step list the
 // source last sent — updates rewrite it in place, they never append.
-export function PlanRow({ plan, running }) {
+export function PlanRow({ plan, running, timeline }) {
   const [open, setOpen] = useState(false)
   const steps = Array.isArray(plan.steps) ? plan.steps : []
   const active = steps.find(step => step.status === 'in_progress') ?? steps[0]
@@ -100,7 +124,7 @@ export function PlanRow({ plan, running }) {
   // A markdown-form plan has no steps but a real body: it still expands.
   const expandable = steps.length > 0 || Boolean(plan.text)
   return h(DisclosureRow, {
-    icon: TOOL_VARIANTS.plan.icon({ size: 14 }),
+    icon: timeline ? undefined : TOOL_VARIANTS.plan.icon({ size: 14 }),
     title: '计划', open, expandable, running, expandOnRowClick: expandable, keepContentWhenOpen: true,
     contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
     onToggle: () => setOpen(state => !state),
@@ -119,19 +143,25 @@ export function PlanRow({ plan, running }) {
 export function transcriptRows(lines) {
   const rows = []
   const open = new Map()
+  const callKey = item => item.callId ? JSON.stringify([item.turnId ?? null, item.callId]) : item.name
   for (const [index, item] of lines.entries()) {
     // A cleared plan leaves no row at all: its removal is the final state.
     if (item.kind === 'plan' && (item.removed === true
       || (( !Array.isArray(item.steps) || item.steps.length === 0) && !item.text))) continue
     if (item.kind !== 'tool') { rows.push({ item, index, running: false, error: false }); continue }
     if (item.phase === 'start') {
-      open.set(item.callId ?? item.name, rows.length)
+      open.set(callKey(item), rows.length)
       rows.push({ item, index, running: true, error: false })
       continue
     }
-    const at = item.callId ? open.get(item.callId) : open.get(item.name) ?? [...open.values()].pop()
+    const at = item.callId ? open.get(callKey(item)) : open.get(item.name) ?? [...open.values()].pop()
     if (at === undefined) { rows.push({ item, index, running: false, error: item.isError === true }); continue }
-    open.delete(rows[at].item.callId ?? rows[at].item.name)
+    open.delete(callKey(rows[at].item))
+    if (item.timeline === true && at !== rows.length - 1) {
+      rows[at] = { ...rows[at], running: false, invocation: true }
+      rows.push({ item: { ...item, input: item.input ?? rows[at].item.input }, index, running: false, error: item.isError === true, result: true })
+      continue
+    }
     rows[at] = { ...rows[at], running: false, error: item.isError === true,
       item: { ...rows[at].item, brief: rows[at].item.brief ?? item.brief,
         activity: item.activity ?? rows[at].item.activity,
@@ -148,15 +178,16 @@ export function transcriptRows(lines) {
     if (row.item.kind === 'tool') groups.at(-1).push(row)
   }
   for (const group of groups) {
-    const entities = new Map(group.filter(row => row.item.callId).map(row => [row.item.callId, row]))
+    const entities = new Map(group.filter(row => row.item.callId).map(row => [callKey(row.item), row]))
+    const parentOf = item => item.parentCallId ? entities.get(callKey({ ...item, callId: item.parentCallId })) : undefined
     for (const row of group) {
       const seen = new Set([row.item.callId])
-      let parent = entities.get(row.item.parentCallId)
+      let parent = parentOf(row.item)
       row.depth = 0
       while (parent && !seen.has(parent.item.callId) && row.depth < 8) {
         seen.add(parent.item.callId)
         row.depth += 1
-        parent = entities.get(parent.item.parentCallId)
+        parent = parentOf(parent.item)
       }
       if (parent && seen.has(parent.item.callId)) row.depth = 0
     }
@@ -164,36 +195,39 @@ export function transcriptRows(lines) {
   return rows
 }
 
-// Consecutive thinking, plan and tool rows form one process block, folded under
-// a single disclosure; replies, errors and usage stay outside it.
-const isProcess = row => row.item.kind === 'tool' || row.item.kind === 'thinking' || row.item.kind === 'plan'
+// Only adjacent process events share a timeline; message boundaries stay intact.
+const isProcess = row => ['tool', 'thinking', 'plan'].includes(row.item.kind)
 function processBlocks(rows) {
   const blocks = []
+  const summaries = []
+  const flushSummaries = () => blocks.push(...summaries.splice(0))
   rows.forEach((row, position) => {
+    if (row.item.who === 'user') flushSummaries()
+    if (row.item.kind === 'changes') { summaries.push({ process: false, rows: [{ row, position }] }); return }
     const last = blocks.at(-1)
     if (isProcess(row) && last?.process) last.rows.push({ row, position })
     else blocks.push({ process: isProcess(row), rows: [{ row, position }] })
   })
+  flushSummaries()
   return blocks
 }
 
-export function ProcessGroup({ rows, running, children }) {
-  const [open, setOpen] = useState(false)
+export function ProcessGroup({ rows, running, depths = [], children = [] }) {
   const thinking = rows.filter(item => item.kind === 'thinking').length
   const plans = rows.filter(item => item.kind === 'plan').length
-  const activities = rows.filter(item => item.activity === true).length
-  const tools = rows.length - thinking - plans - activities
+  const countCalls = items => new Set(items.map(item => item.callId ?? item)).size
+  const activities = countCalls(rows.filter(item => item.activity === true))
+  const tools = countCalls(rows.filter(item => item.kind === 'tool' && item.activity !== true))
   const summary = [thinking && `思考 ${thinking}`, tools && `工具 ${tools}`, activities && `子任务 ${activities}`, plans && `计划 ${plans}`].filter(Boolean).join(' · ')
-  return h(DisclosureRow, {
-    icon: IconSparkleRegular({ size: 14 }), title: '处理过程', open, expandable: true, running, expandOnRowClick: true, keepContentWhenOpen: true,
-    contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
-    onToggle: () => setOpen(current => !current),
-    collapsedContent: [
-      h('span', { key: 'sep', className: 'nodo-tool-sep', 'data-shimmer-decoration': true, 'aria-hidden': true }),
-      h('span', { key: 'summary', className: 'nodo-row-summary' }, summary),
-    ],
-    children: h('div', { className: 'nodo-process-group' }, children),
+  const steps = rows.map((item, index) => {
+    const icon = item.kind === 'thinking' ? IconThinkOutlineRegular
+      : TOOL_VARIANTS[item.kind === 'plan' ? 'plan' : toolVariant(item.name)].icon
+    const child = children[index]
+    return { id: String(child?.key ?? child?.props.key ?? index), icon: h(icon, { size: 14 }), content: child,
+      active: child?.props.running === true || child?.props.record?.status === 'running' && !child.props.eventPhase && running === true,
+      depth: depths[index], callId: item.callId, parentCallId: item.parentCallId }
   })
+  return h(ToolTimeline, { steps, summary, streaming: running })
 }
 
 export function Feed({ profile, session, revision, work, sentTick }) {
@@ -201,6 +235,8 @@ export function Feed({ profile, session, revision, work, sentTick }) {
   const [following, setFollowing] = useState(true)
   const [activeTurn, setActiveTurn] = useState(null)
   const key = `${profile.id}:${session?.id ?? ''}`
+  const opened = useRef({ key, at: Date.now() })
+  if (opened.current?.key !== key) opened.current = { key, at: Date.now() }
   const box = useRef(null)
   const probe = useRef(0)
   // One rAF-coalesced reader sample drives both follow intent and the rail's
@@ -242,12 +278,14 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     sample()
   }, [feed, following])
   useEffect(() => { setFollowing(true) }, [sentTick])
-  // One turn starts at each user line; the rail previews the prompt and the
-  // first reply that follows it.
+  // One turn starts at each user line; the rail prefers its final parent reply.
   const turns = []
   for (const [index, item] of feed.lines.entries()) {
     if (item.who === 'user') turns.push({ turn: index, prompt: brief(item.text), response: '' })
-    else if (item.who === 'agent' && item.kind === 'text' && turns.length !== 0 && turns.at(-1).response === '') turns.at(-1).response = brief(item.text)
+    else if (item.who === 'agent' && item.kind === 'text' && !item.parentCallId && turns.length !== 0) {
+      const turn = turns.at(-1)
+      if (!turn.reply || item.reply === true) { turn.response = brief(item.final ?? item.text); turn.reply = item.reply === true }
+    }
   }
   const goto = turn => {
     const node = box.current
@@ -257,32 +295,36 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop
   }
   const lines = feed.key === key ? feed.lines : []
-  const rows = transcriptRows(lines)
+  const latestUser = lines.findLastIndex(item => item.who === 'user')
+  const rows = transcriptRows(lines).filter(row => row.item.kind !== 'changes'
+    || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser))
   const newest = rows.length - 1
-  const line = (row, position) => {
+  const line = (row, position, timeline = false) => {
     const { item, index } = row
-    if (item.kind === 'plan') return h(PlanRow, { key: index, plan: item, running: work?.active === true && index === newest })
-    if (item.kind === 'changes' && supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } })
+    if (item.kind === 'plan') return h(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest })
+    if (item.kind === 'changes') return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } })
     if (item.kind === 'tool') {
-      if (supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } })
+      if (supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation,
+        eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id } })
       const variant = TOOL_VARIANTS[toolVariant(item.name)]
       const progress = progressText(item.progress)
       return h(ProcessRow, {
-        key: index, kind: 'tool', variant, title: variant.title,
+        key: index, kind: 'tool', variant, timeline, title: `${row.invocation ? '调用 · ' : row.result ? '结果 · ' : ''}${variant.title}`,
         summary: [item.brief ? item.brief.split('\n')[0] : null, progress].filter(Boolean).join(' · ') || null,
         body: item.brief ?? '',
         input: item.input, output: item.output, progress: item.progress,
         running: row.running && work?.active === true, error: row.error,
+        status: row.invocation ? 'started' : row.running ? 'unknown' : 'done',
       })
     }
     if (item.kind === 'thinking') {
       const text = item.text ?? ''
       // The host chat's rule: a reasoning row is running while it is the
       // streaming tail, and its summary then advances per completed paragraph.
-      const running = work?.active === true && index === newest && (work.buffer ?? '') === ''
+      const running = work?.active === true && (item.timeline === true ? item.open === true : position === newest && (work.buffer ?? '') === '')
       const lead = (running ? completedLead(text) : '') || text.split('\n')[0] || ''
       return h(ProcessRow, {
-        key: index, kind: 'thinking', variant: { icon: IconThinkOutlineRegular }, title: '思考',
+        key: index, kind: 'thinking', variant: { icon: IconThinkOutlineRegular }, timeline, title: '思考',
         summary: lead.replaceAll('**', '') || null, body: text, running,
       })
     }
@@ -290,6 +332,14 @@ export function Feed({ profile, session, revision, work, sentTick }) {
       return h('div', { key: index, className: 'nodo-turn-error' },
         h(StateDot, { state: 'error', size: 8, className: 'nodo-turn-error-dot' }),
         h('span', null, h('span', { className: 'nodo-turn-error-title' }, '本轮运行失败'), item.text))
+    }
+    if (item.kind === 'lifecycle') return h('p', { key: index, className: 'nodo-note' },
+      `${({ retry: '重试', compaction: '上下文压缩' })[item.event] ?? item.event} · ${item.phase === 'start' ? '开始' : item.isError ? '失败' : item.cancelled ? '已取消' : item.event === 'retry' ? '已恢复' : '结束'}`, item.text ? ` · ${item.text}` : '')
+    if (item.kind === 'request') {
+      const reply = requestReply(item)
+      return h('p', { key: index, className: 'nodo-note', 'data-request-phase': item.phase },
+        `${item.requestKind === 'question' ? '提问' : '权限请求'} · ${reply.status}`,
+        reply.text && h('span', { className: 'nodo-request-answer' }, ` · ${reply.text}`))
     }
     // A turn's usage lands under its reply as the host chat's own caption.
     if (item.kind === 'usage') return lines[index - 1]?.who === 'agent' && lines[index - 1].kind === 'text' ? null : h(TurnUsage, { key: index, usage: item.usage })
@@ -302,11 +352,14 @@ export function Feed({ profile, session, revision, work, sentTick }) {
         h(MessageTime, { at: item.at }))
     }
     if (item.who === 'agent') {
+      const streaming = item.timeline === true && item.open === true && work?.active === true
       const usage = lines[index + 1]?.kind === 'usage' ? lines[index + 1].usage : null
-      return h('div', { key: index, className: 'nodo-reply', 'data-flow': 'response' },
-        h(MarkdownText, { text: item.text, labels: MARKDOWN_LABELS }),
+      return h('div', { key: index, className: 'nodo-reply', 'data-flow': 'response', 'data-message-id': item.messageId,
+        'data-source-channel': item.channel, 'data-parent-call-id': item.parentCallId,
+        ...(item.parentCallId ? { style: { marginLeft: 16 } } : {}) },
+        h(StreamingText, { text: item.text, streaming, animate: streaming || item.at >= opened.current.at, labels: MARKDOWN_LABELS }),
         item.images?.map(image => h(TranscriptImage, { key: image.id, image })),
-        h('div', { className: 'nodo-reply-foot' }, h(MessageTime, { at: item.at }), usage && h(TurnUsage, { usage })))
+        !streaming && h('div', { className: 'nodo-reply-foot' }, h(MessageTime, { at: item.at }), usage && h(TurnUsage, { usage })))
     }
     return item.text ? h('p', { key: index, className: 'nodo-note' }, item.text) : null
   }
@@ -316,14 +369,13 @@ export function Feed({ profile, session, revision, work, sentTick }) {
         feed.key === key && feed.error && h('p', { className: 'nodo-error-line', role: 'alert' }, feed.error),
         lines.length === 0 && !work?.active && h('p', { className: 'nodo-note nodo-feed-empty' },
           `还没有消息。给「${profile.name}」发一条任务，一条消息即一个任务。`),
-        ...processBlocks(rows).map((block, index, all) => block.process
-          ? h(ProcessGroup, { key: block.rows[0].row.index, rows: block.rows.map(({ row }) => row.item), running: work?.active === true && index === all.length - 1 },
-            block.rows.map(({ row, position }) => row.depth > 0
-              ? h('div', { key: row.index, 'data-nodo-depth': row.depth, style: { marginLeft: `${row.depth * 16}px` } }, line(row, position))
-              : line(row, position)))
+        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1
+          ? h(ProcessGroup, { key: block.rows[0].row.index, rows: block.rows.map(({ row }) => row.item), depths: block.rows.map(({ row }) => row.depth),
+            running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true)) },
+            block.rows.map(({ row, position }) => line(row, position, true)))
           : line(block.rows[0].row, block.rows[0].position)),
-        work?.active && work.buffer != null && work.buffer !== '' && h('div', { className: 'nodo-reply', 'data-flow': 'response' },
-          h(MarkdownText, { text: work.buffer, streaming: true, labels: MARKDOWN_LABELS })))),
+        work?.active && work.timeline !== true && work.buffer != null && work.buffer !== '' && h('div', { className: 'nodo-reply', 'data-flow': 'response' },
+          h(StreamingText, { key, text: work.buffer, streaming: true, labels: MARKDOWN_LABELS })))),
     h(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
     !following && h('button', { type: 'button', className: 'nodo-tobottom', 'aria-label': '回到底部', title: '回到底部', onClick: () => setFollowing(true) },
       h(IconChevronDownOutlineRegular)))

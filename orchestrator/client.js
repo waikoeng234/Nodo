@@ -355,66 +355,61 @@ function createRoleSeat(ctx, space) {
   return { RoleSeat };
 }
 
-// src/client/session-rail.js
+// src/client/session-rail.tsx
 function SessionRow({ role, session, current, work, busy, onSelect, onArchive, onRename, onPin }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const archived = !!session.archivedAt;
   const pinned = !!session.pinnedAt;
-  const label = `${role.name} \xB7 ${session.name}`;
   const running = work?.active === true;
   const status = workLabel(work);
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-session-item", "data-menu": open ? "open" : void 0 },
-    (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-row nodo-session",
-        disabled: busy || archived,
-        "data-archived": archived ? "" : void 0,
-        "aria-current": current ? "page" : void 0,
-        "aria-description": archived ? "\u5DF2\u5F52\u6863\u4F1A\u8BDD\u6682\u65F6\u65E0\u6CD5\u67E5\u770B\uFF0C\u8BF7\u53D6\u6D88\u5F52\u6863\u540E\u67E5\u770B" : void 0,
-        onClick: onSelect,
-        title: label
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-session-item", "data-menu": open ? "open" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row nodo-session",
+      disabled: busy || archived,
+      "data-archived": archived ? "" : void 0,
+      "aria-current": current ? "page" : void 0,
+      "aria-description": archived ? "\u5DF2\u5F52\u6863\u4F1A\u8BDD\u6682\u65F6\u65E0\u6CD5\u67E5\u770B\uFF0C\u8BF7\u53D6\u6D88\u5F52\u6863\u540E\u67E5\u770B" : void 0,
+      onClick: onSelect,
+      title: `${role.name} \xB7 ${session.name}`
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18 }),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, session.name),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 12 }), "\u5DF2\u5F52\u6863") : status ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 12 }), status) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
+  ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row-action",
+      disabled: busy || running,
+      "aria-label": archived ? `\u53D6\u6D88\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D` : `\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D`,
+      title: archived ? "\u53D6\u6D88\u5F52\u6863" : "\u5F52\u6863\u4F1A\u8BDD",
+      onClick: (event) => {
+        event.stopPropagation();
+        onArchive(!archived);
+      }
+    },
+    archived ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
+  ), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open,
+      onClose: () => setOpen(false),
+      portal: true,
+      closeOnPointerLeave: true,
+      items: [
+        { id: "rename", label: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busy },
+        { id: "pin", label: pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876\u4F1A\u8BDD", icon: pinned ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinOutlineRegular, null), disabled: busy || archived }
+      ],
+      onSelect: (id) => {
+        setOpen(false);
+        if (id === "rename") onRename();
+        else onPin(!pinned);
       },
-      (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18 }),
-      (0, import_react.createElement)("span", { className: "nodo-row-title" }, session.name),
-      (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? (0, import_react.createElement)("span", { className: "nodo-row-archived" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 12 }), "\u5DF2\u5F52\u6863") : status ? (0, import_react.createElement)("span", { className: "nodo-row-running", title: status }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 12 }), status) : (0, import_react.createElement)(import_react.Fragment, null, pinned && (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
-    ),
-    (0, import_react.createElement)(
-      "span",
-      { className: "nodo-row-actions" },
-      (0, import_react.createElement)(
+      anchor: /* @__PURE__ */ (0, import_react.createElement)(
         "button",
         {
-          type: "button",
-          className: "nodo-row-action",
-          disabled: busy || running,
-          "aria-label": archived ? `\u53D6\u6D88\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D` : `\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D`,
-          title: archived ? "\u53D6\u6D88\u5F52\u6863" : "\u5F52\u6863\u4F1A\u8BDD",
-          onClick: (event) => {
-            event.stopPropagation();
-            onArchive(!archived);
-          }
-        },
-        (0, import_react.createElement)(archived ? import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular : import_dsh_client_ui_primitives.IconArchiveOutlineRegular)
-      ),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-        open,
-        onClose: () => setOpen(false),
-        portal: true,
-        closeOnPointerLeave: true,
-        items: [
-          { id: "rename", label: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular), disabled: busy },
-          { id: "pin", label: pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876\u4F1A\u8BDD", icon: pinned ? (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular) : (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinOutlineRegular), disabled: busy || archived }
-        ],
-        onSelect: (id) => {
-          setOpen(false);
-          if (id === "rename") onRename();
-          else onPin(!pinned);
-        },
-        anchor: (0, import_react.createElement)("button", {
           type: "button",
           className: "nodo-row-action",
           "aria-haspopup": "menu",
@@ -425,61 +420,52 @@ function SessionRow({ role, session, current, work, busy, onSelect, onArchive, o
             event.stopPropagation();
             setOpen((current2) => !current2);
           }
-        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular))
-      })
-    )
-  );
+        },
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+      )
+    }
+  )));
 }
 var workspacePicker = ({ workspaces, workspace, running = /* @__PURE__ */ new Set(), open, setOpen, onSelect, none, button = false, label = "\u9009\u62E9\u9879\u76EE", disabled }) => {
   const ordered = [...workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   const othersRunning = ordered.some((item) => item.id !== workspace?.id && running.has(item.id));
   const name = workspace?.name ?? none;
-  const anchor = [
-    (0, import_react.createElement)("span", { className: "nodo-folder" }, (0, import_react.createElement)(workspace ? workspace.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular : import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })),
-    (0, import_react.createElement)("span", { className: "nodo-row-title" }, name),
-    othersRunning && (0, import_react.createElement)(
-      "span",
-      { className: "nodo-project-state", title: "\u5176\u4ED6\u9879\u76EE\u6216\u5206\u652F\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 12 })
-    ),
-    (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
-  ];
+  const Glyph = workspace ? workspace.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular : import_dsh_client_ui_primitives.IconUsersOutlineRegular;
+  const anchor = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, name), othersRunning && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-project-state", title: "\u5176\u4ED6\u9879\u76EE\u6216\u5206\u652F\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 12 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })));
   const props = {
     disabled,
     "aria-haspopup": "menu",
     "aria-expanded": open,
     "aria-label": `${label}\uFF0C\u5F53\u524D ${name}`,
-    title: workspace && (workspace.worktree ? `${workspace.worktree.branch} \xB7 ${workspace.cwd}` : workspace.cwd),
+    title: workspace ? workspace.worktree ? `${workspace.worktree.branch} \xB7 ${workspace.cwd}` : workspace.cwd : void 0,
     onClick: (event) => {
       event.stopPropagation();
       setOpen((value) => !value);
     }
   };
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-    open,
-    onClose: () => setOpen(false),
-    portal: true,
-    selectedId: workspace?.id ?? "",
-    align: "start",
-    className: "nodo-picker",
-    items: [...none ? [{ id: "", label: none, icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular) }] : [], ...ordered.map((item) => ({
-      id: item.id,
-      label: running.has(item.id) ? (0, import_react.createElement)(
-        "span",
-        { className: "nodo-menu-label" },
-        item.name,
-        (0, import_react.createElement)("span", { className: "nodo-menu-dot", title: "\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 8 }))
-      ) : item.name,
-      icon: (0, import_react.createElement)(item.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular)
-    }))],
-    onSelect: (id) => {
-      setOpen(false);
-      onSelect(id);
-    },
-    anchor: button ? (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", className: "nodo-project-pick", ...props }, ...anchor) : (0, import_react.createElement)("button", { type: "button", className: "nodo-project-select", ...props }, ...anchor)
-  });
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open,
+      onClose: () => setOpen(() => false),
+      portal: true,
+      selectedId: workspace?.id ?? "",
+      align: "start",
+      className: "nodo-picker",
+      items: [...none ? [{ id: "", label: none, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, null) }] : [], ...ordered.map((item) => ({
+        id: item.id,
+        label: running.has(item.id) ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-menu-label" }, item.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-menu-dot", title: "\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 8 }))) : item.name,
+        icon: item.worktree ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular, null)
+      }))],
+      onSelect: (id) => {
+        setOpen(() => false);
+        onSelect(id);
+      },
+      anchor: button ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", className: "nodo-project-pick", ...props }, anchor) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-project-select", ...props }, anchor)
+    }
+  );
 };
-function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectWorkspace, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onWorkflows, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, workflowNavigation }) {
+function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectWorkspace, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, workflowNavigation }) {
   const [query, setQuery] = (0, import_react.useState)("");
   const [searching, setSearching] = (0, import_react.useState)(false);
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(false);
@@ -497,352 +483,236 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDra
     workspaceId: workspaceIdOf(view, role, session)
   })));
   const runningWorkspaces = /* @__PURE__ */ new Set();
-  for (const { role, session, workspaceId } of sessions)
+  for (const { session, workspaceId } of sessions)
     if (workspaceId && view.work[session.id]?.active) runningWorkspaces.add(workspaceId);
   const filterRole = view.profiles.find((item) => item.id === roleFilter) ?? null;
   const matches = ({ role, session }, workspace2) => !search || [role.name, session.name, session.engine, workspace2.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search));
   const shown = ({ session }) => archivedView === "all" || archivedView === "only" === !!session.archivedAt;
-  const entries = workspace ? sessions.filter((item) => item.workspaceId === workspace.id && (!filterRole || item.role === filterRole) && shown(item) && matches(item, workspace)).sort((a, b) => !!b.session.pinnedAt - !!a.session.pinnedAt || (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0)) : [];
+  const entries = workspace ? sessions.filter((item) => item.workspaceId === workspace.id && (!filterRole || item.role === filterRole) && shown(item) && matches(item, workspace)).sort((a, b) => Number(!!b.session.pinnedAt) - Number(!!a.session.pinnedAt) || (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0)) : [];
   const draftRole = draft && view.profiles.find((item) => item.id === draft.profile);
-  const draftRow = draft && workspace && draft.workspace === workspace.id && !search && archivedView !== "only" && (!filterRole || filterRole.id === draft.profile) ? (0, import_react.createElement)(
-    "button",
-    { type: "button", className: "nodo-row nodo-session", onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" },
-    draftRole ? (0, import_react.createElement)(RoleAvatar, { profile: draftRole, size: 18 }) : (0, import_react.createElement)("span", { className: "nodo-folder" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 16 })),
-    (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")
-  ) : null;
+  const draftRow = draft && workspace && draft.workspace === workspace.id && !search && archivedView !== "only" && (!filterRole || filterRole.id === draft.profile) ? /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, draftRole ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: draftRole, size: 18 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")) : null;
   const folded = !search && entries.length > SESSION_FOLD;
   const visible = folded && !expanded ? entries.slice(0, SESSION_FOLD) : entries;
   const roleRow = (item) => {
     const state = roleStateOf(item, view, workspace);
-    return (0, import_react.createElement)(
-      "div",
-      { key: item.id, className: "nodo-role", "data-selected": item.id === profile?.id && !editing ? "true" : void 0 },
-      (0, import_react.createElement)(
+    const selected = item.id === profile?.id && !editing ? "true" : void 0;
+    const description = item.role || item.instructions || item.engine;
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-role", "data-selected": selected }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-select", onClick: () => {
+      onSelect(item.id);
+      setRoleFilter(item.id);
+    }, "aria-current": selected }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-text" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, item.name), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-description", title: description }, description))), workLabel(state) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-state", title: `${workLabel(state)}\uFF0C\u6392\u961F ${state.queued}` }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(state), size: 12 }), workLabel(state)), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: `\u914D\u7F6E\u89D2\u8272 ${item.name}`, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-icon-btn nodo-role-config",
+        disabled: busyNow || state.active,
+        "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
+        onClick: () => onEditRole(item),
+        "aria-pressed": editing?.profile?.id === item.id ? "true" : void 0
+      },
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSlidersTwoOutlineRegular, { size: 16 })
+    )));
+  };
+  const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row-action",
+      "aria-label": label,
+      disabled,
+      onClick: (event) => {
+        event.stopPropagation();
+        onClick();
+      }
+    },
+    icon
+  ));
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": workflowNavigation ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", side: "bottom", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-icon-btn nodo-visible",
+      "aria-label": "\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4",
+      disabled: typeof layoutService?.selectPanel !== "function",
+      onClick: onBack
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 })
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-pressed": !workflowNavigation, onClick: workflowNavigation ? onSessions : void 0 }, "\u4F1A\u8BDD"), /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      "aria-pressed": !!workflowNavigation,
+      onClick: workflowNavigation ? void 0 : onWorkflows,
+      "aria-label": runsWaiting ? "Workflow\uFF08\u6709\u5F85\u5904\u7406\uFF09" : void 0
+    },
+    "Workflow",
+    runsWaiting && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 })
+  )), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u8BBE\u7F6E", side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-icon-btn nodo-visible",
+      "aria-label": "\u8BBE\u7F6E",
+      onClick: onSettings,
+      "aria-pressed": editing?.kind === "settings" ? "true" : void 0
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 })
+  ))), workflowNavigation ?? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-list" }, /* @__PURE__ */ (0, import_react.createElement)("section", { "aria-label": "\u89D2\u8272", className: "nodo-roles" }, sectionHead("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u6DFB\u52A0\u89D2\u8272", side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 16 })))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-role-list" }, view.profiles.map(roleRow), !view.profiles.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty" }, "\u6DFB\u52A0\u89D2\u8272\uFF0C\u5F00\u59CB\u534F\u4F5C"))), /* @__PURE__ */ (0, import_react.createElement)("section", { "aria-label": "\u9879\u76EE", className: "nodo-projects" }, sectionHead("\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open: filterOpen,
+      onClose: () => setFilterOpen(false),
+      portal: true,
+      selectedId: archivedView,
+      align: "end",
+      items: Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({ id, label, icon: id === "hide" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null) })),
+      onSelect: (id) => {
+        setFilterOpen(false);
+        setArchivedView(id);
+      },
+      anchor: /* @__PURE__ */ (0, import_react.createElement)(
         "button",
         {
           type: "button",
-          className: "nodo-role-select",
-          onClick: () => {
-            onSelect(item.id);
-            setRoleFilter(item.id);
-          },
-          "aria-current": item.id === profile?.id && !editing ? "true" : void 0
+          className: "nodo-icon-btn nodo-visible",
+          "aria-haspopup": "menu",
+          "aria-expanded": filterOpen,
+          "aria-label": "\u4F1A\u8BDD\u7B5B\u9009",
+          title: ARCHIVED_VIEWS[archivedView],
+          "data-active": archivedView !== "hide" ? "" : void 0,
+          onClick: () => setFilterOpen((open) => !open)
         },
-        (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active }),
-        (0, import_react.createElement)(
-          "span",
-          { className: "nodo-role-text" },
-          (0, import_react.createElement)("span", { className: "nodo-row-title" }, item.name),
-          (0, import_react.createElement)("span", { className: "nodo-role-description", title: item.role || item.instructions || item.engine }, item.role || item.instructions || item.engine)
-        )
-      ),
-      workLabel(state) && (0, import_react.createElement)(
-        "span",
-        { className: "nodo-row-state", title: `${workLabel(state)}\uFF0C\u6392\u961F ${state.queued}` },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(state), size: 12 }),
-        workLabel(state)
-      ),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-        label: `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-        side: "bottom",
-        align: "end",
-        delayMs: 500,
-        children: (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-icon-btn nodo-role-config",
-          disabled: busyNow || state.active,
-          "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-          onClick: () => onEditRole(item),
-          "aria-pressed": editing?.profile?.id === item.id ? "true" : void 0
-        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSlidersTwoOutlineRegular, { size: 16 }))
-      })
-    );
-  };
-  const backLabel = workflowNavigation ? "\u8FD4\u56DE Nodo \u4F1A\u8BDD" : "\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4";
-  return (0, import_react.createElement)(
-    "aside",
-    { className: "nodo-rail", "aria-label": workflowNavigation ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-rail-head" },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-        label: backLabel,
-        side: "bottom",
-        delayMs: 500,
-        children: (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-icon-btn nodo-visible",
-          "aria-label": backLabel,
-          disabled: typeof layoutService?.selectPanel !== "function",
-          onClick: onBack
-        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }))
-      }),
-      (0, import_react.createElement)("span", { className: "nodo-rail-title" }, (0, import_react.createElement)(NodoLogo)),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-        label: "\u8BBE\u7F6E",
-        side: "bottom",
-        align: "end",
-        delayMs: 500,
-        children: (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-icon-btn nodo-visible",
-          "aria-label": "\u8BBE\u7F6E",
-          onClick: onSettings,
-          "aria-pressed": editing?.kind === "settings" ? "true" : void 0
-        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }))
-      })
-    ),
-    workflowNavigation ?? (0, import_react.createElement)(
-      import_react.Fragment,
-      null,
-      (0, import_react.createElement)(
-        import_dsh_client_ui_primitives.Button,
-        { variant: "outline", className: "nodo-workflow-entry", onClick: onWorkflows, "aria-label": runsWaiting ? "Workflow\uFF08\u6709\u5F85\u5904\u7406\uFF09" : "Workflow" },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular, { size: 16 }),
-        "Workflow",
-        runsWaiting && (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 })
-      ),
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-rail-list" },
-        (0, import_react.createElement)(
-          "section",
-          { "aria-label": "\u89D2\u8272", className: "nodo-roles" },
-          sectionHead("\u89D2\u8272", (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-            label: "\u6DFB\u52A0\u89D2\u8272",
-            side: "bottom",
-            align: "end",
-            delayMs: 500,
-            children: (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 16 }))
-          })),
-          ...view.profiles.map(roleRow),
-          !view.profiles.length && (0, import_react.createElement)("p", { className: "nodo-rail-empty" }, "\u6DFB\u52A0\u89D2\u8272\uFF0C\u5F00\u59CB\u534F\u4F5C")
-        ),
-        (0, import_react.createElement)(
-          "section",
-          { "aria-label": "\u9879\u76EE", className: "nodo-projects" },
-          sectionHead("\u9879\u76EE", (0, import_react.createElement)(
-            import_react.Fragment,
-            null,
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-              open: filterOpen,
-              onClose: () => setFilterOpen(false),
-              portal: true,
-              selectedId: archivedView,
-              align: "end",
-              items: Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({ id, label, icon: id === "hide" ? (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular) : (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular) })),
-              onSelect: (id) => {
-                setFilterOpen(false);
-                setArchivedView(id);
-              },
-              anchor: (0, import_react.createElement)("button", {
-                type: "button",
-                className: "nodo-icon-btn nodo-visible",
-                "aria-haspopup": "menu",
-                "aria-expanded": filterOpen,
-                "aria-label": "\u4F1A\u8BDD\u7B5B\u9009",
-                title: ARCHIVED_VIEWS[archivedView],
-                "data-active": archivedView !== "hide" ? "" : void 0,
-                onClick: () => setFilterOpen((open) => !open)
-              }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 16 }))
-            }),
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-              label: "\u6DFB\u52A0\u9879\u76EE",
-              side: "bottom",
-              align: "end",
-              delayMs: 500,
-              children: (0, import_react.createElement)("button", {
-                type: "button",
-                className: "nodo-icon-btn nodo-visible",
-                disabled: busyNow,
-                "aria-label": "\u6DFB\u52A0\u9879\u76EE",
-                onClick: onNewWorkspace
-              }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, { size: 16 }))
-            })
-          )),
-          workspace && (0, import_react.createElement)(
-            "div",
-            { key: workspace.id },
-            (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen ? "open" : void 0 }, searching || query ? (0, import_react.createElement)("div", { className: "nodo-search" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.Input, {
-              type: "search",
-              value: query,
-              autoFocus: true,
-              onChange: (event) => setQuery(event.target.value),
-              onKeyDown: (event) => {
-                if (event.key === "Escape") {
-                  setQuery("");
-                  setSearching(false);
-                }
-              },
-              onBlur: () => {
-                if (!query.trim()) {
-                  setQuery("");
-                  setSearching(false);
-                }
-              },
-              placeholder: "\u641C\u7D22\u5F53\u524D\u9879\u76EE\u4F1A\u8BDD\u2026",
-              "aria-label": "\u641C\u7D22\u5F53\u524D\u9879\u76EE\u4F1A\u8BDD",
-              className: "nodo-search-input",
-              icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
-            })) : (0, import_react.createElement)(
-              import_react.Fragment,
-              null,
-              workspacePicker({ workspaces: view.workspaces, workspace, running: runningWorkspaces, open: pickerOpen, setOpen: setPickerOpen, onSelect: onSelectWorkspace }),
-              (0, import_react.createElement)(
-                "span",
-                { className: "nodo-row-actions" },
-                (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-                  open: menuOpen,
-                  onClose: () => setMenuOpen(false),
-                  portal: true,
-                  closeOnPointerLeave: true,
-                  items: [
-                    { id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular), disabled: busyNow },
-                    { id: "rename", label: "\u91CD\u547D\u540D", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular) },
-                    { id: "delete", label: "\u5220\u9664\u5DE5\u4F5C\u533A", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular), danger: true }
-                  ],
-                  onSelect: (id) => {
-                    setMenuOpen(false);
-                    if (id === "worktree") onNewWorktree();
-                    else if (id === "rename") onRenameWorkspace(workspace);
-                    else if (id === "delete") onDeleteWorkspace(workspace);
-                  },
-                  anchor: (0, import_react.createElement)("button", {
-                    type: "button",
-                    className: "nodo-row-action",
-                    "aria-haspopup": "menu",
-                    "aria-expanded": menuOpen,
-                    "aria-label": `\u5DE5\u4F5C\u533A\u201C${workspace.name}\u201D\u7684\u64CD\u4F5C`,
-                    disabled: busyNow,
-                    onClick: (event) => {
-                      event.stopPropagation();
-                      setMenuOpen((open) => !open);
-                    }
-                  }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular))
-                }),
-                (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-                  label: "\u641C\u7D22\u4F1A\u8BDD",
-                  side: "bottom",
-                  align: "end",
-                  delayMs: 500,
-                  children: (0, import_react.createElement)("button", {
-                    type: "button",
-                    className: "nodo-row-action",
-                    "aria-label": "\u641C\u7D22\u5F53\u524D\u9879\u76EE\u4F1A\u8BDD",
-                    onClick: (event) => {
-                      event.stopPropagation();
-                      setSearching(true);
-                    }
-                  }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular))
-                }),
-                (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-                  label: "\u65B0\u5EFA\u5DE5\u4F5C\u6811",
-                  side: "bottom",
-                  align: "end",
-                  delayMs: 500,
-                  children: (0, import_react.createElement)("button", {
-                    type: "button",
-                    className: "nodo-row-action",
-                    "aria-label": `\u4ECE\u201C${workspace.name}\u201D\u521B\u5EFA\u5DE5\u4F5C\u6811`,
-                    disabled: busyNow,
-                    onClick: (event) => {
-                      event.stopPropagation();
-                      onNewWorktree();
-                    }
-                  }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular))
-                }),
-                (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-                  // No keycap: the host owns ⌘N at the app layer (it opens a native
-                  // session), so the panel's new-session is the button only.
-                  label: "\u65B0\u4F1A\u8BDD",
-                  side: "bottom",
-                  align: "end",
-                  delayMs: 500,
-                  children: (0, import_react.createElement)("button", {
-                    type: "button",
-                    className: "nodo-row-action",
-                    "aria-label": `\u5728\u201C${workspace.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`,
-                    disabled: busyNow,
-                    onClick: (event) => {
-                      event.stopPropagation();
-                      onNewSession(filterRole?.id ?? profile?.id);
-                    }
-                  }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular))
-                })
-              )
-            )),
-            (0, import_react.createElement)(
-              "div",
-              { className: "nodo-project", "data-menu": roleOpen ? "open" : void 0 },
-              (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-                open: roleOpen,
-                onClose: () => setRoleOpen(false),
-                portal: true,
-                selectedId: roleFilter ?? "all",
-                align: "start",
-                className: "nodo-picker",
-                items: [
-                  { id: "all", label: "\u5168\u90E8\u89D2\u8272", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular) },
-                  ...view.profiles.map((item) => ({ id: item.id, label: item.name, icon: (0, import_react.createElement)(RoleAvatar, { profile: item, size: 16 }) }))
-                ],
-                onSelect: (id) => {
-                  setRoleOpen(false);
-                  setRoleFilter(id === "all" ? null : id);
-                },
-                anchor: (0, import_react.createElement)(
-                  "button",
-                  {
-                    type: "button",
-                    className: "nodo-project-select",
-                    "aria-haspopup": "menu",
-                    "aria-expanded": roleOpen,
-                    "aria-label": `\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD\uFF0C\u5F53\u524D ${filterRole?.name ?? "\u5168\u90E8\u89D2\u8272"}`,
-                    onClick: (event) => {
-                      event.stopPropagation();
-                      setRoleOpen((open) => !open);
-                    }
-                  },
-                  (0, import_react.createElement)("span", { className: "nodo-folder" }, filterRole ? (0, import_react.createElement)(RoleAvatar, { profile: filterRole, size: 16 }) : (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })),
-                  (0, import_react.createElement)("span", { className: "nodo-row-title" }, filterRole?.name ?? "\u5168\u90E8\u89D2\u8272"),
-                  (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": roleOpen ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
-                )
-              })
-            ),
-            (0, import_react.createElement)(
-              "div",
-              { className: "nodo-sessions" },
-              draftRow,
-              ...visible.map(({ role, session }) => (0, import_react.createElement)(SessionRow, {
-                key: session.id,
-                role,
-                session,
-                busy,
-                current: session.id === sessionId && !editing,
-                work: view.work[session.id],
-                onSelect: () => onSelectSession(role, session.id),
-                onArchive: (archived) => onArchiveSession(role, session.id, archived),
-                onRename: () => onRenameSession(role, session),
-                onPin: (pinned) => onPinSession(role, session.id, pinned)
-              })),
-              folded && (0, import_react.createElement)("button", {
-                type: "button",
-                className: "nodo-show-more",
-                "aria-expanded": expanded,
-                onClick: () => setExpanded((open) => !open)
-              }, expanded ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"),
-              !entries.length && !draftRow && (0, import_react.createElement)(
-                "p",
-                { className: "nodo-rail-empty nodo-session-empty", role: "status" },
-                search || filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archivedView === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"
-              )
-            )
-          ),
-          !workspace && (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, "\u6DFB\u52A0\u9879\u76EE workspace")
-        )
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 16 })
       )
-    ),
-    readOnly && (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))
-  );
+    }
+  ), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u6DFB\u52A0\u9879\u76EE", side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-icon-btn nodo-visible",
+      disabled: busyNow,
+      "aria-label": "\u6DFB\u52A0\u9879\u76EE",
+      onClick: onNewWorkspace
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, { size: 16 })
+  )))), workspace && /* @__PURE__ */ (0, import_react.createElement)("div", { key: workspace.id, className: "nodo-project-body" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project nodo-project-field", "data-menu": menuOpen ? "open" : void 0 }, searching || query ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-search" }, /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Input,
+    {
+      type: "search",
+      value: query,
+      autoFocus: true,
+      onChange: (event) => setQuery(event.target.value),
+      onKeyDown: (event) => {
+        if (event.key === "Escape") {
+          setQuery("");
+          setSearching(false);
+        }
+      },
+      onBlur: () => {
+        if (!query.trim()) {
+          setQuery("");
+          setSearching(false);
+        }
+      },
+      placeholder: "\u641C\u7D22\u5F53\u524D\u9879\u76EE\u4F1A\u8BDD\u2026",
+      "aria-label": "\u641C\u7D22\u5F53\u524D\u9879\u76EE\u4F1A\u8BDD",
+      className: "nodo-search-input",
+      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
+    }
+  )) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, workspacePicker({ workspaces: view.workspaces, workspace, running: runningWorkspaces, open: pickerOpen, setOpen: setPickerOpen, onSelect: onSelectWorkspace }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u641C\u7D22\u4F1A\u8BDD", "\u641C\u7D22\u5F53\u524D\u9879\u76EE\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, null), () => setSearching(true)), action("\u65B0\u5EFA\u5DE5\u4F5C\u6811", `\u4ECE\u201C${workspace.name}\u201D\u521B\u5EFA\u5DE5\u4F5C\u6811`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), onNewWorktree, busyNow), action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${workspace.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open: menuOpen,
+      onClose: () => setMenuOpen(false),
+      portal: true,
+      closeOnPointerLeave: true,
+      items: [
+        { id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), disabled: busyNow },
+        { id: "rename", label: "\u91CD\u547D\u540D", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null) },
+        { id: "delete", label: "\u5220\u9664\u5DE5\u4F5C\u533A", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, null), danger: true }
+      ],
+      onSelect: (id) => {
+        setMenuOpen(false);
+        if (id === "worktree") onNewWorktree();
+        else if (id === "rename") onRenameWorkspace(workspace);
+        else if (id === "delete") onDeleteWorkspace(workspace);
+      },
+      anchor: /* @__PURE__ */ (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-row-action",
+          "aria-haspopup": "menu",
+          "aria-expanded": menuOpen,
+          "aria-label": `\u5DE5\u4F5C\u533A\u201C${workspace.name}\u201D\u7684\u64CD\u4F5C`,
+          disabled: busyNow,
+          onClick: (event) => {
+            event.stopPropagation();
+            setMenuOpen((open) => !open);
+          }
+        },
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+      )
+    }
+  )))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project nodo-role-filter", "data-menu": roleOpen ? "open" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open: roleOpen,
+      onClose: () => setRoleOpen(false),
+      portal: true,
+      selectedId: roleFilter ?? "all",
+      align: "start",
+      className: "nodo-picker",
+      items: [
+        { id: "all", label: "\u5168\u90E8\u89D2\u8272", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, null) },
+        ...view.profiles.map((item) => ({ id: item.id, label: item.name, icon: /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, size: 16 }) }))
+      ],
+      onSelect: (id) => {
+        setRoleOpen(false);
+        setRoleFilter(id === "all" ? null : id);
+      },
+      anchor: /* @__PURE__ */ (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-project-select",
+          "aria-haspopup": "menu",
+          "aria-expanded": roleOpen,
+          "aria-label": `\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD\uFF0C\u5F53\u524D ${filterRole?.name ?? "\u5168\u90E8\u89D2\u8272"}`,
+          onClick: (event) => {
+            event.stopPropagation();
+            setRoleOpen((open) => !open);
+          }
+        },
+        /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, filterRole ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: filterRole, size: 16 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })),
+        /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, filterRole?.name ?? "\u5168\u90E8\u89D2\u8272"),
+        /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": roleOpen ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
+      )
+    }
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-sessions" }, draftRow, visible.map(({ role, session }) => /* @__PURE__ */ (0, import_react.createElement)(
+    SessionRow,
+    {
+      key: session.id,
+      role,
+      session,
+      busy,
+      current: session.id === sessionId && !editing,
+      work: view.work[session.id],
+      onSelect: () => onSelectSession(role, session.id),
+      onArchive: (archived) => onArchiveSession(role, session.id, archived),
+      onRename: () => onRenameSession(role, session),
+      onPin: (pinned) => onPinSession(role, session.id, pinned)
+    }
+  )), folded && /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-show-more",
+      "aria-expanded": expanded,
+      onClick: () => setExpanded((open) => !open)
+    },
+    expanded ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
+  ), !entries.length && !draftRow && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, search || filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archivedView === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"))), !workspace && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, "\u6DFB\u52A0\u9879\u76EE workspace"))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F")));
 }
 
 // src/client/running.js
@@ -989,6 +859,1047 @@ var RUNNING_CSS = `
 @media(max-width:820px){.nodo-running-dock{padding-right:16px;padding-left:16px}}
 `;
 
+// src/client/tool-call.tsx
+var STATUS_LABELS = {
+  started: "\u5DF2\u53D1\u8D77",
+  running: "\u8FD0\u884C\u4E2D",
+  done: "\u5DF2\u5B8C\u6210",
+  error: "\u5931\u8D25",
+  denied: "\u5DF2\u62D2\u7EDD",
+  interrupted: "\u5DF2\u505C\u6B62",
+  unknown: "\u7ED3\u679C\u672A\u786E\u8BA4"
+};
+var COLLAPSE_MS = 200;
+function toolCallQuery(input, fallback = "") {
+  if (typeof input === "string" && input.trimStart().startsWith("{")) {
+    try {
+      return toolCallQuery(JSON.parse(input), fallback);
+    } catch {
+    }
+  }
+  if (input && typeof input === "object") {
+    const args = input;
+    input = ["command", "cmd", "query", "pattern", "file_path", "filePath", "path", "url", "uri", "description", "title"].map((key) => args[key]).find((value) => typeof value === "string" && value.trim() !== "");
+  }
+  return (typeof input === "string" && input.trim() ? input : fallback).trim().split(/\r?\n/, 1)[0].slice(0, 400);
+}
+function ToolCall({ label, activeLabel = label, query = "", status = "unknown", open, onOpenChange, children }) {
+  const id = `nodo-tool-${(0, import_react.useId)()}`;
+  const [mounted, setMounted] = (0, import_react.useState)(open);
+  (0, import_react.useEffect)(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    if (!mounted) return;
+    const timer = setTimeout(() => setMounted(false), COLLAPSE_MS);
+    return () => clearTimeout(timer);
+  }, [open, mounted]);
+  const running = status === "running";
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call", "data-open": open, "data-state": status }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-tool-call-trigger",
+      "aria-expanded": open,
+      "aria-controls": id,
+      "aria-label": `${running ? activeLabel : label}${query ? ` ${query}` : ""}\uFF1A${STATUS_LABELS[status]}`,
+      onClick: () => onOpenChange(!open)
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 })),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-label" }, running ? activeLabel : label),
+    query && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-query", title: query }, query),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-status", "aria-hidden": true, title: STATUS_LABELS[status] }, status === "done" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : running || status === "started" ? null : status === "interrupted" ? "\u2212" : status === "unknown" ? "?" : "!")
+  ), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-call-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-clip" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-content" }, (open || mounted) && children))));
+}
+var TOOL_CALL_CSS = `
+.nodo-tool-call{min-width:0}
+.nodo-tool-call-trigger{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:28px;padding:2px 0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-align:left;cursor:pointer}
+.nodo-tool-call-trigger:hover{color:var(--dsw-alias-label-primary)}
+.nodo-tool-call-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-tool-call-chevron{display:flex;flex:none;transition:transform ${COLLAPSE_MS}ms ease}
+.nodo-tool-call[data-open=true] .nodo-tool-call-chevron{transform:rotate(90deg)}
+.nodo-tool-call-label{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call[data-state=running] .nodo-tool-call-label{color:transparent;background:linear-gradient(100deg,var(--dsw-alias-label-tertiary) 35%,var(--dsw-alias-label-primary) 50%,var(--dsw-alias-label-tertiary) 65%);background-size:250% 100%;background-clip:text;animation:nodo-tool-call-shimmer 1.8s linear infinite}
+.nodo-tool-call-query{flex:0 1 auto;min-width:0;max-width:55%;padding:0 6px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-markdown-code-block-small);line-height:20px;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call-status{display:flex;align-items:center;justify-content:center;flex:none;width:14px;height:20px;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-call[data-state=error] .nodo-tool-call-status,.nodo-tool-call[data-state=denied] .nodo-tool-call-status{color:var(--dsw-alias-state-error-primary)}
+.nodo-tool-call-panel{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows ${COLLAPSE_MS}ms ease,opacity ${COLLAPSE_MS}ms ease,visibility ${COLLAPSE_MS}ms}
+.nodo-tool-call[data-open=true] .nodo-tool-call-panel{grid-template-rows:1fr;opacity:1;visibility:visible}
+.nodo-tool-call-clip{min-height:0;overflow:hidden}
+.nodo-tool-call-content{min-width:0;padding:4px 0 6px 22px}
+.nodo-tool-call-content>.nodo-io-card{margin:0}
+.nodo-tool-call-content .nodo-io-section+.nodo-io-section{border-top:.5px solid var(--dsw-alias-border-l1)}
+@keyframes nodo-tool-call-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
+@media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
+`;
+
+// node_modules/diff/libesm/diff/base.js
+var Diff = class {
+  diff(oldStr, newStr, options = {}) {
+    let callback;
+    if (typeof options === "function") {
+      callback = options;
+      options = {};
+    } else if ("callback" in options) {
+      callback = options.callback;
+    }
+    const oldString = this.castInput(oldStr, options);
+    const newString = this.castInput(newStr, options);
+    const oldTokens = this.removeEmpty(this.tokenize(oldString, options));
+    const newTokens = this.removeEmpty(this.tokenize(newString, options));
+    return this.diffWithOptionsObj(oldTokens, newTokens, options, callback);
+  }
+  diffWithOptionsObj(oldTokens, newTokens, options, callback) {
+    var _a;
+    const done = (value) => {
+      value = this.postProcess(value, options);
+      if (callback) {
+        setTimeout(function() {
+          callback(value);
+        }, 0);
+        return void 0;
+      } else {
+        return value;
+      }
+    };
+    const newLen = newTokens.length, oldLen = oldTokens.length;
+    let editLength = 1;
+    let maxEditLength = newLen + oldLen;
+    if (options.maxEditLength != null) {
+      maxEditLength = Math.min(maxEditLength, options.maxEditLength);
+    }
+    const maxExecutionTime = (_a = options.timeout) !== null && _a !== void 0 ? _a : Infinity;
+    const abortAfterTimestamp = Date.now() + maxExecutionTime;
+    const bestPath = [{ oldPos: -1, lastComponent: void 0 }];
+    let newPos = this.extractCommon(bestPath[0], newTokens, oldTokens, 0, options);
+    if (bestPath[0].oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+      return done(this.buildValues(bestPath[0].lastComponent, newTokens, oldTokens));
+    }
+    let minDiagonalToConsider = -Infinity, maxDiagonalToConsider = Infinity;
+    const execEditLength = () => {
+      for (let diagonalPath = Math.max(minDiagonalToConsider, -editLength); diagonalPath <= Math.min(maxDiagonalToConsider, editLength); diagonalPath += 2) {
+        let basePath;
+        const removePath = bestPath[diagonalPath - 1], addPath = bestPath[diagonalPath + 1];
+        if (removePath) {
+          bestPath[diagonalPath - 1] = void 0;
+        }
+        let canAdd = false;
+        if (addPath) {
+          const addPathNewPos = addPath.oldPos - diagonalPath;
+          canAdd = addPath && 0 <= addPathNewPos && addPathNewPos < newLen;
+        }
+        const canRemove = removePath && removePath.oldPos + 1 < oldLen;
+        if (!canAdd && !canRemove) {
+          bestPath[diagonalPath] = void 0;
+          continue;
+        }
+        if (!canRemove || canAdd && removePath.oldPos < addPath.oldPos) {
+          basePath = this.addToPath(addPath, true, false, 0, options);
+        } else {
+          basePath = this.addToPath(removePath, false, true, 1, options);
+        }
+        newPos = this.extractCommon(basePath, newTokens, oldTokens, diagonalPath, options);
+        if (basePath.oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+          return done(this.buildValues(basePath.lastComponent, newTokens, oldTokens)) || true;
+        } else {
+          bestPath[diagonalPath] = basePath;
+          if (basePath.oldPos + 1 >= oldLen) {
+            maxDiagonalToConsider = Math.min(maxDiagonalToConsider, diagonalPath - 1);
+          }
+          if (newPos + 1 >= newLen) {
+            minDiagonalToConsider = Math.max(minDiagonalToConsider, diagonalPath + 1);
+          }
+        }
+      }
+      editLength++;
+    };
+    if (callback) {
+      (function exec() {
+        setTimeout(function() {
+          if (editLength > maxEditLength || Date.now() > abortAfterTimestamp) {
+            return callback(void 0);
+          }
+          if (!execEditLength()) {
+            exec();
+          }
+        }, 0);
+      })();
+    } else {
+      while (editLength <= maxEditLength && Date.now() <= abortAfterTimestamp) {
+        const ret = execEditLength();
+        if (ret) {
+          return ret;
+        }
+      }
+    }
+  }
+  addToPath(path, added, removed, oldPosInc, options) {
+    const last = path.lastComponent;
+    if (last && !options.oneChangePerToken && last.added === added && last.removed === removed) {
+      return {
+        oldPos: path.oldPos + oldPosInc,
+        lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
+      };
+    } else {
+      return {
+        oldPos: path.oldPos + oldPosInc,
+        lastComponent: { count: 1, added, removed, previousComponent: last }
+      };
+    }
+  }
+  extractCommon(basePath, newTokens, oldTokens, diagonalPath, options) {
+    const newLen = newTokens.length, oldLen = oldTokens.length;
+    let oldPos = basePath.oldPos, newPos = oldPos - diagonalPath, commonCount = 0;
+    while (newPos + 1 < newLen && oldPos + 1 < oldLen && this.equals(oldTokens[oldPos + 1], newTokens[newPos + 1], options)) {
+      newPos++;
+      oldPos++;
+      commonCount++;
+      if (options.oneChangePerToken) {
+        basePath.lastComponent = { count: 1, previousComponent: basePath.lastComponent, added: false, removed: false };
+      }
+    }
+    if (commonCount && !options.oneChangePerToken) {
+      basePath.lastComponent = { count: commonCount, previousComponent: basePath.lastComponent, added: false, removed: false };
+    }
+    basePath.oldPos = oldPos;
+    return newPos;
+  }
+  equals(left, right, options) {
+    if (options.comparator) {
+      return options.comparator(left, right);
+    } else {
+      return left === right || !!options.ignoreCase && left.toLowerCase() === right.toLowerCase();
+    }
+  }
+  removeEmpty(array) {
+    const ret = [];
+    for (let i = 0; i < array.length; i++) {
+      if (array[i]) {
+        ret.push(array[i]);
+      }
+    }
+    return ret;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  castInput(value, options) {
+    return value;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  tokenize(value, options) {
+    return Array.from(value);
+  }
+  join(chars) {
+    return chars.join("");
+  }
+  postProcess(changeObjects, options) {
+    return changeObjects;
+  }
+  get useLongestToken() {
+    return false;
+  }
+  buildValues(lastComponent, newTokens, oldTokens) {
+    const components = [];
+    let nextComponent;
+    while (lastComponent) {
+      components.push(lastComponent);
+      nextComponent = lastComponent.previousComponent;
+      delete lastComponent.previousComponent;
+      lastComponent = nextComponent;
+    }
+    components.reverse();
+    const componentLen = components.length;
+    let componentPos = 0, newPos = 0, oldPos = 0;
+    for (; componentPos < componentLen; componentPos++) {
+      const component = components[componentPos];
+      if (!component.removed) {
+        if (!component.added && this.useLongestToken) {
+          let value = newTokens.slice(newPos, newPos + component.count);
+          value = value.map(function(value2, i) {
+            const oldValue = oldTokens[oldPos + i];
+            return oldValue.length > value2.length ? oldValue : value2;
+          });
+          component.value = this.join(value);
+        } else {
+          component.value = this.join(newTokens.slice(newPos, newPos + component.count));
+        }
+        newPos += component.count;
+        if (!component.added) {
+          oldPos += component.count;
+        }
+      } else {
+        component.value = this.join(oldTokens.slice(oldPos, oldPos + component.count));
+        oldPos += component.count;
+      }
+    }
+    return components;
+  }
+};
+
+// node_modules/diff/libesm/diff/line.js
+var LineDiff = class extends Diff {
+  constructor() {
+    super(...arguments);
+    this.tokenize = tokenize;
+  }
+  equals(left, right, options) {
+    if (options.ignoreWhitespace) {
+      if (!options.newlineIsToken || !left.includes("\n")) {
+        left = left.trim();
+      }
+      if (!options.newlineIsToken || !right.includes("\n")) {
+        right = right.trim();
+      }
+    } else if (options.ignoreNewlineAtEof && !options.newlineIsToken) {
+      if (left.endsWith("\n")) {
+        left = left.slice(0, -1);
+      }
+      if (right.endsWith("\n")) {
+        right = right.slice(0, -1);
+      }
+    }
+    return super.equals(left, right, options);
+  }
+};
+var lineDiff = new LineDiff();
+function diffLines(oldStr, newStr, options) {
+  return lineDiff.diff(oldStr, newStr, options);
+}
+function tokenize(value, options) {
+  if (options.stripTrailingCr) {
+    value = value.replace(/\r\n/g, "\n");
+  }
+  const retLines = [], linesAndNewlines = value.split(/(\n|\r\n)/);
+  if (!linesAndNewlines[linesAndNewlines.length - 1]) {
+    linesAndNewlines.pop();
+  }
+  for (let i = 0; i < linesAndNewlines.length; i++) {
+    const line = linesAndNewlines[i];
+    if (i % 2 && !options.newlineIsToken) {
+      retLines[retLines.length - 1] += line;
+    } else {
+      retLines.push(line);
+    }
+  }
+  return retLines;
+}
+
+// node_modules/diff/libesm/patch/parse.js
+function parsePatch(uniDiff) {
+  const diffstr = uniDiff.split(/\n/), list = [];
+  let i = 0;
+  function isGitDiffHeader(line) {
+    return /^diff --git /.test(line);
+  }
+  function isDiffHeader(line) {
+    return isGitDiffHeader(line) || /^Index:\s/.test(line) || /^diff(?: -r \w+)+\s/.test(line);
+  }
+  function isFileHeader(line) {
+    return /^(---|\+\+\+)\s/.test(line);
+  }
+  function isHunkHeader(line) {
+    return /^@@\s/.test(line);
+  }
+  function parseIndex() {
+    var _a;
+    const index = {};
+    index.hunks = [];
+    list.push(index);
+    let seenDiffHeader = false;
+    while (i < diffstr.length) {
+      const line = diffstr[i];
+      if (isFileHeader(line) || isHunkHeader(line)) {
+        break;
+      }
+      if (isGitDiffHeader(line)) {
+        if (seenDiffHeader) {
+          return;
+        }
+        seenDiffHeader = true;
+        index.isGit = true;
+        const paths = parseGitDiffHeader(line);
+        if (paths) {
+          index.oldFileName = paths.oldFileName;
+          index.newFileName = paths.newFileName;
+        }
+        i++;
+        while (i < diffstr.length) {
+          const extLine = diffstr[i];
+          if (isFileHeader(extLine) || isHunkHeader(extLine) || isDiffHeader(extLine)) {
+            break;
+          }
+          const renameFromMatch = /^rename from (.*)/.exec(extLine);
+          if (renameFromMatch) {
+            index.oldFileName = "a/" + unquoteIfQuoted(renameFromMatch[1]);
+            index.isRename = true;
+          }
+          const renameToMatch = /^rename to (.*)/.exec(extLine);
+          if (renameToMatch) {
+            index.newFileName = "b/" + unquoteIfQuoted(renameToMatch[1]);
+            index.isRename = true;
+          }
+          const copyFromMatch = /^copy from (.*)/.exec(extLine);
+          if (copyFromMatch) {
+            index.oldFileName = "a/" + unquoteIfQuoted(copyFromMatch[1]);
+            index.isCopy = true;
+          }
+          const copyToMatch = /^copy to (.*)/.exec(extLine);
+          if (copyToMatch) {
+            index.newFileName = "b/" + unquoteIfQuoted(copyToMatch[1]);
+            index.isCopy = true;
+          }
+          const newFileModeMatch = /^new file mode (\d+)/.exec(extLine);
+          if (newFileModeMatch) {
+            index.isCreate = true;
+            index.newMode = newFileModeMatch[1];
+          }
+          const deletedFileModeMatch = /^deleted file mode (\d+)/.exec(extLine);
+          if (deletedFileModeMatch) {
+            index.isDelete = true;
+            index.oldMode = deletedFileModeMatch[1];
+          }
+          const oldModeMatch = /^old mode (\d+)/.exec(extLine);
+          if (oldModeMatch) {
+            index.oldMode = oldModeMatch[1];
+          }
+          const newModeMatch = /^new mode (\d+)/.exec(extLine);
+          if (newModeMatch) {
+            index.newMode = newModeMatch[1];
+          }
+          if (/^Binary files /.test(extLine)) {
+            index.isBinary = true;
+          }
+          i++;
+        }
+        continue;
+      } else if (isDiffHeader(line)) {
+        if (seenDiffHeader) {
+          return;
+        }
+        seenDiffHeader = true;
+        const headerMatch = /^(?:Index:|diff(?: -r \w+)+)\s+/.exec(line);
+        if (headerMatch) {
+          index.index = line.substring(headerMatch[0].length).trim();
+        }
+      }
+      i++;
+    }
+    parseFileHeader(index);
+    parseFileHeader(index);
+    if (index.oldFileName === void 0 !== (index.newFileName === void 0)) {
+      throw new Error("Missing " + (index.oldFileName !== void 0 ? '"+++ ..."' : '"--- ..."') + " file header for " + ((_a = index.oldFileName) !== null && _a !== void 0 ? _a : index.newFileName));
+    }
+    while (i < diffstr.length) {
+      const line = diffstr[i];
+      if (isDiffHeader(line) || isFileHeader(line) || /^===================================================================/.test(line)) {
+        break;
+      } else if (isHunkHeader(line)) {
+        index.hunks.push(parseHunk());
+      } else {
+        i++;
+      }
+    }
+  }
+  function parseGitDiffHeader(line) {
+    const rest = line.substring("diff --git ".length);
+    if (rest.startsWith('"')) {
+      const oldPath = parseQuotedFileName(rest);
+      if (oldPath === null) {
+        return null;
+      }
+      const afterOld = rest.substring(oldPath.rawLength + 1);
+      let newFileName;
+      if (afterOld.startsWith('"')) {
+        const newPath = parseQuotedFileName(afterOld);
+        if (newPath === null) {
+          return null;
+        }
+        newFileName = newPath.fileName;
+      } else {
+        newFileName = afterOld;
+      }
+      return {
+        oldFileName: oldPath.fileName,
+        newFileName
+      };
+    }
+    const quoteIdx = rest.indexOf('"');
+    if (quoteIdx > 0) {
+      const oldFileName = rest.substring(0, quoteIdx - 1);
+      const newPath = parseQuotedFileName(rest.substring(quoteIdx));
+      if (newPath === null) {
+        return null;
+      }
+      return {
+        oldFileName,
+        newFileName: newPath.fileName
+      };
+    }
+    if (rest.startsWith("a/")) {
+      const splits = [];
+      let idx = 0;
+      while (true) {
+        idx = rest.indexOf(" b/", idx + 1);
+        if (idx === -1) {
+          break;
+        }
+        splits.push(idx);
+      }
+      if (splits.length > 0) {
+        const mid = splits[Math.floor(splits.length / 2)];
+        return {
+          oldFileName: rest.substring(0, mid),
+          newFileName: rest.substring(mid + 1)
+        };
+      }
+    }
+    return null;
+  }
+  function unquoteIfQuoted(s) {
+    if (s.startsWith('"')) {
+      const parsed = parseQuotedFileName(s);
+      if (parsed) {
+        return parsed.fileName;
+      }
+    }
+    return s;
+  }
+  function parseQuotedFileName(s) {
+    if (!s.startsWith('"')) {
+      return null;
+    }
+    let result = "";
+    let j = 1;
+    while (j < s.length) {
+      if (s[j] === '"') {
+        return { fileName: result, rawLength: j + 1 };
+      }
+      if (s[j] === "\\" && j + 1 < s.length) {
+        j++;
+        switch (s[j]) {
+          case "a":
+            result += "\x07";
+            break;
+          case "b":
+            result += "\b";
+            break;
+          case "f":
+            result += "\f";
+            break;
+          case "n":
+            result += "\n";
+            break;
+          case "r":
+            result += "\r";
+            break;
+          case "t":
+            result += "	";
+            break;
+          case "v":
+            result += "\v";
+            break;
+          case "\\":
+            result += "\\";
+            break;
+          case '"':
+            result += '"';
+            break;
+          case "0":
+          case "1":
+          case "2":
+          case "3":
+          case "4":
+          case "5":
+          case "6":
+          case "7": {
+            if (j + 2 >= s.length || s[j + 1] < "0" || s[j + 1] > "7" || s[j + 2] < "0" || s[j + 2] > "7") {
+              return null;
+            }
+            const bytes = [parseInt(s.substring(j, j + 3), 8)];
+            j += 3;
+            while (s[j] === "\\" && s[j + 1] >= "0" && s[j + 1] <= "7") {
+              if (j + 3 >= s.length || s[j + 2] < "0" || s[j + 2] > "7" || s[j + 3] < "0" || s[j + 3] > "7") {
+                return null;
+              }
+              bytes.push(parseInt(s.substring(j + 1, j + 4), 8));
+              j += 4;
+            }
+            result += new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+            continue;
+          }
+          // Note that in C, there are also three kinds of hex escape sequences:
+          // - \xhh
+          // - \uhhhh
+          // - \Uhhhhhhhh
+          // We do not bother to parse them here because, so far as we know,
+          // they are never emitted by any tools that generate unified diff
+          // format diffs, and so for now jsdiff does not consider them legal.
+          default:
+            return null;
+        }
+      } else {
+        result += s[j];
+      }
+      j++;
+    }
+    return null;
+  }
+  function parseFileHeader(index) {
+    const fileHeaderMatch = /^(---|\+\+\+)\s+/.exec(diffstr[i]);
+    if (fileHeaderMatch) {
+      const prefix = fileHeaderMatch[1], data = diffstr[i].substring(3).trim().split("	", 2), header = (data[1] || "").trim();
+      let fileName = data[0];
+      if (fileName.startsWith('"')) {
+        fileName = unquoteIfQuoted(fileName);
+      } else {
+        fileName = fileName.replace(/\\\\/g, "\\");
+      }
+      if (prefix === "---") {
+        index.oldFileName = fileName;
+        index.oldHeader = header;
+      } else {
+        index.newFileName = fileName;
+        index.newHeader = header;
+      }
+      i++;
+    }
+  }
+  function parseHunk() {
+    var _a;
+    const chunkHeaderIndex = i, chunkHeaderLine = diffstr[i++], chunkHeader = chunkHeaderLine.split(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    const hunk = {
+      oldStart: +chunkHeader[1],
+      oldLines: typeof chunkHeader[2] === "undefined" ? 1 : +chunkHeader[2],
+      newStart: +chunkHeader[3],
+      newLines: typeof chunkHeader[4] === "undefined" ? 1 : +chunkHeader[4],
+      lines: []
+    };
+    if (hunk.oldLines === 0) {
+      hunk.oldStart += 1;
+    }
+    if (hunk.newLines === 0) {
+      hunk.newStart += 1;
+    }
+    let addCount = 0, removeCount = 0;
+    for (; i < diffstr.length && (removeCount < hunk.oldLines || addCount < hunk.newLines || ((_a = diffstr[i]) === null || _a === void 0 ? void 0 : _a.startsWith("\\"))); i++) {
+      const operation = diffstr[i].length == 0 && i != diffstr.length - 1 ? " " : diffstr[i][0];
+      if (operation === "+" || operation === "-" || operation === " " || operation === "\\") {
+        hunk.lines.push(diffstr[i]);
+        if (operation === "+") {
+          addCount++;
+        } else if (operation === "-") {
+          removeCount++;
+        } else if (operation === " ") {
+          addCount++;
+          removeCount++;
+        }
+      } else {
+        throw new Error(`Hunk at line ${chunkHeaderIndex + 1} contained invalid line ${diffstr[i]}`);
+      }
+    }
+    if (!addCount && hunk.newLines === 1) {
+      hunk.newLines = 0;
+    }
+    if (!removeCount && hunk.oldLines === 1) {
+      hunk.oldLines = 0;
+    }
+    if (addCount !== hunk.newLines) {
+      throw new Error("Added line count did not match for hunk at line " + (chunkHeaderIndex + 1));
+    }
+    if (removeCount !== hunk.oldLines) {
+      throw new Error("Removed line count did not match for hunk at line " + (chunkHeaderIndex + 1));
+    }
+    if (i < diffstr.length && diffstr[i] && /^[+ -]/.test(diffstr[i]) && !isFileHeader(diffstr[i])) {
+      throw new Error("Hunk at line " + (chunkHeaderIndex + 1) + " has more lines than expected (expected " + hunk.oldLines + " old lines and " + hunk.newLines + " new lines)");
+    }
+    return hunk;
+  }
+  while (i < diffstr.length) {
+    parseIndex();
+  }
+  return list;
+}
+
+// node_modules/diff/libesm/patch/create.js
+function needsQuoting(s) {
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] < " " || s[i] > "~" || s[i] === '"' || s[i] === "\\") {
+      return true;
+    }
+  }
+  return false;
+}
+function quoteFileNameIfNeeded(s) {
+  if (!needsQuoting(s)) {
+    return s;
+  }
+  let result = '"';
+  const bytes = new TextEncoder().encode(s);
+  let i = 0;
+  while (i < bytes.length) {
+    const b = bytes[i];
+    if (b === 7) {
+      result += "\\a";
+    } else if (b === 8) {
+      result += "\\b";
+    } else if (b === 9) {
+      result += "\\t";
+    } else if (b === 10) {
+      result += "\\n";
+    } else if (b === 11) {
+      result += "\\v";
+    } else if (b === 12) {
+      result += "\\f";
+    } else if (b === 13) {
+      result += "\\r";
+    } else if (b === 34) {
+      result += '\\"';
+    } else if (b === 92) {
+      result += "\\\\";
+    } else if (b >= 32 && b <= 126) {
+      result += String.fromCharCode(b);
+    } else {
+      result += "\\" + b.toString(8).padStart(3, "0");
+    }
+    i++;
+  }
+  result += '"';
+  return result;
+}
+var INCLUDE_HEADERS = {
+  includeIndex: true,
+  includeUnderline: true,
+  includeFileHeaders: true
+};
+function formatPatch(patch, headerOptions) {
+  var _a, _b, _c, _d, _e, _f;
+  if (!headerOptions) {
+    headerOptions = INCLUDE_HEADERS;
+  }
+  if (Array.isArray(patch)) {
+    if (patch.length > 1 && !headerOptions.includeFileHeaders && !patch.every((p) => p.isGit)) {
+      throw new Error("Cannot omit file headers on a multi-file patch. (The result would be unparseable; how would a tool trying to apply the patch know which changes are to which file?)");
+    }
+    return patch.map((p) => formatPatch(p, headerOptions)).join("\n");
+  }
+  const ret = [];
+  if (patch.isGit) {
+    headerOptions = INCLUDE_HEADERS;
+    if (!patch.oldFileName) {
+      throw new Error("oldFileName must be specified for Git patches");
+    }
+    if (!patch.newFileName) {
+      throw new Error("newFileName must be specified for Git patches");
+    }
+    let gitOldName = patch.oldFileName;
+    let gitNewName = patch.newFileName;
+    if (patch.isCreate && gitOldName === "/dev/null") {
+      gitOldName = gitNewName.replace(/^b\//, "a/");
+    } else if (patch.isDelete && gitNewName === "/dev/null") {
+      gitNewName = gitOldName.replace(/^a\//, "b/");
+    }
+    ret.push("diff --git " + quoteFileNameIfNeeded(gitOldName) + " " + quoteFileNameIfNeeded(gitNewName));
+    if (patch.isDelete) {
+      ret.push("deleted file mode " + ((_a = patch.oldMode) !== null && _a !== void 0 ? _a : "100644"));
+    }
+    if (patch.isCreate) {
+      ret.push("new file mode " + ((_b = patch.newMode) !== null && _b !== void 0 ? _b : "100644"));
+    }
+    if (patch.oldMode && patch.newMode && !patch.isDelete && !patch.isCreate) {
+      ret.push("old mode " + patch.oldMode);
+      ret.push("new mode " + patch.newMode);
+    }
+    if (patch.isRename) {
+      ret.push("rename from " + quoteFileNameIfNeeded(((_c = patch.oldFileName) !== null && _c !== void 0 ? _c : "").replace(/^a\//, "")));
+      ret.push("rename to " + quoteFileNameIfNeeded(((_d = patch.newFileName) !== null && _d !== void 0 ? _d : "").replace(/^b\//, "")));
+    }
+    if (patch.isCopy) {
+      ret.push("copy from " + quoteFileNameIfNeeded(((_e = patch.oldFileName) !== null && _e !== void 0 ? _e : "").replace(/^a\//, "")));
+      ret.push("copy to " + quoteFileNameIfNeeded(((_f = patch.newFileName) !== null && _f !== void 0 ? _f : "").replace(/^b\//, "")));
+    }
+  } else {
+    if (headerOptions.includeIndex && patch.oldFileName == patch.newFileName && patch.oldFileName !== void 0) {
+      ret.push("Index: " + patch.oldFileName);
+    }
+    if (headerOptions.includeUnderline) {
+      ret.push("===================================================================");
+    }
+  }
+  const hasHunks = patch.hunks.length > 0;
+  if (headerOptions.includeFileHeaders && patch.oldFileName !== void 0 && patch.newFileName !== void 0 && (!patch.isGit || hasHunks)) {
+    ret.push("--- " + quoteFileNameIfNeeded(patch.oldFileName) + (patch.oldHeader ? "	" + patch.oldHeader : ""));
+    ret.push("+++ " + quoteFileNameIfNeeded(patch.newFileName) + (patch.newHeader ? "	" + patch.newHeader : ""));
+  }
+  for (let i = 0; i < patch.hunks.length; i++) {
+    const hunk = patch.hunks[i];
+    const oldStart = hunk.oldLines === 0 ? hunk.oldStart - 1 : hunk.oldStart;
+    const newStart = hunk.newLines === 0 ? hunk.newStart - 1 : hunk.newStart;
+    ret.push("@@ -" + oldStart + "," + hunk.oldLines + " +" + newStart + "," + hunk.newLines + " @@");
+    for (const line of hunk.lines) {
+      ret.push(line);
+    }
+  }
+  return ret.join("\n") + "\n";
+}
+
+// src/client/file-diffs.ts
+function parsedPatch(text) {
+  try {
+    const patches = parsePatch(text);
+    return patches.length && patches.every((patch) => patch.hunks.length > 0 && patch.hunks.every((hunk) => Number.isSafeInteger(hunk.oldStart) && Number.isSafeInteger(hunk.newStart) && hunk.oldStart >= 0 && hunk.newStart >= 0)) ? patches : null;
+  } catch {
+    return null;
+  }
+}
+function patchCounts(patches) {
+  const total = { added: 0, removed: 0 };
+  for (const patch of patches) for (const hunk of patch.hunks) for (const line of hunk.lines) {
+    if (line.startsWith("+")) total.added++;
+    if (line.startsWith("-")) total.removed++;
+  }
+  return total;
+}
+var relativeFile = (path, root) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+function editCounts(edit) {
+  if (typeof edit.oldText === "string" && typeof edit.newText === "string" || edit.operation === "add" && edit.oldText === null && typeof edit.newText === "string") {
+    const changes = diffLines(edit.oldText ?? "", edit.newText, { timeout: 40, maxEditLength: 1e4 });
+    if (!changes) return void 0;
+    return changes.reduce((counts, change) => ({
+      added: counts.added + (change.added ? change.count : 0),
+      removed: counts.removed + (change.removed ? change.count : 0)
+    }), { added: 0, removed: 0 });
+  }
+  const patch = typeof edit.diffText === "string" ? parsedPatch(edit.diffText) : null;
+  return patch ? patchCounts(patch) : void 0;
+}
+function summarizeChanges(body) {
+  const turn = new Map((body.turnDiff ? parsedPatch(body.turnDiff) ?? [] : []).map((patch) => {
+    const path = patch.newFileName === "/dev/null" ? patch.oldFileName : patch.newFileName;
+    return [relativeFile((path ?? "").replace(/^[ab]\//, ""), body.cwd), patch];
+  }));
+  const files = (body.files ?? []).map((file) => {
+    const patch = turn.get(relativeFile(file.path, body.cwd));
+    if (patch) return { file, counts: patchCounts([patch]), patch: formatPatch(patch) };
+    let edits = file.edits;
+    if (edits.length > 1 && edits.every((edit, index) => typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.operation === "add" && edit.oldText === null) && (index === 0 || edit.oldText === edits[index - 1].newText))) {
+      edits = [{ ...edits[0], newText: edits.at(-1).newText }];
+    }
+    const counts = edits.map(editCounts);
+    return { file, counts: counts.length > 0 && counts.every(Boolean) ? counts.reduce((sum, count) => ({ added: sum.added + count.added, removed: sum.removed + count.removed }), { added: 0, removed: 0 }) : void 0, patch: void 0 };
+  });
+  const totals = files.length === body.fileCount && files.every((item) => item.counts) ? files.reduce((sum, item) => ({ added: sum.added + item.counts.added, removed: sum.removed + item.counts.removed }), { added: 0, removed: 0 }) : void 0;
+  return { files, totals };
+}
+
+// src/client/code-diff.tsx
+var LABELS = {
+  copy: "\u590D\u5236",
+  copied: "\u5DF2\u590D\u5236",
+  collapseAria: "\u6536\u8D77\u5DEE\u5F02",
+  expandAria: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C`,
+  collapse: "\u6536\u8D77",
+  expand: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C`
+};
+var PREVIEW_LINES = 200;
+function CodeDiff({ filename, diff, patch, cycle = 0 }) {
+  const [copied, setCopied] = (0, import_react.useState)(false);
+  const [expanded, setExpanded] = (0, import_react.useState)(false);
+  (0, import_react.useEffect)(() => {
+    setExpanded(false);
+    setCopied(false);
+  }, [filename, patch, cycle]);
+  (0, import_react.useEffect)(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const diffs = diff ? [diff] : [];
+  const parsed = (0, import_react.useMemo)(() => !diff && patch !== void 0 ? parsedPatch(patch) : null, [diff, patch]);
+  const totals = diff ? (0, import_dsh_client_ui_primitives.diffTotals)(diffs) : parsed ? patchCounts(parsed) : null;
+  const lines = (0, import_react.useMemo)(() => parsed?.flatMap((file) => file.hunks.flatMap((hunk) => [
+    { kind: "meta", text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@` },
+    ...hunk.lines.map((text) => ({ kind: text.startsWith("+") ? "added" : text.startsWith("-") ? "removed" : text.startsWith("\\") ? "meta" : "context", text }))
+  ])), [parsed]);
+  if (!diff && patch === void 0) return null;
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-filename", title: filename }, filename), totals && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-counts", "aria-label": `\u65B0\u589E ${totals.added} \u884C\uFF0C\u5220\u9664 ${totals.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-added" }, "+", totals.added), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-removed" }, "\u2212", totals.removed)), parsed && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-code-diff-copy", onClick: async () => {
+    if (patch !== void 0 && await (0, import_dsh_client_ui_primitives.writeClipboard)(patch)) setCopied(true);
+  } }, copied ? LABELS.copied : LABELS.copy)), diff ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { key: cycle, className: "nodo-code-diff-native", diffs, labels: LABELS }) : lines ? /* @__PURE__ */ (0, import_react.createElement)("pre", { className: "nodo-code-diff-patch", tabIndex: 0, "aria-label": `${filename} \u5DEE\u5F02` }, /* @__PURE__ */ (0, import_react.createElement)("code", null, (expanded ? lines : lines.slice(0, PREVIEW_LINES)).map((line, index) => /* @__PURE__ */ (0, import_react.createElement)(
+    "span",
+    {
+      key: `${cycle}:${index}`,
+      className: "nodo-code-diff-line",
+      "data-kind": line.kind,
+      style: { animationDelay: `${Math.min(index * 60, 900)}ms` }
+    },
+    line.text
+  )))) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { key: cycle, className: "nodo-code-diff-native", code: patch, lang: "diff", copyLabel: LABELS.copy, copiedLabel: LABELS.copied }), lines && lines.length > PREVIEW_LINES && /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-code-diff-expand",
+      "aria-expanded": expanded,
+      onClick: () => setExpanded((value) => !value)
+    },
+    expanded ? LABELS.collapse : LABELS.expand(lines.length - PREVIEW_LINES)
+  ));
+}
+var CODE_DIFF_CSS = `
+.nodo-code-diff{position:relative;min-width:0;max-width:100%;margin:6px 0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);overflow:hidden;background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-primary)}
+.nodo-code-diff-header{display:flex;align-items:center;gap:8px;min-height:36px;min-width:0;padding:6px 84px 6px 12px;border-bottom:.5px solid var(--dsw-alias-border-l1);font:var(--dsw-font-markdown-code-block-small)}
+.nodo-code-diff-icon{display:flex;flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-code-diff-filename{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-code-diff-counts{display:inline-flex;gap:6px;flex:none;font-size:12px}
+.nodo-code-diff-copy{position:absolute;top:6px;right:10px;padding:2px 6px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:20px;cursor:pointer}
+.nodo-code-diff-copy:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary)}
+.nodo-code-diff-expand{margin:4px 12px;padding:4px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
+.nodo-code-diff-expand:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary)}
+.nodo-code-diff-patch{max-width:100%;max-height:420px;margin:0;padding:8px 0;overflow:auto;font:var(--dsw-font-markdown-code-block-small)}
+.nodo-code-diff-line{display:block;min-width:100%;width:max-content;min-height:22px;padding:1px 12px;line-height:22px;white-space:pre;animation:nodo-code-diff-enter 220ms ease-out both}
+.nodo-code-diff-line[data-kind=added]{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent)}
+.nodo-code-diff-line[data-kind=removed]{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.nodo-code-diff-line[data-kind=meta]{color:var(--dsw-alias-label-tertiary)}
+.nodo-code-diff-added{color:var(--dsw-alias-state-success-primary)}
+.nodo-code-diff-removed{color:var(--dsw-alias-state-error-primary)}
+.nodo-code-diff-native{position:static!important;overflow:visible!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+.nodo-code-diff-native>[data-code-block-banner]{position:absolute;top:0;right:0;height:36px;min-height:0;max-width:80px;padding:0 8px;border:0;background:transparent}
+.nodo-code-diff-native>[data-code-block-banner]>:first-child{display:none}
+.nodo-code-diff-native[data-diff]>div:last-child{min-height:16px;max-width:100%;overflow-x:auto;padding:8px 0;font:var(--dsw-font-markdown-code-block-small)}
+.nodo-code-diff-native[data-diff][data-code-wrap=false]>div:last-child{white-space:pre}
+.nodo-code-diff-native[data-diff]>div:last-child>div{position:relative;min-width:100%;width:max-content;margin:0;padding:1px 16px 1px 32px;box-shadow:none;line-height:22px;animation:nodo-code-diff-enter 220ms ease-out both;animation-delay:var(--nodo-diff-delay,900ms)}
+.nodo-code-diff-native[data-diff][data-code-wrap=true]>div:last-child>div{width:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_path_"]{display:none}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_add_"]{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent);color:var(--dsw-alias-label-primary)}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_del_"]{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-label-primary)}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_add_"]::before,.nodo-code-diff-native[data-diff]>div:last-child>[class*="_del_"]::before{position:absolute;left:12px;top:1px;width:12px;text-align:center}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_add_"]::before{content:'+';color:var(--dsw-alias-state-success-primary)}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_del_"]::before{content:'\u2212';color:var(--dsw-alias-state-error-primary)}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_context_"],.nodo-code-diff-native[data-diff]>div:last-child>[class*="_gap_"]{color:var(--dsw-alias-label-secondary)}
+.nodo-code-diff-native[data-diff]>div:last-child>[class*="_context_"]::before{content:none}
+${Array.from({ length: 16 }, (_, index) => `.nodo-code-diff-native[data-diff]>div:last-child>div:nth-child(${index + 2}){--nodo-diff-delay:${index * 60}ms}`).join("\n")}
+.nodo-code-diff-native[data-diff]>div:last-child>button{margin:4px 12px;color:var(--dsw-alias-label-tertiary)}
+@keyframes nodo-code-diff-enter{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.nodo-code-diff-native[data-diff]>div:last-child>div,.nodo-code-diff-line{animation:none}}
+`;
+
+// src/client/file-changes-summary.tsx
+function Counts({ value }) {
+  return value ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${value.added} \u884C\uFF0C\u5220\u9664 ${value.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", value.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", value.removed.toLocaleString())) : null;
+}
+function FileChangesSummary({ record, value, full, load, busy = false, available, error, renderFile }) {
+  const [expanded, setExpanded] = (0, import_react.useState)(false);
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [selected, setSelected] = (0, import_react.useState)(null);
+  const box = (0, import_react.useRef)(null);
+  const detailsId = `nodo-changes-${(0, import_react.useId)()}`;
+  const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(value.body), [value.body]);
+  const count = record.body.fileCount;
+  const workspace = record.body.scope === "workspace-snapshot";
+  const canLoad = Boolean(available) && !full;
+  (0, import_react.useEffect)(() => {
+    setExpanded(false);
+    setOpen(false);
+    setSelected(null);
+  }, [record.runId, record.entityId, record.revision]);
+  (0, import_react.useEffect)(() => {
+    if (!canLoad || !record.truncated || !count) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void load();
+      return;
+    }
+    let requested = false;
+    const observer = new IntersectionObserver((entries) => {
+      if (requested || !entries.some((entry) => entry.isIntersecting)) return;
+      requested = true;
+      observer.disconnect();
+      void load();
+    }, { rootMargin: "200px" });
+    if (box.current) observer.observe(box.current);
+    return () => {
+      requested = true;
+      observer.disconnect();
+    };
+  }, [record.runId, record.entityId, record.revision, canLoad]);
+  const show = async (path) => {
+    if (open && selected === path) {
+      setOpen(false);
+      return;
+    }
+    if (canLoad && record.truncated && !await load()) return;
+    if (path === null) setExpanded(true);
+    setSelected(path);
+    setOpen(true);
+  };
+  const more = async () => {
+    if (!expanded && files.length < count && canLoad && !await load()) return;
+    if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setOpen(false);
+    setExpanded((current) => !current);
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-card", ref: box, "data-nodo-changes-summary": "" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 22 })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-heading" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-title" }, workspace ? "\u5DE5\u4F5C\u533A\u53D8\u66F4" : "\u5DF2\u7F16\u8F91", " ", count, " \u4E2A\u6587\u4EF6", /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-coverage", title: workspace ? "\u5BBF\u4E3B\u5DE5\u4F5C\u533A\u5FEB\u7167\uFF0C\u53EF\u80FD\u5305\u542B\u5176\u4ED6\u4F1A\u8BDD\u6216\u8FDB\u7A0B\u7684\u4FEE\u6539\u3002" : "\u4EC5\u5305\u542B\u6765\u6E90\u786E\u8BA4\u7684\u7F16\u8F91\u8BB0\u5F55\uFF0C\u53EF\u80FD\u4E0D\u5B8C\u6574\uFF1B\u6CA1\u6709\u8F6E\u6B21\u5DEE\u5F02\u65F6\uFF0C\u6570\u5B57\u6309\u5DF2\u4FDD\u5B58\u7684\u7F16\u8F91\u8BB0\u5F55\u7EDF\u8BA1\u3002" }, workspace ? "\u5DE5\u4F5C\u533A" : "\u90E8\u5206\u8BB0\u5F55")), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-changes-view",
+      disabled: busy,
+      "aria-expanded": open && selected === null,
+      "aria-controls": detailsId,
+      onClick: () => show(null)
+    },
+    busy ? "\u52A0\u8F7D\u4E2D\u2026" : open && selected === null ? "\u6536\u8D77\u53D8\u66F4" : "\u67E5\u770B\u53D8\u66F4"
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { id: detailsId, className: "nodo-changes-files" }, (expanded ? files : files.slice(0, 3)).map(({ file, counts, patch }, index) => {
+    const visible = open && (selected === null || selected === file.path);
+    const fileDetailsId = `${detailsId}-${index}`;
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: file.path, className: "nodo-changes-file-entry" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-changes-file",
+        disabled: busy,
+        "aria-expanded": visible,
+        "aria-controls": fileDetailsId,
+        onClick: () => show(file.path)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: file.path }, relativeFile(file.path, value.body.cwd)),
+      /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: counts })
+    ), visible && /* @__PURE__ */ (0, import_react.createElement)("div", { id: fileDetailsId, className: "nodo-changes-details", role: "region", "aria-label": `${relativeFile(file.path, value.body.cwd)} \u53D8\u66F4\u8BE6\u60C5` }, renderFile(file, patch)));
+  })), count > 3 && /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-changes-more",
+      disabled: busy || !expanded && files.length <= 3 && !canLoad,
+      "aria-expanded": expanded,
+      onClick: () => more()
+    },
+    expanded ? "\u6536\u8D77\u6587\u4EF6\u5217\u8868" : `\u518D\u663E\u793A ${count - 3} \u4E2A\u6587\u4EF6`,
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14, style: expanded ? { transform: "rotate(180deg)" } : void 0 })
+  ), files.length < count && !canLoad && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", count, " \u4E2A\u6587\u4EF6"), error && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error), open && files.length === 0 && value.body.turnDiff && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-details", role: "region", "aria-label": "\u6587\u4EF6\u53D8\u66F4\u8BE6\u60C5" }, /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", patch: value.body.turnDiff, cycle: record.revision })));
+}
+var FILE_CHANGES_SUMMARY_CSS = `
+.nodo-changes-card{min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-changes-header{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 16px}
+.nodo-changes-icon{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary)}
+.nodo-changes-heading{flex:1;min-width:0}
+.nodo-changes-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:var(--dsh-content-font-size,14px);font-weight:600;line-height:24px}
+.nodo-changes-coverage{font-size:11px;line-height:18px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-counts{display:inline-flex;flex:none;gap:6px;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.nodo-changes-added{color:var(--dsw-alias-state-success-primary)}
+.nodo-changes-removed{color:var(--dsw-alias-state-error-primary)}
+.nodo-changes-view{flex:none;padding:5px 10px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-weight:500;cursor:pointer}
+.nodo-changes-files{border-top:.5px solid var(--dsw-alias-border-l1);padding:2px 0}
+.nodo-changes-file-entry{min-width:0}
+.nodo-changes-file{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;width:100%;padding:9px 16px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;cursor:pointer}
+.nodo-changes-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size,14px);line-height:20px}
+.nodo-changes-more{display:flex;align-items:center;gap:8px;width:100%;padding:10px 16px;border:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;text-align:left;cursor:pointer}
+.nodo-changes-view:hover:not(:disabled),.nodo-changes-file:hover:not(:disabled),.nodo-changes-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-changes-card button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
+.nodo-changes-card button:disabled{opacity:.5;cursor:default}
+.nodo-changes-notice{padding:6px 16px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-changes-notice[role=alert]{color:var(--dsw-alias-state-error-primary)}
+.nodo-changes-details{min-width:0;border-top:.5px solid var(--dsw-alias-border-l1);padding:8px 12px 12px}
+.nodo-changes-details .nodo-code-diff{border-radius:var(--dsw-radius-md)}
+@media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-file{padding-inline:12px}.nodo-changes-coverage{display:none}}
+`;
+
 // src/client/stream-records.js
 function supportedStreamRecord(value) {
   return value?.version === 1 && ["tool", "changes"].includes(value.kind) && value.mode === "snapshot" && value.body && typeof value.body === "object" && !Array.isArray(value.body) && typeof value.runId === "string" && typeof value.entityId === "string" && Number.isSafeInteger(value.revision) && value.revision >= 0;
@@ -1006,7 +1917,6 @@ var STREAM_REASON = {
   unconfirmed: "Agent \u672A\u786E\u8BA4\u6267\u884C\u7ED3\u679C"
 };
 var STREAM_CODE_LABELS = { copy: "\u590D\u5236", copied: "\u5DF2\u590D\u5236" };
-var STREAM_DIFF_LABELS = { ...STREAM_CODE_LABELS, collapseAria: "\u6536\u8D77\u5DEE\u5F02", expandAria: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C`, collapse: "\u6536\u8D77", expand: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C` };
 var STREAM_TERMINAL_LABELS = {
   ...STREAM_CODE_LABELS,
   signal: (value) => `\u4FE1\u53F7 ${value}`,
@@ -1094,7 +2004,7 @@ function streamProgress(progress) {
   if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${streamSize(progress.stderrBytes)}`);
   return parts.length ? parts.join(" \xB7 ") : null;
 }
-function ChangedFile({ file, load, loaded, available, root, request }) {
+function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [content, setContent] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -1114,12 +2024,12 @@ function ChangedFile({ file, load, loaded, available, root, request }) {
       setBusy(false);
     }
   };
-  const edits = file.edits.map((edit, index) => (0, import_react.createElement)(
+  const edits = patch ? (0, import_react.createElement)(CodeDiff, { filename: path, patch, cycle }) : file.edits.map((edit, index) => (0, import_react.createElement)(
     "div",
     { key: index },
     (0, import_react.createElement)("p", { className: "nodo-note" }, { add: "\u65B0\u589E", update: "\u4FEE\u6539", delete: "\u5220\u9664", move: "\u79FB\u52A8", unknown: "\u7F16\u8F91" }[edit.operation], edit.fromPath ? ` \xB7 \u6765\u81EA ${edit.fromPath}` : ""),
     edit.availability && (0, import_react.createElement)("p", { className: "nodo-note" }, { binary: "\u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u6765\u6E90\u4E0D\u63D0\u4F9B\u6587\u672C\u5DEE\u5F02\u3002", oversized: "\u6587\u4EF6\u8D85\u8FC7\u6765\u6E90\u5927\u5C0F\u4E0A\u9650\uFF0C\u5DEE\u5F02\u4E0D\u53EF\u5F97\u3002", coarse: "\u6765\u6E90\u6BD4\u8F83\u8D85\u65F6\uFF0C\u4EE5\u4E0B\u4E3A\u6574\u6BB5\u66FF\u6362\u7684\u7C97\u7565\u5DEE\u5F02\u3002", unavailable: "\u6765\u6E90\u672A\u80FD\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u3002" }[edit.availability]),
-    typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.oldText === null && edit.operation === "add") ? (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { diffs: [{ path, oldText: edit.oldText, newText: edit.newText }], labels: STREAM_DIFF_LABELS }) : typeof edit.diffText === "string" ? (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: edit.diffText, lang: "diff", copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" }) : typeof edit.newText === "string" ? (0, import_react.createElement)(
+    typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.oldText === null && edit.operation === "add") ? (0, import_react.createElement)(CodeDiff, { filename: path, diff: { path, oldText: edit.oldText, newText: edit.newText }, cycle }) : typeof edit.diffText === "string" ? (0, import_react.createElement)(CodeDiff, { filename: path, patch: edit.diffText, cycle }) : typeof edit.newText === "string" ? (0, import_react.createElement)(
       "div",
       null,
       (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u4FEE\u6539\u524D\u5185\u5BB9\uFF0C\u4EE5\u4E0B\u4E3A\u4FEE\u6539\u540E\u5185\u5BB9\u3002"),
@@ -1140,6 +2050,7 @@ function ChangedFile({ file, load, loaded, available, root, request }) {
       (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
     )
   );
+  if (inline) return (0, import_react.createElement)("div", { "data-nodo-tool-file": file.path }, patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002"), view);
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
     title: path,
     open,
@@ -1150,38 +2061,7 @@ function ChangedFile({ file, load, loaded, available, root, request }) {
     children: (0, import_react.createElement)("div", null, edits, view)
   });
 }
-function FileChangesContent({ value, record, full, load, busy, available, request }) {
-  const [expanded, setExpanded] = (0, import_react.useState)(false);
-  (0, import_react.useEffect)(() => setExpanded(false), [record.runId, record.entityId, record.revision]);
-  const files = Array.isArray(value.body.files) ? value.body.files : [];
-  const count = record.body.fileCount;
-  const toggle = async () => {
-    if (!expanded && files.length < count && !full) {
-      if (!available || !await load()) return;
-    }
-    setExpanded((current) => !current);
-  };
-  return (0, import_react.createElement)(
-    "div",
-    { "data-nodo-changes": "" },
-    (0, import_react.createElement)("p", { className: "nodo-note" }, value.body.scope === "workspace-snapshot" ? "\u6765\u81EA\u5BBF\u4E3B\u5DE5\u4F5C\u533A\u5FEB\u7167\uFF0C\u53EF\u80FD\u5305\u542B\u5176\u4ED6\u4F1A\u8BDD\u6216\u8FDB\u7A0B\u7684\u4FEE\u6539\uFF1B\u53D7\u5FFD\u7565\u89C4\u5219\u548C\u6587\u4EF6\u4E0A\u9650\u9650\u5236\uFF0C\u4E0D\u80FD\u636E\u6B64\u5F52\u56E0\u4E8E\u5F53\u524D Agent\u3002" : "\u4EC5\u8986\u76D6 Agent \u786E\u8BA4\u5B8C\u6210\u7684\u7F16\u8F91\u5DE5\u5177\uFF1B\u53EF\u80FD\u9057\u6F0F\u547D\u4EE4\u6216\u5176\u4ED6\u6765\u6E90\u5199\u5165\u3002\u4EE5\u4E0B\u6309\u7F16\u8F91\u8BB0\u5F55\u5C55\u793A\uFF0C\u4E0D\u4EE3\u8868\u672C\u8F6E\u51C0\u5DEE\u5F02\u3002"),
-    count === 0 && (0, import_react.createElement)("p", { className: "nodo-note" }, value.body.scope === "workspace-snapshot" ? "\u5BBF\u4E3B\u6C47\u603B\u672A\u5217\u51FA\u6587\u4EF6\uFF0C\u4E0D\u80FD\u636E\u6B64\u5224\u65AD\u672C\u8F6E\u6CA1\u6709\u6587\u4EF6\u53D8\u66F4\u3002" : "\u672A\u6536\u5230\u5DF2\u786E\u8BA4\u7684\u7F16\u8F91\u6587\u4EF6\uFF0C\u4E0D\u80FD\u636E\u6B64\u5224\u65AD\u672C\u8F6E\u6CA1\u6709\u6587\u4EF6\u53D8\u66F4\u3002"),
-    (expanded ? files : files.slice(0, 3)).map((file) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, load, loaded: Boolean(full), available, root: value.body.cwd, request })),
-    count > 3 && (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Button,
-      { size: "sm", variant: "outline", disabled: busy || !expanded && files.length < count && !available, onClick: () => void toggle() },
-      expanded ? "\u6536\u8D77\u6587\u4EF6\u5217\u8868" : `\u5C55\u5F00\u5176\u4F59 ${count - 3} \u9879`
-    ),
-    (full || !available) && files.length < count && (0, import_react.createElement)("p", { className: "nodo-note" }, `\u4EC5\u4FDD\u5B58\u4E86 ${files.length} / ${count} \u9879\uFF0C\u5176\u4F59\u5185\u5BB9\u4E0D\u53EF\u5F97\u3002`),
-    typeof value.body.turnDiff === "string" && (0, import_react.createElement)(
-      "div",
-      null,
-      (0, import_react.createElement)("p", { className: "nodo-note" }, "Agent \u63D0\u4F9B\u7684\u8F6E\u6B21\u5DEE\u5F02\u6587\u672C\uFF08\u6587\u4EF6\u5217\u8868\u4ECD\u4E3A\u90E8\u5206\u8986\u76D6\uFF09\u3002"),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: value.body.turnDiff, lang: "diff", copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
-    )
-  );
-}
-function StreamRecordCard({ record, request }) {
+function StreamRecordCard({ record, request, eventPhase }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [full, setFull] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -1211,37 +2091,48 @@ function StreamRecordCard({ record, request }) {
       if (generation.current === current) setBusy(false);
     }
   };
-  const value = full ?? record;
+  const currentFull = full?.runId === record.runId && full?.entityId === record.entityId && full?.revision === record.revision ? full : null;
+  const value = currentFull ?? record;
   const body = value.body;
   const failed = ["error", "denied", "unknown"].includes(record.status);
   const available = ["stored", "truncated"].includes(record.details?.state) && record.details?.ref;
+  if (record.kind === "changes") return (0, import_react.createElement)(FileChangesSummary, {
+    value,
+    record,
+    full: currentFull,
+    load,
+    busy,
+    available,
+    error,
+    renderFile: (file, patch) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, inline: true, root: body.cwd, request, cycle: record.revision })
+  });
   const status = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
   const notice = record.capture !== "complete" ? STREAM_REASON[record.reason] ?? "\u6765\u6E90\u5185\u5BB9\u4E0D\u5B8C\u6574" : null;
   const progress = record.status === "running" ? streamProgress(body.progress) : null;
   const terminal = typeof body.command === "string";
   const diffs = Array.isArray(body.diffs) ? body.diffs.filter((diff) => typeof diff.path === "string" && typeof diff.newText === "string" && (typeof diff.oldText === "string" || diff.oldText === null && diff.created === true)) : [];
+  const disclosure = {
+    label: `${eventPhase === "start" ? "\u8C03\u7528 \xB7 " : eventPhase === "end" ? "\u7ED3\u679C \xB7 " : ""}${record.title || "\u5DE5\u5177"}`,
+    activeLabel: `\u6B63\u5728\u8C03\u7528 ${record.title || "\u5DE5\u5177"}`,
+    query: toolCallQuery(body.command ?? body.input ?? body.inputText),
+    status: eventPhase === "start" ? "started" : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : "unknown",
+    onOpenChange: setOpen
+  };
   return (0, import_react.createElement)(
     "div",
     { "data-nodo-stream-record": record.entityId, "data-record-status": record.status },
-    (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
-      icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 }),
-      title: record.kind === "changes" ? `${record.body.scope === "workspace-snapshot" ? "\u5BBF\u4E3B\u5DE5\u4F5C\u533A\u53D8\u66F4" : "\u5DF2\u786E\u8BA4\u7684\u7F16\u8F91\u6587\u4EF6"} ${record.body.fileCount} \xB7 \u90E8\u5206\u8986\u76D6` : record.title || "\u5DE5\u5177",
+    (0, import_react.createElement)(ToolCall, {
+      ...disclosure,
       open,
-      expandable: true,
-      running: record.status === "running",
-      expandOnRowClick: true,
-      keepContentWhenOpen: true,
-      onToggle: () => setOpen((value2) => !value2),
-      collapsedContent: record.kind === "changes" ? null : (0, import_react.createElement)("span", { className: "nodo-row-summary", "data-error": failed ? "" : void 0 }, status),
       children: (0, import_react.createElement)(
         "div",
         { className: "nodo-stream-content" },
-        record.kind !== "changes" && (0, import_react.createElement)("p", { className: "nodo-note", "data-error": failed ? "" : void 0 }, status),
+        (0, import_react.createElement)("p", { className: "nodo-note", "data-error": failed ? "" : void 0 }, status),
         progress && (0, import_react.createElement)("p", { className: "nodo-note", "data-nodo-progress": "" }, progress),
         notice && (0, import_react.createElement)("p", { className: "nodo-note" }, notice),
         !full && record.truncated && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u5F53\u524D\u663E\u793A\u6458\u8981\u3002"),
-        record.kind !== "changes" && (0, import_react.createElement)(ResourceList, { resources: body.resources }),
-        record.kind === "changes" ? (0, import_react.createElement)(FileChangesContent, { value, record, full, load, busy, available, request }) : terminal ? (0, import_react.createElement)(import_dsh_client_ui_primitives.TerminalBlock, {
+        (0, import_react.createElement)(ResourceList, { resources: body.resources }),
+        terminal ? (0, import_react.createElement)(import_dsh_client_ui_primitives.TerminalBlock, {
           command: body.command,
           cwd: body.cwd,
           output: body.outputText,
@@ -1256,7 +2147,7 @@ function StreamRecordCard({ record, request }) {
           (0, import_react.createElement)("span", { className: "nodo-io-label" }, label),
           (0, import_react.createElement)("span", { className: "nodo-io-text", "data-error": failed && label === "\u8F93\u51FA" ? "" : void 0 }, text)
         ))),
-        diffs.length > 0 && (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { diffs, labels: STREAM_DIFF_LABELS }),
+        diffs.map((diff, index) => (0, import_react.createElement)(CodeDiff, { key: index, filename: diff.path, diff, cycle: record.revision })),
         record.status === "running" && body.progress?.outputPreview && (0, import_react.createElement)(
           "div",
           { className: "nodo-io-section" },
@@ -1284,9 +2175,255 @@ function StreamRecordCard({ record, request }) {
   );
 }
 
+// src/client/streaming-text.tsx
+var segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("zh-CN", { granularity: "word" }) : null;
+var FADE_MS = 260;
+var STAGGER_MS = 160;
+var ignored = 'button,svg,style,script,[aria-hidden="true"],[hidden]';
+var blocks = "p,li,pre,blockquote,h1,h2,h3,h4,h5,h6,td,th";
+function streamingWords(root) {
+  const nodes = [];
+  const walker = root.ownerDocument.createTreeWalker(root, 4);
+  let text = "";
+  let block = null;
+  for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+    const node = current;
+    const parent = node.parentElement;
+    if (!parent || parent.closest(ignored)) continue;
+    const nextBlock = parent.closest(blocks);
+    if (nodes.length && block !== nextBlock) text += "\n";
+    block = nextBlock;
+    nodes.push({ node, start: text.length, end: text.length + node.data.length });
+    text += node.data;
+  }
+  return { nodes, words: segmenter ? [...segmenter.segment(text)].filter((word) => word.isWordLike) : [], text };
+}
+function textRange(document2, nodes, start, end) {
+  const parts = nodes.filter((part) => part.start < end && part.end > start);
+  const first = parts[0], last = parts.at(-1);
+  if (!first || !last) return null;
+  const range = document2.createRange();
+  range.setStart(first.node, Math.max(0, start - first.start));
+  range.setEnd(last.node, Math.min(last.node.data.length, end - last.start));
+  return range;
+}
+function decorateStreamingText(root, caret, { name, streaming, animate = streaming }) {
+  const document2 = root.ownerDocument;
+  const view = document2.defaultView;
+  if (!view) return { update() {
+  }, dispose() {
+  } };
+  const highlights = view.CSS?.highlights;
+  const canHighlight = highlights && typeof view.Highlight === "function" && segmenter;
+  const reducedMotion = view.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  let palette = null;
+  const active = /* @__PURE__ */ new Map();
+  let previous = "";
+  let animated = animate || streaming;
+  let nodes = [];
+  let frame = 0;
+  const positionCaret = () => {
+    caret.hidden = true;
+    const last = nodes.filter((part) => part.node.data.trim() !== "").at(-1);
+    if (!streaming || !last || !root.parentElement) return;
+    const range = document2.createRange();
+    range.setStart(last.node, last.node.data.trimEnd().length);
+    range.collapse(true);
+    const rect = range.getBoundingClientRect();
+    if (!rect.height) return;
+    const box = root.parentElement.getBoundingClientRect();
+    Object.assign(caret.style, { left: `${rect.left - box.left}px`, top: `${rect.top - box.top}px`, height: `${rect.height}px` });
+    caret.hidden = false;
+  };
+  const draw = () => {
+    frame = 0;
+    const now = view.performance.now();
+    const rules = [];
+    for (const [key, item] of active) {
+      const progress = Math.max(0, Math.min(1, (now - item.since) / FADE_MS));
+      if (progress === 1) {
+        highlights?.delete(item.name);
+        active.delete(key);
+        continue;
+      }
+      const opacity = 1 - (1 - progress) ** 3;
+      rules.push(`::highlight(${item.name}){color:color-mix(in srgb,${item.ink} ${opacity * 100}%,transparent)}`);
+    }
+    if (rules.length) {
+      if (!palette) {
+        palette = document2.createElement("style");
+        document2.head.appendChild(palette);
+      }
+      palette.textContent = rules.join("\n");
+      frame = view.requestAnimationFrame(draw);
+    } else {
+      palette?.remove();
+      palette = null;
+    }
+  };
+  const update = () => {
+    if (frame) view.cancelAnimationFrame(frame);
+    frame = 0;
+    const parsed = streamingWords(root);
+    nodes = parsed.nodes;
+    positionCaret();
+    const now = view.performance.now();
+    let prefix = 0;
+    for (const letter of parsed.text) {
+      if (previous.slice(prefix, prefix + letter.length) !== letter) break;
+      prefix += letter.length;
+    }
+    for (const [key, item] of active) {
+      if (parsed.text.slice(item.start, item.end) !== item.text) {
+        highlights?.delete(item.name);
+        active.delete(key);
+      }
+    }
+    if (canHighlight && !reducedMotion && animated && prefix < parsed.text.length) {
+      const starts = [0, ...parsed.words.slice(1).map((word) => word.index)];
+      const fresh = starts.map((start, index) => ({ start: Math.max(prefix, start), end: starts[index + 1] ?? parsed.text.length })).filter((part) => part.start < part.end && parsed.text.slice(part.start, part.end).trim() !== "");
+      fresh.forEach((part, index) => {
+        const key = `${part.start}-${part.end}`;
+        active.set(key, {
+          ...part,
+          text: parsed.text.slice(part.start, part.end),
+          ink: "",
+          name: `${name}-${key}`,
+          since: now + index / Math.max(1, fresh.length - 1) * Math.min(STAGGER_MS, fresh.length * 12)
+        });
+      });
+    }
+    previous = parsed.text;
+    for (const [key, item] of active) {
+      const range = textRange(document2, nodes, item.start, item.end);
+      const parent = range?.startContainer.parentElement;
+      if (!range || !parent || !highlights) {
+        highlights?.delete(item.name);
+        active.delete(key);
+        continue;
+      }
+      item.ink = view.getComputedStyle(parent).color;
+      highlights.set(item.name, new view.Highlight(range));
+    }
+    draw();
+  };
+  update();
+  const mutation = typeof view.MutationObserver === "function" ? new view.MutationObserver(update) : null;
+  mutation?.observe(root, { subtree: true, childList: true, characterData: true });
+  const resize = typeof view.ResizeObserver === "function" ? new view.ResizeObserver(positionCaret) : null;
+  resize?.observe(root);
+  return {
+    update(nextStreaming, nextAnimate = nextStreaming) {
+      streaming = nextStreaming;
+      animated ||= nextAnimate || nextStreaming;
+      update();
+    },
+    dispose() {
+      if (frame) view.cancelAnimationFrame(frame);
+      mutation?.disconnect();
+      resize?.disconnect();
+      for (const item of active.values()) highlights?.delete(item.name);
+      active.clear();
+      palette?.remove();
+      caret.hidden = true;
+    }
+  };
+}
+function StreamingText({ text, streaming = false, animate = streaming, ...props }) {
+  const body = (0, import_react.useRef)(null);
+  const caret = (0, import_react.useRef)(null);
+  const decoration = (0, import_react.useRef)(null);
+  const name = `nodo-stream-${(0, import_react.useId)().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  (0, import_react.useLayoutEffect)(() => {
+    if (!body.current || !caret.current) return;
+    if (!decoration.current && (streaming || animate)) decoration.current = decorateStreamingText(body.current, caret.current, { name, streaming, animate });
+    else decoration.current?.update(streaming, animate);
+  }, [text, streaming, animate, name]);
+  (0, import_react.useLayoutEffect)(() => () => {
+    decoration.current?.dispose();
+    decoration.current = null;
+  }, [name]);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-streaming-text" }, /* @__PURE__ */ (0, import_react.createElement)("div", { ref: body }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { ...props, text, streaming })), /* @__PURE__ */ (0, import_react.createElement)("span", { ref: caret, className: "nodo-streaming-caret", hidden: true, "aria-hidden": true }));
+}
+
+// src/client/tool-timeline.tsx
+var COLLAPSE_MS2 = 200;
+function ToolTimeline({ steps, summary, streaming = false }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [mounted, setMounted] = (0, import_react.useState)(false);
+  const id = `nodo-timeline-${(0, import_react.useId)()}`;
+  (0, import_react.useEffect)(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    if (!mounted) return;
+    const timer = setTimeout(() => setMounted(false), COLLAPSE_MS2);
+    return () => clearTimeout(timer);
+  }, [open, mounted]);
+  if (steps.length === 0) return null;
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline", "data-flow": "process", "data-open": open, "data-streaming": streaming }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-tool-timeline-trigger", "aria-expanded": open, "aria-controls": id, onClick: () => setOpen((value) => !value) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-symbol", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-label" }, streaming ? "\u6B63\u5728\u5904\u7406" : "\u5904\u7406\u8FC7\u7A0B"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-summary" }, summary)), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-timeline-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-clip" }, (open || mounted) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-content" }, /* @__PURE__ */ (0, import_react.createElement)("ol", { className: "nodo-tool-timeline-steps" }, steps.map((step) => /* @__PURE__ */ (0, import_react.createElement)(
+    "li",
+    {
+      key: step.id,
+      className: "nodo-tool-timeline-step",
+      "data-active": streaming && step.active === true,
+      "data-call-id": step.callId,
+      "data-parent-call-id": step.parentCallId,
+      "data-nodo-depth": step.depth || void 0,
+      style: step.depth ? { marginLeft: `${step.depth * 16}px` } : void 0
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-icon", "aria-hidden": true }, step.icon),
+    /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-detail" }, step.content)
+  )))))));
+}
+var TOOL_TIMELINE_CSS = `
+.nodo-tool-timeline{min-width:0}
+.nodo-tool-timeline-trigger{display:flex;align-items:center;gap:8px;max-width:100%;min-height:28px;padding:2px 0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-align:left;cursor:pointer}
+.nodo-tool-timeline-trigger:hover{color:var(--dsw-alias-label-primary)}
+.nodo-tool-timeline-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-tool-timeline-chevron,.nodo-tool-timeline-symbol{display:flex;flex:none}
+.nodo-tool-timeline-chevron{transition:transform ${COLLAPSE_MS2}ms ease}
+.nodo-tool-timeline[data-open=true] .nodo-tool-timeline-chevron{transform:rotate(90deg)}
+.nodo-tool-timeline-label{flex:none}
+.nodo-tool-timeline-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-timeline[data-streaming=true] .nodo-tool-timeline-label{color:transparent;background:linear-gradient(100deg,var(--dsw-alias-label-tertiary) 35%,var(--dsw-alias-label-primary) 50%,var(--dsw-alias-label-tertiary) 65%);background-size:250% 100%;background-clip:text;animation:nodo-timeline-shimmer 1.8s linear infinite}
+.nodo-tool-timeline-step[data-active=true]>.nodo-tool-timeline-icon{color:var(--dsw-alias-label-primary);animation:nodo-timeline-pulse 1.8s ease-in-out infinite}
+.nodo-tool-timeline-panel{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows ${COLLAPSE_MS2}ms ease,opacity ${COLLAPSE_MS2}ms ease,visibility ${COLLAPSE_MS2}ms}
+.nodo-tool-timeline[data-open=true] .nodo-tool-timeline-panel{grid-template-rows:1fr;opacity:1;visibility:visible}
+.nodo-tool-timeline-clip{min-height:0;overflow:hidden}
+.nodo-tool-timeline-content{padding:4px 0 6px 22px;min-width:0}
+.nodo-tool-timeline-steps{list-style:none;margin:0;padding:0}
+.nodo-tool-timeline-step{position:relative;display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;min-width:0;padding:0 0 8px;animation:nodo-timeline-enter 200ms ease-out}
+.nodo-tool-timeline-step:not(:last-child)::before{content:'';position:absolute;top:24px;bottom:0;left:6.5px;width:1px;background:var(--dsw-alias-border-l1)}
+.nodo-tool-timeline-step:last-child{padding-bottom:0}
+.nodo-tool-timeline-icon{display:flex;align-items:center;justify-content:center;height:28px;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-timeline-detail{min-width:0}
+@keyframes nodo-timeline-enter{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@keyframes nodo-timeline-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
+@keyframes nodo-timeline-pulse{50%{opacity:.4}}
+@media(prefers-reduced-motion:reduce){.nodo-tool-timeline-chevron,.nodo-tool-timeline-panel{transition:none}.nodo-tool-timeline-step,.nodo-tool-timeline-step[data-active=true]>.nodo-tool-timeline-icon{animation:none}.nodo-tool-timeline[data-streaming=true] .nodo-tool-timeline-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
+`;
+
 // src/client/feed.js
 var FOLLOW_PX = 25;
 var brief = (text) => (text ?? "").slice(0, 400);
+function requestReply(item) {
+  const response = item.phase === "end" && ["allow", "deny", "answer"].includes(item.response?.decision) ? item.response : void 0;
+  const status = item.phase === "start" ? "\u7B49\u5F85\u56DE\u7B54" : item.cancelled ? "\u5DF2\u53D6\u6D88" : { allow: "\u5DF2\u5141\u8BB8", deny: "\u5DF2\u62D2\u7EDD", answer: "\u5DF2\u56DE\u7B54" }[response?.decision] ?? "\u5DF2\u5173\u95ED";
+  let text = typeof response?.value === "string" ? response.value : item.text ?? "";
+  if (response?.decision === "answer" && response.questions?.length > 1) {
+    try {
+      const answers = JSON.parse(text);
+      const questions = response.questions;
+      if (answers && typeof answers === "object" && !Array.isArray(answers) && Object.keys(answers).length === questions.length && questions.every((question) => typeof answers[question.id] === "string" || Array.isArray(answers[question.id]) && answers[question.id].every((answer) => typeof answer === "string"))) {
+        text = questions.map((question) => `${question.label}\uFF1A${Array.isArray(answers[question.id]) ? answers[question.id].join("\u3001") : answers[question.id]}`).join("\n");
+      }
+    } catch {
+    }
+  }
+  return { status, text };
+}
 var completedLead = (text) => {
   let lead = "";
   let start = 0;
@@ -1303,7 +2440,7 @@ var completedLead = (text) => {
     start = next.index + next[0].length;
   }
 };
-function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error }) {
+function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status, timeline }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const text = typeof body === "string" ? body.trim() : "";
   const expandable = text !== "" || Boolean(input) || Boolean(output) || Boolean(progress);
@@ -1313,8 +2450,8 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
     kind === "thinking" ? (0, import_react.createElement)("span", { key: "summary", className: "nodo-think-summary", "data-streaming": streaming ? "" : void 0 }, summary) : (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-error": error ? "" : void 0 }, summary)
   ] : null;
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
-    icon: (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
+  const disclosure = kind === "thinking" ? {
+    icon: timeline ? void 0 : (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
     title,
     open,
     expandable,
@@ -1324,8 +2461,18 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     contentClassName: "nodo-row-content",
     contentLayoutClassName: "nodo-row-content-layout",
     onToggle: () => setOpen((current) => !current),
-    collapsedContent: collapsed,
-    children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : (0, import_react.createElement)(
+    collapsedContent: collapsed
+  } : {
+    label: title || "\u5DE5\u5177\u8C03\u7528",
+    activeLabel: `${title || "\u5DE5\u5177\u8C03\u7528"}\u4E2D`,
+    query: toolCallQuery(input, summary ?? ""),
+    status: error ? "error" : streaming ? "running" : status ?? "done",
+    open,
+    onOpenChange: setOpen
+  };
+  return (0, import_react.createElement)(kind === "thinking" ? import_dsh_client_ui_primitives.DisclosureRow : ToolCall, {
+    ...disclosure,
+    children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : (0, import_react.createElement)(
       "div",
       { className: "nodo-io-card" },
       ...progressNote ? [(0, import_react.createElement)("p", { className: "nodo-note" }, progressNote)] : [],
@@ -1367,14 +2514,14 @@ function progressText(progress) {
   if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${sizeText(progress.stderrBytes)}`);
   return parts.length ? parts.join(" \xB7 ") : null;
 }
-function PlanRow({ plan, running }) {
+function PlanRow({ plan, running, timeline }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const steps = Array.isArray(plan.steps) ? plan.steps : [];
   const active = steps.find((step) => step.status === "in_progress") ?? steps[0];
   const summary = active ? String(active.text).split("\n")[0] : plan.text ? String(plan.text).split("\n")[0] : null;
   const expandable = steps.length > 0 || Boolean(plan.text);
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
-    icon: TOOL_VARIANTS.plan.icon({ size: 14 }),
+    icon: timeline ? void 0 : TOOL_VARIANTS.plan.icon({ size: 14 }),
     title: "\u8BA1\u5212",
     open,
     expandable,
@@ -1399,6 +2546,7 @@ function PlanRow({ plan, running }) {
 function transcriptRows(lines) {
   const rows = [];
   const open = /* @__PURE__ */ new Map();
+  const callKey = (item) => item.callId ? JSON.stringify([item.turnId ?? null, item.callId]) : item.name;
   for (const [index, item] of lines.entries()) {
     if (item.kind === "plan" && (item.removed === true || (!Array.isArray(item.steps) || item.steps.length === 0) && !item.text)) continue;
     if (item.kind !== "tool") {
@@ -1406,16 +2554,21 @@ function transcriptRows(lines) {
       continue;
     }
     if (item.phase === "start") {
-      open.set(item.callId ?? item.name, rows.length);
+      open.set(callKey(item), rows.length);
       rows.push({ item, index, running: true, error: false });
       continue;
     }
-    const at = item.callId ? open.get(item.callId) : open.get(item.name) ?? [...open.values()].pop();
+    const at = item.callId ? open.get(callKey(item)) : open.get(item.name) ?? [...open.values()].pop();
     if (at === void 0) {
       rows.push({ item, index, running: false, error: item.isError === true });
       continue;
     }
-    open.delete(rows[at].item.callId ?? rows[at].item.name);
+    open.delete(callKey(rows[at].item));
+    if (item.timeline === true && at !== rows.length - 1) {
+      rows[at] = { ...rows[at], running: false, invocation: true };
+      rows.push({ item: { ...item, input: item.input ?? rows[at].item.input }, index, running: false, error: item.isError === true, result: true });
+      continue;
+    }
     rows[at] = {
       ...rows[at],
       running: false,
@@ -1440,61 +2593,69 @@ function transcriptRows(lines) {
     if (row.item.kind === "tool") groups.at(-1).push(row);
   }
   for (const group of groups) {
-    const entities = new Map(group.filter((row) => row.item.callId).map((row) => [row.item.callId, row]));
+    const entities = new Map(group.filter((row) => row.item.callId).map((row) => [callKey(row.item), row]));
+    const parentOf = (item) => item.parentCallId ? entities.get(callKey({ ...item, callId: item.parentCallId })) : void 0;
     for (const row of group) {
       const seen = /* @__PURE__ */ new Set([row.item.callId]);
-      let parent = entities.get(row.item.parentCallId);
+      let parent = parentOf(row.item);
       row.depth = 0;
       while (parent && !seen.has(parent.item.callId) && row.depth < 8) {
         seen.add(parent.item.callId);
         row.depth += 1;
-        parent = entities.get(parent.item.parentCallId);
+        parent = parentOf(parent.item);
       }
       if (parent && seen.has(parent.item.callId)) row.depth = 0;
     }
   }
   return rows;
 }
-var isProcess = (row) => row.item.kind === "tool" || row.item.kind === "thinking" || row.item.kind === "plan";
+var isProcess = (row) => ["tool", "thinking", "plan"].includes(row.item.kind);
 function processBlocks(rows) {
-  const blocks = [];
+  const blocks2 = [];
+  const summaries = [];
+  const flushSummaries = () => blocks2.push(...summaries.splice(0));
   rows.forEach((row, position) => {
-    const last = blocks.at(-1);
+    if (row.item.who === "user") flushSummaries();
+    if (row.item.kind === "changes") {
+      summaries.push({ process: false, rows: [{ row, position }] });
+      return;
+    }
+    const last = blocks2.at(-1);
     if (isProcess(row) && last?.process) last.rows.push({ row, position });
-    else blocks.push({ process: isProcess(row), rows: [{ row, position }] });
+    else blocks2.push({ process: isProcess(row), rows: [{ row, position }] });
   });
-  return blocks;
+  flushSummaries();
+  return blocks2;
 }
-function ProcessGroup({ rows, running, children }) {
-  const [open, setOpen] = (0, import_react.useState)(false);
+function ProcessGroup({ rows, running, depths = [], children = [] }) {
   const thinking = rows.filter((item) => item.kind === "thinking").length;
   const plans = rows.filter((item) => item.kind === "plan").length;
-  const activities = rows.filter((item) => item.activity === true).length;
-  const tools = rows.length - thinking - plans - activities;
+  const countCalls = (items) => new Set(items.map((item) => item.callId ?? item)).size;
+  const activities = countCalls(rows.filter((item) => item.activity === true));
+  const tools = countCalls(rows.filter((item) => item.kind === "tool" && item.activity !== true));
   const summary = [thinking && `\u601D\u8003 ${thinking}`, tools && `\u5DE5\u5177 ${tools}`, activities && `\u5B50\u4EFB\u52A1 ${activities}`, plans && `\u8BA1\u5212 ${plans}`].filter(Boolean).join(" \xB7 ");
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
-    icon: (0, import_dsh_client_ui_primitives.IconSparkleRegular)({ size: 14 }),
-    title: "\u5904\u7406\u8FC7\u7A0B",
-    open,
-    expandable: true,
-    running,
-    expandOnRowClick: true,
-    keepContentWhenOpen: true,
-    contentClassName: "nodo-row-content",
-    contentLayoutClassName: "nodo-row-content-layout",
-    onToggle: () => setOpen((current) => !current),
-    collapsedContent: [
-      (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
-      (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary" }, summary)
-    ],
-    children: (0, import_react.createElement)("div", { className: "nodo-process-group" }, children)
+  const steps = rows.map((item, index) => {
+    const icon = item.kind === "thinking" ? import_dsh_client_ui_primitives.IconThinkOutlineRegular : TOOL_VARIANTS[item.kind === "plan" ? "plan" : toolVariant(item.name)].icon;
+    const child = children[index];
+    return {
+      id: String(child?.key ?? child?.props.key ?? index),
+      icon: (0, import_react.createElement)(icon, { size: 14 }),
+      content: child,
+      active: child?.props.running === true || child?.props.record?.status === "running" && !child.props.eventPhase && running === true,
+      depth: depths[index],
+      callId: item.callId,
+      parentCallId: item.parentCallId
+    };
   });
+  return (0, import_react.createElement)(ToolTimeline, { steps, summary, streaming: running });
 }
 function Feed({ profile, session, revision, work, sentTick }) {
   const [feed, setFeed] = (0, import_react.useState)({ key: null, lines: [], error: "" });
   const [following, setFollowing] = (0, import_react.useState)(true);
   const [activeTurn, setActiveTurn] = (0, import_react.useState)(null);
   const key = `${profile.id}:${session?.id ?? ""}`;
+  const opened = (0, import_react.useRef)({ key, at: Date.now() });
+  if (opened.current?.key !== key) opened.current = { key, at: Date.now() };
   const box = (0, import_react.useRef)(null);
   const probe = (0, import_react.useRef)(0);
   const sample = () => {
@@ -1543,7 +2704,13 @@ function Feed({ profile, session, revision, work, sentTick }) {
   const turns = [];
   for (const [index, item] of feed.lines.entries()) {
     if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
-    else if (item.who === "agent" && item.kind === "text" && turns.length !== 0 && turns.at(-1).response === "") turns.at(-1).response = brief(item.text);
+    else if (item.who === "agent" && item.kind === "text" && !item.parentCallId && turns.length !== 0) {
+      const turn = turns.at(-1);
+      if (!turn.reply || item.reply === true) {
+        turn.response = brief(item.final ?? item.text);
+        turn.reply = item.reply === true;
+      }
+    }
   }
   const goto = (turn) => {
     const node = box.current;
@@ -1553,38 +2720,47 @@ function Feed({ profile, session, revision, work, sentTick }) {
     node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop;
   };
   const lines = feed.key === key ? feed.lines : [];
-  const rows = transcriptRows(lines);
+  const latestUser = lines.findLastIndex((item) => item.who === "user");
+  const rows = transcriptRows(lines).filter((row) => row.item.kind !== "changes" || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser));
   const newest = rows.length - 1;
-  const line = (row, position) => {
+  const line = (row, position, timeline = false) => {
     const { item, index } = row;
-    if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, running: work?.active === true && index === newest });
-    if (item.kind === "changes" && supportedStreamRecord(item.presentation)) return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } });
+    if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
+    if (item.kind === "changes") return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } });
     if (item.kind === "tool") {
-      if (supportedStreamRecord(item.presentation)) return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } });
+      if (supportedStreamRecord(item.presentation)) return (0, import_react.createElement)(StreamRecordCard, {
+        key: index,
+        record: item.presentation,
+        eventPhase: row.invocation ? "start" : row.result ? "end" : void 0,
+        request: { profile: profile.id, session: session.id }
+      });
       const variant = TOOL_VARIANTS[toolVariant(item.name)];
       const progress = progressText(item.progress);
       return (0, import_react.createElement)(ProcessRow, {
         key: index,
         kind: "tool",
         variant,
-        title: variant.title,
+        timeline,
+        title: `${row.invocation ? "\u8C03\u7528 \xB7 " : row.result ? "\u7ED3\u679C \xB7 " : ""}${variant.title}`,
         summary: [item.brief ? item.brief.split("\n")[0] : null, progress].filter(Boolean).join(" \xB7 ") || null,
         body: item.brief ?? "",
         input: item.input,
         output: item.output,
         progress: item.progress,
         running: row.running && work?.active === true,
-        error: row.error
+        error: row.error,
+        status: row.invocation ? "started" : row.running ? "unknown" : "done"
       });
     }
     if (item.kind === "thinking") {
       const text = item.text ?? "";
-      const running = work?.active === true && index === newest && (work.buffer ?? "") === "";
+      const running = work?.active === true && (item.timeline === true ? item.open === true : position === newest && (work.buffer ?? "") === "");
       const lead = (running ? completedLead(text) : "") || text.split("\n")[0] || "";
       return (0, import_react.createElement)(ProcessRow, {
         key: index,
         kind: "thinking",
         variant: { icon: import_dsh_client_ui_primitives.IconThinkOutlineRegular },
+        timeline,
         title: "\u601D\u8003",
         summary: lead.replaceAll("**", "") || null,
         body: text,
@@ -1597,6 +2773,21 @@ function Feed({ profile, session, revision, work, sentTick }) {
         { key: index, className: "nodo-turn-error" },
         (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "error", size: 8, className: "nodo-turn-error-dot" }),
         (0, import_react.createElement)("span", null, (0, import_react.createElement)("span", { className: "nodo-turn-error-title" }, "\u672C\u8F6E\u8FD0\u884C\u5931\u8D25"), item.text)
+      );
+    }
+    if (item.kind === "lifecycle") return (0, import_react.createElement)(
+      "p",
+      { key: index, className: "nodo-note" },
+      `${{ retry: "\u91CD\u8BD5", compaction: "\u4E0A\u4E0B\u6587\u538B\u7F29" }[item.event] ?? item.event} \xB7 ${item.phase === "start" ? "\u5F00\u59CB" : item.isError ? "\u5931\u8D25" : item.cancelled ? "\u5DF2\u53D6\u6D88" : item.event === "retry" ? "\u5DF2\u6062\u590D" : "\u7ED3\u675F"}`,
+      item.text ? ` \xB7 ${item.text}` : ""
+    );
+    if (item.kind === "request") {
+      const reply = requestReply(item);
+      return (0, import_react.createElement)(
+        "p",
+        { key: index, className: "nodo-note", "data-request-phase": item.phase },
+        `${item.requestKind === "question" ? "\u63D0\u95EE" : "\u6743\u9650\u8BF7\u6C42"} \xB7 ${reply.status}`,
+        reply.text && (0, import_react.createElement)("span", { className: "nodo-request-answer" }, ` \xB7 ${reply.text}`)
       );
     }
     if (item.kind === "usage") return lines[index - 1]?.who === "agent" && lines[index - 1].kind === "text" ? null : (0, import_react.createElement)(TurnUsage, { key: index, usage: item.usage });
@@ -1620,13 +2811,22 @@ function Feed({ profile, session, revision, work, sentTick }) {
       );
     }
     if (item.who === "agent") {
+      const streaming = item.timeline === true && item.open === true && work?.active === true;
       const usage = lines[index + 1]?.kind === "usage" ? lines[index + 1].usage : null;
       return (0, import_react.createElement)(
         "div",
-        { key: index, className: "nodo-reply", "data-flow": "response" },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: item.text, labels: MARKDOWN_LABELS }),
+        {
+          key: index,
+          className: "nodo-reply",
+          "data-flow": "response",
+          "data-message-id": item.messageId,
+          "data-source-channel": item.channel,
+          "data-parent-call-id": item.parentCallId,
+          ...item.parentCallId ? { style: { marginLeft: 16 } } : {}
+        },
+        (0, import_react.createElement)(StreamingText, { text: item.text, streaming, animate: streaming || item.at >= opened.current.at, labels: MARKDOWN_LABELS }),
         item.images?.map((image) => (0, import_react.createElement)(TranscriptImage, { key: image.id, image })),
-        (0, import_react.createElement)("div", { className: "nodo-reply-foot" }, (0, import_react.createElement)(MessageTime, { at: item.at }), usage && (0, import_react.createElement)(TurnUsage, { usage }))
+        !streaming && (0, import_react.createElement)("div", { className: "nodo-reply-foot" }, (0, import_react.createElement)(MessageTime, { at: item.at }), usage && (0, import_react.createElement)(TurnUsage, { usage }))
       );
     }
     return item.text ? (0, import_react.createElement)("p", { key: index, className: "nodo-note" }, item.text) : null;
@@ -1646,15 +2846,20 @@ function Feed({ profile, session, revision, work, sentTick }) {
           { className: "nodo-note nodo-feed-empty" },
           `\u8FD8\u6CA1\u6709\u6D88\u606F\u3002\u7ED9\u300C${profile.name}\u300D\u53D1\u4E00\u6761\u4EFB\u52A1\uFF0C\u4E00\u6761\u6D88\u606F\u5373\u4E00\u4E2A\u4EFB\u52A1\u3002`
         ),
-        ...processBlocks(rows).map((block, index, all) => block.process ? (0, import_react.createElement)(
+        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
           ProcessGroup,
-          { key: block.rows[0].row.index, rows: block.rows.map(({ row }) => row.item), running: work?.active === true && index === all.length - 1 },
-          block.rows.map(({ row, position }) => row.depth > 0 ? (0, import_react.createElement)("div", { key: row.index, "data-nodo-depth": row.depth, style: { marginLeft: `${row.depth * 16}px` } }, line(row, position)) : line(row, position))
+          {
+            key: block.rows[0].row.index,
+            rows: block.rows.map(({ row }) => row.item),
+            depths: block.rows.map(({ row }) => row.depth),
+            running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true))
+          },
+          block.rows.map(({ row, position }) => line(row, position, true))
         ) : line(block.rows[0].row, block.rows[0].position)),
-        work?.active && work.buffer != null && work.buffer !== "" && (0, import_react.createElement)(
+        work?.active && work.timeline !== true && work.buffer != null && work.buffer !== "" && (0, import_react.createElement)(
           "div",
           { className: "nodo-reply", "data-flow": "response" },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: work.buffer, streaming: true, labels: MARKDOWN_LABELS })
+          (0, import_react.createElement)(StreamingText, { key, text: work.buffer, streaming: true, labels: MARKDOWN_LABELS })
         )
       )
     ),
@@ -5091,7 +6296,7 @@ function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
   const [launch, setLaunch] = (0, import_react.useState)(false), [runTitle, setRunTitle] = (0, import_react.useState)("");
   const [checks, setChecks] = (0, import_react.useState)({}), [confirm, setConfirm] = (0, import_react.useState)(null);
   const [addOpen, setAddOpen] = (0, import_react.useState)(false), [menu, setMenu] = (0, import_react.useState)(null), [placeOpen, setPlaceOpen] = (0, import_react.useState)(false);
-  const [inputBusy, setInputBusy] = (0, import_react.useState)(false);
+  const [inputBusy, setInputBusy] = (0, import_react.useState)(false), [saveOpen, setSaveOpen] = (0, import_react.useState)(false);
   const inspectorCollapsed = saved.inspectorCollapsed === true;
   const gate = (0, import_react.useRef)(false), request = (0, import_react.useRef)(0);
   const definitions = view.workflows?.definitions ?? [];
@@ -5274,7 +6479,19 @@ function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
     "div",
     { className: "nodo-wf-navigation", role: "navigation", "aria-label": mode === "edit" ? "\u6D41\u7A0B" : "\u8FD0\u884C\u8BB0\u5F55" },
     views,
-    mode === "edit" && (0, import_react.createElement)("div", { className: "nodo-wf-side-title" }, (0, import_react.createElement)("strong", null, "\u6D41\u7A0B")),
+    mode === "edit" && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-wf-side-title" },
+      (0, import_react.createElement)("strong", null, "\u6D41\u7A0B"),
+      (0, import_react.createElement)("button", {
+        type: "button",
+        className: "nodo-icon-btn nodo-visible",
+        "aria-label": "\u65B0\u5EFA\u6D41\u7A0B",
+        title: "\u65B0\u5EFA\u6D41\u7A0B",
+        disabled: blocked,
+        onClick: () => replace(() => setSaved({ draft: wfNew(), source: null, selected: "start", positions: {} }))
+      }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 16 }))
+    ),
     mode === "edit" && (0, import_react.createElement)(
       "div",
       { className: "nodo-wf-definitions" },
@@ -5325,20 +6542,6 @@ function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
         (0, import_react.createElement)("time", null, sessionTime(item.createdAt))
       )),
       !runs.length && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, readOnly ? "\u8BF7\u5728\u4E3B\u7A97\u53E3\u67E5\u770B\u3002" : "\u8FD8\u6CA1\u6709\u8FD0\u884C\u8BB0\u5F55\u3002\u4FDD\u5B58\u6D41\u7A0B\u540E\u5373\u53EF\u542F\u52A8\u3002")
-    ),
-    mode === "edit" && (0, import_react.createElement)(
-      "div",
-      { className: "nodo-wf-side-foot" },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-wf-save", role: "group", "aria-label": "\u4FDD\u5B58" },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", disabled: blocked || !dirty, onClick: () => save(false) }, busy === "save" ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58"),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", disabled: blocked || !source, title: "\u4FDD\u5B58\u4E3A\u65B0\u6D41\u7A0B\uFF0C\u5F53\u524D\u7F16\u8F91\u5207\u6362\u5230\u65B0\u6D41\u7A0B", onClick: () => setConfirm({ kind: "saveAs", name: copyName() }) }, "\u53E6\u5B58\u4E3A")
-      ),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", className: "nodo-wf-new", disabled: blocked, onClick: () => replace(() => {
-        setSaved({ draft: wfNew(), source: null, selected: "start", positions: {} });
-        setMode("edit");
-      }) }, "+ \u65B0\u5EFA\u6D41\u7A0B")
     )
   );
   (0, import_react.useEffect)(() => {
@@ -5375,13 +6578,54 @@ function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
         (0, import_react.createElement)(
           "div",
           { className: "nodo-wf-toolbar" },
+          mode === "edit" && (0, import_react.createElement)(
+            "div",
+            { className: "nodo-wf-save", role: "group", "aria-label": "\u4FDD\u5B58" },
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+              variant: "ghost",
+              size: "sm",
+              "aria-label": "\u4FDD\u5B58",
+              title: busy === "save" ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58",
+              disabled: blocked || !dirty,
+              onClick: () => save(false),
+              icon: (0, import_react.createElement)(
+                "svg",
+                { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true },
+                (0, import_react.createElement)("path", { d: "M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" }),
+                (0, import_react.createElement)("path", { d: "M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7" })
+              )
+            }),
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+              open: saveOpen,
+              onClose: () => setSaveOpen(false),
+              portal: true,
+              align: "end",
+              items: [{ id: "save", label: "\u4FDD\u5B58", disabled: blocked || !dirty }, { id: "saveAs", label: "\u53E6\u5B58\u4E3A\u65B0\u6D41\u7A0B\u2026", disabled: blocked || !source }],
+              onSelect: (id) => {
+                setSaveOpen(false);
+                if (id === "save") save(false);
+                else setConfirm({ kind: "saveAs", name: copyName() });
+              },
+              anchor: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+                variant: "ghost",
+                size: "sm",
+                className: "nodo-wf-save-more",
+                "aria-label": "\u66F4\u591A\u4FDD\u5B58\u9009\u9879",
+                "aria-haspopup": "menu",
+                "aria-expanded": saveOpen,
+                disabled: blocked,
+                icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }),
+                onClick: () => setSaveOpen((open) => !open)
+              })
+            })
+          ),
           (0, import_react.createElement)(
             "div",
             { className: "nodo-wf-action-group", role: "group", "aria-label": "\u8FD0\u884C" },
             (0, import_react.createElement)(
               import_dsh_client_ui_primitives.Button,
               {
-                variant: "primary",
+                variant: "outline",
                 size: "sm",
                 disabled: blocked || !!errors.length || !!missing.length || !!view.workflows?.running,
                 title: missing.length ? "\u9700\u8981\u5DF2\u6709\u7684\u5DE5\u4F5C\u533A\u548C\u89D2\u8272\uFF0C\u8BF7\u5728\u8F93\u5165\u680F\u4E3A\u8282\u70B9\u9009\u62E9\u5DF2\u5173\u8054\u9879\u76EE\u7684\u89D2\u8272\u3002" : errors[0]?.message ?? (view.workflows?.running ? "\u5DF2\u6709\u6D41\u7A0B\u6B63\u5728\u8FD0\u884C\u3002" : dirty ? "\u8FD0\u884C\u524D\u4F1A\u5148\u4FDD\u5B58\u5F53\u524D\u4FEE\u6539\u3002" : void 0),
@@ -5677,12 +6921,13 @@ var WORKFLOW_CSS = `
 .nodo-wf-meta{display:flex;align-items:center;gap:8px;min-width:0;font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;color:var(--dsw-alias-label-tertiary)}
 .nodo-wf-save-state::before{content:'\xB7 '}
 .nodo-wf-toolbar{margin-left:auto;display:flex;flex:none;align-items:center;gap:12px;max-width:calc(100% - 92px);overflow-x:auto}
-.nodo-wf-views{display:flex;flex:none;padding:3px;border-radius:999px;background:var(--dsw-alias-bg-overlay)}
-.nodo-wf-views .nodo-wf-mode{border-radius:999px}
-.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:1px 1px 0 var(--nodo-wf-shadow)}
+.nodo-wf-views{display:flex;flex:none;gap:20px;padding:0 8px;border-bottom:.5px solid var(--dsw-alias-border-l2)}
+.nodo-wf-views .nodo-wf-mode{height:32px;padding:0;border-radius:0;background:0 0;color:var(--dsw-alias-label-tertiary);box-shadow:inset 0 -2px transparent}
+.nodo-wf-views .nodo-wf-mode:hover,.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{background:0 0;color:var(--dsw-alias-label-primary)}
+.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{box-shadow:inset 0 -2px var(--dsw-alias-label-primary)}
 .nodo-wf-action-group{display:flex;align-items:center;gap:6px;flex:none}
 .nodo-wf-action-group button{border-radius:999px}
-.nodo-wf-action-group svg{margin-right:4px}
+.nodo-wf-action-group svg{margin-right:4px;color:var(--dsw-alias-state-business-primary)}
 .nodo-wf-body{display:flex;flex:1;min-height:0;min-width:0}
 .nodo-wf-navigation{display:flex;flex-direction:column;gap:12px;padding:18px 0 8px;flex:1;min-height:0}
 .nodo-wf-side-title{display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:13px;flex:none}
@@ -5695,11 +6940,6 @@ var WORKFLOW_CSS = `
 .nodo-wf-cast{display:flex;flex:none}
 .nodo-wf-cast>*+*{margin-left:-5px}
 .nodo-wf-cast>.nodo-wf-cast-more{margin-left:2px;color:var(--dsw-alias-label-tertiary);line-height:18px}
-.nodo-wf-navigation>.nodo-wf-views .nodo-wf-mode{flex:1;justify-content:center}
-.nodo-wf-side-foot{display:flex;flex-direction:column;gap:8px;margin-top:auto;padding-top:4px;flex:none}
-.nodo-wf-side-foot>.nodo-wf-save{box-sizing:border-box;height:36px}
-.nodo-wf-side-foot>.nodo-wf-save button{flex:1;justify-content:center}
-.nodo-wf-side-foot>.nodo-wf-new{height:36px;border-style:dashed}
 .nodo-wf-outline{max-height:24%;overflow:auto;font-size:11px;color:var(--dsw-alias-label-secondary);flex-shrink:0}
 .nodo-wf-outline summary{padding:4px 8px;cursor:pointer}
 .nodo-wf-runs{flex:1;min-height:0;overflow:auto}
@@ -5728,8 +6968,9 @@ var WORKFLOW_CSS = `
 .nodo-wf-title{font:inherit;font-size:14px;font-weight:600;min-width:0;width:100%;margin:0;border:0;background:transparent;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 0;outline:none}
 .nodo-wf-title:focus-visible{box-shadow:0 1px var(--dsw-alias-state-business-primary)}
 .nodo-wf-addbar{display:flex}
-.nodo-wf-save{display:flex;flex:none;align-items:center;padding:3px;border-radius:999px;background:var(--dsw-alias-bg-overlay)}
+.nodo-wf-save{display:flex;flex:none;align-items:center;gap:1px;padding:2px;border:.5px solid var(--dsw-alias-border-l2);border-radius:999px}
 .nodo-wf-save button{border-radius:999px}
+.nodo-wf-save .nodo-wf-save-more{min-width:0;width:22px;padding:0}
 .nodo-wf-addbar button{border-radius:999px;background:var(--dsw-alias-bg-base);box-shadow:1px 1px 0 var(--nodo-wf-shadow)}
 .nodo-wf-stage{position:relative;flex:1;min-height:140px;min-width:0;overflow:hidden;background-image:radial-gradient(var(--dsw-alias-border-l2) 1px,transparent 1.2px);background-size:22px 22px}
 .nodo-wf-viewport{height:100%;overflow:hidden;touch-action:none}
@@ -5867,12 +7108,11 @@ var sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   return sessions.find((item) => item.id === selected) ?? sessions.find((item) => item.id === profile.activeSessionId) ?? sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
 };
 var selectSession = async (role, id, project, page) => {
-  const { workspace, busy, workspaces, navigation, sidebarOnly, readOnly, remember, refresh, setBusy, setActionError, setEditing } = page;
+  const { workspace, workspaces, work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing } = page;
   project ??= workspace;
-  if (busy) return;
-  const origin = nativeSpace.getSnapshot();
-  const current = () => nativeSpace.getSnapshot() === origin;
-  setBusy(true);
+  const request = selection ? ++selection.current : void 0;
+  let origin = nativeSpace.getSnapshot();
+  const current = () => nativeSpace.getSnapshot() === origin && (!selection || selection.current === request);
   setActionError("");
   try {
     id ??= sessionForWorkspace(role, project, workspaces, navigation.sessions?.[`${project?.id}:${role.id}`])?.id;
@@ -5884,6 +7124,19 @@ var selectSession = async (role, id, project, page) => {
     }
     const native = nativeRole(role) && openNativeSession;
     if (!current()) return;
+    const twin = native && role.sessions.find((session) => session.id === id)?.driverSessionId;
+    if (work?.[id]?.active === true && (!native || twin)) {
+      remember(role.id, project.id, id);
+      setEditing(null);
+      if (native) openNativeSession(twin);
+      else if (sidebarOnly) nativeSpace.showLegacy();
+      origin = nativeSpace.getSnapshot();
+      if (!readOnly) {
+        await call("session-select", { profile: role.id, session: id });
+        if (current()) await refresh(true);
+      }
+      return;
+    }
     if (native) {
       const opened = await call("session-open", { profile: role.id, session: id, workspace: project.id });
       if (!current()) return;
@@ -5895,6 +7148,7 @@ var selectSession = async (role, id, project, page) => {
     }
     if (!readOnly) {
       await call("session-select", { profile: role.id, session: id });
+      if (!current()) return;
       await refresh(true);
     }
     if (!current()) return;
@@ -5902,9 +7156,7 @@ var selectSession = async (role, id, project, page) => {
     setEditing(null);
     if (sidebarOnly) nativeSpace.showLegacy();
   } catch (failure) {
-    setActionError(failure.message);
-  } finally {
-    setBusy(false);
+    if (current()) setActionError(failure.message);
   }
 };
 var startConversation = (roleId, page) => {
@@ -5956,6 +7208,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
   const [statsOpen, setStatsOpen] = (0, import_react.useState)(false);
   const [onboardDone, setOnboardDone] = (0, import_react.useState)(false);
   const [busy, setBusy] = (0, import_react.useState)(false);
+  const selection = (0, import_react.useRef)(0);
+  const [pending, setPending] = (0, import_react.useState)([]);
   const [compacting, setCompacting] = (0, import_react.useState)([]);
   const [sentTick, setSentTick] = (0, import_react.useState)(0);
   const [actionError, setActionError] = (0, import_react.useState)("");
@@ -5965,8 +7219,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
   const navigationKey = `${workspace?.id}:${profile?.id}`;
   const session = sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey]);
   const sessionId = session?.id;
-  const sessionBusy = busy || compacting.includes(sessionId);
   const draftKey = sessionId ?? `new:${navigationKey}`;
+  const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
+  const setSessionBusy = (value) => setPending((current) => value ? [...current, draftKey] : current.filter((key) => key !== draftKey));
   const readOnly = view !== null && view.readOnly != null;
   const work = sessionId ? view.work[sessionId] : null;
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
@@ -5994,7 +7249,18 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     workspace: projectId,
     sessions: { ...current.sessions, ...id ? { [`${projectId}:${roleId}`]: id } : {} }
   }));
+  const trackSelection = (sameSession = false) => {
+    const origin = nativeSpace.getSnapshot(), request = selection.current;
+    return () => {
+      const next = readNavigation();
+      return nativeSpace.getSnapshot() === origin && (sameSession || selection.current === request) && next.profile === profile?.id && next.workspace === workspace?.id && next.sessions?.[navigationKey] === navigation.sessions?.[navigationKey];
+    };
+  };
   const cancelEditing = () => setEditing(null);
+  const edit = (value) => {
+    selection.current++;
+    setEditing(value);
+  };
   const savedProfile = async (saved) => {
     await refresh(true);
     remember(saved.id, workspace?.id, saved.activeSessionId);
@@ -6002,21 +7268,22 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
   };
   const updateEngineChoice = async (changes) => {
     if (!profile || sessionBusy || readOnly) return;
-    setBusy(true);
+    setSessionBusy(true);
     setActionError("");
+    const current = trackSelection();
+    const relevant = trackSelection(true);
     try {
       if (sessionId && ["model", "thinking", "permission"].some((key) => changes[key] !== void 0)) {
         await call("session-update", { profile: profile.id, session: sessionId, changes });
-        remember(profile.id, workspace?.id, sessionId);
       } else {
         const saved = await call("profile-update", { id: profile.id, changes });
-        remember(saved.id, workspace?.id, saved.activeSessionId);
+        if (current()) remember(saved.id, workspace?.id, saved.activeSessionId);
       }
       await refresh(true);
     } catch (failure) {
-      setActionError(failure.message);
+      if (relevant()) setActionError(failure.message);
     } finally {
-      setBusy(false);
+      setSessionBusy(false);
     }
   };
   const savedWorkspace = async (saved) => {
@@ -6075,7 +7342,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     if (workspace?.id === id) setNavigation((current) => ({ ...current, workspace: null }));
     setWorkspaceDialog(null);
   };
-  const pageEnv = { workspace, busy, workspaces, navigation, sidebarOnly, readOnly, remember, refresh, setBusy, setActionError, setEditing };
+  const pageEnv = { workspace, busy, workspaces, work: view?.work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing };
   const select = (role, id, project) => selectSession(role, id, project, pageEnv);
   const archiveSession = async (role, id, archived) => {
     if (busy || readOnly) return;
@@ -6126,34 +7393,37 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     const text = (drafts[draftKey] ?? "").trim();
     const images = pastedImages[draftKey] ?? [];
     if (!profile || !workspace || !text && images.length === 0 || sessionBusy || readOnly) return;
-    setBusy(true);
+    setSessionBusy(true);
     setActionError("");
+    const current = trackSelection();
+    const relevant = trackSelection(true);
     try {
       const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }));
       await call("send", { profile: profile.id, session: id, text, images: payload });
-      setSentTick((tick) => tick + 1);
-      setDrafts((current) => current[draftKey]?.trim() === text ? { ...current, [draftKey]: "" } : current);
-      setPastedImages((current) => current[draftKey] === images ? { ...current, [draftKey]: [] } : current);
+      if (current()) setSentTick((tick) => tick + 1);
+      setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
+      setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
       await refresh(true);
-      remember(profile.id, workspace.id, id);
+      if (current()) remember(profile.id, workspace.id, id);
     } catch (failure) {
-      setActionError(failure.message);
+      if (relevant()) setActionError(failure.message);
     } finally {
-      setBusy(false);
+      setSessionBusy(false);
     }
   };
   const interrupt = async () => {
-    if (!profile || busy || readOnly) return;
-    setBusy(true);
+    if (!profile || sessionBusy || readOnly) return;
+    setSessionBusy(true);
     setActionError("");
+    const current = trackSelection(true);
     try {
       await call("interrupt", { profile: profile.id, session: sessionId });
       await refresh(true);
     } catch (failure) {
-      setActionError(failure.message);
+      if (current()) setActionError(failure.message);
     } finally {
-      setBusy(false);
+      setSessionBusy(false);
     }
   };
   const compactSession = async () => {
@@ -6162,15 +7432,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
       setActionError("\u5148\u5F00\u59CB\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u538B\u7F29\u4E0A\u4E0B\u6587");
       return;
     }
-    setCompacting((current) => [...current, sessionId]);
+    setCompacting((current2) => [...current2, sessionId]);
     setActionError("");
+    const current = trackSelection(true);
     try {
       await call("session-compact", { profile: profile.id, session: sessionId });
       await refresh(true);
     } catch (failure) {
-      setActionError(failure.message);
+      if (current()) setActionError(failure.message);
     } finally {
-      setCompacting((current) => current.filter((id) => id !== sessionId));
+      setCompacting((current2) => current2.filter((id) => id !== sessionId));
     }
   };
   const conversation = () => (0, import_react.createElement)(
@@ -6290,13 +7561,14 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
         onNewWorktree: () => {
           if (!readOnly) setWorktreeOpen(true);
         },
-        onNewRole: () => setEditing({ kind: "profile", profile: null }),
-        onEditRole: (item) => setEditing({ kind: "profile", profile: item }),
-        onSettings: () => setEditing({ kind: "settings" }),
+        onNewRole: () => edit({ kind: "profile", profile: null }),
+        onEditRole: (item) => edit({ kind: "profile", profile: item }),
+        onSettings: () => edit({ kind: "settings" }),
         onWorkflows: () => layoutService?.selectPanel("nodo-workflow"),
         runsWaiting: (view.runs ?? []).some(needsPerson),
-        onBack: () => workflowNavigation ? nativeSpace.showLegacy() : nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null),
-        onNewWorkspace: () => setEditing({ kind: "workspace", id: "new", workspace: null }),
+        onSessions: () => nativeSpace.showLegacy(),
+        onBack: () => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null),
+        onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
         onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
         onDeleteWorkspace: (workspace2) => setWorkspaceDialog({ kind: "delete", workspace: workspace2 })
       }),
@@ -7287,10 +8559,9 @@ function createNewConversation(ctx, space, ReferenceDialog) {
 }
 
 // src/client/styles.js
-var CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + `
+var CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
-.nodo-workflow-entry{flex:none;justify-content:center;gap:6px;width:100%;height:36px;margin-bottom:12px;border-radius:var(--dsw-radius-lg)}
 .nodo-runs-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
 .nodo-runs-row:hover,.nodo-runs-row[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-runs-row strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
@@ -7336,13 +8607,19 @@ var CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + `
    icon buttons and 16px row actions that only appear on hover. */
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
-.nodo-rail{display:flex;flex-direction:column;flex:none;width:312px;min-height:0;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) 12px 6px;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+.nodo-rail{display:flex;flex-direction:column;flex:none;width:312px;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
 .nodo-rail-head{display:flex;align-items:center;gap:8px;height:60px;margin-bottom:4px;padding:8px 0 8px 4px;flex:none;overflow:hidden}
-.nodo-rail-title{flex:1;min-width:0;font-size:18px;font-weight:600;line-height:24px;letter-spacing:.04em}
+.nodo-rail-switch{display:flex;flex:1;min-width:0;gap:2px;padding:3px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-overlay)}
+.nodo-rail-switch>button{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:1;min-width:0;height:28px;padding:0 8px;border:0;border-radius:calc(var(--dsw-radius-lg) - 3px);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;line-height:20px;cursor:pointer}
+.nodo-rail-switch>button:hover{color:var(--dsw-alias-label-primary)}
+.nodo-rail-switch>button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);cursor:default}
 .nodo-logo{display:block;max-width:100%;height:auto;color:var(--dsw-alias-label-primary)}
 .nodo-panel-logo{display:inline-flex;align-items:center}
 button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo)){display:none}
-.nodo-rail-list{flex:1;min-height:0;overflow-y:auto;padding-bottom:16px}
+.nodo-rail-list{display:flex;flex-direction:column;flex:1;min-height:0;padding-bottom:16px}
+.nodo-roles{display:flex;flex-direction:column;flex:0 3 auto;min-height:0}
+.nodo-project-body{display:flex;flex-direction:column;flex:1;min-height:0}
+.nodo-role-list,.nodo-sessions{min-height:0;overflow-y:auto;margin-inline:calc(-1 * var(--nodo-rail-inset));padding-inline:var(--nodo-rail-inset)}
 .nodo-rail-foot{flex:none;padding:8px 0}
 .nodo-search{display:flex;flex:1;min-width:0;animation:nodo-search-open .16s ease-out}
 .nodo-search-input{width:100%;min-width:0}
@@ -7351,9 +8628,10 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-section-head{display:flex;align-items:center;justify-content:flex-end;gap:4px;height:36px;margin-bottom:4px;padding-left:4px;flex:none}
 .nodo-section-head>.nodo-section-title{flex:none;max-width:45%}
 .nodo-section-head>h2.nodo-section-title{flex:1;min-width:0;max-width:none;text-align:left}
-.nodo-projects{margin-top:12px}
+.nodo-projects{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;margin-top:12px;padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-role{display:flex;align-items:center;gap:4px;min-height:48px;padding:4px 8px;border-radius:var(--dsw-radius-lg)}
-.nodo-role:hover,.nodo-role[data-selected=true]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role[data-selected=true]{background:var(--dsw-specific-sidebar-nav-item-active)}
 .nodo-role-select{display:flex;align-items:center;gap:8px;flex:1;min-width:0;align-self:stretch;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-role-text{display:flex;flex-direction:column;flex:1;min-width:0}
 .nodo-role-description{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px}
@@ -7363,6 +8641,13 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-rail-empty{padding:10px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project,.nodo-row{display:flex;align-items:center;gap:6px;width:100%;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-project{height:34px;padding:0 4px}
+.nodo-project-field{height:36px;margin-bottom:6px;padding:0 10px 0 4px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 0 0 .5px var(--dsw-alias-border-l2)}
+.nodo-project-field:has(.nodo-search){padding:0;background:0 0;box-shadow:none}
+.nodo-project-field .nodo-row-actions{display:inline-flex}
+.nodo-role-filter{width:auto;height:28px;margin-bottom:4px;padding:0}
+.nodo-role-filter .nodo-picker{flex:none}
+.nodo-role-filter .nodo-project-select{flex:none;gap:4px;padding:0 8px 0 6px;border-radius:14px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.nodo-role-filter .nodo-row-title{font-size:12px;line-height:16px}
 .nodo-picker{display:flex;flex:1;min-width:0}
 .nodo-project-select{display:flex;align-items:center;gap:6px;flex:1;min-width:0;height:100%;padding:0 4px;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .nodo-chevron{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-caption);transition:transform .15s var(--ds-ease-in-out)}
@@ -7380,18 +8665,19 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-row-action{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;padding:0;border:0;border-radius:var(--dsw-radius-xs);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-row-action:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
 .nodo-folder{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-deep-diving)}
-.nodo-sessions{display:flex;flex-direction:column;gap:2px}
-.nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 30px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
+.nodo-sessions{display:flex;flex-direction:column;flex:1;gap:2px;padding-block:2px}
+.nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 32px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
 .nodo-show-more:hover{color:var(--dsw-alias-label-primary)}
-.nodo-row{height:32px;padding:0 8px 0 30px}
-.nodo-session-empty{padding:10px 12px 10px 30px}
+.nodo-row{height:36px;padding:0 8px}
+.nodo-session-empty{padding:10px 12px 10px 32px}
 .nodo-session-item{display:flex;align-items:center;gap:2px;width:100%}
 .nodo-session-item>.nodo-session{flex:1;min-width:0}
 .nodo-session-item:hover .nodo-row-actions,.nodo-session-item:focus-within .nodo-row-actions,.nodo-session-item[data-menu=open] .nodo-row-actions{display:inline-flex}
 .nodo-session[data-archived]{color:var(--dsw-alias-label-tertiary)}
 .nodo-row-archived{display:inline-flex;align-items:center;gap:4px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px}
 .nodo-section-head .nodo-icon-btn[data-active]{color:var(--dsw-alias-state-business-primary)}
-.nodo-row:hover,.nodo-row[aria-current=page]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
 .nodo-session .nodo-avatar{flex:none}
@@ -7432,11 +8718,17 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-user{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .nodo-bubble{max-width:min(calc(var(--dsh-chat-content-width,748px) * .702),82%);padding:10px 16px;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(22px + var(--dsh-content-font-delta,0px));white-space:pre-wrap;word-break:break-word}
 .nodo-reply{min-width:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
+.nodo-streaming-text{position:relative;min-width:0}
+.nodo-streaming-caret{position:absolute;width:2px;margin-left:2px;border-radius:1px;background:var(--dsw-alias-state-business-primary);pointer-events:none;animation:nodo-streaming-pulse 1s ease-in-out infinite}
+.nodo-streaming-caret[hidden]{display:none}
+@keyframes nodo-streaming-pulse{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){.nodo-streaming-caret{animation:none}}
 .nodo-row-content{flex:1;min-width:0}
 .nodo-row-content-layout{min-width:0}
 .nodo-tool-sep{flex:none;width:2px;height:2px;margin:0 8px;border-radius:1px;background:var(--dsw-alias-label-caption)}
 .nodo-row-summary{flex:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-row-summary[data-error]{color:var(--dsw-alias-state-error-primary)}
+.nodo-request-answer{white-space:pre-wrap;overflow-wrap:anywhere}
 .nodo-plan-list{display:flex;flex-direction:column;gap:2px;margin:4px 0 4px 4px;padding:0}
 .nodo-plan-step{display:flex;gap:8px;align-items:baseline;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
 .nodo-plan-mark{flex:none;width:14px;text-align:center;color:var(--dsw-alias-label-tertiary)}
@@ -7445,7 +8737,6 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-plan-text{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .nodo-think-summary{flex:auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
 .nodo-think-summary[data-streaming]{mask-image:linear-gradient(90deg,black calc(100% - 48px),transparent)}
-.nodo-process-group{display:flex;flex-direction:column;padding-left:22px;min-width:0}
 .nodo-think-body{padding:4px 0 4px calc(22px + var(--dsh-content-font-delta,0px));min-width:0;color:var(--dsw-alias-label-secondary)}
 .nodo-image-preview{display:inline-block;max-width:100%;padding:0;border:0;background:transparent;color:inherit;cursor:zoom-in}
 .nodo-image-preview:disabled{cursor:wait}
@@ -7790,6 +9081,39 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 @media(max-width:820px){.nodo-frame{flex-direction:column}.nodo-rail{width:100%;max-height:45%;border-right:0;border-bottom:.5px solid var(--dsw-alias-border-l3)}.nodo-rail-head{height:48px}.nodo-head{padding:10px 16px 0}.nodo-feed{padding:16px}.nodo-composer{width:calc(100% - 24px)}}
 `;
 
+// src/client/scrollbars.ts
+var SCOPE = ":root[data-nodo-space], .nodo-page";
+var IDLE_MS = 900;
+var SCROLLBAR_CSS = `
+@property --nodo-scroll-fade{syntax:'<number>';inherits:true;initial-value:0}
+:where(:root[data-nodo-space],.nodo-page),:where(:root[data-nodo-space],.nodo-page) *{--nodo-scroll-fade:0;transition:--nodo-scroll-fade .6s var(--ds-ease-in-out)}
+:where(:root[data-nodo-space],.nodo-page)[data-scrolling],:where(:root[data-nodo-space],.nodo-page) [data-scrolling]{--nodo-scroll-fade:1;transition-duration:.12s}
+:is(:root[data-nodo-space],.nodo-page)::-webkit-scrollbar-thumb,:is(:root[data-nodo-space],.nodo-page) ::-webkit-scrollbar-thumb{background-color:color-mix(in srgb,var(--dsh-scrollbar-thumb) calc(var(--nodo-scroll-fade) * 100%),transparent)}
+:is(:root[data-nodo-space],.nodo-page)::-webkit-scrollbar-thumb:hover,:is(:root[data-nodo-space],.nodo-page) ::-webkit-scrollbar-thumb:hover{background-color:var(--dsh-scrollbar-thumb-hover)}
+`;
+function installScrollbars(document2) {
+  const timers = /* @__PURE__ */ new Map();
+  const rest = (element) => {
+    element.removeAttribute("data-scrolling");
+    timers.delete(element);
+  };
+  const onScroll = (event) => {
+    const element = event.target === document2 ? document2.scrollingElement : event.target;
+    if (!element?.closest?.(SCOPE)) return;
+    clearTimeout(timers.get(element));
+    element.setAttribute("data-scrolling", "");
+    timers.set(element, setTimeout(() => rest(element), IDLE_MS));
+  };
+  document2.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  return () => {
+    document2.removeEventListener("scroll", onScroll, { capture: true });
+    for (const [element, timer] of timers) {
+      clearTimeout(timer);
+      rest(element);
+    }
+  };
+}
+
 // src/client/index.js
 var inject = ["slots", "uiWorkspace", "uiSession", "sessions", "layout", "modelDirectories", "remote", "remote.session", "commandUi", "inputTriggers", "conversation"];
 function apply(ctx) {
@@ -7811,10 +9135,22 @@ function apply(ctx) {
   ctx.effect(() => () => completionTracker2.dispose(), "nodo: completion read state");
   ctx.effect(() => {
     const style = document.createElement("style");
-    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS;
+    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS + SCROLLBAR_CSS;
     document.head.appendChild(style);
     return () => style.remove();
   }, "nodo: page styles");
+  ctx.effect(() => {
+    const root = document.documentElement;
+    const mark = () => root.toggleAttribute("data-nodo-space", space.getSnapshot().active);
+    const stop = space.subscribe(mark);
+    const dispose = installScrollbars(document);
+    mark();
+    return () => {
+      stop();
+      dispose();
+      root.removeAttribute("data-nodo-space");
+    };
+  }, "nodo: scrollbars");
   ctx.slots.inject("conversation.input.dock", () => {
     const stops = [
       ctx.slots.register({ name: "conversation.input.dock", id: "nodo-running", order: -100 }, NativeRunningDock),
