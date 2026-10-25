@@ -40,7 +40,6 @@ export function createMessageStream({ append, redact, save = () => {} }) {
       if (hasText) {
         if (current !== entry && event.type !== 'text') close()
         entry.raw = event.type === 'text' ? event.text : entry.raw + event.text
-        entry.raw = entry.raw.slice(0, TRANSCRIPT_TEXT_MAX + 1)
         entry.line.text = clip(redact(entry.raw), TRANSCRIPT_TEXT_MAX, kind === 'text' ? 'long reply' : 'long reasoning')
       }
       if (event.channel !== undefined) entry.line.channel = redact(event.channel)

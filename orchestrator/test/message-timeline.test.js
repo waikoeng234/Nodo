@@ -4,6 +4,8 @@ import { install } from '../core/src/dispatch.js'
 import { createMessageStream } from '../core/src/message-stream.js'
 import { transcriptReplies } from '../core/src/session-references.js'
 import { redactDeep, redactor } from '../core/src/secrets.js'
+import { TRANSCRIPT_TEXT_MAX } from '../core/src/constants.js'
+import { clip } from '../core/src/text.js'
 
 const harness = () => {
   const lines = [], reports = [], images = [], saves = []
@@ -210,6 +212,20 @@ test('long delta streams stay live without saving or rebuilding the full turn fo
     h.emit({ type: 'turn/end', reason: 'done' })
     await tick()
     assert.equal(h.saves.at(-1)[0].reply, true)
+  } finally { h.dispose() }
+})
+
+test('a completed turn keeps its whole reply for consumers while its transcript line stays bounded', async () => {
+  const h = harness()
+  try {
+    h.emit({ type: 'turn/start' })
+    const reply = `${'x'.repeat(TRANSCRIPT_TEXT_MAX - 8)}fake-sensitive-fixture`
+    h.emit({ type: 'delta', messageId: 'long', text: reply })
+    h.emit({ type: 'turn/end', reason: 'done' })
+    await tick()
+    assert.equal(h.reports.at(-1).text, reply)
+    assert.equal(h.lines.at(-1).text, clip(h.rt.redactDeepSecrets(reply), TRANSCRIPT_TEXT_MAX, 'long reply'))
+    assert.ok(!h.lines.at(-1).text.includes('fake-sensitive-fixture'))
   } finally { h.dispose() }
 })
 
