@@ -17,6 +17,7 @@ export function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines =
   const [draft, setDraft] = useState({
     name: profile?.name ?? '', engine: profile?.engine ?? '', role: profile?.role ?? '',
     instructions: profile?.instructions ?? '',
+    lead: profile?.lead === true,
     avatarTemplate: profile ? avatarTemplateOf(profile).id : AVATAR_TEMPLATES[avatarSeed % AVATAR_TEMPLATES.length].id,
     identity: allPresets.find(item => item.instructions === profile?.instructions)?.name ?? 'custom',
     model: profile?.model ?? '', thinking: profile?.thinking ?? '',
@@ -237,6 +238,9 @@ export function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines =
               ? h('p', { className: 'nodo-role-notice', role: 'status' }, `身份已修改，保存后将于下轮生效 · 影响 ${sessions} 个会话`)
               : h('p', { className: 'nodo-dialog-hint' }, `${sessions} 个会话正在使用此角色 · 身份修改将于下轮生效`))),
           h('div', { className: 'nodo-role-run', role: 'group', 'aria-label': '运行' },
+            h(Field, { label: '主控' },
+              h('input', { type: 'checkbox', role: 'switch', 'aria-label': '主控', checked: draft.lead, disabled,
+                onChange: event => setDraft(current => ({ ...current, lead: event.target.checked })) })),
             h(Field, { label: '调用 Agent' },
               h('select', { className: 'nodo-dialog-input nodo-dialog-select', disabled: disabled || loading || profile !== null,
                 title: profile ? '创建后不可更换 Agent' : undefined, value: draft.engine, onChange: chooseEngine },

@@ -428,6 +428,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-role-dialog .nodo-role-run .nodo-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);align-items:center;column-gap:12px;row-gap:2px;padding:8px 8px 8px 14px}
 .nodo-role-dialog .nodo-role-run .nodo-field+.nodo-field{border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-role-dialog .nodo-role-run .nodo-field>span{font-size:13px;color:var(--dsw-alias-label-primary)}
+.nodo-role-dialog .nodo-role-run input[role=switch]{justify-self:start;width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
 .nodo-role-dialog .nodo-dialog-error{margin:0}
 @media(max-width:640px){.nodo-role-layout{grid-template-columns:minmax(0,1fr);gap:16px}.nodo-role-aside{position:static}.nodo-role-fields{max-height:64vh;gap:16px}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}.nodo-role-dialog .nodo-role-run .nodo-field{grid-template-columns:minmax(0,1fr)}}

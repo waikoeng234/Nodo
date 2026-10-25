@@ -425,7 +425,7 @@ export function install(rt) {
   // instead of steering or queueing: a workflow task must not absorb a message
   // meant for another step.
   const occupied = (profileId, st) => st.starting || st.active || st.finishing || rt.isCompacting(profileId)
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
     profileId = session.id
     const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
@@ -440,8 +440,8 @@ export function install(rt) {
       ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
     if (handoff) sources.push(...rt.redactDeepSecrets(handoff.artifacts))
-    const input = handoff ? rt.renderHandoff({ ...handoff, task: text, artifacts: sources })
-      : [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
+    const input = (brief ? `${brief}\n\n` : '') + (handoff ? rt.renderHandoff({ ...handoff, task: text, artifacts: sources })
+      : [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n'))
     if (!session.briefSent) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {

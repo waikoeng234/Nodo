@@ -69,7 +69,7 @@ export function install(rt) {
     return workspace.id
   }
 
-  const createProfile = async ({ name, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate }) => {
+  const createProfile = async ({ name, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate, lead }) => {
     await rt.load()
     await rt.driversReady()
     if (Object.keys(state.profiles).length >= MAX_PROFILES) throw Object.assign(new Error(`At most ${MAX_PROFILES} profiles`), { code: 'orch/invalid' })
@@ -83,6 +83,7 @@ export function install(rt) {
       id: randomUUID(),
       name: cleanName(name),
       role: String(role ?? '').slice(0, ROLE_MAX),
+      ...(lead === true ? { lead: true } : {}),
       engine,
       avatarTemplate: cleanAvatarTemplate(avatarTemplate)
         ?? avatarTemplates[Object.keys(state.profiles).length % avatarTemplates.length].id,
@@ -112,6 +113,7 @@ export function install(rt) {
     const next = { ...profile }
     if (changes.name !== undefined) next.name = cleanName(changes.name, profile.id)
     if (changes.role !== undefined) next.role = String(changes.role ?? '').slice(0, ROLE_MAX)
+    if (changes.lead !== undefined) next.lead = changes.lead === true
     if (changes.avatarTemplate !== undefined) next.avatarTemplate = cleanAvatarTemplate(changes.avatarTemplate)
     next.engine = cleanEngine(changes.engine !== undefined ? changes.engine : profile.engine)
     // An engine is fixed for the life of a role: presets and native sessions
@@ -141,6 +143,7 @@ export function install(rt) {
     Object.assign(profile, next, { updatedAt: Date.now() })
     if (profile.model === undefined) delete profile.model
     if (profile.thinking === undefined) delete profile.thinking
+    if (!profile.lead) delete profile.lead
     if (respawn || permissionChanged) {
       const active = rt.sessionsOf(profile).find(item => item.id === profile.activeSessionId)
       // The card's model/thinking pair is the default for conversations it opens

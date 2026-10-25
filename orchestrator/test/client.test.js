@@ -757,6 +757,31 @@ test('every host UI kit member the page uses is destructured from the kit', () =
 // hook fakes and call handler.
 const loadProfileDialog = async ({ react, call }) => loadClient(['profile-dialogs.js', 'avatar.tsx'], { react, call })
 
+test('the role dialog creates and updates the lead switch without adding identity text', async () => {
+  for (const profile of [null, { id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] }]) {
+    const calls = []
+    const { ProfileDialog, host } = await loadProfileDialog({ call: async (endpoint, payload) => {
+      calls.push({ endpoint, payload })
+      return endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : { id: 'saved' }
+    } })
+    const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+    const render = () => { host.reset(); return nodes(ProfileDialog({ profile, onSaved() {} })) }
+    render()
+    host.effects.splice(0).forEach(effect => effect())
+    await new Promise(resolve => setImmediate(resolve))
+    const toggle = () => render().find(node => node.type === 'input' && node.props.role === 'switch' && node.props['aria-label'] === '主控')
+    assert.equal(toggle().props.checked, profile !== null)
+    toggle().props.onChange({ target: { checked: profile === null } })
+    if (!profile) render().find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer')
+      .props.onChange({ target: { value: 'New lead' } })
+    await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+    const saved = calls.at(-1)
+    assert.equal(saved.endpoint, profile ? 'profile-update' : 'profile-create')
+    assert.equal((profile ? saved.payload.changes : saved.payload).lead, profile === null)
+    assert.equal((profile ? saved.payload.changes : saved.payload).instructions, '')
+  }
+})
+
 test('role avatar selection and animation preview submit the selected template', async () => {
   const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
@@ -1191,7 +1216,7 @@ test('the role dialog offers the model and thinking defaults and saves them', as
   const select = (held, label) => field(held, label).children.filter(Boolean).find(node => node.type === 'select')
   render(profile); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(render(profile).filter(node => node.type === Field).map(node => node.props.label),
-    ['头像模板', '名字', '身份', '身份信息', '调用 Agent', '模型', '思考档位'], 'the avatar leads, the identity pair follows, the run defaults close the card')
+    ['头像模板', '名字', '身份', '身份信息', '主控', '调用 Agent', '模型', '思考档位'], 'the avatar leads, the identity pair follows, the run defaults close the card')
   assert.deepEqual(render(profile).filter(node => node.type === 'select').map(node => node.props.value), ['zcode', 'glm-x', 'high'],
     'the card shows the pair it already carries')
   assert.deepEqual(select(profile, '模型').children.filter(Boolean).map(option => [option.type, option.props.label]),
