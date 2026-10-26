@@ -6,8 +6,8 @@ import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX } from '../core/src/constants.js'
 import { route } from '../core/src/lead.js'
 import { until, withHost } from './helpers/host.js'
 
-const delegate = (to, task = 'Implement the task\nKeep existing changes; report paths and tests.') => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', to, task })}\n\`\`\``
-const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.') => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', type, hard, task })}\n\`\`\``
+const delegate = (to, task = 'Implement the task\nKeep existing changes; report paths and tests.', session) => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', to, task, session })}\n\`\`\``
+const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.', session) => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', type, hard, task, session })}\n\`\`\``
 const completed = text => ({ mode: 'turn', completion: Promise.resolve({ reason: 'done', text }) })
 
 const withLead = run => withHost(async host => {
@@ -74,7 +74,7 @@ test('lead delegates in its workspace, returns referenced reports and stops at 1
   assert.equal(lines(conversation).filter(line => line.text?.startsWith('已派给 Worker ·')).length, 12)
   const reports = lines(conversation).filter(line => line.who === 'user' && line.references)
   assert.equal(reports.length, 12)
-  assert.match(reports[0].text, /Report from Worker · Implement the task \(ended: done\)/)
+  assert.match(reports[0].text, new RegExp(`Report from Worker · Implement the task \\(session ${delegated[0].id}, ended: done\\)`))
   assert.equal(reports[0].references[0].source.sessionId, delegated[0].id)
   assert.equal(reports[0].references[0].target, conversation.id)
   assert.equal(reports[0].references[0].messages[0].text, 'Changed src/task.js; verified task tests; nothing open.')
@@ -563,4 +563,220 @@ test('an invalid assignee is refused before message files reach the workspace', 
   assert.equal(result.ok, false)
   assert.equal(result.error.code, 'orch/invalid')
   assert.equal(existsSync(join(host.home, 'ws', '.nodo', 'workflow-inputs')), false)
+}))
+
+test('a lead can continue its own dispatched session instead of opening a new one', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Work completed')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, work.id)))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  const sent = inputs.filter(item => item.sessionId === work.id)
+  assert.equal(sent.length, 2)
+  assert.ok(sent[1].text.startsWith('Task from lead Lead (Nodo lead mode)'))
+  assert.ok(sent[1].text.endsWith('Implement the task\nKeep existing changes; report paths and tests.'))
+  assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${work.name}`))
+  const report = lines(conversation).filter(line => line.who === 'user' && line.references).at(-1)
+  assert.ok(report.text.startsWith(`Report from Worker · ${work.name} (session ${work.id}, ended: done).`))
+  assert.equal(report.references[0].source.sessionId, work.id)
+}))
+
+test('routing mode continues a session when the type and difficulty match', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Router', 'Fixed the header; tests pass.', { taskTypes: ['bug-fix'], hard: { model: 'hard-model', thinking: 'high' } })
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('bug-fix', true, 'Fix the header')))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('bug-fix', true, 'Fix the footer', work.id)))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  assert.ok(lines(conversation).some(line => line.text === '继续派给 Router · Fix the header（修复 · 难题）'))
+}))
+
+test('continuation is refused for unknown, foreign and archived sessions', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const second = await role('Second lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const secondConversation = await session(second)
+  const feedback = () => lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令')).at(-1).text
+  const refused = async command => {
+    await rt.followLead(lead.id, conversation.id, completed(command))
+    return feedback()
+  }
+  await rt.followLead(second.id, secondConversation.id, completed(delegate(worker.id)))
+  const foreign = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  assert.match(await refused(delegate(worker.id, undefined, 'missing')), /session 必须是本主控会话派出的执行会话 id/)
+  assert.match(await refused(delegate(worker.id, undefined, foreign.id)), /session 必须是本主控会话派出的执行会话 id/)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  const own = rt.sessionsOf(rt.findProfile(worker.id))[1]
+  rt.conversation(worker.id, own.id).session.archivedAt = Date.now()
+  assert.match(await refused(delegate(worker.id, undefined, own.id)), /该执行会话已归档/)
+  assert.ok(feedback().includes('去掉 session 字段新开会话'))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 2)
+}))
+
+test('continuation is refused when the executor or the last result does not match', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const other = await role('Other', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const feedback = () => lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令')).at(-1).text
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  await rt.followLead(lead.id, conversation.id, completed(delegate(other.id, undefined, work.id)))
+  assert.match(feedback(), /该执行会话属于其他角色/)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, work.id)), other.id)
+  assert.match(feedback(), /该执行会话属于其他角色/)
+  assert.equal(rt.sessionsOf(rt.findProfile(other.id)).filter(item => item.source?.kind === 'lead').length, 0)
+  const send = rt.send
+  rt.send = async (profileId, text, sessionId, ...rest) => {
+    const placed = await send(profileId, text, sessionId, ...rest)
+    return profileId === worker.id ? { ...placed, completion: Promise.resolve({ reason: 'done', unconfirmed: true }) } : placed
+  }
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  rt.send = send
+  const flagged = rt.sessionsOf(rt.findProfile(worker.id))[1]
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, flagged.id)))
+  assert.match(feedback(), /该执行会话上次没有正常完成/)
+  rt.findProfile(worker.id).engineOptions.script = [{ kind: 'ask' }]
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  const stopped = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[2])
+  await until(() => rt.approvalsView().some(item => item.profileId === stopped.id))
+  await rt.interrupt(worker.id, stopped.id)
+  await pending
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, stopped.id)))
+  assert.match(feedback(), /该执行会话上次没有正常完成/)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 3)
+}))
+
+test('routing mode refuses continuation when the difficulty differs', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Router', 'Done', { taskTypes: ['feature'], hard: { model: 'hard-model', thinking: 'high' } })
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', true, 'Fix the header')), worker.id)
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false, 'Fix the footer', work.id)), worker.id)
+  const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+  assert.equal(feedback.length, 1)
+  assert.match(feedback[0].text, /该执行会话的任务难度与本次不同/)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+}))
+
+test('a session can be continued at most twice', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, work.id)))
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, work.id)))
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, work.id)))
+  const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+  assert.equal(feedback.length, 1)
+  assert.match(feedback[0].text, /该执行会话已续用 2 次/)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 3)
+}))
+
+test('a busy session refuses continuation without creating a delegation', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'ask' }
+  const poke = rt.send(worker.id, 'Poke', work.id, [], [], undefined)
+  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, work.id)))
+  const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+  assert.equal(feedback.length, 1)
+  assert.match(feedback[0].text, /该执行会话正忙/)
+  assert.ok(feedback[0].text.includes('去掉 session 字段新开会话'))
+  assert.ok(!lines(conversation).some(line => line.text?.startsWith('继续派给')))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 2)
+  await rt.interrupt(worker.id, work.id)
+  await poke
+}))
+
+test('a rejection plus a format error exhausts the shared invalid-command budget', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker')
+  const lead = await role('Lead', '```nodo\n{bad}\n```', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, 'missing')))
+  const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+  assert.equal(feedback.length, 1)
+  assert.match(feedback[0].text, /session 必须是本主控会话派出的执行会话 id/)
+  assert.ok(lines(conversation).some(line => line.who === 'system' && /连续 2 次/.test(line.text)))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 0)
+}))
+
+test('two continuation rejections in the same chain exhaust the shared invalid-command budget', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker')
+  const lead = await role('Lead', delegate(worker.id, undefined, 'missing'), { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, 'missing')))
+  const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+  assert.equal(feedback.length, 1)
+  assert.match(feedback[0].text, /session 必须是本主控会话派出的执行会话 id/)
+  assert.ok(lines(conversation).some(line => line.who === 'system' && /连续 2 次/.test(line.text)))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
+}))
+
+test('two rejections after a successful dispatch still exhaust the invalid-command budget', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  const send = rt.send
+  rt.send = async (profileId, text, sessionId, ...rest) => {
+    const placed = await send(profileId, text, sessionId, ...rest)
+    return profileId === lead.id ? completed(delegate(worker.id, undefined, 'missing')) : placed
+  }
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  rt.send = send
+  const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+  assert.equal(feedback.length, 1)
+  assert.match(feedback[0].text, /session 必须是本主控会话派出的执行会话 id/)
+  assert.ok(lines(conversation).some(line => line.who === 'system' && /连续 2 次/.test(line.text)))
+  const sessions = rt.sessionsOf(rt.findProfile(worker.id))
+  assert.equal(sessions.length, 1)
+  assert.equal(inputs.filter(item => item.sessionId === sessions[0].id).length, 1)
+}))
+
+test('continuations count toward the 12-delegation budget', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', delegate(worker.id), { lead: true })
+  const conversation = await session(lead)
+  const send = rt.send
+  let reports = 0
+  rt.send = (profileId, text, sessionId, ...rest) => {
+    if (profileId !== lead.id || !String(text).startsWith('Report from')) return send(profileId, text, sessionId, ...rest)
+    const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+    return completed(++reports <= 3 ? delegate(worker.id, undefined, work.id) : delegate(worker.id))
+  }
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  rt.send = send
+  const continued = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 10)
+  assert.equal(inputs.filter(item => item.sessionId === continued.id).length, 3)
+  assert.equal(inputs.filter(item => item.text.startsWith('Task from lead Lead')).length, 12)
+  assert.ok(lines(conversation).some(line => line.who === 'system' && /12 次派活上限/.test(line.text)))
+}))
+
+test('both lead briefs explain session continuation', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  const direct = rt.leadBrief(rt.findProfile(lead.id), conversation)
+  assert.ok(direct.includes('To rework the same goal or have the executor re-check its own findings'))
+  assert.ok(direct.includes('"session": "<session id from its report>"'))
+  assert.ok(direct.includes('at most twice per session'))
+  assert.ok(direct.indexOf('Delegate only one task at a time') < direct.indexOf('To rework the same goal'))
+  await role('Router', 'Done', { taskTypes: ['feature'] })
+  const routed = rt.leadBrief(rt.findProfile(lead.id), conversation)
+  assert.ok(routed.includes('"session": "<session id from its report>"'))
+  assert.ok(routed.includes('at most twice per session'))
+  assert.ok(routed.indexOf('Delegate only one task at a time') < routed.indexOf('To rework the same goal'))
 }))
