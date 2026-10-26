@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import type { DriverEvent, FileChange, FileChangeEdit, FileChangesBody } from './spi.js'
 
@@ -14,6 +15,30 @@ export const CHANGE_LIMITS = Object.freeze({ files: 512, edits: 1024, bytes: 102
 const operations: readonly unknown[] = ['add', 'update', 'delete', 'move', 'unknown']
 const validPath = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 2000 && !value.includes('\0')
 const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value))
+
+export function loadDiff(): typeof import('diff') | undefined {
+  try { return createRequire(import.meta.url)('diff') as typeof import('diff') } catch { return undefined }
+}
+
+export function replacementEdit(path: string, oldText: string, newText: string): FileChangeEdit {
+  if (Buffer.byteLength(oldText) + Buffer.byteLength(newText) > CHANGE_LIMITS.bytes) return { operation: 'update', availability: 'oversized' }
+  const diff = loadDiff()
+  if (!diff) return { operation: 'update', availability: 'unavailable' }
+  const diffText = diff.createPatch(path, oldText, newText, 'Nodo replacement fragment', 'Nodo replacement fragment', { timeout: 40, maxEditLength: 10000 })
+  return { operation: 'update', ...(diffText !== undefined ? { diffText } : { availability: 'unavailable' }) }
+}
+
+export function textToolChanges(name: string, raw: unknown): { path: string; edit: FileChangeEdit }[] {
+  let input = raw
+  if (typeof input === 'string') { try { input = JSON.parse(input) } catch { return [] } }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return []
+  const { file_path: path, content, old_string: oldText, new_string: newText } = input as Record<string, unknown>
+  if (typeof path !== 'string' || !['Write', 'Edit'].includes(name)) return []
+  const edit: FileChangeEdit = name === 'Edit' && typeof oldText === 'string' && typeof newText === 'string'
+    ? replacementEdit(path, oldText, newText)
+    : { operation: name === 'Edit' ? 'update' : 'unknown', ...(name === 'Write' && typeof content === 'string' ? { newText: content } : {}) }
+  return [{ path, edit }]
+}
 
 export function normalizeChanges(value: unknown): { body: FileChangesBody; truncated: boolean } | null {
   if (!(['edit-tools', 'workspace-snapshot'] as readonly unknown[]).includes((value as RawChanges)?.scope) || (value as RawChanges).coverage !== 'partial' || !Array.isArray((value as RawChanges).files)) return null

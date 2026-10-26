@@ -1,10 +1,25 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
+import { replacementEdit } from '../agent-drivers/dist/file-changes.js'
 
 const nodes = node => !node || typeof node !== 'object' ? [] : [node,
   ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(nodes)]
 const find = (tree, className) => nodes(tree).find(node => node.props.className === className)
+
+test('replacement fragments display their scope and relative line numbers without merging separate edits', async () => {
+  const { CodeDiff } = await loadClient('code-diff.tsx')
+  const tree = CodeDiff({ filename: 'x', patch: replacementEdit('x', 'before\n', 'after\n').diffText })
+  assert.ok(find(tree, 'nodo-code-diff-filename').children.includes(' · 替换片段'))
+  const lines = nodes(tree).filter(node => node.props?.['data-kind'] === 'meta')
+  assert.match(lines[0].children.join(''), /片段内/)
+  assert.equal(find(tree, 'nodo-code-diff-counts').props['aria-label'], '新增 1 行，删除 1 行')
+  const { summarizeChanges } = await loadClient('file-diffs.ts')
+  const summary = summarizeChanges({ scope: 'edit-tools', fileCount: 1, files: [{ path: 'x', edits: [
+    replacementEdit('x', 'before\n', 'after\n'), replacementEdit('x', 'after\n', 'before\n'),
+  ] }] })
+  assert.deepEqual({ ...summary.totals }, { added: 2, removed: 2 })
+})
 
 test('code diff uses host totals and preserves native diff controls and all source whitespace', async () => {
   const received = []

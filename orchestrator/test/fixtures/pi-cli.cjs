@@ -42,14 +42,14 @@ const saySnap = text => {
   send({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text }], usage, stopReason: 'stop', timestamp: Date.now() } })
 }
 const settle = (aborted = false) => { runActive = false; send({ type: 'agent_start' }); send({ type: 'agent_end', messages: [], willRetry: false }); send({ type: 'agent_settled', aborted }) }
-const tool = (id, name, args, resultText, isError = false) => {
+const tool = (id, name, args, resultText, isError = false, details) => {
   send({ type: 'message_start', message: { ...model, content: [] } })
   send({ type: 'message_update', usage, assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0, id, toolName: name } })
   send({ type: 'message_update', usage, assistantMessageEvent: { type: 'toolcall_delta', contentIndex: 0, delta: JSON.stringify(args) } })
   send({ type: 'message_update', usage, assistantMessageEvent: { type: 'toolcall_end', contentIndex: 0, toolCall: { id, name, arguments: args } } })
   send({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'toolCall', id, name, arguments: args }], usage, stopReason: 'toolUse', timestamp: Date.now() } })
   send({ type: 'tool_execution_start', toolCallId: id, toolName: name, args })
-  send({ type: 'tool_execution_end', toolCallId: id, toolName: name, result: { content: [{ type: 'text', text: resultText }] }, isError, durationMs: 3 })
+  send({ type: 'tool_execution_end', toolCallId: id, toolName: name, result: { content: [{ type: 'text', text: resultText }], ...(details ? { details } : {}) }, isError, durationMs: 3 })
 }
 let pendingDialog = null
 const receive = line => {
@@ -100,6 +100,14 @@ const receive = line => {
       } else saySnap(`Final ${tag}`)
       settle()
     }, 30)
+  }
+  if (text === 'FILE_PATCHES') {
+    const args = { path: 'edited.txt', edits: [{ oldText: 'before', newText: 'after' }] }
+    const patch = '--- edited.txt\n+++ edited.txt\n@@ -3,1 +3,1 @@\n-before\n+after\n'
+    tool('native', 'edit', args, 'Edited', false, { patch, diff: 'display diff' })
+    tool('display', 'edit', args, 'Edited', false, { diff: 'source display diff' })
+    tool('failed', 'edit', { ...args, path: 'failed.txt' }, 'failed', true, { patch })
+    return setTimeout(() => { saySnap('Files done'); settle() }, 10)
   }
   if (text === 'FILES') {
     tool('write-0', 'write', { path: process.cwd() + '/created.txt', content: 'new body' }, `Successfully wrote to ${process.cwd()}/created.txt`)

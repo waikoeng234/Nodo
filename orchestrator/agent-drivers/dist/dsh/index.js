@@ -21,7 +21,7 @@ export function createAcpDshDriver({ cwd, env = {}, model, thinking, permission,
     const storage = dshStorage(storageDir, driverSessionId);
     const identity = dshInstructionsPatch(instructionDir, storage.patch, instructions);
     return createAcpDriver({ cwd, onEvent, driverSessionId: storage.sessionId }, {
-        id: 'dsh', label: 'DSH',
+        id: 'dsh', label: 'DSH', fileChanges: true,
         initialize: initializeDsh, savedId: storage.savedId,
         instructionMode: identity.instructionMode, error: dshError,
         stopReason: stop => stop === 'end_turn' ? 'done' : 'error',

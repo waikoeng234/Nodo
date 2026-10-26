@@ -7,6 +7,8 @@ Desktop/Web uses the host's `workspaceRegistry` and `sessionController`, includi
 the native agent and its writer. Standalone ACP reuses `../acp/core.ts` and the
 shared JSON-RPC transport. It launches an installed CLI with `dsh --profile acp`;
 custom profiles must also expose ACP on stdio. No dependencies are added.
+The ACP route retains standard diff blocks from confirmed editing tools; the
+native route continues to use the host's workspaceChanges service.
 
 ## Intake result (2026-10-14)
 

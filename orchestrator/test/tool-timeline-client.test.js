@@ -40,7 +40,7 @@ test('timeline disclosure exposes an accessible button and preserves independent
   props.streaming = false
   tree = render()
   assert.ok(nodes(tree).filter(node => node.type === 'li').every(step => step.props['data-active'] === false))
-  assert.equal(find(tree, 'nodo-tool-timeline-label').children[0], '处理过程')
+  assert.equal(find(tree, 'nodo-tool-timeline-label').children[0], '2 个步骤')
 })
 
 test('timeline retains closing content for the transition and disposes it after the delay', async () => {
@@ -164,6 +164,7 @@ test('structured failure states and interleaved result cards retain their origin
   assert.deepEqual(steps.map(step => step.callId), ['a', 'b', 'a', 'c', 'd'])
   assert.deepEqual(steps.map(step => step.active), [false, true, false, false, false])
   assert.deepEqual(steps.map(step => step.content.props.record.status), ['running', 'running', 'error', 'denied', 'interrupted'])
+  assert.ok(steps.every(step => step.content.props.timeline === true))
   assert.equal(steps[0].content.props.eventPhase, 'start')
   assert.equal(steps[2].content.props.eventPhase, 'end')
   assert.ok(steps.every(step => step.content.props.record.body.outputText === 'source output'))

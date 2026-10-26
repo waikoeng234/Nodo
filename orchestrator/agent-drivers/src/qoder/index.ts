@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { STEER, addUsage, usageOf } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
-import { createFileChanges } from '../file-changes.js'
+import { createFileChanges, replacementEdit } from '../file-changes.js'
 import { qoderArgs, connectQoder } from './native.js'
 import type { QoderConnection } from './native.js'
 import type { Driver, DriverEvent, DriverResponse, EngineCheckResult, EngineCommandInventory, EngineInfo, PermissionMode, Usage } from '../spi.js'
@@ -200,7 +200,7 @@ function qoderFileChanges(name: string, input: QoderInput | undefined, resultTex
     return [{ path: input.file_path, edit: { operation: created ? 'add' : 'update', newText: input.content, ...(created ? { oldText: null } : {}) } }]
   }
   if (name === 'Edit' && typeof input?.file_path === 'string' && typeof input?.old_string === 'string' && typeof input?.new_string === 'string')
-    return [{ path: input.file_path, edit: { operation: 'update', oldText: input.old_string, newText: input.new_string } }]
+    return [{ path: input.file_path, edit: replacementEdit(input.file_path, input.old_string, input.new_string) }]
   return []
 }
 

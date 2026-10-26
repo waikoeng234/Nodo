@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDriver, registerEngine } from '../agent-drivers/dist/index.js'
 import { createFileChanges, normalizeChanges, CHANGE_LIMITS } from '../agent-drivers/dist/file-changes.js'
+import { replacementEdit, textToolChanges } from '../agent-drivers/dist/file-changes.js'
+import { applyPatch, parsePatch } from 'diff'
 import { claudeFileChanges } from '../agent-drivers/dist/claude/file-changes.js'
 import { changesTool, createRecordTracker, previewRecord } from '../core/src/stream-records.js'
 import { boot, until } from './helpers/host.js'
@@ -112,7 +114,11 @@ for (const engine of ['claude', 'zcode']) test(`${engine} pairs confirmed edit r
       assert.equal(body.files[0].edits[0].newText, 'confirmed 0')
       assert.equal(body.files[0].edits[0].oldText, undefined)
       assert.equal(body.files[1].edits[0].oldText, null)
-    } else assert.ok(body.files.every(file => file.edits[0].newText === undefined))
+    } else {
+      assert.equal(body.files[0].edits[0].newText, 'owner choice')
+      assert.ok(body.files.slice(1).every(file => file.edits[0].newText === 'proposed'))
+      assert.ok(body.files.every(file => file.edits[0].oldText === undefined))
+    }
     events.length = 0
     await driver.sendTurn('EMPTY')
     await until(() => events.some(event => event.type === 'turn/end'))
@@ -124,9 +130,77 @@ test('Claude structured edit output never promotes replacement snippets to whole
   const input = { file_path: '/x', old_string: 'a', new_string: 'b' }
   const result = { filePath: '/x', oldString: 'a', newString: 'b', originalFile: 'a full file', gitDiff: { patch: 'source patch' } }
   assert.deepEqual(claudeFileChanges('Edit', input, result), [{ path: '/x', edit: { operation: 'update', diffText: 'source patch' } }])
+  const fragment = claudeFileChanges('Edit', input, { ...result, gitDiff: undefined })[0].edit
+  assert.equal(fragment.oldText, undefined)
+  assert.equal(fragment.newText, undefined)
+  assert.equal(parsePatch(fragment.diffText)[0].oldHeader, 'Nodo replacement fragment')
+  assert.equal(applyPatch('a', fragment.diffText), 'b')
   assert.deepEqual(claudeFileChanges('Edit', input, { ...result, staged: true }), [])
   assert.deepEqual(claudeFileChanges('NotebookEdit', { notebook_path: '/x' }, { notebook_path: '/x', original_file: 'before notebook', updated_file: 'after notebook' }),
     [{ path: '/x', edit: { operation: 'update', oldText: 'before notebook', newText: 'after notebook' } }])
+})
+
+test('replacement evidence preserves whitespace and empty replacements without claiming whole-file images', () => {
+  for (const [before, after] of [['  before\r\nnext\r\n', '\tafter\r\nnext\r\n'], ['before', ''], ['', 'after'], ['same\n', 'same\n']]) {
+    const edit = replacementEdit('文件.txt', before, after)
+    assert.equal(edit.oldText, undefined)
+    assert.equal(edit.newText, undefined)
+    assert.equal(applyPatch(before, edit.diffText), after)
+  }
+  assert.equal(replacementEdit('large', 'x'.repeat(CHANGE_LIMITS.bytes + 1), '').availability, 'oversized')
+  assert.deepEqual(textToolChanges('Edit', '{broken'), [])
+  assert.deepEqual(textToolChanges('Bash', { file_path: '/x', content: 'not an edit' }), [])
+  assert.deepEqual(textToolChanges('Write', { file_path: '/x', content: '' }), [{ path: '/x', edit: { operation: 'unknown', newText: '' } }])
+})
+
+test('Claude retains source structured hunks and their real line positions before falling back to replacement fragments', () => {
+  const input = { file_path: '/x' }
+  const result = { filePath: '/x', oldString: 'before', newString: 'after',
+    structuredPatch: [{ oldStart: 3, oldLines: 1, newStart: 3, newLines: 1, lines: ['-before', '+after'] }] }
+  const edit = claudeFileChanges('Edit', input, result)[0].edit
+  assert.equal(parsePatch(edit.diffText)[0].hunks[0].oldStart, 3)
+  assert.equal(applyPatch('first\nsecond\nbefore\n', edit.diffText), 'first\nsecond\nafter\n')
+  assert.doesNotMatch(edit.diffText, /Nodo replacement fragment/)
+  assert.match(claudeFileChanges('Edit', input, { ...result, structuredPatch: [{ lines: [4] }] })[0].edit.diffText, /Nodo replacement fragment/)
+})
+
+test('ZCode captures confirmed replacement fragments, approved inputs and repeated edits without counting failed or replayed results', async () => {
+  await withDriver('zcode', async ({ driver, events }) => {
+    await driver.sendTurn('FILE_DIFFS')
+    await until(() => events.some(event => event.type === 'turn/end'))
+    const body = events.find(event => event.type === 'changes').presentation.body
+    assert.equal(body.fileCount, 1)
+    const [file] = body.files
+    assert.ok(file.path.endsWith('/edited.txt'))
+    assert.equal(file.edits.length, 2)
+    assert.equal(applyPatch('before\n', file.edits[0].diffText), 'approved\n')
+    assert.equal(applyPatch('approved\n', file.edits[1].diffText), '')
+    assert.ok(file.edits.every(edit => edit.oldText === undefined && edit.newText === undefined))
+    events.length = 0
+    await driver.sendTurn('EMPTY')
+    await until(() => events.some(event => event.type === 'turn/end'))
+    assert.equal(events.find(event => event.type === 'changes').presentation.body.fileCount, 0)
+  })
+})
+
+test('ZCode replacement evidence survives saved-detail loading and host restart', async () => {
+  await withDriver('zcode', async ({ cwd, bin }) => {
+    const home = join(cwd, 'nodo')
+    let host = boot(home)
+    try {
+      const workspace = await host.api('workspace-create', { name: 'Diff evidence', cwd })
+      const profile = await host.api('profile-create', { name: 'Coder', engine: 'zcode', workspace: workspace.id, engineOptions: { bin } })
+      await host.api('send', { profile: profile.id, text: 'FILE_DIFFS' })
+      await until(async () => !(await host.api('state')).work[profile.id].active)
+      const record = (await host.api('transcript', { profile: profile.id })).find(line => line.kind === 'changes').presentation
+      const request = { profile: profile.id, ref: record.details.ref }
+      const full = await host.api('stream-detail', request)
+      assert.equal(applyPatch('before\n', full.body.files[0].edits[0].diffText), 'approved\n')
+      assert.equal(record.body.files[0].edits[0].diffText, undefined, 'the preview must load the saved detail')
+      host.dispose(); host = boot(home)
+      assert.deepEqual(await host.api('stream-detail', request), full)
+    } finally { host.dispose() }
+  })
 })
 
 test('Codex malformed future file payloads downgrade capture without breaking the engine turn', async () => {

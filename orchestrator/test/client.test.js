@@ -1745,9 +1745,9 @@ test('shared composer accepts file paste, drop and picker input without changing
   assert.equal(attachments.length, 3)
 })
 
-test('a composer image thumbnail opens the host lightbox for the original image', async () => {
+test('a composer image attachment opens the host lightbox for the original image', async () => {
   let preview = null
-  const { Composer } = await loadClient('composer.js', {
+  const { Composer, ComposerAttachmentChip } = await loadClient(['composer.js', 'composer-attachments.tsx'], {
     createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
     react: { useState: value => value === null ? [preview, next => { preview = next }] : [value, () => {}], useRef: () => ({ current: null }), useEffect: () => {} },
     primitives: { ImageLightbox: 'ImageLightbox' },
@@ -1755,10 +1755,11 @@ test('a composer image thumbnail opens the host lightbox for the original image'
   })
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
   const props = { value: '', images: [{ name: 'shot.png', dataUrl: 'data:image/png;base64,AA' }, { name: 'loading.png' }], onChange() {}, onRemoveImage() {} }
-  const opens = all(Composer(props)).filter(item => item.props.className === 'nodo-composer-image-open')
-  assert.equal(opens[1].props.disabled, true, 'an image still loading has nothing to enlarge')
+  const chips = all(Composer(props)).filter(item => item.type === ComposerAttachmentChip)
+  assert.equal(chips[1].props.onPreview, undefined, 'an image still loading has nothing to enlarge')
   assert.equal(all(Composer(props)).some(item => item.type === 'ImageLightbox'), false)
-  opens[0].props.onClick()
+  const open = all(ComposerAttachmentChip(chips[0].props)).find(item => item.props['aria-label'] === '预览图片 shot.png')
+  open.props.onClick()
   const lightbox = all(Composer(props)).find(item => item.type === 'ImageLightbox')
   assert.equal(lightbox.props.src, 'data:image/png;base64,AA')
   lightbox.props.onClose()

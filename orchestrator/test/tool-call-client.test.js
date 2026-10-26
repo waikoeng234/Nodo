@@ -92,6 +92,53 @@ test('primary argument chips support structured and legacy requests, partial JSO
   assert.equal(toolCallQuery(null), '')
 })
 
+test('compact rows keep full arguments and keyboard disclosure while showing exceptional outcomes explicitly', async () => {
+  const { ToolCall, host } = await loadClient('tool-call.tsx')
+  const query = 'rg '.concat('long/path/'.repeat(25))
+  const detail = { type: 'pre', props: {}, children: ['complete output'] }
+  for (const status of ['done', 'running', 'started', 'error', 'denied', 'interrupted', 'unknown']) {
+    host.reset()
+    let opened = false
+    const tree = ToolCall({ label: '读取', query, status, compact: true, open: false, onOpenChange: value => { opened = value }, children: detail })
+    const button = find(tree, 'nodo-tool-call-trigger')
+    assert.equal(find(tree, 'nodo-tool-call-query').props.title, query)
+    assert.ok(button.props['aria-label'].includes(query))
+    assert.equal(button.children[0].props.className, 'nodo-tool-call-label', 'there is no extra leading disclosure arrow')
+    assert.equal(button.children.at(-1).props.className, 'nodo-tool-call-chevron')
+    const state = find(tree, 'nodo-tool-call-status')
+    if (['done', 'running', 'started'].includes(status)) assert.equal(state, undefined)
+    else assert.equal(state.children[0], { error: '失败', denied: '已拒绝', interrupted: '已停止', unknown: '结果未确认' }[status])
+    button.props.onClick()
+    assert.equal(opened, true)
+    assert.ok(!nodes(tree).includes(detail))
+    host.reset()
+    assert.ok(nodes(ToolCall({ label: '读取', compact: true, open: true, onOpenChange() {}, children: detail })).includes(detail))
+  }
+})
+
+test('timeline thinking and plans share the compact disclosure and retain complete source bodies', async () => {
+  const { ProcessRow, PlanRow, ToolCall, host } = await loadClient(['feed.js', 'tool-call.tsx'])
+  const body = 'First paragraph\n\nFull reasoning with original details.'
+  const thought = ProcessRow({ kind: 'thinking', title: '思考', summary: 'First paragraph', body, timeline: true })
+  assert.equal(thought.type, ToolCall)
+  assert.equal(thought.props.kind, 'thinking')
+  assert.equal(thought.props.compact, true)
+  assert.equal(thought.props.query, 'First paragraph')
+  assert.equal(thought.props.children.children[0].props.text, body)
+  host.reset()
+  const rendered = ToolCall(thought.props)
+  assert.equal(find(rendered, 'nodo-tool-call-status'), undefined, 'thinking has no tool completion badge')
+  host.reset()
+  const plan = PlanRow({ timeline: true, running: true, plan: { steps: [{ text: 'verify', status: 'in_progress' }, { text: 'report', status: 'pending' }] } })
+  assert.equal(plan.type, ToolCall)
+  assert.equal(plan.props.kind, 'plan')
+  assert.equal(plan.props.query, 'verify')
+  assert.match(JSON.stringify(plan.props.children), /report/)
+  host.reset()
+  const row = ProcessRow({ kind: 'tool', title: '读取', input: 'file.ts', timeline: true })
+  assert.equal(row.props.compact, true)
+})
+
 test('legacy and structured calls share the TSX component and preserve terminal output, saved details and failure states', async () => {
   const { ProcessRow, StreamRecordCard, ToolCall, host } = await loadClient(['feed.js', 'stream-records.js', 'tool-call.tsx'])
   let tree = ProcessRow({ kind: 'tool', title: '读取', input: '{"file_path":"file.ts"}', output: 'body', running: true })
@@ -107,9 +154,10 @@ test('legacy and structured calls share the TSX component and preserve terminal 
   assert.equal(tree.props.status, 'error')
   for (const status of ['running', 'done', 'error', 'denied', 'interrupted', 'unknown']) {
     host.reset()
-    tree = StreamRecordCard({ record: { kind: 'tool', title: 'Bash', entityId: 'call', status, capture: 'complete',
+    tree = StreamRecordCard({ timeline: true, record: { kind: 'tool', title: 'Bash', entityId: 'call', status, capture: 'complete',
       body: { command: 'echo fixture', outputText: 'fixture output' }, details: { state: 'stored', ref: 'ref' } }, request: {} })
     const row = nodes(tree).find(node => node.type === ToolCall)
+    assert.equal(row.props.compact, true)
     assert.equal(row.props.status, status)
     assert.equal(row.props.query, 'echo fixture')
     assert.equal(nodes(tree).find(node => node.type === 'TerminalBlock').props.output, 'fixture output')

@@ -166,6 +166,7 @@ export function install(rt) {
         return rt.archiveSession(resolveProfileRef(body.profile).id, body.session, body.archived === true)
       case 'send': {
         await rt.load()
+        if (body.mode !== undefined && body.mode !== 'queue') throw invalid('Unknown send mode')
         const profile = resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
         let assignee
@@ -177,9 +178,14 @@ export function install(rt) {
         const files = body.files?.length ? { refs: rt.cleanFileRefs(body.files),
           paths: await rt.materializeFiles(body.files, session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd) } : undefined
         const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined,
-          { files, ...(profile.lead ? { brief: rt.leadBrief(profile, session, assignee?.id) } : {}) })
+          { files, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session, assignee?.id) } : {}) })
         if (profile.lead) void rt.followLead(profile.id, session.id, placed, assignee?.id)
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
+      }
+      case 'queued-message': {
+        await rt.load()
+        const profile = resolveProfileRef(body.profile)
+        return rt.queuedMessage(profile.id, body.session, body.seq, body.action)
       }
       case 'attachment':
         return rt.imageOf(body)

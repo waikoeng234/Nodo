@@ -15,6 +15,20 @@ const withFixture = async run => {
   try { await run({ bin, cwd }) } finally { rmSync(cwd, { recursive: true, force: true }) }
 }
 
+test('DSH ACP retains confirmed standard diffs across partial tool updates without counting failed or duplicate results', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('dsh', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('FILES')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const body = events.find(event => event.type === 'changes').presentation.body
+      assert.equal(body.fileCount, 1)
+      assert.deepEqual(body.files[0], { path: join(cwd, 'edited.txt'), edits: [{ operation: 'update', oldText: 'before', newText: 'after' }] })
+    } finally { driver.dispose() }
+  })
+})
+
 test('DSH ACP identity patch preserves storage configuration, reloads on resume and is private', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const instructions = 'Review evidence. '.repeat(110) + 'TAIL_ACP_RULE'

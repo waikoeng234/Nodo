@@ -5,6 +5,7 @@ import {
   PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, PermissionIconFullAccessRegular,
 } from './ui-shared.js'
 import { ModelPicker } from './feed.js'
+import { ComposerAttachments, ComposerAttachmentChip, composerAttachment } from './composer-attachments.tsx'
 
 // The composer is the host's InputBar: one card on the composer surface with the
 // text surface on top and the control row below it, Enter sending, Shift+Enter
@@ -36,13 +37,27 @@ export const triggerOf = value => {
   return { char: token[0], start, query: token.slice(1) }
 }
 
-export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, assigneePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function PendingMessages({ items, disabled, onAction }) {
+  return items.length > 0 && h('div', { className: 'nodo-pending', 'aria-label': '待发消息' },
+    items.map((item, index) => h('div', { key: item.seq, className: 'nodo-pending-item' },
+      h('span', { className: 'nodo-pending-text', title: item.text }, item.text || '图片消息',
+        item.images.length > 0 && h('span', { className: 'nodo-pending-images' }, ` · ${item.images.length} 张图片`)),
+      h('span', { className: 'nodo-pending-actions' },
+        ...[['edit', '编辑'], ['send', '立即发送'], ['delete', '删除']].map(([action, label]) => h('button', {
+          key: action, type: 'button', disabled: disabled || item.sending,
+          'aria-label': `${label}待发消息 ${index + 1}`, onClick: () => onAction(item.seq, action),
+        }, label))))))
+}
+
+export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, assigneePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
   const row = useRef(null)
   const [preview, setPreview] = useState(null)
-  const submitBlocked = busy || readOnly || (!running && value.trim() === '' && images.length === 0 && attachedFiles.length === 0 && references.length === 0)
+  const hasContent = value.trim() !== '' || images.length > 0 || attachedFiles.length > 0 || references.length > 0
+  const stopping = running && !hasContent
+  const submitBlocked = busy || readOnly || (!running && !hasContent)
   useEffect(() => {
     const node = box.current
     if (node === null) return
@@ -141,20 +156,18 @@ export function Composer({ profile, workspace, value, images, running, busy, rea
       if (!readOnly && !busy) onAttachFiles(dropped)
     } : undefined,
   },
+  h(PendingMessages, { items: pending, disabled: readOnly || busy, onAction: onQueueAction }),
   fileMenu,
   references.length > 0 && h('div', { className: 'nodo-composer-files', 'aria-label': '本次消息引用' }, references.map(item => h('span', { key: item.id, className: 'nodo-reference-tag' },
     h('button', { type: 'button', disabled: readOnly || busy, onClick: () => onReference(item) }, item.label),
     h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除引用 ${item.label}`, onClick: () => onRemoveReference(item.id) }, '×')))),
   onAttachFiles && h('input', { ref: picker, type: 'file', multiple: true, hidden: true, disabled: readOnly || busy, 'aria-label': '上传图片或文件',
     onChange: event => { const picked = Array.from(event.target.files); event.target.value = ''; if (picked.length && !readOnly && !busy) onAttachFiles(picked) } }),
-  attachedFiles.length > 0 && h('div', { className: 'nodo-composer-files' }, attachedFiles.map((file, index) => h('span', { key: file.id ?? index, className: 'nodo-composer-file' },
-    h(IconPaperclipOutlineRegular, { size: 14 }), h('span', { title: file.name }, file.name),
-    h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除文件 ${file.name}`, onClick: () => onRemoveFile(index) }, '×')))),
-  images.length > 0 && h('div', { className: 'nodo-composer-images' },
-    images.map((image, index) => h('div', { key: index, className: 'nodo-composer-image' },
-      h('button', { type: 'button', className: 'nodo-composer-image-open', title: '查看原图', disabled: !image.dataUrl, onClick: () => setPreview(image) },
-        h('img', { src: image.dataUrl, alt: image.name })),
-      h('button', { type: 'button', className: 'nodo-composer-image-remove', disabled: readOnly || busy, 'aria-label': `移除图片 ${image.name}`, onClick: () => onRemoveImage(index) }, '×')))),
+  (attachedFiles.length > 0 || images.length > 0) && h(ComposerAttachments, { 'aria-label': '本次消息附件' },
+    attachedFiles.map((file, index) => h(ComposerAttachmentChip, { key: `file:${file.id ?? index}`, attachment: composerAttachment(file),
+      disabled: readOnly || busy, onRemove: () => onRemoveFile(index) })),
+    images.map((image, index) => h(ComposerAttachmentChip, { key: `image:${image.id ?? index}`, attachment: composerAttachment(image, true),
+      disabled: readOnly || busy, onPreview: image.dataUrl ? () => setPreview(image) : undefined, onRemove: () => onRemoveImage(index) }))),
   preview?.dataUrl && h(ImageLightbox, { src: preview.dataUrl, alt: preview.name ?? '原图', labels: { dialog: '图片预览', close: '关闭预览' }, onClose: () => setPreview(null) }),
   h('div', { className: 'nodo-composer-scroll' },
     h('textarea', {
@@ -169,14 +182,16 @@ export function Composer({ profile, workspace, value, images, running, busy, rea
     h('span', { className: 'nodo-composer-target' }, assigneePicker,
       rolePicker,
       onModelChange && h(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange })),
+    onSend && running && hasContent && h('button', { type: 'button', className: 'nodo-pending-stop',
+      disabled: busy || readOnly, 'aria-label': '停止生成', title: '停止生成', onClick: onStop }, ComposerGlyph(true)),
     onSend && h(Tooltip, {
-      label: running ? '停止生成' : '发送消息', side: 'top', align: 'end', delayMs: 500,
+      label: stopping ? '停止生成' : running ? '加入队列' : '发送消息', side: 'top', align: 'end', delayMs: 500,
       children: h('button', {
-        type: running ? 'button' : 'submit', className: 'nodo-send',
+        type: stopping ? 'button' : 'submit', className: 'nodo-send',
         disabled: submitBlocked,
-        'aria-label': running ? '停止生成' : '发送消息',
-        onClick: running ? onStop : undefined,
-      }, ComposerGlyph(running)),
+        'aria-label': stopping ? '停止生成' : running ? '加入队列' : '发送消息',
+        onClick: stopping ? onStop : undefined,
+      }, ComposerGlyph(stopping)),
     })))
 }
 

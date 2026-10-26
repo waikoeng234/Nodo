@@ -19,6 +19,8 @@ folder. This helper is internal and does not register arbitrary CLI commands.
 | `savedId(id)` | Optional persisted-id mapping owned by the Agent |
 | `instructionMode` | `native` only when the Agent has installed instructions; otherwise `none` (no role identity) |
 | `thoughts: false` | Preserve Agents that do not publish reasoning through ACP |
+| `fileChanges: true` | Retain confirmed standard ACP diff blocks and editing locations |
+| `fileEdits(name, input)` | Optional Agent-specific confirmed-input fallback; source diff blocks take precedence |
 | `stopReason(stop)` | Optional Agent-specific done/error mapping; cancellation stays interrupted |
 | `error(error)` | Optional safe Agent-specific error translation |
 | `question({method, params})` | Optional question translation returning `{card, answer(value)}` |

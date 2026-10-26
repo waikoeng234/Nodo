@@ -52,6 +52,11 @@ real runs prove live behavior. Developer probes against the real 1.4.0 CLI
 
 ## Setup
 
+Confirmed edit results prefer `details.patch`, then the source display-oriented
+`details.diff`. These are the [public edit-tool result fields](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/edit.ts).
+When neither is present, replacements are retained as labeled fragments with
+relative line numbers, independently of whole-file write content.
+
 Choose **pi** in the profile form and enter an existing absolute working
 directory. Authenticate once through `pi auth login` or a provider API key
 variable. Optional settings:

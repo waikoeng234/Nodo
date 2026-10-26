@@ -19,7 +19,8 @@ const harness = async call => {
 }
 const descendants = node => {
   if (!node || typeof node !== 'object') return []
-  return [node, ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(descendants)]
+  return [node, ...(node.type?.name === 'FileTree' ? [node.type(node.props)]
+    : [...(node.children ?? []), node.props?.children]).flat(Infinity).flatMap(descendants)]
 }
 
 test('structured view exposes external error state and fetches saved details without changing ownership', async () => {
@@ -164,26 +165,80 @@ test('a pending image says it is saved at the end and a record without resources
   assert.match(JSON.stringify(tree), /no resource fixture/)
 })
 
-test('changed file rows fetch the current workspace file on demand and only with a session request', async () => {
+test('current file content replaces the diff, returns to the original evidence, and retries failed reads', async () => {
   const requests = []
   const view = await harness(async (endpoint, payload) => {
     requests.push({ endpoint, payload })
     if (requests.length === 2) throw new Error('文件不在会话工作区内')
     return { path: '/ws/note.md', text: 'current body', truncated: true }
   })
-  const file = { path: '/ws/note.md', edits: [{ operation: 'update' }] }
-  const props = { file, request: { profile: 'p', session: 's' } }
+  const file = { path: '/ws/note.md', edits: [{ operation: 'update', oldText: 'before', newText: 'after' }] }
+  const props = { file, inline: true, request: { profile: 'p', session: 's' } }
   let tree = view.renderFile(props)
   assert.equal(descendants(tree).filter(node => node.type === 'Button').length, 1)
-  const click = async () => { descendants(view.renderFile(props)).find(node => node.type === 'Button').props.onClick(); await new Promise(resolve => setImmediate(resolve)) }
-  await click()
+  const click = async label => {
+    descendants(view.renderFile(props)).find(node => node.type === 'Button' && node.children.includes(label)).props.onClick()
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  const originalDiff = descendants(tree).find(node => node.type === view.context.CodeDiff).props.diff
+  await click('查看当前内容')
   assert.equal(requests[0].endpoint, 'workspace-file')
   assert.deepEqual(JSON.parse(JSON.stringify(requests[0].payload)), { profile: 'p', session: 's', path: '/ws/note.md' })
   tree = view.renderFile(props)
   assert.equal(descendants(tree).find(node => node.type === 'CodeBlock').props.code, 'current body')
+  assert.ok(!descendants(tree).some(node => node.type === view.context.CodeDiff))
+  assert.ok(descendants(tree).some(node => node.type === 'Button' && node.children.includes('返回差异')))
   assert.match(JSON.stringify(tree), /仅显示开头部分/)
-  await click()
+  const root = descendants(tree).find(node => node.props['data-nodo-tool-file'] === file.path)
+  const popup = { scrollTop: 300 }
+  root.props.ref.current = { closest: selector => { assert.equal(selector, '.nodo-changes-preview'); return popup } }
+  view.effects.at(-1)()
+  assert.equal(popup.scrollTop, 0, 'switching views resets only the preview scroll position')
+  await click('返回差异')
+  tree = view.renderFile(props)
+  assert.deepEqual(descendants(tree).find(node => node.type === view.context.CodeDiff).props.diff, originalDiff)
+  assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
+  assert.equal(requests.length, 1, 'returning to the diff does not read or alter it')
+  await click('查看当前内容')
   tree = view.renderFile(props)
   assert.equal(descendants(tree).find(node => node.props.role === 'alert').children[0], '文件不在会话工作区内')
+  assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock' || node.type === view.context.CodeDiff))
+  await click('重试')
+  tree = view.renderFile(props)
+  assert.equal(requests.length, 3)
+  assert.equal(descendants(tree).find(node => node.type === 'CodeBlock').props.code, 'current body')
+  assert.ok(!descendants(tree).some(node => node.props.role === 'alert'))
   assert.equal(descendants(view.renderFile({ file, loaded: true })).filter(node => node.type === 'Button').length, 0)
+})
+
+test('returning to the diff during a read never lets its late response reopen the content view', async () => {
+  let resolve
+  const view = await harness(() => new Promise(done => { resolve = done }))
+  const props = { file: { path: '/ws/x', edits: [{ operation: 'update', oldText: 'old', newText: 'new' }] },
+    inline: true, request: { profile: 'p', session: 's' } }
+  let tree = view.renderFile(props)
+  descendants(tree).find(node => node.type === 'Button').props.onClick()
+  tree = view.renderFile(props)
+  assert.ok(descendants(tree).some(node => node.props.role === 'status' && node.children.includes('读取中…')))
+  assert.ok(!descendants(tree).some(node => node.type === view.context.CodeDiff))
+  descendants(tree).find(node => node.type === 'Button' && node.children.includes('返回差异')).props.onClick()
+  resolve({ text: 'late file contents' })
+  await new Promise(done => setImmediate(done))
+  tree = view.renderFile(props)
+  assert.ok(descendants(tree).some(node => node.type === view.context.CodeDiff))
+  assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
+})
+
+test('empty, missing and binary current files show explicit results and retain the return action', async () => {
+  for (const [result, label] of [[{ text: '' }, '文件为空。'], [{ missing: true }, '文件已不存在或不是普通文件。'],
+    [{ binary: true }, '二进制文件，无法作为文本展示。']]) {
+    const view = await harness(async () => result)
+    const props = { file: { path: '/ws/x', edits: [] }, inline: true, request: { profile: 'p', session: 's' } }
+    descendants(view.renderFile(props)).find(node => node.type === 'Button').props.onClick()
+    await new Promise(done => setImmediate(done))
+    const tree = view.renderFile(props)
+    assert.ok(descendants(tree).some(node => node.children.includes(label)))
+    assert.ok(descendants(tree).some(node => node.type === 'Button' && node.children.includes('返回差异')))
+    assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
+  }
 })

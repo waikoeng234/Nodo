@@ -24,9 +24,10 @@ export function CodeDiff({ filename, diff, patch, cycle = 0 }: CodeDiffProps) {
   }, [copied])
   const diffs = diff ? [diff] : []
   const parsed = useMemo(() => !diff && patch !== undefined ? parsedPatch(patch) : null, [diff, patch])
+  const fragment = parsed?.some(file => file.oldHeader === 'Nodo replacement fragment')
   const totals: { added: number; removed: number } | null = diff ? diffTotals(diffs) : parsed ? patchCounts(parsed) : null
   const lines = useMemo(() => parsed?.flatMap(file => file.hunks.flatMap(hunk => [
-    { kind: 'meta', text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@` },
+    { kind: 'meta', text: `@@ ${file.oldHeader === 'Nodo replacement fragment' ? '片段内 ' : ''}-${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@` },
     ...hunk.lines.map(text => ({ kind: text.startsWith('+') ? 'added' : text.startsWith('-') ? 'removed' : text.startsWith('\\') ? 'meta' : 'context', text })),
   ])), [parsed])
   if (!diff && patch === undefined) return null
@@ -34,7 +35,7 @@ export function CodeDiff({ filename, diff, patch, cycle = 0 }: CodeDiffProps) {
     <div className="nodo-code-diff" data-slot="code-diff">
       <div className="nodo-code-diff-header">
         <span className="nodo-code-diff-icon" aria-hidden><IconCodeOutlineRegular size={14} /></span>
-        <span className="nodo-code-diff-filename" title={filename}>{filename}</span>
+        <span className="nodo-code-diff-filename" title={filename}>{filename}{fragment ? ' · 替换片段' : ''}</span>
         {totals && <span className="nodo-code-diff-counts" aria-label={`新增 ${totals.added} 行，删除 ${totals.removed} 行`}>
           <span className="nodo-code-diff-added">+{totals.added}</span>
           <span className="nodo-code-diff-removed">−{totals.removed}</span>

@@ -171,7 +171,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             if (!key || turn.completedTools.has(key))
                 return;
             const previous = turn.tools.get(key);
-            const name = previous?.name ?? update.name ?? update.title ?? 'tool';
+            const name = update.name ?? previous?.name ?? update.title ?? 'tool';
             const input = update.rawInput !== undefined ? update.rawInput : previous?.input;
             const rawOutput = update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput;
             const content = update.content !== undefined ? update.content : previous?.content;
@@ -213,6 +213,11 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                     const files = (Array.isArray(content) ? content : []).filter(block => block?.type === 'diff').map(block => ({ path: block.path,
                         edit: { operation: block.oldText === null ? 'add' : 'update',
                             ...(typeof block.oldText === 'string' || block.oldText === null ? { oldText: block.oldText } : {}), newText: block.newText } }));
+                    if (update.status === 'completed')
+                        for (const file of support.fileEdits?.(name, input) ?? []) {
+                            if (!files.some(entry => entry.path === file.path))
+                                files.push(file);
+                        }
                     if (['edit', 'delete', 'move'].includes(kind))
                         for (const location of Array.isArray(locations) ? locations : []) {
                             if (!files.some(file => file.path === location?.path))

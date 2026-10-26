@@ -1,7 +1,7 @@
 import { TRANSCRIPT_TEXT_MAX } from './constants.js'
 import { clip } from './text.js'
 
-export function createMessageStream({ append, redact, save = () => {} }) {
+export function createMessageStream({ append, redact, head = () => undefined, save = () => {} }) {
   const entries = [], identities = new Map(), pending = new Map()
   let current = null
   const close = () => {
@@ -40,7 +40,11 @@ export function createMessageStream({ append, redact, save = () => {} }) {
       if (hasText) {
         if (current !== entry && event.type !== 'text') close()
         entry.raw = event.type === 'text' ? event.text : entry.raw + event.text
-        entry.line.text = clip(redact(entry.raw), TRANSCRIPT_TEXT_MAX, kind === 'text' ? 'long reply' : 'long reasoning')
+        if (event.type === 'text' || !entry.settled) {
+          const settled = head(entry.raw, TRANSCRIPT_TEXT_MAX + 1)
+          entry.settled = settled !== undefined
+          entry.line.text = clip(settled ?? redact(entry.raw), TRANSCRIPT_TEXT_MAX, kind === 'text' ? 'long reply' : 'long reasoning')
+        }
       }
       if (event.channel !== undefined) entry.line.channel = redact(event.channel)
       if (event.parentCallId !== undefined) entry.line.parentCallId = redact(event.parentCallId)

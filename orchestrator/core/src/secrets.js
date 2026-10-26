@@ -37,11 +37,29 @@ export function redactor(secrets) {
       if (value.length < WHOLE_VALUE) loose.add(form)
     }
   }
-  if (labels.size === 0) return text => text
-  const alternatives = [...labels.keys()].sort((a, b) => b.length - a.length)
-    .map(form => (loose.has(form) ? `(?<![\\p{L}\\p{N}])${escapeRegExp(form)}(?![\\p{L}\\p{N}])` : escapeRegExp(form)))
+  if (labels.size === 0) return Object.assign(text => text, { head: (text, max) => (text.length >= max ? text.slice(0, max) : undefined) })
+  const forms = [...labels.keys()].sort((a, b) => b.length - a.length)
+  const alternatives = forms.map(form => (loose.has(form) ? `(?<![\\p{L}\\p{N}])${escapeRegExp(form)}(?![\\p{L}\\p{N}])` : escapeRegExp(form)))
   const pattern = new RegExp(alternatives.join('|'), 'gu')
-  return text => (typeof text === 'string' ? text.replace(pattern, form => labels.get(form)) : text)
+  const redact = text => (typeof text === 'string' ? text.replace(pattern, form => labels.get(form)) : text)
+  // A match at one position reads at most this many characters, the lookahead included.
+  const reach = forms[0].length + 1
+  // The first `max` characters of redact(text) once no later text can change them, reading only
+  // as much of it as they need: matches starting more than `reach` before a cut are the whole text's.
+  const head = (text, max) => {
+    for (let end = max + reach; end < text.length; end *= 2) {
+      const part = text.slice(0, end), stable = end - reach
+      let out = '', at = 0
+      for (const match of part.matchAll(pattern)) {
+        if (match.index >= stable) break
+        out += part.slice(at, match.index) + labels.get(match[0])
+        at = match.index + match[0].length
+      }
+      out += part.slice(at, stable)
+      if (out.length >= max) return out.slice(0, max)
+    }
+  }
+  return Object.assign(redact, { head })
 }
 
 // Redacts strings inside plain objects and arrays; an untouched value keeps its identity.
@@ -66,7 +84,7 @@ export function install(rt) {
   let unreadable
   let readAsReader = false
   let writing = Promise.resolve()
-  let redact = text => text
+  let redact = redactor([])
 
   const changed = () => {
     redact = redactor([...secrets.values(), ...[...retired].map(([value, name]) => ({ name, value }))])
@@ -214,6 +232,6 @@ export function install(rt) {
 
   Object.assign(rt, {
     secretsView, secretSet, secretDelete, secretEnv, secretKeys, secretStamp,
-    loadSecrets, redactSecrets: text => redact(text), redactDeepSecrets: value => redactDeep(value, redact),
+    loadSecrets, redactSecrets: text => redact(text), redactHead: (text, max) => redact.head(text, max), redactDeepSecrets: value => redactDeep(value, redact),
   })
 }
