@@ -2,16 +2,16 @@ import {
   h, useState, useEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
   subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular,
 } from './ui-shared.js'
-import { RolePicker } from './role-seat.js'
+import { RolePicker, AssigneePicker } from './role-seat.js'
 import { Rail } from './session-rail.tsx'
 import { RunningLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
 import { ApprovalCard, needsPerson } from './run-cards.js'
-import { ProfileDialog } from './profile-dialogs.js'
 import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
 import { wfSubscribeSidebar, wfSidebarSnapshot } from './workflow.js'
+import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
 
 // Unsent drafts outlive the page: text is kept in localStorage across reloads,
 // pasted images (too large for storage) in memory across remounts.
@@ -111,7 +111,7 @@ export const openInitialSidebarSession = page => {
   else nativeSpace.showLegacy()
 }
 
-export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation = null } = {}) {
+export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
   const { view, error, refresh } = useStateView()
   const navigation = useSyncExternalStore(subscribeNavigation, readNavigation)
   const space = useSyncExternalStore(nativeSpace.subscribe, nativeSpace.getSnapshot)
@@ -137,6 +137,13 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   const [pastedImages, setPastedImages] = useState(() => heldImages)
   useEffect(() => { localStorage.setItem('nodo.drafts', JSON.stringify(drafts)) }, [drafts])
   useEffect(() => { heldImages = pastedImages }, [pastedImages])
+  // Deleting a role drops its sessions' drafts here, before the next edit
+  // mirrors the in-memory copy back to storage.
+  useEffect(() => {
+    const remove = ids => setDrafts(current =>
+      Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))))
+    return registerDraftRemover(remove)
+  }, [])
   const [goalOpen, setGoalOpen] = useState(false)
   // The statistics line under the composer opens its own dialog.
   const [statsOpen, setStatsOpen] = useState(false)
@@ -151,6 +158,9 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   // the host chat's rule that submitted input supersedes reader position.
   const [sentTick, setSentTick] = useState(0)
   const [actionError, setActionError] = useState('')
+  // One message's executor pick, keyed like the drafts; a sent message returns
+  // the picker to 自动.
+  const [assignees, setAssignees] = useState({})
   const profile = view?.profiles.find(item => item.id === navigation.profile) ?? view?.profiles[0] ?? null
   const workspaces = view?.workspaces ?? []
   const workspace = workspaces.find(item => item.id === navigation.workspace) ?? workspaces[0] ?? null
@@ -167,6 +177,11 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   const composerProfile = profile && session
     ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission }
     : profile
+  // The executor picker exists for a lead conversation whose engine goes through
+  // send: its roster follows the core's rule (no self, no leads), roster order.
+  const roster = profile?.lead === true && profile.engine !== 'dsh'
+    ? view.profiles.filter(item => item.id !== profile.id && item.lead !== true) : []
+  const assignee = assignees[draftKey]
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
     ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
@@ -193,10 +208,10 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
   }
   const cancelEditing = () => setEditing(null)
   const edit = value => { selection.current++; setEditing(value) }
-  // The role card is the single configuration record: the composer's model
-  // picker and the role dialog both write it, so each surface follows the
-  // other, and the view lands on the respawned active session either way.
-  const savedProfile = async saved => { await refresh(true); remember(saved.id, workspace?.id, saved.activeSessionId); setEditing(null) }
+  // The roles panel is the one place roles are configured; the roster's buttons
+  // land there with the target preselected. Bumping the selection retires any
+  // pending session selection, the way opening a form always did.
+  const openRolesPage = target => { selection.current++; openRoles(target); layoutService?.selectPanel('nodo-roles') }
   // The role card seeds new conversations; the conversation window's own model,
   // thinking and permission picks belong to the open session (the native model seat's
   // semantics), so they write the session and never retune the card behind it.
@@ -244,13 +259,6 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
       setEditing(null)
     } catch (failure) { setActionError(failure.message) }
     finally { setBusy(false) }
-  }
-  const deletedProfile = async item => {
-    await call('profile-delete', { id: item.id })
-    await refresh(true)
-    if (profile?.id === item.id) setNavigation(current => ({ ...current, profile: null }))
-    setDrafts(current => Object.fromEntries(Object.entries(current).filter(([key]) => !item.sessions.some(session => session.id === key))))
-    setEditing(null)
   }
   // Both dialogs surface the host's refusal (a duplicate name, roles still on the
   // workspace) themselves, so failures propagate instead of landing in actionError.
@@ -310,8 +318,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     try {
       const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })).id
       const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) }))
-      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue' })
+      // A pick that dropped out of the roster (the role stopped being a lead,
+      // the executor became one or was deleted) must not ride along and fail the send.
+      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue',
+        ...(roster.some(item => item.id === assignee) ? { assignee } : {}) })
       if (current()) setSentTick(tick => tick + 1)
+      setAssignees(current => ({ ...current, [draftKey]: undefined }))
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
       await refresh(true)
@@ -383,6 +395,9 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
       onGoal: () => setGoalOpen(true), onCompact: () => void compactSession(),
       onModelChange: changes => void updateEngineChoice(changes),
       rolePicker: h(RolePicker, { profiles: view.profiles, profile }),
+      assigneePicker: roster.length > 0 && h(AssigneePicker, { roster, value: assignee,
+        disabled: sessionBusy || readOnly || work?.active === true,
+        onSelect: id => setAssignees(current => ({ ...current, [draftKey]: id })) }),
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -406,7 +421,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     error && h('p', { className: 'nodo-error-line', role: 'alert' }, error),
     h('div', { className: 'nodo-frame' },
       !contentOnly && view && h(Rail, {
-        view: railView, profile, workspace, sessionId, editing, draft: space.draft, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, workflowNavigation,
+        view: railView, profile, workspace, sessionId, editing, draft: space.draft, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, navigation: railNavigation,
         onSelect: id => {
           const role = view.profiles.find(item => item.id === id)
           if (role && workspace) void select(role)
@@ -418,11 +433,13 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
         onPinSession: (role, id, pinned) => void updateSession(role, id, { pinned }),
         onNewSession: startDraft,
         onNewWorktree: project => { if (!readOnly) setWorktreeOpen(project) },
-        onNewRole: () => edit({ kind: 'profile', profile: null }),
-        onEditRole: item => edit({ kind: 'profile', profile: item }),
+        onNewRole: () => openRolesPage({ profileId: 'new' }),
+        onEditRole: item => openRolesPage({ profileId: item.id }),
         onSettings: () => edit({ kind: 'settings' }),
-        onWorkflows: () => layoutService?.selectPanel('nodo-workflow'), runsWaiting: (view.runs ?? []).some(needsPerson),
-        onSessions: () => nativeSpace.showLegacy(), onBack: () => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null),
+        onRoles: () => layoutService?.selectPanel('nodo-roles'),
+        onWorkflows: () => rolesGuard(() => layoutService?.selectPanel('nodo-workflow')), runsWaiting: (view.runs ?? []).some(needsPerson),
+        onSessions: () => rolesGuard(() => nativeSpace.showLegacy()),
+        onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
         onNewWorkspace: () => edit({ kind: 'workspace', id: 'new', workspace: null }),
         onRenameWorkspace: workspace => setWorkspaceDialog({ kind: 'rename', workspace }),
         onDeleteWorkspace: workspace => setWorkspaceDialog({ kind: 'delete', workspace }),
@@ -452,12 +469,6 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     }),
     statsOpen && view !== undefined && (view.stats ?? {})[sessionId] !== undefined && h(StatsDialog, {
       key: `stats:${sessionId}`, stats: view.stats[sessionId], onClose: () => setStatsOpen(false),
-    }),
-    editing?.kind === 'profile' && h(ProfileDialog, {
-      key: `role:${editing.profile?.id ?? 'new'}`, profile: editing.profile ?? null, avatarSeed: view?.profiles.length ?? 0,
-      enabledEngines: view?.prefs?.enabledEngines ?? null,
-      savedIdentities: view?.prefs?.rolePresets ?? null, refresh,
-      onCancel: cancelEditing, onSaved: savedProfile, onDeleted: deletedProfile,
     }),
     editing?.kind === 'workspace' && h(WorkspaceDialog, {
       key: `ws:${editing.id}`, workspace: editing.workspace ?? null,
@@ -490,6 +501,7 @@ export function NodoEntry() {
 
 export function NodoSidebar({ collapsed }) {
   const workflowNavigation = useSyncExternalStore(wfSubscribeSidebar, wfSidebarSnapshot)
+  const rolesNavigation = useSyncExternalStore(rolesSubscribeSidebar, rolesSidebarSnapshot)
   const label = collapsed ? '展开侧边栏' : '收起侧边栏'
   return h('div', { className: 'nodo-space' },
     h('div', { className: 'nodo-space-chrome' },
@@ -497,5 +509,5 @@ export function NodoSidebar({ collapsed }) {
         children: h(Button, { variant: 'ghost', onClick: () => layoutService.toggleSidebar(),
           icon: h(IconPanelLeftOutlineRegular, { size: 16 }), 'aria-label': label }) })),
     h('div', { className: 'nodo-space-content', style: collapsed ? { display: 'none' } : undefined },
-      h(NodoPage, { sidebarOnly: true, workflowNavigation })))
+      h(NodoPage, { sidebarOnly: true, railNavigation: workflowNavigation ?? rolesNavigation })))
 }

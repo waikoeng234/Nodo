@@ -1,6 +1,6 @@
 import { h, useState, useRef, useSyncExternalStore, useStateView, call, readImage, NodoLogo } from './ui-shared.js'
 import { Composer } from './composer.js'
-import { RolePicker } from './role-seat.js'
+import { RolePicker, AssigneePicker } from './role-seat.js'
 import { nativeRole, readDrafts, heldImages, subscribeNavigation, readNavigation, setNavigation } from './page.js'
 
 export function createNewConversation(ctx, space, ReferenceDialog) {
@@ -51,13 +51,17 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
       saveOptions(key, next)
       return next
     })
-    const chooseRole = id => { updateSelection(current => ({ ...current, profile: id, choices: {} })); setError('') }
+    const chooseRole = id => { updateSelection(current => ({ ...current, profile: id, choices: {}, assignee: undefined })); setError('') }
     // The card's model and thinking seed a new conversation; the tier still carries
     // over from the role's last conversation that chose one.
     const held = profile && { permission: profile.sessions.slice().reverse().find(session =>
       !(session.draftedAt && !session.briefSent) && session.permission !== undefined)?.permission ?? profile.permission }
     const composerProfile = profile && { ...profile, ...held, ...choices }
-    const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
+    // A lead conversation on the plugin route may name one message's executor;
+    // the roster follows the core's rule (no self, no leads), roster order.
+    const roster = profile?.lead === true && !nativeRole(profile)
+      ? (view?.profiles ?? []).filter(item => item.id !== profile.id && item.lead !== true) : []
+    const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [], assignee: undefined })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
     // The picker's files split the way the workflow composer's do: images ride
     // the draft inline, documents become stored references that only turn into
     // workspace paths — the one address every engine can read — when sent.
@@ -118,6 +122,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
             text: text || (references.length ? '请参考引用的会话结果。' : ''),
             ...(files.length ? { files } : {}),
             ...(bound.length ? { references: bound.map(item => ({ id: item.id })) } : {}),
+            ...(roster.some(item => item.id === selection.assignee) ? { assignee: selection.assignee } : {}),
             images: images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })) })
           setNavigation(value => ({ ...value, profile: profile.id, workspace: workspace.id,
             sessions: { ...value.sessions, [`${workspace.id}:${profile.id}`]: session.id } }))
@@ -141,6 +146,8 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
             ...(changes.permission === '' && profile.engine !== 'dsh' ? { permission: 'workspace' } : {}) } })) : undefined,
           rolePicker: h(RolePicker, { profiles: view?.profiles ?? [], profile, disabled, onSelect: chooseRole }),
+          assigneePicker: roster.length > 0 && h(AssigneePicker, { roster, value: selection.assignee, disabled,
+            onSelect: id => updateSelection(current => ({ ...current, assignee: id })) }),
           onReference: value => { if (!disabled) setReference(value?.id ? value : {}) },
           onRemoveReference: id => { if (!disabled) updateSelection(current => ({ ...current, references: (current.references ?? []).filter(item => item.id !== id) })) },
         }),

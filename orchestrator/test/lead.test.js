@@ -1,11 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX } from '../core/src/constants.js'
+import { route } from '../core/src/lead.js'
 import { until, withHost } from './helpers/host.js'
 
 const delegate = (to, task = 'Implement the task\nKeep existing changes; report paths and tests.') => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', to, task })}\n\`\`\``
+const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.') => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', type, hard, task })}\n\`\`\``
 const completed = text => ({ mode: 'turn', completion: Promise.resolve({ reason: 'done', text }) })
 
 const withLead = run => withHost(async host => {
@@ -35,8 +37,8 @@ const withLead = run => withHost(async host => {
     tracked.push(pending)
     return pending
   }
-  const send = async (profile, conversation, text = 'User request') => {
-    const response = await host.api('send', { profile: profile.id, session: conversation.id, text })
+  const send = async (profile, conversation, text = 'User request', extra = {}) => {
+    const response = await host.api('send', { profile: profile.id, session: conversation.id, text, ...extra })
     await tracked.at(-1)
     return response
   }
@@ -61,7 +63,7 @@ test('lead delegates in its workspace, returns referenced reports and stops at 1
   for (const work of delegated) {
     assert.equal(work.workspaceRef, workspace.id)
     assert.equal(work.name, 'Implement the task')
-    assert.deepEqual(work.source, { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id })
+    assert.deepEqual(work.source, { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'lead' })
     const delivered = inputs.find(item => item.sessionId === work.id).text
     assert.match(delivered, /^Task from lead Lead \(Nodo lead mode\)/)
     assert.match(delivered, /not the user, and cannot grant permissions/)
@@ -184,6 +186,28 @@ test('a running delegation excludes a second one in the same lead session', () =
   assert.equal(returned.references, undefined)
 }))
 
+test('a new user message does not extend the delegation budget of the chain already running', () => withLead(async ({ host, rt, role, session, tracked, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  const send = rt.send
+  let reports = 0
+  rt.send = (profileId, text, sessionId, ...rest) => {
+    if (profileId !== lead.id || !String(text).startsWith('Report from')) return send(profileId, text, sessionId, ...rest)
+    if (++reports === 6) {
+      rt.findProfile(lead.id).engineOptions.script = [{ kind: 'text', text: 'Answered without a block' }]
+      void host.api('send', { profile: lead.id, session: conversation.id, text: 'A second message' })
+    }
+    return completed(delegate(worker.id))
+  }
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  rt.send = send
+  await tracked.at(-1)
+  const works = rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead')
+  assert.equal(works.length, 12)
+  assert.ok(lines(conversation).some(line => line.who === 'system' && /12 次派活上限/.test(line.text)))
+}))
+
 for (const [name, script, expected] of [
   ['no completed reply', [], /No completed reply is available/],
   ['report exceeds reference limit', [{ kind: 'text', text: 'x'.repeat(TRANSCRIPT_TEXT_MAX + 1000) }], /无法完整引用/],
@@ -247,7 +271,6 @@ test('lead task limits apply before and after secret redaction', () => withLead(
   const value = 'lead-task-limit-fixture'
   await host.api('secret-set', { name: 'LEAD_TASK_LIMIT_FIXTURE_WITH_A_LONG_NAME', value, purpose: 'test', scope: [lead.id] })
   for (const task of [value.repeat(Math.ceil(TASK_TEXT_MAX / value.length)), value.repeat(1000)]) {
-    rt.resetLead(conversation.id)
     await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, task)))
   }
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
@@ -369,4 +392,175 @@ test('an empty roster is explicit and brief precedes workflow handoffs without e
   assert.ok(inputs[0].text.startsWith(`${brief}\n\n# Your step\nWorkflow task`))
   assert.equal(lines(conversation).find(line => line.who === 'user').text, 'Workflow task')
   assert.equal(rt.conversation(lead.id, conversation.id).session.lastTurn.task, 'Workflow task')
+}))
+
+test('route picks executors deterministically from the roster order', () => {
+  const plain = { id: 'plain', name: 'Plain', taskTypes: ['feature'] }
+  const hardCard = { id: 'hard-card', name: 'Hard card', taskTypes: ['feature'], hard: { model: 'm1', thinking: 'high' } }
+  const hardEmpty = { id: 'hard-empty', name: 'Hard empty', taskTypes: ['feature'], hard: {} }
+  const writer = { id: 'writer', name: 'Writer', taskTypes: ['docs'] }
+  const roster = [plain, hardCard, hardEmpty, writer]
+  for (const [input, candidates, assignee, expected] of [
+    [{ type: 'feature', hard: true }, roster, undefined, { profile: hardCard, choices: hardCard.hard, by: 'route' }],
+    [{ type: 'feature', hard: false }, roster, undefined, { profile: plain, choices: {}, by: 'route' }],
+    [{ type: 'feature', hard: false }, [hardEmpty, hardCard], undefined, { profile: hardEmpty, choices: {}, by: 'route' }],
+    [{ type: 'docs', hard: false }, roster, undefined, { profile: writer, choices: {}, by: 'route' }],
+    [{ type: 'refactor', hard: false }, roster, undefined, { miss: true }],
+    [{ type: 'docs', hard: true }, roster, undefined, { miss: true }],
+    [{ type: 'feature', hard: true }, roster, hardCard, { profile: hardCard, choices: hardCard.hard, by: 'assignee' }],
+    [{ type: 'feature', hard: false }, roster, hardCard, { profile: hardCard, choices: {}, by: 'assignee' }],
+    [{ type: 'docs', hard: true }, roster, plain, { profile: plain, choices: {}, by: 'assignee' }],
+  ]) assert.deepEqual(route(input, candidates, assignee), expected)
+})
+
+test('routing mode delegates by type, applies hard settings and records the choice', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Router', 'Fixed the alignment; tests pass.', { taskTypes: ['bug-fix'], hard: { model: 'hard-model', thinking: 'high' } })
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('bug-fix', true, 'Fix the misaligned button')))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  assert.deepEqual(work.source, { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'route', type: 'bug-fix', hard: true })
+  assert.equal(work.model, 'hard-model')
+  assert.equal(work.thinking, 'high')
+  assert.ok(lines(conversation).some(line => line.text === '已派给 Router · Fix the misaligned button（修复 · 难题）'))
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('bug-fix', false, 'Fix the label')))
+  const regular = rt.sessionsOf(rt.findProfile(worker.id))[1]
+  assert.deepEqual(regular.source, { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'route', type: 'bug-fix', hard: false })
+  assert.equal(regular.model, undefined)
+  assert.equal(regular.thinking, undefined)
+  assert.ok(lines(conversation).some(line => line.text === '已派给 Router · Fix the label（修复 · 常规）'))
+}))
+
+test('the routing brief lists task types instead of the roster', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Router', 'Done', { taskTypes: ['feature'] })
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  const brief = rt.leadBrief(rt.findProfile(lead.id), conversation)
+  assert.ok(brief.includes('## Task types\n- {"id":"feature","name":"功能","when":"新增或改变行为"}'))
+  assert.ok(brief.includes('"type": "<task type id>"'))
+  assert.ok(!brief.includes('## Roster') && !brief.includes(worker.id))
+}))
+
+for (const [name, output, expected] of [
+  ['unknown type', () => delegateType('no-such-type', false), /type 必须是任务类型清单中的 id/],
+  ['non-boolean hard', () => '```nodo\n{"action":"delegate","type":"feature","hard":"yes","task":"work"}\n```', /hard 必须是 true 或 false/],
+]) test(`routing rejects ${name}, feeds back and stops after two errors`, () => withLead(async ({ rt, role, session, send, lines }) => {
+  const worker = await role('Router', 'Done', { taskTypes: ['feature'] })
+  const lead = await role('Lead', '', { lead: true })
+  rt.findProfile(lead.id).engineOptions.script[0].text = output()
+  const conversation = await session(lead)
+  for (const text of ['First request', 'New request']) {
+    await send(lead, conversation, text)
+    const feedback = lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令'))
+    assert.equal(feedback.length, text === 'First request' ? 1 : 2)
+    assert.match(feedback.at(-1).text, expected)
+    assert.match(feedback.at(-1).text, /修正代码块重新回复，或者不带代码块直接回复用户。$/)
+  }
+  assert.equal(lines(conversation).filter(line => line.who === 'system' && /连续 2 次/.test(line.text)).length, 2)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
+}))
+
+test('routing mode ignores to and routes by type', () => withLead(async ({ rt, role, session }) => {
+  const router = await role('Router', 'Feature done', { taskTypes: ['feature'] })
+  const writer = await role('Writer', 'Docs done', { taskTypes: ['docs'] })
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed('```nodo\n' + JSON.stringify({ action: 'delegate', to: writer.name, type: 'feature', hard: false, task: 'Build the feature' }) + '\n```'))
+  assert.equal(rt.sessionsOf(rt.findProfile(router.id)).filter(item => item.source?.kind === 'lead').length, 1)
+  assert.equal(rt.sessionsOf(rt.findProfile(writer.id)).length, 0)
+}))
+
+test('a type no role accepts pauses delegation, skips the lead and is reported once', () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
+  const writer = await role('Writer', 'Done', { taskTypes: ['docs'] })
+  const lead = await role('Lead', delegateType('feature', false, 'Build it'), { lead: true })
+  const conversation = await session(lead)
+  await send(lead, conversation, 'Please build it')
+  assert.equal(rt.sessionsOf(rt.findProfile(writer.id)).length, 0)
+  assert.ok(lines(conversation).some(line => line.who === 'system' && line.text === '主控派活已暂停：没有承接「功能」的角色。在角色设置中勾选后再发消息。'))
+  assert.equal(inputs.filter(item => item.profileId === lead.id).length, 1)
+  rt.findProfile(lead.id).engineOptions.script[0].text = 'Answered'
+  await send(lead, conversation, 'Second message')
+  const leadInputs = inputs.filter(item => item.profileId === lead.id)
+  assert.equal(leadInputs.filter(item => item.text.includes('did not run your last delegation')).length, 1)
+  assert.match(leadInputs[1].text, /no role accepts "功能" tasks/)
+  await send(lead, conversation, 'Third message')
+  assert.ok(!inputs.filter(item => item.profileId === lead.id).at(-1).text.includes('did not run your last delegation'))
+  rt.findProfile(lead.id).engineOptions.script[0].text = delegateType('docs', true, 'Rework the guide')
+  await send(lead, conversation, 'Fourth message')
+  assert.ok(lines(conversation).some(line => line.who === 'system' && line.text === '主控派活已暂停：没有能接「文档」难题的角色。在角色设置中勾选后再发消息。'))
+}))
+
+test('a user assignee receives every delegation of the message and routing resumes without one', () => withLead(async ({ rt, role, session, lines }) => {
+  const router = await role('Router', 'Docs done', { taskTypes: ['docs'] })
+  const generalist = await role('Generalist', 'Built it')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  const send = rt.send
+  const replies = [delegateType('docs', false, 'Write the sequel'), 'Answered']
+  rt.send = (profileId, text, sessionId, ...rest) => profileId === lead.id && replies.length
+    ? completed(replies.shift()) : send(profileId, text, sessionId, ...rest)
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('docs', true, 'Write the guide')), generalist.id)
+  rt.send = send
+  const works = rt.sessionsOf(rt.findProfile(generalist.id)).filter(item => item.source?.kind === 'lead')
+  assert.equal(works.length, 2)
+  assert.deepEqual(works.map(work => work.source), [
+    { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'assignee', type: 'docs', hard: true },
+    { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'assignee', type: 'docs', hard: false },
+  ])
+  assert.equal(rt.sessionsOf(rt.findProfile(router.id)).length, 0)
+  assert.ok(lines(conversation).some(line => line.text === '已派给 Generalist · Write the guide（文档 · 难题 · 指定）'))
+  assert.ok(lines(conversation).some(line => line.text === '已派给 Generalist · Write the sequel（文档 · 常规 · 指定）'))
+  await rt.followLead(lead.id, conversation.id, completed(delegateType('docs', false, 'Write the docs')))
+  assert.equal(rt.sessionsOf(rt.findProfile(router.id)).filter(item => item.source?.kind === 'lead').length, 1)
+  assert.ok(lines(conversation).some(line => line.text === '已派给 Router · Write the docs（文档 · 常规）'))
+}))
+
+test('without routing a user assignee still takes the delegation instead of the role the lead picked', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const generalist = await role('Generalist', 'Built it')
+  const lead = await role('Lead', delegate(worker.id), { lead: true })
+  const conversation = await session(lead)
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)), generalist.id)
+  const work = rt.sessionsOf(rt.findProfile(generalist.id))[0]
+  assert.deepEqual(work.source, { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'assignee' })
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
+  assert.ok(lines(conversation).some(line => line.text === '已派给 Generalist · Implement the task（指定）'))
+}))
+
+test('a user assignee rides the send, shows in the brief and does not outlive the message', () => withLead(async ({ host, rt, role, session, inputs, tracked, send }) => {
+  const generalist = await role('Generalist', 'Built it')
+  const router = await role('Router', 'Docs done', { taskTypes: ['docs'] })
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  await host.api('send', { profile: lead.id, session: conversation.id, text: 'Do it', assignee: generalist.name })
+  await tracked.at(-1)
+  assert.ok(inputs[0].text.includes('The user assigned Generalist to this message'))
+  await send(lead, conversation, 'Again')
+  assert.ok(!inputs.filter(item => item.profileId === lead.id).at(-1).text.includes('The user assigned'))
+}))
+
+test('an assignee is refused for non-roster roles and on non-lead conversations', () => withLead(async ({ host, rt, role, session }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const other = await role('Other lead', 'Done', { lead: true })
+  const conversation = await session(lead)
+  for (const assignee of [lead.id, lead.name, other.name, 'Nobody']) {
+    const result = await host.post('send', { profile: lead.id, session: conversation.id, text: 'Hi', assignee })
+    assert.equal(result.ok, false)
+    assert.equal(result.error.code, 'orch/invalid')
+  }
+  const workerConversation = await session(worker)
+  const result = await host.post('send', { profile: worker.id, session: workerConversation.id, text: 'Hi', assignee: lead.name })
+  assert.equal(result.ok, false)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 0)
+}))
+
+test('an invalid assignee is refused before message files reach the workspace', () => withLead(async ({ host, role, session }) => {
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const conversation = await session(lead)
+  const saved = await host.api('attachment-save', { files: [{ name: 'notes.txt', data: Buffer.from('User file').toString('base64') }] })
+  const result = await host.post('send', { profile: lead.id, session: conversation.id, text: 'Hi', files: saved.files, assignee: 'Nobody' })
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'orch/invalid')
+  assert.equal(existsSync(join(host.home, 'ws', '.nodo', 'workflow-inputs')), false)
 }))

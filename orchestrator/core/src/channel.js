@@ -25,6 +25,7 @@ export function install(rt) {
     profiles: rt.profilesView(),
     secrets: rt.secretsView(),
     workflows: rt.workflowsView(),
+    taskTypes: rt.taskTypes(),
     prefs: state.prefs,
     readOnly: rt.readOnly() ?? null,
   })
@@ -145,10 +146,14 @@ export function install(rt) {
       case 'profile-delete':
         await rt.load()
         return rt.deleteProfile(body.id ?? body.profile)
+      case 'profile-order':
+        return rt.orderProfiles(body.ids)
       case 'role-preset-save':
         return rt.saveRolePreset(body)
       case 'role-preset-delete':
         return rt.deleteRolePreset(body)
+      case 'task-types-update':
+        return rt.updateTaskTypes(body.types)
       case 'session-create':
         return rt.createSession(resolveProfileRef(body.profile).id, body.name, body.workspace, body.lazy === true, body.draft === true, body.choices)
       case 'session-open':
@@ -164,14 +169,17 @@ export function install(rt) {
         if (body.mode !== undefined && body.mode !== 'queue') throw invalid('Unknown send mode')
         const profile = resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
+        let assignee
+        if (body.assignee !== undefined && body.assignee !== null && body.assignee !== '') {
+          if (!profile.lead) throw invalid('Only a lead conversation accepts an assignee')
+          assignee = rt.findProfile(body.assignee)
+          if (assignee === undefined || !rt.leadRoster(profile).some(item => item.id === assignee.id)) throw invalid(`No assignable role "${body.assignee}"`)
+        }
         const files = body.files?.length ? { refs: rt.cleanFileRefs(body.files),
           paths: await rt.materializeFiles(body.files, session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd) } : undefined
         const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined,
-          { files, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
-        if (profile.lead) {
-          rt.resetLead(session.id)
-          void rt.followLead(profile.id, session.id, placed)
-        }
+          { files, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session, assignee?.id) } : {}) })
+        if (profile.lead) void rt.followLead(profile.id, session.id, placed, assignee?.id)
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
       }
       case 'queued-message': {

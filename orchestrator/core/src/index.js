@@ -22,10 +22,11 @@ import * as approvals from './approvals.js'
 import * as prompt from './prompt.js'
 import * as runs from './runs.js'
 import * as workflows from './workflows.js'
+import * as taskTypes from './task-types.js'
 import * as lead from './lead.js'
 import * as channel from './channel.js'
 
-const MODULES = [diag, store, workspaces, worktrees, profiles, sessions, streamRecords, context, sessionReferences, secrets, drivers, engineSettings, attachments, stats, dispatch, approvals, prompt, runs, workflows, lead, channel]
+const MODULES = [diag, store, workspaces, worktrees, profiles, sessions, streamRecords, context, sessionReferences, secrets, drivers, engineSettings, attachments, stats, dispatch, approvals, prompt, runs, workflows, taskTypes, lead, channel]
 
 export async function createRuntime(host, config, plugins = []) {
   const rt = { ctx: host, config, home: config.home }
