@@ -15,6 +15,7 @@ export interface RailSession { id: string; name: string; archivedAt?: number; pi
 export interface RailRole { id: string; name: string; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; sessions: RailSession[] }
 export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
 export interface RailView { profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
+export type RailNavigation = { view: 'workflow' | 'roles'; content: ReactNode }
 type Archived = keyof typeof ARCHIVED_VIEWS
 
 interface SessionRowProps {
@@ -102,16 +103,16 @@ export const workspacePicker = ({ workspaces, workspace, running = new Set(), op
 interface RailProps {
   view: RailView; profile?: RailRole | null; workspace?: RailWorkspace | null; sessionId?: string
   editing?: { kind?: string; profile?: RailRole | null } | null; draft?: { profile?: string; workspace?: string } | null
-  readOnly?: boolean; busy?: boolean; runsWaiting?: boolean; workflowNavigation?: ReactNode
+  readOnly?: boolean; busy?: boolean; runsWaiting?: boolean; navigation?: RailNavigation | null
   onResumeDraft: () => void; onSelect: (id: string) => void
   onSelectSession: (role: RailRole, id: string, project?: RailWorkspace) => void; onArchiveSession: (role: RailRole, id: string, archived: boolean) => void
   onRenameSession: (role: RailRole, session: RailSession) => void; onPinSession: (role: RailRole, id: string, pinned: boolean) => void
   onNewSession: (profileId?: string, project?: RailWorkspace) => void; onNewWorktree: (project: RailWorkspace) => void; onNewRole: () => void; onEditRole: (role: RailRole) => void
-  onSettings: () => void; onSessions: () => void; onWorkflows: () => void; onBack: () => void
+  onSettings: () => void; onSessions: () => void; onWorkflows: () => void; onRoles: () => void; onBack: () => void
   onNewWorkspace: () => void; onRenameWorkspace: (workspace: RailWorkspace) => void; onDeleteWorkspace: (workspace: RailWorkspace) => void
 }
 
-export function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, workflowNavigation }: RailProps) {
+export function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
   const [queries, setQueries] = useState<Record<string, string>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [archives, setArchives] = useState<Record<string, Archived>>({})
@@ -248,7 +249,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
           <span className="nodo-roster-name">{item.name}</span>
         </button>
         <button type="button" className="nodo-roster-edit" aria-label={`配置角色 ${item.name}`} title={`配置角色 ${item.name}`}
-          disabled={busyNow || state.active} aria-pressed={editing?.profile?.id === item.id ? 'true' : undefined}
+          disabled={busyNow || state.active}
           onClick={() => onEditRole(item)}><IconEditOutlineRegular size={12} /></button>
       </div>
     )
@@ -259,25 +260,29 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
     </Tooltip>
   )
   return (
-    <aside className="nodo-rail" aria-label={workflowNavigation ? '工作流导航' : '角色与项目会话'}>
+    <aside className="nodo-rail" aria-label={navigation?.view === 'workflow' ? '工作流导航' : navigation?.view === 'roles' ? '角色导航' : '角色与项目会话'}>
       <div className="nodo-rail-dock">
         {dock('返回普通空间', <IconChevronLeftOutlineRegular size={16} />, { onClick: onBack,
           disabled: typeof (layoutService as { selectPanel?: unknown } | null)?.selectPanel !== 'function' })}
         <div className="nodo-rail-switch" role="group" aria-label="视图">
           <Tooltip label="会话" side="right" delayMs={500}>
-            <button type="button" aria-label="会话" aria-pressed={!workflowNavigation} onClick={workflowNavigation ? onSessions : undefined}><IconFlatListOutlineRegular size={18} /></button>
+            <button type="button" aria-label="会话" aria-pressed={!navigation} onClick={navigation ? onSessions : undefined}><IconFlatListOutlineRegular size={18} /></button>
           </Tooltip>
           <Tooltip label="Workflow" side="right" delayMs={500}>
-            <button type="button" aria-label={runsWaiting ? 'Workflow（有待处理）' : 'Workflow'} aria-pressed={!!workflowNavigation}
-              onClick={workflowNavigation ? undefined : onWorkflows}><IconWorkspaceTreeOutlineRegular size={18} />
+            <button type="button" aria-label={runsWaiting ? 'Workflow（有待处理）' : 'Workflow'} aria-pressed={navigation?.view === 'workflow'}
+              onClick={navigation?.view === 'workflow' ? undefined : onWorkflows}><IconWorkspaceTreeOutlineRegular size={18} />
               {runsWaiting && <span className="nodo-rail-badge"><StateDot state="warning" size={8} /></span>}</button>
+          </Tooltip>
+          <Tooltip label="角色" side="right" delayMs={500}>
+            <button type="button" aria-label="角色" aria-pressed={navigation?.view === 'roles'}
+              onClick={navigation?.view === 'roles' ? undefined : onRoles}><IconUsersOutlineRegular size={18} /></button>
           </Tooltip>
         </div>
         <span className="nodo-rail-spacer" />
         {dock('设置', <IconSettingsOutlineRegular size={16} />, { onClick: onSettings, 'aria-pressed': editing?.kind === 'settings' ? 'true' : undefined })}
       </div>
       <div className="nodo-rail-body">
-        {workflowNavigation ?? <Fragment>
+        {navigation?.content ?? <Fragment>
           <div className="nodo-roster" role="group" aria-label="按角色筛选会话">
             <button type="button" className="nodo-roster-item" aria-pressed={!filterRole} onClick={() => setRoleFilter(null)}>
               <span className="nodo-roster-avatar"><IconUsersOutlineRegular size={16} /></span>

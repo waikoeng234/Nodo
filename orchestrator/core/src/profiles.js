@@ -197,6 +197,20 @@ export function install(rt) {
     return profileView(profile)
   }
 
+  // The roster order is the role list order and the order lead routing takes
+  // the first card from. Re-keying the live object in place keeps the reference
+  // other modules hold and the identity of every card.
+  const orderProfiles = async ids => {
+    await rt.load()
+    if (!Array.isArray(ids) || ids.length !== Object.keys(state.profiles).length || new Set(ids).size !== ids.length
+      || ids.some(id => typeof id !== 'string' || !Object.hasOwn(state.profiles, id))) throw Object.assign(new Error('profile-order needs every profile id exactly once'), { code: 'orch/invalid' })
+    const cards = ids.map(id => state.profiles[id])
+    for (const id of Object.keys(state.profiles)) delete state.profiles[id]
+    ids.forEach((id, index) => { state.profiles[id] = cards[index] })
+    await rt.save()
+    return rt.profilesView()
+  }
+
   // Engine conversations cannot follow a role card across a changed engine,
   // workspace, keys or instructions: they start over. Existing messages stay;
   // model and thinking follow the conversation instead.
@@ -277,7 +291,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    createProfile, updateProfile, deleteProfile, findProfile, profileView, restartConversations,
+    createProfile, updateProfile, deleteProfile, findProfile, profileView, restartConversations, orderProfiles,
     saveRolePreset, deleteRolePreset, cleanPermission,
     profilesView: () => Object.values(state.profiles).map(profileView),
   })

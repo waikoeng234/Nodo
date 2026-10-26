@@ -52,7 +52,7 @@ async function harness({ draft = draftOf(), definition, readOnly = false, api = 
   return { loaded, view, calls, storage,
     remount() { for (const cleanup of cleanups.values()) cleanup?.(); states = []; effects.clear(); cleanups.clear() },
     render() { cursor = 0; const tree = loaded.WorkflowPage({ view, readOnly, refresh: async () => {}, onOpenSession() {} }); flushEffects(); return tree },
-    side() { this.render(); return loaded.wfSidebarSnapshot() },
+    side() { this.render(); return loaded.wfSidebarSnapshot()?.content },
     canvas(props) { cursor = 0; const tree = loaded.WorkflowCanvas(props); flushEffects(); return tree },
     task(props) { cursor = 0; const tree = loaded.WorkflowTaskComposer({ view, ...props }); flushEffects(); return tree },
     duration(run) { cursor = 0; const tree = loaded.WorkflowRunDuration({ run }); flushEffects(); return tree },
@@ -67,7 +67,7 @@ test('the sidebar cast shows three avatars and an ellipsis for the rest', async 
   const h = await harness({ definition })
   h.view.profiles = ['a', 'b', 'c', 'd'].map(id => ({ ...profile, id, name: `角色${id}` }))
   h.render()
-  const cast = all(h.loaded.wfSidebarSnapshot()).find(node => node.props.className === 'nodo-wf-cast')
+  const cast = all(h.side()).find(node => node.props.className === 'nodo-wf-cast')
   assert.equal(cast.children.filter(node => node.type === h.loaded.RoleAvatar).length, 3)
   assert.equal(text(cast), '…')
   assert.equal(cast.props.title, '角色a、角色b、角色c、角色d', 'the full cast stays readable on hover')
@@ -81,7 +81,7 @@ test('a saved flow is deleted from its rail row after confirming, and the open d
     return endpoint === 'workflow-delete' ? true : []
   } })
   h.render()
-  const remove = all(h.loaded.wfSidebarSnapshot()).find(node => node.props['aria-label'] === `删除流程“${definition.name}”`)
+  const remove = all(h.side()).find(node => node.props['aria-label'] === `删除流程“${definition.name}”`)
   remove.props.onClick()
   const dialog = all(h.render()).find(node => node.type === 'Modal')
   assert.match(dialog.props.title, /删除流程/)
@@ -104,7 +104,7 @@ test('workflow navigation is published to the original rail instead of a second 
   assert.deepEqual(toolbar.children.map(node => node.props['aria-label']), ['保存', '运行'], 'save sits beside run in the header')
   assert.deepEqual(Array.from(saveMenu(toolbar).props.items, item => item.label), ['保存', '另存为新流程…'])
   assert.equal(all(named(tree, 'WorkflowCanvas').props.tools).some(node => node.props.role === 'group'), false, 'the canvas keeps only 添加节点')
-  const navigation = wfSidebarSnapshot()
+  const navigation = wfSidebarSnapshot()?.content
   assert.deepEqual(all(navigation).filter(node => node.props.role === 'group').map(group => [group.props['aria-label'], ...all(group).filter(node => node.type === 'Button').map(text)]), [
     ['视图', '编排', '运行记录'],
   ], 'the view switch leads the rail and saving lives in the header')
@@ -146,7 +146,7 @@ test('the single top title follows the workflow view while switching preserves t
   const header = all(tree).find(node => node.type === 'header' && node.props.className === 'nodo-wf-header')
   assert.equal(text(all(header).find(node => node.type === 'h1')), '运行记录')
   assert.equal(button(h.side(), '运行记录').props['aria-pressed'], true)
-  const rail = h.loaded.wfSidebarSnapshot()
+  const rail = h.side()
   assert.equal(rail.props['aria-label'], '运行记录')
   assert.ok(text(rail).includes('最近运行'))
   assert.equal(all(rail).some(node => node.props?.className === 'nodo-wf-definitions'), false, 'run view hides saved flows')
@@ -833,7 +833,7 @@ test('an incomplete draft saves while launch names its first problem; a blank ne
   const fresh = blank.render()
   assert.equal(saveButton(blank.render()).props.disabled, true)
   assert.equal(all(fresh).some(node => node.props.className === 'nodo-wf-save-state'), false)
-  newFlow(blank.loaded.wfSidebarSnapshot()).props.onClick()
+  newFlow(blank.side()).props.onClick()
   assert.equal(all(blank.render()).some(node => node.type === 'Modal' && node.props.title === '替换当前草稿？'), false, 'a blank flow is replaced without asking')
   blank.dispose()
 })
@@ -892,7 +892,7 @@ test('pending cards float over the run canvas instead of the narrow drawer, whic
   const h = await harness({ definition, api: async endpoint => endpoint === 'run-list' ? [asking] : endpoint === 'run-get' ? asking : [] })
   h.view.approvals = [{ id: 'run:run:q', kind: 'question', detail: { exits: [] } }, { id: 'perm', kind: 'permission', profileId: 's' }, { id: 'other', kind: 'permission', profileId: 'elsewhere' }]
   button(h.side(), '运行记录').props.onClick(); h.render(); await h.flush(); h.render()
-  all(h.loaded.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
+  all(h.side()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
   h.render(); await h.flush()
   const docked = () => {
     const tree = h.render(), canvas = named(tree, 'WorkflowCanvas')
@@ -913,7 +913,7 @@ test('a run without its original definition keeps its pending cards in the main 
   const h = await harness({ api: async endpoint => endpoint === 'run-list' ? [orphan] : endpoint === 'run-get' ? orphan : [] })
   h.view.approvals = [{ id: 'run:run:q', kind: 'question', detail: { exits: [] } }]
   button(h.side(), '运行记录').props.onClick(); h.render(); await h.flush(); h.render()
-  all(h.loaded.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
+  all(h.side()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
   h.render(); await h.flush()
   const tree = h.render()
   assert.match(text(tree), /原定义已删除或节点名称无法唯一对应/)
@@ -932,7 +932,7 @@ test('the run drawer shows the whole run until one step is picked, and only that
     { id: 't2', name: '人工验收', kind: 'human', status: 'done', output: 'accept', attempts: [] }] }
   const h = await harness({ definition, api: async endpoint => endpoint === 'run-list' ? [done] : endpoint === 'run-get' ? done : [] })
   button(h.side(), '运行记录').props.onClick(); h.render(); await h.flush(); h.render()
-  all(h.loaded.wfSidebarSnapshot()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
+  all(h.side()).find(node => node.type === 'button' && node.props.className === 'nodo-runs-row').props.onClick()
   h.render(); await h.flush()
   const drawer = () => { const tree = h.render(); return { tree, aside: all(tree).find(node => node.props.className === 'nodo-wf-inspector nodo-wf-run-inspector'), detail: named(tree, 'RunDetail') ?? all(tree).find(node => node.type === 'RunDetail') } }
   let { tree, aside, detail } = drawer()

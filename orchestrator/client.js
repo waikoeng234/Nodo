@@ -265,9 +265,8 @@ var AVATAR_CSS = `
 .nodo-avatar-option{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:78px;padding:10px 4px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
 .nodo-avatar-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-avatar-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
-.nodo-avatar-option:focus-visible,.nodo-avatar-preview-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-avatar-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-avatar-option:disabled{opacity:.5;cursor:default}
-.nodo-avatar-preview-toggle{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 @keyframes nodo-avatar-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-3px) rotate(4deg) scale(.98,1.02)}}
 @keyframes nodo-avatar-blink{0%,42%,48%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
 @keyframes nodo-avatar-greet{0%,100%{transform:rotate(0)}35%{transform:rotate(-9deg)}70%{transform:rotate(7deg)}}
@@ -316,6 +315,49 @@ function RolePicker({ profiles, profile, disabled, onSelect }) {
         "aria-expanded": open,
         "aria-label": `\u9009\u62E9\u89D2\u8272\uFF0C\u5F53\u524D ${name}`,
         onClick: () => setOpen((value) => !value)
+      },
+      ...face,
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
+    )
+  });
+}
+function AssigneePicker({ roster, value, disabled, onSelect }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const chosen = roster.find((role) => role.id === value);
+  const name = chosen?.name ?? "\u81EA\u52A8";
+  const face = [
+    chosen ? (0, import_react.createElement)(RoleAvatar, { profile: chosen, size: 20 }) : (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }),
+    (0, import_react.createElement)("span", { className: "nodo-role-seat-label" }, name)
+  ];
+  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+    open,
+    onClose: () => setOpen(false),
+    portal: true,
+    side: "top",
+    align: "end",
+    className: "nodo-role-seat",
+    listClassName: "nodo-role-seat-list",
+    selectedId: value ?? "",
+    items: [
+      { id: "", label: "\u81EA\u52A8", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular) },
+      ...roster.map((role) => ({ id: role.id, label: role.name, icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }) }))
+    ],
+    onSelect: (id) => {
+      if (!disabled) {
+        onSelect(id || void 0);
+        setOpen(false);
+      }
+    },
+    anchor: (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-role-seat-trigger",
+        disabled,
+        "aria-haspopup": "menu",
+        "aria-expanded": open,
+        "aria-label": `\u6267\u884C\u8005\uFF1A${name}`,
+        onClick: () => setOpen((state) => !state)
       },
       ...face,
       (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
@@ -459,7 +501,7 @@ var workspacePicker = ({ workspaces, workspace, running = /* @__PURE__ */ new Se
     }
   );
 };
-function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, workflowNavigation }) {
+function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
   const [queries, setQueries] = (0, import_react.useState)({});
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
   const [archives, setArchives] = (0, import_react.useState)({});
@@ -657,27 +699,35 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDra
         "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
         title: `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
         disabled: busyNow || state.active,
-        "aria-pressed": editing?.profile?.id === item.id ? "true" : void 0,
         onClick: () => onEditRole(item)
       },
       /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 12 })
     ));
   };
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": workflowNavigation ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "workflow" ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
     onClick: onBack,
     disabled: typeof layoutService?.selectPanel !== "function"
-  }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !workflowNavigation, onClick: workflowNavigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "Workflow", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+  }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "Workflow", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
       "aria-label": runsWaiting ? "Workflow\uFF08\u6709\u5F85\u5904\u7406\uFF09" : "Workflow",
-      "aria-pressed": !!workflowNavigation,
-      onClick: workflowNavigation ? void 0 : onWorkflows
+      "aria-pressed": navigation?.view === "workflow",
+      onClick: navigation?.view === "workflow" ? void 0 : onWorkflows
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular, { size: 18 }),
     runsWaiting && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-badge" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 }))
-  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, workflowNavigation ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-pressed": !filterRole, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), view.profiles.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE workspace"))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+  )), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u89D2\u8272", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      "aria-label": "\u89D2\u8272",
+      "aria-pressed": navigation?.view === "roles",
+      onClick: navigation?.view === "roles" ? void 0 : onRoles
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 })
+  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-pressed": !filterRole, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), view.profiles.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE workspace"))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
 }
 
 // src/client/running.js
@@ -3491,7 +3541,7 @@ var triggerOf = (value) => {
   if (!token.startsWith("/") && !token.startsWith("$")) return null;
   return { char: token[0], start, query: token.slice(1) };
 };
-function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
+function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, assigneePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
   const box = (0, import_react.useRef)(null);
   const card = (0, import_react.useRef)(null);
   const picker = (0, import_react.useRef)(null);
@@ -3706,6 +3756,7 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
       (0, import_react.createElement)(
         "span",
         { className: "nodo-composer-target" },
+        assigneePicker,
         rolePicker,
         onModelChange && (0, import_react.createElement)(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange })
       ),
@@ -3973,6 +4024,41 @@ function GoalDialog({ profile, onSaved, onCancel }) {
   );
 }
 
+// nodo:engine-logos:nodo:engine-logos
+var ENGINE_LOGO_SVGS = { "claude": '<svg viewBox="0 0 248 248" fill="none" xmlns="http://www.w3.org/2000/svg">\n<path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/>\n</svg>', "codebuddy": '<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">\n<g clip-path="url(#clip0_5110_14771)">\n<rect width="40" height="40" rx="20" fill="url(#paint0_linear_5110_14771)"/>\n<g filter="url(#filter0_f_5110_14771)">\n<circle cx="12.6071" cy="34.9794" r="14.081" fill="#32E6B9" fill-opacity="0.4"/>\n</g>\n<g filter="url(#filter1_f_5110_14771)">\n<circle cx="33.3404" cy="43.6185" r="12.8704" fill="#32E6B9"/>\n</g>\n<path d="M27.6897 3.3426C28.057 3.01322 28.0795 2.99983 28.3485 2.98366C28.7851 2.95177 29.1858 3.16107 29.8664 3.78072C31.4566 5.22574 33.6703 8.19724 35.047 10.7343L35.5796 11.7191L36.3309 12.0927C37.0562 12.4593 38.2459 13.2111 38.7428 13.614C38.9673 13.7997 38.9992 13.8032 39.2326 13.7124C40.2872 13.3017 41.7982 13.846 43.1307 15.1244C44.3302 16.274 45.479 18.2384 45.9191 19.8778C45.9833 20.1417 46.0683 20.709 46.0994 21.1314C46.1997 22.6144 45.7243 23.7986 44.8085 24.3349C44.6213 24.443 44.6085 24.4725 44.6137 24.939C44.6559 27.1604 44.0571 29.3777 42.8543 31.54C41.4965 33.9678 39.0794 36.4798 35.8073 38.846C34.0502 40.1247 29.8918 42.5469 28.0122 43.3973C23.5096 45.4244 19.8999 46.2022 16.7645 45.8181C14.8943 45.5915 12.7771 44.8611 11.5246 44.0137C11.1951 43.786 11.1428 43.7719 10.8909 43.8439C9.55017 44.2289 7.79442 43.4374 6.30272 41.7817C5.70771 41.1197 4.74709 39.4939 4.43575 38.6241C3.71569 36.5887 3.85859 34.752 4.81783 33.6551C5.0657 33.3725 5.07387 33.3607 5.01972 32.8856C4.93033 32.1079 4.88982 30.9566 4.93066 30.2138L4.96343 29.5205L3.92091 27.6777C2.3078 24.8074 1.28326 22.3968 0.887982 20.5554C0.679402 19.546 0.692781 19.0981 0.949061 18.7667C1.10529 18.5666 1.61622 18.3594 2.23252 18.2455C3.78518 17.9729 7.17203 18.2198 10.9394 18.885L11.3303 18.9525L12.1903 18.1921C13.6179 16.9275 14.5665 16.2176 16.315 15.1274C18.1373 13.9872 20.1943 13.0498 22.5103 12.3071L23.2533 12.0687L23.6615 10.9964C25.1239 7.13587 26.6218 4.28969 27.6897 3.3426ZM15.4393 23.1261C13.7864 24.0804 12.9602 24.5582 12.3529 25.093C9.89364 27.2585 8.9738 30.6888 10.0208 33.7938C10.2794 34.5606 10.7568 35.387 11.7111 37.0398C12.6653 38.6926 13.1424 39.5194 13.6771 40.1267C15.8426 42.5859 19.2732 43.5045 22.3783 42.4574C23.145 42.1989 23.972 41.7223 25.6248 40.768L35.1333 35.2783C36.7862 34.324 37.6124 33.8462 38.2196 33.3114C40.6789 31.1459 41.5988 27.7156 40.5518 24.6105C40.2932 23.8438 39.8157 23.0174 38.8615 21.3646C37.9072 19.7117 37.4302 18.885 36.8955 18.2777C34.7299 15.8185 31.2993 14.8999 28.1943 15.947C27.4275 16.2055 26.6006 16.6821 24.9478 17.6364L15.4393 23.1261Z" fill="url(#paint1_linear_5110_14771)"/>\n<rect x="15.8816" y="30.0273" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 15.8816 30.0273)" fill="white"/>\n<rect x="26.6978" y="23.7812" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 26.6978 23.7812)" fill="white"/>\n</g>\n<defs>\n<filter id="filter0_f_5110_14771" x="-14.9163" y="7.45599" width="55.0468" height="55.047" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="6.72123" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<filter id="filter1_f_5110_14771" x="9.46959" y="19.7477" width="47.7417" height="47.741" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="5.50019" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<linearGradient id="paint0_linear_5110_14771" x1="20" y1="0" x2="20" y2="40" gradientUnits="userSpaceOnUse">\n<stop stop-color="#6C4DFF"/>\n<stop offset="1" stop-color="#583ED3"/>\n</linearGradient>\n<linearGradient id="paint1_linear_5110_14771" x1="14.639" y1="10.7917" x2="32.1712" y2="41.1585" gradientUnits="userSpaceOnUse">\n<stop stop-color="white" stop-opacity="0.8"/>\n<stop offset="0.437689" stop-color="white"/>\n</linearGradient>\n<clipPath id="clip0_5110_14771">\n<rect width="40" height="40" rx="20" fill="white"/>\n</clipPath>\n</defs>\n</svg>', "codex": '<svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>', "dsh": '<svg fill="#5786FE" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136 9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287.3.3 0 0 1 .113.074.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078.253.253 0 0 1-.114-.358 1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45"/></svg>', "opencode": '<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">\n<rect width="512" height="512" fill="#131010"></rect>\n<path d="M320 224V352H192V224H320Z" fill="#5A5858"></path>\n<path fill-rule="evenodd" clip-rule="evenodd" d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z" fill="white"></path>\n</svg>', "pi": '<svg fill="currentColor" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg"><path d="M420 280H280V140H0V0H420V280Z"/><path d="M560 560H420V280H560V560Z"/><path d="M140 560H0V140H140V280H280V420H140V560Z"/></svg>', "qoder": '<svg fill="currentColor" viewBox="0 0 206 206" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M104.003 35.8361C104.122 35.8899 104.223 35.938 104.308 35.9805C104.575 36.1139 104.784 36.2211 104.937 36.3023L154.881 62.632L154.9 62.6418C154.992 62.6907 155.084 62.7426 155.173 62.7973C160.753 65.8115 165.083 70.1612 168.163 75.8464C171.221 81.491 172.75 87.925 172.75 95.1484V117.637C172.75 117.795 172.743 117.954 172.728 118.111V158.251C172.728 163.577 170.488 167.682 166.008 170.563C161.529 173.445 156.866 173.781 152.021 171.573L143.479 167.682L143.449 167.699L143.279 167.796C143.276 167.798 143.237 167.821 143.159 167.867C142.593 168.202 142.154 168.454 141.84 168.625C141.789 168.654 141.686 168.709 141.532 168.79C141.479 168.819 141.443 168.837 141.426 168.846L141.174 168.979C140.759 169.203 140.355 169.414 139.961 169.61L139.342 169.911L139.192 169.982C138.849 170.145 138.46 170.326 138.025 170.524L137.252 170.86C136.994 170.973 136.623 171.127 136.137 171.32L136.002 171.374L135.892 171.42C135.835 171.443 135.78 171.466 135.725 171.488C135.49 171.584 135.294 171.661 135.137 171.716C134.872 171.814 134.453 171.961 133.881 172.16L133.879 172.161L133.715 172.219C133.549 172.28 133.366 172.342 133.165 172.407C132.571 172.603 131.9 172.805 131.151 173.012L127.646 173.973C126.996 174.153 126.392 174.306 125.833 174.432L125.437 174.515L125.039 174.596C124.663 174.676 124.363 174.738 124.139 174.782C124.007 174.809 123.855 174.836 123.681 174.864C123.646 174.869 123.625 174.872 123.619 174.874L123.11 174.956C123.106 174.957 123.084 174.961 123.044 174.967C122.729 175.02 122.483 175.059 122.304 175.085C122.178 175.104 121.986 175.129 121.727 175.159L121.331 175.209L120.674 175.285C120.526 175.302 120.362 175.317 120.18 175.33L120.066 175.341L120.015 175.345C119.546 175.384 119.175 175.411 118.903 175.426C118.815 175.433 118.717 175.438 118.608 175.443L118.645 175.439C118.497 175.452 118.347 175.459 118.198 175.459H118.137C117.737 175.478 117.398 175.487 117.121 175.487H116.455C116.418 175.487 116.381 175.487 116.344 175.486C116.298 175.485 116.224 175.484 116.122 175.483C115.843 175.479 115.623 175.473 115.461 175.466C115.335 175.462 115.132 175.452 114.852 175.434L114.824 175.432L114.654 175.426L114.273 175.407C114.212 175.404 114.15 175.399 114.088 175.394L113.388 175.332C112.948 175.29 112.527 175.243 112.124 175.19L111.925 175.166C111.882 175.162 111.839 175.155 111.796 175.149C111.339 175.081 110.875 175.005 110.403 174.921L109.901 174.827L109.871 174.821C109.63 174.777 109.429 174.736 109.27 174.698L109.224 174.687L109.158 174.672L109.037 174.644C108.61 174.549 108.15 174.435 107.656 174.301L107.629 174.294C107.5 174.263 107.358 174.226 107.201 174.181L107.2 174.181C106.608 174.013 106.029 173.831 105.463 173.634C105.307 173.586 105.154 173.53 105.004 173.466L104.884 173.42C104.405 173.241 104.002 173.083 103.675 172.948C103.58 172.909 103.469 172.861 103.342 172.804C103.29 172.781 103.261 172.768 103.255 172.766L103.084 172.692C102.756 172.551 102.39 172.384 101.986 172.19L101.906 172.152L101.891 172.145C101.798 172.103 101.715 172.063 101.64 172.025C101.571 171.99 101.501 171.955 101.431 171.918C101.407 171.906 101.386 171.895 101.369 171.886C101.249 171.835 101.13 171.778 101.012 171.716L101.009 171.715L51.5574 145.645C51.215 145.509 50.8889 145.336 50.5849 145.128C48.367 143.914 46.3274 142.453 44.4659 140.744C44.4647 140.743 44.4635 140.742 44.4623 140.741C44.4584 140.737 44.4546 140.734 44.4507 140.73C44.4362 140.717 44.4214 140.704 44.4064 140.69C43.6029 139.953 42.8113 139.14 42.0317 138.252C42.0244 138.243 42.0171 138.235 42.0097 138.226C42.0082 138.224 42.0067 138.222 42.0051 138.22C41.5797 137.727 41.1892 137.252 40.8338 136.795C40.7387 136.672 40.6464 136.551 40.5567 136.432C35.6857 129.988 33.2502 122.172 33.2502 112.983V90.4946C33.2502 89.8308 33.2644 89.0633 33.2927 88.1921C33.3022 87.9838 33.3174 87.7494 33.3384 87.4888C33.3459 87.3951 33.3511 87.3283 33.3539 87.2882C33.3866 86.7286 33.4259 86.2074 33.4719 85.7247C33.4848 85.5587 33.5136 85.2969 33.5583 84.9392C33.5691 84.8524 33.5769 84.7892 33.5817 84.7498C33.589 84.6881 33.6006 84.5877 33.6166 84.4487C33.672 83.9681 33.7187 83.5958 33.7569 83.3318C33.7999 83.0465 33.8556 82.7028 33.9239 82.3007C33.9303 82.2616 33.9429 82.1836 33.9618 82.0668C34.0386 81.5927 34.1025 81.2235 34.1537 80.9593C34.1539 80.9576 34.1542 80.9559 34.1545 80.9542L34.1507 80.9713C34.1669 80.871 34.1817 80.7851 34.1951 80.7134C34.3125 80.1121 34.4286 79.5636 34.5433 79.0679C34.5554 79.0129 34.5689 78.9553 34.5837 78.895C34.704 78.3592 34.8544 77.7535 35.0349 77.078C35.0683 76.9444 35.1121 76.78 35.1663 76.5847C35.1764 76.5481 35.1839 76.5212 35.1886 76.5042C35.4221 75.6865 35.6047 75.0694 35.7364 74.653C35.7408 74.639 35.7453 74.6249 35.7499 74.6109C35.7573 74.5867 35.7647 74.5627 35.7723 74.539C35.7789 74.517 35.7857 74.495 35.7926 74.473C35.8241 74.3734 35.8643 74.2549 35.9134 74.1174L35.9251 74.085C36.1639 73.3479 36.3895 72.6905 36.6021 72.1127C36.6575 71.9603 36.7417 71.7385 36.8547 71.4475C36.8818 71.3777 36.9019 71.3258 36.9151 71.2917C36.9324 71.247 36.9593 71.177 36.9959 71.0817C37.2171 70.5062 37.3921 70.0651 37.5208 69.7585L37.5168 69.7661C37.5549 69.6676 37.5905 69.5789 37.6236 69.5C37.6858 69.3466 37.7661 69.1613 37.8644 68.944C37.8998 68.8657 37.9232 68.8133 37.9347 68.7869C38.152 68.2878 38.3184 67.9104 38.4338 67.6548C38.5471 67.4055 38.7105 67.0593 38.9238 66.6163C38.9706 66.5208 39.03 66.3991 39.1019 66.2511C39.2648 65.9163 39.392 65.6588 39.4835 65.4786L39.5155 65.4136C39.5653 65.3091 39.6106 65.2167 39.6516 65.1362C39.7258 64.9869 39.8207 64.8074 39.9362 64.5977C39.9744 64.5283 39.9996 64.4822 40.0115 64.4596C40.0477 64.3922 40.0935 64.3066 40.1489 64.2029C40.3258 63.872 40.463 63.6187 40.5605 63.4432C40.7672 63.0697 40.9619 62.726 41.1445 62.4123C41.2987 62.1332 41.489 61.8063 41.7152 61.4316C41.7383 61.3935 41.7619 61.3555 41.786 61.318L41.7824 61.323C41.7846 61.3193 41.7867 61.3156 41.7888 61.3118L41.7824 61.323C41.8335 61.2318 41.8771 61.1561 41.9132 61.0959C42.0161 60.9245 42.159 60.697 42.342 60.4136C42.5227 60.1209 42.7188 59.811 42.9304 59.484C43.0841 59.2469 43.3076 58.9123 43.601 58.4804L43.9154 58.0238L44.2115 57.5939C44.2325 57.5634 44.2537 57.5333 44.2753 57.5034L44.2749 57.5021C44.3548 57.3822 44.4252 57.2801 44.4861 57.1958C44.5458 57.1108 44.6445 56.9765 44.7821 56.7929C44.8446 56.7095 44.8877 56.6514 44.9115 56.6186C45.2257 56.1886 45.4678 55.8625 45.6377 55.6403L45.9946 55.1837L46.3262 54.7597C46.5387 54.4816 46.7902 54.1653 47.0808 53.811C47.0969 53.7914 47.1242 53.7575 47.1628 53.7094C47.2305 53.6246 47.2851 53.5571 47.3267 53.5067C47.4115 53.4034 47.53 53.264 47.6821 53.0885C47.7338 53.0289 47.771 52.9858 47.7938 52.9593C47.8766 52.8642 47.9852 52.7384 48.1197 52.582C48.3585 52.3041 48.544 52.0909 48.6764 51.9423L49.3723 51.1748C49.5804 50.9454 49.8853 50.6178 50.2869 50.1921C50.3199 50.1572 50.3534 50.1227 50.3874 50.0888L50.3985 50.0741C50.5274 49.9324 50.6395 49.8139 50.7349 49.7185C50.7855 49.6679 50.8533 49.6012 50.9383 49.5185C50.99 49.4683 51.0247 49.4343 51.0424 49.4165C51.4915 48.9675 51.9017 48.5656 52.2729 48.2107C52.3283 48.1583 52.4007 48.0891 52.49 48.0029C52.6771 47.8224 52.8271 47.6806 52.9399 47.5775C53.3761 47.1664 53.9052 46.6923 54.5271 46.155C54.5279 46.1543 54.5287 46.1536 54.5295 46.1528L54.5189 46.161C54.617 46.0697 54.7025 45.9924 54.7754 45.9292C54.8391 45.8741 54.904 45.8206 54.9705 45.7688C54.997 45.7476 55.0236 45.7269 55.0503 45.7065L55.0774 45.6851L55.0939 45.6717C55.5288 45.3081 55.9911 44.9311 56.4808 44.5407C56.5166 44.5125 56.5529 44.4839 56.5898 44.4548C56.7923 44.2954 56.9507 44.1724 57.0648 44.0858C57.2979 43.9051 57.6655 43.6275 58.1675 43.253C58.2075 43.2232 58.2479 43.1939 58.2888 43.1654C58.3729 43.1065 58.5143 43.0042 58.7128 42.8586C59.1025 42.577 59.5704 42.2518 60.1163 41.883L60.1145 41.8841L60.1593 41.8524C60.2852 41.7638 60.3942 41.6892 60.4862 41.6287C60.5329 41.5967 60.5792 41.5661 60.6251 41.5367C61.2865 41.1057 61.8541 40.7475 62.3278 40.4623C62.4222 40.4035 62.5743 40.3142 62.7839 40.1944C62.7838 40.1941 62.8182 40.1736 62.8873 40.1328C63.453 39.7986 63.8928 39.5462 64.2065 39.3754L64.8387 39.0383L64.872 39.0207C65.2867 38.7973 65.6911 38.5871 66.0852 38.39C66.2669 38.2991 66.5247 38.1744 66.8586 38.0158C67.1979 37.8542 67.5857 37.6746 68.0218 37.477L68.4373 37.2954L68.7948 37.1398C69.0934 37.0111 69.5097 36.84 70.0435 36.6265C70.1097 36.6005 70.1844 36.5712 70.2678 36.5384C70.5114 36.4427 70.6998 36.3699 70.833 36.3199C71.1527 36.2027 71.5991 36.0447 72.1722 35.8457C72.2132 35.8316 72.2719 35.8109 72.3482 35.7837C72.574 35.7031 72.7593 35.64 72.904 35.5945C73.5201 35.3928 74.1846 35.1929 74.8975 34.9948L78.4057 34.0333C79.0348 33.8574 79.6373 33.7044 80.2131 33.5744C80.378 33.5359 80.5868 33.4913 80.8395 33.4407C81.1612 33.3685 81.5282 33.2925 81.9406 33.2127C82.0871 33.1842 82.2808 33.151 82.5216 33.1131C82.5981 33.101 82.6517 33.0924 82.6826 33.0873C82.7524 33.0758 82.852 33.0591 82.9815 33.0372C83.2985 32.9834 83.5459 32.9435 83.7238 32.9177C83.7635 32.9119 83.8033 32.9066 83.8432 32.9018L84.1737 32.8619L84.504 32.822C84.5516 32.8162 84.6345 32.8056 84.7525 32.7903C85.0348 32.7538 85.2559 32.7271 85.4158 32.7105C85.5254 32.6991 85.6353 32.6913 85.7453 32.6873L86.07 32.6632C86.533 32.6238 86.9091 32.5967 87.1982 32.582C87.3378 32.5734 87.5561 32.5646 87.8533 32.5556L87.8692 32.5551C87.9598 32.5532 88.0717 32.5499 88.205 32.5453C88.4606 32.5364 88.6706 32.5314 88.835 32.5303C88.9748 32.5275 89.1472 32.5271 89.3523 32.529L89.537 32.5302C89.6342 32.5318 89.7388 32.5334 89.851 32.5349C90.1448 32.5389 90.3757 32.5444 90.5436 32.5514C90.6803 32.5549 90.9082 32.5655 91.2273 32.5832C91.2891 32.5871 91.3656 32.5912 91.4568 32.5957C91.6011 32.6026 91.7158 32.6089 91.8012 32.6144C91.9206 32.6204 92.0953 32.6356 92.3254 32.6598L92.6313 32.6871C93.0373 32.7257 93.4523 32.7724 93.8761 32.8271L93.8896 32.8288L93.8913 32.829C94.0015 32.8408 94.0983 32.8527 94.1819 32.8646C94.6093 32.9223 95.085 32.9984 95.6089 33.093C95.6739 33.1047 95.7386 33.1178 95.8031 33.1321L95.8062 33.1318C95.8842 33.1466 95.9548 33.1606 96.0179 33.1737C96.0408 33.1779 96.0713 33.1835 96.1093 33.1905C96.3333 33.2314 96.5177 33.2683 96.6627 33.301C96.7395 33.3173 96.8375 33.3418 96.9566 33.3744C96.9806 33.3797 97.0046 33.385 97.0288 33.3903C97.2476 33.4387 97.4749 33.4924 97.7107 33.5517C97.9063 33.6006 98.1067 33.6529 98.3119 33.7085L98.3072 33.7071L98.3401 33.7149C98.4501 33.742 98.5513 33.7682 98.6438 33.7934C98.6594 33.7976 98.6743 33.8018 98.6886 33.8058C98.7485 33.8224 98.8045 33.8387 98.8566 33.8545C98.8608 33.8557 98.865 33.8569 98.8692 33.8581C99.3732 34.0019 99.9241 34.1774 100.522 34.3846C100.548 34.3932 100.574 34.4019 100.6 34.4109C100.733 34.4556 100.881 34.5109 101.044 34.5769C101.508 34.7451 101.931 34.9089 102.311 35.0684C102.368 35.0928 102.417 35.1139 102.459 35.1317C102.655 35.2169 102.808 35.2839 102.918 35.3328C103.261 35.4856 103.61 35.6469 103.963 35.8169L104.003 35.8361ZM101.032 34.5728L101.03 34.5721C101.033 34.573 101.035 34.5739 101.038 34.5748C101.036 34.5741 101.034 34.5735 101.032 34.5728ZM104.903 162.561L105.666 162.963C105.717 162.991 105.807 163.037 105.935 163.102C105.972 163.121 106.002 163.136 106.025 163.148C106.092 163.178 106.131 163.197 106.145 163.205L106.281 163.269C106.554 163.401 106.811 163.519 107.052 163.622L107.063 163.627C107.148 163.663 107.253 163.708 107.38 163.765C107.425 163.785 107.449 163.796 107.452 163.797C107.68 163.891 107.998 164.015 108.408 164.169L108.458 164.189C108.52 164.211 108.58 164.234 108.641 164.257L108.655 164.263C109.054 164.403 109.476 164.536 109.919 164.661C109.914 164.66 109.885 164.654 109.835 164.643C109.904 164.659 109.973 164.675 110.041 164.693L110.249 164.747C110.596 164.84 110.948 164.927 111.306 165.008L111.379 165.025L111.451 165.041L111.564 165.067L111.672 165.086L111.703 165.092L112.139 165.174C112.496 165.238 112.847 165.295 113.191 165.347L113.391 165.372C113.685 165.41 113.977 165.443 114.269 165.47L114.88 165.525L115.066 165.535L115.442 165.551L115.47 165.553C115.644 165.565 115.787 165.572 115.899 165.576C115.964 165.579 116.087 165.581 116.267 165.584C116.363 165.585 116.443 165.586 116.506 165.587H117.121C117.26 165.587 117.474 165.58 117.764 165.566C117.848 165.561 117.932 165.559 118.015 165.559H118.037C118.081 165.557 118.126 165.555 118.174 165.552L118.156 165.555C118.215 165.55 118.274 165.546 118.334 165.542C118.501 165.534 118.779 165.514 119.169 165.481L119.325 165.467C119.376 165.462 119.427 165.458 119.479 165.455C119.506 165.453 119.53 165.451 119.549 165.449L120.088 165.388L120.592 165.324C120.728 165.308 120.832 165.295 120.904 165.284C121.005 165.27 121.174 165.243 121.411 165.203C121.454 165.196 121.491 165.19 121.522 165.185L121.924 165.119C121.976 165.11 122.042 165.1 122.123 165.087L122.114 165.091C122.152 165.082 122.191 165.074 122.23 165.067C122.398 165.035 122.677 164.977 123.068 164.895L123.398 164.828L123.653 164.775C124.058 164.683 124.517 164.567 125.03 164.425L128.507 163.472C129.101 163.307 129.652 163.141 130.162 162.973C130.219 162.955 130.253 162.943 130.266 162.939C130.308 162.922 130.35 162.907 130.393 162.892L130.632 162.808H130.634C131.154 162.628 131.551 162.487 131.825 162.387C131.834 162.383 131.882 162.364 131.971 162.328C132.052 162.295 132.097 162.276 132.106 162.273L132.326 162.182C132.367 162.166 132.414 162.147 132.467 162.126C132.853 161.972 133.13 161.858 133.299 161.784L133.938 161.506C134.318 161.334 134.65 161.181 134.935 161.045L135.024 161.003L135.533 160.756C135.838 160.604 136.178 160.426 136.553 160.224L136.711 160.141C136.766 160.112 136.839 160.073 136.929 160.025C136.993 159.992 137.052 159.961 137.107 159.93C137.318 159.814 137.658 159.619 138.125 159.343C138.192 159.304 138.261 159.263 138.332 159.221L138.46 159.147H138.461C138.544 159.098 138.619 159.055 138.687 159.017C139.131 158.749 139.551 158.484 139.947 158.224L140.305 157.979C141.736 157.002 143.572 156.845 145.148 157.563L156.125 162.564C157.693 163.279 159.202 163.17 160.652 162.237C162.103 161.304 162.828 159.976 162.828 158.251V117.614C162.828 117.456 162.835 117.298 162.85 117.14V95.1484C162.85 83.7403 158.651 75.8219 150.254 71.3934L149.959 71.2374C149.909 71.2132 149.855 71.1867 149.796 71.158C149.721 71.1217 149.663 71.0932 149.62 71.0724C149.384 70.9567 149.129 70.8386 148.853 70.718C148.676 70.6389 148.548 70.5828 148.468 70.5496C148.234 70.4515 147.944 70.3392 147.597 70.2126L147.415 70.1456L147.313 70.1067C146.939 69.9768 146.534 69.8488 146.096 69.7227L145.999 69.6973L145.777 69.6395C145.321 69.5221 144.979 69.4377 144.751 69.3863C144.724 69.3805 144.683 69.3717 144.629 69.3597C144.371 69.3034 144.185 69.2642 144.072 69.242C144.03 69.2339 143.989 69.2253 143.948 69.2162L143.83 69.1927C143.449 69.1241 143.093 69.0673 142.761 69.0223C142.792 69.0267 142.81 69.0291 142.814 69.0296C142.703 69.0177 142.628 69.0088 142.589 69.0029C142.287 68.9641 141.996 68.931 141.716 68.9037L141.71 68.9033L141.383 68.8734C141.233 68.8611 140.993 68.845 140.663 68.8252C140.435 68.8126 140.276 68.805 140.186 68.8025C140.128 68.8008 140.071 68.7982 140.014 68.7947C139.934 68.7897 139.76 68.7873 139.491 68.7873L138.982 68.7863C138.823 68.7894 138.572 68.7974 138.23 68.8105C138.13 68.8157 138.008 68.8205 137.866 68.8249C137.791 68.8271 137.731 68.8296 137.686 68.8322C137.515 68.8408 137.229 68.8619 136.827 68.8954L136.781 68.899C136.729 68.9029 136.661 68.9074 136.577 68.9127L136.442 68.9231C136.355 68.9316 136.204 68.9492 135.988 68.9761C135.849 68.9934 135.758 69.0044 135.717 69.0091C135.625 69.0209 135.503 69.035 135.352 69.0513C135.248 69.0625 135.179 69.0706 135.146 69.0756C135.049 69.09 134.884 69.1175 134.65 69.158C134.503 69.1832 134.384 69.2036 134.291 69.219C134.229 69.2289 134.145 69.2422 134.038 69.2587C133.907 69.2786 133.814 69.2938 133.759 69.3042C133.645 69.3251 133.444 69.3668 133.157 69.4293C133.028 69.4574 132.949 69.4744 132.92 69.4802C132.827 69.5013 132.7 69.5285 132.54 69.5617C132.451 69.5801 132.403 69.5901 132.396 69.5916C131.906 69.7035 131.445 69.8191 131.014 69.9384L127.538 70.8908C126.968 71.049 126.455 71.2026 125.998 71.3517L125.707 71.4525L125.352 71.575C124.951 71.7086 124.6 71.8325 124.3 71.9467C124.181 71.9913 123.979 72.0708 123.693 72.1852C123.284 72.3461 122.971 72.4736 122.752 72.5678L122.104 72.8516C121.973 72.9113 121.833 72.9757 121.684 73.0449V91.2807C121.684 92.0491 121.665 92.8184 121.628 93.5885C121.622 93.7365 121.609 93.9283 121.591 94.1637L121.59 94.1679L121.571 94.4471L121.57 94.4744C121.528 95.1281 121.491 95.6208 121.457 95.9524C121.439 96.1399 121.414 96.3666 121.381 96.6324L121.329 97.0655C121.322 97.1194 121.312 97.2021 121.299 97.3136C121.248 97.7482 121.207 98.0619 121.178 98.255C121.155 98.4224 121.12 98.6496 121.074 98.9367C121.068 98.9704 121.065 98.9883 121.065 98.9905L121.009 99.3453L121.009 99.3467C120.917 99.902 120.844 100.324 120.788 100.612C120.661 101.278 120.528 101.923 120.389 102.547L120.362 102.657C120.224 103.259 120.071 103.869 119.902 104.487L119.761 104.999C119.578 105.652 119.397 106.263 119.219 106.83L119.068 107.297C118.85 107.97 118.629 108.613 118.405 109.225C118.356 109.361 118.29 109.536 118.205 109.751L118.188 109.793L118.192 109.783L118.08 110.078C118.063 110.121 118.039 110.184 118.007 110.266C117.79 110.827 117.625 111.244 117.512 111.517C117.449 111.674 117.358 111.889 117.239 112.163C117.192 112.273 117.165 112.336 117.158 112.351L117.095 112.503C116.916 112.924 116.752 113.292 116.603 113.609C116.52 113.796 116.401 114.053 116.244 114.381C116.192 114.49 116.148 114.584 116.109 114.664C116.087 114.71 116.055 114.778 116.011 114.868C115.823 115.258 115.676 115.559 115.568 115.77C115.376 116.148 115.2 116.486 115.04 116.784L114.726 117.371L114.51 117.768C114.385 117.994 114.197 118.325 113.947 118.761C113.932 118.786 113.907 118.83 113.871 118.893C113.665 119.251 113.496 119.536 113.364 119.749C113.175 120.066 112.975 120.389 112.764 120.718C112.747 120.745 112.719 120.789 112.68 120.851C112.458 121.207 112.294 121.463 112.191 121.62C112.082 121.789 111.924 122.028 111.715 122.339C111.63 122.465 111.557 122.575 111.495 122.666L111.474 122.698L110.894 123.543L110.828 123.635L110.248 124.44C110.006 124.774 109.774 125.086 109.554 125.376C109.374 125.614 109.136 125.921 108.838 126.296C108.792 126.354 108.722 126.444 108.626 126.564C108.415 126.831 108.255 127.032 108.146 127.165C107.99 127.358 107.765 127.627 107.472 127.971L107.432 128.017L107.427 128.022C107.169 128.329 106.885 128.659 106.573 129.01C106.415 129.187 106.185 129.443 105.883 129.777C105.674 130.009 105.372 130.333 104.979 130.75C104.865 130.87 104.702 131.038 104.49 131.254C104.4 131.346 104.327 131.42 104.271 131.477C103.929 131.825 103.523 132.223 103.055 132.67L102.875 132.844L102.673 133.037L102.415 133.284C101.896 133.765 101.374 134.233 100.848 134.686L100.749 134.772L100.669 134.843L100.589 134.915C100.544 134.955 100.499 134.995 100.452 135.032L100.254 135.197C99.956 135.449 99.52 135.806 98.9463 136.268L98.9399 136.273C98.8505 136.346 98.7376 136.435 98.6012 136.539C98.551 136.577 98.5019 136.615 98.4539 136.652L98.3712 136.715C97.9722 137.023 97.5654 137.329 97.1506 137.632C97.1246 137.65 97.0729 137.688 96.9956 137.746C96.8643 137.844 96.7619 137.919 96.6886 137.971C96.2495 138.286 95.8236 138.581 95.4107 138.856L95.0917 139.078C95.0575 139.102 95.0231 139.126 94.9883 139.148C94.3982 139.537 93.7872 139.923 93.1553 140.305L93.1461 140.31C93.3774 150.816 97.2951 158.232 104.899 162.559C104.9 162.559 104.902 162.56 104.903 162.561ZM85.109 152.14C83.8619 148.186 83.2373 143.919 83.2353 139.337V137.521C83.2347 137.489 83.2344 137.458 83.2344 137.426V116.845C83.2344 116.045 83.2534 115.247 83.2913 114.451C83.2988 114.292 83.313 114.083 83.334 113.822C83.3415 113.729 83.3466 113.663 83.3493 113.626C83.3544 113.552 83.3621 113.44 83.3724 113.29C83.4083 112.76 83.4408 112.342 83.4697 112.035C83.4825 111.908 83.5022 111.733 83.5288 111.511C83.5477 111.353 83.5635 111.213 83.5763 111.091C83.5843 111.024 83.5963 110.921 83.6122 110.782C83.6676 110.301 83.7158 109.919 83.757 109.636C83.797 109.37 83.8504 109.041 83.917 108.649C83.9225 108.616 83.931 108.565 83.9424 108.496C84.0263 107.992 84.0935 107.6 84.144 107.32C84.2642 106.675 84.3948 106.043 84.5356 105.422C84.5486 105.362 84.5632 105.3 84.5794 105.234C84.5829 105.219 84.5864 105.203 84.59 105.188C84.7498 104.507 84.9083 103.874 85.0654 103.29C85.0711 103.27 85.0838 103.223 85.1035 103.148C85.1407 103.006 85.1675 102.907 85.1837 102.851C85.3667 102.187 85.5509 101.565 85.7364 100.984C85.7394 100.975 85.7425 100.965 85.7454 100.956C85.7604 100.907 85.7756 100.859 85.7911 100.812C85.8274 100.699 85.8714 100.57 85.9233 100.425C85.9267 100.416 85.9288 100.41 85.9293 100.409C86.1871 99.6224 86.4078 98.9796 86.5913 98.4808C86.651 98.3166 86.7374 98.0889 86.8505 97.7977C86.8777 97.7276 86.8935 97.687 86.8979 97.6759C87.1126 97.1079 87.3121 96.6018 87.4965 96.1574C87.5769 95.96 87.6945 95.6837 87.8495 95.3284C87.8867 95.2432 87.9153 95.1776 87.9353 95.1316C88.1491 94.6407 88.3155 94.2636 88.4344 94.0001C88.5435 93.7602 88.7034 93.4213 88.9141 92.9835C88.9155 92.9806 88.9169 92.9777 88.9182 92.9749C89.099 92.5951 89.2811 92.2247 89.4646 91.8639C89.5557 91.6816 89.689 91.4218 89.8645 91.0844C89.9194 90.9789 89.9656 90.8899 90.0032 90.8175C90.201 90.4424 90.3841 90.1034 90.5524 89.8004C90.7617 89.4223 90.9573 89.0771 91.1389 88.7647L91.4063 88.3047L91.7037 87.7941C91.8473 87.5548 92.0487 87.2295 92.3079 86.8181C92.4094 86.6532 92.5571 86.4188 92.7509 86.1149C92.8189 86.0084 92.8779 85.9158 92.9281 85.8371C93.0803 85.6022 93.2952 85.2806 93.5727 84.8722C93.8298 84.4867 94.0521 84.1637 94.2398 83.9033C94.4559 83.5971 94.6806 83.2865 94.9138 82.9715C95.2236 82.5476 95.4605 82.2284 95.6245 82.014C95.8073 81.7734 96.0476 81.4661 96.3452 81.0921L96.69 80.6582L97.0805 80.168C97.2347 79.9804 97.4631 79.7075 97.7656 79.3492L97.7895 79.3212C97.8343 79.2689 97.9023 79.1892 97.9935 79.0823C98.2842 78.7413 98.506 78.4851 98.6587 78.3137C98.8175 78.1339 99.0523 77.8728 99.3629 77.5304C99.5705 77.3015 99.8791 76.9701 100.289 76.536C100.534 76.2773 100.774 76.0318 101.006 75.7993C101.356 75.4442 101.766 75.0422 102.236 74.5932C102.529 74.3084 102.75 74.0982 102.898 73.9627C103.423 73.4747 103.975 72.9804 104.555 72.4797L104.568 72.4679C104.572 72.4646 104.575 72.4614 104.579 72.4582L104.568 72.4679C104.69 72.3555 104.78 72.2755 104.837 72.2279C104.93 72.1485 105.043 72.0556 105.178 71.9492C105.67 71.5386 106.104 71.1853 106.48 70.8893C106.615 70.7826 106.802 70.6384 107.041 70.4566C107.478 70.1188 107.863 69.8283 108.196 69.5852L108.738 69.1881C109.156 68.886 109.606 68.5732 110.088 68.2498C110.094 68.2454 110.111 68.2342 110.137 68.2159C110.281 68.1154 110.413 68.0272 110.532 67.9513C111.047 67.6097 111.632 67.2385 112.286 66.8376C112.329 66.8116 112.372 66.7861 112.415 66.7614C112.544 66.6878 112.642 66.6306 112.71 66.59C113.351 66.212 113.817 65.9444 114.107 65.7874C114.195 65.7371 114.288 65.6854 114.387 65.6323C114.427 65.6108 114.467 65.5899 114.507 65.5696C114.569 65.5368 114.639 65.5005 114.715 65.4606C114.784 65.425 114.833 65.3993 114.863 65.3835C115.228 65.1868 115.634 64.9766 116.082 64.7529C116.336 64.6259 116.591 64.5012 116.849 64.3787C117.279 64.1741 117.669 63.9926 118.018 63.8342L118.772 63.5029C119.128 63.3494 119.559 63.1731 120.064 62.9741C120.385 62.8458 120.638 62.7468 120.824 62.6771C121.224 62.5247 121.69 62.36 122.221 62.183L122.468 62.0972L122.76 61.9962C123.466 61.7648 124.175 61.5501 124.888 61.352L128.396 60.3905C128.613 60.3306 128.835 60.2715 129.063 60.213L100.3 45.0496C100.214 45.004 100.083 44.937 99.9066 44.8487C99.9047 44.8478 99.9027 44.8469 99.9007 44.846L99.9075 44.8496C99.7964 44.7991 99.6999 44.7535 99.6181 44.7129C99.4811 44.6472 99.3429 44.5824 99.2036 44.5184C99.1007 44.4713 98.9939 44.4231 98.8832 44.3739C98.8044 44.3386 98.6867 44.2871 98.53 44.2193C98.4876 44.201 98.455 44.1869 98.4322 44.177C98.4314 44.1767 98.4306 44.1763 98.4299 44.176C98.3382 44.1381 98.2427 44.0998 98.1433 44.061C97.9965 44.0041 97.8311 43.9427 97.6473 43.8766C97.5717 43.85 97.4776 43.814 97.3649 43.7686C97.3527 43.7645 97.3407 43.7603 97.3286 43.7561C96.8799 43.5998 96.4567 43.4648 96.059 43.3512L95.9727 43.3283C95.8926 43.3086 95.8272 43.2921 95.7763 43.2788C95.3802 43.1715 95.0531 43.0905 94.795 43.036C94.6972 43.0166 94.5792 42.9882 94.4409 42.9508C94.4084 42.9445 94.3714 42.9375 94.33 42.93C94.2346 42.9125 94.1589 42.8984 94.1029 42.8876C94.0584 42.8789 94.014 42.8697 93.9698 42.8599L93.9667 42.8601C93.9009 42.8477 93.8405 42.8359 93.7854 42.8246C93.4377 42.7625 93.1212 42.7121 92.8358 42.6733C92.725 42.6614 92.6275 42.6495 92.5435 42.6375C92.2732 42.6029 91.997 42.5722 91.7147 42.5453L91.3599 42.5131L91.2927 42.5057L91.289 42.5054L91.1859 42.4959C91.1239 42.4922 91.055 42.4886 90.9793 42.4849C90.835 42.478 90.7203 42.4717 90.6349 42.4662C90.4366 42.4553 90.292 42.4486 90.201 42.446C90.0797 42.4413 89.9183 42.4376 89.7169 42.4349C89.5824 42.433 89.4787 42.4313 89.4058 42.4298C89.4064 42.4305 89.3577 42.4304 89.26 42.4294C89.1424 42.4283 89.0705 42.4281 89.0444 42.4289C88.9973 42.4302 88.9501 42.4309 88.903 42.4309C88.8446 42.4309 88.7268 42.434 88.5495 42.4401C88.3825 42.4459 88.248 42.4499 88.1461 42.4522C87.9529 42.458 87.8209 42.4631 87.7499 42.4674C87.5399 42.4782 87.2415 42.5 86.8546 42.5328L86.5715 42.554L86.3409 42.5711C86.3298 42.572 86.3187 42.5728 86.3077 42.5735C86.2335 42.5825 86.1393 42.5944 86.0254 42.6091C85.8845 42.6274 85.7759 42.6412 85.6996 42.6505L85.3608 42.6915L85.0984 42.7231C84.9951 42.7388 84.8419 42.764 84.6388 42.7985C84.4899 42.8237 84.3759 42.8429 84.2967 42.8558C84.246 42.8643 84.1678 42.8768 84.0619 42.8935C83.9382 42.913 83.8599 42.9259 83.827 42.9323C83.5008 42.9954 83.1868 43.0605 82.885 43.1276C82.6666 43.172 82.5146 43.2042 82.429 43.2242C81.993 43.3228 81.5326 43.4398 81.0478 43.5754L77.5317 44.539C76.9734 44.6941 76.4388 44.8552 75.928 45.0223C75.8676 45.0416 75.7842 45.0701 75.6778 45.1081C75.5623 45.1493 75.4704 45.1817 75.4021 45.2051C74.8937 45.3817 74.5177 45.5145 74.2741 45.6037C74.2132 45.6267 74.085 45.6766 73.8895 45.7534C73.7991 45.7889 73.7301 45.816 73.6823 45.8346C73.2548 46.0058 72.9375 46.1359 72.7303 46.2251L72.3994 46.3693L72.0419 46.5249C71.7073 46.677 71.3972 46.821 71.1115 46.957L71.1072 46.9591C70.8335 47.0891 70.6356 47.1846 70.5135 47.2457C70.2089 47.398 69.8811 47.5686 69.5302 47.7576L69.4965 47.7756L68.9012 48.0927C68.7153 48.1941 68.3892 48.3824 67.9232 48.6577C67.8482 48.702 67.7923 48.735 67.7555 48.7567C67.6073 48.8417 67.518 48.8937 67.4876 48.9125C67.0806 49.1579 66.5958 49.4639 66.0332 49.8305C65.9931 49.8578 65.9533 49.8842 65.9139 49.9097L65.8575 49.9496C65.7862 49.9998 65.7282 50.0401 65.6836 50.0706C65.2073 50.3925 64.8258 50.657 64.5392 50.864C64.3368 51.0125 64.1686 51.1342 64.0344 51.2291C63.607 51.5482 63.2914 51.7866 63.0876 51.9444C62.9946 52.0152 62.8699 52.1121 62.7135 52.2352C62.6748 52.2656 62.6456 52.2887 62.6258 52.3042C62.2109 52.635 61.8299 52.9455 61.4827 53.2357C61.4226 53.2875 61.3346 53.3593 61.2187 53.4512C61.1402 53.5238 61.0704 53.5865 61.0095 53.6393C60.4881 54.0895 60.0428 54.4885 59.6734 54.8362C59.591 54.912 59.488 55.0095 59.3645 55.1286C59.248 55.241 59.1565 55.3286 59.0899 55.3914C58.7889 55.6792 58.4401 56.0213 58.0437 56.4178C57.9931 56.4684 57.9253 56.535 57.8403 56.6177C57.7886 56.6679 57.7539 56.7019 57.7362 56.7197L57.7249 56.7344C57.6255 56.8437 57.536 56.9393 57.4565 57.0211C57.1154 57.3829 56.865 57.6517 56.7055 57.8275L56.0398 58.5614C55.9662 58.6442 55.8292 58.8023 55.6287 59.0355C55.4778 59.2111 55.3624 59.3447 55.2825 59.4363C55.2667 59.4549 55.227 59.5009 55.1632 59.5745C55.0686 59.6836 55.0053 59.7575 54.9736 59.7962C54.9593 59.8136 54.9328 59.8464 54.8943 59.8946C54.8265 59.9794 54.7719 60.047 54.7303 60.0973C54.5152 60.3596 54.3244 60.5997 54.1578 60.8176L53.8013 61.2738L53.4693 61.6981C53.3654 61.8344 53.1797 62.0856 52.9122 62.4515C52.8654 62.5159 52.7968 62.6084 52.7064 62.7292C52.6248 62.8381 52.5706 62.9115 52.5439 62.9494L52.5131 62.9944C52.4514 63.087 52.3954 63.1689 52.345 63.2403L52.0696 63.6401L51.7733 64.0703C51.532 64.4257 51.3545 64.691 51.2409 64.8662C51.0597 65.1463 50.8943 65.4079 50.7447 65.6511C50.7251 65.683 50.7052 65.7146 50.6848 65.7459C50.5481 65.9573 50.4543 66.1054 50.4033 66.1903L50.3824 66.227C50.3045 66.3638 50.2323 66.4853 50.1657 66.5917C50.0113 66.8483 49.8731 67.0865 49.751 67.3064C49.5715 67.6161 49.3943 67.9291 49.2192 68.2454C49.1453 68.3783 49.0325 68.5866 48.881 68.8703C48.8223 68.98 48.7781 69.0627 48.7481 69.1185C48.72 69.1716 48.6738 69.2567 48.6094 69.3736C48.5585 69.4661 48.5308 69.5168 48.5265 69.5259C48.5046 69.571 48.482 69.6157 48.4588 69.66L48.4547 69.6708C48.3897 69.8073 48.3322 69.9233 48.2822 70.0189C48.2355 70.1113 48.1433 70.299 48.0058 70.5818C47.9333 70.7308 47.8767 70.8467 47.8361 70.9296C47.6588 71.2978 47.5309 71.5684 47.4524 71.7412C47.3585 71.9492 47.2134 72.2784 47.0172 72.7288C46.9875 72.7976 46.9436 72.8962 46.8857 73.0244C46.8378 73.1302 46.8106 73.1914 46.8041 73.2079C46.7849 73.2566 46.7649 73.305 46.7441 73.353C46.7433 73.3551 46.7425 73.3573 46.7417 73.3594L46.75 73.3409C46.7166 73.4274 46.6876 73.5004 46.6631 73.5599C46.5646 73.7947 46.4228 74.1529 46.2376 74.6347C46.1998 74.7329 46.1713 74.807 46.152 74.8571C46.1361 74.8984 46.1135 74.9566 46.0843 75.0318C45.9971 75.2565 45.9358 75.4173 45.9005 75.5143C45.7283 75.9826 45.5384 76.5369 45.3309 77.1772C45.3081 77.2459 45.2843 77.3155 45.2595 77.386C45.2346 77.4698 45.2075 77.5532 45.178 77.636C45.1726 77.6528 45.1672 77.6694 45.1617 77.6859C45.0586 78.0149 44.9117 78.5129 44.7212 79.1799L44.7065 79.2334C44.6722 79.3569 44.6508 79.4367 44.6421 79.4728C44.6323 79.5129 44.6222 79.553 44.6115 79.5928C44.4631 80.1463 44.3425 80.6288 44.2497 81.0401C44.2363 81.1019 44.2212 81.1671 44.2043 81.2356C44.2015 81.2478 44.1987 81.2602 44.1958 81.2724C44.1057 81.6601 44.0145 82.0896 43.9222 82.5611C43.9219 82.5631 43.9215 82.5651 43.9212 82.5671L43.9253 82.5485C43.9091 82.6488 43.8943 82.7348 43.8809 82.8064C43.8451 82.9907 43.7966 83.2719 43.7355 83.6497C43.7153 83.7743 43.6999 83.8688 43.6893 83.9332C43.6284 84.2926 43.5824 84.5751 43.5513 84.7805C43.5298 84.9296 43.4969 85.1967 43.4525 85.5819C43.4353 85.7314 43.4221 85.8449 43.4129 85.9225C43.4057 85.9831 43.3956 86.0649 43.3828 86.168C43.3563 86.3799 43.3402 86.5204 43.3347 86.5896C43.2957 87.0031 43.2621 87.4507 43.2337 87.9323C43.2261 88.0425 43.2174 88.1588 43.2075 88.2812C43.1952 88.435 43.1878 88.5377 43.1854 88.5891C43.1625 89.3034 43.1511 89.9389 43.1511 90.4954V112.984C43.1511 119.71 44.7969 125.37 48.0885 129.964C48.2105 130.135 48.3347 130.304 48.4612 130.471C48.7612 130.87 49.1067 131.296 49.4976 131.749C50.0389 132.365 50.5851 132.925 51.1362 133.429C51.1394 133.432 51.1427 133.435 51.146 133.438C51.159 133.45 51.1727 133.462 51.1869 133.475C52.1229 134.329 53.1204 135.091 54.1794 135.76C54.6482 136.057 55.1293 136.336 55.6229 136.597C55.6387 136.605 55.6545 136.613 55.6701 136.622L55.7005 136.637C55.7175 136.646 55.7346 136.655 55.7515 136.664L85.109 152.14ZM93.1353 128.236C93.4493 127.981 93.6922 127.78 93.8641 127.635L94.0621 127.471L94.0756 127.459L94.1552 127.388L94.3292 127.235C94.7991 126.83 95.2489 126.428 95.6787 126.029L95.8253 125.887L96.0277 125.694L96.1784 125.548C96.5995 125.146 96.9459 124.807 97.2176 124.531C97.2581 124.489 97.3285 124.417 97.4289 124.315C97.6004 124.141 97.7231 124.014 97.7971 123.936C98.1301 123.583 98.3794 123.315 98.5452 123.132C98.8197 122.829 99.0227 122.603 99.1543 122.453C99.428 122.145 99.6664 121.87 99.8696 121.627C99.8932 121.599 99.9173 121.571 99.9416 121.543L99.961 121.521C100.189 121.254 100.352 121.059 100.451 120.936C100.54 120.827 100.676 120.657 100.86 120.424C100.962 120.296 101.039 120.198 101.092 120.131C101.332 119.828 101.519 119.588 101.653 119.41C101.842 119.162 102.036 118.901 102.235 118.626L102.797 117.846L102.819 117.815L103.309 117.099L103.311 117.096C103.344 117.047 103.406 116.954 103.499 116.816C103.668 116.564 103.788 116.384 103.858 116.274C103.965 116.111 104.109 115.885 104.29 115.597C104.328 115.536 104.357 115.49 104.378 115.456C104.573 115.153 104.739 114.885 104.877 114.652C104.898 114.616 104.92 114.58 104.942 114.545C105.011 114.435 105.127 114.238 105.289 113.956C105.325 113.894 105.353 113.846 105.371 113.813C105.591 113.43 105.753 113.146 105.856 112.96L106.027 112.645L106.306 112.122C106.44 111.873 106.587 111.591 106.746 111.278C106.819 111.134 106.935 110.898 107.092 110.573C107.137 110.478 107.172 110.405 107.196 110.356C107.213 110.32 107.251 110.241 107.309 110.118C107.427 109.87 107.51 109.694 107.557 109.589C107.708 109.262 107.852 108.94 107.988 108.622L108.004 108.58C108.048 108.477 108.098 108.361 108.153 108.233C108.24 108.031 108.301 107.889 108.334 107.807C108.436 107.558 108.583 107.187 108.773 106.695C108.806 106.611 108.831 106.547 108.849 106.501L108.93 106.284C108.956 106.217 108.98 106.157 109 106.106C109.044 105.996 109.071 105.926 109.082 105.896C109.28 105.353 109.469 104.803 109.649 104.247L109.805 103.768C109.931 103.364 110.073 102.88 110.231 102.318L110.353 101.873C110.486 101.389 110.605 100.913 110.713 100.445L110.766 100.224C110.856 99.8165 110.954 99.3298 111.062 98.7642C111.104 98.5444 111.164 98.2039 111.239 97.7427L111.24 97.7413L111.286 97.4467C111.291 97.4136 111.297 97.3803 111.302 97.3468C111.335 97.1476 111.356 97.0084 111.367 96.9292C111.395 96.7383 111.429 96.4795 111.468 96.1528C111.482 96.0307 111.493 95.9379 111.501 95.8744L111.551 95.4529C111.576 95.2556 111.592 95.114 111.6 95.0279C111.626 94.7717 111.656 94.3788 111.689 93.8493L111.691 93.8218L111.715 93.4636C111.719 93.4193 111.721 93.3886 111.722 93.3716C111.731 93.2627 111.736 93.1977 111.737 93.1766C111.768 92.5227 111.784 91.8907 111.784 91.2807V79.3334C111.683 79.4164 111.58 79.5026 111.473 79.592C111.434 79.6239 111.396 79.6552 111.357 79.6859L111.24 79.7802C111.239 79.7812 111.238 79.7822 111.237 79.7833L111.249 79.7743C111.126 79.8862 111.041 79.9618 110.993 80.0012C110.538 80.3944 110.077 80.8076 109.611 81.2411C109.514 81.3295 109.345 81.4906 109.104 81.7244C108.688 82.1222 108.331 82.4721 108.034 82.7742C107.843 82.9645 107.658 83.1541 107.479 83.3429C107.121 83.7221 106.86 84.0021 106.696 84.1831C106.414 84.4937 106.204 84.7277 106.065 84.8851C105.951 85.0125 105.772 85.2195 105.528 85.5059C105.432 85.6192 105.366 85.6963 105.331 85.7372C105.056 86.0624 104.873 86.2807 104.78 86.3921L104.435 86.827L104.094 87.2552C103.841 87.5734 103.643 87.8273 103.498 88.0169C103.372 88.1822 103.169 88.4556 102.89 88.8374C102.689 89.1089 102.493 89.3801 102.302 89.651C102.166 89.8402 101.994 90.0899 101.787 90.4002C101.534 90.7732 101.359 91.034 101.262 91.1826C101.225 91.2418 101.17 91.3279 101.098 91.4409C100.933 91.6994 100.805 91.9027 100.713 92.0507C100.474 92.4308 100.313 92.6903 100.229 92.8291L99.9616 93.2888L99.698 93.7424C99.551 93.995 99.3887 94.2817 99.2111 94.6025C99.0755 94.8467 98.9312 95.1137 98.7783 95.4034C98.7492 95.4597 98.7058 95.5433 98.6481 95.6541C98.497 95.9446 98.3829 96.1669 98.3057 96.321C98.1488 96.6297 97.9937 96.9454 97.8402 97.268L97.8392 97.2703C97.658 97.6465 97.5293 97.9186 97.453 98.0866C97.3556 98.3021 97.2097 98.633 97.0154 99.0794C96.9949 99.1266 96.9646 99.1963 96.9244 99.2882C96.8019 99.5691 96.7118 99.7803 96.654 99.9218C96.5019 100.289 96.3327 100.718 96.1463 101.211C96.1315 101.25 96.1094 101.306 96.0801 101.382C95.9928 101.607 95.9293 101.774 95.8897 101.882C95.7393 102.291 95.5393 102.876 95.2896 103.637C95.2779 103.671 95.262 103.715 95.242 103.771L95.2393 103.772C95.2279 103.809 95.2161 103.847 95.204 103.884C95.1874 103.939 95.1706 103.991 95.1534 104.043C95.0129 104.485 94.8672 104.979 94.7164 105.526C94.7107 105.546 94.698 105.593 94.6784 105.668C94.6411 105.81 94.6173 105.898 94.607 105.932C94.4938 106.355 94.3708 106.848 94.2382 107.411C94.2266 107.464 94.2138 107.518 94.1998 107.575L94.1965 107.589C94.082 108.092 93.9774 108.598 93.8825 109.107C93.8433 109.324 93.7855 109.662 93.7091 110.122C93.6976 110.191 93.6881 110.247 93.6806 110.293C93.6225 110.634 93.5794 110.898 93.5513 111.084C93.5269 111.253 93.4925 111.53 93.4482 111.915C93.4309 112.065 93.421 112.149 93.4184 112.166C93.4056 112.294 93.3859 112.469 93.3592 112.691C93.3403 112.848 93.3287 112.949 93.3243 112.992C93.3052 113.194 93.2806 113.518 93.2505 113.962C93.2397 114.12 93.2313 114.243 93.2252 114.328C93.2203 114.397 93.213 114.492 93.2032 114.615C93.1908 114.769 93.1834 114.871 93.181 114.923C93.1505 115.562 93.1353 116.203 93.1353 116.846V128.236Z"/></svg>', "zcode": '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\n	 viewBox="0 0 30 30" style="enable-background:new 0 0 30 30;" xml:space="preserve">\n<style type="text/css">\n	.st0{opacity:0.3;fill:#E2E4E7;}\n	.st1{opacity:0.8;fill:#E2E4E7;stroke:#FFFFFF;stroke-width:5;stroke-miterlimit:10;}\n	.st2{fill:url(#SVGID_1_);}\n	.st3{fill:none;stroke:#E0E4E9;stroke-width:0.25;stroke-miterlimit:10;}\n	.st4{fill:none;}\n	.st5{fill:#9DA1A5;}\n	.st6{fill-rule:evenodd;clip-rule:evenodd;fill:none;}\n	.st7{fill-rule:evenodd;clip-rule:evenodd;fill:#DFE2E7;}\n	.st8{fill-rule:evenodd;clip-rule:evenodd;fill:#CDD4DA;}\n	.st9{fill-rule:evenodd;clip-rule:evenodd;fill:#B3BCC7;}\n	.st10{fill-rule:evenodd;clip-rule:evenodd;fill:#9DAAB7;}\n	.st11{fill-rule:evenodd;clip-rule:evenodd;fill:#8698A8;}\n	.st12{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_2_);}\n	.st13{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_3_);}\n	.st14{fill:#1F63EC;}\n	.st15{fill:#2D2D2D;}\n	.st16{fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st17{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_4_);}\n	.st18{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_5_);}\n	.st19{fill:none;stroke:#677380;stroke-width:0.5;stroke-miterlimit:10;}\n	.st20{fill:none;stroke:url(#SVGID_6_);stroke-width:2;stroke-miterlimit:10;}\n	.st21{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_7_);}\n	.st22{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_8_);}\n	.st23{fill:#FFFFFF;}\n	.st24{fill-rule:evenodd;clip-rule:evenodd;fill:#2D2D2D;}\n	.st25{clip-path:url(#SVGID_10_);}\n	.st26{clip-path:url(#SVGID_12_);}\n	.st27{fill:url(#SVGID_13_);}\n	.st28{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_14_);}\n	.st29{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_15_);}\n	.st30{clip-path:url(#SVGID_17_);}\n	.st31{clip-path:url(#SVGID_19_);}\n	.st32{fill:url(#SVGID_20_);}\n	.st33{fill:none;stroke:url(#SVGID_21_);stroke-width:2;stroke-miterlimit:10;}\n	.st34{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_22_);}\n	.st35{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_23_);}\n	.st36{clip-path:url(#SVGID_25_);}\n	.st37{clip-path:url(#SVGID_27_);}\n	.st38{fill:url(#SVGID_28_);}\n	.st39{clip-path:url(#SVGID_30_);}\n	.st40{clip-path:url(#SVGID_32_);}\n	.st41{fill:url(#SVGID_33_);}\n	.st42{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF6;}\n	.st43{fill-rule:evenodd;clip-rule:evenodd;fill:#FFFFFF;}\n	.st44{clip-path:url(#SVGID_35_);}\n	.st45{clip-path:url(#SVGID_37_);}\n	.st46{fill:url(#SVGID_38_);}\n	.st47{fill-rule:evenodd;clip-rule:evenodd;fill:#9DA1A5;}\n	.st48{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_39_);}\n	.st49{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_40_);}\n	.st50{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_41_);}\n	.st51{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_42_);}\n	.st52{fill:none;stroke:url(#SVGID_43_);stroke-width:2;stroke-miterlimit:10;}\n	.st53{fill-rule:evenodd;clip-rule:evenodd;fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st54{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_44_);}\n	.st55{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_45_);}\n	.st56{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_46_);}\n	.st57{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_47_);}\n	.st58{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_48_);}\n	.st59{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_49_);}\n	.st60{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_50_);}\n	.st61{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_51_);}\n	.st62{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_52_);}\n	.st63{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_53_);}\n	.st64{clip-path:url(#SVGID_55_);}\n	.st65{clip-path:url(#SVGID_57_);}\n	.st66{fill:url(#SVGID_58_);}\n	.st67{clip-path:url(#SVGID_60_);}\n	.st68{clip-path:url(#SVGID_62_);}\n	.st69{fill:url(#SVGID_63_);}\n	.st70{fill:none;stroke:url(#SVGID_64_);stroke-width:2;stroke-miterlimit:10;}\n	.st71{clip-path:url(#SVGID_66_);}\n	.st72{clip-path:url(#SVGID_68_);}\n	.st73{fill:url(#SVGID_69_);}\n	.st74{clip-path:url(#SVGID_71_);}\n	.st75{clip-path:url(#SVGID_73_);}\n	.st76{fill:url(#SVGID_74_);}\n	.st77{clip-path:url(#SVGID_76_);}\n	.st78{clip-path:url(#SVGID_78_);}\n	.st79{fill:url(#SVGID_79_);}\n	.st80{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_80_);}\n	.st81{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_81_);}\n	.st82{clip-path:url(#SVGID_83_);}\n	.st83{clip-path:url(#SVGID_85_);}\n	.st84{fill:url(#SVGID_86_);}\n	.st85{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_87_);}\n	.st86{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_88_);}\n	.st87{clip-path:url(#SVGID_90_);}\n	.st88{clip-path:url(#SVGID_92_);}\n	.st89{fill:url(#SVGID_93_);}\n	.st90{fill:none;stroke:url(#SVGID_94_);stroke-width:2;stroke-miterlimit:10;}\n	.st91{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_95_);}\n	.st92{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_96_);}\n	.st93{clip-path:url(#SVGID_98_);}\n	.st94{clip-path:url(#SVGID_100_);}\n	.st95{fill:url(#SVGID_101_);}\n	.st96{clip-path:url(#SVGID_103_);}\n	.st97{clip-path:url(#SVGID_105_);}\n	.st98{fill:url(#SVGID_106_);}\n	.st99{clip-path:url(#SVGID_108_);}\n	.st100{clip-path:url(#SVGID_110_);}\n	.st101{fill:url(#SVGID_111_);}\n	.st102{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st103{clip-path:url(#SVGID_113_);}\n	.st104{fill:#FDD138;}\n	.st105{fill:#FCA62F;}\n	.st106{fill:#FB7927;}\n	.st107{fill:#F44B22;}\n	.st108{fill:#D81915;}\n	.st109{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3354;stroke-miterlimit:10;}\n	.st110{fill:none;stroke:#65727F;stroke-width:2;stroke-miterlimit:10;}\n	.st111{fill:none;stroke:#65727F;stroke-width:0.75;stroke-miterlimit:10;}\n	.st112{fill:url(#SVGID_114_);}\n	.st113{fill:#D06C50;}\n	.st114{fill:#2D2D2D;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st115{opacity:0.2;}\n	.st116{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;}\n	.st117{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0212,1.0212;}\n	.st118{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0205,1.0205;}\n	.st119{opacity:0.2;fill:none;}\n	.st120{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;}\n	.st121{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;stroke-dasharray:1.0509,1.0509;}\n	.st122{opacity:0.3;fill:#1F63EC;}\n	.st123{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st124{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st125{clip-path:url(#SVGID_118_);}\n	.st126{fill:url(#SVGID_119_);}\n	.st127{fill:none;stroke:#DFE2E7;stroke-width:0.75;stroke-miterlimit:10;}\n	.st128{fill:#9DA1A5;stroke:#FFFFFF;stroke-miterlimit:10;}\n	.st129{fill:url(#SVGID_120_);}\n	.st130{fill:none;stroke:#677380;stroke-width:0.75;stroke-miterlimit:10;}\n	.st131{opacity:0.4;}\n	.st132{clip-path:url(#SVGID_122_);}\n	.st133{clip-path:url(#SVGID_124_);}\n	.st134{fill:url(#SVGID_125_);}\n	.st135{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;}\n	.st136{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:0.9951,0.9951;}\n	.st137{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1.004,1.004;}\n	.st138{fill:none;stroke:url(#SVGID_126_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st139{fill:url(#SVGID_127_);}\n	.st140{fill:none;stroke:#DDE0E4;stroke-width:0.35;stroke-miterlimit:10;}\n	.st141{fill:#2D2D2D;stroke:#A9B3BE;stroke-width:0.275;stroke-miterlimit:10;}\n	.st142{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF4;}\n	.st143{fill:#FFFFFF;stroke:#B1BAC4;stroke-width:0.275;stroke-miterlimit:10;}\n	.st144{fill:#CE6C50;}\n	.st145{fill:#5B5B5B;}\n	.st146{fill:#8392A3;}\n	.st147{fill:none;stroke:url(#SVGID_128_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st148{fill:url(#SVGID_129_);}\n	.st149{fill:none;stroke:#B5BDC4;stroke-width:0.7;stroke-miterlimit:10;}\n	.st150{opacity:0.6;fill:none;stroke:#78838E;stroke-width:0.35;stroke-miterlimit:10;}\n	.st151{opacity:0.2;fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1,1;}\n	.st152{fill:none;stroke:#DDE0E4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st153{fill:none;stroke:#8392A3;stroke-width:0.5;stroke-miterlimit:10;}\n	.st154{opacity:0.2;fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0182,1.0182;}\n	.st155{fill:none;stroke:#DDE0E4;stroke-width:0.765;stroke-miterlimit:10;}\n	.st156{fill:url(#SVGID_130_);}\n	.st157{fill:url(#SVGID_131_);}\n	.st158{fill:#B1BAC4;}\n	.st159{fill:#CBD1D8;}\n	.st160{fill:#0B1B2B;}\n	.st161{fill:#91D119;}\n	.st162{opacity:0.7;}\n	.st163{fill:#FFFFFF;stroke:#000000;stroke-width:0.4418;stroke-miterlimit:10;}\n	.st164{fill:none;stroke:#939CAA;stroke-width:0.2209;stroke-miterlimit:10;}\n	.st165{fill:none;stroke:#FFFFFF;stroke-width:3.0924;stroke-miterlimit:10;}\n	.st166{fill:url(#SVGID_132_);}\n	.st167{fill:none;stroke:url(#SVGID_133_);stroke-width:1.714;stroke-miterlimit:10;}\n	.st168{fill:url(#SVGID_134_);}\n	.st169{fill:url(#SVGID_135_);}\n	.st170{fill:url(#SVGID_136_);}\n	.st171{fill:url(#SVGID_137_);}\n	.st172{fill:url(#SVGID_138_);}\n	.st173{fill:url(#SVGID_139_);}\n	.st174{fill:url(#SVGID_140_);}\n	.st175{fill:url(#SVGID_141_);}\n	.st176{fill:url(#SVGID_142_);}\n	.st177{fill:url(#SVGID_143_);}\n	.st178{fill:url(#SVGID_144_);}\n	.st179{fill:none;stroke:#1F63EC;stroke-width:4;stroke-miterlimit:10;}\n	.st180{fill:none;stroke:#0B1B2B;stroke-width:4;stroke-miterlimit:10;}\n	.st181{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st182{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st183{fill:#257AF1;}\n	.st184{opacity:0.3;fill:#FFFFFF;}\n	.st185{fill:none;stroke:#98A5B2;stroke-width:4;stroke-miterlimit:10;}\n	.st186{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st187{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st188{fill:none;stroke:#DDDFE4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st189{fill:#9A9EA2;}\n	.st190{fill-rule:evenodd;clip-rule:evenodd;fill:#3267AC;}\n	.st191{fill:#FFFFFF;stroke:#AFB8C3;stroke-width:0.275;stroke-miterlimit:10;}\n	.st192{fill:#C5694E;}\n	.st193{fill:#8192A2;}\n	.st194{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.6317;stroke-miterlimit:10;}\n</style>\n<g id="\u56FE\u5C42_2">\n</g>\n<g id="\u56FE\u5C42_1">\n	<path class="st194" d="M24.51,28.51H5.49c-2.21,0-4-1.79-4-4V5.49c0-2.21,1.79-4,4-4h19.03c2.21,0,4,1.79,4,4v19.03\n		C28.51,26.72,26.72,28.51,24.51,28.51z"/>\n	<g>\n		<g>\n			<g>\n				<g>\n					<path class="st23" d="M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z"/>\n					<polygon class="st23" points="24.3,7.1 13.14,22.91 5.7,22.91 16.86,7.1 					"/>\n					<path class="st23" d="M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z"/>\n				</g>\n			</g>\n		</g>\n	</g>\n</g>\n</svg>' };
+
+// nodo:engine-names:nodo:engine-names
+var ENGINE_NAMES = { "codex": "Codex", "dsh": "DeepSeek Harness", "claude": "Claude Code", "qoder": "Qoder", "pi": "Pi", "zcode": "ZCode", "opencode": "OpenCode", "codebuddy": "CodeBuddy" };
+
+// src/client/engine-logos.js
+var engineDisplayName = (item) => ENGINE_NAMES[item.id] ?? String(item.label ?? item.id).replace(/\s*CLI$/, "");
+function EngineMark({ engine, size = 20 }) {
+  const svg = ENGINE_LOGO_SVGS[engine];
+  if (!svg) return (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size });
+  return (0, import_react.createElement)("span", {
+    className: "nodo-engine-art",
+    style: { width: size, height: size },
+    dangerouslySetInnerHTML: { __html: svg },
+    "aria-hidden": true
+  });
+}
+var ENGINE_LOGO_CSS = `
+.nodo-engine-art{display:inline-block;flex:none}
+.nodo-engine-art>svg{display:block;width:100%;height:100%}
+`;
+
+// core/shared/route.js
+var route = ({ type, hard }, roster, assignee) => {
+  if (assignee) return { profile: assignee, choices: hard && assignee.hard ? assignee.hard : {}, by: "assignee" };
+  const accepting = roster.filter((profile2) => profile2.taskTypes?.includes(type));
+  if (hard) {
+    const profile2 = accepting.find((profile3) => profile3.hard !== void 0);
+    return profile2 ? { profile: profile2, choices: profile2.hard, by: "route" } : { miss: true };
+  }
+  const profile = accepting.find((profile2) => profile2.hard === void 0) ?? accepting[0];
+  return profile ? { profile, choices: {}, by: "route" } : { miss: true };
+};
+
 // core/shared/role-presets.json
 var role_presets_default = [
   {
@@ -4005,7 +4091,7 @@ function Field({ label, children, group = false, required = false }) {
     children
   );
 }
-function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, onSaved, onCancel, onDeleted }) {
+function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, taskTypes = null, roster = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange }) {
   const saved = Array.isArray(savedIdentities) ? savedIdentities : [];
   const allPresets = [...role_presets_default, ...saved];
   const [draft, setDraft] = (0, import_react.useState)({
@@ -4015,25 +4101,30 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
     instructions: profile?.instructions ?? "",
     lead: profile?.lead === true,
     avatarTemplate: profile ? avatarTemplateOf(profile).id : avatar_templates_default[avatarSeed % avatar_templates_default.length].id,
-    identity: allPresets.find((item) => item.instructions === profile?.instructions)?.name ?? "custom",
     model: profile?.model ?? "",
-    thinking: profile?.thinking ?? ""
+    thinking: profile?.thinking ?? "",
+    taskTypes: profile?.taskTypes ?? [],
+    hard: profile?.hard ?? {},
+    hardOn: profile?.hard !== void 0
   });
-  const [previewRunning, setPreviewRunning] = (0, import_react.useState)(false);
+  const [tab, setTab] = (0, import_react.useState)(() => !profile || profile.lead === true || !profile.instructions ? "identity" : "assign");
+  const [avatarOpen, setAvatarOpen] = (0, import_react.useState)(false);
+  const [menuOpen, setMenuOpen] = (0, import_react.useState)(false);
+  const [filled, setFilled] = (0, import_react.useState)(null);
   const [engines, setEngines] = (0, import_react.useState)([]);
   const [loading, setLoading] = (0, import_react.useState)(true);
   const [busy, setBusy] = (0, import_react.useState)(false);
   const [confirming, setConfirming] = (0, import_react.useState)(false);
   const [identityName, setIdentityName] = (0, import_react.useState)(null);
-  const [deletingIdentity, setDeletingIdentity] = (0, import_react.useState)(false);
+  const [deletingIdentity, setDeletingIdentity] = (0, import_react.useState)(null);
   const [scanning, setScanning] = (0, import_react.useState)(false);
   const [error, setError] = (0, import_react.useState)("");
+  const [dirty, setDirty] = (0, import_react.useState)(false);
   const scanned = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   const engine = engines.find((item) => item.id === draft.engine);
-  const customIdentity = !allPresets.some((item) => item.name === draft.identity);
-  const savedSelected = saved.find((item) => item.name === draft.identity);
-  const knownIdentity = allPresets.some((item) => item.role === draft.role && item.instructions === draft.instructions);
-  const savable = !knownIdentity && (draft.role.trim() !== "" || draft.instructions.trim() !== "");
+  const matches = (item) => item.role === draft.role && item.instructions === draft.instructions;
+  const current = allPresets.find(matches);
+  const savable = current === void 0 && (draft.role.trim() !== "" || draft.instructions.trim() !== "");
   const sessions = profile?.sessions.length ?? 0;
   const identityDirty = profile !== null && (draft.role !== (profile.role ?? "") || draft.instructions !== (profile.instructions ?? ""));
   const identityTitle = (identityName ?? "").trim();
@@ -4045,7 +4136,7 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
       const scoped = profile === null && enabledEngines !== null ? items.filter((item) => enabledEngines.includes(item.id)) : items;
       const choices = scoped.length > 0 ? scoped : items;
       setEngines(choices);
-      setDraft((current) => ({ ...current, engine: current.engine || choices[0]?.id || "" }));
+      setDraft((current2) => ({ ...current2, engine: current2.engine || choices[0]?.id || "" }));
     }).catch((failure) => {
       if (live) setError(failure.message);
     }).finally(() => {
@@ -4059,23 +4150,33 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
     if (!engine || engine.catalog || scanned.current.has(engine.id)) return;
     scanned.current.add(engine.id);
     setScanning(true);
-    void call("engine-scan", { engine: engine.id }).then((catalog) => setEngines((current) => current.map((item) => item.id === engine.id ? { ...item, catalog } : item))).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
+    void call("engine-scan", { engine: engine.id }).then((catalog) => setEngines((current2) => current2.map((item) => item.id === engine.id ? { ...item, catalog } : item))).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
   }, [engine]);
-  const disabled = busy;
-  const edit = (key) => (event) => {
-    const value = event.target.value;
-    setDraft((current) => ({ ...current, [key]: value }));
+  (0, import_react.useEffect)(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty]);
+  const disabled = busy || readOnly;
+  const update = (patch) => {
+    setDirty(true);
+    setDraft((current2) => ({ ...current2, ...typeof patch === "function" ? patch(current2) : patch }));
   };
-  const chooseEngine = (event) => setDraft((current) => ({ ...current, engine: event.target.value, model: "", thinking: "" }));
-  const chooseIdentity = (name) => {
-    const preset = allPresets.find((item) => item.name === name);
-    setDraft((current) => {
-      if (preset) return { ...current, identity: name, role: preset.role, instructions: preset.instructions };
-      const held = allPresets.find((item) => item.name === current.identity);
-      const untouched = held !== void 0 && current.role === held.role && current.instructions === held.instructions;
-      return { ...current, identity: name, ...untouched ? { role: "", instructions: "" } : {} };
-    });
+  const edit = (key) => (event) => update({ [key]: event.target.value });
+  const chooseEngine = (event) => update((current2) => ({ ...current2, engine: event.target.value, model: "", thinking: "" }));
+  const applyTemplate = (item) => {
+    if (matches(item)) return;
+    setFilled({ name: item.name, before: { role: draft.role, instructions: draft.instructions } });
+    update({ role: item.role, instructions: item.instructions });
   };
+  const chooseLead = (lead) => {
+    if (draft.lead === lead) return;
+    update({ lead });
+    if (lead && tab === "assign") setTab("identity");
+  };
+  const chooseTaskType = (id) => update((current2) => ({
+    ...current2,
+    taskTypes: current2.taskTypes.includes(id) ? current2.taskTypes.filter((item) => item !== id) : [...current2.taskTypes, id]
+  }));
   const models = engine?.catalog?.models ?? [];
   const selectedModel = models.find((item) => item.id === (draft.model || engine?.catalog?.defaultModel));
   const model = selectedModel?.id ?? draft.model;
@@ -4090,21 +4191,46 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
   const chooseModel = (event) => {
     const id = event.target.value;
     const next = models.find((item) => item.id === id);
-    setDraft((current) => ({
-      ...current,
+    update((current2) => ({
+      ...current2,
       model: id,
-      thinking: (next?.thinking ?? []).some((level) => level.id === current.thinking) ? current.thinking : ""
+      thinking: (next?.thinking ?? []).some((level) => level.id === current2.thinking) ? current2.thinking : ""
     }));
   };
+  const hardSelected = models.find((item) => item.id === (draft.hard.model || model));
+  const hardLevels = hardSelected?.thinking ?? [];
+  const chooseHardModel = (event) => {
+    const id = event.target.value;
+    const next = models.find((item) => item.id === id);
+    update((current2) => ({ ...current2, hard: {
+      ...current2.hard,
+      model: id,
+      thinking: (next?.thinking ?? []).some((level) => level.id === current2.hard.thinking) ? current2.hard.thinking : void 0
+    } }));
+  };
+  const hardModel = draft.hard.model || void 0;
+  const hardThinking = draft.hard.thinking || void 0;
   const submit = async (event) => {
     event.preventDefault();
     if (disabled || loading || !engine || draft.name.trim() === "") return;
     setBusy(true);
     setError("");
     try {
-      const values = { ...draft, name: draft.name.trim(), model, thinking: draft.thinking };
-      delete values.identity;
+      const hard = draft.hardOn ? Object.fromEntries([["model", hardModel], ["thinking", hardThinking]].filter(([, value]) => value !== void 0)) : null;
+      const values = {
+        name: draft.name.trim(),
+        engine: draft.engine,
+        role: draft.role,
+        instructions: draft.instructions,
+        lead: draft.lead,
+        avatarTemplate: draft.avatarTemplate,
+        model,
+        thinking: draft.thinking,
+        ...draft.lead ? {} : { taskTypes: draft.taskTypes, hard }
+      };
       const saved2 = await call(profile ? "profile-update" : "profile-create", profile ? { id: profile.id, changes: values } : values);
+      setBusy(false);
+      setDirty(false);
       await onSaved(saved2);
     } catch (failure) {
       setError(failure.message);
@@ -4118,7 +4244,6 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
     try {
       await call("role-preset-save", { name: identityName, role: draft.role, instructions: draft.instructions });
       setIdentityName(null);
-      setDraft((current) => ({ ...current, identity: identityTitle }));
       void refresh?.(true);
     } catch (failure) {
       setError(failure.message);
@@ -4136,315 +4261,486 @@ function ProfileDialog({ profile = null, avatarSeed = 0, enabledEngines = null, 
       setBusy(false);
     }
   };
+  const typeName = (id) => (taskTypes ?? []).find((item) => item.id === id)?.name ?? id;
+  const self = { id: profile?.id ?? "", name: draft.name.trim() || "\u672A\u547D\u540D\u89D2\u8272", taskTypes: draft.taskTypes, ...draft.hardOn ? { hard: {} } : {} };
+  const executors = (roster ?? []).filter((item) => item.lead !== true || item.id === profile?.id);
+  const seated = profile && executors.some((item) => item.id === profile.id) ? executors.map((item) => item.id === profile.id ? self : item) : [...executors, self];
+  const reach = (taskTypes ?? []).filter((item) => draft.taskTypes.includes(item.id)).map((item) => {
+    const routine = route({ type: item.id, hard: false }, seated);
+    const hard = route({ type: item.id, hard: true }, seated);
+    const wins = [routine.profile === self && "\u5E38\u89C4", hard.profile === self && "\u96BE\u9898"].filter(Boolean);
+    const notes = [
+      routine.profile !== self && `\u5E38\u89C4\u4EA4\u7ED9${routine.profile.name}`,
+      hard.profile !== self && (hard.miss ? "\u96BE\u9898\u65E0\u4EBA\u627F\u63A5" : `\u96BE\u9898\u4EA4\u7ED9${hard.profile.name}`)
+    ].filter(Boolean);
+    return { id: item.id, name: item.name, wins, note: notes.join("\uFF0C") };
+  });
+  const leaving = draft.lead && profile !== null && profile.lead !== true;
+  const impact = leaving ? (profile.taskTypes ?? []).flatMap((type) => {
+    const staying = (roster ?? []).filter((item) => item.lead !== true);
+    const without = staying.filter((item) => item.id !== profile.id);
+    return [false, true].flatMap((hard) => {
+      if (route({ type, hard }, staying).profile?.id !== profile.id) return [];
+      const next = route({ type, hard }, without);
+      const kind = hard ? "\u96BE\u9898" : "\u5E38\u89C4\u4EFB\u52A1";
+      return [next.miss ? { text: `${typeName(type)}\u7684${kind}\u5C06\u65E0\u4EBA\u627F\u63A5`, warn: true } : { text: `${typeName(type)}\u7684${kind}\u6539\u7531${next.profile.name}\u63A5`, warn: false }];
+    });
+  }) : [];
   const template = avatarTemplateOf(draft);
-  const identityTag = customIdentity ? "\u81EA\u5B9A\u4E49" : savable ? `${draft.identity} \xB7 \u5DF2\u4FEE\u6539` : draft.identity;
-  const cardMeta = [
-    engine?.label ?? draft.engine,
-    selectedModel ? modelLabel(selectedModel) : model || "\u9ED8\u8BA4\u6A21\u578B",
-    sessions > 0 && `${sessions} \u4E2A\u4F1A\u8BDD`
-  ].filter(Boolean).join(" \xB7 ");
+  const meta = [engine ? engineDisplayName(engine) : draft.engine, profile && (sessions > 0 ? `${sessions} \u4E2A\u4F1A\u8BDD` : "\u8FD8\u6CA1\u6709\u4F1A\u8BDD")].filter(Boolean).join("\uFF0C");
+  const tabs = [
+    ["identity", "\u8EAB\u4EFD", draft.instructions.trim() === ""],
+    ["run", "\u8FD0\u884C", false],
+    ...draft.lead ? [] : [["assign", "\u627F\u63A5\u4EFB\u52A1", draft.taskTypes.length === 0 && !draft.hardOn]]
+  ];
+  const panel = (key, ...children) => (0, import_react.createElement)("div", {
+    key,
+    role: "tabpanel",
+    id: `nodo-role-panel-${key}`,
+    "aria-labelledby": `nodo-role-tab-${key}`,
+    className: "nodo-role-panel",
+    hidden: tab !== key
+  }, ...children);
+  const templateCard = (item) => {
+    const own = saved.includes(item);
+    return (0, import_react.createElement)(
+      "span",
+      { key: `${own ? "saved" : "preset"}:${item.name}`, className: "nodo-template", "data-saved": own ? "true" : void 0 },
+      (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-template-pick",
+          disabled,
+          "aria-pressed": matches(item),
+          title: item.role,
+          onClick: () => applyTemplate(item)
+        },
+        (0, import_react.createElement)("span", { className: "nodo-template-name" }, item.name),
+        (0, import_react.createElement)("span", { className: "nodo-template-duty" }, item.role)
+      ),
+      own && (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-template-remove",
+          disabled,
+          "aria-label": `\u5220\u9664\u6A21\u677F ${item.name}`,
+          onClick: () => setDeletingIdentity(item)
+        },
+        (0, import_react.createElement)(
+          "svg",
+          { width: 12, height: 12, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", "aria-hidden": true },
+          (0, import_react.createElement)("path", { d: "M6 6l12 12M18 6L6 18" })
+        )
+      )
+    );
+  };
   return (0, import_react.createElement)(
     import_react.Fragment,
     null,
     (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Modal,
-      {
-        open: true,
-        onClose: () => {
-          if (!busy) onCancel();
-        },
-        closeLabel: "\u5173\u95ED",
-        title: profile ? "\u914D\u7F6E\u89D2\u8272" : "\u6DFB\u52A0\u89D2\u8272",
-        className: "nodo-dialog nodo-role-dialog",
-        contentClassName: "nodo-role-shell",
-        footer: confirming ? [
-          (0, import_react.createElement)(
-            "p",
-            { key: "confirm", className: "nodo-role-confirm", role: "alert" },
-            `\u5C06\u628A\u201C${profile.name}\u201D\u53CA\u5176 ${sessions} \u4E2A\u63D2\u4EF6\u5185\u4F1A\u8BDD\u8BB0\u5F55\u79FB\u9664\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`
-          ),
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", disabled, onClick: () => setConfirming(false) }, "\u53D6\u6D88"),
-          (0, import_react.createElement)(
-            import_dsh_client_ui_primitives.Button,
-            { key: "delete", variant: "outline", className: "nodo-dialog-danger", disabled, onClick: () => void removeProfile() },
-            busy ? "\u5220\u9664\u4E2D\u2026" : "\u5220\u9664\u89D2\u8272"
-          )
-        ] : [
-          profile && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-            key: "delete",
-            variant: "outline",
-            className: "nodo-dialog-danger nodo-dialog-leading",
-            disabled,
-            onClick: () => setConfirming(true)
-          }, "\u5220\u9664\u89D2\u8272"),
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled, onClick: onCancel }, "\u53D6\u6D88"),
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-            key: "save",
-            type: "submit",
-            form: ROLE_FORM,
-            variant: "primary",
-            disabled: disabled || loading || !engine || !draft.name.trim()
-          }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : profile ? "\u4FDD\u5B58\u89D2\u8272" : "\u521B\u5EFA\u89D2\u8272")
-        ]
-      },
+      "form",
+      { id: ROLE_FORM, className: "nodo-role-editor", onSubmit: submit, "aria-label": profile ? "\u914D\u7F6E\u89D2\u8272" : "\u6DFB\u52A0\u89D2\u8272" },
       (0, import_react.createElement)(
-        "form",
-        { id: ROLE_FORM, className: "nodo-dialog-fields nodo-role-fields", onSubmit: submit, "aria-label": profile ? "\u914D\u7F6E\u89D2\u8272" : "\u6DFB\u52A0\u89D2\u8272" },
+        "header",
+        { className: "nodo-role-head" },
         (0, import_react.createElement)(
-          "div",
-          { className: "nodo-role-layout" },
+          "span",
+          { className: "nodo-role-avatar-slot" },
           (0, import_react.createElement)(
-            "aside",
-            { className: "nodo-role-aside" },
-            (0, import_react.createElement)(
-              "div",
-              { className: "nodo-role-card", "aria-hidden": true },
-              (0, import_react.createElement)(
-                "div",
-                { className: "nodo-role-card-art", style: { background: `${template.color}40` } },
-                (0, import_react.createElement)(RoleAvatar, { profile: draft, size: 72, running: previewRunning })
-              ),
-              (0, import_react.createElement)(
-                "div",
-                { className: "nodo-role-card-body" },
-                (0, import_react.createElement)(
-                  "div",
-                  { className: "nodo-role-card-title" },
-                  (0, import_react.createElement)("strong", { "data-empty": draft.name.trim() ? void 0 : "true" }, draft.name.trim() || "\u672A\u547D\u540D\u89D2\u8272"),
-                  (0, import_react.createElement)("span", { className: "nodo-role-card-tag" }, identityTag)
-                ),
-                (0, import_react.createElement)("p", { "data-empty": draft.role.trim() ? void 0 : "true" }, draft.role.trim() || "\u5C1A\u672A\u586B\u5199\u804C\u8D23\u6982\u8FF0"),
-                (0, import_react.createElement)("p", { className: "nodo-role-card-meta" }, cardMeta)
-              )
-            ),
-            (0, import_react.createElement)(
-              Field,
-              { label: "\u5934\u50CF\u6A21\u677F", group: true },
-              (0, import_react.createElement)(
-                "label",
-                { className: "nodo-avatar-preview-toggle" },
-                (0, import_react.createElement)("input", {
-                  type: "checkbox",
-                  checked: previewRunning,
-                  disabled,
-                  onChange: (event) => setPreviewRunning(event.target.checked)
-                }),
-                "\u8FD0\u884C\u52A8\u753B"
-              ),
-              (0, import_react.createElement)(
-                "div",
-                { className: "nodo-avatar-picker" },
-                ...avatar_templates_default.map((item) => (0, import_react.createElement)(
-                  "button",
-                  {
-                    key: item.id,
-                    type: "button",
-                    className: "nodo-avatar-option",
-                    disabled,
-                    "aria-pressed": draft.avatarTemplate === item.id,
-                    onClick: () => setDraft((current) => ({ ...current, avatarTemplate: item.id }))
-                  },
-                  (0, import_react.createElement)(RoleAvatar, { profile: { avatarTemplate: item.id }, size: 30 }),
-                  item.label
-                ))
-              )
-            )
-          ),
-          (0, import_react.createElement)(
-            "div",
-            { className: "nodo-role-main" },
-            (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
-              className: "nodo-dialog-input",
-              "data-modal-autofocus": true,
+            "button",
+            {
+              type: "button",
+              className: "nodo-role-avatar",
+              "aria-label": "\u66F4\u6362\u5934\u50CF",
+              "aria-expanded": avatarOpen,
               disabled,
-              value: draft.name,
-              onChange: edit("name"),
-              required: true,
-              maxLength: 40,
-              placeholder: "\u4F8B\u5982 Coder \u6216 Reviewer"
-            })),
-            (0, import_react.createElement)(
-              Field,
-              { label: "\u8EAB\u4EFD", group: true },
-              (0, import_react.createElement)(
-                "div",
-                { className: "nodo-identity-options" },
-                ...allPresets.map((item) => (0, import_react.createElement)("button", {
-                  key: item.name,
-                  type: "button",
-                  className: "nodo-identity-option",
-                  disabled,
-                  "data-saved": saved.includes(item) ? "true" : void 0,
-                  "aria-pressed": draft.identity === item.name,
-                  onClick: () => chooseIdentity(item.name)
-                }, item.name)),
-                (0, import_react.createElement)("button", {
-                  type: "button",
-                  className: "nodo-identity-option",
-                  "data-custom": "true",
-                  disabled,
-                  "aria-pressed": customIdentity,
-                  onClick: () => chooseIdentity("custom")
-                }, "+ \u81EA\u5B9A\u4E49")
-              ),
-              customIdentity ? (0, import_react.createElement)(
-                "div",
-                { className: "nodo-dialog-counted" },
-                (0, import_react.createElement)("input", {
-                  className: "nodo-dialog-input",
-                  disabled,
-                  value: draft.role,
-                  onChange: edit("role"),
-                  maxLength: 80,
-                  "aria-label": "\u804C\u8D23\u6982\u8FF0",
-                  placeholder: "\u4E00\u53E5\u8BDD\u804C\u8D23\u6982\u8FF0\uFF0C\u4F1A\u663E\u793A\u5728\u89D2\u8272\u5361\u4E0A"
-                }),
-                (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, `${draft.role.length}/80`)
-              ) : (0, import_react.createElement)(
-                "div",
-                { className: "nodo-identity-summary" },
-                (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, draft.role),
-                savedSelected && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-                  variant: "outline",
-                  size: "sm",
-                  className: "nodo-dialog-danger",
-                  disabled,
-                  onClick: () => setDeletingIdentity(true)
-                }, "\u5220\u9664\u6B64\u914D\u7F6E")
-              )
-            ),
-            (0, import_react.createElement)(
-              Field,
-              { label: "\u8EAB\u4EFD\u4FE1\u606F", group: true },
-              savable && identityName === null && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-                variant: "outline",
-                size: "sm",
-                className: "nodo-identity-save-open",
-                disabled,
-                onClick: () => setIdentityName("")
-              }, "\u5B58\u4E3A\u8EAB\u4EFD\u914D\u7F6E"),
-              (0, import_react.createElement)(
-                "div",
-                { className: "nodo-dialog-counted" },
-                (0, import_react.createElement)("textarea", {
-                  className: "nodo-dialog-input nodo-dialog-textarea",
-                  "aria-label": "\u8EAB\u4EFD\u4FE1\u606F",
-                  disabled,
-                  value: draft.instructions,
-                  onChange: edit("instructions"),
-                  maxLength: 8e3,
-                  rows: 7,
-                  placeholder: "\u804C\u8D23\u3001\u5DE5\u4F5C\u8303\u56F4\u4E0E\u8981\u6C42\n\n\u5EFA\u8BAE\u7ED3\u6784\uFF1A\u804C\u8D23 / \u8FB9\u754C / \u4EA4\u4ED8"
-                }),
-                (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, `${draft.instructions.length}/8000`)
-              ),
-              savable && identityName !== null && (0, import_react.createElement)(
-                "div",
-                { className: "nodo-identity-save", role: "group", "aria-label": "\u5B58\u4E3A\u8EAB\u4EFD\u914D\u7F6E" },
-                (0, import_react.createElement)("input", {
-                  className: "nodo-dialog-input",
-                  "aria-label": "\u914D\u7F6E\u540D\u79F0",
-                  autoFocus: true,
-                  disabled,
-                  value: identityName,
-                  maxLength: 40,
-                  placeholder: "\u914D\u7F6E\u540D\u79F0\uFF0C\u4F8B\u5982 \u5BA1\u67E5\u5458",
-                  onChange: (event) => setIdentityName(event.target.value),
-                  onKeyDown: (event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void saveIdentity();
-                    }
-                  }
-                }),
-                (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled, onClick: () => setIdentityName(null) }, "\u53D6\u6D88"),
-                (0, import_react.createElement)(
-                  import_dsh_client_ui_primitives.Button,
-                  { variant: "primary", size: "sm", disabled: disabled || identityTitle === "", onClick: () => void saveIdentity() },
-                  busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58\u914D\u7F6E"
-                ),
-                (0, import_react.createElement)(
-                  "p",
-                  { className: "nodo-dialog-hint" },
-                  identityTaken ? "\u5DF2\u6709\u540C\u540D\u914D\u7F6E\uFF0C\u4FDD\u5B58\u5C06\u8986\u76D6\u5B83\u3002" : "\u4FDD\u5B58\u540E\u65B0\u5EFA\u89D2\u8272\u65F6\u53EF\u76F4\u63A5\u590D\u7528\uFF1B\u5220\u9664\u89D2\u8272\u4E0D\u5F71\u54CD\u8FD9\u91CC\u4FDD\u5B58\u7684\u914D\u7F6E\u3002"
-                )
-              ),
-              sessions > 0 && (identityDirty ? (0, import_react.createElement)("p", { className: "nodo-role-notice", role: "status" }, `\u8EAB\u4EFD\u5DF2\u4FEE\u6539\uFF0C\u4FDD\u5B58\u540E\u5C06\u4E8E\u4E0B\u8F6E\u751F\u6548 \xB7 \u5F71\u54CD ${sessions} \u4E2A\u4F1A\u8BDD`) : (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, `${sessions} \u4E2A\u4F1A\u8BDD\u6B63\u5728\u4F7F\u7528\u6B64\u89D2\u8272 \xB7 \u8EAB\u4EFD\u4FEE\u6539\u5C06\u4E8E\u4E0B\u8F6E\u751F\u6548`))
-            ),
+              style: { background: `${template.color}33` },
+              onClick: () => setAvatarOpen((open) => !open)
+            },
+            (0, import_react.createElement)(RoleAvatar, { profile: draft, size: 32 }),
+            (0, import_react.createElement)("span", { className: "nodo-role-avatar-edit", "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 10 }))
+          ),
+          avatarOpen && (0, import_react.createElement)(
+            "div",
+            {
+              className: "nodo-avatar-pop",
+              role: "group",
+              "aria-label": "\u5934\u50CF",
+              onKeyDown: (event) => {
+                if (event.key === "Escape") setAvatarOpen(false);
+              }
+            },
             (0, import_react.createElement)(
               "div",
-              { className: "nodo-role-run", role: "group", "aria-label": "\u8FD0\u884C" },
-              (0, import_react.createElement)(
-                Field,
-                { label: "\u4E3B\u63A7" },
-                (0, import_react.createElement)("input", {
-                  type: "checkbox",
-                  role: "switch",
-                  "aria-label": "\u4E3B\u63A7",
-                  checked: draft.lead,
+              { className: "nodo-avatar-picker" },
+              ...avatar_templates_default.map((item) => (0, import_react.createElement)(
+                "button",
+                {
+                  key: item.id,
+                  type: "button",
+                  className: "nodo-avatar-option",
                   disabled,
-                  onChange: (event) => setDraft((current) => ({ ...current, lead: event.target.checked }))
-                })
-              ),
-              (0, import_react.createElement)(
-                Field,
-                { label: "\u8C03\u7528 Agent" },
-                (0, import_react.createElement)(
-                  "select",
-                  {
-                    className: "nodo-dialog-input nodo-dialog-select",
-                    disabled: disabled || loading || profile !== null,
-                    title: profile ? "\u521B\u5EFA\u540E\u4E0D\u53EF\u66F4\u6362 Agent" : void 0,
-                    value: draft.engine,
-                    onChange: chooseEngine
-                  },
-                  !engine && (0, import_react.createElement)("option", { value: draft.engine }, loading ? "\u6B63\u5728\u52A0\u8F7D Agent\u2026" : `\u4E0D\u53EF\u7528\uFF1A${draft.engine}`),
-                  ...engines.map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.label))
-                ),
-                profile && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u521B\u5EFA\u540E\u4E0D\u53EF\u66F4\u6362")
-              ),
-              (0, import_react.createElement)(
-                Field,
-                { label: "\u6A21\u578B" },
-                models.length ? (0, import_react.createElement)(
-                  "select",
-                  { className: "nodo-dialog-input nodo-dialog-select", disabled, value: model, onChange: chooseModel },
-                  !model && (0, import_react.createElement)("option", { value: "" }, "\u9009\u62E9\u6A21\u578B"),
-                  ...model && !selectedModel ? [(0, import_react.createElement)("option", { key: model, value: model }, `\u4E0D\u5728\u6E05\u5355\uFF1A${model}`)] : [],
-                  ...modelOptions
-                ) : (0, import_react.createElement)("input", { className: "nodo-dialog-input", disabled, value: draft.model, onChange: edit("model"), maxLength: 200, placeholder: "\u4F7F\u7528 Agent \u9ED8\u8BA4" }),
-                scanning && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u626B\u63CF\u6A21\u578B\u2026")
-              ),
-              modelLevels.length > 0 && (0, import_react.createElement)(
-                Field,
-                { label: "\u601D\u8003\u6863\u4F4D" },
-                (0, import_react.createElement)(
-                  "select",
-                  { className: "nodo-dialog-input nodo-dialog-select", disabled, value: draft.thinking, onChange: edit("thinking") },
-                  (0, import_react.createElement)("option", { value: "" }, "\u8DDF\u968F\u6A21\u578B\u9ED8\u8BA4"),
-                  ...draft.thinking && !modelLevels.some((level) => level.id === draft.thinking) ? [(0, import_react.createElement)("option", { key: draft.thinking, value: draft.thinking }, `\u4E0D\u5728\u6E05\u5355\uFF1A${draft.thinking}`)] : [],
-                  ...modelLevels.map((level) => (0, import_react.createElement)(
-                    "option",
-                    { key: level.id, value: level.id, title: level.id },
-                    level.id === selectedModel.defaultThinking ? `${level.label ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.label ?? level.id
-                  ))
-                )
-              )
+                  "aria-pressed": draft.avatarTemplate === item.id,
+                  onClick: () => {
+                    update({ avatarTemplate: item.id });
+                    setAvatarOpen(false);
+                  }
+                },
+                (0, import_react.createElement)(RoleAvatar, { profile: { avatarTemplate: item.id }, size: 30 }),
+                item.label
+              ))
             )
           )
         ),
-        error && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-head-copy" },
+          (0, import_react.createElement)("h2", { "data-empty": draft.name.trim() ? void 0 : "true" }, draft.name.trim() || "\u672A\u547D\u540D\u89D2\u8272"),
+          (0, import_react.createElement)("p", null, meta)
+        ),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-actions" },
+          profile && (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+            open: menuOpen,
+            onClose: () => setMenuOpen(false),
+            portal: true,
+            items: [{ id: "delete", label: "\u5220\u9664\u89D2\u8272", disabled }],
+            onSelect: () => {
+              setMenuOpen(false);
+              setConfirming(true);
+            },
+            anchor: (0, import_react.createElement)("button", {
+              type: "button",
+              className: "nodo-row-action nodo-role-more",
+              "aria-haspopup": "menu",
+              "aria-expanded": menuOpen,
+              "aria-label": "\u66F4\u591A\u64CD\u4F5C",
+              disabled,
+              onClick: () => setMenuOpen((open) => !open)
+            }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, { size: 16 }))
+          }),
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", disabled, onClick: onCancel }, "\u53D6\u6D88"),
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+            type: "submit",
+            form: ROLE_FORM,
+            variant: "primary",
+            disabled: disabled || loading || !engine || !draft.name.trim() || !dirty
+          }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : profile ? "\u4FDD\u5B58" : "\u521B\u5EFA\u89D2\u8272")
+        )
       ),
-      deletingIdentity && savedSelected && (0, import_react.createElement)(IdentityDeleteDialog, {
-        identity: savedSelected,
-        onCancel: () => setDeletingIdentity(false),
-        onDeleted: (name) => {
-          setDeletingIdentity(false);
-          setDraft((current) => current.identity === name ? { ...current, identity: "custom" } : current);
-          void refresh?.(true);
-        }
-      })
-    )
+      confirming && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-role-confirm-row", role: "alert" },
+        (0, import_react.createElement)("p", { className: "nodo-role-confirm" }, `\u5C06\u628A\u201C${profile.name}\u201D\u53CA\u5176 ${sessions} \u4E2A\u63D2\u4EF6\u5185\u4F1A\u8BDD\u8BB0\u5F55\u79FB\u9664\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`),
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", disabled, onClick: () => setConfirming(false) }, "\u53D6\u6D88"),
+        (0, import_react.createElement)(
+          import_dsh_client_ui_primitives.Button,
+          { type: "button", variant: "outline", className: "nodo-dialog-danger", disabled, onClick: () => void removeProfile() },
+          busy ? "\u5220\u9664\u4E2D\u2026" : "\u5220\u9664\u89D2\u8272"
+        )
+      ),
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-role-tabbar" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-tabs", role: "tablist", "aria-label": "\u89D2\u8272\u8BBE\u7F6E" },
+          ...tabs.map(([key, label, todo]) => (0, import_react.createElement)(
+            "button",
+            {
+              key,
+              type: "button",
+              role: "tab",
+              id: `nodo-role-tab-${key}`,
+              className: "nodo-role-tab",
+              "aria-selected": tab === key,
+              "aria-controls": `nodo-role-panel-${key}`,
+              onClick: () => setTab(key)
+            },
+            label,
+            todo && (0, import_react.createElement)("span", { className: "nodo-role-tab-dot", role: "img", "aria-label": "\u5F85\u8BBE\u7F6E" })
+          ))
+        ),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-kind", role: "radiogroup", "aria-label": "\u89D2\u8272\u5B9A\u4F4D" },
+          ...[["\u6267\u884C\u89D2\u8272", false], ["\u4E3B\u63A7", true]].map(([label, lead]) => (0, import_react.createElement)("button", {
+            key: label,
+            type: "button",
+            role: "radio",
+            "aria-checked": draft.lead === lead,
+            disabled,
+            onClick: () => chooseLead(lead)
+          }, label))
+        )
+      ),
+      leaving && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-role-lead-note", role: "status" },
+        (0, import_react.createElement)("p", null, "\u4E3B\u63A7\u8D1F\u8D23\u62C6\u5206\u4EFB\u52A1\u548C\u6D3E\u6D3B\uFF0C\u81EA\u5DF1\u4E0D\u518D\u63A5\u4EFB\u52A1"),
+        ...impact.map((line) => (0, import_react.createElement)("p", { key: line.text, "data-warn": line.warn ? "true" : void 0 }, line.text))
+      ),
+      panel(
+        "identity",
+        (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
+          className: "nodo-dialog-input",
+          "data-modal-autofocus": true,
+          disabled,
+          value: draft.name,
+          onChange: edit("name"),
+          required: true,
+          maxLength: 40,
+          placeholder: "\u4F8B\u5982 Coder \u6216 Reviewer"
+        })),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-field nodo-templates", role: "group", "aria-label": "\u6A21\u677F" },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-templates-head" },
+            (0, import_react.createElement)("span", null, "\u6A21\u677F"),
+            (0, import_react.createElement)("button", {
+              type: "button",
+              className: "nodo-text-button",
+              disabled: disabled || !savable || identityName !== null,
+              onClick: () => setIdentityName(draft.name.trim())
+            }, "\u5B58\u4E3A\u6A21\u677F")
+          ),
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-templates-row" },
+            ...role_presets_default.map(templateCard),
+            saved.length > 0 && (0, import_react.createElement)("span", { className: "nodo-templates-divider", "aria-hidden": true }),
+            ...saved.map(templateCard)
+          ),
+          identityName !== null && (0, import_react.createElement)(
+            "div",
+            { className: "nodo-identity-save", role: "group", "aria-label": "\u5B58\u4E3A\u6A21\u677F" },
+            (0, import_react.createElement)("input", {
+              className: "nodo-dialog-input",
+              "aria-label": "\u6A21\u677F\u540D\u79F0",
+              autoFocus: true,
+              disabled,
+              value: identityName,
+              maxLength: 40,
+              placeholder: "\u6A21\u677F\u540D\u79F0",
+              onChange: (event) => setIdentityName(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void saveIdentity();
+                }
+              }
+            }),
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", size: "sm", disabled, onClick: () => setIdentityName(null) }, "\u53D6\u6D88"),
+            (0, import_react.createElement)(
+              import_dsh_client_ui_primitives.Button,
+              { type: "button", variant: "primary", size: "sm", disabled: disabled || identityTitle === "", onClick: () => void saveIdentity() },
+              busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58"
+            ),
+            identityTaken && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5C06\u8986\u76D6\u540C\u540D\u6A21\u677F")
+          ),
+          filled && current?.name === filled.name && (0, import_react.createElement)(
+            "p",
+            { className: "nodo-template-filled", role: "status" },
+            `\u5DF2\u7528\u300C${filled.name}\u300D\u586B\u5199\u804C\u8D23\u6982\u8FF0\u548C\u8EAB\u4EFD\u4FE1\u606F`,
+            (0, import_react.createElement)("button", {
+              type: "button",
+              className: "nodo-text-button",
+              disabled,
+              onClick: () => {
+                update(filled.before);
+                setFilled(null);
+              }
+            }, "\u64A4\u9500")
+          )
+        ),
+        (0, import_react.createElement)(
+          Field,
+          { label: "\u804C\u8D23\u6982\u8FF0" },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-dialog-counted" },
+            (0, import_react.createElement)("input", {
+              className: "nodo-dialog-input",
+              disabled,
+              value: draft.role,
+              onChange: edit("role"),
+              maxLength: 80,
+              placeholder: "\u4E00\u53E5\u8BDD\u8BF4\u660E\u8FD9\u4E2A\u89D2\u8272\u505A\u4EC0\u4E48"
+            }),
+            (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, `${draft.role.length}/80`)
+          )
+        ),
+        (0, import_react.createElement)(
+          Field,
+          { label: "\u8EAB\u4EFD\u4FE1\u606F", group: true },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-dialog-counted" },
+            (0, import_react.createElement)("textarea", {
+              className: "nodo-dialog-input nodo-dialog-textarea",
+              "aria-label": "\u8EAB\u4EFD\u4FE1\u606F",
+              disabled,
+              value: draft.instructions,
+              onChange: edit("instructions"),
+              maxLength: 8e3,
+              rows: 7,
+              placeholder: "\u804C\u8D23\u3001\u8FB9\u754C\u548C\u4EA4\u4ED8\u8981\u6C42"
+            }),
+            (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, `${draft.instructions.length}/8000`)
+          ),
+          sessions > 0 && identityDirty && (0, import_react.createElement)("p", { className: "nodo-role-notice", role: "status" }, `\u8EAB\u4EFD\u5DF2\u4FEE\u6539\uFF0C\u4FDD\u5B58\u540E\u5C06\u4E8E\u4E0B\u8F6E\u751F\u6548 \xB7 \u5F71\u54CD ${sessions} \u4E2A\u4F1A\u8BDD`)
+        )
+      ),
+      panel(
+        "run",
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-run", role: "group", "aria-label": "\u8FD0\u884C" },
+          (0, import_react.createElement)(
+            Field,
+            { label: "Agent" },
+            (0, import_react.createElement)(
+              "select",
+              {
+                className: "nodo-dialog-input nodo-dialog-select",
+                disabled: disabled || loading || profile !== null,
+                title: profile ? "\u521B\u5EFA\u540E\u4E0D\u80FD\u66F4\u6362 Agent" : void 0,
+                value: draft.engine,
+                onChange: chooseEngine
+              },
+              !engine && (0, import_react.createElement)("option", { value: draft.engine }, loading ? "\u6B63\u5728\u52A0\u8F7D Agent\u2026" : `\u4E0D\u53EF\u7528\uFF1A${draft.engine}`),
+              ...engines.map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, engineDisplayName(item)))
+            )
+          ),
+          (0, import_react.createElement)(
+            Field,
+            { label: "\u6A21\u578B" },
+            models.length ? (0, import_react.createElement)(
+              "select",
+              { className: "nodo-dialog-input nodo-dialog-select", disabled, value: model, onChange: chooseModel },
+              !model && (0, import_react.createElement)("option", { value: "" }, "\u9009\u62E9\u6A21\u578B"),
+              ...model && !selectedModel ? [(0, import_react.createElement)("option", { key: model, value: model }, `\u4E0D\u5728\u6E05\u5355\uFF1A${model}`)] : [],
+              ...modelOptions
+            ) : (0, import_react.createElement)("input", { className: "nodo-dialog-input", disabled, value: draft.model, onChange: edit("model"), maxLength: 200, placeholder: "\u4F7F\u7528 Agent \u9ED8\u8BA4" }),
+            scanning && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u626B\u63CF\u6A21\u578B\u2026")
+          ),
+          modelLevels.length > 0 && (0, import_react.createElement)(
+            Field,
+            { label: "\u601D\u8003\u6863\u4F4D" },
+            (0, import_react.createElement)(
+              "select",
+              { className: "nodo-dialog-input nodo-dialog-select", disabled, value: draft.thinking, onChange: edit("thinking") },
+              (0, import_react.createElement)("option", { value: "" }, "\u8DDF\u968F\u6A21\u578B\u9ED8\u8BA4"),
+              ...draft.thinking && !modelLevels.some((level) => level.id === draft.thinking) ? [(0, import_react.createElement)("option", { key: draft.thinking, value: draft.thinking }, `\u4E0D\u5728\u6E05\u5355\uFF1A${draft.thinking}`)] : [],
+              ...modelLevels.map((level) => (0, import_react.createElement)(
+                "option",
+                { key: level.id, value: level.id, title: level.id },
+                level.id === selectedModel.defaultThinking ? `${level.label ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.label ?? level.id
+              ))
+            )
+          )
+        )
+      ),
+      !draft.lead && panel(
+        "assign",
+        (0, import_react.createElement)(
+          Field,
+          { label: "\u4EFB\u52A1\u7C7B\u578B", group: true },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-identity-options" },
+            ...(taskTypes ?? []).map((item) => (0, import_react.createElement)("button", {
+              key: item.id,
+              type: "button",
+              className: "nodo-identity-option",
+              disabled,
+              "aria-pressed": draft.taskTypes.includes(item.id),
+              title: item.when || void 0,
+              onClick: () => chooseTaskType(item.id)
+            }, item.name)),
+            !(taskTypes ?? []).length && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u6682\u65E0\u4EFB\u52A1\u7C7B\u578B")
+          )
+        ),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-reach", "aria-live": "polite" },
+          (0, import_react.createElement)("p", { className: "nodo-role-reach-title" }, `\u6392\u5728\u7B2C ${seated.indexOf(self) + 1} \u4F4D\uFF0C\u6309\u73B0\u5728\u7684\u8BBE\u7F6E\u4F1A\u63A5\u5230`),
+          !reach.length && (0, import_react.createElement)("p", { className: "nodo-role-reach-empty" }, "\u8FD8\u6CA1\u6709\u52FE\u9009\u4EFB\u52A1\u7C7B\u578B"),
+          ...reach.map((row) => (0, import_react.createElement)(
+            "div",
+            { key: row.id, className: "nodo-role-reach-row" },
+            (0, import_react.createElement)("span", { className: "nodo-role-reach-name" }, row.name),
+            (0, import_react.createElement)(
+              "span",
+              { className: "nodo-role-reach-result" },
+              ...row.wins.map((win) => (0, import_react.createElement)("span", { key: win, className: "nodo-role-reach-win", "data-hard": win === "\u96BE\u9898" ? "true" : void 0 }, win)),
+              row.note && (0, import_react.createElement)("span", { className: "nodo-role-reach-note" }, row.note)
+            )
+          ))
+        ),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-role-assign", role: "group", "aria-label": "\u96BE\u9898" },
+          (0, import_react.createElement)(
+            Field,
+            { label: "\u53EF\u63A5\u96BE\u9898" },
+            (0, import_react.createElement)("input", {
+              type: "checkbox",
+              role: "switch",
+              "aria-label": "\u53EF\u63A5\u96BE\u9898",
+              checked: draft.hardOn,
+              disabled,
+              onChange: (event) => update({ hardOn: event.target.checked })
+            })
+          ),
+          draft.hardOn && (0, import_react.createElement)(
+            Field,
+            { label: "\u96BE\u9898\u6A21\u578B" },
+            (0, import_react.createElement)(
+              "select",
+              { className: "nodo-dialog-input nodo-dialog-select", disabled, value: hardModel ?? "", onChange: chooseHardModel },
+              (0, import_react.createElement)("option", { value: "" }, "\u540C\u89D2\u8272\u8BBE\u7F6E"),
+              ...hardModel && !models.some((item) => item.id === hardModel) ? [(0, import_react.createElement)("option", { key: hardModel, value: hardModel }, `\u4E0D\u5728\u6E05\u5355\uFF1A${hardModel}`)] : [],
+              ...modelOptions
+            )
+          ),
+          draft.hardOn && hardLevels.length > 0 && (0, import_react.createElement)(
+            Field,
+            { label: "\u96BE\u9898\u601D\u8003\u6863\u4F4D" },
+            (0, import_react.createElement)(
+              "select",
+              {
+                className: "nodo-dialog-input nodo-dialog-select",
+                disabled,
+                value: hardThinking ?? "",
+                onChange: (event) => update((current2) => ({ ...current2, hard: { ...current2.hard, thinking: event.target.value } }))
+              },
+              (0, import_react.createElement)("option", { value: "" }, "\u540C\u89D2\u8272\u8BBE\u7F6E"),
+              ...hardThinking && !hardLevels.some((level) => level.id === hardThinking) ? [(0, import_react.createElement)("option", { key: hardThinking, value: hardThinking }, `\u4E0D\u5728\u6E05\u5355\uFF1A${hardThinking}`)] : [],
+              ...hardLevels.map((level) => (0, import_react.createElement)(
+                "option",
+                { key: level.id, value: level.id, title: level.id },
+                level.id === hardSelected.defaultThinking ? `${level.label ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.label ?? level.id
+              ))
+            )
+          )
+        )
+      ),
+      error && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+    ),
+    deletingIdentity && (0, import_react.createElement)(IdentityDeleteDialog, {
+      identity: deletingIdentity,
+      onCancel: () => setDeletingIdentity(null),
+      onDeleted: () => {
+        setDeletingIdentity(null);
+        void refresh?.(true);
+      }
+    })
   );
 }
 function IdentityDeleteDialog({ identity: identity2, onDeleted, onCancel }) {
@@ -4470,14 +4766,14 @@ function IdentityDeleteDialog({ identity: identity2, onDeleted, onCancel }) {
         if (!busy) onCancel();
       },
       closeLabel: "\u5173\u95ED",
-      title: "\u5220\u9664\u8EAB\u4EFD\u914D\u7F6E",
-      description: `\u5C06\u5220\u9664\u8EAB\u4EFD\u914D\u7F6E\u201C${identity2.name}\u201D\u3002\u7528\u5B83\u521B\u5EFA\u7684\u89D2\u8272\u4E0D\u53D7\u5F71\u54CD\u3002`,
+      title: "\u5220\u9664\u6A21\u677F",
+      description: `\u5C06\u5220\u9664\u6A21\u677F\u201C${identity2.name}\u201D\u3002\u7528\u5B83\u586B\u5199\u7684\u89D2\u8272\u4E0D\u53D7\u5F71\u54CD\u3002`,
       footer: [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "delete", variant: "outline", className: "nodo-dialog-danger", disabled: busy, onClick: () => void remove() }, "\u5220\u9664\u914D\u7F6E")
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "delete", variant: "outline", className: "nodo-dialog-danger", disabled: busy, onClick: () => void remove() }, "\u5220\u9664\u6A21\u677F")
       ]
     },
-    busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, "\u6B63\u5728\u5220\u9664\u914D\u7F6E\u2026"),
+    busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, "\u6B63\u5728\u5220\u9664\u6A21\u677F\u2026"),
     error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
   );
 }
@@ -4931,29 +5227,6 @@ function ApprovalCard({ card, refresh, readOnly }) {
     )
   );
 }
-
-// nodo:engine-logos:nodo:engine-logos
-var ENGINE_LOGO_SVGS = { "claude": '<svg viewBox="0 0 248 248" fill="none" xmlns="http://www.w3.org/2000/svg">\n<path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/>\n</svg>', "codebuddy": '<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">\n<g clip-path="url(#clip0_5110_14771)">\n<rect width="40" height="40" rx="20" fill="url(#paint0_linear_5110_14771)"/>\n<g filter="url(#filter0_f_5110_14771)">\n<circle cx="12.6071" cy="34.9794" r="14.081" fill="#32E6B9" fill-opacity="0.4"/>\n</g>\n<g filter="url(#filter1_f_5110_14771)">\n<circle cx="33.3404" cy="43.6185" r="12.8704" fill="#32E6B9"/>\n</g>\n<path d="M27.6897 3.3426C28.057 3.01322 28.0795 2.99983 28.3485 2.98366C28.7851 2.95177 29.1858 3.16107 29.8664 3.78072C31.4566 5.22574 33.6703 8.19724 35.047 10.7343L35.5796 11.7191L36.3309 12.0927C37.0562 12.4593 38.2459 13.2111 38.7428 13.614C38.9673 13.7997 38.9992 13.8032 39.2326 13.7124C40.2872 13.3017 41.7982 13.846 43.1307 15.1244C44.3302 16.274 45.479 18.2384 45.9191 19.8778C45.9833 20.1417 46.0683 20.709 46.0994 21.1314C46.1997 22.6144 45.7243 23.7986 44.8085 24.3349C44.6213 24.443 44.6085 24.4725 44.6137 24.939C44.6559 27.1604 44.0571 29.3777 42.8543 31.54C41.4965 33.9678 39.0794 36.4798 35.8073 38.846C34.0502 40.1247 29.8918 42.5469 28.0122 43.3973C23.5096 45.4244 19.8999 46.2022 16.7645 45.8181C14.8943 45.5915 12.7771 44.8611 11.5246 44.0137C11.1951 43.786 11.1428 43.7719 10.8909 43.8439C9.55017 44.2289 7.79442 43.4374 6.30272 41.7817C5.70771 41.1197 4.74709 39.4939 4.43575 38.6241C3.71569 36.5887 3.85859 34.752 4.81783 33.6551C5.0657 33.3725 5.07387 33.3607 5.01972 32.8856C4.93033 32.1079 4.88982 30.9566 4.93066 30.2138L4.96343 29.5205L3.92091 27.6777C2.3078 24.8074 1.28326 22.3968 0.887982 20.5554C0.679402 19.546 0.692781 19.0981 0.949061 18.7667C1.10529 18.5666 1.61622 18.3594 2.23252 18.2455C3.78518 17.9729 7.17203 18.2198 10.9394 18.885L11.3303 18.9525L12.1903 18.1921C13.6179 16.9275 14.5665 16.2176 16.315 15.1274C18.1373 13.9872 20.1943 13.0498 22.5103 12.3071L23.2533 12.0687L23.6615 10.9964C25.1239 7.13587 26.6218 4.28969 27.6897 3.3426ZM15.4393 23.1261C13.7864 24.0804 12.9602 24.5582 12.3529 25.093C9.89364 27.2585 8.9738 30.6888 10.0208 33.7938C10.2794 34.5606 10.7568 35.387 11.7111 37.0398C12.6653 38.6926 13.1424 39.5194 13.6771 40.1267C15.8426 42.5859 19.2732 43.5045 22.3783 42.4574C23.145 42.1989 23.972 41.7223 25.6248 40.768L35.1333 35.2783C36.7862 34.324 37.6124 33.8462 38.2196 33.3114C40.6789 31.1459 41.5988 27.7156 40.5518 24.6105C40.2932 23.8438 39.8157 23.0174 38.8615 21.3646C37.9072 19.7117 37.4302 18.885 36.8955 18.2777C34.7299 15.8185 31.2993 14.8999 28.1943 15.947C27.4275 16.2055 26.6006 16.6821 24.9478 17.6364L15.4393 23.1261Z" fill="url(#paint1_linear_5110_14771)"/>\n<rect x="15.8816" y="30.0273" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 15.8816 30.0273)" fill="white"/>\n<rect x="26.6978" y="23.7812" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 26.6978 23.7812)" fill="white"/>\n</g>\n<defs>\n<filter id="filter0_f_5110_14771" x="-14.9163" y="7.45599" width="55.0468" height="55.047" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="6.72123" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<filter id="filter1_f_5110_14771" x="9.46959" y="19.7477" width="47.7417" height="47.741" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="5.50019" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<linearGradient id="paint0_linear_5110_14771" x1="20" y1="0" x2="20" y2="40" gradientUnits="userSpaceOnUse">\n<stop stop-color="#6C4DFF"/>\n<stop offset="1" stop-color="#583ED3"/>\n</linearGradient>\n<linearGradient id="paint1_linear_5110_14771" x1="14.639" y1="10.7917" x2="32.1712" y2="41.1585" gradientUnits="userSpaceOnUse">\n<stop stop-color="white" stop-opacity="0.8"/>\n<stop offset="0.437689" stop-color="white"/>\n</linearGradient>\n<clipPath id="clip0_5110_14771">\n<rect width="40" height="40" rx="20" fill="white"/>\n</clipPath>\n</defs>\n</svg>', "codex": '<svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>', "dsh": '<svg fill="#5786FE" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136 9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287.3.3 0 0 1 .113.074.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078.253.253 0 0 1-.114-.358 1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45"/></svg>', "opencode": '<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">\n<rect width="512" height="512" fill="#131010"></rect>\n<path d="M320 224V352H192V224H320Z" fill="#5A5858"></path>\n<path fill-rule="evenodd" clip-rule="evenodd" d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z" fill="white"></path>\n</svg>', "pi": '<svg fill="currentColor" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg"><path d="M420 280H280V140H0V0H420V280Z"/><path d="M560 560H420V280H560V560Z"/><path d="M140 560H0V140H140V280H280V420H140V560Z"/></svg>', "qoder": '<svg fill="currentColor" viewBox="0 0 206 206" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M104.003 35.8361C104.122 35.8899 104.223 35.938 104.308 35.9805C104.575 36.1139 104.784 36.2211 104.937 36.3023L154.881 62.632L154.9 62.6418C154.992 62.6907 155.084 62.7426 155.173 62.7973C160.753 65.8115 165.083 70.1612 168.163 75.8464C171.221 81.491 172.75 87.925 172.75 95.1484V117.637C172.75 117.795 172.743 117.954 172.728 118.111V158.251C172.728 163.577 170.488 167.682 166.008 170.563C161.529 173.445 156.866 173.781 152.021 171.573L143.479 167.682L143.449 167.699L143.279 167.796C143.276 167.798 143.237 167.821 143.159 167.867C142.593 168.202 142.154 168.454 141.84 168.625C141.789 168.654 141.686 168.709 141.532 168.79C141.479 168.819 141.443 168.837 141.426 168.846L141.174 168.979C140.759 169.203 140.355 169.414 139.961 169.61L139.342 169.911L139.192 169.982C138.849 170.145 138.46 170.326 138.025 170.524L137.252 170.86C136.994 170.973 136.623 171.127 136.137 171.32L136.002 171.374L135.892 171.42C135.835 171.443 135.78 171.466 135.725 171.488C135.49 171.584 135.294 171.661 135.137 171.716C134.872 171.814 134.453 171.961 133.881 172.16L133.879 172.161L133.715 172.219C133.549 172.28 133.366 172.342 133.165 172.407C132.571 172.603 131.9 172.805 131.151 173.012L127.646 173.973C126.996 174.153 126.392 174.306 125.833 174.432L125.437 174.515L125.039 174.596C124.663 174.676 124.363 174.738 124.139 174.782C124.007 174.809 123.855 174.836 123.681 174.864C123.646 174.869 123.625 174.872 123.619 174.874L123.11 174.956C123.106 174.957 123.084 174.961 123.044 174.967C122.729 175.02 122.483 175.059 122.304 175.085C122.178 175.104 121.986 175.129 121.727 175.159L121.331 175.209L120.674 175.285C120.526 175.302 120.362 175.317 120.18 175.33L120.066 175.341L120.015 175.345C119.546 175.384 119.175 175.411 118.903 175.426C118.815 175.433 118.717 175.438 118.608 175.443L118.645 175.439C118.497 175.452 118.347 175.459 118.198 175.459H118.137C117.737 175.478 117.398 175.487 117.121 175.487H116.455C116.418 175.487 116.381 175.487 116.344 175.486C116.298 175.485 116.224 175.484 116.122 175.483C115.843 175.479 115.623 175.473 115.461 175.466C115.335 175.462 115.132 175.452 114.852 175.434L114.824 175.432L114.654 175.426L114.273 175.407C114.212 175.404 114.15 175.399 114.088 175.394L113.388 175.332C112.948 175.29 112.527 175.243 112.124 175.19L111.925 175.166C111.882 175.162 111.839 175.155 111.796 175.149C111.339 175.081 110.875 175.005 110.403 174.921L109.901 174.827L109.871 174.821C109.63 174.777 109.429 174.736 109.27 174.698L109.224 174.687L109.158 174.672L109.037 174.644C108.61 174.549 108.15 174.435 107.656 174.301L107.629 174.294C107.5 174.263 107.358 174.226 107.201 174.181L107.2 174.181C106.608 174.013 106.029 173.831 105.463 173.634C105.307 173.586 105.154 173.53 105.004 173.466L104.884 173.42C104.405 173.241 104.002 173.083 103.675 172.948C103.58 172.909 103.469 172.861 103.342 172.804C103.29 172.781 103.261 172.768 103.255 172.766L103.084 172.692C102.756 172.551 102.39 172.384 101.986 172.19L101.906 172.152L101.891 172.145C101.798 172.103 101.715 172.063 101.64 172.025C101.571 171.99 101.501 171.955 101.431 171.918C101.407 171.906 101.386 171.895 101.369 171.886C101.249 171.835 101.13 171.778 101.012 171.716L101.009 171.715L51.5574 145.645C51.215 145.509 50.8889 145.336 50.5849 145.128C48.367 143.914 46.3274 142.453 44.4659 140.744C44.4647 140.743 44.4635 140.742 44.4623 140.741C44.4584 140.737 44.4546 140.734 44.4507 140.73C44.4362 140.717 44.4214 140.704 44.4064 140.69C43.6029 139.953 42.8113 139.14 42.0317 138.252C42.0244 138.243 42.0171 138.235 42.0097 138.226C42.0082 138.224 42.0067 138.222 42.0051 138.22C41.5797 137.727 41.1892 137.252 40.8338 136.795C40.7387 136.672 40.6464 136.551 40.5567 136.432C35.6857 129.988 33.2502 122.172 33.2502 112.983V90.4946C33.2502 89.8308 33.2644 89.0633 33.2927 88.1921C33.3022 87.9838 33.3174 87.7494 33.3384 87.4888C33.3459 87.3951 33.3511 87.3283 33.3539 87.2882C33.3866 86.7286 33.4259 86.2074 33.4719 85.7247C33.4848 85.5587 33.5136 85.2969 33.5583 84.9392C33.5691 84.8524 33.5769 84.7892 33.5817 84.7498C33.589 84.6881 33.6006 84.5877 33.6166 84.4487C33.672 83.9681 33.7187 83.5958 33.7569 83.3318C33.7999 83.0465 33.8556 82.7028 33.9239 82.3007C33.9303 82.2616 33.9429 82.1836 33.9618 82.0668C34.0386 81.5927 34.1025 81.2235 34.1537 80.9593C34.1539 80.9576 34.1542 80.9559 34.1545 80.9542L34.1507 80.9713C34.1669 80.871 34.1817 80.7851 34.1951 80.7134C34.3125 80.1121 34.4286 79.5636 34.5433 79.0679C34.5554 79.0129 34.5689 78.9553 34.5837 78.895C34.704 78.3592 34.8544 77.7535 35.0349 77.078C35.0683 76.9444 35.1121 76.78 35.1663 76.5847C35.1764 76.5481 35.1839 76.5212 35.1886 76.5042C35.4221 75.6865 35.6047 75.0694 35.7364 74.653C35.7408 74.639 35.7453 74.6249 35.7499 74.6109C35.7573 74.5867 35.7647 74.5627 35.7723 74.539C35.7789 74.517 35.7857 74.495 35.7926 74.473C35.8241 74.3734 35.8643 74.2549 35.9134 74.1174L35.9251 74.085C36.1639 73.3479 36.3895 72.6905 36.6021 72.1127C36.6575 71.9603 36.7417 71.7385 36.8547 71.4475C36.8818 71.3777 36.9019 71.3258 36.9151 71.2917C36.9324 71.247 36.9593 71.177 36.9959 71.0817C37.2171 70.5062 37.3921 70.0651 37.5208 69.7585L37.5168 69.7661C37.5549 69.6676 37.5905 69.5789 37.6236 69.5C37.6858 69.3466 37.7661 69.1613 37.8644 68.944C37.8998 68.8657 37.9232 68.8133 37.9347 68.7869C38.152 68.2878 38.3184 67.9104 38.4338 67.6548C38.5471 67.4055 38.7105 67.0593 38.9238 66.6163C38.9706 66.5208 39.03 66.3991 39.1019 66.2511C39.2648 65.9163 39.392 65.6588 39.4835 65.4786L39.5155 65.4136C39.5653 65.3091 39.6106 65.2167 39.6516 65.1362C39.7258 64.9869 39.8207 64.8074 39.9362 64.5977C39.9744 64.5283 39.9996 64.4822 40.0115 64.4596C40.0477 64.3922 40.0935 64.3066 40.1489 64.2029C40.3258 63.872 40.463 63.6187 40.5605 63.4432C40.7672 63.0697 40.9619 62.726 41.1445 62.4123C41.2987 62.1332 41.489 61.8063 41.7152 61.4316C41.7383 61.3935 41.7619 61.3555 41.786 61.318L41.7824 61.323C41.7846 61.3193 41.7867 61.3156 41.7888 61.3118L41.7824 61.323C41.8335 61.2318 41.8771 61.1561 41.9132 61.0959C42.0161 60.9245 42.159 60.697 42.342 60.4136C42.5227 60.1209 42.7188 59.811 42.9304 59.484C43.0841 59.2469 43.3076 58.9123 43.601 58.4804L43.9154 58.0238L44.2115 57.5939C44.2325 57.5634 44.2537 57.5333 44.2753 57.5034L44.2749 57.5021C44.3548 57.3822 44.4252 57.2801 44.4861 57.1958C44.5458 57.1108 44.6445 56.9765 44.7821 56.7929C44.8446 56.7095 44.8877 56.6514 44.9115 56.6186C45.2257 56.1886 45.4678 55.8625 45.6377 55.6403L45.9946 55.1837L46.3262 54.7597C46.5387 54.4816 46.7902 54.1653 47.0808 53.811C47.0969 53.7914 47.1242 53.7575 47.1628 53.7094C47.2305 53.6246 47.2851 53.5571 47.3267 53.5067C47.4115 53.4034 47.53 53.264 47.6821 53.0885C47.7338 53.0289 47.771 52.9858 47.7938 52.9593C47.8766 52.8642 47.9852 52.7384 48.1197 52.582C48.3585 52.3041 48.544 52.0909 48.6764 51.9423L49.3723 51.1748C49.5804 50.9454 49.8853 50.6178 50.2869 50.1921C50.3199 50.1572 50.3534 50.1227 50.3874 50.0888L50.3985 50.0741C50.5274 49.9324 50.6395 49.8139 50.7349 49.7185C50.7855 49.6679 50.8533 49.6012 50.9383 49.5185C50.99 49.4683 51.0247 49.4343 51.0424 49.4165C51.4915 48.9675 51.9017 48.5656 52.2729 48.2107C52.3283 48.1583 52.4007 48.0891 52.49 48.0029C52.6771 47.8224 52.8271 47.6806 52.9399 47.5775C53.3761 47.1664 53.9052 46.6923 54.5271 46.155C54.5279 46.1543 54.5287 46.1536 54.5295 46.1528L54.5189 46.161C54.617 46.0697 54.7025 45.9924 54.7754 45.9292C54.8391 45.8741 54.904 45.8206 54.9705 45.7688C54.997 45.7476 55.0236 45.7269 55.0503 45.7065L55.0774 45.6851L55.0939 45.6717C55.5288 45.3081 55.9911 44.9311 56.4808 44.5407C56.5166 44.5125 56.5529 44.4839 56.5898 44.4548C56.7923 44.2954 56.9507 44.1724 57.0648 44.0858C57.2979 43.9051 57.6655 43.6275 58.1675 43.253C58.2075 43.2232 58.2479 43.1939 58.2888 43.1654C58.3729 43.1065 58.5143 43.0042 58.7128 42.8586C59.1025 42.577 59.5704 42.2518 60.1163 41.883L60.1145 41.8841L60.1593 41.8524C60.2852 41.7638 60.3942 41.6892 60.4862 41.6287C60.5329 41.5967 60.5792 41.5661 60.6251 41.5367C61.2865 41.1057 61.8541 40.7475 62.3278 40.4623C62.4222 40.4035 62.5743 40.3142 62.7839 40.1944C62.7838 40.1941 62.8182 40.1736 62.8873 40.1328C63.453 39.7986 63.8928 39.5462 64.2065 39.3754L64.8387 39.0383L64.872 39.0207C65.2867 38.7973 65.6911 38.5871 66.0852 38.39C66.2669 38.2991 66.5247 38.1744 66.8586 38.0158C67.1979 37.8542 67.5857 37.6746 68.0218 37.477L68.4373 37.2954L68.7948 37.1398C69.0934 37.0111 69.5097 36.84 70.0435 36.6265C70.1097 36.6005 70.1844 36.5712 70.2678 36.5384C70.5114 36.4427 70.6998 36.3699 70.833 36.3199C71.1527 36.2027 71.5991 36.0447 72.1722 35.8457C72.2132 35.8316 72.2719 35.8109 72.3482 35.7837C72.574 35.7031 72.7593 35.64 72.904 35.5945C73.5201 35.3928 74.1846 35.1929 74.8975 34.9948L78.4057 34.0333C79.0348 33.8574 79.6373 33.7044 80.2131 33.5744C80.378 33.5359 80.5868 33.4913 80.8395 33.4407C81.1612 33.3685 81.5282 33.2925 81.9406 33.2127C82.0871 33.1842 82.2808 33.151 82.5216 33.1131C82.5981 33.101 82.6517 33.0924 82.6826 33.0873C82.7524 33.0758 82.852 33.0591 82.9815 33.0372C83.2985 32.9834 83.5459 32.9435 83.7238 32.9177C83.7635 32.9119 83.8033 32.9066 83.8432 32.9018L84.1737 32.8619L84.504 32.822C84.5516 32.8162 84.6345 32.8056 84.7525 32.7903C85.0348 32.7538 85.2559 32.7271 85.4158 32.7105C85.5254 32.6991 85.6353 32.6913 85.7453 32.6873L86.07 32.6632C86.533 32.6238 86.9091 32.5967 87.1982 32.582C87.3378 32.5734 87.5561 32.5646 87.8533 32.5556L87.8692 32.5551C87.9598 32.5532 88.0717 32.5499 88.205 32.5453C88.4606 32.5364 88.6706 32.5314 88.835 32.5303C88.9748 32.5275 89.1472 32.5271 89.3523 32.529L89.537 32.5302C89.6342 32.5318 89.7388 32.5334 89.851 32.5349C90.1448 32.5389 90.3757 32.5444 90.5436 32.5514C90.6803 32.5549 90.9082 32.5655 91.2273 32.5832C91.2891 32.5871 91.3656 32.5912 91.4568 32.5957C91.6011 32.6026 91.7158 32.6089 91.8012 32.6144C91.9206 32.6204 92.0953 32.6356 92.3254 32.6598L92.6313 32.6871C93.0373 32.7257 93.4523 32.7724 93.8761 32.8271L93.8896 32.8288L93.8913 32.829C94.0015 32.8408 94.0983 32.8527 94.1819 32.8646C94.6093 32.9223 95.085 32.9984 95.6089 33.093C95.6739 33.1047 95.7386 33.1178 95.8031 33.1321L95.8062 33.1318C95.8842 33.1466 95.9548 33.1606 96.0179 33.1737C96.0408 33.1779 96.0713 33.1835 96.1093 33.1905C96.3333 33.2314 96.5177 33.2683 96.6627 33.301C96.7395 33.3173 96.8375 33.3418 96.9566 33.3744C96.9806 33.3797 97.0046 33.385 97.0288 33.3903C97.2476 33.4387 97.4749 33.4924 97.7107 33.5517C97.9063 33.6006 98.1067 33.6529 98.3119 33.7085L98.3072 33.7071L98.3401 33.7149C98.4501 33.742 98.5513 33.7682 98.6438 33.7934C98.6594 33.7976 98.6743 33.8018 98.6886 33.8058C98.7485 33.8224 98.8045 33.8387 98.8566 33.8545C98.8608 33.8557 98.865 33.8569 98.8692 33.8581C99.3732 34.0019 99.9241 34.1774 100.522 34.3846C100.548 34.3932 100.574 34.4019 100.6 34.4109C100.733 34.4556 100.881 34.5109 101.044 34.5769C101.508 34.7451 101.931 34.9089 102.311 35.0684C102.368 35.0928 102.417 35.1139 102.459 35.1317C102.655 35.2169 102.808 35.2839 102.918 35.3328C103.261 35.4856 103.61 35.6469 103.963 35.8169L104.003 35.8361ZM101.032 34.5728L101.03 34.5721C101.033 34.573 101.035 34.5739 101.038 34.5748C101.036 34.5741 101.034 34.5735 101.032 34.5728ZM104.903 162.561L105.666 162.963C105.717 162.991 105.807 163.037 105.935 163.102C105.972 163.121 106.002 163.136 106.025 163.148C106.092 163.178 106.131 163.197 106.145 163.205L106.281 163.269C106.554 163.401 106.811 163.519 107.052 163.622L107.063 163.627C107.148 163.663 107.253 163.708 107.38 163.765C107.425 163.785 107.449 163.796 107.452 163.797C107.68 163.891 107.998 164.015 108.408 164.169L108.458 164.189C108.52 164.211 108.58 164.234 108.641 164.257L108.655 164.263C109.054 164.403 109.476 164.536 109.919 164.661C109.914 164.66 109.885 164.654 109.835 164.643C109.904 164.659 109.973 164.675 110.041 164.693L110.249 164.747C110.596 164.84 110.948 164.927 111.306 165.008L111.379 165.025L111.451 165.041L111.564 165.067L111.672 165.086L111.703 165.092L112.139 165.174C112.496 165.238 112.847 165.295 113.191 165.347L113.391 165.372C113.685 165.41 113.977 165.443 114.269 165.47L114.88 165.525L115.066 165.535L115.442 165.551L115.47 165.553C115.644 165.565 115.787 165.572 115.899 165.576C115.964 165.579 116.087 165.581 116.267 165.584C116.363 165.585 116.443 165.586 116.506 165.587H117.121C117.26 165.587 117.474 165.58 117.764 165.566C117.848 165.561 117.932 165.559 118.015 165.559H118.037C118.081 165.557 118.126 165.555 118.174 165.552L118.156 165.555C118.215 165.55 118.274 165.546 118.334 165.542C118.501 165.534 118.779 165.514 119.169 165.481L119.325 165.467C119.376 165.462 119.427 165.458 119.479 165.455C119.506 165.453 119.53 165.451 119.549 165.449L120.088 165.388L120.592 165.324C120.728 165.308 120.832 165.295 120.904 165.284C121.005 165.27 121.174 165.243 121.411 165.203C121.454 165.196 121.491 165.19 121.522 165.185L121.924 165.119C121.976 165.11 122.042 165.1 122.123 165.087L122.114 165.091C122.152 165.082 122.191 165.074 122.23 165.067C122.398 165.035 122.677 164.977 123.068 164.895L123.398 164.828L123.653 164.775C124.058 164.683 124.517 164.567 125.03 164.425L128.507 163.472C129.101 163.307 129.652 163.141 130.162 162.973C130.219 162.955 130.253 162.943 130.266 162.939C130.308 162.922 130.35 162.907 130.393 162.892L130.632 162.808H130.634C131.154 162.628 131.551 162.487 131.825 162.387C131.834 162.383 131.882 162.364 131.971 162.328C132.052 162.295 132.097 162.276 132.106 162.273L132.326 162.182C132.367 162.166 132.414 162.147 132.467 162.126C132.853 161.972 133.13 161.858 133.299 161.784L133.938 161.506C134.318 161.334 134.65 161.181 134.935 161.045L135.024 161.003L135.533 160.756C135.838 160.604 136.178 160.426 136.553 160.224L136.711 160.141C136.766 160.112 136.839 160.073 136.929 160.025C136.993 159.992 137.052 159.961 137.107 159.93C137.318 159.814 137.658 159.619 138.125 159.343C138.192 159.304 138.261 159.263 138.332 159.221L138.46 159.147H138.461C138.544 159.098 138.619 159.055 138.687 159.017C139.131 158.749 139.551 158.484 139.947 158.224L140.305 157.979C141.736 157.002 143.572 156.845 145.148 157.563L156.125 162.564C157.693 163.279 159.202 163.17 160.652 162.237C162.103 161.304 162.828 159.976 162.828 158.251V117.614C162.828 117.456 162.835 117.298 162.85 117.14V95.1484C162.85 83.7403 158.651 75.8219 150.254 71.3934L149.959 71.2374C149.909 71.2132 149.855 71.1867 149.796 71.158C149.721 71.1217 149.663 71.0932 149.62 71.0724C149.384 70.9567 149.129 70.8386 148.853 70.718C148.676 70.6389 148.548 70.5828 148.468 70.5496C148.234 70.4515 147.944 70.3392 147.597 70.2126L147.415 70.1456L147.313 70.1067C146.939 69.9768 146.534 69.8488 146.096 69.7227L145.999 69.6973L145.777 69.6395C145.321 69.5221 144.979 69.4377 144.751 69.3863C144.724 69.3805 144.683 69.3717 144.629 69.3597C144.371 69.3034 144.185 69.2642 144.072 69.242C144.03 69.2339 143.989 69.2253 143.948 69.2162L143.83 69.1927C143.449 69.1241 143.093 69.0673 142.761 69.0223C142.792 69.0267 142.81 69.0291 142.814 69.0296C142.703 69.0177 142.628 69.0088 142.589 69.0029C142.287 68.9641 141.996 68.931 141.716 68.9037L141.71 68.9033L141.383 68.8734C141.233 68.8611 140.993 68.845 140.663 68.8252C140.435 68.8126 140.276 68.805 140.186 68.8025C140.128 68.8008 140.071 68.7982 140.014 68.7947C139.934 68.7897 139.76 68.7873 139.491 68.7873L138.982 68.7863C138.823 68.7894 138.572 68.7974 138.23 68.8105C138.13 68.8157 138.008 68.8205 137.866 68.8249C137.791 68.8271 137.731 68.8296 137.686 68.8322C137.515 68.8408 137.229 68.8619 136.827 68.8954L136.781 68.899C136.729 68.9029 136.661 68.9074 136.577 68.9127L136.442 68.9231C136.355 68.9316 136.204 68.9492 135.988 68.9761C135.849 68.9934 135.758 69.0044 135.717 69.0091C135.625 69.0209 135.503 69.035 135.352 69.0513C135.248 69.0625 135.179 69.0706 135.146 69.0756C135.049 69.09 134.884 69.1175 134.65 69.158C134.503 69.1832 134.384 69.2036 134.291 69.219C134.229 69.2289 134.145 69.2422 134.038 69.2587C133.907 69.2786 133.814 69.2938 133.759 69.3042C133.645 69.3251 133.444 69.3668 133.157 69.4293C133.028 69.4574 132.949 69.4744 132.92 69.4802C132.827 69.5013 132.7 69.5285 132.54 69.5617C132.451 69.5801 132.403 69.5901 132.396 69.5916C131.906 69.7035 131.445 69.8191 131.014 69.9384L127.538 70.8908C126.968 71.049 126.455 71.2026 125.998 71.3517L125.707 71.4525L125.352 71.575C124.951 71.7086 124.6 71.8325 124.3 71.9467C124.181 71.9913 123.979 72.0708 123.693 72.1852C123.284 72.3461 122.971 72.4736 122.752 72.5678L122.104 72.8516C121.973 72.9113 121.833 72.9757 121.684 73.0449V91.2807C121.684 92.0491 121.665 92.8184 121.628 93.5885C121.622 93.7365 121.609 93.9283 121.591 94.1637L121.59 94.1679L121.571 94.4471L121.57 94.4744C121.528 95.1281 121.491 95.6208 121.457 95.9524C121.439 96.1399 121.414 96.3666 121.381 96.6324L121.329 97.0655C121.322 97.1194 121.312 97.2021 121.299 97.3136C121.248 97.7482 121.207 98.0619 121.178 98.255C121.155 98.4224 121.12 98.6496 121.074 98.9367C121.068 98.9704 121.065 98.9883 121.065 98.9905L121.009 99.3453L121.009 99.3467C120.917 99.902 120.844 100.324 120.788 100.612C120.661 101.278 120.528 101.923 120.389 102.547L120.362 102.657C120.224 103.259 120.071 103.869 119.902 104.487L119.761 104.999C119.578 105.652 119.397 106.263 119.219 106.83L119.068 107.297C118.85 107.97 118.629 108.613 118.405 109.225C118.356 109.361 118.29 109.536 118.205 109.751L118.188 109.793L118.192 109.783L118.08 110.078C118.063 110.121 118.039 110.184 118.007 110.266C117.79 110.827 117.625 111.244 117.512 111.517C117.449 111.674 117.358 111.889 117.239 112.163C117.192 112.273 117.165 112.336 117.158 112.351L117.095 112.503C116.916 112.924 116.752 113.292 116.603 113.609C116.52 113.796 116.401 114.053 116.244 114.381C116.192 114.49 116.148 114.584 116.109 114.664C116.087 114.71 116.055 114.778 116.011 114.868C115.823 115.258 115.676 115.559 115.568 115.77C115.376 116.148 115.2 116.486 115.04 116.784L114.726 117.371L114.51 117.768C114.385 117.994 114.197 118.325 113.947 118.761C113.932 118.786 113.907 118.83 113.871 118.893C113.665 119.251 113.496 119.536 113.364 119.749C113.175 120.066 112.975 120.389 112.764 120.718C112.747 120.745 112.719 120.789 112.68 120.851C112.458 121.207 112.294 121.463 112.191 121.62C112.082 121.789 111.924 122.028 111.715 122.339C111.63 122.465 111.557 122.575 111.495 122.666L111.474 122.698L110.894 123.543L110.828 123.635L110.248 124.44C110.006 124.774 109.774 125.086 109.554 125.376C109.374 125.614 109.136 125.921 108.838 126.296C108.792 126.354 108.722 126.444 108.626 126.564C108.415 126.831 108.255 127.032 108.146 127.165C107.99 127.358 107.765 127.627 107.472 127.971L107.432 128.017L107.427 128.022C107.169 128.329 106.885 128.659 106.573 129.01C106.415 129.187 106.185 129.443 105.883 129.777C105.674 130.009 105.372 130.333 104.979 130.75C104.865 130.87 104.702 131.038 104.49 131.254C104.4 131.346 104.327 131.42 104.271 131.477C103.929 131.825 103.523 132.223 103.055 132.67L102.875 132.844L102.673 133.037L102.415 133.284C101.896 133.765 101.374 134.233 100.848 134.686L100.749 134.772L100.669 134.843L100.589 134.915C100.544 134.955 100.499 134.995 100.452 135.032L100.254 135.197C99.956 135.449 99.52 135.806 98.9463 136.268L98.9399 136.273C98.8505 136.346 98.7376 136.435 98.6012 136.539C98.551 136.577 98.5019 136.615 98.4539 136.652L98.3712 136.715C97.9722 137.023 97.5654 137.329 97.1506 137.632C97.1246 137.65 97.0729 137.688 96.9956 137.746C96.8643 137.844 96.7619 137.919 96.6886 137.971C96.2495 138.286 95.8236 138.581 95.4107 138.856L95.0917 139.078C95.0575 139.102 95.0231 139.126 94.9883 139.148C94.3982 139.537 93.7872 139.923 93.1553 140.305L93.1461 140.31C93.3774 150.816 97.2951 158.232 104.899 162.559C104.9 162.559 104.902 162.56 104.903 162.561ZM85.109 152.14C83.8619 148.186 83.2373 143.919 83.2353 139.337V137.521C83.2347 137.489 83.2344 137.458 83.2344 137.426V116.845C83.2344 116.045 83.2534 115.247 83.2913 114.451C83.2988 114.292 83.313 114.083 83.334 113.822C83.3415 113.729 83.3466 113.663 83.3493 113.626C83.3544 113.552 83.3621 113.44 83.3724 113.29C83.4083 112.76 83.4408 112.342 83.4697 112.035C83.4825 111.908 83.5022 111.733 83.5288 111.511C83.5477 111.353 83.5635 111.213 83.5763 111.091C83.5843 111.024 83.5963 110.921 83.6122 110.782C83.6676 110.301 83.7158 109.919 83.757 109.636C83.797 109.37 83.8504 109.041 83.917 108.649C83.9225 108.616 83.931 108.565 83.9424 108.496C84.0263 107.992 84.0935 107.6 84.144 107.32C84.2642 106.675 84.3948 106.043 84.5356 105.422C84.5486 105.362 84.5632 105.3 84.5794 105.234C84.5829 105.219 84.5864 105.203 84.59 105.188C84.7498 104.507 84.9083 103.874 85.0654 103.29C85.0711 103.27 85.0838 103.223 85.1035 103.148C85.1407 103.006 85.1675 102.907 85.1837 102.851C85.3667 102.187 85.5509 101.565 85.7364 100.984C85.7394 100.975 85.7425 100.965 85.7454 100.956C85.7604 100.907 85.7756 100.859 85.7911 100.812C85.8274 100.699 85.8714 100.57 85.9233 100.425C85.9267 100.416 85.9288 100.41 85.9293 100.409C86.1871 99.6224 86.4078 98.9796 86.5913 98.4808C86.651 98.3166 86.7374 98.0889 86.8505 97.7977C86.8777 97.7276 86.8935 97.687 86.8979 97.6759C87.1126 97.1079 87.3121 96.6018 87.4965 96.1574C87.5769 95.96 87.6945 95.6837 87.8495 95.3284C87.8867 95.2432 87.9153 95.1776 87.9353 95.1316C88.1491 94.6407 88.3155 94.2636 88.4344 94.0001C88.5435 93.7602 88.7034 93.4213 88.9141 92.9835C88.9155 92.9806 88.9169 92.9777 88.9182 92.9749C89.099 92.5951 89.2811 92.2247 89.4646 91.8639C89.5557 91.6816 89.689 91.4218 89.8645 91.0844C89.9194 90.9789 89.9656 90.8899 90.0032 90.8175C90.201 90.4424 90.3841 90.1034 90.5524 89.8004C90.7617 89.4223 90.9573 89.0771 91.1389 88.7647L91.4063 88.3047L91.7037 87.7941C91.8473 87.5548 92.0487 87.2295 92.3079 86.8181C92.4094 86.6532 92.5571 86.4188 92.7509 86.1149C92.8189 86.0084 92.8779 85.9158 92.9281 85.8371C93.0803 85.6022 93.2952 85.2806 93.5727 84.8722C93.8298 84.4867 94.0521 84.1637 94.2398 83.9033C94.4559 83.5971 94.6806 83.2865 94.9138 82.9715C95.2236 82.5476 95.4605 82.2284 95.6245 82.014C95.8073 81.7734 96.0476 81.4661 96.3452 81.0921L96.69 80.6582L97.0805 80.168C97.2347 79.9804 97.4631 79.7075 97.7656 79.3492L97.7895 79.3212C97.8343 79.2689 97.9023 79.1892 97.9935 79.0823C98.2842 78.7413 98.506 78.4851 98.6587 78.3137C98.8175 78.1339 99.0523 77.8728 99.3629 77.5304C99.5705 77.3015 99.8791 76.9701 100.289 76.536C100.534 76.2773 100.774 76.0318 101.006 75.7993C101.356 75.4442 101.766 75.0422 102.236 74.5932C102.529 74.3084 102.75 74.0982 102.898 73.9627C103.423 73.4747 103.975 72.9804 104.555 72.4797L104.568 72.4679C104.572 72.4646 104.575 72.4614 104.579 72.4582L104.568 72.4679C104.69 72.3555 104.78 72.2755 104.837 72.2279C104.93 72.1485 105.043 72.0556 105.178 71.9492C105.67 71.5386 106.104 71.1853 106.48 70.8893C106.615 70.7826 106.802 70.6384 107.041 70.4566C107.478 70.1188 107.863 69.8283 108.196 69.5852L108.738 69.1881C109.156 68.886 109.606 68.5732 110.088 68.2498C110.094 68.2454 110.111 68.2342 110.137 68.2159C110.281 68.1154 110.413 68.0272 110.532 67.9513C111.047 67.6097 111.632 67.2385 112.286 66.8376C112.329 66.8116 112.372 66.7861 112.415 66.7614C112.544 66.6878 112.642 66.6306 112.71 66.59C113.351 66.212 113.817 65.9444 114.107 65.7874C114.195 65.7371 114.288 65.6854 114.387 65.6323C114.427 65.6108 114.467 65.5899 114.507 65.5696C114.569 65.5368 114.639 65.5005 114.715 65.4606C114.784 65.425 114.833 65.3993 114.863 65.3835C115.228 65.1868 115.634 64.9766 116.082 64.7529C116.336 64.6259 116.591 64.5012 116.849 64.3787C117.279 64.1741 117.669 63.9926 118.018 63.8342L118.772 63.5029C119.128 63.3494 119.559 63.1731 120.064 62.9741C120.385 62.8458 120.638 62.7468 120.824 62.6771C121.224 62.5247 121.69 62.36 122.221 62.183L122.468 62.0972L122.76 61.9962C123.466 61.7648 124.175 61.5501 124.888 61.352L128.396 60.3905C128.613 60.3306 128.835 60.2715 129.063 60.213L100.3 45.0496C100.214 45.004 100.083 44.937 99.9066 44.8487C99.9047 44.8478 99.9027 44.8469 99.9007 44.846L99.9075 44.8496C99.7964 44.7991 99.6999 44.7535 99.6181 44.7129C99.4811 44.6472 99.3429 44.5824 99.2036 44.5184C99.1007 44.4713 98.9939 44.4231 98.8832 44.3739C98.8044 44.3386 98.6867 44.2871 98.53 44.2193C98.4876 44.201 98.455 44.1869 98.4322 44.177C98.4314 44.1767 98.4306 44.1763 98.4299 44.176C98.3382 44.1381 98.2427 44.0998 98.1433 44.061C97.9965 44.0041 97.8311 43.9427 97.6473 43.8766C97.5717 43.85 97.4776 43.814 97.3649 43.7686C97.3527 43.7645 97.3407 43.7603 97.3286 43.7561C96.8799 43.5998 96.4567 43.4648 96.059 43.3512L95.9727 43.3283C95.8926 43.3086 95.8272 43.2921 95.7763 43.2788C95.3802 43.1715 95.0531 43.0905 94.795 43.036C94.6972 43.0166 94.5792 42.9882 94.4409 42.9508C94.4084 42.9445 94.3714 42.9375 94.33 42.93C94.2346 42.9125 94.1589 42.8984 94.1029 42.8876C94.0584 42.8789 94.014 42.8697 93.9698 42.8599L93.9667 42.8601C93.9009 42.8477 93.8405 42.8359 93.7854 42.8246C93.4377 42.7625 93.1212 42.7121 92.8358 42.6733C92.725 42.6614 92.6275 42.6495 92.5435 42.6375C92.2732 42.6029 91.997 42.5722 91.7147 42.5453L91.3599 42.5131L91.2927 42.5057L91.289 42.5054L91.1859 42.4959C91.1239 42.4922 91.055 42.4886 90.9793 42.4849C90.835 42.478 90.7203 42.4717 90.6349 42.4662C90.4366 42.4553 90.292 42.4486 90.201 42.446C90.0797 42.4413 89.9183 42.4376 89.7169 42.4349C89.5824 42.433 89.4787 42.4313 89.4058 42.4298C89.4064 42.4305 89.3577 42.4304 89.26 42.4294C89.1424 42.4283 89.0705 42.4281 89.0444 42.4289C88.9973 42.4302 88.9501 42.4309 88.903 42.4309C88.8446 42.4309 88.7268 42.434 88.5495 42.4401C88.3825 42.4459 88.248 42.4499 88.1461 42.4522C87.9529 42.458 87.8209 42.4631 87.7499 42.4674C87.5399 42.4782 87.2415 42.5 86.8546 42.5328L86.5715 42.554L86.3409 42.5711C86.3298 42.572 86.3187 42.5728 86.3077 42.5735C86.2335 42.5825 86.1393 42.5944 86.0254 42.6091C85.8845 42.6274 85.7759 42.6412 85.6996 42.6505L85.3608 42.6915L85.0984 42.7231C84.9951 42.7388 84.8419 42.764 84.6388 42.7985C84.4899 42.8237 84.3759 42.8429 84.2967 42.8558C84.246 42.8643 84.1678 42.8768 84.0619 42.8935C83.9382 42.913 83.8599 42.9259 83.827 42.9323C83.5008 42.9954 83.1868 43.0605 82.885 43.1276C82.6666 43.172 82.5146 43.2042 82.429 43.2242C81.993 43.3228 81.5326 43.4398 81.0478 43.5754L77.5317 44.539C76.9734 44.6941 76.4388 44.8552 75.928 45.0223C75.8676 45.0416 75.7842 45.0701 75.6778 45.1081C75.5623 45.1493 75.4704 45.1817 75.4021 45.2051C74.8937 45.3817 74.5177 45.5145 74.2741 45.6037C74.2132 45.6267 74.085 45.6766 73.8895 45.7534C73.7991 45.7889 73.7301 45.816 73.6823 45.8346C73.2548 46.0058 72.9375 46.1359 72.7303 46.2251L72.3994 46.3693L72.0419 46.5249C71.7073 46.677 71.3972 46.821 71.1115 46.957L71.1072 46.9591C70.8335 47.0891 70.6356 47.1846 70.5135 47.2457C70.2089 47.398 69.8811 47.5686 69.5302 47.7576L69.4965 47.7756L68.9012 48.0927C68.7153 48.1941 68.3892 48.3824 67.9232 48.6577C67.8482 48.702 67.7923 48.735 67.7555 48.7567C67.6073 48.8417 67.518 48.8937 67.4876 48.9125C67.0806 49.1579 66.5958 49.4639 66.0332 49.8305C65.9931 49.8578 65.9533 49.8842 65.9139 49.9097L65.8575 49.9496C65.7862 49.9998 65.7282 50.0401 65.6836 50.0706C65.2073 50.3925 64.8258 50.657 64.5392 50.864C64.3368 51.0125 64.1686 51.1342 64.0344 51.2291C63.607 51.5482 63.2914 51.7866 63.0876 51.9444C62.9946 52.0152 62.8699 52.1121 62.7135 52.2352C62.6748 52.2656 62.6456 52.2887 62.6258 52.3042C62.2109 52.635 61.8299 52.9455 61.4827 53.2357C61.4226 53.2875 61.3346 53.3593 61.2187 53.4512C61.1402 53.5238 61.0704 53.5865 61.0095 53.6393C60.4881 54.0895 60.0428 54.4885 59.6734 54.8362C59.591 54.912 59.488 55.0095 59.3645 55.1286C59.248 55.241 59.1565 55.3286 59.0899 55.3914C58.7889 55.6792 58.4401 56.0213 58.0437 56.4178C57.9931 56.4684 57.9253 56.535 57.8403 56.6177C57.7886 56.6679 57.7539 56.7019 57.7362 56.7197L57.7249 56.7344C57.6255 56.8437 57.536 56.9393 57.4565 57.0211C57.1154 57.3829 56.865 57.6517 56.7055 57.8275L56.0398 58.5614C55.9662 58.6442 55.8292 58.8023 55.6287 59.0355C55.4778 59.2111 55.3624 59.3447 55.2825 59.4363C55.2667 59.4549 55.227 59.5009 55.1632 59.5745C55.0686 59.6836 55.0053 59.7575 54.9736 59.7962C54.9593 59.8136 54.9328 59.8464 54.8943 59.8946C54.8265 59.9794 54.7719 60.047 54.7303 60.0973C54.5152 60.3596 54.3244 60.5997 54.1578 60.8176L53.8013 61.2738L53.4693 61.6981C53.3654 61.8344 53.1797 62.0856 52.9122 62.4515C52.8654 62.5159 52.7968 62.6084 52.7064 62.7292C52.6248 62.8381 52.5706 62.9115 52.5439 62.9494L52.5131 62.9944C52.4514 63.087 52.3954 63.1689 52.345 63.2403L52.0696 63.6401L51.7733 64.0703C51.532 64.4257 51.3545 64.691 51.2409 64.8662C51.0597 65.1463 50.8943 65.4079 50.7447 65.6511C50.7251 65.683 50.7052 65.7146 50.6848 65.7459C50.5481 65.9573 50.4543 66.1054 50.4033 66.1903L50.3824 66.227C50.3045 66.3638 50.2323 66.4853 50.1657 66.5917C50.0113 66.8483 49.8731 67.0865 49.751 67.3064C49.5715 67.6161 49.3943 67.9291 49.2192 68.2454C49.1453 68.3783 49.0325 68.5866 48.881 68.8703C48.8223 68.98 48.7781 69.0627 48.7481 69.1185C48.72 69.1716 48.6738 69.2567 48.6094 69.3736C48.5585 69.4661 48.5308 69.5168 48.5265 69.5259C48.5046 69.571 48.482 69.6157 48.4588 69.66L48.4547 69.6708C48.3897 69.8073 48.3322 69.9233 48.2822 70.0189C48.2355 70.1113 48.1433 70.299 48.0058 70.5818C47.9333 70.7308 47.8767 70.8467 47.8361 70.9296C47.6588 71.2978 47.5309 71.5684 47.4524 71.7412C47.3585 71.9492 47.2134 72.2784 47.0172 72.7288C46.9875 72.7976 46.9436 72.8962 46.8857 73.0244C46.8378 73.1302 46.8106 73.1914 46.8041 73.2079C46.7849 73.2566 46.7649 73.305 46.7441 73.353C46.7433 73.3551 46.7425 73.3573 46.7417 73.3594L46.75 73.3409C46.7166 73.4274 46.6876 73.5004 46.6631 73.5599C46.5646 73.7947 46.4228 74.1529 46.2376 74.6347C46.1998 74.7329 46.1713 74.807 46.152 74.8571C46.1361 74.8984 46.1135 74.9566 46.0843 75.0318C45.9971 75.2565 45.9358 75.4173 45.9005 75.5143C45.7283 75.9826 45.5384 76.5369 45.3309 77.1772C45.3081 77.2459 45.2843 77.3155 45.2595 77.386C45.2346 77.4698 45.2075 77.5532 45.178 77.636C45.1726 77.6528 45.1672 77.6694 45.1617 77.6859C45.0586 78.0149 44.9117 78.5129 44.7212 79.1799L44.7065 79.2334C44.6722 79.3569 44.6508 79.4367 44.6421 79.4728C44.6323 79.5129 44.6222 79.553 44.6115 79.5928C44.4631 80.1463 44.3425 80.6288 44.2497 81.0401C44.2363 81.1019 44.2212 81.1671 44.2043 81.2356C44.2015 81.2478 44.1987 81.2602 44.1958 81.2724C44.1057 81.6601 44.0145 82.0896 43.9222 82.5611C43.9219 82.5631 43.9215 82.5651 43.9212 82.5671L43.9253 82.5485C43.9091 82.6488 43.8943 82.7348 43.8809 82.8064C43.8451 82.9907 43.7966 83.2719 43.7355 83.6497C43.7153 83.7743 43.6999 83.8688 43.6893 83.9332C43.6284 84.2926 43.5824 84.5751 43.5513 84.7805C43.5298 84.9296 43.4969 85.1967 43.4525 85.5819C43.4353 85.7314 43.4221 85.8449 43.4129 85.9225C43.4057 85.9831 43.3956 86.0649 43.3828 86.168C43.3563 86.3799 43.3402 86.5204 43.3347 86.5896C43.2957 87.0031 43.2621 87.4507 43.2337 87.9323C43.2261 88.0425 43.2174 88.1588 43.2075 88.2812C43.1952 88.435 43.1878 88.5377 43.1854 88.5891C43.1625 89.3034 43.1511 89.9389 43.1511 90.4954V112.984C43.1511 119.71 44.7969 125.37 48.0885 129.964C48.2105 130.135 48.3347 130.304 48.4612 130.471C48.7612 130.87 49.1067 131.296 49.4976 131.749C50.0389 132.365 50.5851 132.925 51.1362 133.429C51.1394 133.432 51.1427 133.435 51.146 133.438C51.159 133.45 51.1727 133.462 51.1869 133.475C52.1229 134.329 53.1204 135.091 54.1794 135.76C54.6482 136.057 55.1293 136.336 55.6229 136.597C55.6387 136.605 55.6545 136.613 55.6701 136.622L55.7005 136.637C55.7175 136.646 55.7346 136.655 55.7515 136.664L85.109 152.14ZM93.1353 128.236C93.4493 127.981 93.6922 127.78 93.8641 127.635L94.0621 127.471L94.0756 127.459L94.1552 127.388L94.3292 127.235C94.7991 126.83 95.2489 126.428 95.6787 126.029L95.8253 125.887L96.0277 125.694L96.1784 125.548C96.5995 125.146 96.9459 124.807 97.2176 124.531C97.2581 124.489 97.3285 124.417 97.4289 124.315C97.6004 124.141 97.7231 124.014 97.7971 123.936C98.1301 123.583 98.3794 123.315 98.5452 123.132C98.8197 122.829 99.0227 122.603 99.1543 122.453C99.428 122.145 99.6664 121.87 99.8696 121.627C99.8932 121.599 99.9173 121.571 99.9416 121.543L99.961 121.521C100.189 121.254 100.352 121.059 100.451 120.936C100.54 120.827 100.676 120.657 100.86 120.424C100.962 120.296 101.039 120.198 101.092 120.131C101.332 119.828 101.519 119.588 101.653 119.41C101.842 119.162 102.036 118.901 102.235 118.626L102.797 117.846L102.819 117.815L103.309 117.099L103.311 117.096C103.344 117.047 103.406 116.954 103.499 116.816C103.668 116.564 103.788 116.384 103.858 116.274C103.965 116.111 104.109 115.885 104.29 115.597C104.328 115.536 104.357 115.49 104.378 115.456C104.573 115.153 104.739 114.885 104.877 114.652C104.898 114.616 104.92 114.58 104.942 114.545C105.011 114.435 105.127 114.238 105.289 113.956C105.325 113.894 105.353 113.846 105.371 113.813C105.591 113.43 105.753 113.146 105.856 112.96L106.027 112.645L106.306 112.122C106.44 111.873 106.587 111.591 106.746 111.278C106.819 111.134 106.935 110.898 107.092 110.573C107.137 110.478 107.172 110.405 107.196 110.356C107.213 110.32 107.251 110.241 107.309 110.118C107.427 109.87 107.51 109.694 107.557 109.589C107.708 109.262 107.852 108.94 107.988 108.622L108.004 108.58C108.048 108.477 108.098 108.361 108.153 108.233C108.24 108.031 108.301 107.889 108.334 107.807C108.436 107.558 108.583 107.187 108.773 106.695C108.806 106.611 108.831 106.547 108.849 106.501L108.93 106.284C108.956 106.217 108.98 106.157 109 106.106C109.044 105.996 109.071 105.926 109.082 105.896C109.28 105.353 109.469 104.803 109.649 104.247L109.805 103.768C109.931 103.364 110.073 102.88 110.231 102.318L110.353 101.873C110.486 101.389 110.605 100.913 110.713 100.445L110.766 100.224C110.856 99.8165 110.954 99.3298 111.062 98.7642C111.104 98.5444 111.164 98.2039 111.239 97.7427L111.24 97.7413L111.286 97.4467C111.291 97.4136 111.297 97.3803 111.302 97.3468C111.335 97.1476 111.356 97.0084 111.367 96.9292C111.395 96.7383 111.429 96.4795 111.468 96.1528C111.482 96.0307 111.493 95.9379 111.501 95.8744L111.551 95.4529C111.576 95.2556 111.592 95.114 111.6 95.0279C111.626 94.7717 111.656 94.3788 111.689 93.8493L111.691 93.8218L111.715 93.4636C111.719 93.4193 111.721 93.3886 111.722 93.3716C111.731 93.2627 111.736 93.1977 111.737 93.1766C111.768 92.5227 111.784 91.8907 111.784 91.2807V79.3334C111.683 79.4164 111.58 79.5026 111.473 79.592C111.434 79.6239 111.396 79.6552 111.357 79.6859L111.24 79.7802C111.239 79.7812 111.238 79.7822 111.237 79.7833L111.249 79.7743C111.126 79.8862 111.041 79.9618 110.993 80.0012C110.538 80.3944 110.077 80.8076 109.611 81.2411C109.514 81.3295 109.345 81.4906 109.104 81.7244C108.688 82.1222 108.331 82.4721 108.034 82.7742C107.843 82.9645 107.658 83.1541 107.479 83.3429C107.121 83.7221 106.86 84.0021 106.696 84.1831C106.414 84.4937 106.204 84.7277 106.065 84.8851C105.951 85.0125 105.772 85.2195 105.528 85.5059C105.432 85.6192 105.366 85.6963 105.331 85.7372C105.056 86.0624 104.873 86.2807 104.78 86.3921L104.435 86.827L104.094 87.2552C103.841 87.5734 103.643 87.8273 103.498 88.0169C103.372 88.1822 103.169 88.4556 102.89 88.8374C102.689 89.1089 102.493 89.3801 102.302 89.651C102.166 89.8402 101.994 90.0899 101.787 90.4002C101.534 90.7732 101.359 91.034 101.262 91.1826C101.225 91.2418 101.17 91.3279 101.098 91.4409C100.933 91.6994 100.805 91.9027 100.713 92.0507C100.474 92.4308 100.313 92.6903 100.229 92.8291L99.9616 93.2888L99.698 93.7424C99.551 93.995 99.3887 94.2817 99.2111 94.6025C99.0755 94.8467 98.9312 95.1137 98.7783 95.4034C98.7492 95.4597 98.7058 95.5433 98.6481 95.6541C98.497 95.9446 98.3829 96.1669 98.3057 96.321C98.1488 96.6297 97.9937 96.9454 97.8402 97.268L97.8392 97.2703C97.658 97.6465 97.5293 97.9186 97.453 98.0866C97.3556 98.3021 97.2097 98.633 97.0154 99.0794C96.9949 99.1266 96.9646 99.1963 96.9244 99.2882C96.8019 99.5691 96.7118 99.7803 96.654 99.9218C96.5019 100.289 96.3327 100.718 96.1463 101.211C96.1315 101.25 96.1094 101.306 96.0801 101.382C95.9928 101.607 95.9293 101.774 95.8897 101.882C95.7393 102.291 95.5393 102.876 95.2896 103.637C95.2779 103.671 95.262 103.715 95.242 103.771L95.2393 103.772C95.2279 103.809 95.2161 103.847 95.204 103.884C95.1874 103.939 95.1706 103.991 95.1534 104.043C95.0129 104.485 94.8672 104.979 94.7164 105.526C94.7107 105.546 94.698 105.593 94.6784 105.668C94.6411 105.81 94.6173 105.898 94.607 105.932C94.4938 106.355 94.3708 106.848 94.2382 107.411C94.2266 107.464 94.2138 107.518 94.1998 107.575L94.1965 107.589C94.082 108.092 93.9774 108.598 93.8825 109.107C93.8433 109.324 93.7855 109.662 93.7091 110.122C93.6976 110.191 93.6881 110.247 93.6806 110.293C93.6225 110.634 93.5794 110.898 93.5513 111.084C93.5269 111.253 93.4925 111.53 93.4482 111.915C93.4309 112.065 93.421 112.149 93.4184 112.166C93.4056 112.294 93.3859 112.469 93.3592 112.691C93.3403 112.848 93.3287 112.949 93.3243 112.992C93.3052 113.194 93.2806 113.518 93.2505 113.962C93.2397 114.12 93.2313 114.243 93.2252 114.328C93.2203 114.397 93.213 114.492 93.2032 114.615C93.1908 114.769 93.1834 114.871 93.181 114.923C93.1505 115.562 93.1353 116.203 93.1353 116.846V128.236Z"/></svg>', "zcode": '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\n	 viewBox="0 0 30 30" style="enable-background:new 0 0 30 30;" xml:space="preserve">\n<style type="text/css">\n	.st0{opacity:0.3;fill:#E2E4E7;}\n	.st1{opacity:0.8;fill:#E2E4E7;stroke:#FFFFFF;stroke-width:5;stroke-miterlimit:10;}\n	.st2{fill:url(#SVGID_1_);}\n	.st3{fill:none;stroke:#E0E4E9;stroke-width:0.25;stroke-miterlimit:10;}\n	.st4{fill:none;}\n	.st5{fill:#9DA1A5;}\n	.st6{fill-rule:evenodd;clip-rule:evenodd;fill:none;}\n	.st7{fill-rule:evenodd;clip-rule:evenodd;fill:#DFE2E7;}\n	.st8{fill-rule:evenodd;clip-rule:evenodd;fill:#CDD4DA;}\n	.st9{fill-rule:evenodd;clip-rule:evenodd;fill:#B3BCC7;}\n	.st10{fill-rule:evenodd;clip-rule:evenodd;fill:#9DAAB7;}\n	.st11{fill-rule:evenodd;clip-rule:evenodd;fill:#8698A8;}\n	.st12{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_2_);}\n	.st13{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_3_);}\n	.st14{fill:#1F63EC;}\n	.st15{fill:#2D2D2D;}\n	.st16{fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st17{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_4_);}\n	.st18{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_5_);}\n	.st19{fill:none;stroke:#677380;stroke-width:0.5;stroke-miterlimit:10;}\n	.st20{fill:none;stroke:url(#SVGID_6_);stroke-width:2;stroke-miterlimit:10;}\n	.st21{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_7_);}\n	.st22{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_8_);}\n	.st23{fill:#FFFFFF;}\n	.st24{fill-rule:evenodd;clip-rule:evenodd;fill:#2D2D2D;}\n	.st25{clip-path:url(#SVGID_10_);}\n	.st26{clip-path:url(#SVGID_12_);}\n	.st27{fill:url(#SVGID_13_);}\n	.st28{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_14_);}\n	.st29{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_15_);}\n	.st30{clip-path:url(#SVGID_17_);}\n	.st31{clip-path:url(#SVGID_19_);}\n	.st32{fill:url(#SVGID_20_);}\n	.st33{fill:none;stroke:url(#SVGID_21_);stroke-width:2;stroke-miterlimit:10;}\n	.st34{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_22_);}\n	.st35{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_23_);}\n	.st36{clip-path:url(#SVGID_25_);}\n	.st37{clip-path:url(#SVGID_27_);}\n	.st38{fill:url(#SVGID_28_);}\n	.st39{clip-path:url(#SVGID_30_);}\n	.st40{clip-path:url(#SVGID_32_);}\n	.st41{fill:url(#SVGID_33_);}\n	.st42{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF6;}\n	.st43{fill-rule:evenodd;clip-rule:evenodd;fill:#FFFFFF;}\n	.st44{clip-path:url(#SVGID_35_);}\n	.st45{clip-path:url(#SVGID_37_);}\n	.st46{fill:url(#SVGID_38_);}\n	.st47{fill-rule:evenodd;clip-rule:evenodd;fill:#9DA1A5;}\n	.st48{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_39_);}\n	.st49{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_40_);}\n	.st50{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_41_);}\n	.st51{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_42_);}\n	.st52{fill:none;stroke:url(#SVGID_43_);stroke-width:2;stroke-miterlimit:10;}\n	.st53{fill-rule:evenodd;clip-rule:evenodd;fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st54{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_44_);}\n	.st55{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_45_);}\n	.st56{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_46_);}\n	.st57{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_47_);}\n	.st58{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_48_);}\n	.st59{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_49_);}\n	.st60{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_50_);}\n	.st61{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_51_);}\n	.st62{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_52_);}\n	.st63{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_53_);}\n	.st64{clip-path:url(#SVGID_55_);}\n	.st65{clip-path:url(#SVGID_57_);}\n	.st66{fill:url(#SVGID_58_);}\n	.st67{clip-path:url(#SVGID_60_);}\n	.st68{clip-path:url(#SVGID_62_);}\n	.st69{fill:url(#SVGID_63_);}\n	.st70{fill:none;stroke:url(#SVGID_64_);stroke-width:2;stroke-miterlimit:10;}\n	.st71{clip-path:url(#SVGID_66_);}\n	.st72{clip-path:url(#SVGID_68_);}\n	.st73{fill:url(#SVGID_69_);}\n	.st74{clip-path:url(#SVGID_71_);}\n	.st75{clip-path:url(#SVGID_73_);}\n	.st76{fill:url(#SVGID_74_);}\n	.st77{clip-path:url(#SVGID_76_);}\n	.st78{clip-path:url(#SVGID_78_);}\n	.st79{fill:url(#SVGID_79_);}\n	.st80{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_80_);}\n	.st81{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_81_);}\n	.st82{clip-path:url(#SVGID_83_);}\n	.st83{clip-path:url(#SVGID_85_);}\n	.st84{fill:url(#SVGID_86_);}\n	.st85{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_87_);}\n	.st86{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_88_);}\n	.st87{clip-path:url(#SVGID_90_);}\n	.st88{clip-path:url(#SVGID_92_);}\n	.st89{fill:url(#SVGID_93_);}\n	.st90{fill:none;stroke:url(#SVGID_94_);stroke-width:2;stroke-miterlimit:10;}\n	.st91{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_95_);}\n	.st92{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_96_);}\n	.st93{clip-path:url(#SVGID_98_);}\n	.st94{clip-path:url(#SVGID_100_);}\n	.st95{fill:url(#SVGID_101_);}\n	.st96{clip-path:url(#SVGID_103_);}\n	.st97{clip-path:url(#SVGID_105_);}\n	.st98{fill:url(#SVGID_106_);}\n	.st99{clip-path:url(#SVGID_108_);}\n	.st100{clip-path:url(#SVGID_110_);}\n	.st101{fill:url(#SVGID_111_);}\n	.st102{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st103{clip-path:url(#SVGID_113_);}\n	.st104{fill:#FDD138;}\n	.st105{fill:#FCA62F;}\n	.st106{fill:#FB7927;}\n	.st107{fill:#F44B22;}\n	.st108{fill:#D81915;}\n	.st109{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3354;stroke-miterlimit:10;}\n	.st110{fill:none;stroke:#65727F;stroke-width:2;stroke-miterlimit:10;}\n	.st111{fill:none;stroke:#65727F;stroke-width:0.75;stroke-miterlimit:10;}\n	.st112{fill:url(#SVGID_114_);}\n	.st113{fill:#D06C50;}\n	.st114{fill:#2D2D2D;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st115{opacity:0.2;}\n	.st116{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;}\n	.st117{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0212,1.0212;}\n	.st118{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0205,1.0205;}\n	.st119{opacity:0.2;fill:none;}\n	.st120{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;}\n	.st121{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;stroke-dasharray:1.0509,1.0509;}\n	.st122{opacity:0.3;fill:#1F63EC;}\n	.st123{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st124{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st125{clip-path:url(#SVGID_118_);}\n	.st126{fill:url(#SVGID_119_);}\n	.st127{fill:none;stroke:#DFE2E7;stroke-width:0.75;stroke-miterlimit:10;}\n	.st128{fill:#9DA1A5;stroke:#FFFFFF;stroke-miterlimit:10;}\n	.st129{fill:url(#SVGID_120_);}\n	.st130{fill:none;stroke:#677380;stroke-width:0.75;stroke-miterlimit:10;}\n	.st131{opacity:0.4;}\n	.st132{clip-path:url(#SVGID_122_);}\n	.st133{clip-path:url(#SVGID_124_);}\n	.st134{fill:url(#SVGID_125_);}\n	.st135{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;}\n	.st136{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:0.9951,0.9951;}\n	.st137{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1.004,1.004;}\n	.st138{fill:none;stroke:url(#SVGID_126_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st139{fill:url(#SVGID_127_);}\n	.st140{fill:none;stroke:#DDE0E4;stroke-width:0.35;stroke-miterlimit:10;}\n	.st141{fill:#2D2D2D;stroke:#A9B3BE;stroke-width:0.275;stroke-miterlimit:10;}\n	.st142{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF4;}\n	.st143{fill:#FFFFFF;stroke:#B1BAC4;stroke-width:0.275;stroke-miterlimit:10;}\n	.st144{fill:#CE6C50;}\n	.st145{fill:#5B5B5B;}\n	.st146{fill:#8392A3;}\n	.st147{fill:none;stroke:url(#SVGID_128_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st148{fill:url(#SVGID_129_);}\n	.st149{fill:none;stroke:#B5BDC4;stroke-width:0.7;stroke-miterlimit:10;}\n	.st150{opacity:0.6;fill:none;stroke:#78838E;stroke-width:0.35;stroke-miterlimit:10;}\n	.st151{opacity:0.2;fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1,1;}\n	.st152{fill:none;stroke:#DDE0E4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st153{fill:none;stroke:#8392A3;stroke-width:0.5;stroke-miterlimit:10;}\n	.st154{opacity:0.2;fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0182,1.0182;}\n	.st155{fill:none;stroke:#DDE0E4;stroke-width:0.765;stroke-miterlimit:10;}\n	.st156{fill:url(#SVGID_130_);}\n	.st157{fill:url(#SVGID_131_);}\n	.st158{fill:#B1BAC4;}\n	.st159{fill:#CBD1D8;}\n	.st160{fill:#0B1B2B;}\n	.st161{fill:#91D119;}\n	.st162{opacity:0.7;}\n	.st163{fill:#FFFFFF;stroke:#000000;stroke-width:0.4418;stroke-miterlimit:10;}\n	.st164{fill:none;stroke:#939CAA;stroke-width:0.2209;stroke-miterlimit:10;}\n	.st165{fill:none;stroke:#FFFFFF;stroke-width:3.0924;stroke-miterlimit:10;}\n	.st166{fill:url(#SVGID_132_);}\n	.st167{fill:none;stroke:url(#SVGID_133_);stroke-width:1.714;stroke-miterlimit:10;}\n	.st168{fill:url(#SVGID_134_);}\n	.st169{fill:url(#SVGID_135_);}\n	.st170{fill:url(#SVGID_136_);}\n	.st171{fill:url(#SVGID_137_);}\n	.st172{fill:url(#SVGID_138_);}\n	.st173{fill:url(#SVGID_139_);}\n	.st174{fill:url(#SVGID_140_);}\n	.st175{fill:url(#SVGID_141_);}\n	.st176{fill:url(#SVGID_142_);}\n	.st177{fill:url(#SVGID_143_);}\n	.st178{fill:url(#SVGID_144_);}\n	.st179{fill:none;stroke:#1F63EC;stroke-width:4;stroke-miterlimit:10;}\n	.st180{fill:none;stroke:#0B1B2B;stroke-width:4;stroke-miterlimit:10;}\n	.st181{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st182{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st183{fill:#257AF1;}\n	.st184{opacity:0.3;fill:#FFFFFF;}\n	.st185{fill:none;stroke:#98A5B2;stroke-width:4;stroke-miterlimit:10;}\n	.st186{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st187{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st188{fill:none;stroke:#DDDFE4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st189{fill:#9A9EA2;}\n	.st190{fill-rule:evenodd;clip-rule:evenodd;fill:#3267AC;}\n	.st191{fill:#FFFFFF;stroke:#AFB8C3;stroke-width:0.275;stroke-miterlimit:10;}\n	.st192{fill:#C5694E;}\n	.st193{fill:#8192A2;}\n	.st194{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.6317;stroke-miterlimit:10;}\n</style>\n<g id="\u56FE\u5C42_2">\n</g>\n<g id="\u56FE\u5C42_1">\n	<path class="st194" d="M24.51,28.51H5.49c-2.21,0-4-1.79-4-4V5.49c0-2.21,1.79-4,4-4h19.03c2.21,0,4,1.79,4,4v19.03\n		C28.51,26.72,26.72,28.51,24.51,28.51z"/>\n	<g>\n		<g>\n			<g>\n				<g>\n					<path class="st23" d="M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z"/>\n					<polygon class="st23" points="24.3,7.1 13.14,22.91 5.7,22.91 16.86,7.1 					"/>\n					<path class="st23" d="M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z"/>\n				</g>\n			</g>\n		</g>\n	</g>\n</g>\n</svg>' };
-
-// nodo:engine-names:nodo:engine-names
-var ENGINE_NAMES = { "codex": "Codex", "dsh": "DeepSeek Harness", "claude": "Claude Code", "qoder": "Qoder", "pi": "Pi", "zcode": "ZCode", "opencode": "OpenCode", "codebuddy": "CodeBuddy" };
-
-// src/client/engine-logos.js
-var engineDisplayName = (item) => ENGINE_NAMES[item.id] ?? String(item.label ?? item.id).replace(/\s*CLI$/, "");
-function EngineMark({ engine, size = 20 }) {
-  const svg = ENGINE_LOGO_SVGS[engine];
-  if (!svg) return (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size });
-  return (0, import_react.createElement)("span", {
-    className: "nodo-engine-art",
-    style: { width: size, height: size },
-    dangerouslySetInnerHTML: { __html: svg },
-    "aria-hidden": true
-  });
-}
-var ENGINE_LOGO_CSS = `
-.nodo-engine-art{display:inline-block;flex:none}
-.nodo-engine-art>svg{display:block;width:100%;height:100%}
-`;
 
 // src/client/engine-settings.js
 function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClose }) {
@@ -6841,7 +7114,7 @@ function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
     )
   );
   (0, import_react.useEffect)(() => {
-    wfPublishSidebar(navigation);
+    wfPublishSidebar({ view: "workflow", content: navigation });
   }, [navigation]);
   return (0, import_react.createElement)(
     "section",
@@ -7364,6 +7637,636 @@ var WORKFLOW_CSS = `
 @media(prefers-reduced-motion:reduce){.nodo-wf-drawer{transition:none}}
 `;
 
+// src/client/roles.tsx
+var sidebarContent = null;
+var sidebarListeners = /* @__PURE__ */ new Set();
+var rolesSidebarSnapshot = () => sidebarContent;
+var rolesSubscribeSidebar = (listener) => {
+  sidebarListeners.add(listener);
+  return () => {
+    sidebarListeners.delete(listener);
+  };
+};
+var rolesPublishSidebar = (content) => {
+  if (content === sidebarContent) return;
+  sidebarContent = content;
+  for (const listener of sidebarListeners) listener();
+};
+var rolesTarget = null;
+var targetListeners = /* @__PURE__ */ new Set();
+var readRolesTarget = () => rolesTarget;
+var subscribeRolesTarget = (listener) => {
+  targetListeners.add(listener);
+  return () => {
+    targetListeners.delete(listener);
+  };
+};
+var openRoles = (target = {}) => {
+  rolesTarget = target;
+  for (const listener of targetListeners) listener();
+};
+var consumeRolesTarget = () => {
+  if (rolesTarget === null) return;
+  rolesTarget = null;
+  for (const listener of targetListeners) listener();
+};
+var leaveGuard = null;
+var rolesGuard = (action) => {
+  if (leaveGuard) leaveGuard(action);
+  else action();
+};
+var draftRemovers = /* @__PURE__ */ new Set();
+var registerDraftRemover = (remover) => {
+  draftRemovers.add(remover);
+  return () => {
+    draftRemovers.delete(remover);
+  };
+};
+var TYPES_MAX = 20;
+var miss = () => /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-miss" }, "\u65E0\u4EBA\u627F\u63A5");
+var Grip = () => /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "10", height: "14", viewBox: "0 0 10 14", fill: "currentColor", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("circle", { cx: "3", cy: "3", r: "1.2" }), /* @__PURE__ */ (0, import_react.createElement)("circle", { cx: "7", cy: "3", r: "1.2" }), /* @__PURE__ */ (0, import_react.createElement)("circle", { cx: "3", cy: "7", r: "1.2" }), /* @__PURE__ */ (0, import_react.createElement)("circle", { cx: "7", cy: "7", r: "1.2" }), /* @__PURE__ */ (0, import_react.createElement)("circle", { cx: "3", cy: "11", r: "1.2" }), /* @__PURE__ */ (0, import_react.createElement)("circle", { cx: "7", cy: "11", r: "1.2" }));
+function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }) {
+  const types = view.taskTypes ?? [];
+  const [draft, setDraft] = (0, import_react.useState)(() => types.map((item) => ({ ...item })));
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [error, setError] = (0, import_react.useState)("");
+  const [confirming, setConfirming] = (0, import_react.useState)(null);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(types);
+  (0, import_react.useEffect)(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty]);
+  const holders = (id) => id !== void 0 ? view.profiles.filter((profile) => profile.taskTypes?.includes(id)) : [];
+  const takers = (id) => holders(id).filter((profile) => profile.lead !== true);
+  const editRow = (index, changes) => setDraft((rows) => rows.map((row, i) => i === index ? { ...row, ...changes } : row));
+  const drop = (row) => setDraft((rows) => rows.filter((item) => item !== row));
+  const save = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const saved = await call("task-types-update", { types: draft.map((row) => row.id !== void 0 ? { id: row.id, name: row.name, when: row.when ?? "" } : { name: row.name, when: row.when ?? "" }) });
+      setDraft(saved.map((item) => ({ ...item })));
+      await onDone();
+    } catch (failure) {
+      setError(failure.message);
+    }
+    setBusy(false);
+  };
+  const discard = () => {
+    setError("");
+    setDraft(types.map((item) => ({ ...item })));
+  };
+  const locked = disabled || busy;
+  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-types", "aria-labelledby": "nodo-types-title" }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-roles-head" }, /* @__PURE__ */ (0, import_react.createElement)("h1", { id: "nodo-types-title" }, "\u4EFB\u52A1\u7C7B\u578B", /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-types-count" }, `${draft.length} / ${TYPES_MAX}`)), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Button,
+    {
+      variant: "outline",
+      disabled: locked || draft.length >= TYPES_MAX,
+      onClick: () => setDraft((rows) => [...rows, { name: "", when: "" }])
+    },
+    "\u6DFB\u52A0\u7C7B\u578B"
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-types-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-type-row nodo-type-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u540D\u79F0"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u4E3B\u63A7\u636E\u6B64\u5224\u65AD\u4EFB\u52A1\u5C5E\u4E8E\u54EA\u4E00\u7C7B"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), draft.map((row, index) => {
+    const owners = takers(row.id);
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: row.id ?? `new:${index}`, className: "nodo-type-row" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        className: "nodo-type-input",
+        value: row.name,
+        maxLength: 20,
+        placeholder: "\u540D\u79F0",
+        "aria-label": "\u4EFB\u52A1\u7C7B\u578B\u540D\u79F0",
+        disabled: locked,
+        onChange: (event) => editRow(index, { name: event.target.value })
+      }
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-when" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        className: "nodo-type-input",
+        value: row.when ?? "",
+        maxLength: 200,
+        placeholder: "\u4EC0\u4E48\u65F6\u5019\u6D3E\u8FD9\u7C7B\u4EFB\u52A1",
+        "aria-label": "\u4EFB\u52A1\u7C7B\u578B\u8BF4\u660E",
+        disabled: locked,
+        onChange: (event) => editRow(index, { when: event.target.value })
+      }
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, (row.when ?? "").length, "/200")), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-takers", title: owners.map((item) => item.name).join("\u3001") || void 0 }, owners.length ? owners.slice(0, 4).map((item) => /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { key: item.id, profile: item, size: 22 })) : miss(), owners.length > 4 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-more" }, `+${owners.length - 4}`)), /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-type-remove",
+        "aria-label": `\u5220\u9664\u7C7B\u578B ${row.name}`,
+        disabled: locked,
+        onClick: () => holders(row.id).length ? setConfirming(row) : drop(row)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
+    ), confirming === row && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-type-confirm", role: "alert" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, `\u5C06\u4ECE ${holders(row.id).map((item) => item.name).join("\u3001")} \u4E0A\u79FB\u9664`), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setConfirming(null) }, "\u53D6\u6D88"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", className: "nodo-dialog-danger", onClick: () => drop(row) }, "\u5220\u9664")));
+  }), !draft.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u6682\u65E0\u4EFB\u52A1\u7C7B\u578B")), error && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error), dirty && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-types-bar", role: "region", "aria-label": "\u672A\u4FDD\u5B58\u7684\u4FEE\u6539" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: busy, onClick: discard }, "\u653E\u5F03"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void save() }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58")));
+}
+function RolesPage({ view, readOnly, refresh }) {
+  const target = (0, import_react.useSyncExternalStore)(subscribeRolesTarget, readRolesTarget);
+  const [roleId, setRoleId] = (0, import_react.useState)(() => target?.profileId && target.profileId !== "new" ? target.profileId : null);
+  const [typeOpen, setTypeOpen] = (0, import_react.useState)(false);
+  const [confirm, setConfirm] = (0, import_react.useState)(null);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [error, setError] = (0, import_react.useState)("");
+  const [menuId, setMenuId] = (0, import_react.useState)(null);
+  const [dragId, setDragId] = (0, import_react.useState)(null);
+  const [dropId, setDropId] = (0, import_react.useState)(null);
+  const [nonce, setNonce] = (0, import_react.useState)(0);
+  const [adding, setAdding] = (0, import_react.useState)(() => target?.profileId === "new");
+  const [newName, setNewName] = (0, import_react.useState)("");
+  const [newEngine, setNewEngine] = (0, import_react.useState)("");
+  const [engines, setEngines] = (0, import_react.useState)(null);
+  const [takesOpen, setTakesOpen] = (0, import_react.useState)(null);
+  const [pendingTypes, setPendingTypes] = (0, import_react.useState)({});
+  const [deleting, setDeleting] = (0, import_react.useState)(null);
+  const dirtyRef = (0, import_react.useRef)(false);
+  const typedRef = (0, import_react.useRef)(false);
+  const roles = view.profiles;
+  const types = view.taskTypes ?? [];
+  const leads = roles.filter((item) => item.lead === true);
+  const executors = roles.filter((item) => item.lead !== true).map((item) => pendingTypes[item.id] ? { ...item, taskTypes: pendingTypes[item.id] } : item);
+  const creating = adding || executors.length === 0;
+  typedRef.current = newName.trim() !== "";
+  const perform = async (action) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reorder = async (from, to) => {
+    if (from === to || to < 0 || to >= executors.length) return;
+    const moved = executors.map((item) => item.id);
+    const [id] = moved.splice(from, 1);
+    moved.splice(to, 0, id);
+    let next = 0;
+    const ids = roles.map((item) => item.lead === true ? item.id : moved[next++]);
+    await perform(async () => {
+      try {
+        await call("profile-order", { ids });
+      } catch {
+        await refresh(true);
+        throw new Error("\u89D2\u8272\u5217\u8868\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u8BD5");
+      }
+    });
+  };
+  const run = (action) => {
+    setAdding(false);
+    setNewName("");
+    setTakesOpen(null);
+    setError("");
+    action();
+  };
+  const switchTo = (action) => {
+    if (dirtyRef.current || typedRef.current) setConfirm({ action: () => run(action) });
+    else run(action);
+  };
+  const showOverview = () => {
+    setTypeOpen(false);
+    setRoleId(null);
+  };
+  const openRole = (id) => {
+    setTypeOpen(false);
+    setRoleId(id);
+  };
+  const startAdding = () => {
+    showOverview();
+    setAdding(true);
+  };
+  (0, import_react.useEffect)(() => {
+    leaveGuard = switchTo;
+    return () => {
+      leaveGuard = null;
+    };
+  }, []);
+  (0, import_react.useEffect)(() => {
+    if (!target) return;
+    consumeRolesTarget();
+    switchTo(() => target.profileId && target.profileId !== "new" ? openRole(target.profileId) : startAdding());
+  }, [target]);
+  (0, import_react.useEffect)(() => {
+    if (!creating || engines !== null) return;
+    setEngines([]);
+    void call("engine-catalog").then((items) => {
+      const enabled = view.prefs?.enabledEngines ?? null;
+      const scoped = enabled !== null ? items.filter((item) => enabled.includes(item.id)) : items;
+      const choices = scoped.length > 0 ? scoped : items;
+      setEngines(choices);
+      setNewEngine((current) => current || choices[0]?.id || "");
+    }).catch((failure) => setError(failure.message));
+  }, [creating, engines]);
+  (0, import_react.useEffect)(() => {
+    if (takesOpen === null || typeof document === "undefined") return;
+    const close = (event) => {
+      if (!event.target?.closest?.("[data-takes-open]")) setTakesOpen(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [takesOpen]);
+  const savedRole = async (saved) => {
+    await refresh(true);
+    setRoleId(saved.id);
+  };
+  const deletedRole = async (item) => {
+    await call("profile-delete", { id: item.id });
+    await refresh(true);
+    const sessionIds = (item.sessions ?? []).map((session) => session.id);
+    for (const remove of draftRemovers) remove(sessionIds);
+    try {
+      const drafts = JSON.parse(localStorage.getItem("nodo.drafts") ?? "{}");
+      for (const id of sessionIds) delete drafts[id];
+      localStorage.setItem("nodo.drafts", JSON.stringify(drafts));
+    } catch {
+    }
+    setRoleId((current) => current === item.id ? null : current);
+  };
+  const typeNameOf = (id) => types.find((item) => item.id === id)?.name ?? id;
+  const engineName = (role) => engineDisplayName({ id: role.engine ?? "" });
+  const newAvatar = avatar_templates_default[roles.length % avatar_templates_default.length].id;
+  const createRole = (event) => {
+    event.preventDefault();
+    const name = newName.trim();
+    if (!name || !newEngine || readOnly) return;
+    void perform(async () => {
+      await call("profile-create", { name, engine: newEngine, avatarTemplate: newAvatar });
+      setAdding(false);
+      setNewName("");
+    });
+  };
+  const cancelAdding = () => {
+    setAdding(false);
+    setNewName("");
+  };
+  const toggleType = async (role, id) => {
+    const held = role.taskTypes ?? [];
+    const next = held.includes(id) ? held.filter((item) => item !== id) : [...held, id];
+    setPendingTypes((current) => ({ ...current, [role.id]: next }));
+    setError("");
+    try {
+      await call("profile-update", { id: role.id, changes: { taskTypes: next } });
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setPendingTypes((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id)));
+    }
+  };
+  const createForm = (className, order) => /* @__PURE__ */ (0, import_react.createElement)(
+    "form",
+    {
+      className,
+      "aria-label": "\u6DFB\u52A0\u89D2\u8272",
+      onSubmit: createRole,
+      onKeyDown: (event) => {
+        if (event.key === "Escape" && adding) cancelAdding();
+      }
+    },
+    order !== void 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-order" }, order),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-new-who" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: { avatarTemplate: newAvatar }, size: 28 }), /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        className: "nodo-dialog-input",
+        autoFocus: true,
+        "aria-label": "\u540D\u5B57",
+        placeholder: "\u540D\u5B57",
+        maxLength: 40,
+        value: newName,
+        disabled: readOnly || busy,
+        onChange: (event) => setNewName(event.target.value)
+      }
+    )),
+    /* @__PURE__ */ (0, import_react.createElement)(
+      "select",
+      {
+        className: "nodo-dialog-input nodo-dialog-select",
+        "aria-label": "Agent",
+        value: newEngine,
+        disabled: readOnly || busy || !engines?.length,
+        onChange: (event) => setNewEngine(event.target.value)
+      },
+      !engines?.length && /* @__PURE__ */ (0, import_react.createElement)("option", { value: "" }, "\u6B63\u5728\u52A0\u8F7D Agent\u2026"),
+      (engines ?? []).map((item) => /* @__PURE__ */ (0, import_react.createElement)("option", { key: item.id, value: item.id }, engineDisplayName(item)))
+    ),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-new-actions" }, adding && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", size: "sm", disabled: busy, onClick: cancelAdding }, "\u53D6\u6D88"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "submit", variant: "primary", size: "sm", disabled: readOnly || busy || !newName.trim() || !newEngine }, "\u521B\u5EFA"))
+  );
+  const takesCell = (role, locked) => {
+    const ids = role.taskTypes ?? [];
+    const open = takesOpen === role.id;
+    return /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-takes", "data-takes-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-roles-takes-trigger",
+        "aria-haspopup": "true",
+        "aria-expanded": open,
+        disabled: locked || !types.length,
+        "aria-label": `\u627F\u63A5\u4EFB\u52A1 ${role.name}`,
+        onClick: () => setTakesOpen(open ? null : role.id)
+      },
+      ids.length ? ids.map(typeNameOf).join("\u3001") : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-takes-empty" }, "\u9009\u62E9\u627F\u63A5\u4EFB\u52A1")
+    ), open && /* @__PURE__ */ (0, import_react.createElement)(
+      "div",
+      {
+        className: "nodo-roles-takes-pop",
+        role: "group",
+        "aria-label": `${role.name} \u627F\u63A5\u7684\u4EFB\u52A1\u7C7B\u578B`,
+        onKeyDown: (event) => {
+          if (event.key === "Escape") setTakesOpen(null);
+        }
+      },
+      types.map((type) => /* @__PURE__ */ (0, import_react.createElement)("label", { key: type.id, className: "nodo-roles-takes-option", title: type.when || void 0 }, /* @__PURE__ */ (0, import_react.createElement)("input", { type: "checkbox", checked: ids.includes(type.id ?? ""), onChange: () => void toggleType(role, type.id ?? "") }), type.name))
+    ));
+  };
+  const executorRow = (role, index) => {
+    const state = roleStateOf(role, view);
+    const held = busy || state.active === true;
+    const locked = readOnly || held;
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "div",
+      {
+        key: role.id,
+        className: "nodo-roles-row",
+        "data-dragging": dragId === role.id ? "" : void 0,
+        "data-drop": dropId === role.id ? "" : void 0,
+        draggable: !locked,
+        onDragStart: (event) => {
+          setDragId(role.id);
+          event.dataTransfer.effectAllowed = "move";
+        },
+        onDragOver: (event) => {
+          if (dragId !== null && dragId !== role.id && !locked) {
+            event.preventDefault();
+            setDropId(role.id);
+          }
+        },
+        onDragLeave: () => setDropId((current) => current === role.id ? null : current),
+        onDrop: (event) => {
+          event.preventDefault();
+          const from = executors.findIndex((item) => item.id === dragId);
+          setDragId(null);
+          setDropId(null);
+          if (from >= 0) void reorder(from, index);
+        },
+        onDragEnd: () => {
+          setDragId(null);
+          setDropId(null);
+        }
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-order" }, /* @__PURE__ */ (0, import_react.createElement)(Grip, null), index + 1),
+      /* @__PURE__ */ (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-roles-who-cell",
+          disabled: held,
+          title: role.name,
+          onClick: () => switchTo(() => openRole(role.id))
+        },
+        /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 28, running: state.active }),
+        /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name" }, role.name), role.role && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, role.role))
+      ),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, engineName(role)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, role.model || "\u9ED8\u8BA4\u6A21\u578B")),
+      takesCell(role, locked),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-hard" }, role.hard !== void 0 ? "\u53EF\u63A5" : ""),
+      /* @__PURE__ */ (0, import_react.createElement)(
+        import_dsh_client_ui_primitives.Menu,
+        {
+          open: menuId === role.id,
+          onClose: () => setMenuId(null),
+          portal: true,
+          closeOnPointerLeave: true,
+          items: [
+            { id: "up", label: "\u4E0A\u79FB", disabled: locked || index === 0 },
+            { id: "down", label: "\u4E0B\u79FB", disabled: locked || index === executors.length - 1 },
+            { id: "edit", label: "\u7F16\u8F91", disabled: held },
+            { id: "delete", label: "\u5220\u9664\u89D2\u8272", disabled: locked }
+          ],
+          onSelect: (id) => {
+            setMenuId(null);
+            if (id === "edit") switchTo(() => openRole(role.id));
+            else if (id === "delete") setDeleting(role);
+            else void reorder(index, id === "up" ? index - 1 : index + 1);
+          },
+          anchor: /* @__PURE__ */ (0, import_react.createElement)(
+            "button",
+            {
+              type: "button",
+              className: "nodo-row-action nodo-roles-more",
+              "aria-haspopup": "menu",
+              "aria-expanded": menuId === role.id,
+              "aria-label": `\u66F4\u591A\u64CD\u4F5C ${role.name}`,
+              disabled: busy,
+              onClick: (event) => {
+                event.stopPropagation();
+                setMenuId((current) => current === role.id ? null : role.id);
+              }
+            },
+            /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, { size: 16 })
+          )
+        }
+      )
+    );
+  };
+  const who = (result) => result.profile ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-who" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: result.profile, size: 20 }), result.profile.name) : miss();
+  const plan = types.map((type) => ({
+    type,
+    routine: route({ type: type.id, hard: false }, executors),
+    hard: route({ type: type.id, hard: true }, executors)
+  }));
+  const gaps = plan.reduce((count, row) => count + (row.routine.miss ? 1 : 0) + (row.hard.miss ? 1 : 0), 0);
+  const routed = executors.some((item) => (item.taskTypes ?? []).length > 0);
+  const overview = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-overview" }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-roles-head" }, /* @__PURE__ */ (0, import_react.createElement)("h1", null, "\u89D2\u8272")), /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-leads", "aria-label": "\u4E3B\u63A7" }, leads.length ? leads.map((lead) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: lead.id, className: "nodo-roles-lead" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-lead-art" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: lead, size: 28, running: roleStateOf(lead, view).active })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy nodo-roles-lead-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name" }, lead.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-tag" }, "\u4E3B\u63A7")), lead.role && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, lead.role)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy nodo-roles-lead-engine" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, engineName(lead)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, lead.model || "\u9ED8\u8BA4\u6A21\u578B")), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Button,
+    {
+      variant: "outline",
+      size: "sm",
+      disabled: busy || roleStateOf(lead, view).active === true,
+      onClick: () => switchTo(() => openRole(lead.id))
+    },
+    "\u7F16\u8F91"
+  ))) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-roles-lead-none" }, "\u8FD8\u6CA1\u6709\u4E3B\u63A7\u89D2\u8272")), executors.length === 0 ? /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-empty", "aria-labelledby": "nodo-roles-empty-title" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-empty-title" }, "\u7ED9\u4E3B\u63A7\u914D\u4E00\u4E2A\u6267\u884C\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("p", null, "\u4E3B\u63A7\u62C6\u597D\u4EFB\u52A1\u540E\uFF0C\u4F1A\u4EA4\u7ED9\u8FD9\u91CC\u7684\u89D2\u8272\u53BB\u505A"), createForm("nodo-roles-create")) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-executors" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-executors" }, "\u6267\u884C\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), adding && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)), !adding && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", disabled: readOnly || busy, onClick: () => switchTo(startAdding) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-add-icon" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), "\u6DFB\u52A0\u89D2\u8272")), /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-plan" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-plan" }, "\u6D3E\u6D3B\u7ED3\u679C", routed && gaps > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-gaps" }, `${gaps} \u5904\u65E0\u4EBA\u627F\u63A5`)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-text-button", onClick: () => switchTo(() => setTypeOpen(true)) }, "\u7BA1\u7406\u4EFB\u52A1\u7C7B\u578B")), routed ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-plan" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-plan-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u4EFB\u52A1\u7C7B\u578B"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5E38\u89C4\u4EA4\u7ED9"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898\u4EA4\u7ED9")), plan.map((row) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: row.type.id, className: "nodo-roles-plan-row" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name", title: row.type.when || void 0 }, row.type.name), who(row.routine), who(row.hard)))) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-roles-plan-none" }, "\u8FD8\u6CA1\u6709\u89D2\u8272\u627F\u63A5\u4EFB\u52A1\u7C7B\u578B\uFF0C\u4E3B\u63A7\u4F1A\u6309\u89D2\u8272\u540D\u81EA\u5DF1\u6311\u9009"))));
+  const sidebar = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-nav", role: "navigation", "aria-label": "\u89D2\u8272" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": !typeOpen, onClick: () => switchTo(showOverview) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, roles.length)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": typeOpen, onClick: () => switchTo(() => setTypeOpen(true)) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDataOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u4EFB\u52A1\u7C7B\u578B"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, types.length)));
+  (0, import_react.useEffect)(() => {
+    rolesPublishSidebar({ view: "roles", content: sidebar });
+  });
+  const selected = roleId !== null ? roles.find((item) => item.id === roleId) ?? null : null;
+  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles", "aria-label": "\u89D2\u8272\u7BA1\u7406" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-chrome", "aria-hidden": true }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-body" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-role-dialog nodo-roles-main", "data-screen": typeOpen ? "types" : selected ? "role" : "overview" }, typeOpen ? /* @__PURE__ */ (0, import_react.createElement)(
+    TaskTypesEditor,
+    {
+      key: `types:${nonce}`,
+      view,
+      disabled: readOnly || busy,
+      onDone: () => refresh(true),
+      onDirtyChange: (value) => {
+        dirtyRef.current = value;
+      }
+    }
+  ) : selected ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-roles-crumbs", "aria-label": "\u4F4D\u7F6E" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", onClick: () => switchTo(showOverview) }, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }), /* @__PURE__ */ (0, import_react.createElement)("span", { "aria-current": "page" }, selected.name)), /* @__PURE__ */ (0, import_react.createElement)(
+    RoleEditor,
+    {
+      key: `${selected.id}:${nonce}`,
+      profile: selected,
+      roster: roles,
+      enabledEngines: view.prefs?.enabledEngines ?? null,
+      savedIdentities: view.prefs?.rolePresets ?? null,
+      taskTypes: types,
+      refresh,
+      readOnly,
+      onSaved: savedRole,
+      onCancel: () => {
+        setNonce((value) => value + 1);
+        showOverview();
+      },
+      onDeleted: deletedRole,
+      onDirtyChange: (value) => {
+        dirtyRef.current = value;
+      }
+    }
+  )) : overview, error && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error))), confirm && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", onClick: () => setConfirm(null) }, "\u7EE7\u7EED\u7F16\u8F91"),
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "drop", variant: "primary", onClick: () => {
+      const { action } = confirm;
+      setConfirm(null);
+      action();
+    } }, "\u653E\u5F03\u4FEE\u6539")
+  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, "\u5F53\u524D\u4FEE\u6539\u5C1A\u672A\u4FDD\u5B58\u3002")), deleting && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: `\u5220\u9664\u89D2\u8272\u201C${deleting.name}\u201D\uFF1F`, onClose: () => setDeleting(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", disabled: busy, onClick: () => setDeleting(null) }, "\u53D6\u6D88"),
+    /* @__PURE__ */ (0, import_react.createElement)(
+      import_dsh_client_ui_primitives.Button,
+      {
+        key: "delete",
+        variant: "outline",
+        className: "nodo-dialog-danger",
+        disabled: busy,
+        onClick: () => {
+          const item = deleting;
+          setDeleting(null);
+          void perform(() => deletedRole(item));
+        }
+      },
+      "\u5220\u9664\u89D2\u8272"
+    )
+  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, `\u5C06\u628A\u201C${deleting.name}\u201D\u53CA\u5176 ${deleting.sessions?.length ?? 0} \u4E2A\u63D2\u4EF6\u5185\u4F1A\u8BDD\u8BB0\u5F55\u79FB\u9664\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`)));
+}
+function RolesEntry() {
+  const { view, error, refresh } = useStateView();
+  (0, import_react.useEffect)(() => {
+    if (document.querySelector("[data-sidebar-collapsed]")) layoutService?.toggleSidebar?.();
+    return () => rolesPublishSidebar(null);
+  }, []);
+  if (!view) return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles" }, error || "\u6B63\u5728\u8BFB\u53D6\u89D2\u8272\u2026");
+  return /* @__PURE__ */ (0, import_react.createElement)(RolesPage, { view, readOnly: !!view.readOnly, refresh });
+}
+var ROLES_CSS = `
+.nodo-roles{overflow:hidden}
+.nodo-roles-chrome{flex:none;height:var(--dsh-frame-top-clearance,0px);-webkit-app-region:drag}
+.nodo-roles-body{display:flex;justify-content:center;flex:1;min-width:0;min-height:0;overflow-y:auto;padding:20px 32px 40px}
+.nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content}
+.nodo-roles-main[data-screen=role]{width:min(800px,100%)}
+.nodo-roles-nav{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+.nodo-role-types{display:flex;align-items:center;gap:10px;flex:none;width:100%;height:36px;padding:0 10px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}
+.nodo-role-types:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
+.nodo-role-types-label{flex:1;min-width:0}
+.nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.nodo-roles-overview{display:flex;flex-direction:column;gap:20px}
+.nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nodo-roles-head h1{display:flex;align-items:baseline;gap:10px;margin:0;font-size:20px;font-weight:600;line-height:28px}
+.nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
+.nodo-roles-copy>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-roles-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
+.nodo-roles-sub{font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
+.nodo-roles-tag{flex:none;padding:0 8px;border-radius:999px;background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-base);font-size:12px;font-weight:400;line-height:20px}
+.nodo-roles-leads{display:flex;flex-direction:column;gap:6px}
+.nodo-roles-lead{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 12px 8px 8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
+.nodo-roles-lead-art{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;border-radius:var(--nodo-role-radius);background:var(--dsw-alias-bg-base)}
+.nodo-roles-lead-copy{flex:1 1 260px}
+.nodo-roles-lead .nodo-roles-name{font-weight:600}
+.nodo-roles-lead-engine{align-items:flex-end;text-align:right}
+.nodo-roles-lead-none{margin:0;padding:10px 14px;border:1px dashed var(--dsw-alias-border-l1);border-radius:calc(var(--nodo-role-radius) + 8px);color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-roles-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:28px 24px 24px;border:1px dashed var(--dsw-alias-border-l1);border-radius:calc(var(--nodo-role-radius) + 10px);text-align:center}
+.nodo-roles-empty h2{margin:0;font-size:16px;font-weight:600;line-height:24px}
+.nodo-roles-empty p{max-width:420px;margin:0 0 12px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-roles-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:min(600px,100%);padding:8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);text-align:left}
+.nodo-roles-create>select{flex:0 1 180px}
+.nodo-roles-new-who{display:flex;align-items:center;gap:10px;flex:1 1 220px;min-width:0}
+.nodo-roles-new-who>.nodo-dialog-input{flex:1;min-width:0}
+.nodo-roles-new-actions{display:flex;justify-content:flex-end;gap:8px;flex:none}
+.nodo-roles-section{display:flex;flex-direction:column;gap:8px}
+.nodo-roles-section h2{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;font-weight:600;line-height:22px}
+.nodo-roles-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nodo-roles-table,.nodo-roles-plan,.nodo-types-table{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
+.nodo-roles-row{display:grid;grid-template-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.4fr) 40px 28px;align-items:center;gap:12px;min-height:48px;padding:4px 8px 4px 6px}
+.nodo-roles-row+.nodo-roles-row,.nodo-roles-plan-row+.nodo-roles-plan-row,.nodo-type-row+.nodo-type-row{border-top:1px solid var(--dsw-alias-border-l2)}
+.nodo-roles-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-roles-row[data-dragging]{opacity:.4}
+.nodo-roles-row[data-drop]{box-shadow:inset 0 2px 0 var(--dsw-alias-state-business-primary)}
+.nodo-roles-order{display:inline-flex;align-items:center;gap:8px;padding-left:4px;color:var(--dsw-alias-label-tertiary);font-size:13px;font-variant-numeric:tabular-nums}
+.nodo-roles-row[draggable=true] .nodo-roles-order{cursor:grab}
+.nodo-roles-who-cell{display:flex;align-items:center;gap:8px;min-width:0;margin:-4px;padding:4px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration:underline}
+.nodo-roles-who-cell:disabled{cursor:default}
+.nodo-roles-takes{position:relative;min-width:0}
+.nodo-roles-takes-trigger{max-width:calc(100% + 8px);height:28px;margin-left:-8px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;text-align:left;cursor:pointer}
+.nodo-roles-takes-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-roles-takes-trigger:disabled{cursor:default}
+.nodo-roles-takes-empty{color:var(--dsw-alias-state-business-primary)}
+.nodo-roles-takes-pop{position:absolute;z-index:20;top:calc(100% + 4px);left:-8px;display:flex;flex-direction:column;min-width:200px;max-height:280px;overflow-y:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
+.nodo-roles-takes-option{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:20px;cursor:pointer}
+.nodo-roles-takes-option:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-roles-takes-option input{margin:0;accent-color:var(--dsw-alias-state-business-primary)}
+.nodo-roles-hard{color:var(--dsw-alias-label-secondary);font-size:13px}
+.nodo-roles-row .nodo-roles-more{width:28px;height:28px;border-radius:var(--nodo-role-radius)}
+.nodo-roles-row .nodo-roles-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-roles-new{border-radius:0 0 calc(var(--nodo-role-radius) + 7px) calc(var(--nodo-role-radius) + 7px);background:var(--dsw-alias-bg-layer-1)}
+.nodo-roles-new>.nodo-roles-new-actions{grid-column:4/-1}
+.nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 10px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-roles-add-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border:1px dashed var(--dsw-alias-border-l1);border-radius:50%}
+.nodo-roles-gaps{padding:0 8px;border-radius:999px;background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);font-size:12px;font-weight:400;line-height:20px}
+.nodo-roles-plan-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:12px;min-height:36px;padding:6px 12px;font-size:13px;line-height:20px}
+.nodo-roles-who{display:inline-flex;align-items:center;gap:8px;min-width:0;overflow:hidden;white-space:nowrap}
+.nodo-roles-miss{color:var(--dsw-alias-state-warn-primary);font-size:13px}
+.nodo-roles-plan-none{margin:0;padding:10px 12px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-text-button{height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-text-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-text-button:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
+.nodo-roles-crumbs{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-roles-crumbs button{padding:0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
+.nodo-roles-crumbs button:hover{color:var(--dsw-alias-label-primary)}
+.nodo-roles-crumbs [aria-current]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}
+.nodo-types{display:flex;flex-direction:column;gap:16px}
+.nodo-types-count{color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
+.nodo-type-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr) 32px;align-items:center;gap:8px;min-height:40px;padding:2px 6px}
+.nodo-type-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-type-row-head>span{padding:0 9px}
+.nodo-type-input{width:100%;height:32px;padding:0 8px;border:1px solid transparent;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
+.nodo-type-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
+.nodo-type-input:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-type-input:focus{outline:0;border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}
+.nodo-type-when{position:relative;min-width:0}
+.nodo-type-when>.nodo-type-input{padding-right:56px;color:var(--dsw-alias-label-secondary);font-size:13px}
+.nodo-type-when>.nodo-dialog-count{display:none;right:10px;bottom:6px}
+.nodo-type-when:focus-within>.nodo-dialog-count{display:block}
+.nodo-type-takers{display:flex;align-items:center;min-width:0;padding-left:9px}
+.nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:-6px}
+.nodo-type-more{margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-type-remove{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.nodo-type-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
+.nodo-type-confirm{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:calc(var(--nodo-role-radius) + 2px);background:var(--dsw-alias-bg-layer-1)}
+.nodo-type-confirm>span{flex:1;min-width:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
+.nodo-types .nodo-dialog-hint{padding:16px}
+.nodo-types-bar{position:sticky;bottom:24px;align-self:center;display:flex;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
+@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}.nodo-roles-row{grid-template-columns:40px minmax(0,1fr) minmax(0,1fr) 28px}.nodo-roles-row>:nth-child(3),.nodo-roles-row>:nth-child(5){display:none}.nodo-roles-new>.nodo-roles-new-actions{grid-column:auto}}
+`;
+
 // src/client/page.js
 var heldImages = {};
 var readDrafts = () => {
@@ -7470,7 +8373,7 @@ var openInitialSidebarSession = (page) => {
   if (nativeRole(profile)) void selectSession(profile, sessionId, workspace, page);
   else nativeSpace.showLegacy();
 };
-function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation = null } = {}) {
+function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
   const { view, error, refresh } = useStateView();
   const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
   const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
@@ -7500,6 +8403,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
   (0, import_react.useEffect)(() => {
     heldImages = pastedImages;
   }, [pastedImages]);
+  (0, import_react.useEffect)(() => {
+    const remove = (ids) => setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
+    return registerDraftRemover(remove);
+  }, []);
   const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
   const [statsOpen, setStatsOpen] = (0, import_react.useState)(false);
   const [onboardDone, setOnboardDone] = (0, import_react.useState)(false);
@@ -7509,6 +8416,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
   const [compacting, setCompacting] = (0, import_react.useState)([]);
   const [sentTick, setSentTick] = (0, import_react.useState)(0);
   const [actionError, setActionError] = (0, import_react.useState)("");
+  const [assignees, setAssignees] = (0, import_react.useState)({});
   const profile = view?.profiles.find((item) => item.id === navigation.profile) ?? view?.profiles[0] ?? null;
   const workspaces = view?.workspaces ?? [];
   const workspace = workspaces.find((item) => item.id === navigation.workspace) ?? workspaces[0] ?? null;
@@ -7521,6 +8429,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
   const readOnly = view !== null && view.readOnly != null;
   const work = sessionId ? view.work[sessionId] : null;
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
+  const roster = profile?.lead === true && profile.engine !== "dsh" ? view.profiles.filter((item) => item.id !== profile.id && item.lead !== true) : [];
+  const assignee = assignees[draftKey];
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
   const viewedWork = view?.work[viewed?.id];
   (0, import_react.useEffect)(() => {
@@ -7557,10 +8467,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     selection.current++;
     setEditing(value);
   };
-  const savedProfile = async (saved) => {
-    await refresh(true);
-    remember(saved.id, workspace?.id, saved.activeSessionId);
-    setEditing(null);
+  const openRolesPage = (target) => {
+    selection.current++;
+    openRoles(target);
+    layoutService?.selectPanel("nodo-roles");
   };
   const updateEngineChoice = async (changes) => {
     if (!profile || sessionBusy || readOnly) return;
@@ -7619,13 +8529,6 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     } finally {
       setBusy(false);
     }
-  };
-  const deletedProfile = async (item) => {
-    await call("profile-delete", { id: item.id });
-    await refresh(true);
-    if (profile?.id === item.id) setNavigation((current) => ({ ...current, profile: null }));
-    setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !item.sessions.some((session2) => session2.id === key))));
-    setEditing(null);
   };
   const renamedWorkspace = async (id, name) => {
     await call("workspace-update", { id, changes: { name } });
@@ -7696,8 +8599,15 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     try {
       const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }));
-      await call("send", { profile: profile.id, session: id, text, images: payload });
+      await call("send", {
+        profile: profile.id,
+        session: id,
+        text,
+        images: payload,
+        ...roster.some((item) => item.id === assignee) ? { assignee } : {}
+      });
       if (current()) setSentTick((tick) => tick + 1);
+      setAssignees((current2) => ({ ...current2, [draftKey]: void 0 }));
       setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
       setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
       await refresh(true);
@@ -7783,7 +8693,13 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
       onGoal: () => setGoalOpen(true),
       onCompact: () => void compactSession(),
       onModelChange: (changes) => void updateEngineChoice(changes),
-      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: view.profiles, profile })
+      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: view.profiles, profile }),
+      assigneePicker: roster.length > 0 && (0, import_react.createElement)(AssigneePicker, {
+        roster,
+        value: assignee,
+        disabled: sessionBusy || readOnly || work?.active === true,
+        onSelect: (id) => setAssignees((current) => ({ ...current, [draftKey]: id }))
+      })
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -7824,7 +8740,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
         onResumeDraft: () => nativeSpace.resumeDraft(),
         readOnly,
         busy,
-        workflowNavigation,
+        navigation: railNavigation,
         onSelect: (id) => {
           const role = view.profiles.find((item) => item.id === id);
           if (role && workspace) void select(role);
@@ -7843,13 +8759,14 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
         onNewWorktree: (project) => {
           if (!readOnly) setWorktreeOpen(project);
         },
-        onNewRole: () => edit({ kind: "profile", profile: null }),
-        onEditRole: (item) => edit({ kind: "profile", profile: item }),
+        onNewRole: () => openRolesPage({ profileId: "new" }),
+        onEditRole: (item) => openRolesPage({ profileId: item.id }),
         onSettings: () => edit({ kind: "settings" }),
-        onWorkflows: () => layoutService?.selectPanel("nodo-workflow"),
+        onRoles: () => layoutService?.selectPanel("nodo-roles"),
+        onWorkflows: () => rolesGuard(() => layoutService?.selectPanel("nodo-workflow")),
         runsWaiting: (view.runs ?? []).some(needsPerson),
-        onSessions: () => nativeSpace.showLegacy(),
-        onBack: () => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null),
+        onSessions: () => rolesGuard(() => nativeSpace.showLegacy()),
+        onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
         onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
         onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
         onDeleteWorkspace: (workspace2) => setWorkspaceDialog({ kind: "delete", workspace: workspace2 })
@@ -7896,17 +8813,6 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
       stats: view.stats[sessionId],
       onClose: () => setStatsOpen(false)
     }),
-    editing?.kind === "profile" && (0, import_react.createElement)(ProfileDialog, {
-      key: `role:${editing.profile?.id ?? "new"}`,
-      profile: editing.profile ?? null,
-      avatarSeed: view?.profiles.length ?? 0,
-      enabledEngines: view?.prefs?.enabledEngines ?? null,
-      savedIdentities: view?.prefs?.rolePresets ?? null,
-      refresh,
-      onCancel: cancelEditing,
-      onSaved: savedProfile,
-      onDeleted: deletedProfile
-    }),
     editing?.kind === "workspace" && (0, import_react.createElement)(WorkspaceDialog, {
       key: `ws:${editing.id}`,
       workspace: editing.workspace ?? null,
@@ -7945,6 +8851,7 @@ function NodoEntry() {
 }
 function NodoSidebar({ collapsed }) {
   const workflowNavigation = (0, import_react.useSyncExternalStore)(wfSubscribeSidebar, wfSidebarSnapshot);
+  const rolesNavigation = (0, import_react.useSyncExternalStore)(rolesSubscribeSidebar, rolesSidebarSnapshot);
   const label = collapsed ? "\u5C55\u5F00\u4FA7\u8FB9\u680F" : "\u6536\u8D77\u4FA7\u8FB9\u680F";
   return (0, import_react.createElement)(
     "div",
@@ -7967,7 +8874,7 @@ function NodoSidebar({ collapsed }) {
     (0, import_react.createElement)(
       "div",
       { className: "nodo-space-content", style: collapsed ? { display: "none" } : void 0 },
-      (0, import_react.createElement)(NodoPage, { sidebarOnly: true, workflowNavigation })
+      (0, import_react.createElement)(NodoPage, { sidebarOnly: true, railNavigation: workflowNavigation ?? rolesNavigation })
     )
   );
 }
@@ -8354,15 +9261,16 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       return next;
     });
     const chooseRole = (id) => {
-      updateSelection((current) => ({ ...current, profile: id, choices: {} }));
+      updateSelection((current) => ({ ...current, profile: id, choices: {}, assignee: void 0 }));
       setError("");
     };
     const held = profile && { permission: profile.sessions.slice().reverse().find((session) => !(session.draftedAt && !session.briefSent) && session.permission !== void 0)?.permission ?? profile.permission };
     const composerProfile = profile && { ...profile, ...held, ...choices };
+    const roster = profile?.lead === true && !nativeRole(profile) ? (view?.profiles ?? []).filter((item) => item.id !== profile.id && item.lead !== true) : [];
     const clearDraft = () => {
       changeText("");
       changeImages([]);
-      setSelection((current) => ({ ...current, references: [], files: [] }));
+      setSelection((current) => ({ ...current, references: [], files: [], assignee: void 0 }));
       saveOptions(key, null);
       if (draft) space.endDraft(draft.id);
     };
@@ -8447,6 +9355,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             text: text || (references.length ? "\u8BF7\u53C2\u8003\u5F15\u7528\u7684\u4F1A\u8BDD\u7ED3\u679C\u3002" : ""),
             ...files.length ? { files } : {},
             ...bound.length ? { references: bound.map((item) => ({ id: item.id })) } : {},
+            ...roster.some((item) => item.id === selection.assignee) ? { assignee: selection.assignee } : {},
             images: images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }))
           });
           setNavigation((value) => ({
@@ -8496,6 +9405,12 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             ...changes.permission === "" && profile.engine !== "dsh" ? { permission: "workspace" } : {}
           } })) : void 0,
           rolePicker: (0, import_react.createElement)(RolePicker, { profiles: view?.profiles ?? [], profile, disabled, onSelect: chooseRole }),
+          assigneePicker: roster.length > 0 && (0, import_react.createElement)(AssigneePicker, {
+            roster,
+            value: selection.assignee,
+            disabled,
+            onSelect: (id) => updateSelection((current) => ({ ...current, assignee: id }))
+          }),
           onReference: (value) => {
             if (!disabled) setReference(value?.id ? value : {});
           },
@@ -8926,65 +9841,98 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-dialog-status{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 .nodo-dialog-danger:not(:disabled){color:var(--dsw-alias-state-error-primary)}
 .nodo-dialog :is(.nodo-ok,.nodo-bad,.nodo-dialog-status){margin:0}
-.nodo-role-dialog{--nodo-role-radius:var(--dsw-radius-md);width:min(920px,100%);padding:20px;gap:20px;border-radius:calc(var(--nodo-role-radius) + 20px)}
-.nodo-role-dialog h2{font-size:18px;font-weight:600;line-height:26px}
+.nodo-role-dialog{--nodo-role-radius:var(--dsw-radius-md)}
 .nodo-role-dialog button{border-radius:var(--nodo-role-radius)}
-.nodo-role-shell,.nodo-role-shell>div:last-child{min-height:0}
-.nodo-role-shell>div:first-child{padding:0 0 20px}
-.nodo-role-shell>div:last-child{margin-top:20px}
-.nodo-role-dialog>:last-child{flex-shrink:0}
-.nodo-role-fields{gap:20px;max-height:min(72vh,680px);margin-right:-12px;padding-right:12px;overscroll-behavior:contain}
-.nodo-role-dialog .nodo-field,.nodo-role-dialog .nodo-field+.nodo-field{padding:0;border:0;gap:8px}
-.nodo-role-dialog .nodo-field>span{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
-.nodo-role-dialog .nodo-dialog-input{height:40px;padding:8px 12px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:22px}
+.nodo-role-dialog .nodo-field,.nodo-role-dialog .nodo-field+.nodo-field{padding:0;border:0;gap:6px}
+.nodo-role-dialog .nodo-field>span{font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
+.nodo-role-dialog .nodo-dialog-input{height:36px;padding:8px 12px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:22px}
 .nodo-role-dialog .nodo-dialog-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
 .nodo-role-dialog .nodo-dialog-select{padding-right:28px}
-.nodo-role-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:28px;align-items:start}
-.nodo-role-aside{position:sticky;top:0;display:flex;flex-direction:column;gap:20px;padding:16px;border-radius:calc(var(--nodo-role-radius) + 12px);background:var(--dsw-alias-bg-layer-1)}
-.nodo-role-card{overflow:hidden;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base)}
-.nodo-role-card-art{display:flex;align-items:center;justify-content:center;height:112px}
-.nodo-role-card-body{display:flex;flex-direction:column;gap:6px;padding:14px 16px 16px}
-.nodo-role-card-body p{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
-.nodo-role-card-title{display:flex;align-items:center;gap:8px;min-width:0}
-.nodo-role-card-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:600;line-height:24px;color:var(--dsw-alias-label-primary)}
-.nodo-role-card-tag{flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 8px;border-radius:999px;background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px}
-.nodo-role-card .nodo-role-card-meta{padding-top:8px;border-top:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary)}
-.nodo-role-card [data-empty]{color:var(--dsw-alias-label-tertiary)}
-.nodo-role-dialog .nodo-role-aside>.nodo-field{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-.nodo-role-dialog .nodo-avatar-preview-toggle{gap:5px;white-space:nowrap;cursor:pointer}
-.nodo-role-dialog .nodo-avatar-preview-toggle input{width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary)}
-.nodo-role-dialog .nodo-avatar-picker{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.nodo-role-dialog .nodo-dialog-error{margin:0}
+.nodo-role-editor{display:flex;flex-direction:column;gap:16px}
+.nodo-role-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.nodo-role-avatar-slot{position:relative;flex:none}
+.nodo-role-dialog .nodo-role-avatar{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:calc(var(--nodo-role-radius) + 4px);cursor:pointer}
+.nodo-role-dialog .nodo-role-avatar:disabled{cursor:default}
+.nodo-role-avatar-edit{position:absolute;right:-3px;bottom:-3px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--dsw-alias-bg-base);box-shadow:0 0 0 1px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
+.nodo-avatar-pop{position:absolute;z-index:20;top:calc(100% + 8px);left:0;width:288px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
+.nodo-role-dialog .nodo-avatar-picker{gap:4px}
 .nodo-role-dialog .nodo-avatar-option{gap:4px;min-height:68px;padding:8px 2px;border-radius:var(--nodo-role-radius)}
-.nodo-role-main{display:flex;flex-direction:column;gap:20px;min-width:0}
-.nodo-role-main>.nodo-field{position:relative}
-.nodo-role-dialog .nodo-role-main>.nodo-field:first-child .nodo-dialog-input{height:44px;font-size:14px}
+.nodo-role-head-copy{display:flex;flex-direction:column;gap:2px;flex:1 1 200px;min-width:0}
+.nodo-role-head-copy h2{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:18px;font-weight:600;line-height:26px}
+.nodo-role-head-copy h2[data-empty]{color:var(--dsw-alias-label-tertiary)}
+.nodo-role-head-copy p{margin:0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-role-actions{display:flex;align-items:center;gap:8px;flex:none}
+.nodo-role-dialog .nodo-role-more{width:32px;height:32px;color:var(--dsw-alias-label-secondary)}
+.nodo-role-dialog .nodo-role-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role-confirm-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 8px 8px 16px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-layer-1)}
+.nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
+.nodo-role-tabbar{display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.nodo-role-tabs{display:flex;flex:1;gap:20px;min-width:0}
+.nodo-role-dialog .nodo-role-tab{display:inline-flex;align-items:center;gap:6px;height:36px;margin-bottom:-1px;padding:0 2px;border:0;border-bottom:2px solid transparent;border-radius:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;cursor:pointer}
+.nodo-role-dialog .nodo-role-tab[aria-selected=true]{border-bottom-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:500}
+.nodo-role-tab-dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-business-primary)}
+.nodo-role-kind{display:flex;gap:2px;margin-bottom:6px;padding:3px;border-radius:calc(var(--nodo-role-radius) + 3px);background:var(--dsw-alias-bg-overlay)}
+.nodo-role-dialog .nodo-role-kind button{height:28px;padding:0 12px;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-role-dialog .nodo-role-kind button[aria-checked=true]{background:var(--dsw-alias-bg-base);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font-weight:500}
+.nodo-role-dialog .nodo-role-kind button:disabled{cursor:default}
+:is(.nodo-role-tab,.nodo-role-kind button,.nodo-template-pick,.nodo-text-button):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-role-lead-note{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
+.nodo-role-lead-note p{margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-role-lead-note p:first-child{color:var(--dsw-alias-label-primary);font-weight:500}
+.nodo-role-lead-note p[data-warn]{color:var(--dsw-alias-state-warn-primary)}
+.nodo-role-panel{display:flex;flex-direction:column;gap:14px}
+.nodo-role-panel[hidden]{display:none}
+.nodo-templates-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nodo-templates-head>.nodo-text-button{margin-right:-8px}
+.nodo-templates-row{display:flex;gap:8px;padding-bottom:6px;overflow-x:auto;scroll-snap-type:x proximity}
+.nodo-template{position:relative;flex:none;scroll-snap-align:start}
+.nodo-role-dialog .nodo-template-pick{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:168px;height:52px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
+.nodo-template[data-saved] .nodo-template-pick{padding-right:26px}
+.nodo-template-pick:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-template-pick[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
+.nodo-template-pick:disabled{opacity:.5;cursor:default}
+.nodo-template-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px}
+.nodo-template-duty{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-role-dialog .nodo-template-remove{position:absolute;top:5px;right:5px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:calc(var(--nodo-role-radius) - 2px);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.nodo-template-remove{opacity:0}
+.nodo-template:is(:hover,:focus-within) .nodo-template-remove{opacity:1}
+.nodo-template-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
+.nodo-templates-divider{flex:none;width:1px;margin:8px 2px;background:var(--dsw-alias-border-l2)}
+.nodo-template-filled{display:flex;align-items:center;gap:8px;margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-template-filled>.nodo-text-button{height:24px;padding:0 6px}
 .nodo-identity-options{display:flex;flex-wrap:wrap;gap:8px}
-.nodo-identity-option{max-width:100%;height:34px;padding:0 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
+.nodo-identity-option{max-width:100%;height:30px;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
 .nodo-identity-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-identity-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
-.nodo-identity-option[data-saved]::before{content:'';display:inline-block;width:6px;height:6px;margin:0 6px 2px 0;border-radius:50%;background:var(--dsw-alias-state-business-primary);vertical-align:middle}
-.nodo-identity-option[data-custom]{border-style:dashed}
 .nodo-identity-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-identity-option:disabled{opacity:.5;cursor:default}
-.nodo-identity-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
-.nodo-identity-summary>button{flex:none}
-.nodo-role-dialog .nodo-identity-save-open{position:absolute;top:-6px;right:0}
 .nodo-dialog-counted{position:relative}
 .nodo-dialog-counted>.nodo-dialog-input{padding-right:64px}
 .nodo-dialog-count{position:absolute;right:12px;bottom:9px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;pointer-events:none}
-.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:200px;min-height:132px;padding:10px 12px 30px;resize:vertical}
-.nodo-identity-save{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 6px);background:var(--dsw-alias-bg-layer-1)}
+.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px;min-height:112px;padding:10px 12px 30px;resize:vertical}
+.nodo-identity-save{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-identity-save>.nodo-dialog-hint{grid-column:1/-1}
 .nodo-role-dialog .nodo-identity-save .nodo-dialog-input{height:34px}
 .nodo-role-notice{margin:0;padding:8px 12px;border-radius:var(--nodo-role-radius);background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);font-size:12px;line-height:18px}
-.nodo-role-run{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
-.nodo-role-dialog .nodo-role-run .nodo-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);align-items:center;column-gap:12px;row-gap:2px;padding:8px 8px 8px 14px}
-.nodo-role-dialog .nodo-role-run .nodo-field+.nodo-field{border-top:1px solid var(--dsw-alias-border-l2)}
-.nodo-role-dialog .nodo-role-run .nodo-field>span{font-size:13px;color:var(--dsw-alias-label-primary)}
-.nodo-role-dialog .nodo-role-run input[role=switch]{justify-self:start;width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary)}
-.nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
-.nodo-role-dialog .nodo-dialog-error{margin:0}
-@media(max-width:640px){.nodo-role-layout{grid-template-columns:minmax(0,1fr);gap:16px}.nodo-role-aside{position:static}.nodo-role-fields{max-height:64vh;gap:16px}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}.nodo-role-dialog .nodo-role-run .nodo-field{grid-template-columns:minmax(0,1fr)}}
+.nodo-role-run,.nodo-role-assign{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 6px)}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field{display:grid;grid-template-columns:minmax(0,1fr) min(320px,60%);align-items:center;column-gap:12px;row-gap:2px;padding:4px 6px 4px 12px}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field+.nodo-field{border-top:1px solid var(--dsw-alias-border-l2)}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field>span{color:var(--dsw-alias-label-primary);font-size:13px}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign) .nodo-dialog-input{height:32px}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign) .nodo-dialog-hint{grid-column:1/-1}
+.nodo-role-assign input[role=switch]{justify-self:end;width:14px;height:14px;margin:0 8px 0 0;accent-color:var(--dsw-alias-state-business-primary)}
+.nodo-role-reach{display:flex;flex-direction:column;gap:0;padding:8px 12px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-layer-1);font-size:13px;line-height:20px}
+.nodo-role-reach p{margin:0}
+.nodo-role-reach .nodo-role-reach-title{margin-bottom:4px;color:var(--dsw-alias-label-secondary)}
+.nodo-role-reach-empty{color:var(--dsw-alias-label-tertiary)}
+.nodo-role-reach-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:26px}
+.nodo-role-reach-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-role-reach-result{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px}
+.nodo-role-reach-win{padding:0 8px;border-radius:999px;background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary);font-size:12px;line-height:20px}
+.nodo-role-reach-win[data-hard]{background:var(--dsw-alias-bg-overlay)}
+.nodo-role-reach-note{color:var(--dsw-alias-label-tertiary);font-size:12px}
+@media(max-width:640px){.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field{grid-template-columns:minmax(0,1fr)}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}}
 .nodo-worktree-toggle{display:flex;align-items:center;gap:8px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .nodo-worktree-toggle input{accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-worktree-modes{display:flex;align-items:center;gap:6px}
@@ -9113,7 +10061,7 @@ function apply(ctx) {
   ctx.effect(() => () => completionTracker2.dispose(), "nodo: completion read state");
   ctx.effect(() => {
     const style = document.createElement("style");
-    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS + SCROLLBAR_CSS;
+    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS + ROLES_CSS + SCROLLBAR_CSS;
     document.head.appendChild(style);
     return () => style.remove();
   }, "nodo: page styles");
@@ -9142,7 +10090,8 @@ function apply(ctx) {
   ctx.slots.inject("main", () => {
     const stops = [
       ctx.slots.register({ name: "main", key: PANEL_ID }, NodoEntry),
-      ctx.slots.register({ name: "main", key: "nodo-workflow" }, WorkflowEntry)
+      ctx.slots.register({ name: "main", key: "nodo-workflow" }, WorkflowEntry),
+      ctx.slots.register({ name: "main", key: "nodo-roles" }, RolesEntry)
     ];
     return () => {
       for (const stop of stops) stop();

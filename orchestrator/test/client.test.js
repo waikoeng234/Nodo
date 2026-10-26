@@ -732,9 +732,9 @@ test('every delete path writes through the endpoint that owns it', () => {
     assert.ok(end > start, `${open} ends`)
     return source.slice(start, end)
   }
-  assert.match(block(pageSource, 'const deletedProfile', 'const renamedWorkspace'), /call\('profile-delete'/)
+  assert.match(block(clientSource('roles.tsx'), 'const deletedRole', 'const typeNameOf'), /call\('profile-delete'/)
   assert.match(block(pageSource, 'const deletedWorkspace', 'const select ='), /call\('workspace-delete'/)
-  for (const [dialog, file, close] of [['ProfileDialog', 'profile-dialogs.js', '\nexport function '], ['WorkspaceDeleteDialog', 'workspace-dialogs.js', undefined]]) {
+  for (const [dialog, file, close] of [['RoleEditor', 'profile-dialogs.js', '\nexport function '], ['WorkspaceDeleteDialog', 'workspace-dialogs.js', undefined]]) {
     assert.match(block(clientSource(file), `function ${dialog}(`, close), /await onDeleted\(/, `${dialog} hands its confirmation to the page`)
   }
 })
@@ -760,23 +760,24 @@ test('every host UI kit member the page uses is destructured from the kit', () =
 
 // The role dialog loads with the real avatar module; each caller brings its own
 // hook fakes and call handler.
-const loadProfileDialog = async ({ react, call }) => loadClient(['profile-dialogs.js', 'avatar.tsx'], { react, call })
+const loadRoleEditor = async ({ react, call }) => loadClient(['profile-dialogs.js', 'avatar.tsx'], { react, call })
 
-test('the role dialog creates and updates the lead switch without adding identity text', async () => {
+test('the role dialog creates and updates the lead choice without adding identity text', async () => {
   for (const profile of [null, { id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] }]) {
     const calls = []
-    const { ProfileDialog, host } = await loadProfileDialog({ call: async (endpoint, payload) => {
+    const { RoleEditor, host } = await loadRoleEditor({ call: async (endpoint, payload) => {
       calls.push({ endpoint, payload })
       return endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : { id: 'saved' }
     } })
     const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-    const render = () => { host.reset(); return nodes(ProfileDialog({ profile, onSaved() {} })) }
+    const render = () => { host.reset(); return nodes(RoleEditor({ profile, onSaved() {} })) }
     render()
     host.effects.splice(0).forEach(effect => effect())
     await new Promise(resolve => setImmediate(resolve))
-    const toggle = () => render().find(node => node.type === 'input' && node.props.role === 'switch' && node.props['aria-label'] === '主控')
-    assert.equal(toggle().props.checked, profile !== null)
-    toggle().props.onChange({ target: { checked: profile === null } })
+    const kind = label => render().find(node => node.type === 'button' && node.props.role === 'radio' && node.children.includes(label))
+    assert.equal(kind('主控').props['aria-checked'], profile !== null)
+    assert.equal(kind('执行角色').props['aria-checked'], profile === null)
+    kind(profile ? '执行角色' : '主控').props.onClick()
     if (!profile) render().find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer')
       .props.onChange({ target: { value: 'New lead' } })
     await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
@@ -787,12 +788,12 @@ test('the role dialog creates and updates the lead switch without adding identit
   }
 })
 
-test('role avatar selection and animation preview submit the selected template', async () => {
+test('the header avatar opens the template grid and submits the selected template', async () => {
   const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, saved
-  const { ProfileDialog, RoleAvatar } = await loadProfileDialog({
+  const { RoleEditor, RoleAvatar } = await loadRoleEditor({
     react: {
       useState(initial) {
         const index = cursor++
@@ -808,22 +809,25 @@ test('role avatar selection and animation preview submit the selected template',
     },
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(ProfileDialog({ avatarSeed: 2, onSaved: item => { saved = item } })) }
-  const card = () => render().find(node => node.type === RoleAvatar && node.props.size === 72)
-  assert.equal(card().props.profile.avatarTemplate, templates[2].id, 'a new role previews the dango its creation order assigns')
+  const render = () => { cursor = 0; return nodes(RoleEditor({ avatarSeed: 2, onSaved: item => { saved = item } })) }
+  const card = () => render().find(node => node.type === RoleAvatar && node.props.size === 32)
+  const trigger = () => render().find(node => node.props?.['aria-label'] === '更换头像')
+  assert.equal(card().props.profile.avatarTemplate, templates[2].id, 'a new role shows the dango its creation order assigns')
   mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
   render().find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer').props.onChange({ target: { value: 'Cute coder' } })
-  assert.ok(render().some(node => node.type === 'strong' && node.children.join('') === 'Cute coder'), 'the preview card follows the name')
+  assert.ok(render().some(node => node.type === 'h2' && node.children.join('') === 'Cute coder'), 'the header follows the name')
   const choices = () => render().filter(node => node.props.className === 'nodo-avatar-option')
-  assert.equal(choices().length, templates.length, 'every template stays in view beside the preview card')
+  assert.equal(choices().length, 0, 'the grid stays closed until the avatar is clicked')
   for (const template of templates) {
+    trigger().props.onClick()
+    assert.equal(trigger().props['aria-expanded'], true)
+    assert.equal(choices().length, templates.length)
     choices().find(node => node.children.includes(template.label)).props.onClick()
-    assert.equal(choices().filter(node => node.props['aria-pressed']).length, 1)
-    assert.ok(choices().find(node => node.children.includes(template.label)).props['aria-pressed'])
+    assert.equal(choices().length, 0, 'a pick closes the grid')
     assert.equal(card().props.profile.avatarTemplate, template.id)
   }
-  render().find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } })
-  assert.equal(card().props.running, true)
+  trigger().props.onClick()
+  assert.equal(choices().filter(node => node.props['aria-pressed']).length, 1)
   await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
   assert.equal(requests.at(-1).endpoint, 'profile-create')
   assert.equal(saved.avatarTemplate, templates.at(-1).id)
@@ -933,7 +937,7 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   toggle(render()).props.onClick()
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'folding again hides the tail')
   const views = tree.find(node => node.props?.className === 'nodo-rail-switch')
-  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['Workflow', false]], 'the dock switch replaces the logo and the workflow entry')
+  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['Workflow', false], ['角色', false]], 'the dock switch replaces the logo and the workflow entry')
   const search = () => tree.find(node => node.type === 'Input')
   const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'search'))
   assert.equal(search(), undefined, 'search waits in the project menu')
@@ -1219,7 +1223,7 @@ test('the composer menu cards take the native card geometry', () => {
 test('the role dialog offers the model and thinking defaults and saves them', async () => {
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
-  const { ProfileDialog, Field } = await loadProfileDialog({
+  const { RoleEditor, Field } = await loadRoleEditor({
     react: {
       useState(initial) {
         const index = cursor++
@@ -1239,12 +1243,12 @@ test('the role dialog offers the model and thinking defaults and saves them', as
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
   const profile = { id: 'coder', name: 'Coder', engine: 'zcode', model: 'glm-x', thinking: 'high', sessions: [] }
-  const render = held => { cursor = 0; return nodes(ProfileDialog({ profile: held, onSaved: () => {} })) }
+  const render = held => { cursor = 0; return nodes(RoleEditor({ profile: held, onSaved: () => {} })) }
   const field = (held, label) => render(held).filter(node => node.type === Field).find(node => node.props.label === label)
   const select = (held, label) => field(held, label).children.filter(Boolean).find(node => node.type === 'select')
   render(profile); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(render(profile).filter(node => node.type === Field).map(node => node.props.label),
-    ['头像模板', '名字', '身份', '身份信息', '主控', '调用 Agent', '模型', '思考档位'], 'the avatar leads, the identity pair follows, the run defaults close the card')
+    ['名字', '职责概述', '身份信息', 'Agent', '模型', '思考档位', '任务类型', '可接难题'], 'the identity tab leads, the run defaults and assignment follow')
   assert.deepEqual(render(profile).filter(node => node.type === 'select').map(node => node.props.value), ['zcode', 'glm-x', 'high'],
     'the card shows the pair it already carries')
   assert.deepEqual(select(profile, '模型').children.filter(Boolean).map(option => [option.type, option.props.label]),
@@ -1265,7 +1269,7 @@ test('the role dialog offers the model and thinking defaults and saves them', as
   assert.deepEqual(['模型', '思考档位'].map(label => select(undefined, label).props.value), ['glm-x', ''],
     'an unset pair reads the model default and follows it')
   // Another engine owns another model table: the switch restarts the pair.
-  select(undefined, '调用 Agent').props.onChange({ target: { value: 'mock' } })
+  select(undefined, 'Agent').props.onChange({ target: { value: 'mock' } })
   assert.deepEqual(['模型', '思考档位'].map(label => select(undefined, label).props.value), ['mock-a', ''],
     'an engine switch restarts the pair on the next engine\'s own table')
   select(undefined, '思考档位').props.onChange({ target: { value: 'mid' } })
@@ -1279,13 +1283,13 @@ test('the role dialog offers the model and thinking defaults and saves them', as
     'a new role records the held pair; an empty level means the model default')
 })
 
-// The identity picker is the preset list plus one way out of it: a preset fills
-// the card's 身份 and 身份信息, and "+ 身份" hands the fields back to the user.
-test('the identity picker fills a preset identity and leaves "+ 身份" its own text', async () => {
+// A template fills 职责概述 and 身份信息 in one click and can be taken back;
+// the card stays pressed only while the text still matches it.
+test('a template card fills the identity fields and 撤销 restores the previous text', async () => {
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false
-  const { ProfileDialog } = await loadProfileDialog({
+  const { RoleEditor } = await loadRoleEditor({
     react: {
       useState(initial) {
         const index = cursor++
@@ -1301,29 +1305,35 @@ test('the identity picker fills a preset identity and leaves "+ 身份" its own 
     },
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(ProfileDialog({ onSaved: () => {} })) }
+  const render = () => { cursor = 0; return nodes(RoleEditor({ onSaved: () => {} })) }
   render(); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
-  const options = () => render().filter(node => node.props.className === 'nodo-identity-option')
-  const pick = label => options().find(node => node.children.join('') === label).props.onClick()
-  const pressed = () => options().filter(node => node.props['aria-pressed']).map(node => node.children.join(''))
-  const summary = () => render().find(node => node.props.className === 'nodo-identity-summary')?.children.find(node => node?.type === 'p')
-  const roleInput = () => render().find(node => node.type === 'input' && node.props['aria-label'] === '职责概述')
+  const cards = () => render().filter(node => node.props.className === 'nodo-template-pick')
+  const nameOf = card => card.children.find(child => child?.props?.className === 'nodo-template-name').children.join('')
+  const pick = name => cards().find(card => nameOf(card) === name).props.onClick()
+  const pressed = () => cards().filter(card => card.props['aria-pressed']).map(nameOf)
+  const roleInput = () => render().find(node => node.type === 'input' && node.props.placeholder === '一句话说明这个角色做什么')
   const instructions = () => render().find(node => node.type === 'textarea').props.value
-  assert.deepEqual(options().map(node => node.children.join('')), [...presets.map(item => item.name), '+ 自定义'],
-    'the picker offers the three presets and the way out')
-  assert.deepEqual(pressed(), ['+ 自定义'], 'a new role starts on its own identity')
-  const coder = presets.find(item => item.name === 'coder')
+  const filled = () => render().find(node => node.props.className === 'nodo-template-filled')
+  assert.deepEqual(cards().map(nameOf), presets.map(item => item.name), 'the row offers the built-in templates')
+  assert.deepEqual(pressed(), [], 'a new role starts on its own text')
+  const [coder, decider] = ['coder', 'decider'].map(name => presets.find(item => item.name === name))
   pick('coder')
   assert.deepEqual(pressed(), ['coder'])
-  assert.equal(roleInput(), undefined, 'a preset owns the one-line identity itself')
-  assert.equal(summary().children.join(''), coder.role)
+  assert.equal(roleInput().props.value, coder.role)
   assert.equal(instructions(), coder.instructions)
-  pick('+ 自定义')
-  assert.equal(roleInput().props.value, '', '"+ 自定义" starts from an empty identity')
+  assert.equal(filled().children.filter(item => typeof item === 'string').join(''), '已用「coder」填写职责概述和身份信息')
+  filled().children.find(item => item?.type === 'button').props.onClick()
+  assert.equal(roleInput().props.value, '', '撤销 restores the text the template replaced')
   assert.equal(instructions(), '')
+  assert.equal(filled(), undefined)
+  pick('coder')
   pick('decider')
-  const decider = presets.find(item => item.name === 'decider')
-  assert.equal(summary().children.join(''), decider.role, 'picking a preset again refills it')
+  filled().children.find(item => item?.type === 'button').props.onClick()
+  assert.equal(roleInput().props.value, coder.role, 'a second fill takes back to the first template')
+  roleInput().props.onChange({ target: { value: `${coder.role}，并补测试` } })
+  assert.deepEqual(pressed(), [], 'an edit leaves the template')
+  assert.equal(filled(), undefined)
+  pick('decider')
   render().find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer')
     .props.onChange({ target: { value: 'Decider' } })
   await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
@@ -1331,17 +1341,17 @@ test('the identity picker fills a preset identity and leaves "+ 身份" its own 
   assert.equal(sent.endpoint, 'profile-create')
   assert.equal(sent.payload.role, decider.role)
   assert.equal(sent.payload.instructions, decider.instructions)
-  assert.equal(Object.hasOwn(sent.payload, 'identity'), false, 'the picker state stays in the dialog')
+  assert.equal(Object.hasOwn(sent.payload, 'identity'), false, 'the template choice stays in the editor')
+  assert.equal(Object.hasOwn(sent.payload, 'goal'), false, 'the editor no longer owns the goal')
 })
 
-// A customized identity can be filed beside the presets and is offered again to
-// every later new role; the entry rides prefs, so deleting roles keeps it, and
-// the entry itself is deletable from the picker that selected it.
-test('the identity picker saves a customized identity and deletes the entry again', async () => {
+// Customized text can be saved as a template that every later role is offered;
+// the entry rides prefs, and its own card can delete it again.
+test('the editor saves the current identity as a template and deletes it from its card', async () => {
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = [], requests = []
   let cursor = 0, mounted = false, refreshes = 0, savedEntries = []
-  const { ProfileDialog, IdentityDeleteDialog } = await loadProfileDialog({
+  const { RoleEditor, IdentityDeleteDialog } = await loadRoleEditor({
     react: {
       useState(initial) {
         const index = cursor++
@@ -1357,72 +1367,69 @@ test('the identity picker saves a customized identity and deletes the entry agai
     },
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(ProfileDialog({
+  const render = () => { cursor = 0; return nodes(RoleEditor({
     savedIdentities: savedEntries, refresh: force => { refreshes += force === true ? 1 : 0 }, onSaved: () => {},
   })) }
-  const options = () => render().filter(node => node.props.className === 'nodo-identity-option')
-  const pick = label => options().find(node => node.children.join('') === label).props.onClick()
-  const pressed = () => options().filter(node => node.props['aria-pressed']).map(node => node.children.join(''))
-  const input = label => render().find(node => node.type === 'input' && node.props['aria-label'] === label)
-  const textarea = () => render().find(node => node.type === 'textarea')
-  const button = text => render().find(node => node.type === 'Button' && node.children.join('') === text)
+  const cards = () => render().filter(node => node.props.className === 'nodo-template')
+  const nameOf = card => nodes(card).find(child => child.props?.className === 'nodo-template-name').children.join('')
+  const saveTrigger = () => render().find(node => node.type === 'button' && node.children.join('') === '存为模板')
+  const saveRow = () => render().find(node => node.props.className === 'nodo-identity-save')
+  const rowButton = text => saveRow().children.find(node => node?.type === 'Button' && node.children.join('') === text)
+  const nameInput = () => render().find(node => node.type === 'input' && node.props['aria-label'] === '模板名称')
+  const roleInput = () => render().find(node => node.type === 'input' && node.props.placeholder === '一句话说明这个角色做什么')
   // The fake h leaves nested function components uninvoked; opening one means
   // calling it with the props the parent handed it.
-  const dialog = title => {
+  const dialog = () => {
     const owned = render().find(node => node.type === IdentityDeleteDialog)
-    if (!owned) return undefined
-    const modal = owned.type(owned.props)
-    return modal.props.title === title ? modal : undefined
+    return owned && owned.type(owned.props)
   }
   render(); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
-  assert.equal(button('存为身份配置'), undefined, 'an empty identity offers nothing to save')
+  assert.equal(saveTrigger().props.disabled, true, 'an empty identity offers nothing to save')
   const baseStates = states.length
   const role = '独立审查实现与风险', instructions = '你是审查员。'
-  input('职责概述').props.onChange({ target: { value: role } })
-  textarea().props.onChange({ target: { value: instructions } })
-  button('存为身份配置').props.onClick()
-  assert.ok(input('配置名称'), 'saving opens an inline naming row')
-  assert.equal(button('存为身份配置'), undefined, 'the open row replaces its trigger')
-  button('保存配置').props.onClick()
+  roleInput().props.onChange({ target: { value: role } })
+  render().find(node => node.type === 'textarea').props.onChange({ target: { value: instructions } })
+  saveTrigger().props.onClick()
+  assert.ok(nameInput(), 'saving opens an inline naming row')
+  assert.equal(saveTrigger().props.disabled, true, 'the open row parks its trigger')
+  rowButton('保存').props.onClick()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(requests.some(item => item.endpoint === 'role-preset-save'), false, 'an empty name saves nothing')
-  input('配置名称').props.onChange({ target: { value: '审查员' } })
-  button('保存配置').props.onClick()
+  nameInput().props.onChange({ target: { value: '审查员' } })
+  rowButton('保存').props.onClick()
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(requests.at(-1), { endpoint: 'role-preset-save', payload: { name: '审查员', role, instructions } })
-  assert.equal(refreshes, 1, 'a saved identity refreshes the polled view')
-  assert.equal(input('配置名称'), undefined, 'the naming row closes once saved')
+  assert.equal(refreshes, 1, 'a saved template refreshes the polled view')
+  assert.equal(nameInput(), undefined, 'the naming row closes once saved')
   savedEntries = [{ name: '审查员', role, instructions, createdAt: 1 }]
-  assert.deepEqual(pressed(), ['审查员'], 'the picker moves onto the saved entry')
-  assert.deepEqual(options().map(node => node.children.join('')), [...presets.map(item => item.name), '审查员', '+ 自定义'])
-  assert.equal(options().find(node => node.children.join('') === '审查员').props['data-saved'], 'true')
-  assert.equal(button('存为身份配置'), undefined, 'a known identity offers no second copy')
-  pick('+ 自定义')
-  pick('审查员')
-  assert.equal(render().find(node => node.props.className === 'nodo-identity-summary').children.find(node => node?.type === 'p').children.join(''),
-    role, 'picking the saved entry refills the identity')
-  assert.equal(textarea().props.value, instructions)
+  assert.deepEqual(cards().map(nameOf), [...presets.map(item => item.name), '审查员'], 'saved templates follow the built-in ones')
+  const own = cards().find(card => nameOf(card) === '审查员')
+  assert.equal(own.props['data-saved'], 'true')
+  assert.equal(nodes(own).find(node => node.props?.className === 'nodo-template-pick').props['aria-pressed'], true)
+  assert.equal(cards().filter(card => nodes(card).some(node => node.props?.className === 'nodo-template-remove')).length, 1,
+    'only a saved template can be deleted')
+  assert.equal(saveTrigger().props.disabled, true, 'a known identity offers no second copy')
   states.length = baseStates // the fake store shares one slot array across the two dialogs
-  button('删除此配置').props.onClick()
-  assert.ok(dialog('删除身份配置'))
-  dialog('删除身份配置').props.footer.find(item => item.children.join('') === '删除配置').props.onClick()
+  render().find(node => node.props?.['aria-label'] === '删除模板 审查员').props.onClick()
+  assert.equal(dialog().props.title, '删除模板')
+  assert.equal(dialog().props.description, '将删除模板“审查员”。用它填写的角色不受影响。')
+  dialog().props.footer.find(item => item.children.join('') === '删除模板').props.onClick()
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(requests.at(-1), { endpoint: 'role-preset-delete', payload: { name: '审查员' } })
-  assert.equal(refreshes, 2, 'a deleted entry refreshes the polled view too')
-  assert.deepEqual(pressed(), ['+ 自定义'], 'the dialog falls back to its own identity')
-  assert.equal(input('职责概述').props.value, role, 'the identity text survives the entry')
+  assert.equal(refreshes, 2, 'a deleted template refreshes the polled view too')
   savedEntries = []
-  assert.equal(button('删除此配置'), undefined)
-  assert.deepEqual(options().map(node => node.children.join('')), [...presets.map(item => item.name), '+ 自定义'])
+  assert.equal(dialog(), undefined)
+  assert.deepEqual(cards().map(nameOf), presets.map(item => item.name))
+  assert.equal(roleInput().props.value, role, 'the identity text survives the template')
 })
 
 // Editing a role keeps its engine, says when an identity change lands, and
-// confirms deletion in the dialog's own footer before handing it to the page.
-test('the role dialog edits an existing role and confirms its deletion inline', async () => {
+// confirms deletion inline before handing it to the page.
+test('the role editor edits an existing role and confirms its deletion inline', async () => {
   const presets = JSON.parse(readFileSync(new URL('../core/shared/role-presets.json', import.meta.url), 'utf8'))
   const states = [], effects = []
   let cursor = 0, mounted = false, deleted
-  const { ProfileDialog } = await loadProfileDialog({
+  const { RoleEditor } = await loadRoleEditor({
     react: {
       useState(initial) {
         const index = cursor++
@@ -1437,31 +1444,39 @@ test('the role dialog edits an existing role and confirms its deletion inline', 
   const reviewer = presets.find(item => item.name === 'reviewer')
   const profile = { id: 'rev', name: 'Reviewer', engine: 'echo', role: reviewer.role, instructions: reviewer.instructions,
     sessions: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
-  const render = () => { cursor = 0; return nodes(ProfileDialog({ profile, onSaved() {}, onCancel() {}, onDeleted: async item => { deleted = item } })) }
-  const modal = () => render().find(node => node.type === 'Modal')
-  const footer = () => modal().props.footer.filter(Boolean)
-  const footerButton = text => footer().find(node => node.type === 'Button' && node.children.join('') === text)
+  const render = () => { cursor = 0; return nodes(RoleEditor({ profile, onSaved() {}, onCancel() {}, onDeleted: async item => { deleted = item } })) }
+  const actions = () => render().find(node => node.props.className === 'nodo-role-actions').children.filter(Boolean)
+  const action = text => actions().find(node => node.type === 'Button' && node.children.join('') === text)
+  const confirmRow = () => render().find(node => node.props.className === 'nodo-role-confirm-row')
   const text = className => render().find(node => node.props.className === className)?.children.join('')
+  const tabs = () => render().filter(node => node.props.role === 'tab')
+  const pressed = () => render().filter(node => node.props.className === 'nodo-template-pick' && node.props['aria-pressed'])
   render(); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
-  assert.equal(modal().props.title, '配置角色')
-  assert.equal(render().find(node => node.type === 'select').props.disabled, true, 'the engine is fixed once created')
-  assert.ok(render().some(node => node.props.className === 'nodo-dialog-hint' && node.children.join('') === '创建后不可更换'))
-  assert.ok(render().some(node => node.props.className === 'nodo-dialog-hint' && node.children.join('') === '3 个会话正在使用此角色 · 身份修改将于下轮生效'),
-    'an untouched identity keeps the timing note quiet')
-  assert.equal(text('nodo-role-notice'), undefined)
-  assert.equal(text('nodo-role-card-tag'), 'reviewer')
+  assert.equal(render().find(node => node.type === 'form').props['aria-label'], '配置角色')
+  assert.equal(render().find(node => node.type === 'h2').children.join(''), 'Reviewer')
+  assert.equal(render().find(node => node.props.className === 'nodo-role-head-copy').children.find(node => node?.type === 'p').children.join(''),
+    'Echo，3 个会话')
+  assert.deepEqual(tabs().map(node => node.children.filter(item => typeof item === 'string').join('')), ['身份', '运行', '承接任务'])
+  assert.deepEqual(tabs().filter(node => node.props['aria-selected']).map(node => node.props.id), ['nodo-role-tab-assign'],
+    'a role that already has its identity opens on its assignment')
+  const select = render().find(node => node.type === 'select')
+  assert.equal(select.props.disabled, true, 'the engine is fixed once created')
+  assert.equal(select.props.title, '创建后不能更换 Agent')
+  assert.equal(text('nodo-role-notice'), undefined, 'an untouched identity keeps the timing note quiet')
+  assert.equal(pressed().length, 1)
   render().find(node => node.type === 'textarea').props.onChange({ target: { value: `${reviewer.instructions}\n- 关注前端交互。` } })
   assert.equal(text('nodo-role-notice'), '身份已修改，保存后将于下轮生效 · 影响 3 个会话', 'an edited identity raises the note')
-  assert.equal(text('nodo-role-card-tag'), 'reviewer · 已修改')
-  footerButton('删除角色').props.onClick()
-  assert.equal(text('nodo-role-confirm'), undefined, 'the confirmation lives in the footer, not the form')
-  assert.equal(footer().find(node => node.props.className === 'nodo-role-confirm').children.join(''),
-    '将把“Reviewer”及其 3 个插件内会话记录移除。项目目录和文件会保留。')
-  footerButton('取消').props.onClick()
-  assert.ok(footerButton('保存角色'), 'cancelling restores the regular footer')
+  assert.equal(pressed().length, 0, 'the edited text no longer matches its template')
+  assert.ok(action('保存') && action('取消'))
+  const menu = () => actions().find(node => node.type === 'Menu')
+  assert.deepEqual([...menu().props.items].map(item => item.label), ['删除角色'])
+  menu().props.onSelect('delete')
+  assert.equal(text('nodo-role-confirm'), '将把“Reviewer”及其 3 个插件内会话记录移除。项目目录和文件会保留。')
+  confirmRow().children.find(node => node?.type === 'Button' && node.children.join('') === '取消').props.onClick()
+  assert.equal(confirmRow(), undefined, 'cancelling closes the confirmation')
   assert.equal(deleted, undefined)
-  footerButton('删除角色').props.onClick()
-  footerButton('删除角色').props.onClick()
+  menu().props.onSelect('delete')
+  confirmRow().children.find(node => node?.type === 'Button' && node.children.join('') === '删除角色').props.onClick()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(deleted, profile, 'the confirmed deletion goes to the page')
 })
@@ -2092,8 +2107,9 @@ test('the run view lists each step and offers only what the run allows a person 
 })
 
 test('the rail opens the workflow page and marks runs a person must look at', () => {
-  assert.match(clientSource('page.js'), /onWorkflows: \(\) => layoutService\?\.selectPanel\('nodo-workflow'\), runsWaiting: \(view\.runs \?\? \[\]\)\.some\(needsPerson\)/)
+  assert.match(clientSource('page.js'), /onWorkflows: \(\) => rolesGuard\(\(\) => layoutService\?\.selectPanel\('nodo-workflow'\)\), runsWaiting: \(view\.runs \?\? \[\]\)\.some\(needsPerson\)/)
   assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-workflow' \}, WorkflowEntry\)/)
+  assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-roles' \}, RolesEntry\)/)
   assert.match(clientSource('ui-shared.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats, runs: answer\.runs/, 'an unchanged state answer still carries the run summaries')
 })
 
@@ -2102,20 +2118,924 @@ test('the original Nodo rail hosts workflow navigation under its header switch',
   setHostServices({ layoutService: { selectPanel() {} } })
   const navigation = { type: 'navigation', props: {}, children: ['工作流列表'] }
   const calls = []
-  const tree = Rail({ view: { profiles: [], workspaces: [] }, workflowNavigation: navigation, onBack: () => calls.push('back'), onSessions: () => calls.push('sessions'), onWorkflows: () => calls.push('workflows') })
+  const tree = Rail({ view: { profiles: [], workspaces: [] }, navigation: { view: 'workflow', content: navigation }, onBack: () => calls.push('back'), onSessions: () => calls.push('sessions'), onWorkflows: () => calls.push('workflows'), onRoles: () => calls.push('roles') })
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   assert.equal(tree.props['aria-label'], '工作流导航')
   assert.ok(nodes(tree).includes(navigation))
   assert.equal(nodes(tree).some(node => node.type === NodoLogo), false, 'the header carries no logo')
-  const [sessions, workflows] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
-  assert.equal(workflows.props['aria-pressed'], true)
+  const [sessions, workflows, roles] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
+  assert.deepEqual([sessions.props['aria-pressed'], workflows.props['aria-pressed'], roles.props['aria-pressed']], [false, true, false])
   assert.equal(workflows.props.onClick, undefined, 'the current view is not a link to itself')
   sessions.props.onClick()
+  roles.props.onClick()
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-roster'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-rail-search'), false)
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-workflow-entry'), false, 'the workflow page needs no entry to itself')
   const back = nodes(tree).find(node => node.type === 'Tooltip' && node.props.label === '返回普通空间').children[0]
   assert.equal(back.props.disabled, false)
   back.props.onClick()
-  assert.deepEqual(calls, ['sessions', 'back'])
+  assert.deepEqual(calls, ['sessions', 'roles', 'back'])
+})
+
+test('the rail marks the roles view pressed and shows its published body', async () => {
+  const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
+  const content = { type: 'nav', props: {}, children: ['角色列表'] }
+  const calls = []
+  const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
+  const render = navigation => Rail({ view: { profiles: [], workspaces: [] }, navigation,
+    onSessions: () => calls.push('sessions'), onWorkflows: () => calls.push('workflows'), onRoles: () => calls.push('roles') })
+  const tree = render({ view: 'roles', content })
+  assert.equal(tree.props['aria-label'], '角色导航')
+  assert.ok(nodes(tree).includes(content))
+  const [sessions, workflows, roles] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
+  assert.deepEqual([sessions.props['aria-pressed'], workflows.props['aria-pressed'], roles.props['aria-pressed']], [false, false, true])
+  assert.equal(roles.props.onClick, undefined, 'the current view is not a link to itself')
+  sessions.props.onClick()
+  assert.deepEqual(calls, ['sessions'])
+  const plain = render(null)
+  assert.equal(plain.props['aria-label'], '角色与项目会话')
+  const [idle] = nodes(plain).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
+  assert.equal(idle.props['aria-pressed'], true)
+  assert.ok(nodes(plain).some(node => node.props.className === 'nodo-roster'), 'without a published view the roster returns')
+})
+
+// The roles page is the single place roles are configured. The rail body lists
+// the roster with drag and menu ordering; the main area edits the picked role
+// or the task-type catalog; switching with unsaved edits asks first.
+const loadRolesPage = async options => loadClient(['roles.tsx', 'profile-dialogs.js', 'avatar.tsx'], options)
+
+const rolesReact = (states, pendingEffects) => ({
+  useState(initial) {
+    const at = cursor++
+    if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
+    return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
+  },
+  useRef(initial) { const at = cursor++; return states[at] ??= { current: initial } },
+  useEffect(effect) { pendingEffects.push(effect) },
+})
+let cursor = 0
+
+test('the assignment tab hides for a lead and saves task types and hard settings', async () => {
+  const states = [], effects = [], requests = [], dirty = []
+  const { RoleEditor, Field } = await loadRoleEditor({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { effects.push(effect) },
+    },
+    call: async (endpoint, payload) => {
+      requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      if (endpoint === 'engine-catalog') return [{ id: 'echo', label: 'Echo', catalog: { defaultModel: 'm1', source: 'mock', models: [
+        { id: 'm1', label: 'M1', defaultThinking: 'high', thinking: [{ id: 'high', label: 'High' }, { id: 'low', label: 'Low' }] },
+        { id: 'm2', label: 'M2', thinking: [] }] } }]
+      return { id: 'saved', ...payload }
+    },
+  })
+  const taskTypes = [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '' }]
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const flush = async () => { for (let round = 0; round < 5; round++) await tick() }
+  let current, roster = null
+  const editor = () => RoleEditor({ profile: current, taskTypes, roster, onSaved() {}, onDirtyChange: value => dirty.push(value) })
+  const start = async profile => {
+    states.length = 0; effects.length = 0; cursor = 0
+    current = profile ?? null
+    nodes(editor())
+    effects.splice(0).forEach(effect => effect()); await flush()
+  }
+  const render = () => { cursor = 0; return nodes(editor()) }
+  const fields = () => render().filter(node => node.type === Field).map(node => node.props.label)
+  const field = label => render().filter(node => node.type === Field).find(node => node.props.label === label)
+  const select = label => field(label).children.filter(Boolean).find(node => node.type === 'select')
+  const typeOptions = () => nodes(render().find(node => node.props?.id === 'nodo-role-panel-assign')).filter(node => node.props?.className === 'nodo-identity-option')
+  const switchInput = label => render().find(node => node.type === 'input' && node.props.role === 'switch' && node.props['aria-label'] === label)
+  const kind = label => render().find(node => node.props.role === 'radio' && node.children.includes(label))
+  const tabs = () => render().filter(node => node.props.role === 'tab').map(node => node.children.filter(item => typeof item === 'string').join(''))
+  const submit = async () => { await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await flush() }
+  const sent = () => requests.at(-1).payload
+
+  await start({ id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] })
+  assert.deepEqual(tabs(), ['身份', '运行'], 'a lead delegates; it has no assignment tab')
+  assert.equal(fields().includes('任务类型'), false)
+  kind('执行角色').props.onClick()
+  assert.deepEqual(tabs(), ['身份', '运行', '承接任务'], 'turning into an executor brings the assignment tab')
+  typeOptions().find(node => node.children.join('') === '文档').props.onClick()
+  typeOptions().find(node => node.children.join('') === '审查').props.onClick()
+  render(); effects.splice(0).forEach(effect => effect()); await flush()
+  assert.equal(dirty.at(-1), true, 'edits reach the page through onDirtyChange')
+  switchInput('可接难题').props.onChange({ target: { checked: true } })
+  await submit()
+  assert.deepEqual(sent().changes.taskTypes, ['docs', 'review'])
+  assert.deepEqual(sent().changes.hard, {}, 'hard on with no picks saves the empty card settings')
+  assert.equal(Object.hasOwn(sent().changes, 'goal'), false, 'the goal is left to core')
+
+  await start({ id: 'w', name: 'Worker', engine: 'echo', taskTypes: ['docs'], hard: {}, sessions: [] })
+  assert.deepEqual(typeOptions().filter(node => node.props['aria-pressed']).map(node => node.children.join('')), ['文档'])
+  assert.equal(switchInput('可接难题').props.checked, true)
+  select('难题模型').props.onChange({ target: { value: 'm1' } })
+  assert.equal(select('难题思考档位').props.value, '', 'the level list follows the hard model and starts unset')
+  select('难题思考档位').props.onChange({ target: { value: 'high' } })
+  await submit()
+  assert.deepEqual(sent().changes.hard, { model: 'm1', thinking: 'high' })
+
+  await start({ id: 'w', name: 'Worker', engine: 'echo', taskTypes: ['docs'], hard: { model: 'm1', thinking: 'high' }, sessions: [] })
+  assert.equal(select('难题思考档位').props.value, 'high')
+  select('难题模型').props.onChange({ target: { value: 'm2' } })
+  assert.equal(field('难题思考档位'), undefined, 'a hard model without levels drops the level select')
+  select('难题模型').props.onChange({ target: { value: '' } })
+  await submit()
+  assert.deepEqual(sent().changes.hard, {}, '回到同角色设置 saves the empty object again')
+
+  await start({ id: 'w', name: 'Worker', engine: 'echo', hard: { model: 'm1', thinking: 'high' }, sessions: [] })
+  switchInput('可接难题').props.onChange({ target: { checked: false } })
+  assert.equal(field('难题模型'), undefined, 'with the switch off only the switch row stays')
+  await submit()
+  assert.equal(sent().changes.hard, null, 'hard off saves null so the core drops the key')
+
+  // The live result runs the core rule over the roster with the draft in place
+  // of the saved card; turning the card into a lead lists who takes over.
+  const self = { id: 'a', name: '甲', engine: 'echo', instructions: '写代码', taskTypes: ['docs', 'review'], hard: {}, sessions: [] }
+  roster = [{ id: 'lead', name: 'Lead', lead: true }, self,
+    { id: 'b', name: '乙', taskTypes: ['docs'] }, { id: 'c', name: '丙', taskTypes: ['review'], hard: {} }]
+  await start(self)
+  const reach = () => render().find(node => node.props.className === 'nodo-role-reach')
+  const reachRows = () => nodes(reach()).filter(node => node.props?.className === 'nodo-role-reach-row').map(row => nodes(row)
+    .filter(node => ['nodo-role-reach-name', 'nodo-role-reach-win', 'nodo-role-reach-note'].includes(node.props?.className)).map(node => node.children.join('')))
+  assert.equal(nodes(reach()).find(node => node.props?.className === 'nodo-role-reach-title').children.join(''), '排在第 1 位，按现在的设置会接到')
+  assert.deepEqual(reachRows(), [['文档', '难题', '常规交给乙'], ['审查', '常规', '难题']])
+  typeOptions().find(node => node.children.join('') === '文档').props.onClick()
+  typeOptions().find(node => node.children.join('') === '审查').props.onClick()
+  assert.equal(nodes(reach()).find(node => node.props?.className === 'nodo-role-reach-empty').children.join(''), '还没有勾选任务类型')
+  await start(self)
+  kind('主控').props.onClick()
+  assert.deepEqual(tabs(), ['身份', '运行'])
+  const note = render().find(node => node.props.className === 'nodo-role-lead-note')
+  assert.deepEqual(note.children.map(line => [line.children.join(''), line.props['data-warn'] ?? null]), [
+    ['主控负责拆分任务和派活，自己不再接任务', null],
+    ['文档的难题将无人承接', 'true'],
+    ['审查的常规任务改由丙接', null],
+    ['审查的难题改由丙接', null],
+  ])
+  await submit()
+  assert.equal(sent().changes.lead, true)
+  assert.equal(Object.hasOwn(sent().changes, 'taskTypes'), false, 'a lead saves no task types')
+  assert.equal(Object.hasOwn(sent().changes, 'hard'), false, 'nor hard settings')
+})
+
+test('the task type page keeps ids on saved rows, omits them on new rows, confirms removals in use inline and caps at twenty', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const calls = []
+  const view = {
+    profiles: [
+      { id: 'a', name: 'Writer', taskTypes: ['docs'], sessions: [] },
+      { id: 'b', name: 'Reviewer', taskTypes: ['docs', 'review'], sessions: [] },
+    ],
+    workspaces: [], work: {},
+    taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '代码评审' }, { id: 'ops', name: '运维', when: '' }],
+  }
+  const { TaskTypesEditor, RoleAvatar } = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => {
+      calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      if (endpoint !== 'task-types-update') return payload?.types ?? []
+      return payload.types.map(item => item.id !== undefined
+        ? { id: item.id, name: item.name, when: item.when }
+        : { id: `fresh:${item.name}`, name: item.name, when: item.when })
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const remount = () => { cursor = 0; states.length = 0; return all(TaskTypesEditor({ view, disabled: false, onDone: async () => {} })) }
+  const render = () => { cursor = 0; return all(TaskTypesEditor({ view, disabled: false, onDone: async () => {} })) }
+  const rows = () => render().filter(node => node.props?.className === 'nodo-type-row')
+  const nameInput = row => row.children.find(node => node.props['aria-label'] === '任务类型名称')
+  const names = () => rows().map(row => nameInput(row).props.value)
+  const button = label => render().find(node => node.type === 'Button' && node.children.includes(label))
+  const confirmRow = () => render().find(node => node.props?.className === 'nodo-type-confirm')
+  const remove = name => render().find(node => node.props?.['aria-label'] === `删除类型 ${name}`).props.onClick()
+
+  assert.deepEqual(remount().filter(node => node.props?.className === 'nodo-type-row').map(row => nameInput(row).props.value), ['文档', '审查', '运维'])
+  assert.equal(render().find(node => node.props?.className === 'nodo-types-count').children.join(''), '3 / 20')
+  const takers = row => row.children.find(node => node.props?.className === 'nodo-type-takers')
+  assert.deepEqual(rows().map(row => all(takers(row)).filter(node => node.type === RoleAvatar).map(node => node.props.profile.name)),
+    [['Writer', 'Reviewer'], ['Reviewer'], []])
+  assert.equal(all(takers(rows()[2])).find(node => node.props?.className === 'nodo-roles-miss').children.join(''), '无人承接')
+  assert.equal(button('保存'), undefined, 'a clean catalog shows no save bar')
+  button('添加类型').props.onClick()
+  assert.equal(rows().length, 4)
+  nameInput(rows()[3]).props.onChange({ target: { value: '新类型' } })
+  button('保存').props.onClick()
+  await tick(); await tick()
+  const saved = calls.at(-1)
+  assert.equal(saved.endpoint, 'task-types-update')
+  assert.deepEqual(saved.payload.types.map(item => [Object.hasOwn(item, 'id') ? item.id : null, item.name]),
+    [['docs', '文档'], ['review', '审查'], ['ops', '运维'], [null, '新类型']], 'saved rows keep their id, a new row carries no id key')
+
+  calls.length = 0
+  remount()
+  remove('运维')
+  assert.deepEqual(names(), ['文档', '审查'], 'a type nobody takes leaves at once')
+  assert.equal(confirmRow(), undefined)
+  remove('文档')
+  assert.equal(render().some(node => node.type === 'Modal'), false, 'a type in use confirms in its own row, not in a dialog')
+  assert.equal(confirmRow().children.find(node => node.type === 'span').children.join(''), '将从 Writer、Reviewer 上移除')
+  confirmRow().children.find(node => node.children.includes('取消')).props.onClick()
+  assert.equal(confirmRow(), undefined)
+  assert.deepEqual(names(), ['文档', '审查'], '取消 keeps the type')
+  remove('文档')
+  confirmRow().children.find(node => node.children.includes('删除')).props.onClick()
+  assert.deepEqual(names(), ['审查'])
+  button('放弃').props.onClick()
+  assert.deepEqual(names(), ['文档', '审查', '运维'], '放弃 restores the saved catalog')
+  assert.equal(button('保存'), undefined)
+  remove('文档')
+  confirmRow().children.find(node => node.children.includes('删除')).props.onClick()
+  button('保存').props.onClick()
+  await tick(); await tick()
+  assert.deepEqual(calls.at(-1).payload.types, [{ id: 'review', name: '审查', when: '代码评审' }, { id: 'ops', name: '运维', when: '' }])
+
+  // The page learns about unsaved catalog edits, and a saved draft adopts the
+  // ids core issued so it stops looking dirty instead of re-issuing them.
+  cursor = 0; states.length = 0; pending.length = 0
+  const reports = []
+  let savedTypes = null
+  view.taskTypes = [{ id: 'docs', name: '文档', when: '' }]
+  const live = () => { cursor = 0; const tree = all(TaskTypesEditor({ view, disabled: false,
+    onDone: async () => { view.taskTypes = savedTypes },
+    onDirtyChange: value => reports.push(value) }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  live()
+  assert.equal(reports.at(-1), false, 'a fresh catalog starts clean')
+  live().find(node => node.type === 'Button' && node.children.includes('添加类型')).props.onClick()
+  live().filter(node => node.props?.className === 'nodo-type-row').at(-1).children
+    .find(node => node.props['aria-label'] === '任务类型名称').props.onChange({ target: { value: '新增' } })
+  live()
+  assert.equal(reports.at(-1), true, 'catalog edits reach the page through onDirtyChange')
+  savedTypes = [{ id: 'docs', name: '文档', when: '' }, { id: 'fresh:新增', name: '新增', when: '' }]
+  live().find(node => node.type === 'Button' && node.children.includes('保存')).props.onClick()
+  await tick(); await tick(); await tick()
+  live()
+  assert.equal(reports.at(-1), false, 'the saved draft adopts the issued ids and turns clean')
+  assert.equal(live().find(node => node.type === 'Button' && node.children.includes('保存')), undefined, 'a saved catalog drops its save bar')
+
+  cursor = 0; states.length = 0
+  const capped = { ...view, taskTypes: Array.from({ length: 20 }, (_, index) => ({ id: `t${index}`, name: `类型${index}`, when: '' })) }
+  const capTree = all(TaskTypesEditor({ view: capped, disabled: false, onDone: async () => {} }))
+  assert.equal(capTree.find(node => node.type === 'Button' && node.children.includes('添加类型')).props.disabled, true, 'twenty types fill the catalog')
+})
+
+// The overview tree reaches into Menu anchors and items through props.
+const rolesTree = node => node && typeof node === 'object'
+  ? [node, ...[...(node.children ?? []), ...Object.values(node.props ?? {})].flatMap(rolesTree)] : []
+const rolesText = node => ['string', 'number'].includes(typeof node) ? String(node) : (node?.children ?? []).map(rolesText).join('')
+const tickAll = async () => { for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve)) }
+
+test('the executor table reorders through its menu and drag, keeping leads in their slots', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const calls = []
+  const view = {
+    profiles: [
+      { id: 'a', name: '大肥鱼', engine: 'echo', taskTypes: ['docs'], sessions: [{ id: 'sa' }] },
+      { id: 'lead', name: '决策者', engine: 'echo', lead: true, role: '拆分任务', model: 'opus', sessions: [] },
+      { id: 'b', name: '贼 coder', engine: 'echo', taskTypes: ['docs'], sessions: [] },
+      { id: 'c', name: 'Reviewer', engine: 'echo', hard: {}, sessions: [] },
+    ],
+    workspaces: [], work: {}, taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'ops', name: '运维', when: '' }],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => { calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) }); return [] },
+  })
+  let tree
+  const render = () => { cursor = 0; tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} })); pending.splice(0).forEach(effect => effect()); return tree }
+  const rows = () => render().filter(node => node.props?.className === 'nodo-roles-row')
+  const rowName = row => rolesText(row.children.find(node => node.props?.className === 'nodo-roles-who-cell')
+    .children.find(node => node.props?.className === 'nodo-roles-copy').children[0])
+  const cell = (row, className) => row.children.find(node => node.props?.className === className)
+  const anchor = name => render().find(node => node.props?.['aria-label'] === `更多操作 ${name}`)
+  const openMenu = () => tree.find(node => node.type === 'Menu' && node.props.open)
+  const orders = () => calls.filter(item => item.endpoint === 'profile-order').map(item => item.payload.ids)
+
+  render()
+  assert.deepEqual(rows().map(rowName), ['大肥鱼', '贼 coder', 'Reviewer'], 'the table lists executors only, in roster order')
+  assert.deepEqual(rows().map(row => rolesText(cell(row, 'nodo-roles-takes'))), ['文档', '文档', '选择承接任务'])
+  assert.deepEqual(rows().map(row => rolesText(cell(row, 'nodo-roles-hard'))), ['', '', '可接'])
+  const leads = tree.filter(node => node.props?.className === 'nodo-roles-lead')
+  assert.equal(leads.length, 1)
+  assert.match(rolesText(leads[0]), /决策者主控拆分任务/)
+  const nav = rolesTree(loaded.rolesSidebarSnapshot().content).filter(node => node.props?.className === 'nodo-role-types')
+  assert.deepEqual(nav.map(node => [rolesText(node), node.props['aria-pressed']]), [['全部角色4', true], ['任务类型2', false]])
+
+  anchor('大肥鱼').props.onClick({ stopPropagation() {} })
+  render()
+  assert.deepEqual(Array.from(openMenu().props.items, item => `${item.id}:${item.disabled}`), ['up:true', 'down:false', 'edit:false', 'delete:false'],
+    'the first row cannot move up')
+  openMenu().props.onSelect('down')
+  await tickAll()
+  assert.deepEqual(orders().at(-1), ['b', 'lead', 'a', 'c'], 'moving down sends every id with the lead kept in its slot')
+  anchor('Reviewer').props.onClick({ stopPropagation() {} })
+  render()
+  openMenu().props.onSelect('up')
+  await tickAll()
+  assert.deepEqual(orders().at(-1), ['a', 'lead', 'c', 'b'])
+
+  rows()[0].props.onDragStart({ dataTransfer: {} })
+  assert.equal(rows()[0].props['data-dragging'], '')
+  rows()[2].props.onDragOver({ preventDefault() {} })
+  assert.equal(rows()[2].props['data-drop'], '', 'the hovered row marks itself as the drop target')
+  rows()[2].props.onDrop({ preventDefault() {} })
+  await tickAll()
+  assert.deepEqual(orders().at(-1), ['b', 'lead', 'c', 'a'], 'dropping onto a row reorders the same way')
+
+  view.work = { sa: { active: true } }
+  const [running] = rows()
+  assert.equal(cell(running, 'nodo-roles-who-cell').props.disabled, true, 'a running role cannot be edited')
+  assert.equal(running.props.draggable, false, 'a running role cannot be dragged')
+  anchor('大肥鱼').props.onClick({ stopPropagation() {} })
+  render()
+  assert.ok(openMenu().props.items.every(item => item.disabled === true), 'a running role cannot move or be removed')
+
+  view.work = {}
+  anchor('贼 coder').props.onClick({ stopPropagation() {} })
+  render()
+  openMenu().props.onSelect('edit')
+  const editor = render().find(node => node.type === loaded.RoleEditor)
+  assert.equal(editor.props.profile.id, 'b', '编辑 opens the role page')
+  assert.equal(rolesText(tree.find(node => node.props?.className === 'nodo-roles-crumbs')), '角色贼 coder')
+  assert.equal(rolesTree(loaded.rolesSidebarSnapshot().content).find(node => node.props?.className === 'nodo-role-types').props['aria-pressed'], true,
+    '全部角色 stays pressed while a role is open')
+  tree.find(node => node.props?.className === 'nodo-roles-crumbs').children[0].props.onClick()
+  assert.equal(render().find(node => node.type === loaded.RoleEditor), undefined, 'the crumb returns to the overview')
+})
+
+test('a rejected reorder resyncs the view and asks for a retry', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  let refreshes = 0
+  const view = {
+    profiles: [
+      { id: 'a', name: 'Writer', engine: 'echo', sessions: [] },
+      { id: 'b', name: 'Reviewer', engine: 'echo', sessions: [] },
+    ],
+    workspaces: [], work: {}, taskTypes: [],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => {
+      calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      if (endpoint === 'profile-order') throw new Error('profile-order needs every profile id exactly once')
+      return endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : {}
+    },
+    globals: { document: { querySelector: () => null } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => { refreshes++ } }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const rows = () => render().filter(node => node.props?.className === 'nodo-roles-row')
+
+  rows()[0].props.onDragStart({ dataTransfer: {} })
+  rows()[1].props.onDragOver({ preventDefault() {} })
+  rows()[1].props.onDrop({ preventDefault() {} })
+  await tickAll()
+  assert.ok(calls.some(item => item.endpoint === 'profile-order'), 'the reorder reached the core and was refused')
+  assert.equal(refreshes, 1, 'the view resyncs before the message shows')
+  assert.equal(render().find(node => node.props?.className === 'nodo-error-line')?.children[0], '角色列表已变化，请重试',
+    'the technical refusal becomes a retry hint')
+  assert.equal(rows().length, 2, 'the resynced roster still lists every role')
+})
+
+test('the inline new row creates a role from a name and an Agent only', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  const templates = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))
+  const view = {
+    profiles: [{ id: 'lead', name: '决策者', engine: 'echo', lead: true, sessions: [] }, { id: 'a', name: 'Writer', engine: 'echo', sessions: [] }],
+    workspaces: [], work: {}, taskTypes: [], prefs: { enabledEngines: ['codex', 'echo'] },
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => {
+      calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      return endpoint === 'engine-catalog' ? [{ id: 'mock', label: 'Mock' }, { id: 'echo', label: 'Echo CLI' }, { id: 'codex', label: 'Codex CLI' }] : { id: 'new' }
+    },
+    globals: { document: { querySelector: () => null } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const form = () => render().find(node => node.type === 'form' && node.props['aria-label'] === '添加角色')
+  const inForm = predicate => rolesTree(form()).find(predicate)
+  const nameInput = () => inForm(node => node.type === 'input')
+  const create = () => inForm(node => node.type === 'Button' && node.children.includes('创建'))
+  const modal = () => render().find(node => node.type === 'Modal')
+
+  assert.equal(form(), undefined, 'the row stays closed until 添加角色')
+  render().find(node => node.props?.className === 'nodo-roles-add').props.onClick()
+  render(); await tickAll()
+  assert.equal(form().props.className, 'nodo-roles-row nodo-roles-new')
+  assert.equal(rolesText(form().children[0]), '2', 'the new row takes the next position')
+  assert.equal(nameInput().props.autoFocus, true)
+  assert.equal(nameInput().props.maxLength, 40)
+  const agent = inForm(node => node.type === 'select')
+  assert.deepEqual(agent.children.map(option => [option.props.value, rolesText(option)]), [['echo', 'Echo'], ['codex', 'Codex']],
+    'the Agent list follows the enabled engines and their short names')
+  assert.equal(create().props.disabled, true, 'an empty name cannot be created')
+  form().props.onKeyDown({ key: 'Escape' })
+  assert.equal(form(), undefined, 'Esc cancels the row')
+
+  render().find(node => node.props?.className === 'nodo-roles-add').props.onClick()
+  const cancel = inForm(node => node.type === 'Button' && node.children.includes('取消'))
+  assert.equal(cancel.props.type, 'button', '取消 must not submit the form')
+  cancel.props.onClick()
+  assert.equal(form(), undefined, '取消 closes the row')
+  assert.equal(calls.some(item => item.endpoint === 'profile-create'), false, '取消 never creates a role')
+
+  render().find(node => node.props?.className === 'nodo-roles-add').props.onClick()
+  nameInput().props.onChange({ target: { value: 'Coder' } })
+  render()
+  let left = 0
+  loaded.rolesGuard(() => left++)
+  assert.ok(modal(), 'a typed name counts as an unsaved edit')
+  modal().props.footer.find(node => node.children.includes('继续编辑')).props.onClick()
+  assert.equal(left, 0)
+  assert.equal(nameInput().props.value, 'Coder')
+  assert.equal(create().props.disabled, false)
+  form().props.onSubmit({ preventDefault() {} })
+  await tickAll()
+  assert.deepEqual(calls.at(-1), { endpoint: 'profile-create', payload: { name: 'Coder', engine: 'echo', avatarTemplate: templates[2 % templates.length].id } },
+    'the row sends only the name, the Agent and the next avatar')
+  assert.equal(form(), undefined, 'the created role becomes a regular row')
+  assert.equal(render().find(node => node.type === loaded.RoleEditor), undefined, 'creating stays on the overview')
+  loaded.rolesGuard(() => left++)
+  assert.equal(left, 1, 'nothing is held once created')
+})
+
+test('a task cell saves each tick at once and falls back when core refuses', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  let refuse = false
+  const view = {
+    profiles: [{ id: 'a', name: 'Writer', engine: 'echo', taskTypes: ['docs'], sessions: [] }],
+    workspaces: [], work: {}, taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '' }],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => {
+      calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      if (refuse) throw new Error('profile-update refused')
+      return {}
+    },
+    globals: { document: { querySelector: () => null, addEventListener() {}, removeEventListener() {} } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const trigger = () => render().find(node => node.props?.['aria-label'] === '承接任务 Writer')
+  const option = name => render().find(node => node.props?.className === 'nodo-roles-takes-option' && node.children.includes(name))
+  const box = name => option(name).children.find(node => node.type === 'input')
+
+  trigger().props.onClick()
+  assert.equal(trigger().props['aria-expanded'], true)
+  assert.deepEqual(['文档', '审查'].map(name => box(name).props.checked), [true, false])
+  box('审查').props.onChange()
+  assert.equal(rolesText(trigger()), '文档、审查', 'the cell shows the tick before core answers')
+  await tickAll()
+  assert.deepEqual(calls.at(-1), { endpoint: 'profile-update', payload: { id: 'a', changes: { taskTypes: ['docs', 'review'] } } },
+    'a tick saves only the task types')
+  view.profiles[0].taskTypes = ['docs', 'review']
+  refuse = true
+  box('文档').props.onChange()
+  await tickAll()
+  assert.equal(rolesText(trigger()), '文档、审查', 'a refusal falls back to the saved card')
+  assert.equal(render().find(node => node.props?.className === 'nodo-error-line').children[0], 'profile-update refused')
+  render().find(node => node.props?.className === 'nodo-roles-takes-pop').props.onKeyDown({ key: 'Escape' })
+  assert.equal(trigger().props['aria-expanded'], false, 'Esc closes the list')
+})
+
+test('the dispatch result runs the core rule and counts the gaps', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const view = {
+    profiles: [
+      { id: 'lead', name: '决策者', engine: 'echo', lead: true, taskTypes: ['ops'], sessions: [] },
+      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], hard: {}, sessions: [] },
+      { id: 'b', name: '编码', engine: 'echo', taskTypes: ['docs', 'review'], sessions: [] },
+    ],
+    workspaces: [], work: {},
+    taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '' }, { id: 'ops', name: '运维', when: '' }],
+  }
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => ({}), globals: { document: { querySelector: () => null } } })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const plan = () => render().filter(node => node.props?.className === 'nodo-roles-plan-row')
+    .map(row => row.children.map(cell => rolesText(cell)))
+  assert.deepEqual(plan(), [['文档', '编码', '资深'], ['审查', '编码', '无人承接'], ['运维', '无人承接', '无人承接']],
+    'routine work prefers a role without hard settings, hard work needs them, and a lead takes nothing')
+  assert.equal(rolesText(render().find(node => node.props?.className === 'nodo-roles-gaps')), '3 处无人承接')
+  view.taskTypes = view.taskTypes.slice(0, 1)
+  assert.equal(render().find(node => node.props?.className === 'nodo-roles-gaps'), undefined, 'no gaps, no count')
+  view.profiles = view.profiles.map(item => ({ ...item, taskTypes: [] }))
+  assert.equal(plan().length, 0)
+  assert.equal(rolesText(render().find(node => node.props?.className === 'nodo-roles-plan-none')), '还没有角色承接任务类型，主控会按角色名自己挑选')
+})
+
+test('with no executors the overview offers the inline form and lists every lead', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  const view = {
+    profiles: [
+      { id: 'l1', name: '决策者', engine: 'echo', lead: true, sessions: [] },
+      { id: 'l2', name: '架构师', engine: 'echo', lead: true, sessions: [] },
+    ],
+    workspaces: [], work: {}, taskTypes: [],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo' }] : {} },
+    globals: { document: { querySelector: () => null } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  render(); await tickAll()
+  const empty = () => render().find(node => node.props?.className === 'nodo-roles-empty')
+  assert.equal(rolesText(empty().children[0]), '给主控配一个执行角色')
+  assert.equal(render().some(node => node.props?.className === 'nodo-roles-table'), false, 'the table and the result give way to the empty block')
+  assert.equal(render().filter(node => node.props?.className === 'nodo-roles-lead').length, 2, 'every lead keeps its row')
+  const form = rolesTree(empty()).find(node => node.type === 'form')
+  assert.equal(form.props.className, 'nodo-roles-create')
+  assert.equal(rolesTree(form).some(node => node.type === 'Button' && node.children.includes('取消')), false, 'the empty form has nothing to cancel')
+  rolesTree(form).find(node => node.type === 'input').props.onChange({ target: { value: 'Coder' } })
+  rolesTree(empty()).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+  await tickAll()
+  assert.deepEqual({ ...calls.at(-1).payload }, { name: 'Coder', engine: 'echo', avatarTemplate: calls.at(-1).payload.avatarTemplate })
+  assert.equal(calls.at(-1).endpoint, 'profile-create')
+  view.profiles = []
+  assert.equal(rolesText(render().find(node => node.props?.className === 'nodo-roles-lead-none')), '还没有主控角色')
+})
+
+test('a lead conversation shows the executor picker, sends its pick once and returns to 自动', async () => {
+  const calls = []
+  const view = { profiles: [
+    { id: 'lead', name: '主控', engine: 'echo', lead: true, activeSessionId: 's', sessions: [{ id: 's', name: '会话', workspaceRef: 'p' }] },
+    { id: 'worker', name: '工人', engine: 'echo', sessions: [] },
+    { id: 'second', name: '副主控', engine: 'echo', lead: true, sessions: [] },
+  ], workspaces: [{ id: 'p', name: '项目' }], work: { s: { active: false } }, stats: {}, prefs: { onboardedAt: 1 } }
+  const loaded = await loadClient(['page.js', 'role-seat.js'], {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
+      subscribeNativeSession() {}, readNativeSession: () => null,
+      call: async (endpoint, payload) => { calls.push(JSON.parse(JSON.stringify({ endpoint, payload }))); return {} },
+    },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      window: { addEventListener() {}, removeEventListener() {} },
+      localStorage: { getItem: key => key === 'nodo.navigation'
+        ? JSON.stringify({ profile: 'lead', workspace: 'p', sessions: { 'p:lead': 's' } }) : null, setItem() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object'
+    ? [node, ...[...(node.children ?? []), ...Object.values(node.props ?? {})].flatMap(all)] : []
+  const render = () => { loaded.host.reset(); return all(loaded.NodoPage({ contentOnly: true })) }
+  const composer = () => render().find(node => node.props?.onModelChange)
+  const picker = () => composer().props.assigneePicker
+  const trigger = () => all(loaded.AssigneePicker(picker().props)).find(node => node.props?.['aria-label']?.startsWith('执行者：'))
+
+  assert.ok(picker(), 'a lead with a roster shows the executor picker')
+  assert.deepEqual(picker().props.roster.map(role => role.id), ['worker'], 'the roster drops the lead itself and other leads')
+  assert.equal(trigger().props['aria-label'], '执行者：自动')
+  picker().props.onSelect('worker')
+  assert.equal(trigger().props['aria-label'], '执行者：工人')
+  composer().props.onChange('派活')
+  await composer().props.onSend()
+  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(calls.find(item => item.endpoint === 'send').payload.assignee, 'worker')
+  assert.equal(picker().props.value, undefined, 'the pick returns to 自动 after the send')
+  picker().props.onSelect('worker')
+  view.profiles[0].lead = false
+  composer().props.onChange('再派一次')
+  await composer().props.onSend()
+  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal('assignee' in calls.filter(item => item.endpoint === 'send').at(-1).payload, false,
+    'a pick that left the roster does not ride along')
+  view.profiles[0].lead = true
+  view.work.s = { active: true }
+  assert.equal(picker().props.disabled, true, 'a running lead turn disables the picker')
+  view.work.s = { active: false }
+  view.profiles[0].lead = false
+  assert.equal(picker(), false, 'a plain role has no picker')
+  view.profiles[0].lead = true
+  view.profiles[0].engine = 'dsh'
+  assert.equal(picker(), false, 'a dsh lead sends natively and has no picker')
+})
+
+test('the new conversation names an assignee for a lead and clears it after the send', async () => {
+  const calls = []
+  let local = 0
+  cursor = 0
+  const states = []
+  const view = { profiles: [
+    { id: 'lead', name: '主控', engine: 'echo', lead: true, sessions: [] },
+    { id: 'worker', name: '工人', engine: 'echo', sessions: [] },
+    { id: 'other', name: '副主控', engine: 'echo', lead: true, sessions: [] },
+  ], workspaces: [{ id: 'project', name: '项目', cwd: '/tmp' }] }
+  const draft = { id: 'd1', profile: 'lead', workspace: 'project' }
+  const { createNewConversation, Composer } = await loadClient(['new-conversation.js', 'composer.js', 'role-seat.js'], {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: {
+      useState: initial => {
+        const at = cursor++
+        if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
+        return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect: () => {},
+    },
+    uiShared: {
+      useStateView: () => ({ view, error: '' }),
+      readImage: async file => file,
+      call: async (endpoint, payload) => {
+        calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+        if (endpoint === 'session-create') return { id: 'session-1' }
+        return {}
+      },
+    },
+    globals: {
+      crypto: { randomUUID: () => '00000000-0000-0000-0000-000000000000' },
+      localStorage: { getItem: key => key === 'nodo.navigation' ? JSON.stringify({ profile: 'lead', workspace: 'project' }) : null, setItem() {} },
+    },
+  })
+  const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
+  const space = { getSnapshot: () => ({ active: true, drafting: true, draft }), showLegacy() {}, endDraft() {} }
+  const { NewConversation } = createNewConversation({ uiSession: { adapter: { current: { getSnapshot: () => ({ key: 'native-1' }) } } } }, space, 'ReferenceDialog')
+  const composer = () => { cursor = 0; return all(NewConversation({ draft })).find(node => node.type === Composer).props }
+  assert.deepEqual(composer().assigneePicker.props.roster.map(role => role.id), ['worker'])
+  composer().assigneePicker.props.onSelect('worker')
+  composer().onChange('派活')
+  await composer().onSend()
+  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(calls.find(item => item.endpoint === 'send').payload.assignee, 'worker')
+  assert.equal(composer().assigneePicker.props.value, undefined, 'the cleared draft returns the picker to 自动')
+  composer().assigneePicker.props.onSelect('worker')
+  composer().rolePicker.props.onSelect('worker')
+  composer().onChange('换个角色再发')
+  await composer().onSend()
+  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal('assignee' in calls.filter(item => item.endpoint === 'send').at(-1).payload, false,
+    'switching roles drops the executor pick')
+})
+
+test('roster buttons open the roles page with the role selected or a new draft', async () => {
+  const panels = []
+  const view = { profiles: [
+    { id: 'lead', name: '主控', engine: 'echo', lead: true, activeSessionId: 's', sessions: [{ id: 's', name: '会话', workspaceRef: 'p' }] },
+    { id: 'coder', name: 'Coder', engine: 'echo', activeSessionId: 'c', sessions: [{ id: 'c', name: '编码', workspaceRef: 'p' }] },
+  ], workspaces: [{ id: 'p', name: '项目' }], work: {}, stats: {}, prefs: { onboardedAt: 1 }, runs: [] }
+  const loaded = await loadClient(['page.js', 'roles.tsx', 'session-rail.tsx'], {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
+      subscribeNativeSession() {}, readNativeSession: () => null,
+      workspaceIdOf: (view, role, session) => session.workspaceRef ?? role.workspaceId,
+      roleStateOf: () => ({ active: false }), workDot: () => 'idle', workLabel: () => '', sessionTime: () => '刚刚',
+      ARCHIVED_VIEWS: { hide: '隐藏已归档', all: '全部对话（显示已归档）', only: '仅显示已归档' }, SESSION_FOLD: 10,
+      layoutService: { selectPanel: key => panels.push(key) },
+      call: async () => ({}),
+    },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      window: { addEventListener() {}, removeEventListener() {} },
+      localStorage: { getItem: key => key === 'nodo.navigation' ? JSON.stringify({ profile: 'lead', workspace: 'p' }) : null, setItem() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const render = () => { loaded.host.reset(); return all(loaded.NodoPage({ sidebarOnly: true })) }
+  // The rail is a component: invoke it to reach its roster.
+  const rail = () => { const tree = render(); const el = tree.find(node => node.type === loaded.Rail); return all(loaded.Rail(el.props)) }
+  rail().find(node => node.props?.['aria-label'] === '配置角色 Coder').props.onClick()
+  assert.deepEqual(panels, ['nodo-roles'])
+  assert.equal(loaded.readRolesTarget().profileId, 'coder', 'the roster hands the role to the page')
+  rail().find(node => node.props?.['aria-label'] === '添加角色').props.onClick()
+  assert.equal(loaded.readRolesTarget().profileId, 'new')
+})
+
+test('switching roles with unsaved edits asks before discarding, and so does leaving', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const view = {
+    profiles: [
+      { id: 'a', name: 'Writer', engine: 'echo', sessions: [] },
+      { id: 'b', name: 'Reviewer', engine: 'echo', sessions: [] },
+    ],
+    workspaces: [], work: {}, taskTypes: [],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => endpoint === 'engine-catalog'
+      ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : { id: payload?.id },
+    globals: { document: { querySelector: () => null } },
+  })
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} })); pending.splice(0).forEach(effect => effect()); return tree }
+  const open = name => render().find(node => node.props?.className === 'nodo-roles-who-cell' && node.props.title === name).props.onClick()
+  const overview = () => rolesTree(loaded.rolesSidebarSnapshot().content).find(node => node.props?.className === 'nodo-role-types').props.onClick()
+  const typesNav = () => rolesTree(loaded.rolesSidebarSnapshot().content).filter(node => node.props?.className === 'nodo-role-types')[1].props.onClick()
+  const editorEl = tree => tree.find(node => node.type === loaded.RoleEditor)
+  const editor = () => {
+    const tree = render()
+    const el = editorEl(tree)
+    const shape = el ? nodes(loaded.RoleEditor(el.props)) : []
+    pending.splice(0).forEach(effect => effect())
+    return { tree, shape }
+  }
+  const modal = tree => tree.find(node => node.type === 'Modal')
+  const nameInput = shape => shape.find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer')
+
+  open('Writer')
+  let current = editor()
+  await tickAll(); current = editor(); await tickAll()
+  nameInput(current.shape).props.onChange({ target: { value: '改过的名字' } })
+  current = editor()
+  assert.equal(editorEl(current.tree).props.profile.id, 'a')
+
+  typesNav()
+  current = editor()
+  assert.ok(modal(current.tree), 'an unsaved edit asks before switching')
+  modal(current.tree).props.footer.find(node => node.children.includes('继续编辑')).props.onClick()
+  current = editor()
+  assert.equal(modal(current.tree), undefined)
+  assert.equal(editorEl(current.tree).props.profile.id, 'a', '继续编辑 keeps the role')
+
+  overview()
+  current = editor()
+  modal(current.tree).props.footer.find(node => node.children.includes('放弃修改')).props.onClick()
+  current = editor()
+  assert.equal(modal(current.tree), undefined)
+  assert.equal(editorEl(current.tree), undefined, '放弃修改 lands on the overview')
+  states.length = 0 // the fake host runs no unmount cleanup, which would report the editor clean
+
+  open('Reviewer')
+  current = editor()
+  nameInput(current.shape).props.onChange({ target: { value: '又一个名字' } })
+  current = editor()
+  let left = 0
+  loaded.rolesGuard(() => left++)
+  assert.equal(left, 0, 'the guard holds the leave until the confirm answers')
+  modal(render()).props.footer.find(node => node.children.includes('放弃修改')).props.onClick()
+  assert.equal(left, 1, 'a discarded edit lets the leave through')
+  states.length = 0
+  editor()
+  loaded.rolesGuard(() => left++)
+  assert.equal(left, 2, 'without unsaved edits the guard is a passthrough')
+
+  // Saving an existing role hands back a live editor: the submit must not leave
+  // it busy, and the page must not hold the saved card as unsaved.
+  open('Writer')
+  let fresh = editor()
+  for (let round = 0; round < 3; round++) { await tickAll(); fresh = editor() }
+  nameInput(fresh.shape).props.onChange({ target: { value: '保存过的名字' } })
+  const before = editor()
+  await before.shape.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+  await tickAll()
+  const after = editor()
+  assert.equal(editorEl(after.tree).props.profile.id, 'a')
+  assert.equal(nameInput(after.shape).props.disabled, false, 'a saved role re-enables the editor')
+  assert.ok(after.shape.find(node => node.type === 'Button' && node.props.type === 'submit').children.includes('保存'),
+    'the save button leaves its busy label')
+  let leftAfterSave = 0
+  loaded.rolesGuard(() => leftAfterSave++)
+  assert.equal(leftAfterSave, 1, 'a saved role is not held as unsaved')
+})
+
+test('deleting a role drops its session drafts from the page memory too', async () => {
+  const states = [], pending = [], calls = [], removed = []
+  cursor = 0
+  const view = {
+    profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [{ id: 'sa' }] }],
+    workspaces: [], work: {}, taskTypes: [],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'engine-catalog'
+      ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : { id: payload?.id } },
+    globals: { document: { querySelector: () => null },
+      localStorage: { getItem: () => null, setItem() {} } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} })); pending.splice(0).forEach(effect => effect()); return tree }
+  const modal = () => render().find(node => node.type === 'Modal')
+
+  loaded.registerDraftRemover(ids => removed.push([...ids]))
+  render().find(node => node.props?.['aria-label'] === '更多操作 Writer').props.onClick({ stopPropagation() {} })
+  render().find(node => node.type === 'Menu' && node.props.open).props.onSelect('delete')
+  assert.equal(modal().props.title, '删除角色“Writer”？')
+  assert.equal(rolesText(modal().children[0]), '将把“Writer”及其 1 个插件内会话记录移除。项目目录和文件会保留。')
+  assert.equal(calls.some(item => item.endpoint === 'profile-delete'), false, 'nothing is deleted before confirming')
+  modal().props.footer.find(node => node.children.includes('删除角色')).props.onClick()
+  await tickAll()
+  assert.ok(calls.some(item => item.endpoint === 'profile-delete'), 'the delete reaches the core')
+  assert.deepEqual(removed, [['sa']], 'the registered page drops the deleted sessions’ drafts')
+})
+
+test('a read-only window keeps the overview locked and shows the role editor disabled', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const view = {
+    profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [] }],
+    workspaces: [], work: {}, taskTypes: [{ id: 'docs', name: '文档', when: '' }],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async endpoint => endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : {},
+    globals: { document: { querySelector: () => null } },
+  })
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: true, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const shape = () => nodes(loaded.RoleEditor(render().find(node => node.type === loaded.RoleEditor).props))
+  const nameInput = () => shape().find(node => node.type === 'input' && node.props.placeholder === '例如 Coder 或 Reviewer')
+  const saveButton = () => shape().find(node => node.type === 'Button' && node.props.type === 'submit')
+
+  const [row] = render().filter(node => node.props?.className === 'nodo-roles-row')
+  assert.equal(row.props.draggable, false)
+  assert.equal(render().find(node => node.props?.className === 'nodo-roles-add').props.disabled, true)
+  assert.equal(render().find(node => node.props?.['aria-label'] === '承接任务 Writer').props.disabled, true)
+  render().find(node => node.props?.className === 'nodo-roles-who-cell').props.onClick()
+  for (let round = 0; round < 3; round++) { await tickAll(); shape() }
+  assert.equal(nameInput().props.disabled, true, 'the name input stays disabled once the engine catalog arrives')
+  assert.equal(saveButton().props.disabled, true, 'the save button stays disabled')
+})
+
+test('a roster jump is consumed once, so re-entering lands on the overview', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const view = {
+    profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [] }],
+    workspaces: [], work: {}, taskTypes: [],
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async endpoint => endpoint === 'engine-catalog' ? [{ id: 'echo', label: 'Echo', catalog: { models: [] } }] : {},
+    globals: { document: { querySelector: () => null } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+
+  loaded.openRoles({ profileId: 'a' })
+  assert.equal(render().find(node => node.type === loaded.RoleEditor).props.profile.id, 'a', 'the jump opens the role page')
+  assert.equal(loaded.readRolesTarget(), null, 'the page consumes the target after applying it')
+  states.length = 0
+  assert.equal(render().find(node => node.type === loaded.RoleEditor), undefined, 're-entering from the rail lands on the overview')
+})
+
+test('a failed engine catalog stops after one request and shows the host error', async () => {
+  const states = [], pending = [], requests = []
+  cursor = 0
+  const view = { profiles: [], workspaces: [], work: {}, taskTypes: [] }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async endpoint => { requests.push(endpoint); throw new Error('catalog is down') },
+    globals: { document: { querySelector: () => null } },
+  })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+
+  render(); await tickAll()
+  assert.equal(requests.filter(endpoint => endpoint === 'engine-catalog').length, 1, 'one request, no retry loop')
+  render(); await tickAll()
+  assert.equal(requests.filter(endpoint => endpoint === 'engine-catalog').length, 1, 'the failure settles instead of retrying')
+  assert.equal(render().find(node => node.props?.className === 'nodo-error-line')?.children[0], 'catalog is down')
+  rolesTree(render().find(node => node.type === 'form')).find(node => node.type === 'input')
+    .props.onChange({ target: { value: 'Coder' } })
+  const form = render().find(node => node.type === 'form')
+  assert.equal(rolesTree(form).find(node => node.type === 'Button' && node.children.includes('创建')).props.disabled, true,
+    'a failed catalog keeps the create button disabled')
+})
+
+test('the inline remove confirm stays on its row while the list shifts', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const view = {
+    profiles: [
+      { id: 'a', name: 'Writer', taskTypes: ['docs'], sessions: [] },
+      { id: 'b', name: 'Reviewer', taskTypes: ['review'], sessions: [] },
+    ],
+    workspaces: [], work: {},
+    taskTypes: [{ id: 'ops', name: '运维', when: '' }, { id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '' }],
+  }
+  const { TaskTypesEditor } = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [] })
+  const render = () => { cursor = 0; return rolesTree(TaskTypesEditor({ view, disabled: false, onDone: async () => {} })) }
+  const rows = () => render().filter(node => node.props?.className === 'nodo-type-row')
+  const nameInput = row => row.children.find(node => node.props['aria-label'] === '任务类型名称')
+  const confirmRow = () => render().find(node => node.props?.className === 'nodo-type-confirm')
+
+  render().find(node => node.props?.['aria-label'] === '删除类型 文档').props.onClick()
+  assert.equal(confirmRow().children[0].children.join(''), '将从 Writer 上移除')
+  render().find(node => node.props?.['aria-label'] === '删除类型 运维').props.onClick()
+  assert.deepEqual(rows().map(row => nameInput(row).props.value), ['文档', '审查'], 'the unused type leaves at once')
+  assert.equal(confirmRow().children[0].children.join(''), '将从 Writer 上移除', 'the confirm keeps pointing at 文档')
+  confirmRow().children.find(node => node.children.includes('删除')).props.onClick()
+  assert.deepEqual(rows().map(row => nameInput(row).props.value), ['审查'], '删除 removes the confirmed type, not the one that took its index')
 })

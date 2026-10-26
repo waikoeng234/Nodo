@@ -60,6 +60,7 @@ export let nativeSessionState = null
 export let NewConversation = null
 export const readNativeSession = () => nativeSessionState.getSnapshot().key
 export const subscribeNativeSession = listener => nativeSessionState.subscribe(listener)
+/** @type {{ selectPanel?: (key: string | null) => void, toggleSidebar?: () => void } | null} */
 export let layoutService = null
 
 // apply() seeds the host services once per registration; the modules above read
@@ -92,6 +93,7 @@ export const readImage = file => new Promise((resolve, reject) => {
   reader.readAsDataURL(file)
 })
 
+/** @returns {{ view: any, error: string, refresh: (force?: boolean) => Promise<void> }} */
 export function useStateView() {
   const [view, setView] = useState(null)
   const [error, setError] = useState('')

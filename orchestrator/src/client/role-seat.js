@@ -1,4 +1,4 @@
-import { h, useState, Menu, IconChevronDownOutlineRegular, useStateView } from './ui-shared.js'
+import { h, useState, Menu, IconChevronDownOutlineRegular, IconUsersOutlineRegular, useStateView } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 
 export function RolePicker({ profiles, profile, disabled, onSelect }) {
@@ -16,6 +16,26 @@ export function RolePicker({ profiles, profile, disabled, onSelect }) {
     anchor: h('button', { type: 'button', className: 'nodo-role-seat-trigger', disabled,
       'data-nodo-role-seat': true, 'aria-haspopup': 'menu', 'aria-expanded': open,
       'aria-label': `选择角色，当前 ${name}`, onClick: () => setOpen(value => !value) },
+    ...face, h(IconChevronDownOutlineRegular, { size: 14 })),
+  })
+}
+
+// One message's executor pick for a lead conversation: 自动 first, then the
+// roster; the pick rides that one send and returns to 自动 afterwards.
+export function AssigneePicker({ roster, value, disabled, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const chosen = roster.find(role => role.id === value)
+  const name = chosen?.name ?? '自动'
+  const face = [chosen ? h(RoleAvatar, { profile: chosen, size: 20 }) : h(IconUsersOutlineRegular, { size: 16 }),
+    h('span', { className: 'nodo-role-seat-label' }, name)]
+  return h(Menu, {
+    open, onClose: () => setOpen(false), portal: true, side: 'top', align: 'end',
+    className: 'nodo-role-seat', listClassName: 'nodo-role-seat-list', selectedId: value ?? '',
+    items: [{ id: '', label: '自动', icon: h(IconUsersOutlineRegular) },
+      ...roster.map(role => ({ id: role.id, label: role.name, icon: h(RoleAvatar, { profile: role, size: 20 }) }))],
+    onSelect: id => { if (!disabled) { onSelect(id || undefined); setOpen(false) } },
+    anchor: h('button', { type: 'button', className: 'nodo-role-seat-trigger', disabled,
+      'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-label': `执行者：${name}`, onClick: () => setOpen(state => !state) },
     ...face, h(IconChevronDownOutlineRegular, { size: 14 })),
   })
 }

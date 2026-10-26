@@ -146,6 +146,8 @@ export function install(rt) {
       case 'profile-delete':
         await rt.load()
         return rt.deleteProfile(body.id ?? body.profile)
+      case 'profile-order':
+        return rt.orderProfiles(body.ids)
       case 'role-preset-save':
         return rt.saveRolePreset(body)
       case 'role-preset-delete':

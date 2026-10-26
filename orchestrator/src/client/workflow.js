@@ -672,7 +672,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
         mode === 'run' && h('div', { className: 'nodo-wf-runs' }, ...runs.map(item => h('button', { key: item.id, type: 'button', className: 'nodo-runs-row', 'aria-pressed': mode === 'run' && runId === item.id, disabled: blocked, onClick: () => selectRun(item.id) },
           h('strong', { title: `${item.title ?? '未命名任务'}\n流程：${item.workflowName ?? '未知流程'}` }, item.title ?? '未命名任务'), statusLine(item.status), h('time', null, sessionTime(item.createdAt)))),
           !runs.length && h('p', { className: 'nodo-dialog-hint' }, readOnly ? '请在主窗口查看。' : '还没有运行记录。保存流程后即可启动。')))
-  useEffect(() => { wfPublishSidebar(navigation) }, [navigation])
+  useEffect(() => { wfPublishSidebar({ view: 'workflow', content: navigation }) }, [navigation])
   return h('section', { className: 'nodo-page nodo-workflow', 'aria-label': 'Workflow 工作流', onKeyDown: event => {
     if (mode !== 'edit' || blocked || menu || event.nativeEvent?.isComposing) return
     if (event.key !== 'Backspace' && event.key !== 'Delete') return

@@ -38,9 +38,8 @@ export const AVATAR_CSS = `
 .nodo-avatar-option{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:78px;padding:10px 4px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
 .nodo-avatar-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-avatar-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
-.nodo-avatar-option:focus-visible,.nodo-avatar-preview-toggle:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-avatar-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-avatar-option:disabled{opacity:.5;cursor:default}
-.nodo-avatar-preview-toggle{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 @keyframes nodo-avatar-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-3px) rotate(4deg) scale(.98,1.02)}}
 @keyframes nodo-avatar-blink{0%,42%,48%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
 @keyframes nodo-avatar-greet{0%,100%{transform:rotate(0)}35%{transform:rotate(-9deg)}70%{transform:rotate(7deg)}}

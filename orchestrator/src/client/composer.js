@@ -36,7 +36,7 @@ export const triggerOf = value => {
   return { char: token[0], start, query: token.slice(1) }
 }
 
-export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, assigneePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
@@ -166,7 +166,8 @@ export function Composer({ profile, workspace, value, images, running, busy, rea
       (onInsert || onReference) && h(AddMenu, { key: profile?.engine, profile: profile ?? { engine: '' }, workspace, disabled: readOnly || busy, trigger, onInsert, onToken: insertToken, onGoal, onModelChange, onCompact, onReference,
         onUpload: onAttachFiles ? () => picker.current?.click() : undefined }),
       onModelChange && h(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange })),
-    h('span', { className: 'nodo-composer-target' }, rolePicker,
+    h('span', { className: 'nodo-composer-target' }, assigneePicker,
+      rolePicker,
       onModelChange && h(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange })),
     onSend && h(Tooltip, {
       label: running ? '停止生成' : '发送消息', side: 'top', align: 'end', delayMs: 500,

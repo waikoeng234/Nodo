@@ -163,3 +163,31 @@ test('saved identities ride prefs, survive the role, and are deletable', async (
     assert.deepEqual((await api('state')).prefs.rolePresets, [])
   })
 })
+
+test('profile-order takes every id exactly once, reorders in place and persists', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'orch-order-'))
+  let host = boot(home)
+  try {
+    const created = []
+    for (const name of ['A', 'B', 'C']) created.push(await host.api('profile-create', { name, engine: 'echo' }))
+    const [a, b, c] = created.map(item => item.id)
+    await assert.rejects(host.api('profile-order', { ids: [a, b] }), { code: 'orch/invalid' })
+    await assert.rejects(host.api('profile-order', { ids: [a, b, a] }), { code: 'orch/invalid' })
+    await assert.rejects(host.api('profile-order', { ids: [a, b, 'nope'] }), { code: 'orch/invalid' })
+    await assert.rejects(host.api('profile-order', { ids: 'abc' }), { code: 'orch/invalid' })
+    for (const inherited of ['__proto__', 'constructor']) {
+      await assert.rejects(host.api('profile-order', { ids: [inherited, b, c] }), { code: 'orch/invalid' })
+    }
+    assert.deepEqual((await host.api('state')).profiles.map(item => item.id), [a, b, c], 'an inherited key cannot displace a card')
+    const rt = await host.runtime
+    const container = rt.state.profiles
+    const view = await host.api('profile-order', { ids: [c, a, b] })
+    assert.deepEqual(view.map(item => item.id), [c, a, b])
+    assert.equal(rt.state.profiles, container, 'the live container keeps its reference')
+    assert.deepEqual(Object.keys(container), [c, a, b])
+    assert.equal(container[a], rt.profilesView().find(item => item.id === a) && rt.findProfile(a), 'cards keep their identity')
+    host.dispose()
+    host = boot(home)
+    assert.deepEqual((await host.api('state')).profiles.map(item => item.id), [c, a, b], 'the order survives a restart')
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})

@@ -407,65 +407,98 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-dialog-status{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 .nodo-dialog-danger:not(:disabled){color:var(--dsw-alias-state-error-primary)}
 .nodo-dialog :is(.nodo-ok,.nodo-bad,.nodo-dialog-status){margin:0}
-.nodo-role-dialog{--nodo-role-radius:var(--dsw-radius-md);width:min(920px,100%);padding:20px;gap:20px;border-radius:calc(var(--nodo-role-radius) + 20px)}
-.nodo-role-dialog h2{font-size:18px;font-weight:600;line-height:26px}
+.nodo-role-dialog{--nodo-role-radius:var(--dsw-radius-md)}
 .nodo-role-dialog button{border-radius:var(--nodo-role-radius)}
-.nodo-role-shell,.nodo-role-shell>div:last-child{min-height:0}
-.nodo-role-shell>div:first-child{padding:0 0 20px}
-.nodo-role-shell>div:last-child{margin-top:20px}
-.nodo-role-dialog>:last-child{flex-shrink:0}
-.nodo-role-fields{gap:20px;max-height:min(72vh,680px);margin-right:-12px;padding-right:12px;overscroll-behavior:contain}
-.nodo-role-dialog .nodo-field,.nodo-role-dialog .nodo-field+.nodo-field{padding:0;border:0;gap:8px}
-.nodo-role-dialog .nodo-field>span{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
-.nodo-role-dialog .nodo-dialog-input{height:40px;padding:8px 12px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:22px}
+.nodo-role-dialog .nodo-field,.nodo-role-dialog .nodo-field+.nodo-field{padding:0;border:0;gap:6px}
+.nodo-role-dialog .nodo-field>span{font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary)}
+.nodo-role-dialog .nodo-dialog-input{height:36px;padding:8px 12px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:22px}
 .nodo-role-dialog .nodo-dialog-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
 .nodo-role-dialog .nodo-dialog-select{padding-right:28px}
-.nodo-role-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:28px;align-items:start}
-.nodo-role-aside{position:sticky;top:0;display:flex;flex-direction:column;gap:20px;padding:16px;border-radius:calc(var(--nodo-role-radius) + 12px);background:var(--dsw-alias-bg-layer-1)}
-.nodo-role-card{overflow:hidden;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base)}
-.nodo-role-card-art{display:flex;align-items:center;justify-content:center;height:112px}
-.nodo-role-card-body{display:flex;flex-direction:column;gap:6px;padding:14px 16px 16px}
-.nodo-role-card-body p{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
-.nodo-role-card-title{display:flex;align-items:center;gap:8px;min-width:0}
-.nodo-role-card-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:600;line-height:24px;color:var(--dsw-alias-label-primary)}
-.nodo-role-card-tag{flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 8px;border-radius:999px;background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px}
-.nodo-role-card .nodo-role-card-meta{padding-top:8px;border-top:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary)}
-.nodo-role-card [data-empty]{color:var(--dsw-alias-label-tertiary)}
-.nodo-role-dialog .nodo-role-aside>.nodo-field{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-.nodo-role-dialog .nodo-avatar-preview-toggle{gap:5px;white-space:nowrap;cursor:pointer}
-.nodo-role-dialog .nodo-avatar-preview-toggle input{width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary)}
-.nodo-role-dialog .nodo-avatar-picker{grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.nodo-role-dialog .nodo-dialog-error{margin:0}
+.nodo-role-editor{display:flex;flex-direction:column;gap:16px}
+.nodo-role-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.nodo-role-avatar-slot{position:relative;flex:none}
+.nodo-role-dialog .nodo-role-avatar{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:calc(var(--nodo-role-radius) + 4px);cursor:pointer}
+.nodo-role-dialog .nodo-role-avatar:disabled{cursor:default}
+.nodo-role-avatar-edit{position:absolute;right:-3px;bottom:-3px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--dsw-alias-bg-base);box-shadow:0 0 0 1px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
+.nodo-avatar-pop{position:absolute;z-index:20;top:calc(100% + 8px);left:0;width:288px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
+.nodo-role-dialog .nodo-avatar-picker{gap:4px}
 .nodo-role-dialog .nodo-avatar-option{gap:4px;min-height:68px;padding:8px 2px;border-radius:var(--nodo-role-radius)}
-.nodo-role-main{display:flex;flex-direction:column;gap:20px;min-width:0}
-.nodo-role-main>.nodo-field{position:relative}
-.nodo-role-dialog .nodo-role-main>.nodo-field:first-child .nodo-dialog-input{height:44px;font-size:14px}
+.nodo-role-head-copy{display:flex;flex-direction:column;gap:2px;flex:1 1 200px;min-width:0}
+.nodo-role-head-copy h2{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:18px;font-weight:600;line-height:26px}
+.nodo-role-head-copy h2[data-empty]{color:var(--dsw-alias-label-tertiary)}
+.nodo-role-head-copy p{margin:0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-role-actions{display:flex;align-items:center;gap:8px;flex:none}
+.nodo-role-dialog .nodo-role-more{width:32px;height:32px;color:var(--dsw-alias-label-secondary)}
+.nodo-role-dialog .nodo-role-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role-confirm-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 8px 8px 16px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-layer-1)}
+.nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
+.nodo-role-tabbar{display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.nodo-role-tabs{display:flex;flex:1;gap:20px;min-width:0}
+.nodo-role-dialog .nodo-role-tab{display:inline-flex;align-items:center;gap:6px;height:36px;margin-bottom:-1px;padding:0 2px;border:0;border-bottom:2px solid transparent;border-radius:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;cursor:pointer}
+.nodo-role-dialog .nodo-role-tab[aria-selected=true]{border-bottom-color:var(--dsw-alias-label-primary);color:var(--dsw-alias-label-primary);font-weight:500}
+.nodo-role-tab-dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-business-primary)}
+.nodo-role-kind{display:flex;gap:2px;margin-bottom:6px;padding:3px;border-radius:calc(var(--nodo-role-radius) + 3px);background:var(--dsw-alias-bg-overlay)}
+.nodo-role-dialog .nodo-role-kind button{height:28px;padding:0 12px;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-role-dialog .nodo-role-kind button[aria-checked=true]{background:var(--dsw-alias-bg-base);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);font-weight:500}
+.nodo-role-dialog .nodo-role-kind button:disabled{cursor:default}
+:is(.nodo-role-tab,.nodo-role-kind button,.nodo-template-pick,.nodo-text-button):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-role-lead-note{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
+.nodo-role-lead-note p{margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-role-lead-note p:first-child{color:var(--dsw-alias-label-primary);font-weight:500}
+.nodo-role-lead-note p[data-warn]{color:var(--dsw-alias-state-warn-primary)}
+.nodo-role-panel{display:flex;flex-direction:column;gap:14px}
+.nodo-role-panel[hidden]{display:none}
+.nodo-templates-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nodo-templates-head>.nodo-text-button{margin-right:-8px}
+.nodo-templates-row{display:flex;gap:8px;padding-bottom:6px;overflow-x:auto;scroll-snap-type:x proximity}
+.nodo-template{position:relative;flex:none;scroll-snap-align:start}
+.nodo-role-dialog .nodo-template-pick{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:168px;height:52px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
+.nodo-template[data-saved] .nodo-template-pick{padding-right:26px}
+.nodo-template-pick:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-template-pick[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
+.nodo-template-pick:disabled{opacity:.5;cursor:default}
+.nodo-template-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px}
+.nodo-template-duty{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-role-dialog .nodo-template-remove{position:absolute;top:5px;right:5px;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:calc(var(--nodo-role-radius) - 2px);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.nodo-template-remove{opacity:0}
+.nodo-template:is(:hover,:focus-within) .nodo-template-remove{opacity:1}
+.nodo-template-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
+.nodo-templates-divider{flex:none;width:1px;margin:8px 2px;background:var(--dsw-alias-border-l2)}
+.nodo-template-filled{display:flex;align-items:center;gap:8px;margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-template-filled>.nodo-text-button{height:24px;padding:0 6px}
 .nodo-identity-options{display:flex;flex-wrap:wrap;gap:8px}
-.nodo-identity-option{max-width:100%;height:34px;padding:0 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
+.nodo-identity-option{max-width:100%;height:30px;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
 .nodo-identity-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-identity-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
-.nodo-identity-option[data-saved]::before{content:'';display:inline-block;width:6px;height:6px;margin:0 6px 2px 0;border-radius:50%;background:var(--dsw-alias-state-business-primary);vertical-align:middle}
-.nodo-identity-option[data-custom]{border-style:dashed}
 .nodo-identity-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-identity-option:disabled{opacity:.5;cursor:default}
-.nodo-identity-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
-.nodo-identity-summary>button{flex:none}
-.nodo-role-dialog .nodo-identity-save-open{position:absolute;top:-6px;right:0}
 .nodo-dialog-counted{position:relative}
 .nodo-dialog-counted>.nodo-dialog-input{padding-right:64px}
 .nodo-dialog-count{position:absolute;right:12px;bottom:9px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;pointer-events:none}
-.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:200px;min-height:132px;padding:10px 12px 30px;resize:vertical}
-.nodo-identity-save{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 6px);background:var(--dsw-alias-bg-layer-1)}
+.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px;min-height:112px;padding:10px 12px 30px;resize:vertical}
+.nodo-identity-save{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-identity-save>.nodo-dialog-hint{grid-column:1/-1}
 .nodo-role-dialog .nodo-identity-save .nodo-dialog-input{height:34px}
 .nodo-role-notice{margin:0;padding:8px 12px;border-radius:var(--nodo-role-radius);background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);font-size:12px;line-height:18px}
-.nodo-role-run{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
-.nodo-role-dialog .nodo-role-run .nodo-field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);align-items:center;column-gap:12px;row-gap:2px;padding:8px 8px 8px 14px}
-.nodo-role-dialog .nodo-role-run .nodo-field+.nodo-field{border-top:1px solid var(--dsw-alias-border-l2)}
-.nodo-role-dialog .nodo-role-run .nodo-field>span{font-size:13px;color:var(--dsw-alias-label-primary)}
-.nodo-role-dialog .nodo-role-run input[role=switch]{justify-self:start;width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary)}
-.nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
-.nodo-role-dialog .nodo-dialog-error{margin:0}
-@media(max-width:640px){.nodo-role-layout{grid-template-columns:minmax(0,1fr);gap:16px}.nodo-role-aside{position:static}.nodo-role-fields{max-height:64vh;gap:16px}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}.nodo-role-dialog .nodo-role-run .nodo-field{grid-template-columns:minmax(0,1fr)}}
+.nodo-role-run,.nodo-role-assign{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 6px)}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field{display:grid;grid-template-columns:minmax(0,1fr) min(320px,60%);align-items:center;column-gap:12px;row-gap:2px;padding:4px 6px 4px 12px}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field+.nodo-field{border-top:1px solid var(--dsw-alias-border-l2)}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field>span{color:var(--dsw-alias-label-primary);font-size:13px}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign) .nodo-dialog-input{height:32px}
+.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign) .nodo-dialog-hint{grid-column:1/-1}
+.nodo-role-assign input[role=switch]{justify-self:end;width:14px;height:14px;margin:0 8px 0 0;accent-color:var(--dsw-alias-state-business-primary)}
+.nodo-role-reach{display:flex;flex-direction:column;gap:0;padding:8px 12px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-layer-1);font-size:13px;line-height:20px}
+.nodo-role-reach p{margin:0}
+.nodo-role-reach .nodo-role-reach-title{margin-bottom:4px;color:var(--dsw-alias-label-secondary)}
+.nodo-role-reach-empty{color:var(--dsw-alias-label-tertiary)}
+.nodo-role-reach-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:26px}
+.nodo-role-reach-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-role-reach-result{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px}
+.nodo-role-reach-win{padding:0 8px;border-radius:999px;background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary);font-size:12px;line-height:20px}
+.nodo-role-reach-win[data-hard]{background:var(--dsw-alias-bg-overlay)}
+.nodo-role-reach-note{color:var(--dsw-alias-label-tertiary);font-size:12px}
+@media(max-width:640px){.nodo-role-dialog :is(.nodo-role-run,.nodo-role-assign)>.nodo-field{grid-template-columns:minmax(0,1fr)}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}}
 .nodo-worktree-toggle{display:flex;align-items:center;gap:8px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .nodo-worktree-toggle input{accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-worktree-modes{display:flex;align-items:center;gap:6px}
