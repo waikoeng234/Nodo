@@ -7,6 +7,7 @@ This document governs AI and automated development in the "Nodo" project. During
 - Use comments sparingly: explain only constraints the code itself cannot express, in plain language. Do not put design decisions, change history, or problem descriptions in comments.
 - Prefer mature, stable libraries for common functionality such as standard formats, protocols, parsing, compression, encryption, and dates. Do not implement these from scratch unless the user explicitly requests it or an existing project implementation must be retained.
 - Do not change unrelated files or perform incidental refactoring.
+- When the documentation conflicts with existing code, you should follow the code and list all the conflicts at the end of your response.
 
 # UI requirements
 - Don't add redundant explanatory text to the interface.

@@ -13,7 +13,7 @@ const harness = () => {
   const redact = redactor([{ name: 'FIXTURE', value: 'fake-sensitive-fixture' }])
   const rt = {
     ctx: { effect: factory => { cleanup = factory() } },
-    redactDeepSecrets: value => redactDeep(value, redact), save: async () => { saves.push(JSON.parse(JSON.stringify(lines))) },
+    redactDeepSecrets: value => redactDeep(value, redact), redactHead: (text, max) => redact.head(text, max), save: async () => { saves.push(JSON.parse(JSON.stringify(lines))) },
     statsOutput() {}, statsTool() {}, statsEnd() {}, isCompacting: () => false,
     state: { profiles: {} }, sessionsOf: () => [], openApproval() {}, closeApproval() {},
     recordTaskOutcome: (_id, _task, reason, text) => reports.push({ reason, text }),
@@ -289,5 +289,38 @@ test('independent source plan identities update and clear only their own snapsho
     assert.equal(h.lines[2].removed, undefined)
     h.emit({ type: 'turn/end', reason: 'done' })
     await tick()
+  } finally { h.dispose() }
+})
+
+test('a settled head of a redaction is the start of the whole one, however the text goes on', () => {
+  const redact = redactor([{ name: 'LONG', value: `${'L'.repeat(40)}-tail` }, { name: 'SHORT', value: 'pw12' }, { name: 'QUOTED', value: 'a"quoted"value' }])
+  const tokens = [`${'L'.repeat(40)}-tail`, 'pw12', 'xpw12', 'pw12y', 'a\\"quoted\\"value', 'a"quoted"value', 'L', ' ', '字', '😀', 'plain']
+  let seed = 7, settledCount = 0
+  const pick = () => tokens[(seed = (seed * 48271) % 2147483647) % tokens.length]
+  for (let round = 0; round < 300; round++) {
+    const text = Array.from({ length: 1 + round % 40 }, pick).join('')
+    for (const max of [1, 5, 17, 60, 200]) {
+      const settled = redact.head(text, max)
+      if (settled === undefined) continue
+      settledCount += 1
+      for (const whole of [text, `${text}${pick()}${pick()}`]) assert.equal(redact(whole).slice(0, max), settled, JSON.stringify([whole, max]))
+    }
+  }
+  assert.ok(settledCount > 100)
+  assert.equal(redactor([]).head('abcdef', 3), 'abc')
+  assert.equal(redactor([]).head('ab', 3), undefined)
+})
+
+test('a long streamed reply stays whole for consumers and redacted at the cut of its transcript line', async () => {
+  const h = harness()
+  try {
+    h.emit({ type: 'turn/start' })
+    const reply = `${'x'.repeat(TRANSCRIPT_TEXT_MAX - 10)}fake-sensitive-fixture${'y'.repeat(TRANSCRIPT_TEXT_MAX * 3)}`
+    for (let at = 0; at < reply.length; at += 7) h.emit({ type: 'delta', messageId: 'long', text: reply.slice(at, at + 7) })
+    h.emit({ type: 'turn/end', reason: 'done' })
+    await tick()
+    assert.equal(h.reports.at(-1).text, reply)
+    assert.equal(h.lines.at(-1).text, clip(h.rt.redactDeepSecrets(reply), TRANSCRIPT_TEXT_MAX, 'long reply'))
+    assert.ok(!h.lines.at(-1).text.includes('fake-sensitive'))
   } finally { h.dispose() }
 })

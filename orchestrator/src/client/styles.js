@@ -272,6 +272,15 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-question-actions{display:flex;flex-shrink:0;align-items:center;gap:12px}
 .nodo-composer{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;flex:none;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 4px;padding-top:8px;border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-composer-scroll{max-height:var(--dsh-composer-text-max-height,336px);margin-right:4px;overflow-y:auto}
+.nodo-pending{display:flex;flex-direction:column;gap:4px;max-height:160px;margin:0 8px;padding-bottom:8px;overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.nodo-pending-item{display:flex;align-items:center;gap:12px;min-width:0;padding:6px 8px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover);font-size:12px;line-height:20px}
+.nodo-pending-text{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.nodo-pending-images{color:var(--dsw-alias-label-caption)}
+.nodo-pending-actions{display:flex;flex:none;align-items:center;gap:8px}
+.nodo-pending-actions button,.nodo-pending-stop{padding:2px;border:0;background:none;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
+.nodo-pending-actions button:hover:not(:disabled),.nodo-pending-stop:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.nodo-pending-actions button:disabled,.nodo-pending-stop:disabled{opacity:.5;cursor:default}
+.nodo-pending-stop{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%}
 .nodo-composer textarea{box-sizing:border-box;display:block;width:100%;min-height:36px;padding:4px 8px 0 14px;border:0;outline:none;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;caret-color:var(--dsw-alias-state-business-primary);resize:none}
 .nodo-composer textarea::placeholder{color:var(--dsw-alias-label-caption)}
 /* The caret marks focus in the text surface; the page's control ring stays off it. */

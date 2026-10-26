@@ -41,7 +41,7 @@ test('chained before and after images produce a net change and missing evidence 
   assert.equal(summarizeChanges(preview).totals, undefined, 'three preview files cannot stand for ten source files')
 })
 
-test('summary card shows three file rows, expands the rest, and opens selected or all Code Diff details', async () => {
+test('summary card previews hovered files above the list and still opens all details on request', async () => {
   const { FileChangesSummary, CodeDiff, host } = await loadClient(['file-changes-summary.tsx', 'code-diff.tsx'])
   const source = record(Array.from({ length: 5 }, (_, index) => file(`/ws/src/${index}.ts`)))
   const renderFile = value => ({ type: 'file-detail', props: { path: value.path }, children: [] })
@@ -57,15 +57,15 @@ test('summary card shows three file rows, expands the rest, and opens selected o
   await find(tree, 'nodo-changes-more').props.onClick()
   tree = render()
   assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-file').length, 5)
-  await nodes(tree).filter(node => node.props.className === 'nodo-changes-file')[1].props.onClick()
+  nodes(tree).filter(node => node.props.className === 'nodo-changes-file')[1].props.onPointerEnter({ pointerType: 'mouse', currentTarget: {} })
   tree = render()
   assert.deepEqual(nodes(tree).filter(node => node.type === 'file-detail').map(node => node.props.path), ['/ws/src/1.ts'])
   const entries = nodes(tree).filter(node => node.props.className === 'nodo-changes-file-entry')
   assert.equal(entries[1].children[0].props.className, 'nodo-changes-file')
-  assert.equal(entries[1].children[1].props.className, 'nodo-changes-details')
-  assert.equal(entries[1].children[1].props.id, entries[1].children[0].props['aria-controls'])
-  assert.equal(nodes(entries[1]).find(node => node.type === 'file-detail').props.path, '/ws/src/1.ts')
-  assert.ok(entries.filter((_, index) => index !== 1).every(entry => !find(entry, 'nodo-changes-details')))
+  const preview = find(tree, 'nodo-changes-preview')
+  assert.equal(preview.props.id, entries[1].children[0].props['aria-controls'])
+  assert.equal(nodes(preview).find(node => node.type === 'file-detail').props.path, '/ws/src/1.ts')
+  assert.ok(entries.every(entry => !find(entry, 'nodo-changes-details')), 'hovering adds no inline detail or layout shift')
   assert.equal(find(tree, 'nodo-changes-files').props.id, find(tree, 'nodo-changes-view').props['aria-controls'])
   await find(tree, 'nodo-changes-view').props.onClick()
   tree = render()
@@ -73,12 +73,13 @@ test('summary card shows three file rows, expands the rest, and opens selected o
   assert.ok(nodes(tree).filter(node => node.props.className === 'nodo-changes-file-entry')
     .every(entry => entry.children[1]?.props.className === 'nodo-changes-details'))
   assert.equal(find(tree, 'nodo-changes-view').props['aria-expanded'], true)
+  assert.ok(!find(tree, 'nodo-changes-preview'))
   assert.ok(!nodes(tree).some(node => node.type === CodeDiff), 'the caller renders each source edit without a duplicate diff')
   await find(tree, 'nodo-changes-view').props.onClick()
   assert.ok(!find(render(), 'nodo-changes-details'))
 })
 
-test('switching or collapsing a file keeps its diff next to that row and folding the list closes hidden selections', async () => {
+test('file previews switch on hover, support click, and close when their row is folded away', async () => {
   const { FileChangesSummary, host } = await loadClient('file-changes-summary.tsx')
   const source = record(Array.from({ length: 5 }, (_, index) => file(`/ws/${index}.ts`)))
   const props = { record: source, value: source, full: source, load: async () => source,
@@ -86,26 +87,102 @@ test('switching or collapsing a file keeps its diff next to that row and folding
   const render = () => { host.reset(); return FileChangesSummary(props) }
   const rows = tree => nodes(tree).filter(node => node.props.className === 'nodo-changes-file')
   let tree = render()
-  await rows(tree)[0].props.onClick()
+  rows(tree)[0].props.onPointerEnter({ pointerType: 'mouse', currentTarget: {} })
   tree = render()
-  await rows(tree)[2].props.onClick()
+  rows(tree)[2].props.onPointerEnter({ pointerType: 'mouse', currentTarget: {} })
   tree = render()
   assert.deepEqual(nodes(tree).filter(node => node.type === 'file-detail').map(node => node.props.path), ['/ws/2.ts'])
-  await rows(tree)[2].props.onClick()
-  tree = render()
   assert.ok(!find(tree, 'nodo-changes-details'))
   await find(tree, 'nodo-changes-view').props.onClick()
   tree = render()
   assert.equal(rows(tree).length, 5, 'view all reveals every file and puts each diff under its own row')
-  await rows(tree)[4].props.onClick()
+  rows(tree)[4].props.onClick({ currentTarget: {} })
   tree = render()
   assert.deepEqual(nodes(tree).filter(node => node.type === 'file-detail').map(node => node.props.path), ['/ws/4.ts'])
   await find(tree, 'nodo-changes-more').props.onClick()
   tree = render()
   assert.equal(rows(tree).length, 3)
-  assert.ok(!find(tree, 'nodo-changes-details'))
+  assert.ok(!find(tree, 'nodo-changes-preview'))
   await find(tree, 'nodo-changes-more').props.onClick()
-  assert.ok(!find(render(), 'nodo-changes-details'), 'a hidden selection does not reopen on later expansion')
+  assert.ok(!find(render(), 'nodo-changes-preview'), 'a hidden selection does not reopen on later expansion')
+})
+
+test('preview placement fits the viewport and leaves a gap from the hovered file', async () => {
+  const { diffPreviewPosition } = await loadClient('file-changes-summary.tsx')
+  const row = { left: 200, top: 500, bottom: 540, width: 800 }
+  const above = diffPreviewPosition(row, 1200, 900)
+  assert.equal(above.bottom, '408px')
+  assert.equal(above.top, 'auto')
+  assert.equal(above.maxHeight, '360px')
+  const below = diffPreviewPosition({ ...row, top: 30, bottom: 70 }, 1200, 900)
+  assert.equal(below.top, '78px')
+  assert.equal(below.bottom, 'auto')
+  const narrow = diffPreviewPosition({ ...row, left: 250 }, 320, 600)
+  assert.equal(narrow.left, '12px')
+  assert.equal(narrow.width, '296px')
+})
+
+test('preview height stays below the conversation header and inside the available feed area', async () => {
+  const { diffPreviewPosition } = await loadClient('file-changes-summary.tsx')
+  const bounds = { top: 300, bottom: 800 }
+  const row = { left: 200, top: 500, bottom: 540, width: 800 }
+  const above = diffPreviewPosition(row, 1200, 900, bounds)
+  const previewBottom = 900 - parseFloat(above.bottom)
+  assert.equal(previewBottom, row.top - 8)
+  assert.equal(previewBottom - parseFloat(above.maxHeight), bounds.top + 8)
+  const below = diffPreviewPosition({ ...row, top: 330, bottom: 370 }, 1200, 900, bounds)
+  assert.equal(below.top, '378px')
+  assert.equal(below.maxHeight, '360px')
+  assert.ok(parseFloat(below.top) + parseFloat(below.maxHeight) <= bounds.bottom - 8)
+  const short = diffPreviewPosition({ ...row, top: 410, bottom: 450 }, 1200, 900, { top: 300, bottom: 550 })
+  assert.equal(short.maxHeight, '94px', 'small conversation areas shrink the fixed preview instead of covering the header')
+})
+
+test('crossing into a preview cancels dismissal, and native popovers close on Escape or outside scroll', async () => {
+  let dismiss, refIndex = 0, shown = 0, hidden = 0
+  const refs = [], listeners = {}
+  const events = { addEventListener: (name, listener) => { listeners[name] = listener }, removeEventListener: name => { delete listeners[name] } }
+  const document = { ...events, activeElement: null }
+  const { FileChangesSummary, host } = await loadClient('file-changes-summary.tsx', {
+    react: { useRef: value => refs[refIndex++] ??= { current: value } },
+    globals: { document, window: { ...events, innerWidth: 1200, innerHeight: 900 },
+      setTimeout: handler => { dismiss = handler; return 1 }, clearTimeout: () => { dismiss = undefined } },
+  })
+  const source = record([file('/ws/x.ts')])
+  const props = { record: source, value: source, full: source, load: async () => source, renderFile: () => 'diff' }
+  const render = () => { refIndex = 0; host.reset(); return FileChangesSummary(props) }
+  const row = { getBoundingClientRect: () => ({ left: 200, top: 500, bottom: 540, width: 800 }), contains: target => target === row,
+    closest: selector => { assert.equal(selector, '.nodo-feed'); return { getBoundingClientRect: () => ({ top: 300, bottom: 800 }) } } }
+  let tree = render()
+  find(tree, 'nodo-changes-file').props.onFocus({ currentTarget: row })
+  tree = render()
+  const popup = { style: {}, contains: target => target === popup, matches: () => true,
+    showPopover: ({ source }) => { shown++; assert.equal(source, row) }, hidePopover: () => { hidden++ } }
+  find(tree, 'nodo-changes-preview').props.ref.current = popup
+  const cleanup = host.effects.at(-1)()
+  assert.equal(shown, 1)
+  assert.equal(popup.popover, 'manual')
+  assert.equal(popup.style.bottom, '408px')
+  assert.equal(popup.style.maxHeight, '184px')
+  find(tree, 'nodo-changes-file').props.onPointerLeave()
+  assert.equal(typeof dismiss, 'function')
+  find(tree, 'nodo-changes-preview').props.onPointerEnter()
+  assert.equal(dismiss, undefined)
+  listeners.scroll({ target: popup })
+  assert.ok(find(render(), 'nodo-changes-preview'), 'scrolling within the preview leaves it open')
+  listeners.keydown({ key: 'Escape' })
+  assert.ok(!find(render(), 'nodo-changes-preview'))
+  cleanup()
+  assert.equal(hidden, 1)
+  assert.equal(Object.keys(listeners).length, 0)
+  tree = render()
+  find(tree, 'nodo-changes-file').props.onPointerEnter({ pointerType: 'mouse', currentTarget: row })
+  tree = render()
+  find(tree, 'nodo-changes-preview').props.ref.current = popup
+  const cleanupScroll = host.effects.at(-1)()
+  listeners.scroll({ target: {} })
+  assert.ok(!find(render(), 'nodo-changes-preview'), 'scrolling the feed closes its detached preview')
+  cleanupScroll()
 })
 
 test('a full source turn patch is used for file details and workspace snapshots keep their attribution', async () => {

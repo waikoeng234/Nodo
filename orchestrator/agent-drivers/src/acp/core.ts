@@ -2,7 +2,7 @@ import { STEER, addUsage, usageOf } from '../spi.js'
 import { validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges } from '../file-changes.js'
-import type { Driver, DriverEvent, PermissionMode, Usage } from '../spi.js'
+import type { Driver, DriverEvent, FileChangeEdit, PermissionMode, Usage } from '../spi.js'
 import type { JsonRpcMessage, JsonRpcPeer, JsonRpcProcessOptions, JsonRpcRequest, RpcId } from '../json-rpc-process.js'
 import type { FileChanges } from '../file-changes.js'
 import type { Coverage } from '../coverage.js'
@@ -28,6 +28,7 @@ export type AcpSupport = {
   error?(error: unknown): unknown
   expandPrompt?(text: string): string | Promise<string>
   fileChanges?: boolean
+  fileEdits?(name: string, input: unknown): { path: string; edit: FileChangeEdit }[]
   initialize?(peer: JsonRpcPeer): Promise<AcpCapabilities>
   instructionMode?: string
   question?(context: AcpQuestionContext): AcpQuestion | undefined
@@ -214,7 +215,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       const key = update.toolCallId
       if (!key || turn.completedTools.has(key)) return
       const previous = turn.tools.get(key)
-      const name = previous?.name ?? update.name ?? update.title ?? 'tool'
+      const name = update.name ?? previous?.name ?? update.title ?? 'tool'
       const input = update.rawInput !== undefined ? update.rawInput : previous?.input
       const rawOutput = update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput
       const content = update.content !== undefined ? update.content : previous?.content
@@ -252,6 +253,9 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
           const files: { path: unknown; edit: { operation: string; oldText?: unknown; newText?: unknown } }[] = (Array.isArray(content) ? content as AcpBlock[] : []).filter(block => block?.type === 'diff').map(block => ({ path: block.path,
             edit: { operation: block.oldText === null ? 'add' : 'update',
               ...(typeof block.oldText === 'string' || block.oldText === null ? { oldText: block.oldText } : {}), newText: block.newText } }))
+          if (update.status === 'completed') for (const file of support.fileEdits?.(name, input) ?? []) {
+            if (!files.some(entry => entry.path === file.path)) files.push(file)
+          }
           if (['edit', 'delete', 'move'].includes(kind!)) for (const location of Array.isArray(locations) ? locations as { path?: unknown }[] : []) {
             if (!files.some(file => file.path === location?.path)) files.push({ path: location?.path, edit: { operation: kind === 'edit' ? 'unknown' : kind! } })
           }

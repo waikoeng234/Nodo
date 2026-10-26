@@ -81,6 +81,14 @@ createInterface({ input: process.stdin }).on('line', line => {
     if (turn) process.exit(9)
     turn = { id }
     const text = params.prompt[0].text
+    if (text === 'FILES') {
+      update({ sessionUpdate: 'tool_call', toolCallId: 'edit', title: 'edit', kind: 'edit', status: 'pending' })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'edit', content: [{ type: 'diff', path: 'edited.txt', oldText: 'before', newText: 'after' }] })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'edit', status: 'completed' })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'edit', status: 'completed' })
+      update({ sessionUpdate: 'tool_call', toolCallId: 'failed', kind: 'edit', status: 'failed', content: [{ type: 'diff', path: 'failed.txt', oldText: 'before', newText: 'after' }] })
+      return finish('Files done')
+    }
     if (text.startsWith('HANDOFF ')) {
       const [, tag, outcome] = text.split(' ')
       setTimeout(() => {

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/dist/index.js'
 import { until } from './helpers/host.js'
+import { applyPatch } from 'diff'
 
 const withFixture = async (run) => {
   const dir = mkdtempSync(join(tmpdir(), 'orch-codebuddy-fixture-'))
@@ -16,6 +17,27 @@ const withFixture = async (run) => {
 
 const wire = cwd => readFileSync(join(cwd, 'codebuddy-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
 const deltas = events => events.filter(event => event.type === 'delta').map(event => event.text).join('')
+
+test('CodeBuddy collects confirmed tool inputs and prefers ACP diffs, excluding failures, duplicates, replays and other sessions', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('codebuddy', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('FILES')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const body = events.find(event => event.type === 'changes').presentation.body
+      assert.deepEqual(body.files.map(file => file.path.split('/').at(-1)), ['edited.txt', 'written.txt', 'native.txt'])
+      assert.equal(body.files[0].edits.length, 1)
+      assert.equal(applyPatch('before\n', body.files[0].edits[0].diffText), 'after\n')
+      assert.deepEqual(body.files[1].edits[0], { operation: 'unknown', newText: 'new body' })
+      assert.deepEqual(body.files[2].edits[0], { operation: 'update', oldText: 'whole before', newText: 'whole after' })
+      events.length = 0
+      await driver.sendTurn('SECOND')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      assert.equal(events.find(event => event.type === 'changes').presentation.body.fileCount, 0)
+    } finally { driver.dispose() }
+  })
+})
 
 test('CodeBuddy declares the question capability, applies mode/model/thought and resumes via load', async () => {
   await withFixture(async ({ bin, cwd }) => {

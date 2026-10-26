@@ -111,6 +111,7 @@ ZCode Protocol v1, newline-delimited JSON with strict envelopes:
 | `sendTurn` | `session/send` `{sessionId, content, attachments?}`; images go as `kind:"image"` attachments; accepted reply ends the call |
 | assistant text / thinking | `session/event` → `model.streaming` `text_delta` / `reasoning_delta` |
 | final text | `turn.completed` `response`, emitted only if nothing streamed |
+| file changes | Successful Write/Edit results retain their matched inputs, including approved modifiedInput. Write supplies known new content; Edit supplies labeled replacement-fragment patches without inventing full before-images or file line numbers. Failed, duplicate and foreign-session results are excluded |
 | tools | `model.streaming` `tool_input_start` opens a visible tool row while arguments are generated; `tool_input_delta` appends the input character stream; `tool_call` supplies the final input; `tool.updated` scheduled/started and result/error supply call identity, input and output; `tool.updated` progress supplies elapsed/tail/byte snapshots; batch notifications do not create calls |
 | usage | `turn.completed` `usage` (provider token counts, cache buckets included) and `cacheStats`; `session.updated` `contextUsage` `{used,size}` is the context occupancy |
 | `turn/end` | `turn.completed` `resultType`: `success` → done, `cancelled` → interrupted, `error_*` → error, `response` as `text`; `turn.failed` errors |

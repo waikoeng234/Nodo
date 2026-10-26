@@ -236,7 +236,7 @@ final plan on failed/cancelled turns.
 
 ## Confirmed edit-file snapshots
 
-Codex, OpenCode, Claude and ZCode may emit `{type:'changes', turnId, presentation}` immediately
+Codex, OpenCode, Claude, ZCode, CodeBuddy, Qoder, Pi and DSH ACP may emit `{type:'changes', turnId, presentation}` immediately
 before `turn/end`. The presentation is `{version:1, kind:'changes',
 mode:'snapshot', body:{scope:'edit-tools', coverage:'partial', fileCount, files,
 cwd?, turnDiff?}, capture, reason?}`. Each file is `{path, edits}`; each edit has
@@ -269,10 +269,24 @@ filesystem snapshot, git state or other session supplies missing edit-tool data.
 
 Claude pairs a live tool_result with the known input and structured tool_use_result
 for Write/Edit/NotebookEdit. Errors, staged writes, replays and inconsistent paths
-are excluded. Confirmed Write/Notebook full images can supply a difference; Edit
-replacement snippets are never treated as full files. ZCode accepts successful
-legacy Write/Edit results and their matched inputs, including an approval's
-modifiedInput. It provides a path list only; V4 aggregate queries remain disabled.
+are excluded. Confirmed Write/Notebook full images can supply a difference;
+Edit prefers gitDiff.patch or validated structuredPatch hunks. ZCode accepts
+successful legacy Write/Edit results and their matched inputs, including an
+approval's modifiedInput. Write retains the confirmed content without claiming
+creation or a before-image; V4 aggregate queries remain disabled.
+
+CodeBuddy and DSH ACP retain standard ACP diff blocks. CodeBuddy also maps
+confirmed Write/Edit rawInput when the tool name and file_path are known;
+source diff blocks take precedence. Unknown tools, foreign sessions, replays,
+background members and failed results do not supply replacement evidence.
+
+Pi prefers the edit result's details.patch, then details.diff. Without a source
+patch, ZCode, CodeBuddy, Claude, Qoder and Pi retain confirmed replacements as
+diffText using the existing diff library. Both patch headers carry
+`Nodo replacement fragment`; line numbers are relative to the replacement text,
+not file locations. The UI labels these fragments and never merges them into
+whole-file before/after images. A replacement applied at multiple locations is
+still one piece of partial evidence unless the source supplies its full patch.
 
 DSH native uses the same changes event with scope:'workspace-snapshot'. It queries
 the public workspaceChanges.summary(sessionId, event.seq) for a matching native

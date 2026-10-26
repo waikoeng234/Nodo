@@ -43,7 +43,9 @@ Optional settings:
 - `multiSelect` questions render as a single choice in the host card: the CLI
   itself accepts string, newline-joined and array answers (verified against
   2.169.0), so the driver forwards the host's value unchanged.
-- No file-change cards: tool output text names touched paths instead.
+- File-change cards retain standard ACP diffs and confirmed Write/Edit rawInput.
+  Write content without a before-image is shown as new content; Edit replacements
+  without a source diff are labeled fragments, not whole-file snapshots.
 - The live semantics of the `auto`/`bypassPermissions` modes should be
   confirmed during acceptance; the mapping mirrors the claude channel this CLI
   derives from.

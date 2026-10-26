@@ -70,7 +70,12 @@ test('Qoder derives confirmed file changes from Write and Edit tool flows alone'
       assert.deepEqual(changes.body.files.map(file => [file.path.endsWith('created.txt') ? 'created.txt' : file.path.split('/').at(-1), file.edits.map(edit => edit.operation)]),
         [['created.txt', ['add']], ['updated.txt', ['update']], ['edited.txt', ['update']]], 'the denied write never joins the snapshot')
       assert.deepEqual(changes.body.files[0].edits[0], { operation: 'add', oldText: null, newText: 'new body' })
-      assert.deepEqual(changes.body.files[2].edits[0], { operation: 'update', oldText: 'before', newText: 'after' })
+      const fragment = changes.body.files[2].edits[0]
+      assert.equal(fragment.oldText, undefined)
+      assert.equal(fragment.newText, undefined)
+      assert.match(fragment.diffText, /Nodo replacement fragment/)
+      assert.match(fragment.diffText, /-before\n/)
+      assert.match(fragment.diffText, /\+after\n/)
     } finally { driver.dispose() }
   })
 })

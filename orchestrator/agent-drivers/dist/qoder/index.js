@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { STEER, addUsage, usageOf } from '../spi.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
-import { createFileChanges } from '../file-changes.js';
+import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { qoderArgs, connectQoder } from './native.js';
 export { findExecutable } from '../cli.js';
 export const qoderInfo = {
@@ -179,7 +179,7 @@ function qoderFileChanges(name, input, resultText) {
         return [{ path: input.file_path, edit: { operation: created ? 'add' : 'update', newText: input.content, ...(created ? { oldText: null } : {}) } }];
     }
     if (name === 'Edit' && typeof input?.file_path === 'string' && typeof input?.old_string === 'string' && typeof input?.new_string === 'string')
-        return [{ path: input.file_path, edit: { operation: 'update', oldText: input.old_string, newText: input.new_string } }];
+        return [{ path: input.file_path, edit: replacementEdit(input.file_path, input.old_string, input.new_string) }];
     return [];
 }
 // One assistant frame is one request, so its prompt-side token sum is the

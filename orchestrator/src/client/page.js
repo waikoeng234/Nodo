@@ -310,12 +310,33 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
     try {
       const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })).id
       const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) }))
-      await call('send', { profile: profile.id, session: id, text, images: payload })
+      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue' })
       if (current()) setSentTick(tick => tick + 1)
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
       await refresh(true)
       if (current()) remember(profile.id, workspace.id, id)
+    } catch (failure) { if (relevant()) setActionError(failure.message) }
+    finally { setSessionBusy(false) }
+  }
+  const queueAction = async (seq, action) => {
+    if (!profile || !sessionId || sessionBusy || readOnly) return
+    setSessionBusy(true)
+    setActionError('')
+    const relevant = trackSelection(true)
+    try {
+      const result = await call('queued-message', { profile: profile.id, session: sessionId, seq, action })
+      if (action === 'edit') {
+        setDrafts(current => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join('\n\n') }))
+        setPastedImages(current => ({ ...current, [draftKey]: [
+          ...result.images.map(image => ({ ...image, dataUrl: `data:${image.mediaType};base64,${image.data}` })), ...(current[draftKey] ?? []),
+        ] }))
+      }
+      if (action === 'send' && relevant()) {
+        if (result.mode === 'queued') setActionError('当前无法插入本轮，消息仍在排队')
+        else if (result.mode !== 'cancelled') setSentTick(tick => tick + 1)
+      }
+      await refresh(true)
     } catch (failure) { if (relevant()) setActionError(failure.message) }
     finally { setSessionBusy(false) }
   }
@@ -357,6 +378,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNav
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
+      pending: work?.pending ?? [], onQueueAction: (seq, action) => void queueAction(seq, action),
       onInsert: insertDraft,
       onGoal: () => setGoalOpen(true), onCompact: () => void compactSession(),
       onModelChange: changes => void updateEngineChoice(changes),

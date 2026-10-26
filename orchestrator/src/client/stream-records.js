@@ -1,4 +1,4 @@
-import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock } from './ui-shared.js'
+import { h, useState, useEffect, useLayoutEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock } from './ui-shared.js'
 import { TranscriptImage } from './feed.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { CodeDiff } from './code-diff.tsx'
@@ -72,13 +72,21 @@ export function ChangedFile({ file, load, loaded, available, root, request, cycl
   const [open, setOpen] = useState(false)
   const [content, setContent] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [showContent, setShowContent] = useState(false)
+  const body = useRef(null)
   const path = root && file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path
+  useLayoutEffect(() => {
+    const popup = body.current?.closest('.nodo-changes-preview')
+    if (popup) popup.scrollTop = 0
+  }, [showContent])
   const toggle = async () => {
     if (!open && !loaded && available && !await load()) return
     setOpen(value => !value)
   }
   const viewContent = async () => {
     if (busy) return
+    setShowContent(true)
+    setContent(null)
     setBusy(true)
     try { setContent(await call('workspace-file', { ...request, path: file.path })) }
     catch (failure) { setContent({ error: failure.message || '文件内容读取失败。' }) }
@@ -93,20 +101,28 @@ export function ChangedFile({ file, load, loaded, available, root, request, cycl
         : typeof edit.newText === 'string' ? h('div', null, h('p', { className: 'nodo-note' }, '来源未提供修改前内容，以下为修改后内容。'),
           h(CodeBlock, { code: edit.newText, copyLabel: '复制', copiedLabel: '已复制' }))
           : h('p', { className: 'nodo-note' }, '此编辑的差异详情不可得。')))
-  const view = request && h('div', { 'data-nodo-file-view': '' },
-    h(Button, { size: 'sm', variant: 'outline', disabled: busy, onClick: () => void viewContent() }, busy ? '读取中…' : '查看当前内容'),
-    content?.error && h('p', { role: 'alert', className: 'nodo-error-line' }, content.error),
-    content?.missing && h('p', { className: 'nodo-note' }, '文件已不存在或不是普通文件。'),
-    content?.binary && h('p', { className: 'nodo-note' }, '二进制文件，无法作为文本展示。'),
-    typeof content?.text === 'string' && h('div', null,
-      content.truncated && h('p', { className: 'nodo-note' }, '文件超过展示上限，仅显示开头部分。'),
-      h(CodeBlock, { code: content.text, copyLabel: '复制', copiedLabel: '已复制' })))
-  if (inline) return h('div', { 'data-nodo-tool-file': file.path }, patch || edits.length ? edits : h('p', { className: 'nodo-note' }, '来源未提供此文件的差异详情。'), view)
+  const view = h('div', { ref: body, 'data-nodo-tool-file': file.path }, request && showContent
+    ? h('div', { 'data-nodo-file-view': '' },
+      h('div', { className: 'nodo-file-view-header' },
+        h(Button, { size: 'sm', variant: 'outline', onClick: () => setShowContent(false) }, '返回差异'),
+        h('span', { className: 'nodo-file-view-title', title: path }, `${path} · 当前内容`),
+        content?.error && h(Button, { size: 'sm', variant: 'outline', onClick: () => void viewContent() }, '重试')),
+      busy && h('p', { className: 'nodo-note', role: 'status' }, '读取中…'),
+      content?.error && h('p', { role: 'alert', className: 'nodo-error-line' }, content.error),
+      content?.missing && h('p', { className: 'nodo-note' }, '文件已不存在或不是普通文件。'),
+      content?.binary && h('p', { className: 'nodo-note' }, '二进制文件，无法作为文本展示。'),
+      typeof content?.text === 'string' && h('div', null,
+        content.truncated && h('p', { className: 'nodo-note' }, '文件超过展示上限，仅显示开头部分。'),
+        content.text === '' ? h('p', { className: 'nodo-note' }, '文件为空。')
+          : h(CodeBlock, { code: content.text, copyLabel: '复制', copiedLabel: '已复制' })))
+    : h('div', null, patch || edits.length ? edits : h('p', { className: 'nodo-note' }, '来源未提供此文件的差异详情。'),
+      request && h(Button, { size: 'sm', variant: 'outline', disabled: busy, onClick: () => void viewContent() }, busy ? '读取中…' : '查看当前内容')))
+  if (inline) return view
   return h(DisclosureRow, { title: path, open, expandable: true, expandOnRowClick: true, keepContentWhenOpen: true, onToggle: () => void toggle(),
-    children: h('div', null, edits, view) })
+    children: view })
 }
 
-export function StreamRecordCard({ record, request, eventPhase }) {
+export function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
   const [open, setOpen] = useState(false)
   const [full, setFull] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -148,7 +164,7 @@ export function StreamRecordCard({ record, request, eventPhase }) {
   }
   return h('div', { 'data-nodo-stream-record': record.entityId, 'data-record-status': record.status },
     h(ToolCall, {
-      ...disclosure, open,
+      ...disclosure, open, compact: timeline,
       children: h('div', { className: 'nodo-stream-content' },
         h('p', { className: 'nodo-note', 'data-error': failed ? '' : undefined }, status),
         progress && h('p', { className: 'nodo-note', 'data-nodo-progress': '' }, progress),

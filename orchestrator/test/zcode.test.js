@@ -233,6 +233,17 @@ test('host uses the discovered ZCode role tool schema from the first task throug
   }))
 })
 
+test('a ZCode role without native identity records the fallback reason in its transcript note', async () => {
+  await withFixture(async ({ bin, cwd }) => withHost(async host => {
+    const workspace = await host.api('workspace-create', { name: 'Fallback reason', cwd })
+    const profile = await host.api('profile-create', { name: 'Fallback reason', instructions: 'ROLE', engine: 'zcode', workspace: workspace.id, engineOptions: { bin } })
+    await host.api('send', { profile: profile.id, text: 'FIRST_TASK' })
+    await until(async () => !(await host.api('state')).work[profile.id].active)
+    const note = (await host.api('transcript', { profile: profile.id })).find(item => item.kind === 'note' && item.text.includes('不带角色身份'))
+    assert.match(note.text, /版本未经验证/)
+  }))
+})
+
 test('ZCode never recreates a missing session without empty-session authorization or after sending a task', async () => {
   await withFixture(async ({ bin, cwd }) => {
     for (const env of [{ FIXTURE_RESUME_NOT_FOUND: '1' }, { FIXTURE_RESUME_FAILURE: '1' }]) {
@@ -273,8 +284,9 @@ test('ZCode binds role MCP to create and resume, keeping message identity fallba
       const [server] = params.mcpServers
       assert.equal(server.isolation, 'session')
       assert.equal(server.protocolVersion, 'legacy')
-      assert.equal(server.env.length, 1)
+      assert.equal(server.env.length, 2)
       assert.equal(server.env[0].name, 'NODO_ROLE_FILE')
+      assert.deepEqual(server.env[1], { name: 'ELECTRON_RUN_AS_NODE', value: '1' })
       assert.equal(JSON.stringify(server.env).includes(instructions), false)
       assert.equal(JSON.stringify(server.args).includes(instructions), false)
     }

@@ -22,6 +22,7 @@ export function install(rt) {
   const lock = homeLock(join(home, 'state.lock'))
   let loading
   let writing = Promise.resolve()
+  let queued
   let stopped = false
   // The lock record of the dsh that writes while this one reads.
   let other
@@ -206,12 +207,18 @@ export function install(rt) {
     for (const [id, lines] of Object.entries(state.transcripts)) if (lines.length > TRANSCRIPT_MAX) state.transcripts[id] = lines.slice(-TRANSCRIPT_MAX)
     // Statistics of a dropped conversation would never be shown again.
     for (const id of Object.keys(state.stats)) if (state.transcripts[id] === undefined) delete state.stats[id]
-    const job = writing.then(() => writeState(JSON.stringify(state, null, 2)))
-    writing = job.catch(() => {})
-    return job.catch((error) => {
-      warn('nodo: state write failed: %s', error)
-      throw error
-    })
+    // Saves made before the next write starts share it: the state is serialized when it starts.
+    if (queued === undefined) {
+      queued = writing.then(() => {
+        queued = undefined
+        return writeState(JSON.stringify(state, null, 2))
+      }).catch((error) => {
+        warn('nodo: state write failed: %s', error)
+        throw error
+      })
+      writing = queued.catch(() => {})
+    }
+    return queued
   }
 
   ctx.effect(() => async () => {

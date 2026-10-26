@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { STEER, addUsage, usageOf } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
-import { createFileChanges } from '../file-changes.js'
+import { createFileChanges, replacementEdit } from '../file-changes.js'
 import { piArgs, connectPi } from './native.js'
 import type { PiConnection } from './native.js'
 import type { Driver, DriverEvent, DriverImage, DriverResponse, EngineCheckResult, EngineCommandInventory, EngineInfo, PermissionMode, Usage } from '../spi.js'
@@ -41,7 +41,7 @@ type PiFrame =
   | { type: 'message_update'; usage?: PiUsage; assistantMessageEvent?: PiUpdate }
   | { type: 'tool_execution_start'; toolCallId: string; toolName: string; args?: PiInput }
   | { type: 'tool_execution_update'; toolCallId: string; partialResult?: { content?: PiContent[] } }
-  | { type: 'tool_execution_end'; toolCallId: string; result?: { content?: PiContent[] }; isError?: boolean }
+  | { type: 'tool_execution_end'; toolCallId: string; result?: { content?: PiContent[]; details?: { patch?: unknown; diff?: unknown } }; isError?: boolean }
   | { type: 'compaction_start'; reason?: string }
   | { type: 'compaction_end'; errorMessage?: unknown; aborted?: boolean }
   | { type: 'auto_retry_start'; attempt?: number; errorMessage?: unknown }
@@ -190,17 +190,20 @@ export async function scanPiCommands({ engineOptions = {}, cwd }: EngineScanOpti
 // the add/update split comes from the driver's own existence check taken when
 // the tool starts; edit names its replacements itself. Anything else drops out
 // of the snapshot rather than being guessed.
-function piFileChanges(name: string, input: PiInput | undefined, existedBefore?: boolean) {
+function piFileChanges(name: string, input: PiInput | undefined, existedBefore?: boolean, details?: { patch?: unknown; diff?: unknown }) {
   if (name === 'write' && typeof input?.path === 'string' && typeof input?.content === 'string')
     return [{ path: input.path, edit: existedBefore
       ? { operation: 'update', newText: input.content }
       : { operation: 'add', oldText: null, newText: input.content } }]
   if (name === 'edit' && typeof input?.path === 'string') {
+    const path = input.path
+    const diffText = typeof details?.patch === 'string' ? details.patch : details?.diff
+    if (typeof diffText === 'string') return [{ path, edit: { operation: 'update', diffText } }]
     const edits = Array.isArray(input.edits) && input.edits.length
       ? input.edits
       : typeof input?.oldText === 'string' && typeof input?.newText === 'string' ? [input] : []
     return edits.flatMap(edit => typeof edit?.oldText === 'string' && typeof edit?.newText === 'string'
-      ? [{ path: input.path, edit: { operation: 'update', oldText: edit.oldText, newText: edit.newText } }]
+      ? [{ path, edit: replacementEdit(path, edit.oldText, edit.newText) }]
       : [])
   }
   return []
@@ -361,7 +364,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
       turn.completedTools.add(record.toolCallId)
       const outputText = (Array.isArray(record.result?.content) ? record.result.content : [])
         .filter(block => block?.type === 'text' && typeof block.text === 'string').map(block => block.text).join('')
-      turn.changes?.add(record.toolCallId, piFileChanges(tool.name, tool.input, tool.existedBefore), record.isError !== true)
+      turn.changes?.add(record.toolCallId, piFileChanges(tool.name, tool.input, tool.existedBefore, record.result?.details), record.isError !== true)
       emit({ type: 'tool', turnId: turn.id, callId: record.toolCallId, name: tool.name, phase: 'end', input: tool.input,
         ...(record.result !== undefined ? { output: record.result } : outputText !== '' ? { output: outputText } : {}),
         ...(outputText !== '' ? { outputText } : {}), isError: record.isError === true })

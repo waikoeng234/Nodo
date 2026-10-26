@@ -92,7 +92,29 @@ test('pi derives confirmed file changes from write and edit tool flows alone', a
       assert.deepEqual(changes.body.files.map(file => [file.path.split('/').at(-1), file.edits.map(edit => edit.operation)]),
         [['created.txt', ['add']], ['updated.txt', ['update']], ['edited.txt', ['update']]], 'the existence check splits add from update; the alien path stays out')
       assert.deepEqual(changes.body.files.find(file => file.path.endsWith('created.txt')).edits[0], { operation: 'add', oldText: null, newText: 'new body' })
-      assert.deepEqual(changes.body.files.find(file => file.path.endsWith('edited.txt')).edits[0], { operation: 'update', oldText: 'before', newText: 'after' })
+      const fragment = changes.body.files.find(file => file.path.endsWith('edited.txt')).edits[0]
+      assert.equal(fragment.oldText, undefined)
+      assert.equal(fragment.newText, undefined)
+      assert.match(fragment.diffText, /Nodo replacement fragment/)
+      assert.match(fragment.diffText, /-before\n/)
+      assert.match(fragment.diffText, /\+after\n/)
+    } finally { driver.dispose() }
+  })
+})
+
+test('pi prefers source patches and display diffs over replacement snippets and excludes failed edits', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('pi', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('FILE_PATCHES')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const body = events.find(event => event.type === 'changes').presentation.body
+      assert.equal(body.fileCount, 1)
+      assert.equal(body.files[0].edits.length, 2)
+      assert.match(body.files[0].edits[0].diffText, /@@ -3,1 \+3,1 @@/)
+      assert.doesNotMatch(body.files[0].edits[0].diffText, /replacement fragment|display diff/)
+      assert.equal(body.files[0].edits[1].diffText, 'source display diff')
     } finally { driver.dispose() }
   })
 })

@@ -58,6 +58,18 @@ const runTurn = text => {
       finish(`Final ${tag}`, outcome === 'error' ? 'error' : 'success')
     }, 30)
   }
+  if (text === 'FILE_DIFFS') {
+    const start = (id, path, old_string, new_string) => notify('model.streaming', { kind: 'tool_call', toolCallId: id, toolName: 'Edit', input: JSON.stringify({ file_path: path, old_string, new_string }) })
+    const result = (id, success = true, foreign) => notify('tool.updated', { kind: 'result', toolCallId: id, result: { success, content: 'finished' } }, foreign)
+    start('edit-1', '/proposal', 'wrong', 'proposed')
+    notify('permission.resolved', { toolCallId: 'edit-1', modifiedInput: { file_path: 'edited.txt', old_string: 'before\n', new_string: 'approved\n' } })
+    result('edit-1'); result('edit-1')
+    start('edit-2', 'edited.txt', 'approved\n', '')
+    result('edit-2')
+    start('failed', 'failed.txt', 'before', 'after'); result('failed', false)
+    start('foreign', 'foreign.txt', 'before', 'after'); result('foreign', true, 'other-session')
+    return finish('Edits done')
+  }
   if (text === 'FILES_FLOW') {
     for (let i = 0; i < 10; i++) {
       const file_path = process.cwd() + '/.agent/文件 ' + i + '.txt'

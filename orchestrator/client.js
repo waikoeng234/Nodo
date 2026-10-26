@@ -848,7 +848,7 @@ function toolCallQuery(input, fallback = "") {
   }
   return (typeof input === "string" && input.trim() ? input : fallback).trim().split(/\r?\n/, 1)[0].slice(0, 400);
 }
-function ToolCall({ label, activeLabel = label, query = "", status = "unknown", open, onOpenChange, children }) {
+function ToolCall({ label, activeLabel = label, query = "", status = "unknown", compact = false, kind = "tool", open, onOpenChange, children }) {
   const id = `nodo-tool-${(0, import_react.useId)()}`;
   const [mounted, setMounted] = (0, import_react.useState)(open);
   (0, import_react.useEffect)(() => {
@@ -861,20 +861,23 @@ function ToolCall({ label, activeLabel = label, query = "", status = "unknown", 
     return () => clearTimeout(timer);
   }, [open, mounted]);
   const running = status === "running";
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call", "data-open": open, "data-state": status }, /* @__PURE__ */ (0, import_react.createElement)(
+  const statusLabel = kind === "tool" ? `\uFF1A${STATUS_LABELS[status]}` : running ? "\uFF1A\u8FDB\u884C\u4E2D" : "";
+  const chevron = /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call", "data-open": open, "data-state": status, "data-compact": compact, "data-kind": kind }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
       className: "nodo-tool-call-trigger",
       "aria-expanded": open,
       "aria-controls": id,
-      "aria-label": `${running ? activeLabel : label}${query ? ` ${query}` : ""}\uFF1A${STATUS_LABELS[status]}`,
+      "aria-label": `${running ? activeLabel : label}${query ? ` ${query}` : ""}${statusLabel}`,
       onClick: () => onOpenChange(!open)
     },
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 })),
+    !compact && chevron,
     /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-label" }, running ? activeLabel : label),
     query && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-query", title: query }, query),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-status", "aria-hidden": true, title: STATUS_LABELS[status] }, status === "done" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : running || status === "started" ? null : status === "interrupted" ? "\u2212" : status === "unknown" ? "?" : "!")
+    kind === "tool" && (!compact || !["done", "running", "started"].includes(status)) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-status", "aria-hidden": true, title: STATUS_LABELS[status] }, compact ? STATUS_LABELS[status] : status === "done" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : running || status === "started" ? null : status === "interrupted" ? "\u2212" : status === "unknown" ? "?" : "!"),
+    compact && chevron
   ), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-call-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-clip" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-content" }, (open || mounted) && children))));
 }
 var TOOL_CALL_CSS = `
@@ -895,6 +898,14 @@ var TOOL_CALL_CSS = `
 .nodo-tool-call-content{min-width:0;padding:4px 0 6px 22px}
 .nodo-tool-call-content>.nodo-io-card{margin:0}
 .nodo-tool-call-content .nodo-io-section+.nodo-io-section{border-top:.5px solid var(--dsw-alias-border-l1)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:10px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-label{flex:none;max-width:40%}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-query{max-width:min(65%,48ch);padding:2px 8px;border:0;border-radius:8px;line-height:22px;color:var(--dsw-alias-label-secondary)}
+.nodo-tool-call[data-compact=true]:not([data-kind=tool]) .nodo-tool-call-query{max-width:min(65%,52ch);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:22px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-chevron{opacity:.35}
+.nodo-tool-call[data-compact=true]:hover .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true]:focus-within .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true][data-open=true] .nodo-tool-call-chevron{opacity:1}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-status{width:auto;white-space:nowrap;font-size:var(--dsh-content-font-size-tertiary,12px)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-content{margin:4px 0 8px;padding:4px 0 4px 12px;border-left:1px solid var(--dsw-alias-border-l1)}
 @keyframes nodo-tool-call-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
 @media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `;
@@ -1680,13 +1691,14 @@ function CodeDiff({ filename, diff, patch, cycle = 0 }) {
   }, [copied]);
   const diffs = diff ? [diff] : [];
   const parsed = (0, import_react.useMemo)(() => !diff && patch !== void 0 ? parsedPatch(patch) : null, [diff, patch]);
+  const fragment = parsed?.some((file) => file.oldHeader === "Nodo replacement fragment");
   const totals = diff ? (0, import_dsh_client_ui_primitives.diffTotals)(diffs) : parsed ? patchCounts(parsed) : null;
   const lines = (0, import_react.useMemo)(() => parsed?.flatMap((file) => file.hunks.flatMap((hunk) => [
-    { kind: "meta", text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@` },
+    { kind: "meta", text: `@@ ${file.oldHeader === "Nodo replacement fragment" ? "\u7247\u6BB5\u5185 " : ""}-${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@` },
     ...hunk.lines.map((text) => ({ kind: text.startsWith("+") ? "added" : text.startsWith("-") ? "removed" : text.startsWith("\\") ? "meta" : "context", text }))
   ])), [parsed]);
   if (!diff && patch === void 0) return null;
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-filename", title: filename }, filename), totals && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-counts", "aria-label": `\u65B0\u589E ${totals.added} \u884C\uFF0C\u5220\u9664 ${totals.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-added" }, "+", totals.added), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-removed" }, "\u2212", totals.removed)), parsed && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-code-diff-copy", onClick: async () => {
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-filename", title: filename }, filename, fragment ? " \xB7 \u66FF\u6362\u7247\u6BB5" : ""), totals && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-counts", "aria-label": `\u65B0\u589E ${totals.added} \u884C\uFF0C\u5220\u9664 ${totals.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-added" }, "+", totals.added), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-removed" }, "\u2212", totals.removed)), parsed && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-code-diff-copy", onClick: async () => {
     if (patch !== void 0 && await (0, import_dsh_client_ui_primitives.writeClipboard)(patch)) setCopied(true);
   } }, copied ? LABELS.copied : LABELS.copy)), diff ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { key: cycle, className: "nodo-code-diff-native", diffs, labels: LABELS }) : lines ? /* @__PURE__ */ (0, import_react.createElement)("pre", { className: "nodo-code-diff-patch", tabIndex: 0, "aria-label": `${filename} \u5DEE\u5F02` }, /* @__PURE__ */ (0, import_react.createElement)("code", null, (expanded ? lines : lines.slice(0, PREVIEW_LINES)).map((line, index) => /* @__PURE__ */ (0, import_react.createElement)(
     "span",
@@ -1750,20 +1762,48 @@ ${Array.from({ length: 16 }, (_, index) => `.nodo-code-diff-native[data-diff]>di
 function Counts({ value }) {
   return value ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${value.added} \u884C\uFF0C\u5220\u9664 ${value.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", value.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", value.removed.toLocaleString())) : null;
 }
+function diffPreviewPosition(row, width, height, bounds = { top: 0, bottom: height }) {
+  const previewWidth = Math.max(0, Math.min(Math.max(row.width, 720), 1100, width - 24));
+  const above = Math.max(0, row.top - Math.max(12, bounds.top + 8) - 8);
+  const below = Math.max(0, Math.min(height - 12, bounds.bottom - 8) - row.bottom - 8);
+  const onTop = above >= 160 || above >= below;
+  return {
+    left: `${Math.max(12, Math.min(row.left, width - previewWidth - 12))}px`,
+    width: `${previewWidth}px`,
+    top: onTop ? "auto" : `${row.bottom + 8}px`,
+    bottom: onTop ? `${height - row.top + 8}px` : "auto",
+    maxHeight: `${Math.min(360, onTop ? above : below)}px`
+  };
+}
 function FileChangesSummary({ record, value, full, load, busy = false, available, error, renderFile }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
   const [open, setOpen] = (0, import_react.useState)(false);
   const [selected, setSelected] = (0, import_react.useState)(null);
   const box = (0, import_react.useRef)(null);
+  const anchor = (0, import_react.useRef)(null);
+  const preview = (0, import_react.useRef)(null);
+  const closeTimer = (0, import_react.useRef)(null);
   const detailsId = `nodo-changes-${(0, import_react.useId)()}`;
+  const previewId = `${detailsId}-preview`;
   const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(value.body), [value.body]);
   const count = record.body.fileCount;
   const workspace = record.body.scope === "workspace-snapshot";
   const canLoad = Boolean(available) && !full;
+  const keepPreview = () => {
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  const closePreview = () => {
+    keepPreview();
+    closeTimer.current = setTimeout(() => {
+      if (!preview.current?.contains(document.activeElement)) setSelected(null);
+    }, 180);
+  };
   (0, import_react.useEffect)(() => {
     setExpanded(false);
     setOpen(false);
     setSelected(null);
+    return keepPreview;
   }, [record.runId, record.entityId, record.revision]);
   (0, import_react.useEffect)(() => {
     if (!canLoad || !record.truncated || !count) return;
@@ -1784,34 +1824,74 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
       observer.disconnect();
     };
   }, [record.runId, record.entityId, record.revision, canLoad]);
-  const show = async (path) => {
-    if (open && selected === path) {
+  (0, import_react.useLayoutEffect)(() => {
+    const popup = preview.current, row = anchor.current;
+    if (selected === null || !popup || !row) return;
+    const place = () => Object.assign(popup.style, diffPreviewPosition(
+      row.getBoundingClientRect(),
+      window.innerWidth,
+      window.innerHeight,
+      row.closest(".nodo-feed")?.getBoundingClientRect()
+    ));
+    popup.popover = "manual";
+    place();
+    popup.showPopover?.({ source: row });
+    const scroll = (event) => {
+      if (!popup.contains(event.target)) setSelected(null);
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") setSelected(null);
+    };
+    const outside = (event) => {
+      if (!popup.contains(event.target) && !row.contains(event.target)) setSelected(null);
+    };
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", scroll, true);
+    document.addEventListener("keydown", escape);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      if (popup.hidePopover && popup.matches(":popover-open")) popup.hidePopover();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", scroll, true);
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [selected]);
+  const showFile = (path, row) => {
+    keepPreview();
+    anchor.current = row;
+    setSelected(path);
+    if (canLoad && record.truncated && !busy) void load();
+  };
+  const showAll = async () => {
+    keepPreview();
+    setSelected(null);
+    if (open) {
       setOpen(false);
       return;
     }
     if (canLoad && record.truncated && !await load()) return;
-    if (path === null) setExpanded(true);
-    setSelected(path);
+    setExpanded(true);
     setOpen(true);
   };
   const more = async () => {
     if (!expanded && files.length < count && canLoad && !await load()) return;
-    if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setOpen(false);
+    if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setSelected(null);
     setExpanded((current) => !current);
   };
+  const selectedFile = files.find(({ file }) => file.path === selected);
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-card", ref: box, "data-nodo-changes-summary": "" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 22 })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-heading" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-title" }, workspace ? "\u5DE5\u4F5C\u533A\u53D8\u66F4" : "\u5DF2\u7F16\u8F91", " ", count, " \u4E2A\u6587\u4EF6", /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-coverage", title: workspace ? "\u5BBF\u4E3B\u5DE5\u4F5C\u533A\u5FEB\u7167\uFF0C\u53EF\u80FD\u5305\u542B\u5176\u4ED6\u4F1A\u8BDD\u6216\u8FDB\u7A0B\u7684\u4FEE\u6539\u3002" : "\u4EC5\u5305\u542B\u6765\u6E90\u786E\u8BA4\u7684\u7F16\u8F91\u8BB0\u5F55\uFF0C\u53EF\u80FD\u4E0D\u5B8C\u6574\uFF1B\u6CA1\u6709\u8F6E\u6B21\u5DEE\u5F02\u65F6\uFF0C\u6570\u5B57\u6309\u5DF2\u4FDD\u5B58\u7684\u7F16\u8F91\u8BB0\u5F55\u7EDF\u8BA1\u3002" }, workspace ? "\u5DE5\u4F5C\u533A" : "\u90E8\u5206\u8BB0\u5F55")), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
       className: "nodo-changes-view",
       disabled: busy,
-      "aria-expanded": open && selected === null,
+      "aria-expanded": open,
       "aria-controls": detailsId,
-      onClick: () => show(null)
+      onClick: () => showAll()
     },
-    busy ? "\u52A0\u8F7D\u4E2D\u2026" : open && selected === null ? "\u6536\u8D77\u53D8\u66F4" : "\u67E5\u770B\u53D8\u66F4"
+    busy ? "\u52A0\u8F7D\u4E2D\u2026" : open ? "\u6536\u8D77\u53D8\u66F4" : "\u67E5\u770B\u53D8\u66F4"
   )), /* @__PURE__ */ (0, import_react.createElement)("div", { id: detailsId, className: "nodo-changes-files" }, (expanded ? files : files.slice(0, 3)).map(({ file, counts, patch }, index) => {
-    const visible = open && (selected === null || selected === file.path);
     const fileDetailsId = `${detailsId}-${index}`;
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: file.path, className: "nodo-changes-file-entry" }, /* @__PURE__ */ (0, import_react.createElement)(
       "button",
@@ -1819,13 +1899,27 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
         type: "button",
         className: "nodo-changes-file",
         disabled: busy,
-        "aria-expanded": visible,
-        "aria-controls": fileDetailsId,
-        onClick: () => show(file.path)
+        "aria-expanded": open || selected === file.path,
+        "aria-haspopup": "dialog",
+        "aria-controls": open ? fileDetailsId : previewId,
+        onPointerEnter: (event) => {
+          if (!open && event.pointerType !== "touch") showFile(file.path, event.currentTarget);
+        },
+        onPointerLeave: closePreview,
+        onFocus: (event) => {
+          if (!open) showFile(file.path, event.currentTarget);
+        },
+        onBlur: (event) => {
+          if (!preview.current?.contains(event.relatedTarget)) closePreview();
+        },
+        onClick: (event) => {
+          setOpen(false);
+          showFile(file.path, event.currentTarget);
+        }
       },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: file.path }, relativeFile(file.path, value.body.cwd)),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path" }, relativeFile(file.path, value.body.cwd)),
       /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: counts })
-    ), visible && /* @__PURE__ */ (0, import_react.createElement)("div", { id: fileDetailsId, className: "nodo-changes-details", role: "region", "aria-label": `${relativeFile(file.path, value.body.cwd)} \u53D8\u66F4\u8BE6\u60C5` }, renderFile(file, patch)));
+    ), open && /* @__PURE__ */ (0, import_react.createElement)("div", { id: fileDetailsId, className: "nodo-changes-details", role: "region", "aria-label": `${relativeFile(file.path, value.body.cwd)} \u53D8\u66F4\u8BE6\u60C5` }, renderFile(file, patch)));
   })), count > 3 && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -1837,7 +1931,24 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
     },
     expanded ? "\u6536\u8D77\u6587\u4EF6\u5217\u8868" : `\u518D\u663E\u793A ${count - 3} \u4E2A\u6587\u4EF6`,
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14, style: expanded ? { transform: "rotate(180deg)" } : void 0 })
-  ), files.length < count && !canLoad && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", count, " \u4E2A\u6587\u4EF6"), error && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error), open && files.length === 0 && value.body.turnDiff && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-details", role: "region", "aria-label": "\u6587\u4EF6\u53D8\u66F4\u8BE6\u60C5" }, /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", patch: value.body.turnDiff, cycle: record.revision })));
+  ), files.length < count && !canLoad && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", count, " \u4E2A\u6587\u4EF6"), error && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error), selectedFile && /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      id: previewId,
+      ref: preview,
+      className: "nodo-changes-preview",
+      role: "dialog",
+      tabIndex: -1,
+      "aria-label": `${relativeFile(selectedFile.file.path, value.body.cwd)} \u53D8\u66F4\u9884\u89C8`,
+      onPointerEnter: keepPreview,
+      onPointerLeave: closePreview,
+      onFocusCapture: keepPreview,
+      onBlurCapture: (event) => {
+        if (!event.currentTarget.contains(event.relatedTarget) && !anchor.current?.contains(event.relatedTarget)) closePreview();
+      }
+    },
+    busy && canLoad ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error) : renderFile(selectedFile.file, selectedFile.patch)
+  ), open && files.length === 0 && value.body.turnDiff && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-details", role: "region", "aria-label": "\u6587\u4EF6\u53D8\u66F4\u8BE6\u60C5" }, /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", patch: value.body.turnDiff, cycle: record.revision })));
 }
 var FILE_CHANGES_SUMMARY_CSS = `
 .nodo-changes-card{min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
@@ -1862,6 +1973,12 @@ var FILE_CHANGES_SUMMARY_CSS = `
 .nodo-changes-notice[role=alert]{color:var(--dsw-alias-state-error-primary)}
 .nodo-changes-details{min-width:0;border-top:.5px solid var(--dsw-alias-border-l1);padding:8px 12px 12px}
 .nodo-changes-details .nodo-code-diff{border-radius:var(--dsw-radius-md)}
+.nodo-changes-preview{inset:auto;margin:0;box-sizing:border-box;height:360px;padding:8px 12px;overflow:auto;overscroll-behavior:contain;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-panel);z-index:40}
+.nodo-changes-preview .nodo-code-diff{border-radius:var(--dsw-radius-md)}
+.nodo-changes-preview .nodo-code-diff-patch{max-height:none}
+.nodo-file-view-header{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 0;background:var(--dsw-alias-bg-base)}
+.nodo-file-view-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}
+.nodo-changes-preview::backdrop{background:transparent;pointer-events:none}
 @media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-file{padding-inline:12px}.nodo-changes-coverage{display:none}}
 `;
 
@@ -1973,13 +2090,21 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
   const [open, setOpen] = (0, import_react.useState)(false);
   const [content, setContent] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
+  const [showContent, setShowContent] = (0, import_react.useState)(false);
+  const body = (0, import_react.useRef)(null);
   const path = root && file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
+  (0, import_react.useLayoutEffect)(() => {
+    const popup = body.current?.closest(".nodo-changes-preview");
+    if (popup) popup.scrollTop = 0;
+  }, [showContent]);
   const toggle = async () => {
     if (!open && !loaded && available && !await load()) return;
     setOpen((value) => !value);
   };
   const viewContent = async () => {
     if (busy) return;
+    setShowContent(true);
+    setContent(null);
     setBusy(true);
     try {
       setContent(await call("workspace-file", { ...request, path: file.path }));
@@ -2001,10 +2126,17 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
       (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: edit.newText, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
     ) : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6B64\u7F16\u8F91\u7684\u5DEE\u5F02\u8BE6\u60C5\u4E0D\u53EF\u5F97\u3002")
   ));
-  const view = request && (0, import_react.createElement)(
+  const view = (0, import_react.createElement)("div", { ref: body, "data-nodo-tool-file": file.path }, request && showContent ? (0, import_react.createElement)(
     "div",
     { "data-nodo-file-view": "" },
-    (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy, onClick: () => void viewContent() }, busy ? "\u8BFB\u53D6\u4E2D\u2026" : "\u67E5\u770B\u5F53\u524D\u5185\u5BB9"),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-file-view-header" },
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", onClick: () => setShowContent(false) }, "\u8FD4\u56DE\u5DEE\u5F02"),
+      (0, import_react.createElement)("span", { className: "nodo-file-view-title", title: path }, `${path} \xB7 \u5F53\u524D\u5185\u5BB9`),
+      content?.error && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", onClick: () => void viewContent() }, "\u91CD\u8BD5")
+    ),
+    busy && (0, import_react.createElement)("p", { className: "nodo-note", role: "status" }, "\u8BFB\u53D6\u4E2D\u2026"),
     content?.error && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, content.error),
     content?.missing && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6587\u4EF6\u5DF2\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u666E\u901A\u6587\u4EF6\u3002"),
     content?.binary && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u4F5C\u4E3A\u6587\u672C\u5C55\u793A\u3002"),
@@ -2012,10 +2144,15 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
       "div",
       null,
       content.truncated && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6587\u4EF6\u8D85\u8FC7\u5C55\u793A\u4E0A\u9650\uFF0C\u4EC5\u663E\u793A\u5F00\u5934\u90E8\u5206\u3002"),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
+      content.text === "" ? (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6587\u4EF6\u4E3A\u7A7A\u3002") : (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
     )
-  );
-  if (inline) return (0, import_react.createElement)("div", { "data-nodo-tool-file": file.path }, patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002"), view);
+  ) : (0, import_react.createElement)(
+    "div",
+    null,
+    patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002"),
+    request && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy, onClick: () => void viewContent() }, busy ? "\u8BFB\u53D6\u4E2D\u2026" : "\u67E5\u770B\u5F53\u524D\u5185\u5BB9")
+  ));
+  if (inline) return view;
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
     title: path,
     open,
@@ -2023,10 +2160,10 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
     expandOnRowClick: true,
     keepContentWhenOpen: true,
     onToggle: () => void toggle(),
-    children: (0, import_react.createElement)("div", null, edits, view)
+    children: view
   });
 }
-function StreamRecordCard({ record, request, eventPhase }) {
+function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [full, setFull] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -2089,6 +2226,7 @@ function StreamRecordCard({ record, request, eventPhase }) {
     (0, import_react.createElement)(ToolCall, {
       ...disclosure,
       open,
+      compact: timeline,
       children: (0, import_react.createElement)(
         "div",
         { className: "nodo-stream-content" },
@@ -2644,7 +2782,7 @@ function ToolTimeline({ steps, summary, streaming = false }) {
     return () => clearTimeout(timer);
   }, [open, mounted]);
   if (steps.length === 0) return null;
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline", "data-flow": "process", "data-open": open, "data-streaming": streaming }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-tool-timeline-trigger", "aria-expanded": open, "aria-controls": id, onClick: () => setOpen((value) => !value) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-symbol", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-label" }, streaming ? "\u6B63\u5728\u5904\u7406" : "\u5904\u7406\u8FC7\u7A0B"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-summary" }, summary)), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-timeline-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-clip" }, (open || mounted) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-content" }, /* @__PURE__ */ (0, import_react.createElement)("ol", { className: "nodo-tool-timeline-steps" }, steps.map((step) => /* @__PURE__ */ (0, import_react.createElement)(
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline", "data-flow": "process", "data-open": open, "data-streaming": streaming }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-tool-timeline-trigger", "aria-expanded": open, "aria-controls": id, onClick: () => setOpen((value) => !value) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-label" }, streaming ? "\u6B63\u5728\u5904\u7406" : `${steps.length} \u4E2A\u6B65\u9AA4`), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-summary" }, summary)), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-timeline-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-clip" }, (open || mounted) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-content" }, /* @__PURE__ */ (0, import_react.createElement)("ol", { className: "nodo-tool-timeline-steps" }, steps.map((step) => /* @__PURE__ */ (0, import_react.createElement)(
     "li",
     {
       key: step.id,
@@ -2664,22 +2802,22 @@ var TOOL_TIMELINE_CSS = `
 .nodo-tool-timeline-trigger{display:flex;align-items:center;gap:8px;max-width:100%;min-height:28px;padding:2px 0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-align:left;cursor:pointer}
 .nodo-tool-timeline-trigger:hover{color:var(--dsw-alias-label-primary)}
 .nodo-tool-timeline-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
-.nodo-tool-timeline-chevron,.nodo-tool-timeline-symbol{display:flex;flex:none}
+.nodo-tool-timeline-chevron{display:flex;flex:none}
 .nodo-tool-timeline-chevron{transition:transform ${COLLAPSE_MS2}ms ease}
 .nodo-tool-timeline[data-open=true] .nodo-tool-timeline-chevron{transform:rotate(90deg)}
 .nodo-tool-timeline-label{flex:none}
 .nodo-tool-timeline-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-timeline-summary:not(:empty)::before{content:'\xB7';margin-right:8px}
 .nodo-tool-timeline[data-streaming=true] .nodo-tool-timeline-label{color:transparent;background:linear-gradient(100deg,var(--dsw-alias-label-tertiary) 35%,var(--dsw-alias-label-primary) 50%,var(--dsw-alias-label-tertiary) 65%);background-size:250% 100%;background-clip:text;animation:nodo-timeline-shimmer 1.8s linear infinite}
 .nodo-tool-timeline-step[data-active=true]>.nodo-tool-timeline-icon{color:var(--dsw-alias-label-primary);animation:nodo-timeline-pulse 1.8s ease-in-out infinite}
 .nodo-tool-timeline-panel{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows ${COLLAPSE_MS2}ms ease,opacity ${COLLAPSE_MS2}ms ease,visibility ${COLLAPSE_MS2}ms}
 .nodo-tool-timeline[data-open=true] .nodo-tool-timeline-panel{grid-template-rows:1fr;opacity:1;visibility:visible}
 .nodo-tool-timeline-clip{min-height:0;overflow:hidden}
-.nodo-tool-timeline-content{padding:4px 0 6px 22px;min-width:0}
+.nodo-tool-timeline-content{padding:8px 0 6px 22px;min-width:0}
 .nodo-tool-timeline-steps{list-style:none;margin:0;padding:0}
-.nodo-tool-timeline-step{position:relative;display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;min-width:0;padding:0 0 8px;animation:nodo-timeline-enter 200ms ease-out}
-.nodo-tool-timeline-step:not(:last-child)::before{content:'';position:absolute;top:24px;bottom:0;left:6.5px;width:1px;background:var(--dsw-alias-border-l1)}
+.nodo-tool-timeline-step{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;min-width:0;padding:0 0 4px;animation:nodo-timeline-enter 200ms ease-out}
 .nodo-tool-timeline-step:last-child{padding-bottom:0}
-.nodo-tool-timeline-icon{display:flex;align-items:center;justify-content:center;height:28px;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-timeline-icon{display:flex;align-items:center;justify-content:center;height:32px;color:var(--dsw-alias-label-tertiary)}
 .nodo-tool-timeline-detail{min-width:0}
 @keyframes nodo-timeline-enter{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 @keyframes nodo-timeline-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
@@ -2732,7 +2870,7 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
     kind === "thinking" ? (0, import_react.createElement)("span", { key: "summary", className: "nodo-think-summary", "data-streaming": streaming ? "" : void 0 }, summary) : (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-error": error ? "" : void 0 }, summary)
   ] : null;
-  const disclosure = kind === "thinking" ? {
+  const disclosure = kind === "thinking" && !timeline ? {
     icon: timeline ? void 0 : (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
     title,
     open,
@@ -2747,12 +2885,14 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
   } : {
     label: title || "\u5DE5\u5177\u8C03\u7528",
     activeLabel: `${title || "\u5DE5\u5177\u8C03\u7528"}\u4E2D`,
-    query: toolCallQuery(input, summary ?? ""),
+    query: kind === "thinking" ? summary ?? "" : toolCallQuery(input, summary ?? ""),
+    compact: timeline,
+    kind,
     status: error ? "error" : streaming ? "running" : status ?? "done",
     open,
     onOpenChange: setOpen
   };
-  return (0, import_react.createElement)(kind === "thinking" ? import_dsh_client_ui_primitives.DisclosureRow : ToolCall, {
+  return (0, import_react.createElement)(kind === "thinking" && !timeline ? import_dsh_client_ui_primitives.DisclosureRow : ToolCall, {
     ...disclosure,
     children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : (0, import_react.createElement)(
       "div",
@@ -2802,7 +2942,8 @@ function PlanRow({ plan, running, timeline }) {
   const active = steps.find((step) => step.status === "in_progress") ?? steps[0];
   const summary = active ? String(active.text).split("\n")[0] : plan.text ? String(plan.text).split("\n")[0] : null;
   const expandable = steps.length > 0 || Boolean(plan.text);
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
+  return (0, import_react.createElement)(timeline ? ToolCall : import_dsh_client_ui_primitives.DisclosureRow, {
+    ...timeline ? { label: "\u8BA1\u5212", activeLabel: "\u8BA1\u5212\u4E2D", query: summary ?? "", compact: true, kind: "plan", status: running ? "running" : "done", onOpenChange: setOpen } : {},
     icon: timeline ? void 0 : TOOL_VARIANTS.plan.icon({ size: 14 }),
     title: "\u8BA1\u5212",
     open,
@@ -3013,6 +3154,7 @@ function Feed({ profile, session, revision, work, sentTick }) {
       if (supportedStreamRecord(item.presentation)) return (0, import_react.createElement)(StreamRecordCard, {
         key: index,
         record: item.presentation,
+        timeline,
         eventPhase: row.invocation ? "start" : row.result ? "end" : void 0,
         request: { profile: profile.id, session: session.id }
       });
@@ -3491,13 +3633,42 @@ var triggerOf = (value) => {
   if (!token.startsWith("/") && !token.startsWith("$")) return null;
   return { char: token[0], start, query: token.slice(1) };
 };
-function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
+function PendingMessages({ items, disabled, onAction }) {
+  return items.length > 0 && (0, import_react.createElement)(
+    "div",
+    { className: "nodo-pending", "aria-label": "\u5F85\u53D1\u6D88\u606F" },
+    items.map((item, index) => (0, import_react.createElement)(
+      "div",
+      { key: item.seq, className: "nodo-pending-item" },
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-pending-text", title: item.text },
+        item.text || "\u56FE\u7247\u6D88\u606F",
+        item.images.length > 0 && (0, import_react.createElement)("span", { className: "nodo-pending-images" }, ` \xB7 ${item.images.length} \u5F20\u56FE\u7247`)
+      ),
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-pending-actions" },
+        ...[["edit", "\u7F16\u8F91"], ["send", "\u7ACB\u5373\u53D1\u9001"], ["delete", "\u5220\u9664"]].map(([action, label]) => (0, import_react.createElement)("button", {
+          key: action,
+          type: "button",
+          disabled: disabled || item.sending,
+          "aria-label": `${label}\u5F85\u53D1\u6D88\u606F ${index + 1}`,
+          onClick: () => onAction(item.seq, action)
+        }, label))
+      )
+    ))
+  );
+}
+function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
   const box = (0, import_react.useRef)(null);
   const card = (0, import_react.useRef)(null);
   const picker = (0, import_react.useRef)(null);
   const row = (0, import_react.useRef)(null);
   const [preview, setPreview] = (0, import_react.useState)(null);
-  const submitBlocked = busy || readOnly || !running && value.trim() === "" && images.length === 0 && attachedFiles.length === 0 && references.length === 0;
+  const hasContent = value.trim() !== "" || images.length > 0 || attachedFiles.length > 0 || references.length > 0;
+  const stopping = running && !hasContent;
+  const submitBlocked = busy || readOnly || !running && !hasContent;
   (0, import_react.useEffect)(() => {
     const node = box.current;
     if (node === null) return;
@@ -3624,6 +3795,7 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
         if (!readOnly && !busy) onAttachFiles(dropped);
       } : void 0
     },
+    (0, import_react.createElement)(PendingMessages, { items: pending, disabled: readOnly || busy, onAction: onQueueAction }),
     fileMenu,
     references.length > 0 && (0, import_react.createElement)("div", { className: "nodo-composer-files", "aria-label": "\u672C\u6B21\u6D88\u606F\u5F15\u7528" }, references.map((item) => (0, import_react.createElement)(
       "span",
@@ -3709,18 +3881,26 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
         rolePicker,
         onModelChange && (0, import_react.createElement)(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange })
       ),
+      onSend && running && hasContent && (0, import_react.createElement)("button", {
+        type: "button",
+        className: "nodo-pending-stop",
+        disabled: busy || readOnly,
+        "aria-label": "\u505C\u6B62\u751F\u6210",
+        title: "\u505C\u6B62\u751F\u6210",
+        onClick: onStop
+      }, ComposerGlyph(true)),
       onSend && (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-        label: running ? "\u505C\u6B62\u751F\u6210" : "\u53D1\u9001\u6D88\u606F",
+        label: stopping ? "\u505C\u6B62\u751F\u6210" : running ? "\u52A0\u5165\u961F\u5217" : "\u53D1\u9001\u6D88\u606F",
         side: "top",
         align: "end",
         delayMs: 500,
         children: (0, import_react.createElement)("button", {
-          type: running ? "button" : "submit",
+          type: stopping ? "button" : "submit",
           className: "nodo-send",
           disabled: submitBlocked,
-          "aria-label": running ? "\u505C\u6B62\u751F\u6210" : "\u53D1\u9001\u6D88\u606F",
-          onClick: running ? onStop : void 0
-        }, ComposerGlyph(running))
+          "aria-label": stopping ? "\u505C\u6B62\u751F\u6210" : running ? "\u52A0\u5165\u961F\u5217" : "\u53D1\u9001\u6D88\u606F",
+          onClick: stopping ? onStop : void 0
+        }, ComposerGlyph(stopping))
       })
     )
   );
@@ -7696,12 +7876,37 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
     try {
       const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }));
-      await call("send", { profile: profile.id, session: id, text, images: payload });
+      await call("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
       if (current()) setSentTick((tick) => tick + 1);
       setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
       setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
       await refresh(true);
       if (current()) remember(profile.id, workspace.id, id);
+    } catch (failure) {
+      if (relevant()) setActionError(failure.message);
+    } finally {
+      setSessionBusy(false);
+    }
+  };
+  const queueAction = async (seq, action) => {
+    if (!profile || !sessionId || sessionBusy || readOnly) return;
+    setSessionBusy(true);
+    setActionError("");
+    const relevant = trackSelection(true);
+    try {
+      const result = await call("queued-message", { profile: profile.id, session: sessionId, seq, action });
+      if (action === "edit") {
+        setDrafts((current) => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join("\n\n") }));
+        setPastedImages((current) => ({ ...current, [draftKey]: [
+          ...result.images.map((image) => ({ ...image, dataUrl: `data:${image.mediaType};base64,${image.data}` })),
+          ...current[draftKey] ?? []
+        ] }));
+      }
+      if (action === "send" && relevant()) {
+        if (result.mode === "queued") setActionError("\u5F53\u524D\u65E0\u6CD5\u63D2\u5165\u672C\u8F6E\uFF0C\u6D88\u606F\u4ECD\u5728\u6392\u961F");
+        else if (result.mode !== "cancelled") setSentTick((tick) => tick + 1);
+      }
+      await refresh(true);
     } catch (failure) {
       if (relevant()) setActionError(failure.message);
     } finally {
@@ -7779,6 +7984,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, workflowNavigation
       onStop: () => void interrupt(),
       onAttach: attach,
       onRemoveImage: removeImage,
+      pending: work?.pending ?? [],
+      onQueueAction: (seq, action) => void queueAction(seq, action),
       onInsert: insertDraft,
       onGoal: () => setGoalOpen(true),
       onCompact: () => void compactSession(),
@@ -8791,6 +8998,15 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-question-actions{display:flex;flex-shrink:0;align-items:center;gap:12px}
 .nodo-composer{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;flex:none;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 4px;padding-top:8px;border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-composer-scroll{max-height:var(--dsh-composer-text-max-height,336px);margin-right:4px;overflow-y:auto}
+.nodo-pending{display:flex;flex-direction:column;gap:4px;max-height:160px;margin:0 8px;padding-bottom:8px;overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.nodo-pending-item{display:flex;align-items:center;gap:12px;min-width:0;padding:6px 8px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover);font-size:12px;line-height:20px}
+.nodo-pending-text{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.nodo-pending-images{color:var(--dsw-alias-label-caption)}
+.nodo-pending-actions{display:flex;flex:none;align-items:center;gap:8px}
+.nodo-pending-actions button,.nodo-pending-stop{padding:2px;border:0;background:none;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
+.nodo-pending-actions button:hover:not(:disabled),.nodo-pending-stop:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.nodo-pending-actions button:disabled,.nodo-pending-stop:disabled{opacity:.5;cursor:default}
+.nodo-pending-stop{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%}
 .nodo-composer textarea{box-sizing:border-box;display:block;width:100%;min-height:36px;padding:4px 8px 0 14px;border:0;outline:none;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;caret-color:var(--dsw-alias-state-business-primary);resize:none}
 .nodo-composer textarea::placeholder{color:var(--dsw-alias-label-caption)}
 /* The caret marks focus in the text surface; the page's control ring stays off it. */

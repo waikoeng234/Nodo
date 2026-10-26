@@ -4,6 +4,7 @@ import { formElicitation } from '../acp/elicitation.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
 import { UnsupportedCapabilityError } from '../spi.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { textToolChanges } from '../file-changes.js';
 export { findExecutable } from '../cli.js';
 export const codebuddyInfo = {
     id: 'codebuddy', label: 'CodeBuddy', command: 'codebuddy', requiresCwd: true,
@@ -164,6 +165,7 @@ export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model,
             options.onEvent?.(backgroundError && event.type === 'turn/end' ? { ...event, unconfirmed: true } : event);
         } }, {
         id: 'codebuddy', label: 'CodeBuddy', resumeMethod: 'load', instructionMode: instructions ? 'native' : 'none',
+        fileChanges: true, fileEdits: textToolChanges,
         connect(callbacks) {
             if (backgroundError)
                 throw backgroundError;

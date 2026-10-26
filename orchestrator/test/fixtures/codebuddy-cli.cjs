@@ -85,6 +85,25 @@ const receive = line => {
     prompt = { id, text: params.prompt?.[0]?.text ?? '' }
     const text = prompt.text
     next++
+    if (text === 'FILES') {
+      const edit = { file_path: 'edited.txt', old_string: 'before\n', new_string: 'after\n' }
+      update({ sessionUpdate: 'tool_call', toolCallId: 'edit', title: 'Editing file', rawInput: edit, status: 'pending' })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'edit', name: 'Edit', status: 'completed' })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'edit', status: 'completed' })
+      update({ sessionUpdate: 'tool_call', toolCallId: 'write', name: 'Write', status: 'pending' })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'write', rawInput: { file_path: 'written.txt', content: 'new body' } })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'write', status: 'completed' })
+      update({ sessionUpdate: 'tool_call', toolCallId: 'native', name: 'Edit', rawInput: { ...edit, file_path: 'native.txt' }, status: 'pending' })
+      update({ sessionUpdate: 'tool_call_update', toolCallId: 'native', status: 'completed', content: [{ type: 'diff', path: 'native.txt', oldText: 'whole before', newText: 'whole after' }] })
+      for (const [toolCallId, extra, status] of [['failed', {}, 'failed'], ['replay', { _meta: { isReplay: true } }, 'completed'], ['member', { _meta: { 'codebuddy.ai/memberEvent': 'worker-A' } }, 'completed']]) {
+        update({ sessionUpdate: 'tool_call', toolCallId, name: 'Edit', rawInput: { ...edit, file_path: toolCallId + '.txt' }, status, ...extra })
+      }
+      send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'other-session', update: { sessionUpdate: 'tool_call', toolCallId: 'foreign', name: 'Edit', rawInput: { ...edit, file_path: 'foreign.txt' }, status: 'completed' } } })
+      update({ sessionUpdate: 'tool_call', toolCallId: 'read', name: 'Read', rawInput: { file_path: 'read.txt' }, status: 'completed' })
+      chunks('Files done')
+      finish()
+      return
+    }
     if (text === 'MEMBER_CHUNKS' || text === 'MEMBER_UNBOUNDED') {
       chunks('Parent final', 'parent-' + next)
       const _meta = { 'codebuddy.ai/memberEvent': 'worker-A' }

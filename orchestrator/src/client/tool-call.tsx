@@ -7,6 +7,8 @@ export interface ToolCallProps {
   activeLabel?: string
   query?: string
   status?: ToolCallStatus
+  compact?: boolean
+  kind?: 'tool' | 'thinking' | 'plan'
   open: boolean
   onOpenChange: (open: boolean) => void
   children?: ReactNode
@@ -29,7 +31,7 @@ export function toolCallQuery(input: unknown, fallback = ''): string {
   return (typeof input === 'string' && input.trim() ? input : fallback).trim().split(/\r?\n/, 1)[0].slice(0, 400)
 }
 
-export function ToolCall({ label, activeLabel = label, query = '', status = 'unknown', open, onOpenChange, children }: ToolCallProps) {
+export function ToolCall({ label, activeLabel = label, query = '', status = 'unknown', compact = false, kind = 'tool', open, onOpenChange, children }: ToolCallProps) {
   const id = `nodo-tool-${useId()}`
   const [mounted, setMounted] = useState(open)
   useEffect(() => {
@@ -39,16 +41,19 @@ export function ToolCall({ label, activeLabel = label, query = '', status = 'unk
     return () => clearTimeout(timer)
   }, [open, mounted])
   const running = status === 'running'
+  const statusLabel = kind === 'tool' ? `：${STATUS_LABELS[status]}` : running ? '：进行中' : ''
+  const chevron = <span className="nodo-tool-call-chevron" aria-hidden><IconChevronRightOutlineRegular size={14} /></span>
   return (
-    <div className="nodo-tool-call" data-open={open} data-state={status}>
+    <div className="nodo-tool-call" data-open={open} data-state={status} data-compact={compact} data-kind={kind}>
       <button type="button" className="nodo-tool-call-trigger" aria-expanded={open} aria-controls={id}
-        aria-label={`${running ? activeLabel : label}${query ? ` ${query}` : ''}：${STATUS_LABELS[status]}`} onClick={() => onOpenChange(!open)}>
-        <span className="nodo-tool-call-chevron" aria-hidden><IconChevronRightOutlineRegular size={14} /></span>
+        aria-label={`${running ? activeLabel : label}${query ? ` ${query}` : ''}${statusLabel}`} onClick={() => onOpenChange(!open)}>
+        {!compact && chevron}
         <span className="nodo-tool-call-label">{running ? activeLabel : label}</span>
         {query && <span className="nodo-tool-call-query" title={query}>{query}</span>}
-        <span className="nodo-tool-call-status" aria-hidden title={STATUS_LABELS[status]}>
-          {status === 'done' ? <IconCheckOutlineRegular size={14} /> : running || status === 'started' ? null : status === 'interrupted' ? '−' : status === 'unknown' ? '?' : '!'}
-        </span>
+        {kind === 'tool' && (!compact || !['done', 'running', 'started'].includes(status)) && <span className="nodo-tool-call-status" aria-hidden title={STATUS_LABELS[status]}>
+          {compact ? STATUS_LABELS[status] : status === 'done' ? <IconCheckOutlineRegular size={14} /> : running || status === 'started' ? null : status === 'interrupted' ? '−' : status === 'unknown' ? '?' : '!'}
+        </span>}
+        {compact && chevron}
       </button>
       <div id={id} className="nodo-tool-call-panel" aria-hidden={!open} {...(!open ? { inert: '' } : {})}>
         <div className="nodo-tool-call-clip"><div className="nodo-tool-call-content">{(open || mounted) && children}</div></div>
@@ -75,6 +80,14 @@ export const TOOL_CALL_CSS = `
 .nodo-tool-call-content{min-width:0;padding:4px 0 6px 22px}
 .nodo-tool-call-content>.nodo-io-card{margin:0}
 .nodo-tool-call-content .nodo-io-section+.nodo-io-section{border-top:.5px solid var(--dsw-alias-border-l1)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:10px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-label{flex:none;max-width:40%}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-query{max-width:min(65%,48ch);padding:2px 8px;border:0;border-radius:8px;line-height:22px;color:var(--dsw-alias-label-secondary)}
+.nodo-tool-call[data-compact=true]:not([data-kind=tool]) .nodo-tool-call-query{max-width:min(65%,52ch);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:22px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-chevron{opacity:.35}
+.nodo-tool-call[data-compact=true]:hover .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true]:focus-within .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true][data-open=true] .nodo-tool-call-chevron{opacity:1}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-status{width:auto;white-space:nowrap;font-size:var(--dsh-content-font-size-tertiary,12px)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-content{margin:4px 0 8px;padding:4px 0 4px 12px;border-left:1px solid var(--dsw-alias-border-l1)}
 @keyframes nodo-tool-call-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
 @media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `

@@ -5,7 +5,7 @@ import { STEER, addUsage, steerFailed, usageOf } from '../spi.js';
 import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector, listDirs } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
-import { createFileChanges } from '../file-changes.js';
+import { createFileChanges, textToolChanges } from '../file-changes.js';
 import { connectZcode, findZcodeExecutable, parseZcodeModel } from './native.js';
 import { roleMcp } from '../role-mcp.js';
 import { zcodeInstructions } from './instructions.js';
@@ -360,18 +360,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 turn.completedTools.add(payload.toolCallId);
                 turn.parents.delete(payload.toolCallId);
                 turn.parentEmitted.delete(payload.toolCallId);
-                let input = turn.inputs.get(payload.toolCallId);
-                if (typeof input === 'string') {
-                    try {
-                        input = JSON.parse(input);
-                    }
-                    catch {
-                        input = undefined;
-                    }
-                }
                 const name = turn.names.get(payload.toolCallId);
-                const path = ['Write', 'Edit'].includes(name) ? input?.file_path : undefined;
-                turn.changes.add(payload.toolCallId, typeof path === 'string' ? [{ path, edit: { operation: name === 'Edit' ? 'update' : 'unknown' } }] : [], payload.kind === 'result' && payload.result?.success === true);
+                turn.changes.add(payload.toolCallId, textToolChanges(name ?? '', turn.inputs.get(payload.toolCallId)), payload.kind === 'result' && payload.result?.success === true);
                 emit({ type: 'tool', turnId: turn.id, callId: payload.toolCallId, name: turn.names.get(payload.toolCallId) ?? 'tool', phase: 'end',
                     input: turn.inputs.get(payload.toolCallId), output: payload.result?.content ?? payload.result?.error ?? payload.error ?? payload.result,
                     isError: payload.kind === 'error' || payload.result?.success === false, ...(parent ? { parentCallId: parent } : {}) });

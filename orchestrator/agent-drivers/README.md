@@ -1,14 +1,16 @@
 # agent-drivers
 
 One SPI, eight primitives, many coding-agent runtimes. Pure ESM JavaScript,
-Node ≥ 20.3.0, covering the MCP dependency tree and native DSH's
-[`AbortSignal.any`](https://nodejs.org/api/globals.html#static-method-abortsignalanysignals).
+Node ≥ 24.
 Codex shared connections use a host-provided `ws` library. Standalone consumers
 must provide it in their own dependency tree; DSH's working-directory and profile
 lookup remain fallbacks. This package does not install or bundle another copy.
 The session identity MCP service uses the official `@modelcontextprotocol/sdk`
 dependency. Run `npm install --ignore-scripts` for this standalone package, or
 `npm ci --ignore-scripts` in the parent Nodo package.
+Replacement-fragment patches use the declared `diff` dependency, loaded on demand.
+If it is not installed, these edits are marked `unavailable` without affecting
+package imports.
 
 The point of the package boundary: agent CLI protocols drift fast, so drivers
 must be patchable and versionable independently of any orchestrator that

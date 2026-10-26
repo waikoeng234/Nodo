@@ -74,17 +74,18 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
       ? h('span', { key: 'summary', className: 'nodo-think-summary', 'data-streaming': streaming ? '' : undefined }, summary)
       : h('span', { key: 'summary', className: 'nodo-row-summary', 'data-error': error ? '' : undefined }, summary),
   ] : null
-  const disclosure = kind === 'thinking' ? {
+  const disclosure = kind === 'thinking' && !timeline ? {
     icon: timeline ? undefined : (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
     title, open, expandable, running: streaming, expandOnRowClick: true, keepContentWhenOpen: true,
     contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
     onToggle: () => setOpen(current => !current),
     collapsedContent: collapsed,
   } : {
-    label: title || '工具调用', activeLabel: `${title || '工具调用'}中`, query: toolCallQuery(input, summary ?? ''),
+    label: title || '工具调用', activeLabel: `${title || '工具调用'}中`, query: kind === 'thinking' ? summary ?? '' : toolCallQuery(input, summary ?? ''),
+    compact: timeline, kind,
     status: error ? 'error' : streaming ? 'running' : status ?? 'done', open, onOpenChange: setOpen,
   }
-  return h(kind === 'thinking' ? DisclosureRow : ToolCall, {
+  return h(kind === 'thinking' && !timeline ? DisclosureRow : ToolCall, {
     ...disclosure,
     children: kind === 'thinking'
       ? h('div', { className: 'nodo-think-body' }, h(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact' }))
@@ -124,7 +125,8 @@ export function PlanRow({ plan, running, timeline }) {
   const summary = active ? String(active.text).split('\n')[0] : plan.text ? String(plan.text).split('\n')[0] : null
   // A markdown-form plan has no steps but a real body: it still expands.
   const expandable = steps.length > 0 || Boolean(plan.text)
-  return h(DisclosureRow, {
+  return h(timeline ? ToolCall : DisclosureRow, {
+    ...(timeline ? { label: '计划', activeLabel: '计划中', query: summary ?? '', compact: true, kind: 'plan', status: running ? 'running' : 'done', onOpenChange: setOpen } : {}),
     icon: timeline ? undefined : TOOL_VARIANTS.plan.icon({ size: 14 }),
     title: '计划', open, expandable, running, expandOnRowClick: expandable, keepContentWhenOpen: true,
     contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
@@ -306,7 +308,7 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     if (item.kind === 'changes') return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } })
     if (item.kind === 'tool') {
       if (supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation,
-        eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id } })
+        timeline, eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id } })
       const variant = TOOL_VARIANTS[toolVariant(item.name)]
       const progress = progressText(item.progress)
       return h(ProcessRow, {
