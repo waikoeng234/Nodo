@@ -5,6 +5,7 @@ import {
   PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, PermissionIconFullAccessRegular,
 } from './ui-shared.js'
 import { ModelPicker } from './feed.js'
+import { ComposerAttachments, ComposerAttachmentChip, composerAttachment } from './composer-attachments.tsx'
 
 // The composer is the host's InputBar: one card on the composer surface with the
 // text surface on top and the control row below it, Enter sending, Shift+Enter
@@ -162,14 +163,11 @@ export function Composer({ profile, workspace, value, images, running, busy, rea
     h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除引用 ${item.label}`, onClick: () => onRemoveReference(item.id) }, '×')))),
   onAttachFiles && h('input', { ref: picker, type: 'file', multiple: true, hidden: true, disabled: readOnly || busy, 'aria-label': '上传图片或文件',
     onChange: event => { const picked = Array.from(event.target.files); event.target.value = ''; if (picked.length && !readOnly && !busy) onAttachFiles(picked) } }),
-  attachedFiles.length > 0 && h('div', { className: 'nodo-composer-files' }, attachedFiles.map((file, index) => h('span', { key: file.id ?? index, className: 'nodo-composer-file' },
-    h(IconPaperclipOutlineRegular, { size: 14 }), h('span', { title: file.name }, file.name),
-    h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除文件 ${file.name}`, onClick: () => onRemoveFile(index) }, '×')))),
-  images.length > 0 && h('div', { className: 'nodo-composer-images' },
-    images.map((image, index) => h('div', { key: index, className: 'nodo-composer-image' },
-      h('button', { type: 'button', className: 'nodo-composer-image-open', title: '查看原图', disabled: !image.dataUrl, onClick: () => setPreview(image) },
-        h('img', { src: image.dataUrl, alt: image.name })),
-      h('button', { type: 'button', className: 'nodo-composer-image-remove', disabled: readOnly || busy, 'aria-label': `移除图片 ${image.name}`, onClick: () => onRemoveImage(index) }, '×')))),
+  (attachedFiles.length > 0 || images.length > 0) && h(ComposerAttachments, { 'aria-label': '本次消息附件' },
+    attachedFiles.map((file, index) => h(ComposerAttachmentChip, { key: `file:${file.id ?? index}`, attachment: composerAttachment(file),
+      disabled: readOnly || busy, onRemove: () => onRemoveFile(index) })),
+    images.map((image, index) => h(ComposerAttachmentChip, { key: `image:${image.id ?? index}`, attachment: composerAttachment(image, true),
+      disabled: readOnly || busy, onPreview: image.dataUrl ? () => setPreview(image) : undefined, onRemove: () => onRemoveImage(index) }))),
   preview?.dataUrl && h(ImageLightbox, { src: preview.dataUrl, alt: preview.name ?? '原图', labels: { dialog: '图片预览', close: '关闭预览' }, onClose: () => setPreview(null) }),
   h('div', { className: 'nodo-composer-scroll' },
     h('textarea', {

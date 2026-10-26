@@ -19,7 +19,8 @@ const harness = async call => {
 }
 const descendants = node => {
   if (!node || typeof node !== 'object') return []
-  return [node, ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(descendants)]
+  return [node, ...(node.type?.name === 'FileTree' ? [node.type(node.props)]
+    : [...(node.children ?? []), node.props?.children]).flat(Infinity).flatMap(descendants)]
 }
 
 test('structured view exposes external error state and fetches saved details without changing ownership', async () => {

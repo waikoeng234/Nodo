@@ -3,6 +3,7 @@ import type { ReactNode } from './ui-shared.js'
 import { CodeDiff } from './code-diff.tsx'
 import { relativeFile, summarizeChanges } from './file-diffs.ts'
 import type { ChangedFileData, ChangesBody, DiffCounts } from './file-diffs.ts'
+import { buildFileTree, FileTree, FILE_TREE_CSS } from './file-tree.tsx'
 
 interface ChangeRecord {
   runId: string
@@ -51,6 +52,10 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
   const detailsId = `nodo-changes-${useId()}`
   const previewId = `${detailsId}-preview`
   const { files, totals } = useMemo(() => summarizeChanges(value.body), [value.body])
+  const byPath = new Map(files.map((entry, index) => [entry.file.path, { ...entry, index }]))
+  const tree = buildFileTree((expanded ? files : files.slice(0, 3)).map(({ file, counts }) => ({
+    path: file.path, relativePath: relativeFile(file.path, value.body.cwd), additions: counts?.added, deletions: counts?.removed,
+  })))
   const count = record.body.fileCount
   const workspace = record.body.scope === 'workspace-snapshot'
   const canLoad = Boolean(available) && !full
@@ -137,8 +142,8 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
       <button type="button" className="nodo-changes-view" disabled={busy} aria-expanded={open}
         aria-controls={detailsId} onClick={() => showAll()}>{busy ? '加载中…' : open ? '收起变更' : '查看变更'}</button>
     </div>
-    <div id={detailsId} className="nodo-changes-files">
-      {(expanded ? files : files.slice(0, 3)).map(({ file, counts, patch }, index) => {
+    <FileTree id={detailsId} className="nodo-changes-files" nodes={tree} header={false} renderFile={(node, content) => {
+        const { file, patch, index } = byPath.get(node.path)!
         const fileDetailsId = `${detailsId}-${index}`
         return <div key={file.path} className="nodo-changes-file-entry">
           <button type="button" className="nodo-changes-file" disabled={busy} aria-expanded={open || selected === file.path}
@@ -147,14 +152,13 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
             onPointerLeave={closePreview} onFocus={event => { if (!open) showFile(file.path, event.currentTarget) }}
             onBlur={event => { if (!preview.current?.contains(event.relatedTarget)) closePreview() }}
             onClick={event => { setOpen(false); showFile(file.path, event.currentTarget) }}>
-            <span className="nodo-changes-path">{relativeFile(file.path, value.body.cwd)}</span><Counts value={counts} />
+            {content}
           </button>
           {open && <div id={fileDetailsId} className="nodo-changes-details" role="region" aria-label={`${relativeFile(file.path, value.body.cwd)} 变更详情`}>
             {renderFile(file, patch)}
           </div>}
         </div>
-      })}
-    </div>
+      }} />
     {count > 3 && <button type="button" className="nodo-changes-more" disabled={busy || !expanded && files.length <= 3 && !canLoad}
       aria-expanded={expanded} onClick={() => more()}>{expanded ? '收起文件列表' : `再显示 ${count - 3} 个文件`}
       <IconChevronDownOutlineRegular size={14} style={expanded ? { transform: 'rotate(180deg)' } : undefined} /></button>}
@@ -174,7 +178,7 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
   </div>
 }
 
-export const FILE_CHANGES_SUMMARY_CSS = `
+export const FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
 .nodo-changes-card{min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
 .nodo-changes-header{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 16px}
 .nodo-changes-icon{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary)}
@@ -185,10 +189,9 @@ export const FILE_CHANGES_SUMMARY_CSS = `
 .nodo-changes-added{color:var(--dsw-alias-state-success-primary)}
 .nodo-changes-removed{color:var(--dsw-alias-state-error-primary)}
 .nodo-changes-view{flex:none;padding:5px 10px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-weight:500;cursor:pointer}
-.nodo-changes-files{border-top:.5px solid var(--dsw-alias-border-l1);padding:2px 0}
+.nodo-changes-files{border-top:.5px solid var(--dsw-alias-border-l1)}
 .nodo-changes-file-entry{min-width:0}
-.nodo-changes-file{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;width:100%;padding:9px 16px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;cursor:pointer}
-.nodo-changes-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size,14px);line-height:20px}
+.nodo-changes-file{display:block;min-width:0;width:100%;padding:0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;cursor:pointer}
 .nodo-changes-more{display:flex;align-items:center;gap:8px;width:100%;padding:10px 16px;border:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;text-align:left;cursor:pointer}
 .nodo-changes-view:hover:not(:disabled),.nodo-changes-file:hover:not(:disabled),.nodo-changes-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-changes-card button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
@@ -203,5 +206,5 @@ export const FILE_CHANGES_SUMMARY_CSS = `
 .nodo-file-view-header{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 0;background:var(--dsw-alias-bg-base)}
 .nodo-file-view-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}
 .nodo-changes-preview::backdrop{background:transparent;pointer-events:none}
-@media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-file{padding-inline:12px}.nodo-changes-coverage{display:none}}
+@media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-coverage{display:none}}
 `

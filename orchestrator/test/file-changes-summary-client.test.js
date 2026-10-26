@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
 
 const nodes = node => !node || typeof node !== 'object' ? [] : [node,
-  ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(nodes)]
-const find = (tree, className) => nodes(tree).find(node => node.props.className === className)
+  ...(node.type?.name === 'FileTree' ? [node.type(node.props)]
+    : [...(node.children ?? []), node.props?.children]).flat(Infinity).flatMap(nodes)]
+const find = (tree, className) => nodes(tree).find(node => node.props.className?.split(' ').includes(className))
 const patch = '@@ -1 +1,2 @@\n-old\n+new\n+extra\n'
 const file = path => ({ path, edits: [{ operation: 'update', diffText: patch }] })
 const record = files => ({ version: 1, kind: 'changes', mode: 'snapshot', runId: 'r', entityId: 'c', revision: 1,
@@ -50,7 +51,11 @@ test('summary card previews hovered files above the list and still opens all det
   let tree = render()
   assert.equal(find(tree, 'nodo-changes-title').children[0], '已编辑')
   assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-file').length, 3)
-  assert.deepEqual(find(tree, 'nodo-changes-path').children, ['src/0.ts'])
+  assert.deepEqual(find(tree, 'nodo-file-tree-name').children, ['src'])
+  assert.equal(nodes(tree).filter(node => node.props['data-kind'] === 'folder').length, 1)
+  const firstFile = find(tree, 'nodo-changes-file')
+  assert.deepEqual(find(firstFile, 'nodo-file-tree-name').children, ['0.ts'])
+  assert.equal(find(firstFile, 'nodo-file-tree-name').props.title, '/ws/src/0.ts')
   assert.deepEqual(find(tree, 'nodo-changes-more').children.slice(0, 1), ['再显示 2 个文件'])
   assert.equal(find(tree, 'nodo-changes-view').props['aria-expanded'], false)
   assert.ok(!find(tree, 'nodo-changes-details'))
@@ -105,6 +110,33 @@ test('file previews switch on hover, support click, and close when their row is 
   assert.ok(!find(tree, 'nodo-changes-preview'))
   await find(tree, 'nodo-changes-more').props.onClick()
   assert.ok(!find(render(), 'nodo-changes-preview'), 'a hidden selection does not reopen on later expansion')
+})
+
+test('directory grouping keeps same-named files linked to their own diffs and only folds files beyond the preview', async () => {
+  const { FileChangesSummary, host } = await loadClient('file-changes-summary.tsx')
+  const source = record(['src/index.ts', 'test/index.ts', 'src/helper.ts', 'test/late.ts', 'README.md'].map(path => file(`/ws/${path}`)))
+  const props = { record: source, value: source, full: source, load: async () => source,
+    renderFile: value => ({ type: 'file-detail', props: { path: value.path }, children: [] }) }
+  const render = () => { host.reset(); return FileChangesSummary(props) }
+  const rows = tree => nodes(tree).filter(node => node.props.className === 'nodo-changes-file')
+  const paths = tree => rows(tree).map(row => find(row, 'nodo-file-tree-name').props.title)
+  let tree = render()
+  assert.deepEqual(paths(tree), ['/ws/src/index.ts', '/ws/src/helper.ts', '/ws/test/index.ts'])
+  rows(tree)[2].props.onClick({ currentTarget: {} })
+  tree = render()
+  assert.equal(nodes(find(tree, 'nodo-changes-preview')).find(node => node.type === 'file-detail').props.path, '/ws/test/index.ts')
+  await find(tree, 'nodo-changes-more').props.onClick()
+  tree = render()
+  assert.equal(rows(tree).length, 5)
+  await find(tree, 'nodo-changes-more').props.onClick()
+  tree = render()
+  assert.equal(rows(tree).length, 3)
+  assert.ok(find(tree, 'nodo-changes-preview'), 'an original preview file remains selected after regrouping')
+  await find(tree, 'nodo-changes-more').props.onClick()
+  tree = render()
+  rows(tree).find(row => find(row, 'nodo-file-tree-name').props.title === '/ws/test/late.ts').props.onFocus({ currentTarget: {} })
+  await find(render(), 'nodo-changes-more').props.onClick()
+  assert.ok(!find(render(), 'nodo-changes-preview'), 'a file hidden by folding loses its preview')
 })
 
 test('preview placement fits the viewport and leaves a gap from the hovered file', async () => {

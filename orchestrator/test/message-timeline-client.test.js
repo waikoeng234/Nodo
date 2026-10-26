@@ -76,6 +76,63 @@ test('the feed interleaves local process groups with independent messages and re
   assert.ok(!JSON.stringify(tree).includes('first\\nlast'), 'the aggregate work buffer is not a second visible reply')
 })
 
+test('reply timestamps appear only on each completed turn final, including after history restore', async () => {
+  const feed = { key: 'p:s', error: '', lines: [] }
+  const { Feed, TurnUsage } = await loadClient('feed.js', {
+    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+  })
+  for (const [active, reply, open, expected] of [
+    [true, undefined, false, ['old-final']],
+    [true, undefined, true, ['old-final']],
+    [true, true, false, ['old-final']],
+    [false, true, false, ['old-final', 'final']],
+    [false, false, false, ['old-final']],
+  ]) {
+    feed.lines = JSON.parse(JSON.stringify([
+      { who: 'user', text: 'old task', at: 10 },
+      { who: 'agent', kind: 'text', timeline: true, messageId: 'old-intro', text: 'checking', at: 20, reply: false },
+      { who: 'agent', kind: 'text', timeline: true, messageId: 'old-final', text: 'done', at: 30, reply: true },
+      { who: 'user', text: 'new task', at: 40 },
+      { who: 'agent', kind: 'text', timeline: true, messageId: 'intro', text: 'checking again', at: 50, open: false },
+      { who: 'agent', kind: 'text', timeline: true, messageId: 'final', channel: 'final_answer', text: 'answer', at: 60, open, reply },
+      { who: 'system', kind: 'usage', usage: { outputTokens: 100 } },
+      { who: 'agent', kind: 'text', timeline: true, messageId: 'child', parentCallId: 'call', text: 'child answer', at: 70, reply: true },
+    ]))
+    const before = JSON.stringify(feed.lines)
+    const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active, timeline: true } })
+    const replies = nodes(tree).filter(node => node.props.className === 'nodo-reply')
+    const stamped = replies.filter(node => nodes(node).some(child => child.type?.name === 'MessageTime'))
+    assert.deepEqual(stamped.map(node => node.props['data-message-id']), expected)
+    for (const node of stamped) {
+      const stamp = nodes(node).find(child => child.type?.name === 'MessageTime')
+      assert.equal(stamp.type(stamp.props).props.dateTime, new Date(stamp.props.at).toISOString())
+    }
+    assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-user')
+      .flatMap(nodes).filter(node => node.type?.name === 'MessageTime').length, 2)
+    assert.equal(nodes(tree).filter(node => node.type === TurnUsage).length, open ? 0 : 1)
+    assert.equal(JSON.stringify(feed.lines), before)
+  }
+})
+
+test('legacy turns show a timestamp only after their last parent reply and hide it while running', async () => {
+  const feed = { key: 'p:s', error: '', lines: [
+    { who: 'user', text: 'old task', at: 10 },
+    { who: 'agent', kind: 'text', text: 'old progress', at: 20 },
+    { who: 'agent', kind: 'text', text: 'old answer', at: 30 },
+    { who: 'user', text: 'new task', at: 40 },
+    { who: 'agent', kind: 'text', text: 'new progress', at: 50 },
+    { who: 'agent', kind: 'text', text: 'new answer', at: 60 },
+    { who: 'agent', kind: 'text', text: 'child answer', at: 70, parentCallId: 'call' },
+  ] }
+  const { Feed } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  for (const active of [true, false]) {
+    const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active } })
+    const replies = nodes(tree).filter(node => node.props.className === 'nodo-reply')
+    const stamps = replies.flatMap(nodes).filter(node => node.type?.name === 'MessageTime')
+    assert.deepEqual(stamps.map(node => node.props.at), active ? [30] : [30, 60])
+  }
+})
+
 test('interleaved and concurrent tool results stay at their arrival positions, and adjacent pairs remain one card', async () => {
   const { transcriptRows } = await loadClient('feed.js')
   const call = (callId, phase) => ({ who: 'agent', kind: 'tool', timeline: true, turnId: 't', callId, phase, name: 'Read' })

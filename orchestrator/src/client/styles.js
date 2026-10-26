@@ -5,8 +5,9 @@ import { TOOL_CALL_CSS } from './tool-call.tsx'
 import { TOOL_TIMELINE_CSS } from './tool-timeline.tsx'
 import { CODE_DIFF_CSS } from './code-diff.tsx'
 import { FILE_CHANGES_SUMMARY_CSS } from './file-changes-summary.tsx'
+import { COMPOSER_ATTACHMENTS_CSS } from './composer-attachments.tsx'
 
-export const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + `
+export const CSS = AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + COMPOSER_ATTACHMENTS_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-runs-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
@@ -289,16 +290,11 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-composer-tools{display:flex;align-items:center;gap:12px;min-width:0}
 .nodo-composer-target{display:inline-flex;align-items:center;gap:8px;min-width:0;margin-left:auto;max-width:calc(100% - 46px)}
 .nodo-composer-target:last-child{max-width:100%}
-.nodo-composer-images{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px;max-height:90px;overflow:auto}
 .nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
 .nodo-composer-file>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .nodo-composer-file button{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit}
-.nodo-composer-image{position:relative;width:64px;height:64px;overflow:hidden;border-radius:var(--dsw-radius-panel);box-shadow:var(--dsw-elevation-soft)}
-.nodo-composer-image-open{display:block;width:100%;height:100%;padding:0;border:0;background:none;cursor:zoom-in}
-.nodo-composer-image img{display:block;width:100%;height:100%;object-fit:cover}
-.nodo-composer-image-remove{position:absolute;top:3px;right:3px;width:20px;height:20px;padding:0;border:0;border-radius:100px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-button-floating-fill);font:inherit;line-height:20px;cursor:pointer}
 .nodo-attachment{display:block;max-width:100%;max-height:320px;margin-top:6px;border-radius:var(--dsw-radius-panel)}
 .nodo-send{display:grid;place-items:center;flex:none;width:34px;height:34px;padding:0;border:0;border-radius:999px;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);cursor:pointer;transform:translateY(-2px);transition:background-color .1s}
 .nodo-send:hover:not(:disabled){background:var(--dsw-alias-button-info-hover)}

@@ -299,6 +299,17 @@ export function Feed({ profile, session, revision, work, sentTick }) {
   }
   const lines = feed.key === key ? feed.lines : []
   const latestUser = lines.findLastIndex(item => item.who === 'user')
+  const replyEnds = new Set()
+  let replyPending = work?.active !== true
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const item = lines[index]
+    if (item.who === 'user') replyPending = true
+    else if (replyPending && item.who === 'agent' && item.kind === 'text' && !item.parentCallId
+      && (item.reply === true || item.timeline !== true)) {
+      replyEnds.add(index)
+      replyPending = false
+    }
+  }
   const rows = transcriptRows(lines).filter(row => row.item.kind !== 'changes'
     || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser))
   const newest = rows.length - 1
@@ -363,7 +374,8 @@ export function Feed({ profile, session, revision, work, sentTick }) {
         ...(item.parentCallId ? { style: { marginLeft: 16 } } : {}) },
         h(StreamingText, { text: item.text, streaming, animate: streaming || item.at >= opened.current.at, labels: MARKDOWN_LABELS }),
         item.images?.map(image => h(TranscriptImage, { key: image.id, image })),
-        !streaming && h('div', { className: 'nodo-reply-foot' }, h(MessageTime, { at: item.at }), usage && h(TurnUsage, { usage })))
+        !streaming && (replyEnds.has(index) || usage) && h('div', { className: 'nodo-reply-foot' },
+          replyEnds.has(index) && h(MessageTime, { at: item.at }), usage && h(TurnUsage, { usage })))
     }
     return item.text ? h('p', { key: index, className: 'nodo-note' }, item.text) : null
   }
