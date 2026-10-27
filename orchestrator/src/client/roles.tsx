@@ -677,7 +677,7 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-type-when>.nodo-dialog-count{display:none;right:10px;bottom:6px}
 .nodo-type-when:focus-within>.nodo-dialog-count{display:block}
 .nodo-type-takers{display:flex;align-items:center;min-width:0;padding-left:9px}
-.nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:-6px}
+.nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:2px}
 .nodo-type-more{margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .nodo-type-remove{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-type-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}

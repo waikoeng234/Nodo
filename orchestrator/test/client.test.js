@@ -937,7 +937,7 @@ test('the header avatar opens the template grid and submits the selected templat
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
   const render = () => { cursor = 0; return nodes(RoleEditor({ avatarSeed: 2, onSaved: item => { saved = item } })) }
-  const card = () => render().find(node => node.type === RoleAvatar && node.props.size === 32)
+  const card = () => render().find(node => node.type === RoleAvatar && node.props.size === 44)
   const trigger = () => render().find(node => node.props?.['aria-label'] === '更换头像')
   assert.equal(card().props.profile.avatarTemplate, templates[2].id, 'a new role shows the dango its creation order assigns')
   mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
@@ -1210,7 +1210,7 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
 test('the rail lists the pending draft as a 新会话 row that returns to it', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow, RoleAvatar } = await loadRail({ useState: (initial) => {
+  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
     const slot = cursor++
     if (!(slot in slots)) slots[slot] = initial
     return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
@@ -1230,8 +1230,7 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   let tree = render({ id: 'd1', workspace: 'w', profile: 'fish' })
   const row = draftRow(tree)
   assert.ok(row, 'a draft of this project shows as its own row')
-  assert.equal(row.children[0].type, RoleAvatar, 'the draft row carries the seeded role avatar')
-  assert.deepEqual(row.children[1].children, ['新会话'])
+  assert.deepEqual(row.children[0].children, ['新会话'])
   const order = tree.filter(node => node.props?.title === '新会话（草稿）' || node.type === SessionRow)
     .map(node => node.props.title === '新会话（草稿）' ? 'draft' : node.props.session.id)
   assert.deepEqual(order, ['draft', 'a'], 'the draft row sits above the sessions')
@@ -1239,7 +1238,6 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   assert.deepEqual(resumed, ['d1'])
   assert.equal(draftRow(render({ id: 'd1', workspace: 'elsewhere' })), undefined, 'another project keeps its own list clean')
   tree = render({ id: 'd1', workspace: 'w' })
-  assert.equal(draftRow(tree).children[0].type, 'span', 'a draft without a role falls back to the new-chat icon')
   tree.find(node => node.props?.className === 'nodo-roster-item' && node.props.title === '大肥鱼').props.onClick()
   assert.ok(draftRow(render({ id: 'd1', workspace: 'w', profile: 'fish' })), 'the draft survives its own role filter')
   assert.equal(draftRow(render({ id: 'd1', workspace: 'w', profile: 'other' })), undefined, 'a role filter hides foreign drafts')
@@ -2033,6 +2031,7 @@ test('the composer drops its submit button without onSend and leaves Enter to th
   assert.deepEqual(all(silent).find(item => item.props.className === 'nodo-composer-row').children.slice(1).map(item => item.type), ['RolePicker', 'ModelPicker'], 'role and model controls close the row directly')
   assert.doesNotMatch(clientSource('styles.js'), /nodo-composer-target/)
   assert.match(clientSource('styles.js'), /\.nodo-composer-tools\{[^}]*margin-right:auto/)
+  assert.doesNotMatch(clientSource('styles.js'), /\.nodo-model\{[^}]*margin-left:auto/, 'a second auto margin would center the role seat in the row')
   all(silent).find(item => item.type === 'textarea').props.onKeyDown({ key: 'Enter', preventDefault() { assert.fail('Enter inserts a line break when there is nothing to send') } })
   silent.props.onSubmit({ preventDefault() {} })
   let sends = 0

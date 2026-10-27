@@ -858,7 +858,7 @@ export const WORKFLOW_CSS = `
 .nodo-wf-definitions .nodo-session-item>.nodo-runs-row{flex:1;min-width:0}
 .nodo-wf-definitions .nodo-runs-row>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-cast{display:flex;flex:none}
-.nodo-wf-cast>*+*{margin-left:-5px}
+.nodo-wf-cast>*+*{margin-left:2px}
 .nodo-wf-cast>.nodo-wf-cast-more{margin-left:2px;color:var(--dsw-alias-label-tertiary);line-height:18px}
 .nodo-wf-outline{max-height:24%;overflow:auto;font-size:11px;color:var(--dsw-alias-label-secondary);flex-shrink:0}
 .nodo-wf-outline summary{padding:4px 8px;cursor:pointer}

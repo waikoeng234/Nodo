@@ -499,7 +499,7 @@ export function install(rt) {
     } else settle(st, item.seq, st.ended?.seq === host ? st.ended.outcome : { reason: 'done' })
     return outcome
   }
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false, origin } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
     rt.assertSessionWritable?.(profile, session)
     profileId = session.id
@@ -534,7 +534,7 @@ export function install(rt) {
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
     const line = { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
-      ...(files?.refs?.length > 0 ? { files: files.refs } : {}) }
+      ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
     const pendingLine = queue && occupied(profileId, st) ? line : undefined
     if (!pendingLine) say(profileId, line)
     if (occupied(profileId, st)) {

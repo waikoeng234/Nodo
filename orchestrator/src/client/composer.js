@@ -49,15 +49,15 @@ export function PendingMessages({ items, disabled, onAction }) {
         }, label))))))
 }
 
-export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function Composer({ profile, workspace, value, images, running, stoppable = running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
   const row = useRef(null)
   const [preview, setPreview] = useState(null)
   const hasContent = value.trim() !== '' || images.length > 0 || attachedFiles.length > 0 || references.length > 0
-  const stopping = running && !hasContent
-  const submitBlocked = busy || readOnly || (!running && !hasContent)
+  const stopping = stoppable && !hasContent
+  const submitBlocked = busy || readOnly || (!stoppable && !hasContent)
   useEffect(() => {
     const node = box.current
     if (node === null) return
@@ -181,7 +181,7 @@ export function Composer({ profile, workspace, value, images, running, busy, rea
       onModelChange && h(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange })),
     rolePicker,
     onModelChange && h(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange }),
-    onSend && running && hasContent && h('button', { type: 'button', className: 'nodo-pending-stop',
+    onSend && stoppable && hasContent && h('button', { type: 'button', className: 'nodo-pending-stop',
       disabled: busy || readOnly, 'aria-label': '停止生成', title: '停止生成', onClick: onStop }, ComposerGlyph(true)),
     onSend && h(Tooltip, {
       label: stopping ? '停止生成' : running ? '加入队列' : '发送消息', side: 'top', align: 'end', delayMs: 500,

@@ -17,6 +17,7 @@ import { StreamingText } from './streaming-text.tsx'
 import { referenceHistory } from './session-references.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
+import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
 
 const FOLLOW_PX = 25
 
@@ -143,6 +144,22 @@ export function PlanRow({ plan, running, timeline }) {
   })
 }
 
+export function toolRow(row, { profile, session, work, timeline }) {
+  const { item, index } = row
+  if (supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation,
+    timeline, eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id } })
+  const variant = TOOL_VARIANTS[toolVariant(item.name)]
+  const progress = progressText(item.progress)
+  return h(ProcessRow, {
+    key: index, kind: 'tool', variant, timeline, title: `${row.invocation ? '调用 · ' : row.result ? '结果 · ' : ''}${variant.title}`,
+    summary: [item.brief ? item.brief.split('\n')[0] : null, progress].filter(Boolean).join(' · ') || null,
+    body: item.brief ?? '',
+    input: item.input, output: item.output, progress: item.progress,
+    running: row.running && work?.active === true, error: row.error,
+    status: row.invocation ? 'started' : row.running ? 'unknown' : 'done',
+  })
+}
+
 export function transcriptRows(lines) {
   const rows = []
   const open = new Map()
@@ -233,7 +250,7 @@ export function ProcessGroup({ rows, running, depths = [], children = [] }) {
   return h(ToolTimeline, { steps, summary, streaming: running })
 }
 
-export function Feed({ profile, session, revision, work, sentTick }) {
+export function Feed({ profile, session, revision, work, sentTick, round }) {
   const [feed, setFeed] = useState({ key: null, lines: [], error: '' })
   const [following, setFollowing] = useState(true)
   const [activeTurn, setActiveTurn] = useState(null)
@@ -281,9 +298,12 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     sample()
   }, [feed, following])
   useEffect(() => { setFollowing(true) }, [sentTick])
+  // A lead conversation hides token usage: the figures cover only its own session.
+  const source = round ? roundLines(feed.lines) : feed.lines
+  const shown = profile.lead === true ? source.filter(line => line.kind !== 'usage') : source
   // One turn starts at each user line; the rail prefers its final parent reply.
   const turns = []
-  for (const [index, item] of feed.lines.entries()) {
+  for (const [index, item] of shown.entries()) {
     if (item.who === 'user') turns.push({ turn: index, prompt: brief(item.text), response: '' })
     else if (item.who === 'agent' && item.kind === 'text' && !item.parentCallId && turns.length !== 0) {
       const turn = turns.at(-1)
@@ -297,7 +317,7 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     setFollowing(false)
     node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop
   }
-  const lines = feed.key === key ? feed.lines : []
+  const lines = feed.key === key ? shown : []
   const latestUser = lines.findLastIndex(item => item.who === 'user')
   const replyEnds = new Set()
   let replyPending = work?.active !== true
@@ -310,6 +330,23 @@ export function Feed({ profile, session, revision, work, sentTick }) {
       replyPending = false
     }
   }
+  // Each turn's usage caption rides the stamped reply's foot, so time and usage
+  // share one row even when removed plans or folded round rows sit between.
+  const turnUsage = new Map()
+  const mergedUsage = new Set()
+  let stamp = null
+  let usageAt = null
+  for (let index = 0; index <= lines.length; index += 1) {
+    const item = lines[index]
+    if (item === undefined || item.who === 'user') {
+      if (stamp !== null && usageAt !== null) { turnUsage.set(stamp, usageAt); mergedUsage.add(usageAt) }
+      stamp = null; usageAt = null
+    } else if (replyEnds.has(index)) stamp = index
+    else if (item.kind === 'usage' && usageAt === null) usageAt = index
+  }
+  // In a round the lead's new words open under their own speaker row.
+  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === 'user' || lines.at(-1).kind === 'member')
+  const lastSpeaker = lines.findLastIndex(item => item.kind === 'speaker')
   const rows = transcriptRows(lines).filter(row => row.item.kind !== 'changes'
     || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser))
   const newest = rows.length - 1
@@ -317,20 +354,7 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     const { item, index } = row
     if (item.kind === 'plan') return h(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest })
     if (item.kind === 'changes') return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } })
-    if (item.kind === 'tool') {
-      if (supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation,
-        timeline, eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id } })
-      const variant = TOOL_VARIANTS[toolVariant(item.name)]
-      const progress = progressText(item.progress)
-      return h(ProcessRow, {
-        key: index, kind: 'tool', variant, timeline, title: `${row.invocation ? '调用 · ' : row.result ? '结果 · ' : ''}${variant.title}`,
-        summary: [item.brief ? item.brief.split('\n')[0] : null, progress].filter(Boolean).join(' · ') || null,
-        body: item.brief ?? '',
-        input: item.input, output: item.output, progress: item.progress,
-        running: row.running && work?.active === true, error: row.error,
-        status: row.invocation ? 'started' : row.running ? 'unknown' : 'done',
-      })
-    }
+    if (item.kind === 'tool') return toolRow(row, { profile, session, work, timeline })
     if (item.kind === 'thinking') {
       const text = item.text ?? ''
       // The host chat's rule: a reasoning row is running while it is the
@@ -342,6 +366,9 @@ export function Feed({ profile, session, revision, work, sentTick }) {
         summary: lead.replaceAll('**', '') || null, body: text, running,
       })
     }
+    if (item.kind === 'speaker') return h(RoundSpeaker, { key: index, role: profile, running: work?.active === true && !speakerDue && index === lastSpeaker })
+    if (item.kind === 'delegate') return h(RoundChip, { key: index, step: item.step, round })
+    if (item.kind === 'member') return h(RoundMember, { key: index, step: item.step, round })
     if (item.kind === 'error') {
       return h('div', { key: index, className: 'nodo-turn-error' },
         h(StateDot, { state: 'error', size: 8, className: 'nodo-turn-error-dot' }),
@@ -356,7 +383,8 @@ export function Feed({ profile, session, revision, work, sentTick }) {
         reply.text && h('span', { className: 'nodo-request-answer' }, ` · ${reply.text}`))
     }
     // A turn's usage lands under its reply as the host chat's own caption.
-    if (item.kind === 'usage') return lines[index - 1]?.who === 'agent' && lines[index - 1].kind === 'text' ? null : h(TurnUsage, { key: index, usage: item.usage })
+    if (item.kind === 'usage') return lines[index - 1]?.who === 'agent' && lines[index - 1].kind === 'text' || mergedUsage.has(index)
+      ? null : h(TurnUsage, { key: index, usage: item.usage })
     if (item.who === 'user') {
       return h('div', { key: index, className: 'nodo-user', 'data-flow': 'user', 'data-nodo-turn': index },
         h('div', { className: 'nodo-bubble' },
@@ -368,7 +396,9 @@ export function Feed({ profile, session, revision, work, sentTick }) {
     }
     if (item.who === 'agent') {
       const streaming = item.timeline === true && item.open === true && work?.active === true
-      const usage = lines[index + 1]?.kind === 'usage' ? lines[index + 1].usage : null
+      const usageAt = turnUsage.get(index)
+      const usage = usageAt !== undefined ? lines[usageAt].usage
+        : !mergedUsage.has(index + 1) && lines[index + 1]?.kind === 'usage' ? lines[index + 1].usage : null
       return h('div', { key: index, className: 'nodo-reply', 'data-flow': 'response', 'data-message-id': item.messageId,
         'data-source-channel': item.channel, 'data-parent-call-id': item.parentCallId,
         ...(item.parentCallId ? { style: { marginLeft: 16 } } : {}) },
@@ -381,7 +411,7 @@ export function Feed({ profile, session, revision, work, sentTick }) {
   }
   return h('div', { className: 'nodo-feedwrap' },
     h('div', { className: 'nodo-feed', ref: box, onScroll: sample, 'data-following': following ? '' : undefined, role: 'log', 'aria-label': `${profile.name} transcript` },
-      h('div', { className: 'nodo-feed-inner' },
+      h('div', { className: 'nodo-feed-inner', 'data-round': round ? '' : undefined },
         feed.key === key && feed.error && h('p', { className: 'nodo-error-line', role: 'alert' }, feed.error),
         lines.length === 0 && !work?.active && h('p', { className: 'nodo-note nodo-feed-empty' },
           `还没有消息。给「${profile.name}」发一条任务，一条消息即一个任务。`),
@@ -390,8 +420,9 @@ export function Feed({ profile, session, revision, work, sentTick }) {
             running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true)) },
             block.rows.map(({ row, position }) => line(row, position, true)))
           : line(block.rows[0].row, block.rows[0].position)),
+        speakerDue && work?.active && work.timeline !== true && stripNodo(work.buffer) !== '' && h(RoundSpeaker, { role: profile, running: true }),
         work?.active && work.timeline !== true && work.buffer != null && work.buffer !== '' && h('div', { className: 'nodo-reply', 'data-flow': 'response' },
-          h(StreamingText, { key, text: work.buffer, streaming: true, labels: MARKDOWN_LABELS })))),
+          h(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })))),
     h(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
     !following && h('button', { type: 'button', className: 'nodo-tobottom', 'aria-label': '回到底部', title: '回到底部', onClick: () => setFollowing(true) },
       h(IconChevronDownOutlineRegular)))
@@ -598,7 +629,7 @@ const clockText = at => {
     : { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
 }
 
-function MessageTime({ at }) {
+export function MessageTime({ at }) {
   const text = clockText(at)
   return text === '' ? null : h('time', { className: 'nodo-msg-time', dateTime: new Date(at).toISOString() }, text)
 }

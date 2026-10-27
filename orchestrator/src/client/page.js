@@ -7,6 +7,7 @@ import { Rail } from './session-rail.tsx'
 import { RunningLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
+import { roundIndex, RoundMenu, RoundFaces } from './round.js'
 import { ApprovalCard, needsPerson } from './run-cards.js'
 import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
@@ -167,6 +168,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // the host chat's rule that submitted input supersedes reader position.
   const [sentTick, setSentTick] = useState(0)
   const [actionError, setActionError] = useState('')
+  // The lead session whose raw transcript replaces its round view.
+  const [rawRound, setRawRound] = useState(null)
   const archived = view?.profiles.flatMap(role => role.sessions.filter(session => session.id === navigation.archivedSession && session.archivedAt)
     .map(session => ({ role, session })))[0]
   const profiles = view?.profiles.filter(item => !item.deletedAt) ?? []
@@ -184,6 +187,10 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const archivedConversation = !!session?.archivedAt || !!profile?.deletedAt
   const conversationReadOnly = readOnly || archivedConversation
   const work = sessionId ? view.work[sessionId] : null
+  const rounds = view ? roundIndex(view) : null
+  const members = (sessionId && rounds?.members.get(sessionId)) || []
+  const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
+  const roundLive = [{ role: profile, session }, ...members].filter(item => members.length && view.work[item.session?.id]?.active === true)
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
   const composerProfile = profile && session
@@ -361,7 +368,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     setSessionBusy(true)
     setActionError('')
     const current = trackSelection(true)
-    try { await call('interrupt', { profile: profile.id, session: sessionId }); await refresh(true) }
+    try {
+      for (const [id, target] of members.length ? roundLive.map(item => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
+        await call('interrupt', { profile: id, session: target })
+      }
+      await refresh(true)
+    }
     catch (failure) { if (current()) setActionError(failure.message) }
     finally { setSessionBusy(false) }
   }
@@ -378,19 +390,32 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     finally { setCompacting(current => current.filter(id => id !== sessionId)) }
   }
 
+  const openSession = id => {
+    const role = view.profiles.find(item => item.sessions.some(entry => entry.id === id))
+    if (role) void select(role, id)
+  }
   const conversation = () => h('div', { className: 'nodo-conversation' },
     // The host conversation header: the session's own name in the window-chrome
     // row and one hairline closing the block.
     h('header', { className: 'nodo-head' },
       h('div', { className: 'nodo-title-row' },
+        leadEntry && h('button', { type: 'button', className: 'nodo-crumb nodo-crumb-link', title: leadEntry.session.name,
+          onClick: () => void select(leadEntry.role, leadEntry.session.id) }, leadEntry.session.name),
+        leadEntry && h('span', { className: 'nodo-crumb-sep', 'aria-hidden': true }, '›'),
         h('span', { className: 'nodo-crumb', title: session?.name ?? workspace?.name ?? profile.name },
-          session?.name ?? workspace?.name ?? profile.name))),
-    h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick }),
+          session?.name ?? workspace?.name ?? profile.name),
+        members.length > 0 && h(RoundFaces, { roles: [...new Map([profile, ...members.map(item => item.role)].map(role => [role.id, role])).values()] }),
+        members.length > 0 && h('span', { className: 'nodo-head-actions' }, h(RoundMenu, { members, work: view.work, raw: rawRound === sessionId,
+          onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId), onOpen: openSession })))),
+    h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick,
+      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession } : undefined }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since })),
-    ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly })),
+    ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
+      || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly })),
     !archivedConversation && h(Composer, {
-      profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true, busy: sessionBusy, readOnly: readOnly || !workspace,
+      profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,
+      stoppable: members.length ? roundLive.length > 0 : undefined, busy: sessionBusy, readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
@@ -404,7 +429,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     // session, inside the dock the composer keeps: the dock holds its height
     // before the session has any figure, so the input card never moves.
     h('div', { className: 'nodo-stats' },
-      h(SessionStats, { stats: (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })))
+      h(SessionStats, { stats: profile.lead === true ? undefined : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })))
 
   const page = () => {
     if (profile && (workspace || session)) return conversation()
@@ -468,7 +493,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       onSaved: value => { setGoalOpen(false); void updateEngineChoice({ goal: value }) },
       onCancel: () => setGoalOpen(false),
     }),
-    statsOpen && view !== undefined && (view.stats ?? {})[sessionId] !== undefined && h(StatsDialog, {
+    statsOpen && profile.lead !== true && view !== undefined && (view.stats ?? {})[sessionId] !== undefined && h(StatsDialog, {
       key: `stats:${sessionId}`, stats: view.stats[sessionId], onClose: () => setStatsOpen(false),
     }),
     editing?.kind === 'workspace' && h(WorkspaceDialog, {

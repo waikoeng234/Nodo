@@ -99,7 +99,8 @@ export const RUNNING_CSS = `
 .nodo-running-divider{width:100%;height:.5px;margin:8px 0 10px;background:color-mix(in srgb,var(--dsw-alias-border-l1) 75%,var(--dsw-alias-border-l2))}
 .nodo-running-line{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0;max-width:100%;font-variant-numeric:tabular-nums}
 .nodo-running-icon{display:inline-flex;flex:none;width:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);height:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);transform-origin:50% 85%;animation:nodo-running-hop 1.58s infinite;animation-delay:var(--nodo-running-phase)}
-.nodo-running-icon path{fill:var(--nodo-running-tint)}
+.nodo-running-icon .nodo-avatar-body{fill:var(--nodo-running-tint)}
+.nodo-running-icon .nodo-avatar-tile{fill:color-mix(in srgb,var(--nodo-running-tint) 20%,var(--dsw-alias-bg-base))}
 .nodo-running-label,.nodo-running-timer{white-space:nowrap}
 .nodo-running-letter{display:inline-block;white-space:pre;animation:nodo-running-wave 1.58s ease-in-out infinite;animation-delay:calc(var(--nodo-running-phase) + var(--nodo-running-stagger))}
 .nodo-running-timer{display:inline-flex;align-items:center;gap:6px}

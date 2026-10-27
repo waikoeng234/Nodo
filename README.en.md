@@ -19,7 +19,7 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 
 - **Use multiple Agents together**: access different Agents in one interface, each using its existing configuration and authentication.
 - **Assign roles**: define each role's summary and instructions, then assign work by task type.
-- **Delegate through a lead**: once at least one executor exists, optionally add a lead under 主控 on the roles page to assign tasks by type and difficulty in the current project and receive the reports; a lead is created with the `leader` identity. Unclaimed task types go to the fallback role, initially the first executor; transfer it in the task acceptance settings.
+- **Delegate through a lead**: once at least one executor exists, optionally add a lead under 主控 on the roles page to assign tasks by type and difficulty in the current project and receive the reports; a lead is created with the `leader` identity. A lead session takes one row in the sidebar, and its page merges delegations and reports round by round — one message makes one round — with 查看会话 opening each executor session; sessions on the dsh engine are not merged and stay as ordinary conversations. Unclaimed task types go to the fallback role, initially the first executor; transfer it in the task acceptance settings.
 - **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry in the sidebar.
 - **Build visual workflows**: arrange tasks and handoffs, with human checkpoints, conditional branches, and rework.
 - **Allocate cost by task**: assign complex work to more capable Agents and routine tasks to less expensive Agents.

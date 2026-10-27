@@ -92,10 +92,12 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 .nodo-roster-edit:disabled{color:var(--dsw-alias-label-caption);cursor:default}
 .nodo-roster-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:2px 0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
 .nodo-roster-item:hover,.nodo-roster-item[aria-pressed=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:50%;background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:11px;background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar:has(>.nodo-avatar){background:none}
 .nodo-roster-item[aria-pressed=true] .nodo-roster-avatar{box-shadow:0 0 0 1.5px var(--dsw-alias-state-business-primary)}
 .nodo-roster-add .nodo-roster-avatar{background:0 0;border:1px dashed var(--dsw-alias-border-l1)}
 .nodo-roster-dot{position:absolute;right:-1px;bottom:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
+.nodo-roster-badge{position:absolute;right:-1px;top:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
 .nodo-roster-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px}
 .nodo-tree-search{display:flex;padding:2px 0 4px}
 .nodo-tree-add{display:inline-flex;flex:none;padding-right:6px}
@@ -144,7 +146,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
-.nodo-session .nodo-avatar{flex:none}
+.nodo-session{padding-left:32px}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px}
 .nodo-project .nodo-row-meta{margin-left:0}
 .nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
@@ -160,6 +162,42 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--dsh-frame-top-clearance,0px);padding:10px 28px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
 .nodo-title-row{display:flex;align-items:center;gap:10px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
 .nodo-crumb{min-width:0;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
+.nodo-crumb-link{flex:none;max-width:40%;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
+.nodo-crumb-link:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-crumb-sep{flex:none;color:var(--dsw-alias-label-tertiary);font-size:14px;line-height:22px}
+.nodo-head-actions{display:flex;flex:none;margin-left:auto}
+.nodo-round-faces{display:inline-flex;flex:none;gap:2px}
+.nodo-feed-inner[data-round]>:not(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-left:40px}
+.nodo-feed-inner[data-round]>*+:is(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-top:18px}
+.nodo-feed-inner[data-round]>.nodo-round-speaker+*{margin-top:4px}
+.nodo-feed-inner[data-round]>.nodo-round-chip{margin-top:6px}
+.nodo-round-speaker,.nodo-round-head{display:flex;align-items:center;gap:8px;min-width:0;height:28px}
+.nodo-round-speaker>.nodo-avatar{margin-right:4px}
+.nodo-round-member{display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:12px;align-items:start}
+.nodo-round-body{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--dsh-content-font-size,14px);line-height:22px}
+.nodo-round-role{flex:none;font-weight:500}
+.nodo-round-speaker>.nodo-round-role,.nodo-round-head>.nodo-round-role{font-weight:600}
+.nodo-round-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}
+.nodo-round-tag{display:inline-flex;align-items:center;flex:none;height:20px;padding:0 7px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px}
+.nodo-round-tag[data-tone=hard]{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary)}
+.nodo-round-tag[data-tone=reused]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent);color:var(--dsw-alias-state-business-primary)}
+.nodo-round-status{display:inline-flex;align-items:center;gap:5px;flex:none;color:var(--dsw-alias-label-caption);font-size:12px;font-variant-numeric:tabular-nums}
+.nodo-round-status[data-state=live]{color:var(--dsw-alias-state-success-primary)}
+.nodo-round-status[data-state=ended]{color:var(--dsw-alias-state-warn-primary)}
+.nodo-round-open{display:inline-flex;align-items:center;flex:none;gap:5px;height:26px;margin-left:auto;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
+.nodo-round-open:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-round-summary{display:flex;align-items:flex-start;gap:6px;align-self:flex-start;max-width:100%;margin:0;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left}
+button.nodo-round-summary{cursor:pointer}
+.nodo-round-summary>svg{flex:none;margin-top:4px;color:var(--dsw-alias-label-caption);transition:transform .15s}
+.nodo-round-summary[aria-expanded=true]>svg{transform:rotate(180deg)}
+.nodo-round-summary:focus-visible,.nodo-round-open:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-round-quiet{margin:0;color:var(--dsw-alias-label-tertiary)}
+.nodo-round-report{min-width:0;color:var(--dsw-alias-label-secondary)}
+.nodo-round-tools{display:flex;flex-direction:column;gap:2px;min-width:0}
+.nodo-round-tools>:first-child:nth-last-child(5){opacity:.4}
+.nodo-round-tools>:nth-child(2):nth-last-child(4){opacity:.7}
+.nodo-round-chip{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;height:24px;padding:0 8px 0 6px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px}
+.nodo-round-menu-item{display:flex;align-items:center;gap:8px;min-width:0}
 .nodo-ok{color:var(--dsw-alias-state-success-primary)}.nodo-bad{color:var(--dsw-alias-state-error-primary)}
 .nodo-error-line{margin:10px 0;color:var(--dsw-alias-state-error-primary);white-space:pre-wrap}
 .nodo-note{color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(18px + var(--dsh-content-font-delta-secondary,0px))}
@@ -334,7 +372,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 /* The model picker copies the host composer's model trigger and its drill menu
    cells (dsh-client-ui-model-selection): a 28px secondary trigger with the
    level dimmed, rows label-left / value-right, the chevron flipping when open. */
-.nodo-model{display:inline-flex;flex:none;min-width:0;max-width:min(360px,100%);margin-left:auto}
+.nodo-model{display:inline-flex;flex:none;min-width:0;max-width:min(360px,100%)}
 .nodo-model-list{width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px)}
 .nodo-model-trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:100%;height:28px;padding:0 4px 0 8px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:400;line-height:20px;cursor:pointer}
 .nodo-model-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}

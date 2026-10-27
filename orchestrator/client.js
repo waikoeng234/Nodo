@@ -230,12 +230,12 @@ var SESSION_FOLD = 10;
 
 // core/shared/avatar-templates.json
 var avatar_templates_default = [
-  { id: "sky", label: "\u5929\u7A7A\u56E2\u5B50", color: "#A3DEFF", tilt: -12, shape: "M32 5C48 3 58 14 58 31C60 48 49 59 31 58C13 59 5 49 5 32C3 16 15 5 32 5Z" },
-  { id: "peach", label: "\u871C\u6843\u56E2\u5B50", color: "#FFBEAD", tilt: -14, shape: "M32 4C47 4 56 16 59 32C62 47 47 58 32 60C17 63 3 48 5 33C7 18 16 4 32 4Z" },
-  { id: "olive", label: "\u6A44\u6984\u56E2\u5B50", color: "#B1B02D", tilt: 8, shape: "M31 6C44 3 56 14 59 29C61 42 50 56 36 58C20 62 6 49 6 35C4 21 16 8 31 6Z" },
-  { id: "mint", label: "\u8584\u8377\u56E2\u5B50", color: "#BDDFDF", tilt: -6, shape: "M33 7C49 5 58 17 58 32C61 47 47 57 31 57C17 60 4 48 5 33C4 18 18 6 33 7Z" },
-  { id: "lavender", label: "\u85B0\u8863\u8349\u56E2\u5B50", color: "#D1C3F3", tilt: 10, shape: "M30 5C45 3 57 13 58 29C61 46 49 58 33 59C18 61 6 51 5 35C2 19 14 6 30 5Z" },
-  { id: "butter", label: "\u5976\u6CB9\u56E2\u5B50", color: "#F4DC88", tilt: -8, shape: "M32 6C48 4 59 17 58 32C59 47 47 60 30 58C15 60 4 48 5 32C4 16 17 5 32 6Z" }
+  { id: "sky", label: "\u5929\u7A7A\u56E2\u5B50", color: "#7CC8F5", tilt: -12, shape: "M32 5C48 3 58 14 58 31C60 48 49 59 31 58C13 59 5 49 5 32C3 16 15 5 32 5Z" },
+  { id: "peach", label: "\u871C\u6843\u56E2\u5B50", color: "#F7A27A", tilt: -14, shape: "M32 4C47 4 56 16 59 32C62 47 47 58 32 60C17 63 3 48 5 33C7 18 16 4 32 4Z" },
+  { id: "olive", label: "\u6A44\u6984\u56E2\u5B50", color: "#B8BF4C", tilt: 8, shape: "M31 6C44 3 56 14 59 29C61 42 50 56 36 58C20 62 6 49 6 35C4 21 16 8 31 6Z" },
+  { id: "mint", label: "\u8584\u8377\u56E2\u5B50", color: "#7FD39B", tilt: -6, shape: "M33 7C49 5 58 17 58 32C61 47 47 57 31 57C17 60 4 48 5 33C4 18 18 6 33 7Z" },
+  { id: "lavender", label: "\u85B0\u8863\u8349\u56E2\u5B50", color: "#B9A3F5", tilt: 10, shape: "M30 5C45 3 57 13 58 29C61 46 49 58 33 59C18 61 6 51 5 35C2 19 14 6 30 5Z" },
+  { id: "butter", label: "\u5976\u6CB9\u56E2\u5B50", color: "#F5C84C", tilt: -8, shape: "M32 6C48 4 59 17 58 32C59 47 47 60 30 58C15 60 4 48 5 32C4 16 17 5 32 6Z" }
 ];
 
 // src/client/avatar.tsx
@@ -249,14 +249,16 @@ function RoleAvatar({ profile, running = false, size = 32 }) {
       "data-running": running ? "true" : void 0,
       "data-template": template.id,
       "aria-hidden": true,
-      style: { width: size, height: size }
+      style: { width: size, height: size, color: template.color }
     },
-    /* @__PURE__ */ (0, import_react.createElement)("svg", { className: "nodo-avatar-art", viewBox: "0 0 64 64", width: size, height: size, focusable: false }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: template.shape, fill: template.color }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: `rotate(${template.tilt} 32 30)` }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-eyes", fill: "#172021" }, /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 21, y: 23, width: 5.5, height: 15, rx: 2.75 }), /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 38, y: 23, width: 5.5, height: 15, rx: 2.75 }))))
+    /* @__PURE__ */ (0, import_react.createElement)("svg", { viewBox: "0 0 64 64", width: size, height: size, focusable: false }, /* @__PURE__ */ (0, import_react.createElement)("rect", { className: "nodo-avatar-tile", width: 64, height: 64, rx: 18 }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: "translate(6.86 6.86) scale(.786)" }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-art" }, /* @__PURE__ */ (0, import_react.createElement)("path", { className: "nodo-avatar-body", d: template.shape, fill: template.color }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: `rotate(${template.tilt} 32 30)` }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-eyes", fill: "#172021" }, /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 21, y: 23, width: 5.5, height: 15, rx: 2.75 }), /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 38, y: 23, width: 5.5, height: 15, rx: 2.75 }))))))
   );
 }
 var AVATAR_CSS = `
-.nodo-avatar{display:inline-flex;align-items:center;justify-content:center;flex:none}
-.nodo-avatar-art{display:block;overflow:visible;transform-origin:50% 85%}
+.nodo-avatar{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:28%}
+.nodo-avatar>svg{display:block;overflow:visible}
+.nodo-avatar-tile{fill:color-mix(in srgb,currentColor 20%,var(--dsw-alias-bg-base))}
+.nodo-avatar-art{transform-box:fill-box;transform-origin:50% 85%}
 .nodo-avatar-eyes{transform-box:fill-box;transform-origin:center}
 .nodo-avatar[data-running=true] .nodo-avatar-art{animation:nodo-avatar-hop 1.6s ease-in-out infinite}
 .nodo-avatar[data-running=true] .nodo-avatar-eyes{animation:nodo-avatar-blink 3.8s ease-in-out infinite}
@@ -267,7 +269,7 @@ var AVATAR_CSS = `
 .nodo-avatar-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
 .nodo-avatar-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-avatar-option:disabled{opacity:.5;cursor:default}
-@keyframes nodo-avatar-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-3px) rotate(4deg) scale(.98,1.02)}}
+@keyframes nodo-avatar-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-8px) rotate(4deg) scale(.98,1.02)}}
 @keyframes nodo-avatar-blink{0%,42%,48%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
 @keyframes nodo-avatar-greet{0%,100%{transform:rotate(0)}35%{transform:rotate(-9deg)}70%{transform:rotate(7deg)}}
 @media(prefers-reduced-motion:reduce){.nodo-avatar .nodo-avatar-art,.nodo-avatar .nodo-avatar-eyes{animation:none!important}}
@@ -348,509 +350,6 @@ function createRoleSeat(ctx, space) {
   });
   return { RoleSeat };
 }
-
-// src/client/session-rail.tsx
-function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const archived = !!session.archivedAt;
-  const pinned = !!session.pinnedAt;
-  const running = work?.active === true;
-  const status = workLabel(work);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-session-item", "data-menu": open ? "open" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-row nodo-session",
-      disabled: busy,
-      "data-archived": archived ? "" : void 0,
-      "aria-current": current ? "page" : void 0,
-      "aria-description": archived ? "\u5DF2\u5F52\u6863\u4F1A\u8BDD\uFF0C\u53EA\u8BFB\u67E5\u770B" : void 0,
-      onClick: onSelect,
-      title: `${role.name} \xB7 ${session.name}`
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18 }),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, context ? `${context} \xB7 ${session.name}` : session.name),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 12 }), "\u5DF2\u5F52\u6863") : status ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 12 }), status) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
-  ), !readOnly && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-row-action",
-      disabled: busy || running,
-      "aria-label": archived ? `\u53D6\u6D88\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D` : `\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D`,
-      title: archived ? "\u53D6\u6D88\u5F52\u6863" : "\u5F52\u6863\u4F1A\u8BDD",
-      onClick: (event) => {
-        event.stopPropagation();
-        onArchive(!archived);
-      }
-    },
-    archived ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
-  ), /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Menu,
-    {
-      open,
-      onClose: () => setOpen(false),
-      portal: true,
-      closeOnPointerLeave: true,
-      items: [
-        { id: "rename", label: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busy },
-        { id: "pin", label: pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876\u4F1A\u8BDD", icon: pinned ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinOutlineRegular, null), disabled: busy || archived }
-      ],
-      onSelect: (id) => {
-        setOpen(false);
-        if (id === "rename") onRename();
-        else onPin(!pinned);
-      },
-      anchor: /* @__PURE__ */ (0, import_react.createElement)(
-        "button",
-        {
-          type: "button",
-          className: "nodo-row-action",
-          "aria-haspopup": "menu",
-          "aria-expanded": open,
-          "aria-label": `\u4F1A\u8BDD\u201C${session.name}\u201D\u7684\u66F4\u591A\u64CD\u4F5C`,
-          disabled: busy,
-          onClick: (event) => {
-            event.stopPropagation();
-            setOpen((current2) => !current2);
-          }
-        },
-        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
-      )
-    }
-  )));
-}
-var workspacePicker = ({ workspaces, workspace, running = /* @__PURE__ */ new Set(), open, setOpen, onSelect, none, button = false, label = "\u9009\u62E9\u9879\u76EE", disabled }) => {
-  const ordered = [...workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  const othersRunning = ordered.some((item) => item.id !== workspace?.id && running.has(item.id));
-  const name = workspace?.name ?? none;
-  const Glyph = workspace ? workspace.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular : import_dsh_client_ui_primitives.IconUsersOutlineRegular;
-  const anchor = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, name), othersRunning && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-project-state", title: "\u5176\u4ED6\u9879\u76EE\u6216\u5206\u652F\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 12 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })));
-  const props = {
-    disabled,
-    "aria-haspopup": "menu",
-    "aria-expanded": open,
-    "aria-label": `${label}\uFF0C\u5F53\u524D ${name}`,
-    title: workspace ? workspace.worktree ? `${workspace.worktree.branch} \xB7 ${workspace.cwd}` : workspace.cwd : void 0,
-    onClick: (event) => {
-      event.stopPropagation();
-      setOpen((value) => !value);
-    }
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Menu,
-    {
-      open,
-      onClose: () => setOpen(() => false),
-      portal: true,
-      selectedId: workspace?.id ?? "",
-      align: "start",
-      className: "nodo-picker",
-      items: [...none ? [{ id: "", label: none, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, null) }] : [], ...ordered.map((item) => ({
-        id: item.id,
-        label: running.has(item.id) ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-menu-label" }, item.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-menu-dot", title: "\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 8 }))) : item.name,
-        icon: item.worktree ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular, null)
-      }))],
-      onSelect: (id) => {
-        setOpen(() => false);
-        onSelect(id);
-      },
-      anchor: button ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", className: "nodo-project-pick", ...props }, anchor) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-project-select", ...props }, anchor)
-    }
-  );
-};
-function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
-  const [queries, setQueries] = (0, import_react.useState)({});
-  const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
-  const [archives, setArchives] = (0, import_react.useState)({});
-  const [searching, setSearching] = (0, import_react.useState)(null);
-  const [roleFilter, setRoleFilter] = (0, import_react.useState)(null);
-  const [opened, setOpened] = (0, import_react.useState)({});
-  const [expanded, setExpanded] = (0, import_react.useState)({});
-  const busyNow = readOnly || busy;
-  const sessions = view.profiles.flatMap((role) => role.sessions.map((session) => ({
-    role,
-    session,
-    workspaceId: workspaceIdOf(view, role, session)
-  })));
-  const roles = view.profiles.filter((role) => !role.deletedAt);
-  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b) => (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
-  const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
-  const ordered = [...view.workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  const scopeOf = (item) => {
-    const search = (queries[item.id] ?? "").trim().toLocaleLowerCase(), archived = archives[item.id] ?? "hide";
-    return { search, archived, filtering: !!search || !!filterRole || archived === "only" };
-  };
-  const entriesOf = (item) => {
-    const { search, archived } = scopeOf(item);
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && (!filterRole || role === filterRole) && (archived === "all" || archived === "only" === !!session.archivedAt) && (!search || [role.name, session.name, session.engine, item.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search)))).sort((a, b) => Number(!!b.session.pinnedAt) - Number(!!a.session.pinnedAt) || (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
-  };
-  const draftRole = draft && roles.find((item) => item.id === draft.profile);
-  const draftIn = (item) => !!draft && draft.workspace === item.id && !scopeOf(item).search && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
-  const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-row-action",
-      "aria-label": label,
-      disabled,
-      onClick: (event) => {
-        event.stopPropagation();
-        onClick();
-      }
-    },
-    icon
-  ));
-  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && view.work[entry.session.id]?.active);
-  const toggle = (key, open, Glyph, title, tip, live) => {
-    const waiting = live.some((entry) => workDot(view.work[entry.session.id]) === "warning");
-    return /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-project-select",
-        "aria-expanded": open,
-        title: tip,
-        onClick: () => setOpened((current) => ({ ...current, [key]: !open }))
-      },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 })),
-      Glyph && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, title),
-      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: waiting ? "warning" : "ongoing", size: 12 }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
-    );
-  };
-  const list = (item, entries, pending) => {
-    const { search, archived } = scopeOf(item);
-    const folded = !search && entries.length > SESSION_FOLD;
-    const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries;
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, draftRole ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: draftRole, size: 18 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => /* @__PURE__ */ (0, import_react.createElement)(
-      SessionRow,
-      {
-        key: session.id,
-        role,
-        session,
-        busy,
-        current: session.id === sessionId && !editing && !drafting,
-        work: view.work[session.id],
-        onSelect: () => onSelectSession(role, session.id, item),
-        onArchive: (archived2) => onArchiveSession(role, session.id, archived2),
-        onRename: () => onRenameSession(role, session),
-        onPin: (pinned) => onPinSession(role, session.id, pinned)
-      }
-    )), folded && /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-show-more",
-        "aria-expanded": !!expanded[item.id],
-        onClick: () => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))
-      },
-      expanded[item.id] ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
-    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, search || filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
-  };
-  const node = (item) => {
-    const { search, archived, filtering } = scopeOf(item);
-    const entries = entriesOf(item);
-    const pending = draftIn(item);
-    const searchOpen = searching === item.id || !!queries[item.id];
-    if (filtering && !entries.length && !pending && !search && archived !== "only" && !searchOpen) return null;
-    const open = opened[item.id] ?? (filtering || searchOpen || item.id === workspace?.id);
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
-      item.id,
-      open,
-      item.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular,
-      item.name,
-      item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
-      liveIn([item])
-    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Menu,
-      {
-        open: menuOpen === item.id,
-        onClose: () => setMenuOpen(null),
-        portal: true,
-        closeOnPointerLeave: true,
-        selectedId: `archived:${archived}`,
-        items: [
-          { id: "search", label: "\u641C\u7D22\u4F1A\u8BDD", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, null) },
-          ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({
-            id: `archived:${id}`,
-            label,
-            icon: id === "hide" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
-          })),
-          ...item.worktree ? [] : [{ id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), disabled: busyNow }],
-          { id: "rename", label: "\u91CD\u547D\u540D", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busyNow },
-          { id: "delete", label: "\u5220\u9664\u5DE5\u4F5C\u533A", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, null), danger: true, disabled: busyNow }
-        ],
-        onSelect: (id) => {
-          setMenuOpen(null);
-          if (id === "search") {
-            setSearching(item.id);
-            setOpened((current) => ({ ...current, [item.id]: true }));
-          } else if (id.startsWith("archived:")) setArchives((current) => ({ ...current, [item.id]: id.slice("archived:".length) }));
-          else if (id === "worktree") onNewWorktree(item);
-          else if (id === "rename") onRenameWorkspace(item);
-          else if (id === "delete") onDeleteWorkspace(item);
-        },
-        anchor: /* @__PURE__ */ (0, import_react.createElement)(
-          "button",
-          {
-            type: "button",
-            className: "nodo-row-action",
-            "aria-haspopup": "menu",
-            "aria-expanded": menuOpen === item.id,
-            "aria-label": `\u5DE5\u4F5C\u533A\u201C${item.name}\u201D\u7684\u64CD\u4F5C`,
-            onClick: (event) => {
-              event.stopPropagation();
-              setMenuOpen((current) => current === item.id ? null : item.id);
-            }
-          },
-          /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
-        )
-      }
-    ))), searchOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-search" }, /* @__PURE__ */ (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Input,
-      {
-        type: "search",
-        autoFocus: true,
-        value: queries[item.id] ?? "",
-        onChange: (event) => setQueries((current) => ({ ...current, [item.id]: event.target.value })),
-        onKeyDown: (event) => {
-          if (event.key === "Escape") {
-            setQueries((current) => ({ ...current, [item.id]: "" }));
-            setSearching(null);
-          }
-        },
-        placeholder: "\u641C\u7D22\u4F1A\u8BDD",
-        "aria-label": `\u641C\u7D22\u201C${item.name}\u201D\u7684\u4F1A\u8BDD`,
-        className: "nodo-search-input",
-        icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
-      }
-    )), open && list(item, entries, pending));
-  };
-  const tree = ordered.map(node).filter(Boolean);
-  const projectsOpen = opened[":projects"] ?? true;
-  const rosterItem = (item) => {
-    const state = roleStateOf(item, view, workspace);
-    const pressed = item.id === filterRole?.id;
-    const label = workLabel(state);
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-roster-item",
-        "aria-pressed": pressed,
-        title: item.name,
-        "aria-label": label ? `${item.name}\uFF0C${label}` : item.name,
-        onClick: () => {
-          if (pressed) setRoleFilter(null);
-          else {
-            onSelect(item.id);
-            setRoleFilter(item.id);
-          }
-        }
-      },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 28 }), workDot(state) === "warning" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-dot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 }))),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name)
-    ), /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-roster-edit",
-        "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-        title: `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-        disabled: busyNow || state.active,
-        onClick: () => onEditRole(item)
-      },
-      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 12 })
-    ));
-  };
-  const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "workflow" ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "Workflow", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      "aria-label": runsWaiting ? "Workflow\uFF08\u6709\u5F85\u5904\u7406\uFF09" : "Workflow",
-      "aria-pressed": navigation?.view === "workflow",
-      onClick: navigation?.view === "workflow" ? void 0 : onWorkflows
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular, { size: 18 }),
-    runsWaiting && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-badge" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 }))
-  )), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u89D2\u8272", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      "aria-label": "\u89D2\u8272",
-      "aria-pressed": navigation?.view === "roles",
-      onClick: navigation?.view === "roles" ? void 0 : onRoles
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 })
-  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
-    onClick: onBack,
-    disabled: typeof layoutService?.selectPanel !== "function"
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-pressed": !filterRole, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), roles.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE workspace"))), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], import_dsh_client_ui_primitives.IconArchiveOutlineRegular, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
-    SessionRow,
-    {
-      key: session.id,
-      role,
-      session,
-      busy,
-      readOnly: true,
-      current: session.id === sessionId && !editing && !drafting,
-      context: `${session.profileName ?? role.name} \xB7 ${session.workspaceName ?? view.workspaces.find((item) => item.id === workspaceId)?.name ?? session.cwd ?? "\u672A\u6307\u5B9A\u9879\u76EE"}`,
-      onSelect: () => onSelectSession(role, session.id),
-      onArchive: () => {
-      },
-      onRename: () => {
-      },
-      onPin: () => {
-      }
-    }
-  )))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
-}
-
-// src/client/running.js
-var RUNNING_COLORS = [...avatar_templates_default, ...avatar_templates_default.slice(1, -1).reverse()];
-var RUNNING_COLOR_HOLD = 3160;
-var runDuration = (ms) => {
-  const total = Math.max(0, Math.floor(ms / 1e3));
-  const parts = [];
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor(total / 60) % 60;
-  const seconds = total % 60;
-  if (hours > 0) parts.push(`${hours}h`);
-  if (hours > 0 || total >= 60) parts.push(`${minutes}m`);
-  parts.push(`${seconds}s`);
-  return parts.join(" ");
-};
-function nativeRunningSince(snapshot) {
-  let latest;
-  for (const turn of snapshot.views.get("chat")?.timeline.turns.values() ?? []) {
-    if (!latest || turn.turn > latest.turn) latest = turn;
-  }
-  return latest?.status === "open" ? latest.start?.time : void 0;
-}
-function NativeRunningDock({ sessionId, useSession, useConversation }) {
-  const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
-  const { view } = useStateView();
-  const work = Object.values(view?.profiles ?? {}).flatMap((profile) => profile.sessions ?? []).find((session) => (session.engine === "dsh" ? session.driverSessionId : null) === sessionId);
-  const engine = work ? view.work?.[work.id]?.engine : void 0;
-  const running = useSession((session) => session.running);
-  const since = useConversation(nativeRunningSince);
-  return space.active && !space.legacy && running ? (0, import_react.createElement)("div", { className: "nodo-running-dock", "data-nodo-native-running": "" }, (0, import_react.createElement)(RunningLine, { key: sessionId, since, engine })) : null;
-}
-function engineRunningLabel(engine, now) {
-  if (!engine) return "\u6B63\u5728\u601D\u8003";
-  const retryText = typeof engine.detail === "string" && engine.detail ? `\uFF08${engine.detail.slice(0, 80)}\uFF09` : "";
-  const label = {
-    "waiting-question": "\u7B49\u5F85\u56DE\u7B54",
-    "waiting-approval": "\u7B49\u5F85\u5BA1\u6279",
-    tool: `\u6B63\u5728\u6267\u884C ${engine.tool ?? "\u5DE5\u5177"}`,
-    thinking: "\u6B63\u5728\u601D\u8003",
-    responding: "\u6B63\u5728\u56DE\u590D",
-    running: "\u7B49\u5F85 Agent",
-    retrying: `\u6B63\u5728\u91CD\u8BD5${retryText}`,
-    compacting: "\u6B63\u5728\u538B\u7F29\u4E0A\u4E0B\u6587"
-  }[engine.phase] ?? "\u7B49\u5F85 Agent";
-  const silent = Number.isFinite(engine.lastEventAt) ? Math.max(0, now - engine.lastEventAt) : 0;
-  return silent >= 3e4 ? `${label} \xB7 ${runDuration(silent)} \u672A\u6536\u5230\u65B0\u4E8B\u4EF6` : label;
-}
-function RunningLine({ since, engine }) {
-  const clock = (0, import_react.useRef)({ since, at: Date.now() });
-  if (clock.current.since !== since) clock.current = { since, at: Date.now() };
-  const epoch = Number.isFinite(since) ? since : clock.current.at;
-  const [now, setNow] = (0, import_react.useState)(() => Date.now());
-  const [reduced, setReduced] = (0, import_react.useState)(false);
-  (0, import_react.useEffect)(() => {
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, [since]);
-  (0, import_react.useEffect)(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-  const elapsed = Math.max(0, now - epoch);
-  const label = engineRunningLabel(engine, now);
-  const template = RUNNING_COLORS[reduced ? 0 : Math.floor(elapsed / RUNNING_COLOR_HOLD) % RUNNING_COLORS.length];
-  const letter = (text, index) => (0, import_react.createElement)("span", {
-    key: index,
-    className: "nodo-running-letter",
-    style: { "--nodo-running-stagger": `${180 + index * 45}ms` }
-  }, text);
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-running", "data-flow": "process", style: {
-      "--nodo-running-tint": template.color,
-      "--nodo-running-phase": `${-Math.max(0, clock.current.at - epoch)}ms`
-    } },
-    (0, import_react.createElement)("span", { className: "nodo-running-divider", "aria-hidden": true }),
-    (0, import_react.createElement)(
-      "span",
-      { className: "nodo-running-line" },
-      (0, import_react.createElement)(
-        "span",
-        { className: "nodo-running-icon", "aria-hidden": true },
-        (0, import_react.createElement)(RoleAvatar, { profile: { avatarTemplate: "sky" }, size: "100%" })
-      ),
-      (0, import_react.createElement)(
-        "span",
-        { className: "nodo-running-label", "aria-label": label },
-        (0, import_react.createElement)("span", { "aria-hidden": true }, Array.from(label, letter))
-      ),
-      Number.isFinite(since) && (0, import_react.createElement)(
-        "span",
-        { className: "nodo-running-timer" },
-        (0, import_react.createElement)("span", { className: "nodo-running-separator", "aria-hidden": true }),
-        (0, import_react.createElement)(
-          "span",
-          { "aria-label": `\u7528\u65F6 ${runDuration(elapsed)}` },
-          (0, import_react.createElement)(
-            "span",
-            { "aria-hidden": true },
-            letter("\u7528", 4),
-            letter("\u65F6", 5),
-            " ",
-            (0, import_react.createElement)("span", { className: "nodo-running-time" }, letter(runDuration(elapsed), 6))
-          )
-        )
-      ),
-      (0, import_react.createElement)(
-        "span",
-        { className: "nodo-running-dots", "aria-hidden": true },
-        [0, 1, 2].map((index) => (0, import_react.createElement)("span", {
-          key: index,
-          className: "nodo-running-dot",
-          style: { "--nodo-running-stagger": `${120 + index * 170}ms` }
-        }))
-      )
-    )
-  );
-}
-var RUNNING_CSS = `
-[data-conversation-content]:has([data-nodo-native-running]) [data-chat-running]{display:none}
-.nodo-running-dock{flex:none;padding:0 calc(var(--dsh-composer-side-clearance,16px) + 16px) 8px}
-.nodo-running-dock>.nodo-running{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto}
-.nodo-running{display:flex;flex-direction:column;align-items:flex-start;color:color-mix(in srgb,var(--nodo-running-tint) 38%,var(--dsw-alias-label-primary));font-size:calc(var(--dsh-content-font-size,14px) - 2px);line-height:calc(22px + var(--dsh-content-font-delta,0px))}
-.nodo-running-divider{width:100%;height:.5px;margin:8px 0 10px;background:color-mix(in srgb,var(--dsw-alias-border-l1) 75%,var(--dsw-alias-border-l2))}
-.nodo-running-line{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0;max-width:100%;font-variant-numeric:tabular-nums}
-.nodo-running-icon{display:inline-flex;flex:none;width:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);height:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);transform-origin:50% 85%;animation:nodo-running-hop 1.58s infinite;animation-delay:var(--nodo-running-phase)}
-.nodo-running-icon path{fill:var(--nodo-running-tint)}
-.nodo-running-label,.nodo-running-timer{white-space:nowrap}
-.nodo-running-letter{display:inline-block;white-space:pre;animation:nodo-running-wave 1.58s ease-in-out infinite;animation-delay:calc(var(--nodo-running-phase) + var(--nodo-running-stagger))}
-.nodo-running-timer{display:inline-flex;align-items:center;gap:6px}
-.nodo-running-time{display:inline-block;min-width:3ch}
-.nodo-running-separator{height:1em;width:.5px;background:currentColor;opacity:.25}
-.nodo-running-dots{display:inline-flex;align-items:center;gap:3px;flex:none}
-.nodo-running-dot{width:3px;height:3px;border-radius:50%;background:var(--nodo-running-tint);animation:nodo-running-dot 1.58s ease-in-out infinite;animation-delay:calc(var(--nodo-running-phase) + var(--nodo-running-stagger))}
-@keyframes nodo-running-hop{0%,68%,100%{transform:translateY(0) rotate(0) scale(1)}10%{transform:translateY(0) scale(1.08,.9);animation-timing-function:ease-out}30%{transform:translateY(-3px) rotate(-5deg) scale(.96,1.04);animation-timing-function:ease-in}48%{transform:translateY(0) rotate(2deg) scale(1.07,.91);animation-timing-function:ease-out}}
-@keyframes nodo-running-wave{0%,35%,100%{transform:translateY(0)}15%{transform:translateY(-1px)}}
-@keyframes nodo-running-dot{0%,36%,100%{transform:translateY(0);opacity:.6}16%{transform:translateY(-2px);opacity:1}}
-@media(prefers-reduced-motion:reduce){.nodo-running-icon,.nodo-running-letter,.nodo-running-dot{animation:none}}
-@media(max-width:820px){.nodo-running-dock{padding-right:16px;padding-left:16px}}
-`;
 
 // src/client/tool-call.tsx
 var STATUS_LABELS = {
@@ -3039,6 +2538,33 @@ function PlanRow({ plan, running, timeline }) {
     ))) : (0, import_react.createElement)("div", { className: "nodo-plan-text" }, plan.text ?? "")
   });
 }
+function toolRow(row, { profile, session, work, timeline }) {
+  const { item, index } = row;
+  if (supportedStreamRecord(item.presentation)) return (0, import_react.createElement)(StreamRecordCard, {
+    key: index,
+    record: item.presentation,
+    timeline,
+    eventPhase: row.invocation ? "start" : row.result ? "end" : void 0,
+    request: { profile: profile.id, session: session.id }
+  });
+  const variant = TOOL_VARIANTS[toolVariant(item.name)];
+  const progress = progressText(item.progress);
+  return (0, import_react.createElement)(ProcessRow, {
+    key: index,
+    kind: "tool",
+    variant,
+    timeline,
+    title: `${row.invocation ? "\u8C03\u7528 \xB7 " : row.result ? "\u7ED3\u679C \xB7 " : ""}${variant.title}`,
+    summary: [item.brief ? item.brief.split("\n")[0] : null, progress].filter(Boolean).join(" \xB7 ") || null,
+    body: item.brief ?? "",
+    input: item.input,
+    output: item.output,
+    progress: item.progress,
+    running: row.running && work?.active === true,
+    error: row.error,
+    status: row.invocation ? "started" : row.running ? "unknown" : "done"
+  });
+}
 function transcriptRows(lines) {
   const rows = [];
   const open = /* @__PURE__ */ new Map();
@@ -3145,7 +2671,7 @@ function ProcessGroup({ rows, running, depths = [], children = [] }) {
   });
   return (0, import_react.createElement)(ToolTimeline, { steps, summary, streaming: running });
 }
-function Feed({ profile, session, revision, work, sentTick }) {
+function Feed({ profile, session, revision, work, sentTick, round }) {
   const [feed, setFeed] = (0, import_react.useState)({ key: null, lines: [], error: "" });
   const [following, setFollowing] = (0, import_react.useState)(true);
   const [activeTurn, setActiveTurn] = (0, import_react.useState)(null);
@@ -3197,8 +2723,10 @@ function Feed({ profile, session, revision, work, sentTick }) {
   (0, import_react.useEffect)(() => {
     setFollowing(true);
   }, [sentTick]);
+  const source = round ? roundLines(feed.lines) : feed.lines;
+  const shown = profile.lead === true ? source.filter((line2) => line2.kind !== "usage") : source;
   const turns = [];
-  for (const [index, item] of feed.lines.entries()) {
+  for (const [index, item] of shown.entries()) {
     if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
     else if (item.who === "agent" && item.kind === "text" && !item.parentCallId && turns.length !== 0) {
       const turn = turns.at(-1);
@@ -3215,7 +2743,7 @@ function Feed({ profile, session, revision, work, sentTick }) {
     setFollowing(false);
     node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop;
   };
-  const lines = feed.key === key ? feed.lines : [];
+  const lines = feed.key === key ? shown : [];
   const latestUser = lines.findLastIndex((item) => item.who === "user");
   const replyEnds = /* @__PURE__ */ new Set();
   let replyPending = work?.active !== true;
@@ -3227,38 +2755,31 @@ function Feed({ profile, session, revision, work, sentTick }) {
       replyPending = false;
     }
   }
+  const turnUsage = /* @__PURE__ */ new Map();
+  const mergedUsage = /* @__PURE__ */ new Set();
+  let stamp = null;
+  let usageAt = null;
+  for (let index = 0; index <= lines.length; index += 1) {
+    const item = lines[index];
+    if (item === void 0 || item.who === "user") {
+      if (stamp !== null && usageAt !== null) {
+        turnUsage.set(stamp, usageAt);
+        mergedUsage.add(usageAt);
+      }
+      stamp = null;
+      usageAt = null;
+    } else if (replyEnds.has(index)) stamp = index;
+    else if (item.kind === "usage" && usageAt === null) usageAt = index;
+  }
+  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === "user" || lines.at(-1).kind === "member");
+  const lastSpeaker = lines.findLastIndex((item) => item.kind === "speaker");
   const rows = transcriptRows(lines).filter((row) => row.item.kind !== "changes" || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser));
   const newest = rows.length - 1;
   const line = (row, position, timeline = false) => {
     const { item, index } = row;
     if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
     if (item.kind === "changes") return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } });
-    if (item.kind === "tool") {
-      if (supportedStreamRecord(item.presentation)) return (0, import_react.createElement)(StreamRecordCard, {
-        key: index,
-        record: item.presentation,
-        timeline,
-        eventPhase: row.invocation ? "start" : row.result ? "end" : void 0,
-        request: { profile: profile.id, session: session.id }
-      });
-      const variant = TOOL_VARIANTS[toolVariant(item.name)];
-      const progress = progressText(item.progress);
-      return (0, import_react.createElement)(ProcessRow, {
-        key: index,
-        kind: "tool",
-        variant,
-        timeline,
-        title: `${row.invocation ? "\u8C03\u7528 \xB7 " : row.result ? "\u7ED3\u679C \xB7 " : ""}${variant.title}`,
-        summary: [item.brief ? item.brief.split("\n")[0] : null, progress].filter(Boolean).join(" \xB7 ") || null,
-        body: item.brief ?? "",
-        input: item.input,
-        output: item.output,
-        progress: item.progress,
-        running: row.running && work?.active === true,
-        error: row.error,
-        status: row.invocation ? "started" : row.running ? "unknown" : "done"
-      });
-    }
+    if (item.kind === "tool") return toolRow(row, { profile, session, work, timeline });
     if (item.kind === "thinking") {
       const text = item.text ?? "";
       const running = work?.active === true && (item.timeline === true ? item.open === true : position === newest && (work.buffer ?? "") === "");
@@ -3274,6 +2795,9 @@ function Feed({ profile, session, revision, work, sentTick }) {
         running
       });
     }
+    if (item.kind === "speaker") return (0, import_react.createElement)(RoundSpeaker, { key: index, role: profile, running: work?.active === true && !speakerDue && index === lastSpeaker });
+    if (item.kind === "delegate") return (0, import_react.createElement)(RoundChip, { key: index, step: item.step, round });
+    if (item.kind === "member") return (0, import_react.createElement)(RoundMember, { key: index, step: item.step, round });
     if (item.kind === "error") {
       return (0, import_react.createElement)(
         "div",
@@ -3297,7 +2821,7 @@ function Feed({ profile, session, revision, work, sentTick }) {
         reply.text && (0, import_react.createElement)("span", { className: "nodo-request-answer" }, ` \xB7 ${reply.text}`)
       );
     }
-    if (item.kind === "usage") return lines[index - 1]?.who === "agent" && lines[index - 1].kind === "text" ? null : (0, import_react.createElement)(TurnUsage, { key: index, usage: item.usage });
+    if (item.kind === "usage") return lines[index - 1]?.who === "agent" && lines[index - 1].kind === "text" || mergedUsage.has(index) ? null : (0, import_react.createElement)(TurnUsage, { key: index, usage: item.usage });
     if (item.who === "user") {
       return (0, import_react.createElement)(
         "div",
@@ -3320,7 +2844,8 @@ function Feed({ profile, session, revision, work, sentTick }) {
     }
     if (item.who === "agent") {
       const streaming = item.timeline === true && item.open === true && work?.active === true;
-      const usage = lines[index + 1]?.kind === "usage" ? lines[index + 1].usage : null;
+      const usageAt2 = turnUsage.get(index);
+      const usage = usageAt2 !== void 0 ? lines[usageAt2].usage : !mergedUsage.has(index + 1) && lines[index + 1]?.kind === "usage" ? lines[index + 1].usage : null;
       return (0, import_react.createElement)(
         "div",
         {
@@ -3352,7 +2877,7 @@ function Feed({ profile, session, revision, work, sentTick }) {
       { className: "nodo-feed", ref: box, onScroll: sample, "data-following": following ? "" : void 0, role: "log", "aria-label": `${profile.name} transcript` },
       (0, import_react.createElement)(
         "div",
-        { className: "nodo-feed-inner" },
+        { className: "nodo-feed-inner", "data-round": round ? "" : void 0 },
         feed.key === key && feed.error && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, feed.error),
         lines.length === 0 && !work?.active && (0, import_react.createElement)(
           "p",
@@ -3369,10 +2894,11 @@ function Feed({ profile, session, revision, work, sentTick }) {
           },
           block.rows.map(({ row, position }) => line(row, position, true))
         ) : line(block.rows[0].row, block.rows[0].position)),
+        speakerDue && work?.active && work.timeline !== true && stripNodo(work.buffer) !== "" && (0, import_react.createElement)(RoundSpeaker, { role: profile, running: true }),
         work?.active && work.timeline !== true && work.buffer != null && work.buffer !== "" && (0, import_react.createElement)(
           "div",
           { className: "nodo-reply", "data-flow": "response" },
-          (0, import_react.createElement)(StreamingText, { key, text: work.buffer, streaming: true, labels: MARKDOWN_LABELS })
+          (0, import_react.createElement)(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })
         )
       )
     ),
@@ -3701,6 +3227,721 @@ function StatsDialog({ stats, onClose }) {
   );
 }
 
+// src/client/running.js
+var RUNNING_COLORS = [...avatar_templates_default, ...avatar_templates_default.slice(1, -1).reverse()];
+var RUNNING_COLOR_HOLD = 3160;
+var runDuration = (ms) => {
+  const total = Math.max(0, Math.floor(ms / 1e3));
+  const parts = [];
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const seconds = total % 60;
+  if (hours > 0) parts.push(`${hours}h`);
+  if (hours > 0 || total >= 60) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
+};
+function nativeRunningSince(snapshot) {
+  let latest;
+  for (const turn of snapshot.views.get("chat")?.timeline.turns.values() ?? []) {
+    if (!latest || turn.turn > latest.turn) latest = turn;
+  }
+  return latest?.status === "open" ? latest.start?.time : void 0;
+}
+function NativeRunningDock({ sessionId, useSession, useConversation }) {
+  const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
+  const { view } = useStateView();
+  const work = Object.values(view?.profiles ?? {}).flatMap((profile) => profile.sessions ?? []).find((session) => (session.engine === "dsh" ? session.driverSessionId : null) === sessionId);
+  const engine = work ? view.work?.[work.id]?.engine : void 0;
+  const running = useSession((session) => session.running);
+  const since = useConversation(nativeRunningSince);
+  return space.active && !space.legacy && running ? (0, import_react.createElement)("div", { className: "nodo-running-dock", "data-nodo-native-running": "" }, (0, import_react.createElement)(RunningLine, { key: sessionId, since, engine })) : null;
+}
+function engineRunningLabel(engine, now) {
+  if (!engine) return "\u6B63\u5728\u601D\u8003";
+  const retryText = typeof engine.detail === "string" && engine.detail ? `\uFF08${engine.detail.slice(0, 80)}\uFF09` : "";
+  const label = {
+    "waiting-question": "\u7B49\u5F85\u56DE\u7B54",
+    "waiting-approval": "\u7B49\u5F85\u5BA1\u6279",
+    tool: `\u6B63\u5728\u6267\u884C ${engine.tool ?? "\u5DE5\u5177"}`,
+    thinking: "\u6B63\u5728\u601D\u8003",
+    responding: "\u6B63\u5728\u56DE\u590D",
+    running: "\u7B49\u5F85 Agent",
+    retrying: `\u6B63\u5728\u91CD\u8BD5${retryText}`,
+    compacting: "\u6B63\u5728\u538B\u7F29\u4E0A\u4E0B\u6587"
+  }[engine.phase] ?? "\u7B49\u5F85 Agent";
+  const silent = Number.isFinite(engine.lastEventAt) ? Math.max(0, now - engine.lastEventAt) : 0;
+  return silent >= 3e4 ? `${label} \xB7 ${runDuration(silent)} \u672A\u6536\u5230\u65B0\u4E8B\u4EF6` : label;
+}
+function RunningLine({ since, engine }) {
+  const clock = (0, import_react.useRef)({ since, at: Date.now() });
+  if (clock.current.since !== since) clock.current = { since, at: Date.now() };
+  const epoch = Number.isFinite(since) ? since : clock.current.at;
+  const [now, setNow] = (0, import_react.useState)(() => Date.now());
+  const [reduced, setReduced] = (0, import_react.useState)(false);
+  (0, import_react.useEffect)(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [since]);
+  (0, import_react.useEffect)(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const elapsed = Math.max(0, now - epoch);
+  const label = engineRunningLabel(engine, now);
+  const template = RUNNING_COLORS[reduced ? 0 : Math.floor(elapsed / RUNNING_COLOR_HOLD) % RUNNING_COLORS.length];
+  const letter = (text, index) => (0, import_react.createElement)("span", {
+    key: index,
+    className: "nodo-running-letter",
+    style: { "--nodo-running-stagger": `${180 + index * 45}ms` }
+  }, text);
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-running", "data-flow": "process", style: {
+      "--nodo-running-tint": template.color,
+      "--nodo-running-phase": `${-Math.max(0, clock.current.at - epoch)}ms`
+    } },
+    (0, import_react.createElement)("span", { className: "nodo-running-divider", "aria-hidden": true }),
+    (0, import_react.createElement)(
+      "span",
+      { className: "nodo-running-line" },
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-running-icon", "aria-hidden": true },
+        (0, import_react.createElement)(RoleAvatar, { profile: { avatarTemplate: "sky" }, size: "100%" })
+      ),
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-running-label", "aria-label": label },
+        (0, import_react.createElement)("span", { "aria-hidden": true }, Array.from(label, letter))
+      ),
+      Number.isFinite(since) && (0, import_react.createElement)(
+        "span",
+        { className: "nodo-running-timer" },
+        (0, import_react.createElement)("span", { className: "nodo-running-separator", "aria-hidden": true }),
+        (0, import_react.createElement)(
+          "span",
+          { "aria-label": `\u7528\u65F6 ${runDuration(elapsed)}` },
+          (0, import_react.createElement)(
+            "span",
+            { "aria-hidden": true },
+            letter("\u7528", 4),
+            letter("\u65F6", 5),
+            " ",
+            (0, import_react.createElement)("span", { className: "nodo-running-time" }, letter(runDuration(elapsed), 6))
+          )
+        )
+      ),
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-running-dots", "aria-hidden": true },
+        [0, 1, 2].map((index) => (0, import_react.createElement)("span", {
+          key: index,
+          className: "nodo-running-dot",
+          style: { "--nodo-running-stagger": `${120 + index * 170}ms` }
+        }))
+      )
+    )
+  );
+}
+var RUNNING_CSS = `
+[data-conversation-content]:has([data-nodo-native-running]) [data-chat-running]{display:none}
+.nodo-running-dock{flex:none;padding:0 calc(var(--dsh-composer-side-clearance,16px) + 16px) 8px}
+.nodo-running-dock>.nodo-running{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto}
+.nodo-running{display:flex;flex-direction:column;align-items:flex-start;color:color-mix(in srgb,var(--nodo-running-tint) 38%,var(--dsw-alias-label-primary));font-size:calc(var(--dsh-content-font-size,14px) - 2px);line-height:calc(22px + var(--dsh-content-font-delta,0px))}
+.nodo-running-divider{width:100%;height:.5px;margin:8px 0 10px;background:color-mix(in srgb,var(--dsw-alias-border-l1) 75%,var(--dsw-alias-border-l2))}
+.nodo-running-line{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0;max-width:100%;font-variant-numeric:tabular-nums}
+.nodo-running-icon{display:inline-flex;flex:none;width:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);height:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);transform-origin:50% 85%;animation:nodo-running-hop 1.58s infinite;animation-delay:var(--nodo-running-phase)}
+.nodo-running-icon .nodo-avatar-body{fill:var(--nodo-running-tint)}
+.nodo-running-icon .nodo-avatar-tile{fill:color-mix(in srgb,var(--nodo-running-tint) 20%,var(--dsw-alias-bg-base))}
+.nodo-running-label,.nodo-running-timer{white-space:nowrap}
+.nodo-running-letter{display:inline-block;white-space:pre;animation:nodo-running-wave 1.58s ease-in-out infinite;animation-delay:calc(var(--nodo-running-phase) + var(--nodo-running-stagger))}
+.nodo-running-timer{display:inline-flex;align-items:center;gap:6px}
+.nodo-running-time{display:inline-block;min-width:3ch}
+.nodo-running-separator{height:1em;width:.5px;background:currentColor;opacity:.25}
+.nodo-running-dots{display:inline-flex;align-items:center;gap:3px;flex:none}
+.nodo-running-dot{width:3px;height:3px;border-radius:50%;background:var(--nodo-running-tint);animation:nodo-running-dot 1.58s ease-in-out infinite;animation-delay:calc(var(--nodo-running-phase) + var(--nodo-running-stagger))}
+@keyframes nodo-running-hop{0%,68%,100%{transform:translateY(0) rotate(0) scale(1)}10%{transform:translateY(0) scale(1.08,.9);animation-timing-function:ease-out}30%{transform:translateY(-3px) rotate(-5deg) scale(.96,1.04);animation-timing-function:ease-in}48%{transform:translateY(0) rotate(2deg) scale(1.07,.91);animation-timing-function:ease-out}}
+@keyframes nodo-running-wave{0%,35%,100%{transform:translateY(0)}15%{transform:translateY(-1px)}}
+@keyframes nodo-running-dot{0%,36%,100%{transform:translateY(0);opacity:.6}16%{transform:translateY(-2px);opacity:1}}
+@media(prefers-reduced-motion:reduce){.nodo-running-icon,.nodo-running-letter,.nodo-running-dot{animation:none}}
+@media(max-width:820px){.nodo-running-dock{padding-right:16px;padding-left:16px}}
+`;
+
+// src/client/round.js
+var NODO_BLOCK = /^```nodo[ \t]*\r?\n[\s\S]*?(?:^```[ \t]*$|(?![\s\S]))/gm;
+var stripNodo = (text) => String(text ?? "").replace(NODO_BLOCK, "").trim();
+function roundIndex(view) {
+  const all = view.profiles.flatMap((role) => role.sessions.map((session) => ({ role, session })));
+  const byId = new Map(all.map((entry) => [entry.session.id, entry]));
+  const lead = /* @__PURE__ */ new Map(), members = /* @__PURE__ */ new Map();
+  for (const entry of all) {
+    const source = entry.session.source;
+    const owner = source?.kind === "lead" && entry.session.engine !== "dsh" ? byId.get(source.leadSessionId) : void 0;
+    if (!owner || owner.session.engine === "dsh") continue;
+    lead.set(entry.session.id, owner);
+    members.set(owner.session.id, [...members.get(owner.session.id) ?? [], entry]);
+  }
+  for (const list of members.values()) list.sort((a, b) => (a.session.createdAt ?? 0) - (b.session.createdAt ?? 0));
+  return { lead, members };
+}
+function roundLines(lines) {
+  const out = [], steps = /* @__PURE__ */ new Map();
+  let due = true;
+  for (const line of lines) {
+    const mark = line.delegation;
+    if (mark && !mark.ended) {
+      const step2 = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at };
+      steps.set(mark.session, step2);
+      out.push({ who: "system", kind: "delegate", step: step2 }, { who: "system", kind: "member", step: step2 });
+      due = true;
+      continue;
+    }
+    const step = steps.get(mark?.session ?? line.origin?.session);
+    if (mark?.ended && step) {
+      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {});
+      continue;
+    }
+    if (line.origin?.kind === "report" && step) Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
+    if (line.origin) continue;
+    const text = line.who === "agent" && line.kind === "text" ? stripNodo(line.text) : null;
+    if (text === "") continue;
+    if (line.who === "user") due = true;
+    else if (due && line.kind !== "usage") {
+      out.push({ who: "system", kind: "speaker" });
+      due = false;
+    }
+    out.push(text === null ? line : { ...line, text });
+  }
+  return out;
+}
+var plainLine = (line) => line.replace(/^\s*(?:[#>*-]+\s*)+/, "").replaceAll("**", "").trim();
+var reportParts = (text) => {
+  const lines = String(text ?? "").split("\n");
+  const at = lines.findIndex((line) => plainLine(line));
+  return { summary: at < 0 ? "" : plainLine(lines[at]), rest: lines.slice(at + 1).join("\n").trim() };
+};
+var roleOf = (round, id) => round.profiles.find((role) => role.id === id) ?? { id, name: id };
+function RoundTools({ step, work }) {
+  const [lines, setLines] = (0, import_react.useState)([]);
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("transcript", { profile: step.profile, session: step.session }).then((next) => {
+      if (live) setLines(next);
+    }).catch(() => {
+    });
+    return () => {
+      live = false;
+    };
+  }, [step.session, work?.active === true ? work : null]);
+  const rows = transcriptRows(lines.slice(lines.findLastIndex((line) => line.who === "user") + 1)).filter((row) => row.item.kind === "tool").slice(-5);
+  return rows.length > 0 && (0, import_react.createElement)(
+    "div",
+    { className: "nodo-round-tools" },
+    rows.map((row) => toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work, timeline: true }))
+  );
+}
+function RoundSpeaker({ role, running }) {
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-round-speaker" },
+    (0, import_react.createElement)(RoleAvatar, { profile: role, size: 28, running }),
+    (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name)
+  );
+}
+function RoundChip({ step, round }) {
+  const role = roleOf(round, step.profile);
+  return (0, import_react.createElement)(
+    "span",
+    { className: "nodo-round-chip" },
+    (0, import_react.createElement)(
+      "svg",
+      { width: 12, height: 12, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true },
+      (0, import_react.createElement)("path", { d: "M5 12h14M13 6l6 6-6 6" })
+    ),
+    (0, import_react.createElement)(RoleAvatar, { profile: role, size: 16 }),
+    `${step.reused ? "\u7EE7\u7EED\u6D3E\u7ED9" : "\u6D3E\u7ED9"} ${role.name}`
+  );
+}
+function RoundMember({ step, round }) {
+  const role = roleOf(round, step.profile);
+  const work = round.work?.[step.session];
+  const live = !step.report && !step.ended && work?.active === true;
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [now, setNow] = (0, import_react.useState)(() => Date.now());
+  (0, import_react.useEffect)(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1e3);
+    return () => clearInterval(timer);
+  }, [live]);
+  const { summary, rest } = reportParts(step.report);
+  const tag = (text, tone) => (0, import_react.createElement)("span", { className: "nodo-round-tag", "data-tone": tone }, text);
+  return (0, import_react.createElement)(
+    "article",
+    { className: "nodo-round-member", "aria-label": role.name },
+    (0, import_react.createElement)(RoleAvatar, { profile: role, size: 28, running: live }),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-round-body" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-round-head" },
+        (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
+        tag(round.taskTypes?.find((item) => item.id === step.type)?.name ?? step.type),
+        step.hard && tag("\u96BE\u9898", "hard"),
+        step.reused && tag("\u7EED\u7528", "reused"),
+        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 7 }), runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, "\u672A\u5B8C\u6210") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
+        (0, import_react.createElement)(
+          "button",
+          { type: "button", className: "nodo-round-open", onClick: () => round.onOpen(step.session) },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBrowseOutlineRegular, { size: 14 }),
+          "\u67E5\u770B\u4F1A\u8BDD"
+        )
+      ),
+      step.report ? rest ? (0, import_react.createElement)(
+        "button",
+        { type: "button", className: "nodo-round-summary", "aria-expanded": open, onClick: () => setOpen((value) => !value) },
+        (0, import_react.createElement)("span", null, summary),
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
+      ) : (0, import_react.createElement)("p", { className: "nodo-round-summary" }, summary) : live ? (0, import_react.createElement)(RoundTools, { step, work }) : step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD\uFF0C\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\u3002" : "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\u3002"),
+      open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))
+    )
+  );
+}
+function RoundFaces({ roles }) {
+  return (0, import_react.createElement)(
+    "span",
+    { className: "nodo-round-faces", role: "img", "aria-label": roles.map((role) => role.name).join("\u3001") },
+    roles.map((role) => (0, import_react.createElement)(RoleAvatar, { key: role.id, profile: role, size: 20 }))
+  );
+}
+function RoundMenu({ members, work, raw, onRaw, onOpen }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+    open,
+    onClose: () => setOpen(false),
+    portal: true,
+    align: "end",
+    selectedId: raw ? "raw" : void 0,
+    items: [
+      { id: "raw", label: "\u5B8C\u6574\u8BB0\u5F55", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular) },
+      ...members.map(({ role, session }) => {
+        const status = workLabel(work?.[session.id]);
+        return {
+          id: session.id,
+          icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
+          label: (0, import_react.createElement)(
+            "span",
+            { className: "nodo-round-menu-item" },
+            (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
+            (0, import_react.createElement)("span", { className: "nodo-round-title" }, session.name),
+            status ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status) : null
+          )
+        };
+      })
+    ],
+    onSelect: (id) => {
+      setOpen(false);
+      if (id === "raw") onRaw();
+      else onOpen(id);
+    },
+    anchor: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+      variant: "ghost",
+      size: "sm",
+      "aria-haspopup": "menu",
+      "aria-expanded": open,
+      onClick: () => setOpen((value) => !value)
+    }, "\u67E5\u770B\u4F1A\u8BDD", (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
+  });
+}
+
+// src/client/session-rail.tsx
+function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const archived = !!session.archivedAt;
+  const pinned = !!session.pinnedAt;
+  const running = work?.active === true;
+  const status = workLabel(work);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-session-item", "data-menu": open ? "open" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row nodo-session",
+      disabled: busy,
+      "data-archived": archived ? "" : void 0,
+      "aria-current": current ? "page" : void 0,
+      "aria-description": archived ? "\u5DF2\u5F52\u6863\u4F1A\u8BDD\uFF0C\u53EA\u8BFB\u67E5\u770B" : void 0,
+      onClick: onSelect,
+      title: `${role.name} \xB7 ${session.name}`
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, context ? `${context} \xB7 ${session.name}` : session.name),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 12 }), "\u5DF2\u5F52\u6863") : status ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 12 }), status) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
+  ), !readOnly && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row-action",
+      disabled: busy || running,
+      "aria-label": archived ? `\u53D6\u6D88\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D` : `\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D`,
+      title: archived ? "\u53D6\u6D88\u5F52\u6863" : "\u5F52\u6863\u4F1A\u8BDD",
+      onClick: (event) => {
+        event.stopPropagation();
+        onArchive(!archived);
+      }
+    },
+    archived ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
+  ), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open,
+      onClose: () => setOpen(false),
+      portal: true,
+      closeOnPointerLeave: true,
+      items: [
+        { id: "rename", label: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busy },
+        { id: "pin", label: pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876\u4F1A\u8BDD", icon: pinned ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinOutlineRegular, null), disabled: busy || archived }
+      ],
+      onSelect: (id) => {
+        setOpen(false);
+        if (id === "rename") onRename();
+        else onPin(!pinned);
+      },
+      anchor: /* @__PURE__ */ (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-row-action",
+          "aria-haspopup": "menu",
+          "aria-expanded": open,
+          "aria-label": `\u4F1A\u8BDD\u201C${session.name}\u201D\u7684\u66F4\u591A\u64CD\u4F5C`,
+          disabled: busy,
+          onClick: (event) => {
+            event.stopPropagation();
+            setOpen((current2) => !current2);
+          }
+        },
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+      )
+    }
+  )));
+}
+var workspacePicker = ({ workspaces, workspace, running = /* @__PURE__ */ new Set(), open, setOpen, onSelect, none, button = false, label = "\u9009\u62E9\u9879\u76EE", disabled }) => {
+  const ordered = [...workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  const othersRunning = ordered.some((item) => item.id !== workspace?.id && running.has(item.id));
+  const name = workspace?.name ?? none;
+  const Glyph = workspace ? workspace.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular : import_dsh_client_ui_primitives.IconUsersOutlineRegular;
+  const anchor = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, name), othersRunning && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-project-state", title: "\u5176\u4ED6\u9879\u76EE\u6216\u5206\u652F\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 12 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })));
+  const props = {
+    disabled,
+    "aria-haspopup": "menu",
+    "aria-expanded": open,
+    "aria-label": `${label}\uFF0C\u5F53\u524D ${name}`,
+    title: workspace ? workspace.worktree ? `${workspace.worktree.branch} \xB7 ${workspace.cwd}` : workspace.cwd : void 0,
+    onClick: (event) => {
+      event.stopPropagation();
+      setOpen((value) => !value);
+    }
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open,
+      onClose: () => setOpen(() => false),
+      portal: true,
+      selectedId: workspace?.id ?? "",
+      align: "start",
+      className: "nodo-picker",
+      items: [...none ? [{ id: "", label: none, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, null) }] : [], ...ordered.map((item) => ({
+        id: item.id,
+        label: running.has(item.id) ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-menu-label" }, item.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-menu-dot", title: "\u6709\u6B63\u5728\u8FD0\u884C\u7684\u4EFB\u52A1" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 8 }))) : item.name,
+        icon: item.worktree ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular, null)
+      }))],
+      onSelect: (id) => {
+        setOpen(() => false);
+        onSelect(id);
+      },
+      anchor: button ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", className: "nodo-project-pick", ...props }, anchor) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-project-select", ...props }, anchor)
+    }
+  );
+};
+function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
+  const [queries, setQueries] = (0, import_react.useState)({});
+  const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
+  const [archives, setArchives] = (0, import_react.useState)({});
+  const [searching, setSearching] = (0, import_react.useState)(null);
+  const [roleFilter, setRoleFilter] = (0, import_react.useState)(null);
+  const [opened, setOpened] = (0, import_react.useState)({});
+  const [expanded, setExpanded] = (0, import_react.useState)({});
+  const busyNow = readOnly || busy;
+  const rounds = roundIndex(view);
+  const sessions = view.profiles.flatMap((role) => role.sessions.map((session) => ({
+    role,
+    session,
+    workspaceId: workspaceIdOf(view, role, session)
+  })));
+  const groupOf = (role, session) => [{ role, session }, ...rounds.members.get(session.id) ?? []];
+  const rowOf = (role, session) => {
+    const group = groupOf(role, session);
+    return group.length === 1 ? { session, work: view.work[session.id], current: session.id === sessionId } : {
+      session: { ...session, updatedAt: Math.max(...group.map((entry) => entry.session.updatedAt ?? 0)) },
+      work: runningOf({ sessions: group.map((entry) => entry.session) }, view.work),
+      current: group.some((entry) => entry.session.id === sessionId)
+    };
+  };
+  const roles = view.profiles.filter((role) => !role.deletedAt);
+  const roster = [...roles].sort((a, b) => Number(b.lead === true) - Number(a.lead === true));
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && !rounds.lead.has(session.id) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b) => (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
+  const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
+  const ordered = [...view.workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  const scopeOf = (item) => {
+    const search = (queries[item.id] ?? "").trim().toLocaleLowerCase(), archived = archives[item.id] ?? "hide";
+    return { search, archived, filtering: !!search || !!filterRole || archived === "only" };
+  };
+  const entriesOf = (item) => {
+    const { search, archived } = scopeOf(item);
+    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && !rounds.lead.has(session.id) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt) && (!search || [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, item.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search)))).sort((a, b) => Number(!!b.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b.role, b.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
+  };
+  const draftIn = (item) => !!draft && draft.workspace === item.id && !scopeOf(item).search && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
+  const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row-action",
+      "aria-label": label,
+      disabled,
+      onClick: (event) => {
+        event.stopPropagation();
+        onClick();
+      }
+    },
+    icon
+  ));
+  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && view.work[entry.session.id]?.active);
+  const toggle = (key, open, Glyph, title, tip, live) => {
+    const waiting = live.some((entry) => workDot(view.work[entry.session.id]) === "warning");
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-project-select",
+        "aria-expanded": open,
+        title: tip,
+        onClick: () => setOpened((current) => ({ ...current, [key]: !open }))
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 })),
+      Glyph && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, title),
+      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: waiting ? "warning" : "ongoing", size: 12 }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
+    );
+  };
+  const list = (item, entries, pending) => {
+    const { search, archived } = scopeOf(item);
+    const folded = !search && entries.length > SESSION_FOLD;
+    const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries;
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
+      const row = rowOf(role, session);
+      return /* @__PURE__ */ (0, import_react.createElement)(
+        SessionRow,
+        {
+          key: session.id,
+          role,
+          session: row.session,
+          busy,
+          current: row.current && !editing && !drafting,
+          work: row.work,
+          onSelect: () => onSelectSession(role, session.id, item),
+          onArchive: (archived2) => onArchiveSession(role, session.id, archived2),
+          onRename: () => onRenameSession(role, session),
+          onPin: (pinned) => onPinSession(role, session.id, pinned)
+        }
+      );
+    }), folded && /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-show-more",
+        "aria-expanded": !!expanded[item.id],
+        onClick: () => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))
+      },
+      expanded[item.id] ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
+    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, search || filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
+  };
+  const node = (item) => {
+    const { search, archived, filtering } = scopeOf(item);
+    const entries = entriesOf(item);
+    const pending = draftIn(item);
+    const searchOpen = searching === item.id || !!queries[item.id];
+    if (filtering && !entries.length && !pending && !search && archived !== "only" && !searchOpen) return null;
+    const open = opened[item.id] ?? (filtering || searchOpen || item.id === workspace?.id);
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
+      item.id,
+      open,
+      item.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular,
+      item.name,
+      item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
+      liveIn([item])
+    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
+      import_dsh_client_ui_primitives.Menu,
+      {
+        open: menuOpen === item.id,
+        onClose: () => setMenuOpen(null),
+        portal: true,
+        closeOnPointerLeave: true,
+        selectedId: `archived:${archived}`,
+        items: [
+          { id: "search", label: "\u641C\u7D22\u4F1A\u8BDD", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, null) },
+          ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({
+            id: `archived:${id}`,
+            label,
+            icon: id === "hide" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
+          })),
+          ...item.worktree ? [] : [{ id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), disabled: busyNow }],
+          { id: "rename", label: "\u91CD\u547D\u540D", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busyNow },
+          { id: "delete", label: "\u5220\u9664\u5DE5\u4F5C\u533A", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, null), danger: true, disabled: busyNow }
+        ],
+        onSelect: (id) => {
+          setMenuOpen(null);
+          if (id === "search") {
+            if (searchOpen) {
+              setQueries((current) => ({ ...current, [item.id]: "" }));
+              setSearching(null);
+            } else {
+              setSearching(item.id);
+              setOpened((current) => ({ ...current, [item.id]: true }));
+            }
+          } else if (id.startsWith("archived:")) setArchives((current) => ({ ...current, [item.id]: id.slice("archived:".length) }));
+          else if (id === "worktree") onNewWorktree(item);
+          else if (id === "rename") onRenameWorkspace(item);
+          else if (id === "delete") onDeleteWorkspace(item);
+        },
+        anchor: /* @__PURE__ */ (0, import_react.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "nodo-row-action",
+            "aria-haspopup": "menu",
+            "aria-expanded": menuOpen === item.id,
+            "aria-label": `\u5DE5\u4F5C\u533A\u201C${item.name}\u201D\u7684\u64CD\u4F5C`,
+            onClick: (event) => {
+              event.stopPropagation();
+              setMenuOpen((current) => current === item.id ? null : item.id);
+            }
+          },
+          /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+        )
+      }
+    ))), searchOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-search" }, /* @__PURE__ */ (0, import_react.createElement)(
+      import_dsh_client_ui_primitives.Input,
+      {
+        type: "search",
+        autoFocus: true,
+        value: queries[item.id] ?? "",
+        onChange: (event) => setQueries((current) => ({ ...current, [item.id]: event.target.value })),
+        onBlur: () => {
+          if (!(queries[item.id] ?? "").trim()) {
+            setQueries((current) => ({ ...current, [item.id]: "" }));
+            setSearching(null);
+          }
+        },
+        onKeyDown: (event) => {
+          if (event.key === "Escape") {
+            setQueries((current) => ({ ...current, [item.id]: "" }));
+            setSearching(null);
+          }
+        },
+        placeholder: "\u641C\u7D22\u4F1A\u8BDD",
+        "aria-label": `\u641C\u7D22\u201C${item.name}\u201D\u7684\u4F1A\u8BDD`,
+        className: "nodo-search-input",
+        icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
+      }
+    )), open && list(item, entries, pending));
+  };
+  const tree = ordered.map(node).filter(Boolean);
+  const projectsOpen = opened[":projects"] ?? true;
+  const rosterItem = (item) => {
+    const state = roleStateOf(item, view, workspace);
+    const pressed = item.id === filterRole?.id;
+    const label = workLabel(state);
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-roster-item",
+        "aria-pressed": pressed,
+        title: item.name,
+        "aria-label": `${label ? `${item.name}\uFF0C${label}` : item.name}${item.lead === true ? "\uFF0C\u4E3B\u63A7" : ""}`,
+        onClick: () => {
+          if (pressed) setRoleFilter(null);
+          else {
+            onSelect(item.id);
+            setRoleFilter(item.id);
+          }
+        }
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 28 }), item.lead === true && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-badge" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 8 })), workDot(state) === "warning" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-dot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 }))),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name)
+    ), /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-roster-edit",
+        "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
+        title: `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
+        disabled: busyNow || state.active,
+        onClick: () => onEditRole(item)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 12 })
+    ));
+  };
+  const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "workflow" ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "Workflow", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      "aria-label": runsWaiting ? "Workflow\uFF08\u6709\u5F85\u5904\u7406\uFF09" : "Workflow",
+      "aria-pressed": navigation?.view === "workflow",
+      onClick: navigation?.view === "workflow" ? void 0 : onWorkflows
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconWorkspaceTreeOutlineRegular, { size: 18 }),
+    runsWaiting && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-badge" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 8 }))
+  )), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u89D2\u8272", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      "aria-label": "\u89D2\u8272",
+      "aria-pressed": navigation?.view === "roles",
+      onClick: navigation?.view === "roles" ? void 0 : onRoles
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 })
+  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+    onClick: onBack,
+    disabled: typeof layoutService?.selectPanel !== "function"
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-pressed": !filterRole, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), roster.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE workspace"))), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], import_dsh_client_ui_primitives.IconArchiveOutlineRegular, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
+    SessionRow,
+    {
+      key: session.id,
+      role,
+      session,
+      busy,
+      readOnly: true,
+      current: rowOf(role, session).current && !editing && !drafting,
+      context: `${session.profileName ?? role.name} \xB7 ${session.workspaceName ?? view.workspaces.find((item) => item.id === workspaceId)?.name ?? session.cwd ?? "\u672A\u6307\u5B9A\u9879\u76EE"}`,
+      onSelect: () => onSelectSession(role, session.id),
+      onArchive: () => {
+      },
+      onRename: () => {
+      },
+      onPin: () => {
+      }
+    }
+  )))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+}
+
 // src/client/composer-attachments.tsx
 var ICONS = { image: import_dsh_client_ui_primitives.IconBrowseOutlineRegular, text: import_dsh_client_ui_primitives.IconPaperclipOutlineRegular, archive: import_dsh_client_ui_primitives.IconArchiveOutlineRegular };
 function composerAttachment(file, image = false) {
@@ -3810,15 +4051,15 @@ function PendingMessages({ items, disabled, onAction }) {
     ))
   );
 }
-function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
+function Composer({ profile, workspace, value, images, running, stoppable = running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
   const box = (0, import_react.useRef)(null);
   const card = (0, import_react.useRef)(null);
   const picker = (0, import_react.useRef)(null);
   const row = (0, import_react.useRef)(null);
   const [preview, setPreview] = (0, import_react.useState)(null);
   const hasContent = value.trim() !== "" || images.length > 0 || attachedFiles.length > 0 || references.length > 0;
-  const stopping = running && !hasContent;
-  const submitBlocked = busy || readOnly || !running && !hasContent;
+  const stopping = stoppable && !hasContent;
+  const submitBlocked = busy || readOnly || !stoppable && !hasContent;
   (0, import_react.useEffect)(() => {
     const node = box.current;
     if (node === null) return;
@@ -4023,7 +4264,7 @@ function Composer({ profile, workspace, value, images, running, busy, readOnly, 
       ),
       rolePicker,
       onModelChange && (0, import_react.createElement)(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange }),
-      onSend && running && hasContent && (0, import_react.createElement)("button", {
+      onSend && stoppable && hasContent && (0, import_react.createElement)("button", {
         type: "button",
         className: "nodo-pending-stop",
         disabled: busy || readOnly,
@@ -4521,7 +4762,6 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
       setBusy(false);
     }
   };
-  const template = avatarTemplateOf(draft);
   const meta = [engine ? engineDisplayName(engine) : draft.engine, profile && (sessions > 0 ? `${sessions} \u4E2A\u4F1A\u8BDD` : "\u8FD8\u6CA1\u6709\u4F1A\u8BDD")].filter(Boolean).join("\uFF0C");
   const templateCard = (item) => {
     const own = saved.includes(item);
@@ -4577,10 +4817,9 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
               "aria-label": "\u66F4\u6362\u5934\u50CF",
               "aria-expanded": avatarOpen,
               disabled,
-              style: { background: `${template.color}33` },
               onClick: () => setAvatarOpen((open) => !open)
             },
-            (0, import_react.createElement)(RoleAvatar, { profile: draft, size: 32 }),
+            (0, import_react.createElement)(RoleAvatar, { profile: draft, size: 44 }),
             (0, import_react.createElement)("span", { className: "nodo-role-avatar-edit", "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 10 }))
           ),
           avatarOpen && (0, import_react.createElement)(
@@ -7730,7 +7969,7 @@ var WORKFLOW_CSS = `
 .nodo-wf-definitions .nodo-session-item>.nodo-runs-row{flex:1;min-width:0}
 .nodo-wf-definitions .nodo-runs-row>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-cast{display:flex;flex:none}
-.nodo-wf-cast>*+*{margin-left:-5px}
+.nodo-wf-cast>*+*{margin-left:2px}
 .nodo-wf-cast>.nodo-wf-cast-more{margin-left:2px;color:var(--dsw-alias-label-tertiary);line-height:18px}
 .nodo-wf-outline{max-height:24%;overflow:auto;font-size:11px;color:var(--dsw-alias-label-secondary);flex-shrink:0}
 .nodo-wf-outline summary{padding:4px 8px;cursor:pointer}
@@ -8624,7 +8863,7 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-type-when>.nodo-dialog-count{display:none;right:10px;bottom:6px}
 .nodo-type-when:focus-within>.nodo-dialog-count{display:block}
 .nodo-type-takers{display:flex;align-items:center;min-width:0;padding-left:9px}
-.nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:-6px}
+.nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:2px}
 .nodo-type-more{margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .nodo-type-remove{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-type-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
@@ -8793,6 +9032,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [compacting, setCompacting] = (0, import_react.useState)([]);
   const [sentTick, setSentTick] = (0, import_react.useState)(0);
   const [actionError, setActionError] = (0, import_react.useState)("");
+  const [rawRound, setRawRound] = (0, import_react.useState)(null);
   const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt).map((session2) => ({ role, session: session2 })))[0];
   const profiles = view?.profiles.filter((item) => !item.deletedAt) ?? [];
   const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
@@ -8808,6 +9048,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const archivedConversation = !!session?.archivedAt || !!profile?.deletedAt;
   const conversationReadOnly = readOnly || archivedConversation;
   const work = sessionId ? view.work[sessionId] : null;
+  const rounds = view ? roundIndex(view) : null;
+  const members = sessionId && rounds?.members.get(sessionId) || [];
+  const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
+  const roundLive = [{ role: profile, session }, ...members].filter((item) => members.length && view.work[item.session?.id]?.active === true);
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
   const viewedWork = view?.work[viewed?.id];
@@ -9021,7 +9265,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setActionError("");
     const current = trackSelection(true);
     try {
-      await call("interrupt", { profile: profile.id, session: sessionId });
+      for (const [id, target] of members.length ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
+        await call("interrupt", { profile: id, session: target });
+      }
       await refresh(true);
     } catch (failure) {
       if (current()) setActionError(failure.message);
@@ -9047,6 +9293,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       setCompacting((current2) => current2.filter((id) => id !== sessionId));
     }
   };
+  const openSession = (id) => {
+    const role = view.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
+    if (role) void select(role, id);
+  };
   const conversation = () => (0, import_react.createElement)(
     "div",
     { className: "nodo-conversation" },
@@ -9058,26 +9308,50 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       (0, import_react.createElement)(
         "div",
         { className: "nodo-title-row" },
+        leadEntry && (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-crumb nodo-crumb-link",
+          title: leadEntry.session.name,
+          onClick: () => void select(leadEntry.role, leadEntry.session.id)
+        }, leadEntry.session.name),
+        leadEntry && (0, import_react.createElement)("span", { className: "nodo-crumb-sep", "aria-hidden": true }, "\u203A"),
         (0, import_react.createElement)(
           "span",
           { className: "nodo-crumb", title: session?.name ?? workspace?.name ?? profile.name },
           session?.name ?? workspace?.name ?? profile.name
-        )
+        ),
+        members.length > 0 && (0, import_react.createElement)(RoundFaces, { roles: [...new Map([profile, ...members.map((item) => item.role)].map((role) => [role.id, role])).values()] }),
+        members.length > 0 && (0, import_react.createElement)("span", { className: "nodo-head-actions" }, (0, import_react.createElement)(RoundMenu, {
+          members,
+          work: view.work,
+          raw: rawRound === sessionId,
+          onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId),
+          onOpen: openSession
+        }))
       )
     ),
-    (0, import_react.createElement)(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick }),
+    (0, import_react.createElement)(Feed, {
+      key: sessionId,
+      profile,
+      session,
+      revision: view.revision,
+      work,
+      sentTick,
+      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession } : void 0
+    }),
     work?.active === true && (0, import_react.createElement)(
       "div",
       { className: "nodo-running-dock" },
       (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since })
     ),
-    ...(!archivedConversation ? view.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId).map((card) => (0, import_react.createElement)(ApprovalCard, { key: card.id, card, refresh, readOnly })),
+    ...(!archivedConversation ? view.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, { key: card.id, card, refresh, readOnly })),
     !archivedConversation && (0, import_react.createElement)(Composer, {
       profile: composerProfile,
       workspace,
       value: drafts[draftKey] ?? "",
       images: pastedImages[draftKey] ?? [],
       running: work?.active === true,
+      stoppable: members.length ? roundLive.length > 0 : void 0,
       busy: sessionBusy,
       readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
@@ -9100,7 +9374,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     (0, import_react.createElement)(
       "div",
       { className: "nodo-stats" },
-      (0, import_react.createElement)(SessionStats, { stats: (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
+      (0, import_react.createElement)(SessionStats, { stats: profile.lead === true ? void 0 : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
     )
   );
   const page = () => {
@@ -9202,7 +9476,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       },
       onCancel: () => setGoalOpen(false)
     }),
-    statsOpen && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
+    statsOpen && profile.lead !== true && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
       key: `stats:${sessionId}`,
       stats: view.stats[sessionId],
       onClose: () => setStatsOpen(false)
@@ -9915,10 +10189,12 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 .nodo-roster-edit:disabled{color:var(--dsw-alias-label-caption);cursor:default}
 .nodo-roster-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:2px 0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
 .nodo-roster-item:hover,.nodo-roster-item[aria-pressed=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:50%;background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:11px;background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar:has(>.nodo-avatar){background:none}
 .nodo-roster-item[aria-pressed=true] .nodo-roster-avatar{box-shadow:0 0 0 1.5px var(--dsw-alias-state-business-primary)}
 .nodo-roster-add .nodo-roster-avatar{background:0 0;border:1px dashed var(--dsw-alias-border-l1)}
 .nodo-roster-dot{position:absolute;right:-1px;bottom:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
+.nodo-roster-badge{position:absolute;right:-1px;top:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
 .nodo-roster-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px}
 .nodo-tree-search{display:flex;padding:2px 0 4px}
 .nodo-tree-add{display:inline-flex;flex:none;padding-right:6px}
@@ -9967,7 +10243,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
-.nodo-session .nodo-avatar{flex:none}
+.nodo-session{padding-left:32px}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:16px}
 .nodo-project .nodo-row-meta{margin-left:0}
 .nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
@@ -9983,6 +10259,42 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--dsh-frame-top-clearance,0px);padding:10px 28px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
 .nodo-title-row{display:flex;align-items:center;gap:10px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
 .nodo-crumb{min-width:0;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
+.nodo-crumb-link{flex:none;max-width:40%;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
+.nodo-crumb-link:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-crumb-sep{flex:none;color:var(--dsw-alias-label-tertiary);font-size:14px;line-height:22px}
+.nodo-head-actions{display:flex;flex:none;margin-left:auto}
+.nodo-round-faces{display:inline-flex;flex:none;gap:2px}
+.nodo-feed-inner[data-round]>:not(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-left:40px}
+.nodo-feed-inner[data-round]>*+:is(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-top:18px}
+.nodo-feed-inner[data-round]>.nodo-round-speaker+*{margin-top:4px}
+.nodo-feed-inner[data-round]>.nodo-round-chip{margin-top:6px}
+.nodo-round-speaker,.nodo-round-head{display:flex;align-items:center;gap:8px;min-width:0;height:28px}
+.nodo-round-speaker>.nodo-avatar{margin-right:4px}
+.nodo-round-member{display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:12px;align-items:start}
+.nodo-round-body{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--dsh-content-font-size,14px);line-height:22px}
+.nodo-round-role{flex:none;font-weight:500}
+.nodo-round-speaker>.nodo-round-role,.nodo-round-head>.nodo-round-role{font-weight:600}
+.nodo-round-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}
+.nodo-round-tag{display:inline-flex;align-items:center;flex:none;height:20px;padding:0 7px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px}
+.nodo-round-tag[data-tone=hard]{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary)}
+.nodo-round-tag[data-tone=reused]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent);color:var(--dsw-alias-state-business-primary)}
+.nodo-round-status{display:inline-flex;align-items:center;gap:5px;flex:none;color:var(--dsw-alias-label-caption);font-size:12px;font-variant-numeric:tabular-nums}
+.nodo-round-status[data-state=live]{color:var(--dsw-alias-state-success-primary)}
+.nodo-round-status[data-state=ended]{color:var(--dsw-alias-state-warn-primary)}
+.nodo-round-open{display:inline-flex;align-items:center;flex:none;gap:5px;height:26px;margin-left:auto;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
+.nodo-round-open:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-round-summary{display:flex;align-items:flex-start;gap:6px;align-self:flex-start;max-width:100%;margin:0;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left}
+button.nodo-round-summary{cursor:pointer}
+.nodo-round-summary>svg{flex:none;margin-top:4px;color:var(--dsw-alias-label-caption);transition:transform .15s}
+.nodo-round-summary[aria-expanded=true]>svg{transform:rotate(180deg)}
+.nodo-round-summary:focus-visible,.nodo-round-open:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-round-quiet{margin:0;color:var(--dsw-alias-label-tertiary)}
+.nodo-round-report{min-width:0;color:var(--dsw-alias-label-secondary)}
+.nodo-round-tools{display:flex;flex-direction:column;gap:2px;min-width:0}
+.nodo-round-tools>:first-child:nth-last-child(5){opacity:.4}
+.nodo-round-tools>:nth-child(2):nth-last-child(4){opacity:.7}
+.nodo-round-chip{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;height:24px;padding:0 8px 0 6px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px}
+.nodo-round-menu-item{display:flex;align-items:center;gap:8px;min-width:0}
 .nodo-ok{color:var(--dsw-alias-state-success-primary)}.nodo-bad{color:var(--dsw-alias-state-error-primary)}
 .nodo-error-line{margin:10px 0;color:var(--dsw-alias-state-error-primary);white-space:pre-wrap}
 .nodo-note{color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(18px + var(--dsh-content-font-delta-secondary,0px))}
@@ -10157,7 +10469,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 /* The model picker copies the host composer's model trigger and its drill menu
    cells (dsh-client-ui-model-selection): a 28px secondary trigger with the
    level dimmed, rows label-left / value-right, the chevron flipping when open. */
-.nodo-model{display:inline-flex;flex:none;min-width:0;max-width:min(360px,100%);margin-left:auto}
+.nodo-model{display:inline-flex;flex:none;min-width:0;max-width:min(360px,100%)}
 .nodo-model-list{width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px)}
 .nodo-model-trigger{display:flex;align-items:center;gap:4px;min-width:0;max-width:100%;height:28px;padding:0 4px 0 8px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:400;line-height:20px;cursor:pointer}
 .nodo-model-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}

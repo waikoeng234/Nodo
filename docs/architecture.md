@@ -65,6 +65,8 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 
 The client mounts its parts through host UI slots, including run status and references above the composer, conversation message nodes, and tool detail views. UI state such as drafts and navigation is saved in the browser's `localStorage`.
 
+A lead conversation on a non-dsh engine owns one sidebar row: the executor conversations it dispatched are grouped under that row instead of listing separately, and the row's status, time, highlight, role filter and search cover the group. The conversation page renders the lead's transcript as a chat room — its own messages, each dispatch as a chip, and the executor's report beneath it — with 查看会话 switching to the raw transcript or opening an executor conversation. The merge is driven by record fields rather than text: dispatch notes carry `delegation`, returned reports carry `origin`, and records without those fields render as ordinary conversations. Executor conversations on the dsh engine are not grouped.
+
 ## Agent adapter layer
 
 `agent-drivers/` is a separate package embedded in the plugin and can be patched and versioned independently. Each driver implements the same eight primitives: `openSession`, `sendTurn`, `steer`, `interruptTurn`, `respondToRequest`, `onEvent`, `hasSession`, and `dispose`. Agents are registered in `ENGINES` in `agent-drivers/src/index.ts`; the registration metadata also serves client builds and verification scripts.

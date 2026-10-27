@@ -155,7 +155,6 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
     try { await onDeleted(profile) } catch (failure) { setError(failure.message); setBusy(false) }
   }
 
-  const template = avatarTemplateOf(draft)
   const meta = [engine ? engineDisplayName(engine) : draft.engine, profile && (sessions > 0 ? `${sessions} 个会话` : '还没有会话')].filter(Boolean).join('，')
   const templateCard = item => {
     const own = saved.includes(item)
@@ -174,8 +173,8 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
       h('header', { className: 'nodo-role-head' },
         h('span', { className: 'nodo-role-avatar-slot' },
           h('button', { type: 'button', className: 'nodo-role-avatar', 'aria-label': '更换头像', 'aria-expanded': avatarOpen, disabled,
-            style: { background: `${template.color}33` }, onClick: () => setAvatarOpen(open => !open) },
-          h(RoleAvatar, { profile: draft, size: 32 }),
+            onClick: () => setAvatarOpen(open => !open) },
+          h(RoleAvatar, { profile: draft, size: 44 }),
           h('span', { className: 'nodo-role-avatar-edit', 'aria-hidden': true }, h(IconEditOutlineRegular, { size: 10 }))),
           avatarOpen && h('div', { className: 'nodo-avatar-pop', role: 'group', 'aria-label': '头像',
             onKeyDown: (event) => { if (event.key === 'Escape') setAvatarOpen(false) } },

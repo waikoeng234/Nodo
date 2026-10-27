@@ -114,6 +114,45 @@ test('reply timestamps appear only on each completed turn final, including after
   }
 })
 
+test('a turn usage line joins the stamped reply foot however many removed rows sit between', async () => {
+  const feed = { key: 'p:s', error: '', lines: [
+    { who: 'user', text: 'task', at: 10 },
+    { who: 'agent', kind: 'text', timeline: true, messageId: 'final', text: 'done', at: 20, reply: true },
+    { who: 'agent', kind: 'plan', removed: true },
+    { who: 'system', kind: 'usage', usage: { outputTokens: 100 } },
+  ] }
+  const { Feed, TurnUsage } = await loadClient('feed.js', {
+    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+  })
+  const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
+  const usages = nodes(tree).filter(node => node.type === TurnUsage)
+  assert.equal(usages.length, 1)
+  const reply = usages[0] && nodes(tree).find(node => node.props.className === 'nodo-reply'
+    && nodes(node).includes(usages[0]) && nodes(node).some(child => child.type?.name === 'MessageTime'))
+  assert.ok(reply, 'the usage caption shares the stamped reply foot with the time')
+})
+
+test('a lead conversation hides the usage captions but keeps the reply stamps', async () => {
+  const feed = { key: 'p:s', error: '', lines: [
+    { who: 'user', text: 'task', at: 10 },
+    { who: 'agent', kind: 'text', timeline: true, messageId: 'final', text: 'done', at: 20, reply: true },
+    { who: 'agent', kind: 'plan', removed: true },
+    { who: 'system', kind: 'usage', usage: { outputTokens: 100 } },
+  ] }
+  const { Feed, TurnUsage } = await loadClient('feed.js', {
+    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+  })
+  const render = (lead, round) => Feed({ profile: { id: 'p', lead: lead || undefined }, session: { id: 's' }, work: { active: false },
+    round: round ? { profiles: [], taskTypes: [], work: {}, onOpen: () => {} } : undefined })
+  for (const round of [true, false]) {
+    const tree = render(true, round)
+    assert.equal(nodes(tree).filter(node => node.type === TurnUsage).length, 0, round ? 'merged view' : 'raw view')
+    const reply = nodes(tree).find(node => node.props.className === 'nodo-reply')
+    assert.ok(nodes(reply).some(child => child.type?.name === 'MessageTime'), 'the reply foot keeps the time')
+  }
+  assert.equal(nodes(render(false)).filter(node => node.type === TurnUsage).length, 1, 'a non-lead conversation keeps the caption')
+})
+
 test('legacy turns show a timestamp only after their last parent reply and hide it while running', async () => {
   const feed = { key: 'p:s', error: '', lines: [
     { who: 'user', text: 'old task', at: 10 },
