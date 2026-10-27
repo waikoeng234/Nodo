@@ -208,8 +208,14 @@ ACP `compaction_update` and OpenCode's `_meta['opencode/compaction']` degrade
 channel — whose statuses are started/completed/failed, with the reducer's
 aborted error type meaning cancelled — DSH `compaction/start`/`end` with
 `compactionId`) and retry waits
-(Codex `error.willRetry`, OpenCode `session_info_update._meta['opencode/retry']`
-with `null` clearing it, DSH `llm/retry`/`llm/retry-started` with `retryId`).
+(Codex `error.willRetry`; OpenCode
+`session_info_update._meta['opencode/retry']` with `null` clearing it;
+CodeBuddy `session_info_update._meta['codebuddy.ai/agentPhase']`, whose
+`retrying` phase opens the wait and whose next phase closes it, with the
+repeated `retrying` updates folding into that one line; Claude and Qoder
+`system` `api_retry` frames, whose detail carries the attempt, the wait and the
+reason, tagged `retry-<attempt>` when the frame names the attempt; DSH
+`llm/retry`/`llm/retry-started` with `retryId`).
 The host keeps one replaceable status line per kind and scope (session or
 specific turn); those scopes never share a slot. Session events remain accepted
 while a turn's detail writes finish. A turn-scoped line closes
@@ -218,14 +224,16 @@ an interrupted one as interrupted — while a session-scoped line (the DSH host
 compaction carries no turn id) survives turn ends and is retired only by its
 own end event or a closed session, so a cancelled or disconnected state never
 keeps showing as ongoing. A source-declared cancellation renders as cancelled,
-never as a success. Codex's retry wait has no end signal and renders as a
-bounded status line, not an ongoing spinner.
+never as a success. The Codex retry wait and the Claude and Qoder `api_retry`
+lines carry no end signal of their own; each renders as a bounded status line
+that its turn end closes, not an ongoing spinner.
 
 | Source | Plan | Subagent activity | Compaction / retry |
 |---|---|---|---|
 | Codex 0.159.2 | `turn/plan/updated` snapshot (`explanation`, steps `pending`/`inProgress`/`completed`) | `subAgentActivity` items (`id`, `agentThreadId`, `kind`); `collabAgentToolCall` stays a tool row with `agentsStates` in its output | `thread/compacted` + `contextCompaction` end; `error` with `willRetry` starts the retry line |
-| Claude 2.1.301 | none declared | `task_started`/`task_progress`/`task_updated`/`task_notification` (`task_id`, `parent_task_id`, `tool_use_id`) | `status.compacting` opens; `compact_boundary` closes exactly once |
-| ACP (OpenCode, DSH ACP) | `plan`/`plan_update(items, markdown)`/`plan_removed` snapshots | negotiated-off child updates carry `_meta['opencode/child-session']`; routed per child | `compaction_update` (`compactionId`, status incl. cancelled), `_meta['opencode/retry']` + `_meta['opencode/compaction']` degraded channel |
+| Claude 2.1.301 / 2.1.310 | none declared | `task_started`/`task_progress`/`task_updated`/`task_notification` (`task_id`, `parent_task_id`, `tool_use_id`) | `status.compacting` opens; `compact_boundary` closes exactly once; `api_retry` opens a retry line, tagged by attempt when the frame names one |
+| Qoder 1.1.76 | none declared | `task_started`/`task_progress`/`task_notification` (`task_id`, `parent_task_id`, `tool_use_id`) | `status.compacting` opens; `compact_boundary` closes exactly once; `api_retry` opens a retry line, tagged by attempt when the frame names one |
+| ACP (OpenCode, CodeBuddy, DSH ACP) | `plan`/`plan_update(items, markdown)`/`plan_removed` snapshots | negotiated-off child updates carry `_meta['opencode/child-session']`; routed per child | `compaction_update` (`compactionId`, status incl. cancelled), `_meta['opencode/retry']` + `_meta['opencode/compaction']` degraded channel; CodeBuddy `_meta['codebuddy.ai/agentPhase']`, whose `retrying` phase opens and whose next phase closes the retry line |
 | DSH native | `todo/write` whole-list snapshot (`content`, `status`) | `tool-workflow/run-start`/`agent-start`/`agent-end`/`run-end` (`runId`+`seq`, `childId`; `outcome` enum unrecorded → neutral terminal) | `compaction/start`/`end` (`compactionId`, runs outside turns), `llm/retry`/`retry-started` (`retryId`) |
 | ZCode 0.16.9 | none usable | none usable: `part.*` schemas exist but the mapper never emits them and the part base record is undeclared; `session.updated` payloads are open records; V4 `subagents`/`plan` state is not mapped | same gap; the existing `_meta.zcode.apiRetry` note is untouched |
 
