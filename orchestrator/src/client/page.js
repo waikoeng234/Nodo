@@ -193,7 +193,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   useEffect(() => {
     if (!profile || !workspace) return
     setNavigation(current => ({ ...current, profile: profile.id, workspace: workspace.id,
-      sessions: { ...current.sessions, ...(sessionId ? { [navigationKey]: sessionId } : {}) } }))
+      sessions: { ...current.sessions, ...(sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {}) } }))
   }, [profile?.id, workspace?.id, sessionId])
   const remember = (roleId, projectId, id) => setNavigation(current => ({ ...current, profile: roleId, workspace: projectId,
     sessions: { ...current.sessions, ...(id ? { [`${projectId}:${roleId}`]: id } : {}) } }))

@@ -262,8 +262,6 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
   return (
     <aside className="nodo-rail" aria-label={navigation?.view === 'workflow' ? '工作流导航' : navigation?.view === 'roles' ? '角色导航' : '角色与项目会话'}>
       <div className="nodo-rail-dock">
-        {dock('返回普通空间', <IconChevronLeftOutlineRegular size={16} />, { onClick: onBack,
-          disabled: typeof (layoutService as { selectPanel?: unknown } | null)?.selectPanel !== 'function' })}
         <div className="nodo-rail-switch" role="group" aria-label="视图">
           <Tooltip label="会话" side="right" delayMs={500}>
             <button type="button" aria-label="会话" aria-pressed={!navigation} onClick={navigation ? onSessions : undefined}><IconFlatListOutlineRegular size={18} /></button>
@@ -280,6 +278,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
         </div>
         <span className="nodo-rail-spacer" />
         {dock('设置', <IconSettingsOutlineRegular size={16} />, { onClick: onSettings, 'aria-pressed': editing?.kind === 'settings' ? 'true' : undefined })}
+        {dock('返回普通空间', <IconChevronLeftOutlineRegular size={16} />, { onClick: onBack,
+          disabled: typeof (layoutService as { selectPanel?: unknown } | null)?.selectPanel !== 'function' })}
       </div>
       <div className="nodo-rail-body">
         {navigation?.content ?? <Fragment>

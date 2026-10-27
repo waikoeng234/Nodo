@@ -19,7 +19,7 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 
 - **Use multiple Agents together**: access different Agents in one interface, each using its existing configuration and authentication.
 - **Assign roles**: define each role's identity, responsibilities, and scope, then assign work by task type.
-- **Delegate through a lead**: enable a role's 主控 switch to let it assign tasks in the current project and receive the reports; the executor is picked from each role's accepted task types and difficulty, managed on the roles page.
+- **Delegate through a lead**: enable a role's 主控 switch to let it assign tasks in the current project and receive the reports; apply the `leader` identity for its way of coordinating and accepting work; the executor is picked from each role's accepted task types and difficulty, managed on the roles page.
 - **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation.
 - **Build visual workflows**: arrange tasks and handoffs, with human checkpoints, conditional branches, and rework.
 - **Allocate cost by task**: assign complex work to more capable Agents and routine tasks to less expensive Agents.
@@ -60,7 +60,7 @@ To update, pull the latest code, rerun the commands above, and reload the plugin
 
 1. **Enable Agents**: open Nodo and select the Agents to enable during onboarding. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
 2. **Add a project**: add a local working directory to the project list.
-3. **Start a conversation**: when adding a role, use a preset identity such as `leader`, `coder`, or `reviewer`, or write your own. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
+3. **Start a conversation**: when adding a role, use a preset identity such as `leader`, `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or write your own. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
 4. **Run a workflow**: create a flow under **Workflow** in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
 
 ## Why choose Nodo

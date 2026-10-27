@@ -705,10 +705,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDra
     ));
   };
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "workflow" ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
-    onClick: onBack,
-    disabled: typeof layoutService?.selectPanel !== "function"
-  }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "Workflow", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "workflow" ? "\u5DE5\u4F5C\u6D41\u5BFC\u822A" : navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "Workflow", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -727,7 +724,10 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDra
       onClick: navigation?.view === "roles" ? void 0 : onRoles
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 })
-  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-pressed": !filterRole, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), view.profiles.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE workspace"))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+    onClick: onBack,
+    disabled: typeof layoutService?.selectPanel !== "function"
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u7B5B\u9009\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-pressed": !filterRole, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), view.profiles.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE workspace"))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tag, { tone: "neutral" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
 }
 
 // src/client/running.js
@@ -960,7 +960,7 @@ var TOOL_CALL_CSS = `
 @media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `;
 
-// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/diff/base.js
+// node_modules/diff/libesm/diff/base.js
 var Diff = class {
   diff(oldStr, newStr, options = {}) {
     let callback;
@@ -1162,7 +1162,7 @@ var Diff = class {
   }
 };
 
-// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/diff/line.js
+// node_modules/diff/libesm/diff/line.js
 var LineDiff = class extends Diff {
   constructor() {
     super(...arguments);
@@ -1210,7 +1210,7 @@ function tokenize(value, options) {
   return retLines;
 }
 
-// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/patch/parse.js
+// node_modules/diff/libesm/patch/parse.js
 function parsePatch(uniDiff) {
   const diffstr = uniDiff.split(/\n/), list = [];
   let i = 0;
@@ -1546,7 +1546,7 @@ function parsePatch(uniDiff) {
   return list;
 }
 
-// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/patch/create.js
+// node_modules/diff/libesm/patch/create.js
 function needsQuoting(s) {
   for (let i = 0; i < s.length; i++) {
     if (s[i] < " " || s[i] > "~" || s[i] === '"' || s[i] === "\\") {
@@ -8759,7 +8759,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       ...current,
       profile: profile.id,
       workspace: workspace.id,
-      sessions: { ...current.sessions, ...sessionId ? { [navigationKey]: sessionId } : {} }
+      sessions: { ...current.sessions, ...sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {} }
     }));
   }, [profile?.id, workspace?.id, sessionId]);
   const remember = (roleId, projectId, id) => setNavigation((current) => ({
