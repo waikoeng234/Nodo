@@ -45,6 +45,39 @@ export function install(rt) {
   const on = (event, callback, options) => { const stop = ctx.on?.(event, callback, options); if (typeof stop === 'function') stops.push(stop) }
   // The host rename face: plugin code may only retitle a native session it owns.
   rt.renameHostSession = (id, title) => { try { void ctx.sessionController?.rename?.({ sessionId: id, title })?.catch?.(() => {}) } catch {} }
+  rt.archiveHostSessions = async sessions => {
+    const registry = ctx.workspaceRegistry
+    if (typeof registry?.archiveSession !== 'function') return
+    const existing = new Set(registry.archivedSessionIds ?? [])
+    const archived = []
+    const rollback = async error => {
+      const results = await Promise.allSettled(archived.reverse().map(id => Promise.resolve().then(() => registry.unarchiveSession(id))))
+      const failures = results.filter(result => result.status === 'rejected')
+      if (failures.length) error.message += `；${failures.length} 个原生会话撤回失败：${failures.map(result => result.reason?.message ?? result.reason).join('；')}`
+      throw error
+    }
+    try {
+      for (const id of new Set(sessions.map(nativeId).filter(Boolean))) {
+        if (existing.has(id)) continue
+        await registry.archiveSession(id)
+        archived.push(id)
+      }
+    } catch (error) {
+      await rollback(new Error(`原生会话归档失败，删除未执行：${error.message}`))
+    }
+    return rollback
+  }
+  rt.readHostTranscript = async session => {
+    const id = nativeId(session)
+    if (!id || typeof ctx.sessionController?.inspect !== 'function') return
+    const { events } = await ctx.sessionController.inspect(id)
+    return events.flatMap(event => {
+      if (!['user/message', 'assistant/message'].includes(event.type)) return []
+      const content = event.type === 'user/message' ? event.data.content : event.data.message.content
+      const text = typeof content === 'string' ? content : (content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n\n')
+      return text ? [{ who: event.type === 'user/message' ? 'user' : 'agent', kind: 'text', text, at: event.time, seq: event.seq }] : []
+    })
+  }
   on('session/event', (session, event) => {
     if (!bound(session.id)) return
     if (event.type === 'user/message') { void rt.titleSessionFromNative?.(session.id, event.data); return }

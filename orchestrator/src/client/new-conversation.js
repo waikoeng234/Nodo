@@ -30,10 +30,11 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const pending = useRef(false), created = useRef(null), uploading = useRef(false)
-    const sourceRole = sourceSessionId && view?.profiles.find(role => role.sessions.some(session =>
+    const profiles = view?.profiles.filter(role => !role.deletedAt) ?? []
+    const sourceRole = sourceSessionId && profiles.find(role => role.sessions.some(session =>
       (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId))
     const sourceSession = sourceRole?.sessions.find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId)
-    const profile = view?.profiles.find(role => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : undefined)))
+    const profile = profiles.find(role => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : undefined)))
     const workspace = view?.workspaces.find(item => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view?.workspaces[0]
     const disabled = busy || !view || view.readOnly != null
     const active = () => space.getSnapshot().active && (draft
@@ -60,7 +61,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     // A lead conversation on the plugin route may name one message's executor;
     // the roster follows the core's rule (no self, no leads), roster order.
     const roster = profile?.lead === true && !nativeRole(profile)
-      ? (view?.profiles ?? []).filter(item => item.id !== profile.id && item.lead !== true) : []
+      ? profiles.filter(item => item.id !== profile.id && item.lead !== true) : []
     const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [], assignee: undefined })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
     // The picker's files split the way the workflow composer's do: images ride
     // the draft inline, documents become stored references that only turn into
@@ -110,7 +111,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
                 data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })),
             ], 'queue')
             if (!result.ok) throw new Error(result.error.message)
-            setNavigation(value => ({ ...value, profile: profile.id, workspace: workspace.id,
+            setNavigation(value => ({ ...value, archivedSession: undefined, profile: profile.id, workspace: workspace.id,
               sessions: { ...value.sessions, [`${workspace.id}:${profile.id}`]: session.id } }))
             if (active()) space.open(opened.sessionId)
             clearDraft()
@@ -124,7 +125,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
             ...(bound.length ? { references: bound.map(item => ({ id: item.id })) } : {}),
             ...(roster.some(item => item.id === selection.assignee) ? { assignee: selection.assignee } : {}),
             images: images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })) })
-          setNavigation(value => ({ ...value, profile: profile.id, workspace: workspace.id,
+          setNavigation(value => ({ ...value, archivedSession: undefined, profile: profile.id, workspace: workspace.id,
             sessions: { ...value.sessions, [`${workspace.id}:${profile.id}`]: session.id } }))
           if (active()) space.showLegacy()
           clearDraft()
@@ -145,7 +146,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
           onGoal: () => setError('请在角色配置中修改职责说明。'), onCompact: () => setError('发送后可压缩会话上下文。'),
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
             ...(changes.permission === '' && profile.engine !== 'dsh' ? { permission: 'workspace' } : {}) } })) : undefined,
-          rolePicker: h(RolePicker, { profiles: view?.profiles ?? [], profile, disabled, onSelect: chooseRole }),
+          rolePicker: h(RolePicker, { profiles, profile, disabled, onSelect: chooseRole }),
           assigneePicker: roster.length > 0 && h(AssigneePicker, { roster, value: selection.assignee, disabled,
             onSelect: id => updateSelection(current => ({ ...current, assignee: id })) }),
           onReference: value => { if (!disabled) setReference(value?.id ? value : {}) },

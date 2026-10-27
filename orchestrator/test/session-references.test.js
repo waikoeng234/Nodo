@@ -103,7 +103,7 @@ test('legacy transcript replies offer only completed turns and prefer the engine
   assert.deepEqual(transcriptReplies(lines).map(item => item.text), ['Saved before reasons', 'Final'])
 })
 
-test('interrupted legacy turns are not offered and deleting a recipient role removes its snapshots', async () => withHost(async host => {
+test('interrupted legacy turns are not offered and deleting a recipient role preserves its snapshots', async () => withHost(async host => {
   const workspace = await host.api('workspace-create', { name: 'Reference cleanup', cwd: host.home })
   const source = await host.api('profile-create', { name: 'Cleanup source', engine: 'echo', workspace: workspace.id,
     engineOptions: { script: [{ kind: 'text', text: 'Completed report' }] } })
@@ -120,7 +120,7 @@ test('interrupted legacy turns are not offered and deleting a recipient role rem
   const snapshot = await host.api('reference-create', { target: target.id, profile: source.id, session: source.id, messageId: replies.messages[0].id })
   assert.equal((await host.api('reference-read', { id: snapshot.id, target: target.id })).messages[0].text, 'Completed report')
   await host.api('profile-delete', { id: target.id })
-  assert.equal((await host.post('reference-read', { id: snapshot.id, target: target.id })).ok, false)
+  assert.deepEqual(await host.api('reference-read', { id: snapshot.id, target: target.id }), snapshot)
 }))
 
 test('a draft-selected snapshot reaches a legacy first turn through the send API', async () => withHost(async host => {

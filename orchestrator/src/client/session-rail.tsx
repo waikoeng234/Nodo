@@ -11,22 +11,21 @@ import {
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 
-export interface RailSession { id: string; name: string; archivedAt?: number; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; cwd?: string }
-export interface RailRole { id: string; name: string; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; sessions: RailSession[] }
+export interface RailSession { id: string; name: string; archivedAt?: number; draftedAt?: number; briefSent?: boolean; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; workspaceName?: string; profileName?: string; cwd?: string }
+export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; sessions: RailSession[] }
 export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
 export interface RailView { profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
 export type RailNavigation = { view: 'workflow' | 'roles'; content: ReactNode }
 type Archived = keyof typeof ARCHIVED_VIEWS
 
 interface SessionRowProps {
-  role: RailRole; session: RailSession; current: boolean; work?: { active?: boolean }; busy?: boolean
+  role: RailRole; session: RailSession; current: boolean; work?: { active?: boolean }; busy?: boolean; readOnly?: boolean; context?: string
   onSelect: () => void; onArchive: (archived: boolean) => void; onRename: () => void; onPin: (pinned: boolean) => void
 }
 
 // One session row: the host row's title and meta, an archive button and a menu
-// for rename and pin. Archive is refused while the session runs; an archived row
-// cannot be opened until it is unarchived, the host sidebar's rule.
-export function SessionRow({ role, session, current, work, busy, onSelect, onArchive, onRename, onPin }: SessionRowProps) {
+// for rename and pin. Archive is refused while the session runs.
+export function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }: SessionRowProps) {
   const [open, setOpen] = useState(false)
   const archived = !!session.archivedAt
   const pinned = !!session.pinnedAt
@@ -34,18 +33,18 @@ export function SessionRow({ role, session, current, work, busy, onSelect, onArc
   const status = workLabel(work)
   return (
     <div className="nodo-session-item" data-menu={open ? 'open' : undefined}>
-      <button type="button" className="nodo-row nodo-session" disabled={busy || archived} data-archived={archived ? '' : undefined}
-        aria-current={current ? 'page' : undefined} aria-description={archived ? '已归档会话暂时无法查看，请取消归档后查看' : undefined}
+      <button type="button" className="nodo-row nodo-session" disabled={busy} data-archived={archived ? '' : undefined}
+        aria-current={current ? 'page' : undefined} aria-description={archived ? '已归档会话，只读查看' : undefined}
         onClick={onSelect} title={`${role.name} · ${session.name}`}>
         <RoleAvatar profile={role} size={18} />
-        <span className="nodo-row-title">{session.name}</span>
+        <span className="nodo-row-title">{context ? `${context} · ${session.name}` : session.name}</span>
         <span className="nodo-row-meta">{archived
           ? <span className="nodo-row-archived"><IconArchiveOutlineRegular size={12} />已归档</span>
           : status
             ? <span className="nodo-row-running" title={status}><StateDot state={workDot(work)} size={12} />{status}</span>
             : <Fragment>{pinned && <IconPinFillRegular size={12} />}{sessionTime(session.updatedAt)}</Fragment>}</span>
       </button>
-      <span className="nodo-row-actions">
+      {!readOnly && <span className="nodo-row-actions">
         <button type="button" className="nodo-row-action" disabled={busy || running}
           aria-label={archived ? `取消归档会话“${session.name}”` : `归档会话“${session.name}”`} title={archived ? '取消归档' : '归档会话'}
           onClick={event => { event.stopPropagation(); onArchive(!archived) }}>
@@ -60,7 +59,7 @@ export function SessionRow({ role, session, current, work, busy, onSelect, onArc
           anchor={<button type="button" className="nodo-row-action" aria-haspopup="menu" aria-expanded={open}
             aria-label={`会话“${session.name}”的更多操作`} disabled={busy}
             onClick={event => { event.stopPropagation(); setOpen(current => !current) }}><IconEllipsisOutlineRegular /></button>} />
-      </span>
+      </span>}
     </div>
   )
 }
@@ -123,7 +122,12 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
   const busyNow = readOnly || busy
   const sessions = view.profiles.flatMap(role => role.sessions.map(session => ({ role, session,
     workspaceId: workspaceIdOf(view, role, session) })))
-  const filterRole = view.profiles.find(item => item.id === roleFilter) ?? null
+  const roles = view.profiles.filter(role => !role.deletedAt)
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt
+    && (!session.draftedAt || session.briefSent)
+    && (role.deletedAt || !view.workspaces.some(item => item.id === workspaceId)))
+    .sort((a, b) => (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0))
+  const filterRole = roles.find(item => item.id === roleFilter) ?? null
   type Entry = (typeof sessions)[number]
   const ordered = [...view.workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   const scopeOf = (item: RailWorkspace) => {
@@ -132,12 +136,12 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
   }
   const entriesOf = (item: RailWorkspace) => {
     const { search, archived } = scopeOf(item)
-    return sessions.filter(({ role, session, workspaceId }) => workspaceId === item.id && (!filterRole || role === filterRole)
+    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && (!filterRole || role === filterRole)
       && (archived === 'all' || (archived === 'only') === !!session.archivedAt)
       && (!search || [role.name, session.name, session.engine, item.name].some(value => String(value ?? '').toLocaleLowerCase().includes(search))))
       .sort((a, b) => (Number(!!b.session.pinnedAt) - Number(!!a.session.pinnedAt)) || (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0))
   }
-  const draftRole = draft && view.profiles.find(item => item.id === draft.profile)
+  const draftRole = draft && roles.find(item => item.id === draft.profile)
   // The unsent new-conversation draft is a rail row of its own project, so the
   // draft stays reachable after switching sessions; hidden under search and
   // filters that exclude it.
@@ -288,7 +292,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
               <span className="nodo-roster-avatar"><IconUsersOutlineRegular size={16} /></span>
               <span className="nodo-roster-name">全部</span>
             </button>
-            {view.profiles.map(rosterItem)}
+            {roles.map(rosterItem)}
             <button type="button" className="nodo-roster-item nodo-roster-add" aria-label="添加角色" disabled={busyNow} onClick={onNewRole}>
               <span className="nodo-roster-avatar"><IconPlusOutlineRegular size={14} /></span>
               <span className="nodo-roster-name">添加</span>
@@ -305,6 +309,15 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
                 {!tree.length && <p className="nodo-rail-empty" role="status">{view.workspaces.length ? '没有找到匹配的会话' : '添加项目 workspace'}</p>}
               </div>}
             </div>
+            {!!archivedSessions.length && <div className="nodo-tree-node">
+              <div className="nodo-project">{toggle(':archived', !!opened[':archived'], IconArchiveOutlineRegular, '已移除', undefined, [])}</div>
+              {opened[':archived'] && <div className="nodo-tree-children">
+                {archivedSessions.map(({ role, session, workspaceId }) => <SessionRow key={session.id} role={role} session={session} busy={busy} readOnly
+                  current={session.id === sessionId && !editing}
+                  context={`${session.profileName ?? role.name} · ${session.workspaceName ?? view.workspaces.find(item => item.id === workspaceId)?.name ?? session.cwd ?? '未指定项目'}`}
+                  onSelect={() => onSelectSession(role, session.id)} onArchive={() => {}} onRename={() => {}} onPin={() => {}} />)}
+              </div>}
+            </div>}
           </nav>
         </Fragment>}
         {readOnly && <p className="nodo-rail-foot"><Tag tone="neutral">只读模式</Tag></p>}

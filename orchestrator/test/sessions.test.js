@@ -8,6 +8,31 @@ import { boot, until } from './helpers/host.js'
 import { install as installSessions } from '../core/src/sessions.js'
 import { registerEngine } from '../agent-drivers/dist/index.js'
 
+test('legacy orphan sessions remain selectable, writable and editable without being migrated', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-legacy-orphan-'))
+  const host = boot(home)
+  try {
+    const workspace = await host.api('workspace-create', { name: 'Old project', cwd: home })
+    const role = await host.api('profile-create', { name: 'Legacy role', engine: 'echo', engineOptions: { script: [{ kind: 'text', text: 'Legacy reply' }] } })
+    const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const rt = await host.runtime
+    const owned = rt.conversation(role.id, session.id).session
+    owned.cwd = home
+    delete rt.state.workspaces[workspace.id]
+    await rt.save()
+    assert.equal(owned.archivedAt, undefined)
+    assert.equal((await host.api('session-select', { profile: role.id, session: session.id })).id, session.id)
+    assert.equal((await host.api('session-update', { profile: role.id, session: session.id, changes: { name: 'Still editable' } })).name, 'Still editable')
+    await host.api('send', { profile: role.id, session: session.id, text: 'Continue legacy work' })
+    await until(() => !rt.workView()[session.id]?.active)
+    assert.ok((await host.api('transcript', { profile: role.id, session: session.id })).some(line => line.who === 'user' && line.text === 'Continue legacy work'))
+    assert.equal(owned.archivedAt, undefined)
+    assert.deepEqual(rt.state.workspaces, {})
+    await host.api('session-archive', { profile: role.id, session: session.id, archived: true })
+    assert.equal((await host.post('session-archive', { profile: role.id, session: session.id, archived: false })).error.code, 'orch/refused')
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
 const nativeHost = (withInstructions = true, response = 'Native reply') => {
   const listeners = new Map()
   const workspaces = new Map()
@@ -631,6 +656,9 @@ test('archiving hides a session without deleting it, refuses running work and mo
     assert.equal(typeof (await sessionOf(second.id)).archivedAt, 'number')
     assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).activeSessionId, first.id)
     assert.ok(await sessionOf(second.id), 'the archived transcript and session stay in the role')
+    assert.equal((await host.post('send', { profile: role.id, session: second.id, text: 'Archived' })).ok, false)
+    assert.equal((await host.post('session-open', { profile: role.id, session: second.id })).ok, false)
+    assert.equal((await host.post('session-select', { profile: role.id, session: second.id })).ok, false)
     await host.api('session-archive', { profile: role.id, session: second.id, archived: false })
     assert.equal((await sessionOf(second.id)).archivedAt, undefined)
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }

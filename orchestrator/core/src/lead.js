@@ -13,7 +13,7 @@ export function install(rt) {
     if (!states.has(id)) states.set(id, { running: false, works: new Map() })
     return states.get(id)
   }
-  const rosterOf = profile => Object.values(rt.state.profiles).filter(item => item.id !== profile.id && item.lead !== true)
+  const rosterOf = profile => Object.values(rt.state.profiles).filter(item => !item.deletedAt && item.id !== profile.id && item.lead !== true)
   const routed = roster => roster.some(item => item.taskTypes?.length > 0)
   const leadBrief = (profile, session, assigneeId) => {
     const roster = rosterOf(profile)

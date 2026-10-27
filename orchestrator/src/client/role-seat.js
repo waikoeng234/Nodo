@@ -2,6 +2,7 @@ import { h, useState, Menu, IconChevronDownOutlineRegular, IconUsersOutlineRegul
 import { RoleAvatar } from './avatar.tsx'
 
 export function RolePicker({ profiles, profile, disabled, onSelect }) {
+  profiles = profiles.filter(role => !role.deletedAt)
   const [open, setOpen] = useState(false)
   const name = profile?.name ?? '选择角色'
   const face = [profile && h(RoleAvatar, { profile, size: 20 }), h('span', { className: 'nodo-role-seat-label' }, name)]
@@ -23,6 +24,7 @@ export function RolePicker({ profiles, profile, disabled, onSelect }) {
 // One message's executor pick for a lead conversation: 自动 first, then the
 // roster; the pick rides that one send and returns to 自动 afterwards.
 export function AssigneePicker({ roster, value, disabled, onSelect }) {
+  roster = roster.filter(role => !role.deletedAt)
   const [open, setOpen] = useState(false)
   const chosen = roster.find(role => role.id === value)
   const name = chosen?.name ?? '自动'
@@ -43,7 +45,7 @@ export function AssigneePicker({ roster, value, disabled, onSelect }) {
 export function createRoleSeat(ctx, space) {
   function RoleSeat({ sessionId }) {
     const { view } = useStateView()
-    const profile = view?.profiles.find(role => role.sessions.some(session =>
+    const profile = view?.profiles.find(role => !role.deletedAt && role.sessions.some(session =>
       (session.engine === 'dsh' ? session.driverSessionId : undefined) === sessionId))
     if (typeof ctx.sessions.subagentAddress === 'function' && ctx.sessions.subagentAddress(sessionId) !== undefined) return null
     return h(RolePicker, { profiles: view?.profiles ?? [], profile })

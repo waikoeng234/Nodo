@@ -87,3 +87,9 @@ The plugin data directory defaults to `~/.dsh/orchestrator/`, or the `orchestrat
 | `identities/`, `drivers/`, `agents/` | Role identity files and working directories used by drivers |
 
 `state.json` and run records are written through temporary files followed by renaming. The project's `.nodo/` stores workflow reports and attachment copies; Nodo automatically writes a `.gitignore` there.
+
+Deleting a role marks it with `deletedAt` and archives its conversations; deleting a project archives the conversations that ran in it and records the original project name in `workspaceName`. Every archived conversation keeps its `cwd`, `workspaceRef`, and the role and project names it had. Transcripts, statistics, references, tool details, and identity files remain available. Deleted roles disappear from the lead roster, task routing, and workflow node validation, and no longer hold a name or a slot under the profile limit, so their names can be reused.
+
+Archived conversations open read-only from the global 已移除 entry; the client requests no task and does not open or select the session on the engine, and the host refuses send, compact, select, update, and unarchive requests for them. Manually archived conversations in existing projects stay in that project's archive filter and also open read-only; unarchiving restores writing while the project still exists. Conversations saved before archival was recorded, with no `archivedAt` and no project, remain writable and are not migrated.
+
+Before a role or project is deleted, the DSH twins of its conversations are archived through the host workspace registry; a failure rolls back the archives that call made and leaves Nodo's records unchanged. Hosts without that interface skip synchronization, and other engines' threads are retained without synchronization. A DSH conversation with no local transcript is read back through the host session inspect call.

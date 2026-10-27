@@ -489,7 +489,7 @@ export function install(rt) {
 
   const attemptAgent = async (run, task, node, step, own) => {
     const snap = run.snapshot.profiles[node.profileId]
-    const live = state.profiles[node.profileId]
+    const live = rt.findProfile(node.profileId)
     if (live === undefined || identityOf(live).identityVersion !== snap?.identityVersion) {
       return commit(run.id, (draft, event) => halt(draft, event, draft.tasks[task.id], 'waiting_human', live === undefined ? 'profile_missing' : 'profile_changed'))
     }
@@ -720,7 +720,7 @@ export function install(rt) {
     try {
       const profiles = {}
       for (const node of graph.nodes) {
-        const profile = node.kind === 'agent' ? state.profiles[node.profileId] : undefined
+        const profile = node.kind === 'agent' ? rt.findProfile(node.profileId) : undefined
         if (profile !== undefined) profiles[node.profileId] = { ...identityOf(profile), ...Object.fromEntries(Object.entries(rt.sessionChoices(profile)).filter(([, value]) => value !== undefined)) }
       }
       let run = await rt.createRun({ workflowId: workflow.id, workflowName: workflow.name, title, workflowRevision: workflow.revision ?? 0, graph, profiles, limits,

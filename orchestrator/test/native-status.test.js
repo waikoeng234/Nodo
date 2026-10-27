@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { install } from '../src/host/native-status.js'
@@ -68,6 +68,144 @@ function setup() {
   install(rt)
   return { rt, host, sessions, dispose: () => disposers.reverse().forEach(stop => stop()) }
 }
+
+for (const kind of ['profile', 'workspace']) {
+  test(`${kind} deletion rolls back native archival when a task starts during the host await`, async () => {
+    const home = mkdtempSync(join(tmpdir(), 'nodo-archive-race-'))
+    const native = nativeHost(), calls = []
+    native.add('racing-native')
+    Object.assign(native.workspaceRegistry, {
+      async archiveSession(id) {
+        calls.push(['archive', id])
+        await Promise.resolve()
+        native.agents.get(id).status = 'running'
+      },
+      async unarchiveSession(id) { calls.push(['unarchive', id]) },
+    })
+    const host = boot(home, native)
+    try {
+      const workspace = await host.api('workspace-create', { name: 'Race', cwd: home })
+      const role = await host.api('profile-create', { name: 'Racing role', engine: 'dsh' })
+      const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+      const rt = await host.runtime
+      rt.conversation(role.id, session.id).session.driverSessionId = 'racing-native'
+      const before = JSON.stringify(rt.state), disk = readFileSync(join(home, 'state.json'), 'utf8')
+      const result = await host.post(`${kind}-delete`, { id: kind === 'profile' ? role.id : workspace.id })
+      assert.equal(result.error.code, 'orch/busy')
+      assert.equal(result.error.message, kind === 'profile' ? 'Stop or finish the running task before deleting this profile' : '请先停止或完成此工作区中正在运行的任务，再删除工作区')
+      assert.deepEqual(calls, [['archive', 'racing-native'], ['unarchive', 'racing-native']])
+      assert.equal(JSON.stringify(rt.state), before)
+      assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), disk)
+    } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  })
+
+  test(`${kind} deletion archives only dsh twins before changing local state and rolls back a host refusal`, async () => {
+    const home = mkdtempSync(join(tmpdir(), 'nodo-native-archive-'))
+    const native = nativeHost(), calls = [], archived = new Set(['already'])
+    let fail = true, rt, before
+    Object.assign(native.workspaceRegistry, {
+      get archivedSessionIds() { return [...archived] },
+      async archiveSession(...args) {
+        assert.equal(args.length, 1, 'default options keep the host activity check')
+        assert.equal(JSON.stringify(rt.state), before, 'host archival precedes every local mutation')
+        calls.push(['archive', args[0]])
+        if (fail && args[0] === 'second') throw new Error('Host activity refuses archival')
+        archived.add(args[0])
+      },
+      async unarchiveSession(id) { calls.push(['unarchive', id]); archived.delete(id) },
+    })
+    const host = boot(home, native)
+    try {
+      rt = await host.runtime
+      const workspace = await host.api('workspace-create', { name: 'Archive', cwd: join(home, 'ws') })
+      const role = await host.api('profile-create', { name: 'Native', engine: 'dsh' })
+      for (const id of ['already', 'first', 'second']) {
+        const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+        Object.assign(rt.conversation(role.id, session.id).session, { driverSessionId: id })
+        native.add(id)
+      }
+      const external = await host.api('profile-create', { name: 'External', engine: 'echo' })
+      const session = await host.api('session-create', { profile: external.id, workspace: workspace.id, lazy: true })
+      rt.conversation(external.id, session.id).session.driverSessionId = 'external-thread'
+      before = JSON.stringify(rt.state)
+      const disk = readFileSync(join(home, 'state.json'), 'utf8')
+      const payload = { id: kind === 'profile' ? role.id : workspace.id }
+      const result = await host.post(`${kind}-delete`, payload)
+      assert.equal(result.ok, false)
+      assert.match(result.error.message, /删除未执行.*Host activity/)
+      assert.equal(JSON.stringify(rt.state), before)
+      assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), disk)
+      assert.deepEqual(calls, [['archive', 'first'], ['archive', 'second'], ['unarchive', 'first']])
+      assert.deepEqual([...archived], ['already'])
+      fail = false; calls.length = 0
+      await host.api(`${kind}-delete`, payload)
+      assert.deepEqual(calls, [['archive', 'first'], ['archive', 'second']])
+      assert.deepEqual([...archived], ['already', 'first', 'second'])
+      assert.ok(rt.state.profiles[role.id].sessions.every(session => session.archivedAt))
+      if (kind === 'workspace') assert.ok(rt.state.profiles[external.id].sessions.every(session => session.archivedAt))
+    } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  })
+}
+
+test('old hosts without archiveSession skip native sync', async () => {
+  const { rt, dispose } = setup()
+  try { await rt.archiveHostSessions(rt.state.profiles.role.sessions) }
+  finally { dispose() }
+})
+
+test('a rollback failure is reported and does not stop the remaining rollback requests', async () => {
+  const { rt, host, dispose } = setup()
+  const calls = [], before = JSON.stringify(rt.state)
+  Object.assign(host.workspaceRegistry, {
+    async archiveSession(id) { if (id === 'claude') throw new Error('Cannot archive'); calls.push(['archive', id]) },
+    async unarchiveSession(id) { calls.push(['unarchive', id]); if (id === 'codex') throw new Error('Cannot undo') },
+  })
+  try {
+    await assert.rejects(rt.archiveHostSessions(rt.state.profiles.role.sessions), /删除未执行.*1 个原生会话撤回失败.*Cannot undo/)
+    assert.deepEqual(calls, [['archive', 'dsh'], ['archive', 'codex'], ['unarchive', 'codex'], ['unarchive', 'dsh']])
+    assert.equal(JSON.stringify(rt.state), before)
+  } finally { dispose() }
+})
+
+test('archived native conversations are read through the transcript endpoint without opening an agent', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-native-transcript-'))
+  const native = nativeHost(), host = boot(home, native)
+  try {
+    const workspace = await host.api('workspace-create', { name: 'History', cwd: join(home, 'ws') })
+    const role = await host.api('profile-create', { name: 'Native', engine: 'dsh' })
+    const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const rt = await host.runtime
+    rt.conversation(role.id, session.id).session.driverSessionId = 'saved-native'
+    native.add('saved-native')
+    native.event('saved-native', 'user/message', { content: [{ type: 'text', text: 'Original question' }] })
+    native.event('saved-native', 'assistant/message', { message: { content: [{ type: 'text', text: 'Original answer' }] } })
+    await host.api('profile-delete', { id: role.id })
+    const lines = await host.api('transcript', { profile: role.id, session: session.id })
+    assert.deepEqual(lines.map(line => [line.who, line.text]), [['user', 'Original question'], ['agent', 'Original answer']])
+    assert.equal(rt.driverOf(session.id), undefined)
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('archived native reads prefer local tool rows and fall back safely when inspect fails', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-archive-read-'))
+  const native = nativeHost(), host = boot(home, native)
+  try {
+    const workspace = await host.api('workspace-create', { name: 'History', cwd: home })
+    const role = await host.api('profile-create', { name: 'Native', engine: 'dsh' })
+    const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const rt = await host.runtime
+    Object.assign(rt.conversation(role.id, session.id).session, { driverSessionId: 'native-local', archivedAt: 1 })
+    const lines = rt.state.transcripts[session.id] = [{ who: 'agent', kind: 'tool', name: 'read', brief: 'Retained tool details', at: 1 }]
+    native.sessionController.inspect = async () => { native.reads.push('failed'); throw new TypeError('Inspection failed') }
+    assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), lines)
+    await host.api('workspace-create', { name: 'Revision', cwd: join(home, 'other') })
+    assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), lines)
+    assert.deepEqual(native.reads, [], 'revision changes never inspect when local history exists')
+    rt.state.transcripts[session.id] = []
+    assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), [])
+    assert.deepEqual(native.reads, ['failed'])
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
 
 test('native sends from multiple DSH sessions drive the existing work view and remain session-scoped', async () => {
   const { rt, host, sessions, dispose } = setup()

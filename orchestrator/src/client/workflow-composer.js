@@ -6,7 +6,7 @@ import { wfWorkspace, wfCurrentSession } from './workflow.js'
 export function WorkflowTaskComposer({ node, view, disabled, onChange, onBusy }) {
   const [previews, setPreviews] = useState({}), [error, setError] = useState('')
   const uploading = useRef(false)
-  const profile = view.profiles.find(item => item.id === node.profileId)
+  const profile = view.profiles.find(item => !item.deletedAt && item.id === node.profileId)
   const workspace = wfWorkspace(view, profile, wfCurrentSession(profile))
   // The card's model and thinking seed a node's session; the tier still carries
   // over from the role's last conversation that chose one.

@@ -204,7 +204,7 @@ test('read-only, filesystem and index failures cannot publish stored references 
   })
 })
 
-test('legacy API retains structured detail across archive and restart, then revokes it on role deletion', async () => {
+test('legacy API retains structured detail across archive, restart and role deletion', async () => {
   registerEngine('stream-fixture', { info: { id: 'stream-fixture', label: 'Stream fixture', requiresCwd: true }, validate: () => ({}),
     create: ({ onEvent }) => ({ openSession: async () => {}, hasSession: () => true, onEvent() {}, steer: async () => 'refused', interruptTurn: async () => {}, respondToRequest: async () => false, dispose() {},
       async sendTurn(text) {
@@ -235,7 +235,7 @@ test('legacy API retains structured detail across archive and restart, then revo
     try {
       assert.equal((await restored.api('stream-detail', { profile: profile.id, session, ref })).body.outputText, 'retained output')
       await restored.api('profile-delete', { id: profile.id })
-      await assert.rejects(restored.api('stream-detail', { profile: profile.id, session, ref }), /不可用/)
+      assert.equal((await restored.api('stream-detail', { profile: profile.id, session, ref })).body.outputText, 'retained output')
     } finally { restored.dispose() }
   })
 })

@@ -57,7 +57,7 @@ test('starting an engine collects identity versions no session references', asyn
   })
 })
 
-test('host deletion collects identity versions while archived sessions retain references', async () => {
+test('role deletion retains identity versions referenced by its archived sessions', async () => {
   await withHost(async host => {
     const files = createIdentityFiles(join(host.home, 'identities'))
     const workspace = await host.api('workspace-create', { name: 'Identity resources', cwd: host.home })
@@ -68,6 +68,9 @@ test('host deletion collects identity versions while archived sessions retain re
     await host.api('session-archive', { profile: profile.id, session: session.id, archived: true })
     assert.equal(existsSync(first.path), true)
     await host.api('profile-delete', { id: profile.id })
-    assert.equal(existsSync(first.path), false)
+    assert.equal(existsSync(first.path), true)
+    const rt = await host.runtime
+    rt.collectIdentityFiles()
+    assert.equal(existsSync(first.path), true)
   })
 })

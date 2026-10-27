@@ -60,6 +60,13 @@ export const selectSession = async (role, id, project, page) => {
       if (sidebarOnly) nativeSpace.showLegacy()
       return
     }
+    const selected = role.sessions.find(session => session.id === id)
+    if (selected?.archivedAt || role.deletedAt) {
+      remember(role.id, selected?.workspaceRef ?? project?.id, id, true)
+      setEditing(null)
+      if (sidebarOnly) nativeSpace.showLegacy()
+      return
+    }
     const native = nativeRole(role) && openNativeSession
     if (!current()) return
     const twin = native && role.sessions.find(session => session.id === id)?.driverSessionId
@@ -161,16 +168,22 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // One message's executor pick, keyed like the drafts; a sent message returns
   // the picker to 自动.
   const [assignees, setAssignees] = useState({})
-  const profile = view?.profiles.find(item => item.id === navigation.profile) ?? view?.profiles[0] ?? null
+  const archived = view?.profiles.flatMap(role => role.sessions.filter(session => session.id === navigation.archivedSession && session.archivedAt)
+    .map(session => ({ role, session })))[0]
+  const profiles = view?.profiles.filter(item => !item.deletedAt) ?? []
+  const profile = archived?.role ?? profiles.find(item => item.id === navigation.profile) ?? profiles[0] ?? null
   const workspaces = view?.workspaces ?? []
-  const workspace = workspaces.find(item => item.id === navigation.workspace) ?? workspaces[0] ?? null
+  const workspace = archived ? workspaces.find(item => item.id === archived.session.workspaceRef) ?? null
+    : workspaces.find(item => item.id === navigation.workspace) ?? workspaces[0] ?? null
   const navigationKey = `${workspace?.id}:${profile?.id}`
-  const session = sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey])
+  const session = archived?.session ?? sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey])
   const sessionId = session?.id
   const draftKey = sessionId ?? `new:${navigationKey}`
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId)
   const setSessionBusy = value => setPending(current => value ? [...current, draftKey] : current.filter(key => key !== draftKey))
   const readOnly = view !== null && view.readOnly != null
+  const archivedConversation = !!session?.archivedAt || !!profile?.deletedAt
+  const conversationReadOnly = readOnly || archivedConversation
   const work = sessionId ? view.work[sessionId] : null
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
@@ -180,7 +193,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // The executor picker exists for a lead conversation whose engine goes through
   // send: its roster follows the core's rule (no self, no leads), roster order.
   const roster = profile?.lead === true && profile.engine !== 'dsh'
-    ? view.profiles.filter(item => item.id !== profile.id && item.lead !== true) : []
+    ? profiles.filter(item => item.id !== profile.id && item.lead !== true) : []
   const assignee = assignees[draftKey]
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
     ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
@@ -191,12 +204,13 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const railView = view && { ...view, work: Object.fromEntries(Object.entries(view.work).map(([id, work]) => [id,
     { ...work, seen: Number.isFinite(work.completionSeq) && seen[id] >= work.completionSeq }])) }
   useEffect(() => {
-    if (!profile || !workspace) return
+    if (!profile || !workspace || archivedConversation) return
     setNavigation(current => ({ ...current, profile: profile.id, workspace: workspace.id,
       sessions: { ...current.sessions, ...(sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {}) } }))
-  }, [profile?.id, workspace?.id, sessionId])
-  const remember = (roleId, projectId, id) => setNavigation(current => ({ ...current, profile: roleId, workspace: projectId,
-    sessions: { ...current.sessions, ...(id ? { [`${projectId}:${roleId}`]: id } : {}) } }))
+  }, [profile?.id, workspace?.id, sessionId, archivedConversation])
+  const remember = (roleId, projectId, id, archived = false) => setNavigation(current => ({ ...current, profile: roleId, workspace: projectId,
+    archivedSession: archived ? id : undefined,
+    sessions: { ...current.sessions, ...(id && !archived ? { [`${projectId}:${roleId}`]: id } : {}) } }))
   const trackSelection = (sameSession = false) => {
     const origin = nativeSpace.getSnapshot(), request = selection.current
     return () => {
@@ -216,7 +230,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // thinking and permission picks belong to the open session (the native model seat's
   // semantics), so they write the session and never retune the card behind it.
   const updateEngineChoice = async changes => {
-    if (!profile || sessionBusy || readOnly) return
+    if (!profile || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
     setActionError('')
     const current = trackSelection()
@@ -310,7 +324,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const send = async () => {
     const text = (drafts[draftKey] ?? '').trim()
     const images = pastedImages[draftKey] ?? []
-    if (!profile || !workspace || (!text && images.length === 0) || sessionBusy || readOnly) return
+    if (!profile || !workspace || (!text && images.length === 0) || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
     setActionError('')
     const current = trackSelection()
@@ -332,7 +346,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     finally { setSessionBusy(false) }
   }
   const queueAction = async (seq, action) => {
-    if (!profile || !sessionId || sessionBusy || readOnly) return
+    if (!profile || !sessionId || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
     setActionError('')
     const relevant = trackSelection(true)
@@ -353,7 +367,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     finally { setSessionBusy(false) }
   }
   const interrupt = async () => {
-    if (!profile || sessionBusy || readOnly) return
+    if (!profile || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
     setActionError('')
     const current = trackSelection(true)
@@ -364,7 +378,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // Compaction runs the engine's own channel; there is nothing to show in the
   // feed afterwards — the engine's context shrinks, the transcript stays.
   const compactSession = async () => {
-    if (!profile || sessionBusy || readOnly || work?.active === true) return
+    if (!profile || sessionBusy || conversationReadOnly || work?.active === true) return
     if (!sessionId) { setActionError('先开始一个会话，再压缩上下文'); return }
     setCompacting(current => [...current, sessionId])
     setActionError('')
@@ -384,8 +398,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since })),
-    ...(view.approvals ?? []).filter(card => card.profileId == null || card.profileId === sessionId).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly })),
-    h(Composer, {
+    ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly })),
+    !archivedConversation && h(Composer, {
       profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true, busy: sessionBusy, readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
@@ -406,7 +420,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       h(SessionStats, { stats: (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })))
 
   const page = () => {
-    if (profile && workspace) return conversation()
+    if (profile && (workspace || session)) return conversation()
     return h('div', { className: 'nodo-empty' },
       h('p', { className: 'nodo-headline' }, workspace ? '选择一个角色' : '添加一个项目'),
       h('p', null, workspace ? '添加或选择左侧角色，与其在当前项目中对话。' : '点击左侧项目旁的 +，选择工作目录。'))

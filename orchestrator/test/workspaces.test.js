@@ -67,13 +67,21 @@ test('deleting a workspace preserves drafts and archived sessions without moving
     assert.equal(original.workspaceId, 'native-workspace')
     for (const profile of [rt.state.profiles[role.id], rt.state.profiles[legacy.id], rt.state.profiles[elsewhere.id]]) {
       const session = rt.sessionsOf(profile).find(item => item.workspaceRef === a.id)
+      assert.ok(session.archivedAt)
+      assert.equal(session.workspaceName, a.name)
       assert.equal(session.cwd, a.cwd, 'even an unsent session keeps its original directory')
       assert.equal(rt.sessionWorkspace(profile, session).id, a.id)
       assert.notEqual(rt.sessionWorkspace(profile, session).id, alias.id)
     }
+    assert.equal(rt.state.profiles[elsewhere.id].activeSessionId, elsewhere.id, 'the retained legacy conversation in B becomes active')
+    assert.equal(rt.state.profiles[role.id].activeSessionId, second.id)
+    assert.equal(rt.state.profiles[role.id].sessions.find(item => item.id === second.id).archivedAt, undefined)
+    for (const endpoint of ['send', 'session-open', 'session-archive', 'session-update', 'session-compact']) {
+      assert.equal((await post(endpoint, { profile: elsewhere.id, session: third.id, text: 'Read-only', archived: false, changes: { model: 'blocked' } })).ok, false, endpoint)
+    }
     assert.equal((await rt.prepareConversation(third.id)).cwd, realpathSync(a.cwd))
     assert.equal((await api('workspace-file', { profile: elsewhere.id, session: third.id, path: 'note.md' })).text, 'Original directory')
-    assert.equal((await post('session-create', { profile: elsewhere.id, lazy: true })).ok, false, 'a new conversation requires an existing workspace')
+    assert.equal((await post('session-create', { profile: elsewhere.id, workspace: a.id, lazy: true })).ok, false, 'a new conversation cannot use the deleted workspace')
     assert.equal((await post('workspace-delete', { id: a.id })).error.code, 'orch/not-found')
     assert.equal((await rt.loadRun(unrelated.id)).status, 'running')
     assert.equal(existsSync(join(a.cwd, 'note.md')), true)

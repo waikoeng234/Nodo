@@ -10,6 +10,21 @@ const delegate = (to, task = 'Implement the task\nKeep existing changes; report 
 const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.', session) => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', type, hard, task, session })}\n\`\`\``
 const completed = text => ({ mode: 'turn', completion: Promise.resolve({ reason: 'done', text }) })
 
+test('deleted roles leave the lead roster and routing, including explicit assignees', () => withHost(async ({ api, runtime }) => {
+  const lead = await api('profile-create', { name: 'Lead', engine: 'echo', lead: true })
+  const removed = await api('profile-create', { name: 'Removed', engine: 'echo' })
+  const kept = await api('profile-create', { name: 'Kept', engine: 'echo' })
+  await api('profile-delete', { id: removed.id })
+  const rt = await runtime
+  assert.deepEqual(rt.leadRoster(lead).map(role => role.id), [kept.id])
+  assert.doesNotMatch(rt.leadBrief(lead, { id: 'lead-session' }), /Removed/)
+  const roster = rt.leadRoster(lead).map(role => ({ ...role, taskTypes: ['code'] }))
+  assert.equal(rt.findProfile(removed.id), undefined)
+  assert.equal(route({ type: 'code', hard: false }, roster).profile.id, kept.id)
+  assert.equal(route({ type: 'code', hard: true }, roster).miss, true)
+  assert.equal(route({ type: 'code', hard: false }, roster, rt.findProfile(removed.id)).profile.id, kept.id)
+}))
+
 const withLead = run => withHost(async host => {
   const rt = await host.runtime
   const workspace = await host.api('workspace-create', { name: 'Lead workspace', cwd: join(host.home, 'ws') })
@@ -482,7 +497,7 @@ test('the routing brief lists task types instead of the roster', () => withLead(
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
   const brief = rt.leadBrief(rt.findProfile(lead.id), conversation)
-  assert.ok(brief.includes('## Task types\n- {"id":"feature","name":"功能","when":"新增或改变行为"}'))
+  assert.ok(brief.includes('## Task types\n- {"id":"feature","name":"功能","when":"需求和方案已明确，需要新增或改变行为，交付可运行的改动和验证结果。方案未定时先派调查。"}'))
   assert.ok(brief.includes('"type": "<task type id>"'))
   assert.ok(!brief.includes('## Roster') && !brief.includes(worker.id))
 }))

@@ -17,6 +17,19 @@ export function install(rt) {
     ?? (session?.workspaceRef && session.cwd ? { id: session.workspaceRef, cwd: session.cwd } : undefined)
     ?? Object.values(rt.state.workspaces).find(workspace => session?.cwd && workspace.cwd === session.cwd)
     ?? rt.workspaceOf(profile)
+  const assertSessionWritable = (profile, session) => {
+    if (profile.deletedAt || session.archivedAt) {
+      throw Object.assign(new Error('This conversation is read-only'), { code: 'orch/refused' })
+    }
+  }
+  const archiveDeletedSession = (profile, session) => {
+    const workspace = sessionWorkspace(profile, session)
+    snapshotIdentity(profile, session)
+    session.cwd ??= workspace?.cwd
+    session.workspaceRef ??= workspace?.id
+    session.workspaceName ??= workspace?.name
+    session.archivedAt ??= Date.now()
+  }
   const conversationOf = id => {
     for (const profile of Object.values(rt.state.profiles)) {
       const session = sessionsOf(profile).find(item => item.id === id)
@@ -63,7 +76,7 @@ export function install(rt) {
   }
   const createSession = async (profileId, name, workspaceRef, lazy = false, draft = false, choices = {}, source, { activate = true } = {}) => {
     const profile = rt.state.profiles[profileId]
-    if (!profile) throw new Error('No such profile')
+    if (!profile || profile.deletedAt) throw new Error('No such profile')
     choices = cleanSessionChoices(profile, choices)
     const active = sessionsOf(profile).find(session => session.id === profile.activeSessionId)
     const workspace = workspaceRef !== undefined ? rt.findWorkspace(workspaceRef) : sessionWorkspace(profile, active)
@@ -101,6 +114,7 @@ export function install(rt) {
   }
   const selectSession = async (profileId, id) => {
     const { profile, session } = conversation(profileId, id)
+    assertSessionWritable(profile, session)
     profile.activeSessionId = session.id
     await rt.save()
     return session
@@ -108,6 +122,7 @@ export function install(rt) {
   const openNativeSession = async ({ profile: ref, session: id, workspace }) => {
     const profile = rt.findProfile(ref)
     if (profile?.engine !== 'dsh') throw new Error('This engine does not expose a native host session')
+    if (id) assertSessionWritable(profile, conversation(profile.id, id).session)
     const session = id ? await selectSession(profile.id, id) : await createSession(profile.id, undefined, workspace, true, true)
     const sessionId = nativeTwinOf(session)
     const agent = sessionId && rt.ctx.agents?.get(sessionId)
@@ -123,6 +138,10 @@ export function install(rt) {
   // engine conversation; a running session must finish or be stopped first.
   const archiveSession = async (profileId, id, archived) => {
     const { profile, session } = conversation(profileId, id)
+    if (!archived) {
+      assertSessionWritable(profile, { ...session, archivedAt: undefined })
+      if (session.workspaceRef && !rt.state.workspaces[session.workspaceRef]) throw Object.assign(new Error('This conversation is read-only'), { code: 'orch/refused' })
+    }
     if (archived && rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the running task before archiving this session'), { code: 'orch/busy' })
     if (archived) session.archivedAt = Date.now()
     else delete session.archivedAt
@@ -132,6 +151,7 @@ export function install(rt) {
   }
   const updateSession = async (profileId, id, changes) => {
     const { profile, session } = conversation(profileId, id)
+    assertSessionWritable(profile, session)
     const choices = cleanSessionChoices(profile, Object.fromEntries(['model', 'thinking', 'permission']
       .filter(key => changes[key] !== undefined).map(key => [key, changes[key]])))
     let taskState
@@ -205,5 +225,5 @@ export function install(rt) {
     if (session.id === profile.id && event.sessionId) profile.driverSessionId = event.sessionId
     await rt.save()
   }
-  Object.assign(rt, { snapshotIdentity, sessionsOf, sessionChoices, cleanSessionChoices, sessionWorkspace, conversationOf, conversation, prepareConversation, createSession, selectSession, openNativeSession, archiveSession, updateSession, turnTitle, titleSessionFromNative, saveSessionEvent })
+  Object.assign(rt, { snapshotIdentity, sessionsOf, sessionChoices, cleanSessionChoices, sessionWorkspace, archiveDeletedSession, assertSessionWritable, conversationOf, conversation, prepareConversation, createSession, selectSession, openNativeSession, archiveSession, updateSession, turnTitle, titleSessionFromNative, saveSessionEvent })
 }

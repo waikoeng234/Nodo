@@ -51,7 +51,7 @@ export function install(rt) {
     await rt.load()
     const workspace = state.workspaces[String(id ?? '')]
     if (workspace === undefined) throw Object.assign(new Error('No such workspace'), { code: 'orch/not-found' })
-    const profiles = profilesIn(workspace)
+    const profiles = profilesIn(workspace).filter(profile => !profile.deletedAt)
     if (profiles.some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id && rt.workView?.()[session.id]?.active))) throw Object.assign(new Error('Stop or finish the running tasks before editing this workspace'), { code: 'orch/busy' })
     // Validate the complete candidate before mutating the live record.
     const next = { ...workspace }
@@ -84,16 +84,21 @@ export function install(rt) {
       if (run.snapshot.input?.workspaceId === workspace.id || usesSession || usesRole) throw Object.assign(new Error('请先结束或取消使用此工作区的工作流，再删除工作区'), { code: 'orch/busy' })
     }
     const profiles = profilesIn(workspace)
-    const work = rt.workView()
-    if (profiles.some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id
-      && work[session.id]?.active))) throw Object.assign(new Error('请先停止或完成此工作区中正在运行的任务，再删除工作区'), { code: 'orch/busy' })
+    const refuseBusy = () => {
+      const work = rt.workView()
+      if (profilesIn(workspace).some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id
+        && work[session.id]?.active))) throw Object.assign(new Error('请先停止或完成此工作区中正在运行的任务，再删除工作区'), { code: 'orch/busy' })
+    }
+    refuseBusy()
+    const rollback = await rt.archiveHostSessions?.(profiles.flatMap(profile => rt.sessionsOf(profile).filter(session => rt.sessionWorkspace(profile, session)?.id === workspace.id)))
+    try { refuseBusy() } catch (error) { await rollback?.(error); throw error }
     for (const profile of profiles) {
       profile.sessions ??= rt.sessionsOf(profile)
       for (const session of profile.sessions) {
         if (rt.sessionWorkspace(profile, session)?.id !== workspace.id) continue
-        session.cwd ??= workspace.cwd
-        session.workspaceRef ??= workspace.id
+        rt.archiveDeletedSession(profile, session)
       }
+      if (profile.sessions.some(session => session.id === profile.activeSessionId && session.archivedAt)) profile.activeSessionId = profile.sessions.find(session => !session.archivedAt)?.id
       if (profile.workspaceId === workspace.id) delete profile.workspaceId
     }
     delete state.workspaces[workspace.id]

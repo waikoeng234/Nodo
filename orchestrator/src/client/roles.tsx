@@ -1,26 +1,30 @@
 import type { ReactNode } from './ui-shared.js'
 import {
   h, Fragment, useState, useEffect, useRef, useSyncExternalStore, useStateView, call,
-  Menu, Modal, Button, roleStateOf, layoutService, IconChevronRightOutlineRegular, IconDataOutlineRegular, IconEllipsisOutlineRegular,
+  Modal, Button, roleStateOf, layoutService, IconChevronRightOutlineRegular, IconDataOutlineRegular, IconEditOutlineRegular,
   IconPlusOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
-import { RoleEditor } from './profile-dialogs.js'
+import { Field, RoleEditor } from './profile-dialogs.js'
+import { modelChoices, thinkingAfterModelChange, thinkingOptions } from './model-options.js'
+import type { ModelChoice } from './model-options.js'
 import { engineDisplayName } from './engine-logos.js'
 import { route } from '../../core/shared/route.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
+import ROLE_PRESETS from '../../core/shared/role-presets.json'
 
 export interface RoleTaskType { id?: string; name: string; when?: string }
 interface RoleCard {
-  id: string; name: string; engine?: string; role?: string; model?: string; lead?: boolean; hard?: Record<string, string>
-  taskTypes?: string[]; avatarTemplate?: string; sessions?: { id: string }[]
+  id: string; name: string; identity?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean; hard?: Record<string, string>
+  taskTypes?: string[]; avatarTemplate?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
 }
-interface EngineChoice { id: string; label?: string }
+interface EngineChoice { id: string; label?: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
+interface RolePreset { name: string; role: string; instructions: string }
 interface RolesView {
   profiles: RoleCard[]
   work?: Record<string, { active?: boolean } | undefined>
   taskTypes?: RoleTaskType[]
-  prefs?: { enabledEngines?: string[] | null; rolePresets?: unknown[] | null } | null
+  prefs?: { enabledEngines?: string[] | null; rolePresets?: RolePreset[] | null } | null
   readOnly?: string | null
 }
 
@@ -93,7 +97,7 @@ export function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }: {
     return () => onDirtyChange?.(false)
   }, [dirty])
   // Core prunes a removed type from every card; only executors take work.
-  const holders = (id?: string) => id !== undefined ? view.profiles.filter(profile => profile.taskTypes?.includes(id)) : []
+  const holders = (id?: string) => id !== undefined ? view.profiles.filter(profile => !profile.deletedAt && profile.taskTypes?.includes(id)) : []
   const takers = (id?: string) => holders(id).filter(profile => profile.lead !== true)
   const editRow = (index: number, changes: Partial<RoleTaskType>) =>
     setDraft(rows => rows.map((row, i) => i === index ? { ...row, ...changes } : row))
@@ -171,26 +175,30 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   const [confirm, setConfirm] = useState<{ action: () => void } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [menuId, setMenuId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
-  const [adding, setAdding] = useState(() => target?.profileId === 'new')
+  const [adding, setAdding] = useState<'lead' | 'executor' | null>(() => target?.profileId === 'new' ? 'executor' : null)
   const [newName, setNewName] = useState('')
+  const [newIdentity, setNewIdentity] = useState('')
   const [newEngine, setNewEngine] = useState('')
   const [engines, setEngines] = useState<EngineChoice[] | null>(null)
   const [takesOpen, setTakesOpen] = useState<string | null>(null)
   // Task types a click just set on a row, shown until the saved view returns.
   const [pendingTypes, setPendingTypes] = useState<Record<string, string[]>>({})
+  const [pendingHard, setPendingHard] = useState<Record<string, Record<string, string> | null>>({})
   const [deleting, setDeleting] = useState<RoleCard | null>(null)
   const dirtyRef = useRef(false)
   const typedRef = useRef(false)
-  const roles = view.profiles
+  const roles = view.profiles.filter(role => !role.deletedAt)
   const types = view.taskTypes ?? []
   const leads = roles.filter(item => item.lead === true)
-  const executors = roles.filter(item => item.lead !== true).map(item => pendingTypes[item.id] ? { ...item, taskTypes: pendingTypes[item.id] } : item)
-  const creating = adding || executors.length === 0
-  typedRef.current = newName.trim() !== ''
+  const executors = roles.filter(item => item.lead !== true).map(item => ({ ...item,
+    taskTypes: pendingTypes[item.id] ?? item.taskTypes,
+    hard: Object.hasOwn(pendingHard, item.id) ? pendingHard[item.id] ?? undefined : item.hard,
+  }))
+  const createKind = adding ?? (!leads.length ? 'lead' : !executors.length ? 'executor' : null)
+  typedRef.current = newName.trim() !== '' || newIdentity.trim() !== ''
   const perform = async (action: () => Promise<void>) => {
     if (busy) return
     setBusy(true); setError('')
@@ -212,11 +220,11 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       try { await call('profile-order', { ids }) } catch { await refresh(true); throw new Error('角色列表已变化，请重试') }
     })
   }
-  const run = (action: () => void) => { setAdding(false); setNewName(''); setTakesOpen(null); setError(''); action() }
+  const run = (action: () => void) => { setAdding(null); setNewName(''); setNewIdentity(''); setTakesOpen(null); setError(''); action() }
   const switchTo = (action: () => void) => { if (dirtyRef.current || typedRef.current) setConfirm({ action: () => run(action) }); else run(action) }
   const showOverview = () => { setTypeOpen(false); setRoleId(null) }
   const openRole = (id: string) => { setTypeOpen(false); setRoleId(id) }
-  const startAdding = () => { showOverview(); setAdding(true) }
+  const startAdding = (kind: 'lead' | 'executor' = 'executor') => { showOverview(); setAdding(kind) }
   useEffect(() => {
     leaveGuard = switchTo
     return () => { leaveGuard = null }
@@ -228,16 +236,14 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   }, [target])
   // The inline create row lists the engines the editor would offer a new role.
   useEffect(() => {
-    if (!creating || engines !== null) return
+    if (engines !== null) return
     setEngines([])
     void call('engine-catalog').then((items: EngineChoice[]) => {
-      const enabled = view.prefs?.enabledEngines ?? null
-      const scoped = enabled !== null ? items.filter(item => enabled.includes(item.id)) : items
-      const choices = scoped.length > 0 ? scoped : items
-      setEngines(choices)
+      setEngines(items)
+      const choices = creationEngines(items)
       setNewEngine(current => current || choices[0]?.id || '')
     }).catch(failure => setError((failure as Error).message))
-  }, [creating, engines])
+  }, [engines])
   useEffect(() => {
     if (takesOpen === null || typeof document === 'undefined') return
     const close = (event: Event) => { if (!(event.target as Element | null)?.closest?.('[data-takes-open]')) setTakesOpen(null) }
@@ -261,17 +267,29 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   }
   const typeNameOf = (id: string) => types.find(item => item.id === id)?.name ?? id
   const engineName = (role: RoleCard) => engineDisplayName({ id: role.engine ?? '' })
+  const creationEngines = (items: EngineChoice[]) => {
+    const enabled = view.prefs?.enabledEngines ?? null
+    const scoped = enabled !== null ? items.filter(item => enabled.includes(item.id)) : items
+    return scoped.length ? scoped : items
+  }
   const newAvatar = AVATAR_TEMPLATES[roles.length % AVATAR_TEMPLATES.length].id
+  const newEngineAvailable = creationEngines(engines ?? []).some(item => item.id === newEngine)
   const createRole = (event: { preventDefault: () => void }) => {
     event.preventDefault()
     const name = newName.trim()
-    if (!name || !newEngine || readOnly) return
+    if (!name || !newEngineAvailable || readOnly) return
+    const identity = createKind === 'lead' ? 'leader' : newIdentity
+    const preset = createKind === 'lead' ? ROLE_PRESETS.find(item => item.name === 'leader')
+      : [...ROLE_PRESETS.filter(item => item.name !== 'leader'), ...(view.prefs?.rolePresets ?? [])].find(item => item.name === identity)
     void perform(async () => {
-      await call('profile-create', { name, engine: newEngine, avatarTemplate: newAvatar })
-      setAdding(false); setNewName('')
+      await call('profile-create', { name, engine: newEngine, avatarTemplate: newAvatar, identity,
+        ...(createKind === 'lead' ? { lead: true } : {}),
+        ...(preset ? { role: preset.role, instructions: preset.instructions } : {}),
+      })
+      setAdding(null); setNewName(''); setNewIdentity('')
     })
   }
-  const cancelAdding = () => { setAdding(false); setNewName('') }
+  const cancelAdding = () => { setAdding(null); setNewName(''); setNewIdentity('') }
   // A row's task types save on every click; a refusal falls back to the saved card.
   const toggleType = async (role: RoleCard, id: string) => {
     const held = role.taskTypes ?? []
@@ -282,33 +300,55 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     catch (failure) { setError((failure as Error).message) }
     finally { setPendingTypes(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
   }
+  const updateHard = async (role: RoleCard, hard: Record<string, string> | null) => {
+    setPendingHard(current => ({ ...current, [role.id]: hard }))
+    setError('')
+    try { await call('profile-update', { id: role.id, changes: { hard } }); await refresh(true) }
+    catch (failure) { setError((failure as Error).message) }
+    finally { setPendingHard(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
+  }
 
+  const identityCell = (role: RoleCard) => <span className="nodo-roles-identity" title={role.identity} data-empty={!role.identity ? '' : undefined}>{role.identity || '自定义'}</span>
   const createForm = (className: string, order?: number) => (
-    <form className={className} aria-label="添加角色" onSubmit={createRole}
-      onKeyDown={event => { if (event.key === 'Escape' && adding) cancelAdding() }}>
+    <form className={className} aria-label={createKind === 'lead' ? '添加主控' : '添加角色'} onSubmit={createRole}
+      onKeyDown={event => { if (event.key === 'Escape' && adding !== null) cancelAdding() }}>
       {order !== undefined && <span className="nodo-roles-order">{order}</span>}
       <span className="nodo-roles-new-who">
         <RoleAvatar profile={{ avatarTemplate: newAvatar }} size={28} />
         <input className="nodo-dialog-input" autoFocus aria-label="名字" placeholder="名字" maxLength={40} value={newName}
           disabled={readOnly || busy} onChange={event => setNewName(event.target.value)} />
       </span>
+      {createKind === 'lead' ? identityCell({ id: '', name: '', identity: 'leader' }) : (
+        <input className="nodo-dialog-input nodo-role-identity" aria-label="身份" placeholder="身份" maxLength={40} value={newIdentity}
+          disabled={readOnly || busy} onChange={event => setNewIdentity(event.target.value)} />
+      )}
       <select className="nodo-dialog-input nodo-dialog-select" aria-label="Agent" value={newEngine} disabled={readOnly || busy || !engines?.length}
         onChange={event => setNewEngine(event.target.value)}>
         {!engines?.length && <option value="">正在加载 Agent…</option>}
-        {(engines ?? []).map(item => <option key={item.id} value={item.id}>{engineDisplayName(item)}</option>)}
+        {creationEngines(engines ?? []).map(item => <option key={item.id} value={item.id}>{engineDisplayName(item)}</option>)}
       </select>
       <span className="nodo-roles-new-actions">
-        {adding && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={cancelAdding}>取消</Button>}
-        <Button type="submit" variant="primary" size="sm" disabled={readOnly || busy || !newName.trim() || !newEngine}>创建</Button>
+        {(createKind === 'lead' ? leads.length > 0 : executors.length > 0) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={cancelAdding}>取消</Button>}
+        <Button type="submit" variant="primary" size="sm" disabled={readOnly || busy || !newName.trim() || !newEngineAvailable}>创建</Button>
       </span>
     </form>
   )
   const takesCell = (role: RoleCard, locked: boolean) => {
     const ids = role.taskTypes ?? []
     const open = takesOpen === role.id
+    const saving = locked || Object.hasOwn(pendingHard, role.id) || Object.hasOwn(pendingTypes, role.id)
+    const catalog = engines?.find(item => item.id === role.engine)?.catalog
+    const models = catalog?.models ?? []
+    const hard = role.hard
+    const { selected: hardSelected, options } = modelChoices(models, hard?.model, role.model || catalog?.defaultModel)
+    const changeHard = (key: string, value: string) => {
+      const next = { ...hard, [key]: value }
+      if (key === 'model') next.thinking = thinkingAfterModelChange(models, value || role.model || catalog?.defaultModel, hard?.thinking)
+      void updateHard(role, Object.fromEntries(Object.entries(next).filter(([, setting]) => setting)))
+    }
     return (
       <span className="nodo-roles-takes" data-takes-open={open ? '' : undefined}>
-        <button type="button" className="nodo-roles-takes-trigger" aria-haspopup="true" aria-expanded={open} disabled={locked || !types.length}
+        <button type="button" className="nodo-roles-takes-trigger" aria-haspopup="true" aria-expanded={open} disabled={locked}
           aria-label={`承接任务 ${role.name}`} onClick={() => setTakesOpen(open ? null : role.id)}>
           {ids.length ? ids.map(typeNameOf).join('、') : <span className="nodo-roles-takes-empty">选择承接任务</span>}
         </button>
@@ -317,14 +357,44 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
             onKeyDown={event => { if (event.key === 'Escape') setTakesOpen(null) }}>
             {types.map(type => (
               <label key={type.id} className="nodo-roles-takes-option" title={type.when || undefined}>
-                <input type="checkbox" checked={ids.includes(type.id ?? '')} onChange={() => void toggleType(role, type.id ?? '')} />{type.name}
+                <input type="checkbox" checked={ids.includes(type.id ?? '')} disabled={saving} onChange={() => void toggleType(role, type.id ?? '')} />{type.name}
               </label>
             ))}
+            <div className="nodo-roles-hard-settings">
+              <label className="nodo-roles-takes-option">
+                <input type="checkbox" role="switch" aria-label="可接难题" checked={hard !== undefined} disabled={saving}
+                  onChange={event => void updateHard(role, event.target.checked ? {} : null)} />可接难题
+              </label>
+              {hard !== undefined && <Fragment>
+                <Field label="难题模型">
+                  <select className="nodo-dialog-input nodo-dialog-select" aria-label="难题模型" value={hard.model ?? ''} disabled={saving}
+                    onChange={event => changeHard('model', event.target.value)}>
+                    <option value="">默认</option>
+                    {options}
+                  </select>
+                </Field>
+                <Field label="难题思考档位">
+                  <select className="nodo-dialog-input nodo-dialog-select" aria-label="难题思考档位" value={hard.thinking ?? ''} disabled={saving}
+                    onChange={event => changeHard('thinking', event.target.value)}>
+                    <option value="">默认</option>
+                    {thinkingOptions(hardSelected, hard.thinking)}
+                  </select>
+                </Field>
+              </Fragment>}
+            </div>
           </div>
         )}
       </span>
     )
   }
+  const roleActions = (role: RoleCard, held: boolean, locked: boolean) => (
+    <span className="nodo-roles-actions">
+      <button type="button" className="nodo-row-action" aria-label={`编辑 ${role.name}`} disabled={held}
+        onClick={() => switchTo(() => openRole(role.id))}><IconEditOutlineRegular size={16} /></button>
+      <button type="button" className="nodo-row-action nodo-roles-delete" aria-label={`删除 ${role.name}`} disabled={locked}
+        onClick={() => setDeleting(role)}><IconTrashOutlineRegular size={16} /></button>
+    </span>
+  )
   const executorRow = (role: RoleCard, index: number) => {
     const state = roleStateOf(role, view)
     const held = busy || state.active === true
@@ -335,9 +405,15 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
         onDragStart={event => { setDragId(role.id); event.dataTransfer.effectAllowed = 'move' }}
         onDragOver={event => { if (dragId !== null && dragId !== role.id && !locked) { event.preventDefault(); setDropId(role.id) } }}
         onDragLeave={() => setDropId(current => current === role.id ? null : current)}
-        onDrop={event => { event.preventDefault(); const from = executors.findIndex(item => item.id === dragId); setDragId(null); setDropId(null); if (from >= 0) void reorder(from, index) }}
+        onDrop={event => { event.preventDefault(); const from = executors.findIndex(item => item.id === dragId); setDragId(null); setDropId(null); if (!locked && from >= 0 && !roleStateOf(executors[from], view).active) void reorder(from, index) }}
         onDragEnd={() => { setDragId(null); setDropId(null) }}>
-        <span className="nodo-roles-order"><Grip />{index + 1}</span>
+        <span className="nodo-roles-order" role="button" tabIndex={locked ? -1 : 0} aria-disabled={locked}
+          aria-label={`调整 ${role.name} 顺序`} title="Alt+↑ / Alt+↓ 调整顺序"
+          onKeyDown={event => {
+            if (!locked && event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+              event.preventDefault(); void reorder(index, index + (event.key === 'ArrowUp' ? -1 : 1))
+            }
+          }}><Grip />{index + 1}</span>
         <button type="button" className="nodo-roles-who-cell" disabled={held} title={role.name}
           onClick={() => switchTo(() => openRole(role.id))}>
           <RoleAvatar profile={role} size={28} running={state.active} />
@@ -346,103 +422,86 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
             {role.role && <span className="nodo-roles-sub">{role.role}</span>}
           </span>
         </button>
+        {identityCell(role)}
         <span className="nodo-roles-copy">
           <span>{engineName(role)}</span>
           <span className="nodo-roles-sub">{role.model || '默认模型'}</span>
         </span>
         {takesCell(role, locked)}
         <span className="nodo-roles-hard">{role.hard !== undefined ? '可接' : ''}</span>
-        <Menu open={menuId === role.id} onClose={() => setMenuId(null)} portal closeOnPointerLeave
-          items={[
-            { id: 'up', label: '上移', disabled: locked || index === 0 },
-            { id: 'down', label: '下移', disabled: locked || index === executors.length - 1 },
-            { id: 'edit', label: '编辑', disabled: held },
-            { id: 'delete', label: '删除角色', disabled: locked },
-          ]}
-          onSelect={(id: string) => {
-            setMenuId(null)
-            if (id === 'edit') switchTo(() => openRole(role.id))
-            else if (id === 'delete') setDeleting(role)
-            else void reorder(index, id === 'up' ? index - 1 : index + 1)
-          }}
-          anchor={<button type="button" className="nodo-row-action nodo-roles-more" aria-haspopup="menu" aria-expanded={menuId === role.id}
-            aria-label={`更多操作 ${role.name}`} disabled={busy}
-            onClick={event => { event.stopPropagation(); setMenuId(current => current === role.id ? null : role.id) }}>
-            <IconEllipsisOutlineRegular size={16} /></button>} />
+        {roleActions(role, held, locked)}
       </div>
     )
   }
-  const who = (result: { miss?: boolean; profile?: RoleCard }) => result.profile
-    ? <span className="nodo-roles-who"><RoleAvatar profile={result.profile} size={20} />{result.profile.name}</span>
-    : miss()
   const plan = types.map(type => ({ type,
     routine: route({ type: type.id, hard: false }, executors), hard: route({ type: type.id, hard: true }, executors) }))
-  const gaps = plan.reduce((count, row) => count + (row.routine.miss ? 1 : 0) + (row.hard.miss ? 1 : 0), 0)
+  const routineGaps = plan.filter(row => row.routine.miss).map(row => row.type.name).join('、')
+  const hardGaps = plan.filter(row => !row.routine.miss && row.hard.miss).map(row => row.type.name).join('、')
   const routed = executors.some(item => (item.taskTypes ?? []).length > 0)
 
   const overview = (
     <div className="nodo-roles-overview">
       <header className="nodo-roles-head"><h1>角色</h1></header>
-      <section className="nodo-roles-leads" aria-label="主控">
-        {leads.length ? leads.map(lead => (
-          <div key={lead.id} className="nodo-roles-lead">
-            <span className="nodo-roles-lead-art"><RoleAvatar profile={lead} size={28} running={roleStateOf(lead, view).active} /></span>
-            <span className="nodo-roles-copy nodo-roles-lead-copy">
-              <span className="nodo-roles-name">{lead.name}<span className="nodo-roles-tag">主控</span></span>
-              {lead.role && <span className="nodo-roles-sub">{lead.role}</span>}
-            </span>
-            <span className="nodo-roles-copy nodo-roles-lead-engine">
-              <span>{engineName(lead)}</span>
-              <span className="nodo-roles-sub">{lead.model || '默认模型'}</span>
-            </span>
-            <Button variant="outline" size="sm" disabled={busy || roleStateOf(lead, view).active === true}
-              onClick={() => switchTo(() => openRole(lead.id))}>编辑</Button>
-          </div>
-        )) : <p className="nodo-roles-lead-none">还没有主控角色</p>}
+      <section className="nodo-roles-section" aria-labelledby="nodo-roles-leads">
+        <div className="nodo-roles-section-head">
+          <h2 id="nodo-roles-leads">主控</h2>
+          {createKind !== 'lead' && <button type="button" className="nodo-roles-add" disabled={readOnly || busy}
+            onClick={() => switchTo(() => startAdding('lead'))}><IconPlusOutlineRegular size={14} />添加主控</button>}
+        </div>
+        <div className="nodo-roles-table">
+          <div className="nodo-roles-lead nodo-roles-row-head" aria-hidden><span>角色</span><span>身份</span><span>Agent</span><span /></div>
+          {leads.map(lead => (
+            <div key={lead.id} className="nodo-roles-lead">
+              <span className="nodo-roles-who-cell">
+                <RoleAvatar profile={lead} size={28} running={roleStateOf(lead, view).active} />
+                <span className="nodo-roles-copy">
+                  <span className="nodo-roles-name">{lead.name}</span>
+                  {lead.role && <span className="nodo-roles-sub">{lead.role}</span>}
+                </span>
+              </span>
+              {identityCell(lead)}
+              <span className="nodo-roles-copy">
+                <span>{engineName(lead)}</span>
+                <span className="nodo-roles-sub">{lead.model || '默认模型'}</span>
+              </span>
+              {roleActions(lead, busy || roleStateOf(lead, view).active === true, readOnly || busy || roleStateOf(lead, view).active === true)}
+            </div>
+          ))}
+          {createKind === 'lead' && createForm('nodo-roles-lead nodo-roles-new')}
+        </div>
       </section>
       {executors.length === 0 ? (
         <section className="nodo-roles-empty" aria-labelledby="nodo-roles-empty-title">
           <h2 id="nodo-roles-empty-title">给主控配一个执行角色</h2>
           <p>主控拆好任务后，会交给这里的角色去做</p>
-          {createForm('nodo-roles-create')}
+          {createKind === 'executor' ? createForm('nodo-roles-create') : <button type="button" className="nodo-roles-add" disabled={readOnly || busy}
+            onClick={() => switchTo(startAdding)}><IconPlusOutlineRegular size={14} />添加角色</button>}
         </section>
       ) : (
         <Fragment>
           <section className="nodo-roles-section" aria-labelledby="nodo-roles-executors">
-            <h2 id="nodo-roles-executors">执行角色</h2>
+            <div className="nodo-roles-section-head">
+              <h2 id="nodo-roles-executors">执行角色</h2>
+              {createKind !== 'executor' && <button type="button" className="nodo-roles-add" disabled={readOnly || busy}
+                onClick={() => switchTo(startAdding)}><IconPlusOutlineRegular size={14} />添加角色</button>}
+            </div>
             <div className="nodo-roles-table">
               <div className="nodo-roles-row nodo-roles-row-head" aria-hidden>
-                <span>顺序</span><span>角色</span><span>Agent</span><span>承接任务</span><span>难题</span><span />
+                <span>顺序</span><span>角色</span><span>身份</span><span>Agent</span><span>承接任务</span><span>难题</span><span />
               </div>
               {executors.map(executorRow)}
-              {adding && createForm('nodo-roles-row nodo-roles-new', executors.length + 1)}
+              {createKind === 'executor' && createForm('nodo-roles-row nodo-roles-new', executors.length + 1)}
             </div>
-            {!adding && (
-              <button type="button" className="nodo-roles-add" disabled={readOnly || busy} onClick={() => switchTo(startAdding)}>
-                <span className="nodo-roles-add-icon"><IconPlusOutlineRegular size={14} /></span>添加角色
-              </button>
-            )}
-          </section>
-          <section className="nodo-roles-section" aria-labelledby="nodo-roles-plan">
-            <div className="nodo-roles-section-head">
-              <h2 id="nodo-roles-plan">派活结果{routed && gaps > 0 && <span className="nodo-roles-gaps">{`${gaps} 处无人承接`}</span>}</h2>
-              <button type="button" className="nodo-text-button" onClick={() => switchTo(() => setTypeOpen(true))}>管理任务类型</button>
-            </div>
-            {routed ? (
-              <div className="nodo-roles-plan">
-                <div className="nodo-roles-plan-row nodo-roles-row-head" aria-hidden><span>任务类型</span><span>常规交给</span><span>难题交给</span></div>
-                {plan.map(row => (
-                  <div key={row.type.id} className="nodo-roles-plan-row">
-                    <span className="nodo-roles-name" title={row.type.when || undefined}>{row.type.name}</span>
-                    {who(row.routine)}
-                    {who(row.hard)}
-                  </div>
-                ))}
-              </div>
-            ) : <p className="nodo-roles-plan-none">还没有角色承接任务类型，主控会按角色名自己挑选</p>}
           </section>
         </Fragment>
       )}
+      {executors.length > 0 && (!routed ? <p className="nodo-roles-plan-none" role="status">还没有角色承接任务类型，主控会按角色名自己挑选</p>
+        : (routineGaps || hardGaps) && <div className="nodo-roles-gap-note" role="status">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+            <path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v5m0 3v1" />
+          </svg>
+          <div>{routineGaps && <p>{`${routineGaps}没有角色承接`}</p>}{hardGaps && <p>{`${hardGaps}没有可接难题的角色`}</p>}</div>
+        </div>)}
     </div>
   )
 
@@ -474,9 +533,9 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
                     <IconChevronRightOutlineRegular size={12} />
                     <span aria-current="page">{selected.name}</span>
                   </nav>
-                  <RoleEditor key={`${selected.id}:${nonce}`} profile={selected} roster={roles}
+                  <RoleEditor key={`${selected.id}:${nonce}`} profile={selected}
                     enabledEngines={view.prefs?.enabledEngines ?? null} savedIdentities={view.prefs?.rolePresets ?? null}
-                    taskTypes={types} refresh={refresh} readOnly={readOnly}
+                    refresh={refresh} readOnly={readOnly}
                     onSaved={savedRole} onCancel={() => { setNonce(value => value + 1); showOverview() }} onDeleted={deletedRole}
                     onDirtyChange={value => { dirtyRef.current = value }} />
                 </Fragment>
@@ -496,7 +555,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
         <Button key="delete" variant="outline" className="nodo-dialog-danger" disabled={busy}
           onClick={() => { const item = deleting; setDeleting(null); void perform(() => deletedRole(item)) }}>删除角色</Button>,
       ]}>
-        <p>{`将把“${deleting.name}”及其 ${deleting.sessions?.length ?? 0} 个插件内会话记录移除。项目目录和文件会保留。`}</p>
+        <p>{`将删除角色“${deleting.name}”，其 ${deleting.sessions?.filter(session => !session.draftedAt || session.briefSent).length ?? 0} 个会话会自动归档，可在「已归档」中查看。项目目录和文件会保留。`}</p>
       </Modal>}
     </section>
   )
@@ -515,8 +574,9 @@ export function RolesEntry() {
 export const ROLES_CSS = `
 .nodo-roles{overflow:hidden}
 .nodo-roles-chrome{flex:none;height:var(--dsh-frame-top-clearance,0px);-webkit-app-region:drag}
-.nodo-roles-body{display:flex;justify-content:center;flex:1;min-width:0;min-height:0;overflow-y:auto;padding:20px 32px 40px}
-.nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content}
+.nodo-roles-body{display:flex;flex:1;min-width:0;min-height:0;overflow:auto;padding:20px 32px 40px}
+.nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content;margin-inline:auto}
+.nodo-roles-main[data-screen=overview]{min-width:820px}
 .nodo-roles-main[data-screen=role]{width:min(800px,100%)}
 .nodo-roles-nav{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
 .nodo-role-types{display:flex;align-items:center;gap:10px;flex:none;width:100%;height:36px;padding:0 10px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}
@@ -524,63 +584,64 @@ export const ROLES_CSS = `
 .nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
 .nodo-role-types-label{flex:1;min-width:0}
 .nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
-.nodo-roles-overview{display:flex;flex-direction:column;gap:20px}
+.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px}
 .nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .nodo-roles-head h1{display:flex;align-items:baseline;gap:10px;margin:0;font-size:20px;font-weight:600;line-height:28px}
 .nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
 .nodo-roles-copy>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-roles-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
 .nodo-roles-sub{font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
-.nodo-roles-tag{flex:none;padding:0 8px;border-radius:999px;background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-base);font-size:12px;font-weight:400;line-height:20px}
-.nodo-roles-leads{display:flex;flex-direction:column;gap:6px}
-.nodo-roles-lead{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 12px 8px 8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
-.nodo-roles-lead-art{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;border-radius:var(--nodo-role-radius);background:var(--dsw-alias-bg-base)}
-.nodo-roles-lead-copy{flex:1 1 260px}
-.nodo-roles-lead .nodo-roles-name{font-weight:600}
-.nodo-roles-lead-engine{align-items:flex-end;text-align:right}
-.nodo-roles-lead-none{margin:0;padding:10px 14px;border:1px dashed var(--dsw-alias-border-l1);border-radius:calc(var(--nodo-role-radius) + 8px);color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-roles-identity{justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 10px;border-radius:999px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:20px}
+.nodo-roles-identity[data-empty]{background:0 0;color:var(--dsw-alias-label-secondary);font-family:inherit}
 .nodo-roles-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:28px 24px 24px;border:1px dashed var(--dsw-alias-border-l1);border-radius:calc(var(--nodo-role-radius) + 10px);text-align:center}
 .nodo-roles-empty h2{margin:0;font-size:16px;font-weight:600;line-height:24px}
 .nodo-roles-empty p{max-width:420px;margin:0 0 12px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-roles-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:min(600px,100%);padding:8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);text-align:left}
-.nodo-roles-create>select{flex:0 1 180px}
+.nodo-roles-create>select{flex:0 1 160px}
+.nodo-roles-create>.nodo-role-identity{flex:0 1 100px;min-width:0}
 .nodo-roles-new-who{display:flex;align-items:center;gap:10px;flex:1 1 220px;min-width:0}
 .nodo-roles-new-who>.nodo-dialog-input{flex:1;min-width:0}
 .nodo-roles-new-actions{display:flex;justify-content:flex-end;gap:8px;flex:none}
 .nodo-roles-section{display:flex;flex-direction:column;gap:8px}
 .nodo-roles-section h2{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;font-weight:600;line-height:22px}
 .nodo-roles-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.nodo-roles-table,.nodo-roles-plan,.nodo-types-table{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
-.nodo-roles-row{display:grid;grid-template-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.4fr) 40px 28px;align-items:center;gap:12px;min-height:48px;padding:4px 8px 4px 6px}
-.nodo-roles-row+.nodo-roles-row,.nodo-roles-plan-row+.nodo-roles-plan-row,.nodo-type-row+.nodo-type-row{border-top:1px solid var(--dsw-alias-border-l2)}
+.nodo-roles-table,.nodo-types-table{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
+.nodo-roles-row,.nodo-roles-lead{display:grid;grid-template-columns:var(--nodo-roles-columns);align-items:center;gap:12px;min-height:56px;padding:6px 12px}
+.nodo-roles-lead>:first-child{grid-column:1/3}
+.nodo-roles-lead>:last-child{grid-column:5/-1;justify-self:end}
+.nodo-roles-row+.nodo-roles-row,.nodo-roles-lead+.nodo-roles-lead,.nodo-type-row+.nodo-type-row{border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-roles-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-roles-row[data-dragging]{opacity:.4}
 .nodo-roles-row[data-drop]{box-shadow:inset 0 2px 0 var(--dsw-alias-state-business-primary)}
 .nodo-roles-order{display:inline-flex;align-items:center;gap:8px;padding-left:4px;color:var(--dsw-alias-label-tertiary);font-size:13px;font-variant-numeric:tabular-nums}
 .nodo-roles-row[draggable=true] .nodo-roles-order{cursor:grab}
-.nodo-roles-who-cell{display:flex;align-items:center;gap:8px;min-width:0;margin:-4px;padding:4px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration:underline}
+.nodo-roles-who-cell{display:flex;align-items:center;gap:8px;min-width:0;margin:-4px;padding:4px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:inherit;font:inherit;text-align:left}
+button.nodo-roles-who-cell{cursor:pointer}
+button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration:underline}
 .nodo-roles-who-cell:disabled{cursor:default}
 .nodo-roles-takes{position:relative;min-width:0}
 .nodo-roles-takes-trigger{max-width:calc(100% + 8px);height:28px;margin-left:-8px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;text-align:left;cursor:pointer}
 .nodo-roles-takes-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-roles-takes-trigger:disabled{cursor:default}
 .nodo-roles-takes-empty{color:var(--dsw-alias-state-business-primary)}
-.nodo-roles-takes-pop{position:absolute;z-index:20;top:calc(100% + 4px);left:-8px;display:flex;flex-direction:column;min-width:200px;max-height:280px;overflow-y:auto;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
+.nodo-roles-takes-pop{position:absolute;z-index:20;top:calc(100% + 4px);right:0;display:flex;flex-direction:column;width:280px;max-height:400px;overflow-y:auto;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
+.nodo-roles-hard-settings{display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:4px;border-top:1px solid var(--dsw-alias-border-l2)}
+.nodo-role-dialog .nodo-roles-hard-settings>.nodo-field{padding:0 8px 4px}
 .nodo-roles-takes-option{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:20px;cursor:pointer}
 .nodo-roles-takes-option:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-roles-takes-option input{margin:0;accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-roles-hard{color:var(--dsw-alias-label-secondary);font-size:13px}
-.nodo-roles-row .nodo-roles-more{width:28px;height:28px;border-radius:var(--nodo-role-radius)}
-.nodo-roles-row .nodo-roles-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-roles-actions{display:flex;justify-content:flex-end;gap:8px}
+.nodo-roles-actions>.nodo-row-action{width:28px;height:28px;border-radius:var(--nodo-role-radius);color:var(--dsw-alias-label-secondary)}
+.nodo-roles-actions>.nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-roles-actions>.nodo-roles-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary)}
 .nodo-roles-new{border-radius:0 0 calc(var(--nodo-role-radius) + 7px) calc(var(--nodo-role-radius) + 7px);background:var(--dsw-alias-bg-layer-1)}
-.nodo-roles-new>.nodo-roles-new-actions{grid-column:4/-1}
+.nodo-roles-new>.nodo-roles-new-actions{grid-column:5/-1}
 .nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 10px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
 .nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-roles-add-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;border:1px dashed var(--dsw-alias-border-l1);border-radius:50%}
-.nodo-roles-gaps{padding:0 8px;border-radius:999px;background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);font-size:12px;font-weight:400;line-height:20px}
-.nodo-roles-plan-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:12px;min-height:36px;padding:6px 12px;font-size:13px;line-height:20px}
-.nodo-roles-who{display:inline-flex;align-items:center;gap:8px;min-width:0;overflow:hidden;white-space:nowrap}
+.nodo-roles-gap-note{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);font-size:13px;line-height:22px}
+.nodo-roles-gap-note>svg{flex:none;margin-top:3px}
+.nodo-roles-gap-note p{margin:0}
 .nodo-roles-miss{color:var(--dsw-alias-state-warn-primary);font-size:13px}
 .nodo-roles-plan-none{margin:0;padding:10px 12px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-text-button{height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;cursor:pointer}
@@ -612,5 +673,5 @@ export const ROLES_CSS = `
 .nodo-type-confirm>span{flex:1;min-width:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
 .nodo-types .nodo-dialog-hint{padding:16px}
 .nodo-types-bar{position:sticky;bottom:24px;align-self:center;display:flex;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
-@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}.nodo-roles-row{grid-template-columns:40px minmax(0,1fr) minmax(0,1fr) 28px}.nodo-roles-row>:nth-child(3),.nodo-roles-row>:nth-child(5){display:none}.nodo-roles-new>.nodo-roles-new-actions{grid-column:auto}}
+@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
 `

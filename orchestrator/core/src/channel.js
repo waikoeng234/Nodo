@@ -107,8 +107,14 @@ export function install(rt) {
         return rt.diagView()
       case 'transcript': {
         await rt.load()
-        const profile = resolveProfileRef(body.profile)
-        return rt.transcriptOf(rt.conversation(profile.id, body.session).session.id)
+        const profile = Object.hasOwn(state.profiles, body.profile) ? state.profiles[body.profile] : resolveProfileRef(body.profile)
+        const { session } = rt.conversation(profile.id, body.session)
+        let lines = rt.transcriptOf(session.id)
+        if (!lines.length && session.archivedAt) {
+          try { lines = (await rt.readHostTranscript?.(session)) ?? lines } catch {}
+        }
+        await rt.loadSecrets()
+        return rt.redactDeepSecrets(lines)
       }
       case 'session-reference':
         return rt.sessionReference(body)
@@ -169,6 +175,7 @@ export function install(rt) {
         if (body.mode !== undefined && body.mode !== 'queue') throw invalid('Unknown send mode')
         const profile = resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
+        rt.assertSessionWritable(profile, session)
         let assignee
         if (body.assignee !== undefined && body.assignee !== null && body.assignee !== '') {
           if (!profile.lead) throw invalid('Only a lead conversation accepts an assignee')
@@ -208,7 +215,9 @@ export function install(rt) {
       case 'session-compact': {
         await rt.load()
         const profile = resolveProfileRef(body.profile)
-        return rt.compactDriver(rt.conversation(profile.id, body.session).session.id)
+        const { session } = rt.conversation(profile.id, body.session)
+        rt.assertSessionWritable(profile, session)
+        return rt.compactDriver(session.id)
       }
       case 'approval-answer':
         await rt.answerApproval(body.id, { decision: body.decision, value: body.value, exit: body.exit })

@@ -2,7 +2,7 @@
 
 Nodo is a multi-Agent workbench plugin for DeepSeek Harness (dsh). It brings Agents such as Claude Code and Codex into one interface, with role assignments, project conversations, and visual workflows.
 
-Enable the 主控 switch in a role's settings to let it delegate tasks; the `leader` identity template describes how it coordinates and accepts work. Each task opens a conversation in the lead's workspace, and rework or re-review can instead continue the executor's previous session; the executor's report returns to the lead as a conversation reference. The executor is picked from the task types and difficulty each role accepts, and roles and task types are managed on the roles page.
+Create a lead under 主控 on the roles page to let it delegate tasks; it is created with the `leader` identity, which describes how it coordinates and accepts work. Each task opens a conversation in the lead's workspace, and rework or re-review can instead continue the executor's previous session; the executor's report returns to the lead as a conversation reference. The executor is picked from the task types and difficulty each role accepts, and roles and task types are managed on the roles page. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry.
 
 This directory is the plugin package loaded by the host. It embeds the `agent-drivers` Agent adapter layer.
 

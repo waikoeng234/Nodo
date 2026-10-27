@@ -501,6 +501,7 @@ export function install(rt) {
   }
   const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
+    rt.assertSessionWritable?.(profile, session)
     profileId = session.id
     const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
     refuseBusy()
@@ -526,6 +527,7 @@ export function install(rt) {
       }
     }
     const refs = await rt.saveImages(images)
+    rt.assertSessionWritable?.(profile, session)
     refuseBusy()
     const st = stateOf(profileId)
     const seq = ++st.nextSeq

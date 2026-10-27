@@ -106,7 +106,7 @@ export function createSessionReferences(ctx, space) {
             h('select', { value: workspace, 'aria-label': '来源项目', onChange: event => setWorkspace(event.target.value) },
               h('option', { value: '' }, '全部项目'), ...(view?.workspaces ?? []).map(item => h('option', { key: item.id, value: item.id }, item.name))),
             h('select', { value: role, 'aria-label': '来源角色', onChange: event => setRole(event.target.value) },
-              h('option', { value: '' }, '全部角色'), ...(view?.profiles ?? []).map(item => h('option', { key: item.id, value: item.id }, item.name)))),
+              h('option', { value: '' }, '全部角色'), ...(view?.profiles ?? []).filter(item => !item.deletedAt).map(item => h('option', { key: item.id, value: item.id }, item.name)))),
           h(Input, { type: 'search', value: query, 'data-modal-autofocus': true, placeholder: '搜索角色或会话…', 'aria-label': '搜索来源会话', onChange: event => setQuery(event.target.value) }),
           h('div', { className: 'nodo-reference-list' }, rows.map(({ profile, session }) => h('button', {
             key: session.id, type: 'button', className: 'nodo-reference-row', 'aria-pressed': selected?.session === session.id,

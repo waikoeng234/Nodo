@@ -5,6 +5,126 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { boot, until, withHost } from './helpers/host.js'
 import templates from '../core/shared/avatar-templates.json' with { type: 'json' }
+import { MAX_PROFILES } from '../core/src/constants.js'
+
+test('deleting a role archives its sessions and preserves history, stats and references across restart', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'orch-soft-delete-'))
+  let host = boot(home)
+  try {
+    const workspace = await host.api('workspace-create', { name: 'Original project', cwd: join(home, 'ws') })
+    const role = await host.api('profile-create', { name: 'Original role', engine: 'echo', engineOptions: { script: [{ kind: 'text', text: 'Saved answer' }] } })
+    const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    await host.api('send', { profile: role.id, session: session.id, text: 'Saved question' })
+    const rt = await host.runtime
+    await until(() => !rt.workView()[session.id]?.active)
+    const history = await host.api('transcript', { profile: role.id, session: session.id })
+    const reply = (await host.api('reference-replies', { profile: role.id, session: session.id })).messages[0]
+    const target = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const reference = await host.api('reference-create', { target: target.id, profile: role.id, session: session.id, messageId: reply.id })
+    const draft = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true, draft: true })
+    const stats = structuredClone(rt.state.stats)
+    let dropped = false
+    rt.dropStreamDetails = async () => { dropped = true }
+    assert.ok(rt.driverOf(session.id))
+    await host.api('profile-delete', { id: role.id })
+    assert.equal(rt.driverOf(session.id), undefined)
+    assert.equal(dropped, false)
+    assert.deepEqual(rt.state.stats, stats)
+    const archivedHistory = await host.api('transcript', { profile: role.id, session: session.id })
+    assert.deepEqual(archivedHistory.slice(0, history.length), history)
+    assert.deepEqual(archivedHistory.slice(history.length).map(({ at, ...line }) => line), [{ who: 'system', kind: 'note', text: 'engine session closed' }])
+    assert.equal((await host.api('reference-read', { id: reference.id, target: target.id })).messages[0].text, 'Saved answer')
+    const saved = rt.state.profiles[role.id]
+    assert.ok(saved.deletedAt)
+    assert.ok(saved.sessions[0].archivedAt)
+    assert.equal(saved.sessions[0].workspaceName, workspace.name)
+    assert.equal(saved.sessions[0].profileName, role.name)
+    assert.equal(saved.activeSessionId, undefined)
+    assert.ok(saved.sessions.find(item => item.id === draft.id).archivedAt)
+    assert.ok(saved.sessions.find(item => item.id === draft.id).draftedAt)
+    assert.equal(saved.sessions.find(item => item.id === draft.id).briefSent, false)
+    assert.equal(rt.findProfile(role.id), undefined)
+    assert.equal(rt.findProfile(role.name), undefined)
+    for (const [endpoint, payload] of [
+      ['send', { profile: role.id, session: session.id, text: 'Refused' }],
+      ['session-create', { profile: role.id, workspace: workspace.id, lazy: true }],
+      ['session-open', { profile: role.id, session: session.id }],
+      ['session-archive', { profile: role.id, session: session.id, archived: false }],
+      ['profile-update', { id: role.id, changes: { name: 'Changed' } }],
+    ]) assert.equal((await host.post(endpoint, payload)).ok, false, endpoint)
+    await assert.rejects(rt.send(role.id, 'Refused', session.id), /read-only/)
+    await assert.rejects(rt.createSession(role.id, undefined, workspace.id, true), /No such profile/)
+    host.dispose()
+    host = boot(home)
+    const restored = (await host.api('state')).profiles.find(item => item.id === role.id)
+    assert.ok(restored.deletedAt && restored.sessions[0].archivedAt)
+    assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), archivedHistory)
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('deleted roles do not consume names, quota or roster order', () => withHost(async ({ api, post, runtime }) => {
+  const removed = await api('profile-create', { name: 'Reusable', engine: 'echo' })
+  await api('profile-delete', { id: removed.id })
+  const roles = []
+  for (let n = 0; n < MAX_PROFILES; n++) roles.push(await api('profile-create', { name: n ? `Role ${n}` : 'Reusable', engine: 'echo' }))
+  assert.equal((await post('profile-create', { name: 'Over quota', engine: 'echo' })).error.code, 'orch/invalid')
+  const ids = roles.map(role => role.id).reverse()
+  await api('profile-order', { ids })
+  const rt = await runtime
+  assert.deepEqual(rt.activeProfiles().map(role => role.id), ids)
+  assert.ok(rt.state.profiles[removed.id].deletedAt)
+  assert.equal(rt.findProfile('Reusable').id, roles[0].id)
+  assert.equal((await post('profile-order', { ids: [removed.id, ...ids.slice(1)] })).error.code, 'orch/invalid')
+}))
+
+test('display identities trim, truncate, clear and persist without migrating old cards', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'orch-identities-'))
+  let host = boot(home)
+  try {
+    const legacy = await host.api('profile-create', { name: 'Legacy', engine: 'echo' })
+    assert.equal(Object.hasOwn(legacy, 'identity'), false)
+    const card = await host.api('profile-create', { name: 'Coder', engine: 'echo', identity: '  coder  ' })
+    assert.equal(card.identity, 'coder')
+    const long = '身'.repeat(45)
+    const created = await host.api('profile-create', { name: 'Long', engine: 'echo', identity: ` ${long} ` })
+    assert.equal(created.identity, long.slice(0, 40))
+    assert.equal((await host.api('profile-update', { id: card.id, changes: { identity: ` ${long} ` } })).identity, long.slice(0, 40))
+    host.dispose()
+    host = boot(home)
+    const restored = (await host.api('state')).profiles
+    assert.equal(restored.find(item => item.id === card.id).identity, long.slice(0, 40))
+    assert.equal(Object.hasOwn(restored.find(item => item.id === legacy.id), 'identity'), false)
+    for (const identity of ['', '   ']) {
+      await host.api('profile-update', { id: card.id, changes: { identity: ' reviewer ' } })
+      const cleared = await host.api('profile-update', { id: card.id, changes: { identity } })
+      assert.equal(Object.hasOwn(cleared, 'identity'), false)
+      assert.equal(Object.hasOwn((await host.runtime).findProfile(card.id), 'identity'), false)
+    }
+    const empty = await host.api('profile-create', { name: 'Empty', engine: 'echo', identity: '  ' })
+    assert.equal(Object.hasOwn(empty, 'identity'), false)
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('editing display identity leaves prompts, conversations and the running driver unchanged', () => withHost(async ({ api, runtime, home }) => {
+  const rt = await runtime
+  const workspace = await api('workspace-create', { name: 'Identity', cwd: join(home, 'ws') })
+  const card = await api('profile-create', { name: 'Worker', engine: 'echo', identity: 'display-only-sentinel',
+    engineOptions: { script: [{ kind: 'text', text: 'Done' }] } })
+  const prompt = rt.renderIdentity(card)
+  assert.doesNotMatch(prompt, /display-only-sentinel/)
+  const session = await api('session-create', { profile: card.id, workspace: workspace.id, lazy: true })
+  await api('send', { profile: card.id, session: session.id, text: 'Question' })
+  await until(() => !rt.workView()[session.id]?.active && rt.conversation(card.id, session.id).session.briefSent)
+  const driver = rt.driverOf(session.id)
+  const before = (await api('state')).profiles.find(item => item.id === card.id)
+  for (const identity of ['reviewer', '']) {
+    const edited = await api('profile-update', { id: card.id, changes: { identity } })
+    assert.equal(rt.renderIdentity(edited), prompt)
+    assert.deepEqual(edited.sessions, before.sessions)
+    assert.equal(edited.activeSessionId, session.id)
+    assert.equal(await rt.ensureDriver(await rt.prepareConversation(session.id)), driver)
+  }
+}))
 
 test('lead flags normalize, persist only when true and keep the existing conversation and driver', () => withHost(async ({ api, runtime, home }) => {
   const rt = await runtime

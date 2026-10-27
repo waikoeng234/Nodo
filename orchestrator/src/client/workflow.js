@@ -101,7 +101,7 @@ export const wfWorkspace = (view, profile, session) => view.workspaces.find(item
 export const wfCurrentSession = profile => profile?.sessions?.find(item => item.id === profile.activeSessionId)
   ?? (profile?.activeSessionId === profile?.id && profile ? { id: profile.id, name: '默认会话', workspaceRef: profile.workspaceId } : undefined)
 export const wfParticipants = (graph, view) => [...new Set(graph.nodes.filter(node => node.kind === 'agent').map(node => node.profileId))].map(id => {
-  const profile = view.profiles.find(item => item.id === id)
+  const profile = view.profiles.find(item => !item.deletedAt && item.id === id)
   const session = wfCurrentSession(profile)
   return { id, profile, session, workspace: graph.workspaceId ? view.workspaces.find(item => item.id === graph.workspaceId) : wfWorkspace(view, profile, session) }
 })
@@ -136,7 +136,7 @@ export function wfValidate(draft, view) {
     if (!/^[a-z][a-z0-9_]{0,31}$/.test(node.id)) add(node, '节点标识格式无效')
     if (starts[0] && !leads(starts[0].id, node.id, draft.edges)) add(node, '未连接到开始节点')
     if (node.kind === 'agent') {
-      if (!view.profiles.some(profile => profile.id === node.profileId)) add(node, '请选择已有角色')
+      if (!view.profiles.some(profile => !profile.deletedAt && profile.id === node.profileId)) add(node, '请选择已有角色')
       if (!node.task?.trim() && !node.images?.length && !node.files?.length) add(node, '请填写任务说明')
       if (node.task?.length > 32000) add(node, '任务说明最多 32000 字符')
     }
@@ -596,7 +596,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
     let n = draft.nodes.length
     while (draft.nodes.some(node => node.id === `${kind}_${n}`)) n++
     const added = { id: `${kind}_${n}`, kind, name: kind === 'agent' ? '执行任务' : kind === 'human' ? '人工验收' : '完成交付',
-      ...(kind === 'agent' ? { profileId: view.profiles[0]?.id ?? '', task: '' } : kind === 'human' ? { options: [{ id: 'choice_1', label: '继续' }] } : { deliver: '' }) }
+      ...(kind === 'agent' ? { profileId: view.profiles.find(profile => !profile.deletedAt)?.id ?? '', task: '' } : kind === 'human' ? { options: [{ id: 'choice_1', label: '继续' }] } : { deliver: '' }) }
     const nodes = [...draft.nodes], before = nodes.findIndex(node => node.kind === 'end')
     nodes.splice(before < 0 ? nodes.length : before, 0, added)
     const next = { ...draft, nodes }, connected = connection ? wfConnect(next, connection.from, connection.exit, added.id) : next
@@ -735,7 +735,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
           'aria-label': inspectorCollapsed ? '展开节点侧栏' : '收起节点侧栏', 'aria-expanded': !inspectorCollapsed, 'aria-controls': 'nodo-workflow-inspector',
           icon: h(IconPanelLeftOutlineRegular, { size: 16 }), onClick: () => update({ inspectorCollapsed: !inspectorCollapsed }) })),
         h('div', { id: 'nodo-workflow-inspector', className: 'nodo-wf-drawer-content', hidden: inspectorCollapsed },
-      mode === 'edit' ? h(WorkflowInspector, { key: node?.id, draft, node, profile: view.profiles.find(item => item.id === node?.profileId), disabled: blocked, onChange: changeNode,
+      mode === 'edit' ? h(WorkflowInspector, { key: node?.id, draft, node, profile: view.profiles.find(item => !item.deletedAt && item.id === node?.profileId), disabled: blocked, onChange: changeNode,
         onEdge: edge => update({ draft: { ...draft, edges: [...draft.edges.filter(item => item.from !== edge.from || item.exit !== edge.exit), edge] } }),
         onRemove: () => removeNode(selected) })
         : h('aside', { className: 'nodo-wf-inspector nodo-wf-run-inspector', 'aria-label': focusTask ? '步骤详情' : '运行概览' },
@@ -813,13 +813,18 @@ export function WorkflowEntry() {
     const profile = view.profiles.find(item => item.id === attempt.profileId), session = profile?.sessions.find(item => item.id === attempt.sessionId)
     if (!session) return
     const workspace = wfWorkspace(view, profile, session)
+    if (session.archivedAt) {
+      setNavigation(current => ({ ...current, profile: profile.id, workspace: session.workspaceRef, archivedSession: session.id }))
+      nativeSpace.showLegacy()
+      return
+    }
     const native = nativeRole(profile) && openNativeSession
     if (native) {
       const opened = await call('session-open', { profile: profile.id, session: session.id, workspace: workspace?.id })
       openNativeSession(opened.sessionId)
     } else {
       if (!view.readOnly) await call('session-select', { profile: profile.id, session: session.id })
-      setNavigation(current => ({ ...current, profile: profile.id, workspace: workspace?.id, sessions: { ...current.sessions, [`${workspace?.id}:${profile.id}`]: session.id } }))
+      setNavigation(current => ({ ...current, archivedSession: undefined, profile: profile.id, workspace: workspace?.id, sessions: { ...current.sessions, [`${workspace?.id}:${profile.id}`]: session.id } }))
       nativeSpace.showLegacy()
     }
   }

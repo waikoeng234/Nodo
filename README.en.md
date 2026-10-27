@@ -18,9 +18,9 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 ## What you can do with Nodo
 
 - **Use multiple Agents together**: access different Agents in one interface, each using its existing configuration and authentication.
-- **Assign roles**: define each role's identity, responsibilities, and scope, then assign work by task type.
-- **Delegate through a lead**: enable a role's 主控 switch to let it assign tasks in the current project and receive the reports; apply the `leader` identity for its way of coordinating and accepting work; the executor is picked from each role's accepted task types and difficulty, managed on the roles page.
-- **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation.
+- **Assign roles**: define each role's summary and instructions, then assign work by task type.
+- **Delegate through a lead**: add a lead under 主控 on the roles page to let it assign tasks in the current project and receive the reports; a lead is created with the `leader` identity. The executor is picked from the task types and difficulty each role accepts, managed on the roles page.
+- **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry in the sidebar.
 - **Build visual workflows**: arrange tasks and handoffs, with human checkpoints, conditional branches, and rework.
 - **Allocate cost by task**: assign complex work to more capable Agents and routine tasks to less expensive Agents.
 
@@ -60,7 +60,7 @@ To update, pull the latest code, rerun the commands above, and reload the plugin
 
 1. **Enable Agents**: open Nodo and select the Agents to enable during onboarding. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
 2. **Add a project**: add a local working directory to the project list.
-3. **Start a conversation**: when adding a role, use a preset identity such as `leader`, `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or write your own. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
+3. **Start a conversation**: on the roles page, add a lead and its executors. A lead delegates work and is created with the `leader` identity; an executor can use a preset identity such as `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or fill in its own identity, role summary, and instructions. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
 4. **Run a workflow**: create a flow under **Workflow** in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
 
 ## Why choose Nodo
@@ -104,7 +104,7 @@ Nodo connects through each Agent's official public interfaces, such as Codex app
 
 ### Roles: how an Agent receives its identity
 
-The identity, responsibilities, and working requirements you define for a role are injected through the Agent's own system-prompt channel, such as Claude Code's `--append-system-prompt` or Codex developer instructions. A few Agents receive them through identity files or MCP tools. They are injected once per conversation and kept out of your chat messages.
+The role summary and instructions you define for a role are injected through the Agent's own system-prompt channel, such as Claude Code's `--append-system-prompt` or Codex developer instructions. A few Agents receive them through identity files or MCP tools. They are injected once per conversation and kept out of your chat messages. The 身份 label shown on the roles page is an interface label for telling roles apart and applying templates; it is never injected.
 
 In this example, Claude Code follows the `coder` responsibilities from the first message, while OpenCode reviews as `reviewer`.
 
@@ -158,6 +158,10 @@ First verify login and model configuration in the Agent's own environment. Then 
 ### Why has a workflow stopped at a step?
 
 Inspect the stop reason in the run details. Review the corresponding conversation and actual files, then choose to retry, accept the output, or cancel.
+
+### Can I still read conversations after deleting a role or project?
+
+Yes. Those conversations are archived on deletion. Transcripts, statistics, references, and tool details are retained, and the conversations open read-only from the 已移除 entry in the sidebar: you cannot send, compact, or unarchive them. Manually archived conversations also open read-only; unarchive one to keep working in it. A deleted role also leaves the lead's roster and workflow node choices, and its name can be reused.
 
 ### Why is the interface read-only?
 

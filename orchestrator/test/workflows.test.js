@@ -618,6 +618,22 @@ test('a role edited before its step is dispatched stops the run for a person', a
   assert.equal((await workflowSessions(host, writer.id, 'Gate')).length, 0)
 }))
 
+test('a deleted role is rejected by new workflows and cannot execute a pending step', async () => withRuntime(async ({ host, rt, role }) => {
+  const researcher = await role('Researcher', 'Research notes')
+  const writer = await role('Writer', 'Final copy')
+  const workflow = await host.api('workflow-create', { name: 'Deleted role', steps: [{ profile: researcher.id, task: 'Find' }, { decide: true, name: 'gate', question: 'Go on?' }, { profile: writer.id, task: 'Write' }] })
+  const pending = rt.runWorkflow(workflow.id)
+  const card = await until(async () => (await host.api('state')).approvals.find(entry => entry.kind === 'question'))
+  await host.api('profile-delete', { id: writer.id })
+  assert.equal((await host.post('workflow-create', { name: 'Invalid', steps: [{ profile: writer.id, task: 'Write' }] })).ok, false)
+  assert.equal((await host.post('workflow-run', { id: workflow.id })).ok, false)
+  await host.api('approval-answer', { id: card.id, decision: 'answer', exit: 'continue' })
+  const run = await pending
+  assert.deepEqual([run.status, run.reason], ['waiting_human', 'profile_missing'])
+  assert.equal((await workflowSessions(host, writer.id, 'Deleted role')).length, 0)
+  assert.ok(rt.state.profiles[writer.id].deletedAt)
+}))
+
 test('a run keeps the model, thinking and permission its roles had when it started', async () => withRuntime(async ({ host, rt, role }) => {
   const researcher = await role('Researcher', 'Research notes')
   const writer = await role('Writer', 'Final copy')

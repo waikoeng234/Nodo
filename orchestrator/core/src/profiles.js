@@ -3,8 +3,8 @@
 // conversation chooses its workspace independently; keys reach a profile
 // through each key's own scope (secrets.js).
 //
-//   { id, name, role, engine, workspaceId?, model?, thinking?,
-//     instructions, driverSessionId?, createdAt, updatedAt }
+//   { id, name, identity?, role, engine, workspaceId?, model?, thinking?,
+//     instructions, driverSessionId?, deletedAt?, createdAt, updatedAt }
 //
 // The driverSessionId is the engine-side conversation id (e.g. a Codex thread
 // id) captured from the driver; it lets a fresh process resume where the
@@ -14,6 +14,8 @@ import { INSTRUCTIONS_MAX, MAX_PROFILES, NAME_MAX, ROLE_MAX } from './constants.
 import { normalize, unquote } from './text.js'
 import avatarTemplates from '../shared/avatar-templates.json' with { type: 'json' }
 import builtInPresets from '../shared/role-presets.json' with { type: 'json' }
+
+const cleanIdentity = raw => String(raw ?? '').trim().slice(0, NAME_MAX)
 
 const cleanAvatarTemplate = raw => {
   if (raw === undefined || raw === null || raw === '') return undefined
@@ -59,7 +61,7 @@ export function install(rt) {
   const cleanName = (raw, exceptId) => {
     const name = unquote(raw).slice(0, NAME_MAX)
     if (name === '') throw Object.assign(new Error('A profile needs a name'), { code: 'orch/invalid' })
-    const taken = Object.values(state.profiles).find(profile => profile.id !== exceptId && normalize(profile.name) === normalize(name))
+    const taken = activeProfiles().find(profile => profile.id !== exceptId && normalize(profile.name) === normalize(name))
     if (taken !== undefined) throw Object.assign(new Error(`The name "${name}" is already ${taken.name}`), { code: 'orch/invalid' })
     return name
   }
@@ -84,14 +86,15 @@ export function install(rt) {
     return ids.length > 0 ? ids : undefined
   }
 
-  const createProfile = async ({ name, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate, taskTypes, hard, lead }) => {
+  const createProfile = async ({ name, identity, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate, taskTypes, hard, lead }) => {
     await rt.load()
     await rt.driversReady()
-    if (Object.keys(state.profiles).length >= MAX_PROFILES) throw Object.assign(new Error(`At most ${MAX_PROFILES} profiles`), { code: 'orch/invalid' })
+    if (activeProfiles().length >= MAX_PROFILES) throw Object.assign(new Error(`At most ${MAX_PROFILES} profiles`), { code: 'orch/invalid' })
     engine = cleanEngine(engine)
     const workspaceId = workspace === undefined ? undefined : cleanWorkspace(workspace)
     const chosenTaskTypes = cleanTaskTypes(taskTypes)
     const chosenHard = cleanHard(hard)
+    const chosenIdentity = cleanIdentity(identity)
     const defaults = rt.engineConfig(engine)
     const chosenModel = cleanModel(model === undefined ? defaults.model : model)
     const chosenThinking = cleanThinking(thinking === undefined ? defaults.thinking : thinking)
@@ -99,11 +102,12 @@ export function install(rt) {
     const profile = {
       id: randomUUID(),
       name: cleanName(name),
+      ...(chosenIdentity ? { identity: chosenIdentity } : {}),
       role: String(role ?? '').slice(0, ROLE_MAX),
       ...(lead === true ? { lead: true } : {}),
       engine,
       avatarTemplate: cleanAvatarTemplate(avatarTemplate)
-        ?? avatarTemplates[Object.keys(state.profiles).length % avatarTemplates.length].id,
+        ?? avatarTemplates[activeProfiles().length % avatarTemplates.length].id,
       ...(workspaceId ? { workspaceId } : { sessions: [] }),
       ...(chosenModel !== undefined ? { model: chosenModel } : {}),
       ...(chosenThinking !== undefined ? { thinking: chosenThinking } : {}),
@@ -126,11 +130,12 @@ export function install(rt) {
     await rt.load()
     await rt.driversReady()
     const profile = state.profiles[String(id ?? '')]
-    if (profile === undefined) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
+    if (!profile || profile.deletedAt) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
     if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before editing this profile'), { code: 'orch/busy' })
     // Validate the complete candidate before mutating the live record or driver.
     const next = { ...profile }
     if (changes.name !== undefined) next.name = cleanName(changes.name, profile.id)
+    if (changes.identity !== undefined) next.identity = cleanIdentity(changes.identity)
     if (changes.role !== undefined) next.role = String(changes.role ?? '').slice(0, ROLE_MAX)
     if (changes.lead !== undefined) next.lead = changes.lead === true
     if (changes.avatarTemplate !== undefined) next.avatarTemplate = cleanAvatarTemplate(changes.avatarTemplate)
@@ -167,6 +172,7 @@ export function install(rt) {
     if (profile.taskTypes === undefined) delete profile.taskTypes
     if (profile.hard === undefined) delete profile.hard
     if (!profile.lead) delete profile.lead
+    if (!profile.identity) delete profile.identity
     if (respawn || permissionChanged) {
       const active = rt.sessionsOf(profile).find(item => item.id === profile.activeSessionId)
       // The card's model/thinking pair is the default for conversations it opens
@@ -202,11 +208,11 @@ export function install(rt) {
   // other modules hold and the identity of every card.
   const orderProfiles = async ids => {
     await rt.load()
-    if (!Array.isArray(ids) || ids.length !== Object.keys(state.profiles).length || new Set(ids).size !== ids.length
-      || ids.some(id => typeof id !== 'string' || !Object.hasOwn(state.profiles, id))) throw Object.assign(new Error('profile-order needs every profile id exactly once'), { code: 'orch/invalid' })
-    const cards = ids.map(id => state.profiles[id])
+    if (!Array.isArray(ids) || ids.length !== activeProfiles().length || new Set(ids).size !== ids.length
+      || ids.some(id => typeof id !== 'string' || !Object.hasOwn(state.profiles, id) || state.profiles[id].deletedAt)) throw Object.assign(new Error('profile-order needs every active profile id exactly once'), { code: 'orch/invalid' })
+    const cards = [...ids.map(id => state.profiles[id]), ...Object.values(state.profiles).filter(profile => profile.deletedAt)]
     for (const id of Object.keys(state.profiles)) delete state.profiles[id]
-    ids.forEach((id, index) => { state.profiles[id] = cards[index] })
+    for (const card of cards) state.profiles[card.id] = card
     await rt.save()
     return rt.profilesView()
   }
@@ -221,24 +227,32 @@ export function install(rt) {
   const deleteProfile = async (id) => {
     await rt.load()
     const profile = state.profiles[String(id ?? '')]
-    if (profile === undefined) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
-    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before deleting this profile'), { code: 'orch/busy' })
-    await rt.dropStreamDetails?.(profile.id)
-    for (const session of rt.sessionsOf(profile)) { rt.cancelApprovals?.(session.id); rt.releaseDriver?.(session.id); rt.statsDrop?.(session.id); delete state.transcripts[session.id] }
-    delete state.profiles[profile.id]
-    delete state.transcripts[profile.id]
-    rt.statsDrop?.(profile.id)
+    if (!profile || profile.deletedAt) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
+    const refuseBusy = () => {
+      if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before deleting this profile'), { code: 'orch/busy' })
+    }
+    refuseBusy()
+    const rollback = await rt.archiveHostSessions?.(rt.sessionsOf(profile))
+    try { refuseBusy() } catch (error) { await rollback?.(error); throw error }
+    profile.sessions ??= rt.sessionsOf(profile)
+    profile.deletedAt = Date.now()
+    for (const session of profile.sessions) {
+      rt.archiveDeletedSession(profile, session)
+      rt.cancelApprovals?.(session.id)
+      rt.releaseDriver?.(session.id)
+    }
+    delete profile.activeSessionId
     await rt.save()
-    await rt.dropReferences?.(rt.sessionsOf(profile))
     rt.collectIdentityFiles?.()
     return true
   }
 
+  const activeProfiles = () => Object.values(state.profiles).filter(profile => !profile.deletedAt)
   const findProfile = (ref) => {
     if (ref === undefined || ref === null) return undefined
-    if (state.profiles[ref] !== undefined) return state.profiles[ref]
+    if (Object.hasOwn(state.profiles, ref)) return state.profiles[ref].deletedAt ? undefined : state.profiles[ref]
     const wanted = normalize(unquote(ref)).replace(/^@/, '')
-    return Object.values(state.profiles).find(profile => normalize(profile.name) === wanted)
+    return activeProfiles().find(profile => normalize(profile.name) === wanted)
   }
 
   // Saved identities: a customized 身份/身份信息 pair kept beside the built-in
@@ -279,19 +293,19 @@ export function install(rt) {
     const used = profile.driverSessionId !== undefined || (state.transcripts[profile.id]?.length ?? 0) > 0
     return { ...profile, cwd: rt.workspaceOf(profile)?.cwd, workspaceName: rt.workspaceOf(profile)?.name,
       sessions: rt.sessionsOf(profile)
-        .filter(session => session.id !== profile.id || used)
-        .filter(session => !session.draftedAt || session.briefSent || session.id === profile.activeSessionId)
+        .filter(session => session.archivedAt || session.id !== profile.id || used)
+        .filter(session => session.archivedAt || !session.draftedAt || session.briefSent || session.id === profile.activeSessionId)
         .map(session => ({ ...session, workspaceRef: rt.sessionWorkspace(profile, session)?.id,
           // The rail's session time is its latest activity — the dispatch
           // transcript's last line, the native twin's last turn, or a native
           // send stamp — falling back to when the session was created.
           updatedAt: (Math.max(state.transcripts[session.id]?.at(-1)?.at ?? 0, rt.nativeWork?.(session)?.lastAt ?? 0, session.lastActiveAt ?? 0)
             || session.createdAt) ?? profile.createdAt })),
-      activeSessionId: profile.activeSessionId ?? profile.id }
+      activeSessionId: profile.deletedAt ? undefined : profile.activeSessionId ?? rt.sessionsOf(profile).find(session => !session.archivedAt)?.id }
   }
 
   Object.assign(rt, {
-    createProfile, updateProfile, deleteProfile, findProfile, profileView, restartConversations, orderProfiles,
+    createProfile, updateProfile, deleteProfile, findProfile, activeProfiles, profileView, restartConversations, orderProfiles,
     saveRolePreset, deleteRolePreset, cleanPermission,
     profilesView: () => Object.values(state.profiles).map(profileView),
   })

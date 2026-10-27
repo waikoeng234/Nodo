@@ -236,7 +236,10 @@ test('two legacy conversations preserve independent summaries and immutable deta
       host.dispose(); host = boot(home)
       assert.deepEqual(await host.api('stream-detail', { profile: a.id, ref: ar.details.ref }), full)
       await host.api('profile-delete', { id: a.id })
-      await assert.rejects(host.api('stream-detail', { profile: a.id, ref: ar.details.ref }), /不可用/)
+      assert.deepEqual(await host.api('stream-detail', { profile: a.id, ref: ar.details.ref }), full)
+      const deleted = (await host.api('state')).profiles.find(item => item.id === a.id)
+      assert.ok(deleted.deletedAt)
+      assert.equal(deleted.activeSessionId, undefined)
     } finally { host.dispose() }
   })
 })
