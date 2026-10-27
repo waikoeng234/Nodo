@@ -17,6 +17,16 @@ import builtInPresets from '../shared/role-presets.json' with { type: 'json' }
 
 const cleanIdentity = raw => String(raw ?? '').trim().slice(0, NAME_MAX)
 
+export const ensureFallback = profiles => {
+  let held = false
+  const executors = Object.values(profiles).filter(profile => !profile.deletedAt && profile.lead !== true)
+  for (const profile of Object.values(profiles)) {
+    if (!profile.deletedAt && profile.lead !== true && profile.fallback === true && !held) held = true
+    else delete profile.fallback
+  }
+  if (!held && executors.length) executors[0].fallback = true
+}
+
 const cleanAvatarTemplate = raw => {
   if (raw === undefined || raw === null || raw === '') return undefined
   if (!avatarTemplates.some(item => item.id === raw)) throw Object.assign(new Error('Invalid avatar template'), { code: 'orch/invalid' })
@@ -90,6 +100,7 @@ export function install(rt) {
     await rt.load()
     await rt.driversReady()
     if (activeProfiles().length >= MAX_PROFILES) throw Object.assign(new Error(`At most ${MAX_PROFILES} profiles`), { code: 'orch/invalid' })
+    if (lead === true && !activeProfiles().some(profile => profile.lead !== true)) throw Object.assign(new Error('主控至少需要一个执行角色'), { code: 'orch/invalid' })
     engine = cleanEngine(engine)
     const workspaceId = workspace === undefined ? undefined : cleanWorkspace(workspace)
     const chosenTaskTypes = cleanTaskTypes(taskTypes)
@@ -121,6 +132,7 @@ export function install(rt) {
       updatedAt: Date.now(),
     }
     state.profiles[profile.id] = profile
+    ensureFallback(state.profiles)
     await rt.save()
     rt.releaseDriver?.(profile.id)
     return profileView(profile)
@@ -138,6 +150,9 @@ export function install(rt) {
     if (changes.identity !== undefined) next.identity = cleanIdentity(changes.identity)
     if (changes.role !== undefined) next.role = String(changes.role ?? '').slice(0, ROLE_MAX)
     if (changes.lead !== undefined) next.lead = changes.lead === true
+    if (profile.lead !== true && next.lead === true && !activeProfiles().some(item => item.id !== profile.id && item.lead !== true)) throw Object.assign(new Error('主控至少需要一个执行角色'), { code: 'orch/invalid' })
+    if (changes.fallback === true && next.lead === true) throw Object.assign(new Error('兜底角色必须是执行角色'), { code: 'orch/invalid' })
+    if (profile.fallback === true && (changes.fallback === false || changes.fallback === null)) throw Object.assign(new Error('兜底标记只能转移给其他角色'), { code: 'orch/invalid' })
     if (changes.avatarTemplate !== undefined) next.avatarTemplate = cleanAvatarTemplate(changes.avatarTemplate)
     next.engine = cleanEngine(changes.engine !== undefined ? changes.engine : profile.engine)
     // An engine is fixed for the life of a role: presets and native sessions
@@ -167,6 +182,11 @@ export function install(rt) {
       }
     }
     Object.assign(profile, next, { updatedAt: Date.now() })
+    if (changes.fallback === true) {
+      for (const item of Object.values(state.profiles)) delete item.fallback
+      profile.fallback = true
+    }
+    ensureFallback(state.profiles)
     if (profile.model === undefined) delete profile.model
     if (profile.thinking === undefined) delete profile.thinking
     if (profile.taskTypes === undefined) delete profile.taskTypes
@@ -230,12 +250,15 @@ export function install(rt) {
     if (!profile || profile.deletedAt) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
     const refuseBusy = () => {
       if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before deleting this profile'), { code: 'orch/busy' })
+      if (profile.lead !== true && activeProfiles().some(item => item.lead === true)
+        && !activeProfiles().some(item => item.id !== profile.id && item.lead !== true)) throw Object.assign(new Error('主控至少需要一个执行角色'), { code: 'orch/invalid' })
     }
     refuseBusy()
     const rollback = await rt.archiveHostSessions?.(rt.sessionsOf(profile))
     try { refuseBusy() } catch (error) { await rollback?.(error); throw error }
     profile.sessions ??= rt.sessionsOf(profile)
     profile.deletedAt = Date.now()
+    ensureFallback(state.profiles)
     for (const session of profile.sessions) {
       rt.archiveDeletedSession(profile, session)
       rt.cancelApprovals?.(session.id)

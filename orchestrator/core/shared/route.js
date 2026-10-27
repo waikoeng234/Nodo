@@ -1,8 +1,9 @@
 // The routing decision for one delegation, pure so it can be tested directly:
-// a user assignee overrides everything, otherwise the roster order decides.
-export const route = ({ type, hard }, roster, assignee) => {
-  if (assignee) return { profile: assignee, choices: hard && assignee.hard ? assignee.hard : {}, by: 'assignee' }
+// roster order decides among takers; unclaimed types go to the fallback card.
+export const route = ({ type, hard }, roster, fallback) => {
   const accepting = roster.filter(profile => profile.taskTypes?.includes(type))
+  if (!accepting.length) return fallback
+    ? { profile: fallback, choices: hard && fallback.hard ? fallback.hard : {}, by: 'fallback' } : { miss: true }
   if (hard) {
     const profile = accepting.find(profile => profile.hard !== undefined)
     return profile ? { profile, choices: profile.hard, by: 'route' } : { miss: true }

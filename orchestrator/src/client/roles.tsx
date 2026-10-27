@@ -15,7 +15,7 @@ import ROLE_PRESETS from '../../core/shared/role-presets.json'
 
 export interface RoleTaskType { id?: string; name: string; when?: string }
 interface RoleCard {
-  id: string; name: string; identity?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean; hard?: Record<string, string>
+  id: string; name: string; identity?: string; instructions?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean; fallback?: boolean; hard?: Record<string, string>
   taskTypes?: string[]; avatarTemplate?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
 }
 interface EngineChoice { id: string; label?: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
@@ -197,7 +197,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     taskTypes: pendingTypes[item.id] ?? item.taskTypes,
     hard: Object.hasOwn(pendingHard, item.id) ? pendingHard[item.id] ?? undefined : item.hard,
   }))
-  const createKind = adding ?? (!leads.length ? 'lead' : !executors.length ? 'executor' : null)
+  const createKind = adding ?? (!executors.length ? 'executor' : null)
   typedRef.current = newName.trim() !== '' || newIdentity.trim() !== ''
   const perform = async (action: () => Promise<void>) => {
     if (busy) return
@@ -308,7 +308,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     finally { setPendingHard(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
   }
 
-  const identityCell = (role: RoleCard) => <span className="nodo-roles-identity" title={role.identity} data-empty={!role.identity ? '' : undefined}>{role.identity || '自定义'}</span>
+  const identityCell = (role: RoleCard) => <span className="nodo-roles-identity" title={role.identity} data-empty={!role.identity ? '' : undefined}>{role.identity || (role.instructions ? '自定义' : '—')}</span>
   const createForm = (className: string, order?: number) => (
     <form className={className} aria-label={createKind === 'lead' ? '添加主控' : '添加角色'} onSubmit={createRole}
       onKeyDown={event => { if (event.key === 'Escape' && adding !== null) cancelAdding() }}>
@@ -335,6 +335,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   )
   const takesCell = (role: RoleCard, locked: boolean) => {
     const ids = role.taskTypes ?? []
+    const labels = [...ids.map(typeNameOf), ...(leads.length && role.fallback ? ['兜底'] : [])]
     const open = takesOpen === role.id
     const saving = locked || Object.hasOwn(pendingHard, role.id) || Object.hasOwn(pendingTypes, role.id)
     const catalog = engines?.find(item => item.id === role.engine)?.catalog
@@ -350,7 +351,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       <span className="nodo-roles-takes" data-takes-open={open ? '' : undefined}>
         <button type="button" className="nodo-roles-takes-trigger" aria-haspopup="true" aria-expanded={open} disabled={locked}
           aria-label={`承接任务 ${role.name}`} onClick={() => setTakesOpen(open ? null : role.id)}>
-          {ids.length ? ids.map(typeNameOf).join('、') : <span className="nodo-roles-takes-empty">选择承接任务</span>}
+          {labels.length ? labels.join('、') : <span className="nodo-roles-takes-empty">选择承接任务</span>}
         </button>
         {open && (
           <div className="nodo-roles-takes-pop" role="group" aria-label={`${role.name} 承接的任务类型`}
@@ -360,6 +361,10 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
                 <input type="checkbox" checked={ids.includes(type.id ?? '')} disabled={saving} onChange={() => void toggleType(role, type.id ?? '')} />{type.name}
               </label>
             ))}
+            {leads.length > 0 && <label className="nodo-roles-takes-option">
+              <input type="checkbox" aria-label="兜底" checked={role.fallback === true} disabled={saving || role.fallback === true}
+                onChange={() => void perform(async () => { await call('profile-update', { id: role.id, changes: { fallback: true } }) })} />兜底
+            </label>}
             <div className="nodo-roles-hard-settings">
               <label className="nodo-roles-takes-option">
                 <input type="checkbox" role="switch" aria-label="可接难题" checked={hard !== undefined} disabled={saving}
@@ -391,7 +396,8 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     <span className="nodo-roles-actions">
       <button type="button" className="nodo-row-action" aria-label={`编辑 ${role.name}`} disabled={held}
         onClick={() => switchTo(() => openRole(role.id))}><IconEditOutlineRegular size={16} /></button>
-      <button type="button" className="nodo-row-action nodo-roles-delete" aria-label={`删除 ${role.name}`} disabled={locked}
+      <button type="button" className="nodo-row-action nodo-roles-delete" aria-label={`删除 ${role.name}`}
+        disabled={locked || !!deleteReason(role)} title={deleteReason(role)}
         onClick={() => setDeleting(role)}><IconTrashOutlineRegular size={16} /></button>
     </span>
   )
@@ -433,11 +439,15 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       </div>
     )
   }
+  const fallback = executors.find(role => role.fallback === true)
   const plan = types.map(type => ({ type,
-    routine: route({ type: type.id, hard: false }, executors), hard: route({ type: type.id, hard: true }, executors) }))
+    routine: route({ type: type.id, hard: false }, executors, fallback), hard: route({ type: type.id, hard: true }, executors, fallback) }))
   const routineGaps = plan.filter(row => row.routine.miss).map(row => row.type.name).join('、')
   const hardGaps = plan.filter(row => !row.routine.miss && row.hard.miss).map(row => row.type.name).join('、')
-  const routed = executors.some(item => (item.taskTypes ?? []).length > 0)
+  const fallbackTypes = plan.filter(row => row.routine.by === 'fallback').map(row => row.type.name)
+  const deleteReason = (role: RoleCard) => leads.length > 0 && role.lead !== true && executors.length === 1 ? '主控至少需要一个执行角色' : undefined
+  const deleteHint = (role: RoleCard) => leads.length > 0 && role.fallback && executors.some(item => item.id !== role.id)
+    ? `兜底将转给「${executors.find(item => item.id !== role.id)?.name}」。` : undefined
 
   const overview = (
     <div className="nodo-roles-overview">
@@ -445,7 +455,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       <section className="nodo-roles-section" aria-labelledby="nodo-roles-leads">
         <div className="nodo-roles-section-head">
           <h2 id="nodo-roles-leads">主控</h2>
-          {createKind !== 'lead' && <button type="button" className="nodo-roles-add" disabled={readOnly || busy}
+          {createKind !== 'lead' && <button type="button" className="nodo-roles-add" disabled={readOnly || busy || !executors.length} title={!executors.length ? '先添加执行角色' : undefined}
             onClick={() => switchTo(() => startAdding('lead'))}><IconPlusOutlineRegular size={14} />添加主控</button>}
         </div>
         <div className="nodo-roles-table">
@@ -472,8 +482,8 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       </section>
       {executors.length === 0 ? (
         <section className="nodo-roles-empty" aria-labelledby="nodo-roles-empty-title">
-          <h2 id="nodo-roles-empty-title">给主控配一个执行角色</h2>
-          <p>主控拆好任务后，会交给这里的角色去做</p>
+          <h2 id="nodo-roles-empty-title">{leads.length ? '给主控配一个执行角色' : '添加第一个角色'}</h2>
+          <p>{leads.length ? '主控拆好任务后，会交给这里的角色去做' : '选择 Agent，创建角色后即可对话'}</p>
           {createKind === 'executor' ? createForm('nodo-roles-create') : <button type="button" className="nodo-roles-add" disabled={readOnly || busy}
             onClick={() => switchTo(startAdding)}><IconPlusOutlineRegular size={14} />添加角色</button>}
         </section>
@@ -495,13 +505,14 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
           </section>
         </Fragment>
       )}
-      {executors.length > 0 && (!routed ? <p className="nodo-roles-plan-none" role="status">还没有角色承接任务类型，主控会按角色名自己挑选</p>
-        : (routineGaps || hardGaps) && <div className="nodo-roles-gap-note" role="status">
+      {leads.length > 0 && (routineGaps || hardGaps || fallbackTypes.length > 0) && <div className="nodo-roles-gap-note" role="status">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
             <path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v5m0 3v1" />
           </svg>
-          <div>{routineGaps && <p>{`${routineGaps}没有角色承接`}</p>}{hardGaps && <p>{`${hardGaps}没有可接难题的角色`}</p>}</div>
-        </div>)}
+          <div>{routineGaps && <p>{`${routineGaps}没有角色承接`}</p>}
+            {fallbackTypes.map(name => <p key={name}>{`${name}没有角色承接，由「${fallback?.name}」兜底`}</p>)}
+            {hardGaps && <p>{`${hardGaps}没有可接难题的角色`}</p>}</div>
+        </div>}
     </div>
   )
 
@@ -534,6 +545,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
                     <span aria-current="page">{selected.name}</span>
                   </nav>
                   <RoleEditor key={`${selected.id}:${nonce}`} profile={selected}
+                    deleteReason={deleteReason(selected)} deleteHint={deleteHint(selected)}
                     enabledEngines={view.prefs?.enabledEngines ?? null} savedIdentities={view.prefs?.rolePresets ?? null}
                     refresh={refresh} readOnly={readOnly}
                     onSaved={savedRole} onCancel={() => { setNonce(value => value + 1); showOverview() }} onDeleted={deletedRole}
@@ -555,7 +567,8 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
         <Button key="delete" variant="outline" className="nodo-dialog-danger" disabled={busy}
           onClick={() => { const item = deleting; setDeleting(null); void perform(() => deletedRole(item)) }}>删除角色</Button>,
       ]}>
-        <p>{`将删除角色“${deleting.name}”，其 ${deleting.sessions?.filter(session => !session.draftedAt || session.briefSent).length ?? 0} 个会话会自动归档，可在「已归档」中查看。项目目录和文件会保留。`}</p>
+        <p>{`将删除角色“${deleting.name}”，其 ${deleting.sessions?.filter(session => !session.draftedAt || session.briefSent).length ?? 0} 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。`}</p>
+        {deleteHint(deleting) && <p>{deleteHint(deleting)}</p>}
       </Modal>}
     </section>
   )
@@ -643,7 +656,6 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-gap-note>svg{flex:none;margin-top:3px}
 .nodo-roles-gap-note p{margin:0}
 .nodo-roles-miss{color:var(--dsw-alias-state-warn-primary);font-size:13px}
-.nodo-roles-plan-none{margin:0;padding:10px 12px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-text-button{height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;cursor:pointer}
 .nodo-text-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-text-button:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}

@@ -19,7 +19,7 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 
 - **Use multiple Agents together**: access different Agents in one interface, each using its existing configuration and authentication.
 - **Assign roles**: define each role's summary and instructions, then assign work by task type.
-- **Delegate through a lead**: add a lead under 主控 on the roles page to let it assign tasks in the current project and receive the reports; a lead is created with the `leader` identity. The executor is picked from the task types and difficulty each role accepts, managed on the roles page.
+- **Delegate through a lead**: once at least one executor exists, optionally add a lead under 主控 on the roles page to assign tasks by type and difficulty in the current project and receive the reports; a lead is created with the `leader` identity. Unclaimed task types go to the fallback role, initially the first executor; transfer it in the task acceptance settings.
 - **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry in the sidebar.
 - **Build visual workflows**: arrange tasks and handoffs, with human checkpoints, conditional branches, and rework.
 - **Allocate cost by task**: assign complex work to more capable Agents and routine tasks to less expensive Agents.
@@ -58,9 +58,9 @@ To update, pull the latest code, rerun the commands above, and reload the plugin
 
 ## Quick start
 
-1. **Enable Agents**: open Nodo and select the Agents to enable during onboarding. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
-2. **Add a project**: add a local working directory to the project list.
-3. **Start a conversation**: on the roles page, add a lead and its executors. A lead delegates work and is created with the `leader` identity; an executor can use a preset identity such as `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or fill in its own identity, role summary, and instructions. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
+1. **Complete onboarding**: open Nodo, enable Agents, create a general-purpose role, then add a project to start chatting. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
+2. **Add more projects**: keep adding local working directories from the sidebar's project list.
+3. **Add roles as needed**: to delegate work, add a lead on the roles page (requires at least one executor); it is created with the `leader` identity. An executor can use a preset identity such as `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or fill in its own identity, role summary, and instructions. Choose its Agent and default model. A role's Agent cannot be changed after creation.
 4. **Run a workflow**: create a flow under **Workflow** in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
 
 ## Why choose Nodo

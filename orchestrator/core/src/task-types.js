@@ -25,6 +25,7 @@ export function install(rt) {
   const updateTaskTypes = async list => {
     await rt.load()
     if (!Array.isArray(list) || list.length > TASK_TYPES_MAX) throw invalid(`Task types must be a list of at most ${TASK_TYPES_MAX} items`)
+    if (!list.length) throw invalid('至少保留一个任务类型')
     const ids = new Set(), names = new Set()
     const types = list.map(item => {
       const name = unquote(item?.name)

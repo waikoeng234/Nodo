@@ -672,7 +672,7 @@ test('first-run onboarding lists detected engines and stores the choice', async 
     },
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return nodes(OnboardingDialog({ onDone: async () => { done++ } })) }
+  const render = () => { cursor = 0; return nodes(OnboardingDialog({ view: { profiles: [{ id: 'worker' }], workspaces: [{ id: 'project' }] }, onDone: async () => { done++ } })) }
   const tick = () => new Promise(resolve => setImmediate(resolve))
   render(); mounted = true; effects.forEach(effect => effect()); await tick()
   const picks = () => render().filter(node => node.type === 'button' && node.props.className === 'nodo-engine-card nodo-engine-pick')
@@ -682,7 +682,8 @@ test('first-run onboarding lists detected engines and stores the choice', async 
   assert.equal(picks()[0].props['aria-pressed'], true, 'the last enabled engine cannot be deselected')
   // The dialog's actions live in the Modal's footer prop, not its children.
   const footer = () => render().find(node => node.type === 'Modal').props.footer.flatMap(nodes)
-  await footer().find(node => node.type === 'Button' && node.children.includes('开始使用')).props.onClick(); await tick()
+  assert.equal(footer().find(node => node.type === 'Button').children[0], '下一步')
+  render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await tick()
   assert.deepEqual(requests.at(-1), { endpoint: 'engine-enable-set', payload: { engines: ['codex'] } })
   assert.equal(done, 1, 'finishing hands back to the page for its refresh')
 })
@@ -718,6 +719,131 @@ test('onboarding dismisses even when the host rejects detection and the write', 
   render().find(node => node.type === 'Modal').props.onClose(); await tick(); await tick()
   assert.equal(errors.length, 1, 'closing still attempts the write once')
   assert.equal(done, 1, 'the dialog hands back to the page regardless of the failure')
+})
+
+const onboardingFixture = async ({ view = { profiles: [], workspaces: [] }, failAt, pickDirectory } = {}) => {
+  const requests = [], navigation = [], drafts = []
+  let mounted = false, done = 0
+  const loaded = await loadClient('engine-settings.js', {
+    react: { useEffect(effect) { if (!mounted) loaded.host.effects.push(effect) } },
+    stubs: {
+      'page.js': { setNavigation: update => navigation.push(JSON.parse(JSON.stringify(update({ archivedSession: 'old' })))) },
+      'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label },
+    },
+    uiShared: { nativePickDirectory: pickDirectory, nativeSpace: { startDraft: selection => drafts.push({ ...selection }) }, call: async (endpoint, payload) => {
+      requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      if (endpoint === failAt) throw new Error(`${endpoint} refused`)
+      if (endpoint === 'engine-detect') return [
+        { id: 'codex', label: 'Codex', usable: true }, { id: 'echo', label: 'Echo', usable: true }, { id: 'absent', label: 'Absent', usable: false },
+      ]
+      if (endpoint === 'profile-create') return { id: 'new-role' }
+      if (endpoint === 'workspace-create') return { id: 'new-project' }
+      return { enabledEngines: payload.engines, onboardedAt: 1 }
+    } },
+  })
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const render = () => { loaded.host.reset(); return nodes(loaded.OnboardingDialog({ view, onDone: () => { done++ } })) }
+  const modal = () => render().find(node => node.type === 'Modal')
+  const input = label => render().find(node => node.props?.['aria-label'] === label)
+  const next = async () => { render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); await tickAll() }
+  render(); mounted = true
+  loaded.host.effects.splice(0).forEach(effect => effect())
+  await tickAll()
+  return { requests, navigation, drafts, render, modal, input, next, done: () => done }
+}
+
+test('onboarding creates a general-purpose role and project in three steps and selects both', async () => {
+  const flow = await onboardingFixture()
+  const { modal, render, input, next, requests, navigation } = flow
+  const frame = () => [modal().props.className, modal().props.contentClassName]
+  const initialFrame = frame()
+  assert.equal(modal().props.title, '启用 Agent')
+  const cards = () => render().filter(node => node.props?.className === 'nodo-engine-card nodo-engine-pick')
+  assert.equal(cards().length, 2)
+  cards()[1].props.onClick()
+  await next()
+  assert.equal(modal().props.title, '创建万能角色')
+  assert.deepEqual(frame(), initialFrame)
+  assert.equal(input('名字').props.value, '万能助手')
+  assert.equal(input('名字').props.maxLength, 40)
+  assert.deepEqual(input('Agent').children.map(node => node.props.value), ['codex'])
+  assert.equal(input('Agent').props.value, 'codex')
+  assert.equal(render().filter(node => node.type === 'input').length, 1)
+  await next()
+  const avatar = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))[0].id
+  assert.deepEqual(requests.find(item => item.endpoint === 'profile-create').payload, { name: '万能助手', engine: 'codex', avatarTemplate: avatar })
+  assert.equal(modal().props.title, '添加项目')
+  assert.deepEqual(frame(), initialFrame)
+  assert.equal(modal().props.footer.at(-1).children[0], '完成')
+  assert.equal(modal().props.footer.at(-1).props.disabled, true)
+  input('项目名称').props.onChange({ target: { value: '  Website  ' } })
+  input('项目目录').props.onChange({ target: { value: '  /tmp/website  ' } })
+  await next()
+  assert.deepEqual(requests.map(item => item.endpoint), ['engine-detect', 'engine-enable-set', 'profile-create', 'workspace-create'])
+  assert.deepEqual(requests.at(-1).payload, { name: 'Website', cwd: '/tmp/website' })
+  assert.deepEqual(navigation, [{ profile: 'new-role', workspace: 'new-project' }])
+  assert.deepEqual(flow.drafts, navigation, 'completion opens a new conversation with the created role and project')
+  assert.equal(flow.done(), 1)
+  assert.equal(render().some(node => JSON.stringify(node).includes('兜底')), false)
+})
+
+for (const [profiles, workspaces, titles, endpoints, selected] of [
+  [[{ id: 'kept-role' }], [], ['添加项目'], ['workspace-create'], { profile: 'kept-role', workspace: 'new-project' }],
+  [[], [{ id: 'kept-project' }], ['创建万能角色'], ['profile-create'], { profile: 'new-role', workspace: 'kept-project' }],
+  [[{ id: 'kept-role' }], [{ id: 'kept-project' }], [], [], undefined],
+]) test(`onboarding skips existing steps (${profiles.length} executors, ${workspaces.length} projects)`, async () => {
+  const flow = await onboardingFixture({ view: { profiles, workspaces } })
+  await flow.next()
+  for (const title of titles) {
+    assert.equal(flow.modal().props.title, title)
+    if (title === '添加项目') {
+      flow.input('项目名称').props.onChange({ target: { value: 'Project' } })
+      flow.input('项目目录').props.onChange({ target: { value: '/tmp/project' } })
+    }
+    await flow.next()
+  }
+  assert.deepEqual(flow.requests.map(item => item.endpoint), ['engine-detect', 'engine-enable-set', ...endpoints])
+  assert.deepEqual(flow.navigation, selected ? [selected] : [])
+  assert.deepEqual(flow.drafts, selected ? [selected] : [])
+  assert.equal(flow.done(), 1)
+})
+
+for (const step of ['engines', 'role', 'workspace']) test(`closing onboarding during ${step} hands back without creating more records`, async () => {
+  const flow = await onboardingFixture()
+  if (step !== 'engines') await flow.next()
+  if (step === 'workspace') await flow.next()
+  const created = flow.requests.filter(item => item.endpoint.endsWith('-create')).length
+  flow.modal().props.onClose(); await tickAll()
+  assert.equal(flow.done(), 1)
+  assert.equal(flow.requests.filter(item => item.endpoint.endsWith('-create')).length, created)
+  assert.deepEqual(flow.navigation, [])
+})
+
+for (const endpoint of ['engine-enable-set', 'profile-create', 'workspace-create']) test(`onboarding stays on its step after ${endpoint} fails`, async () => {
+  const flow = await onboardingFixture({ failAt: endpoint })
+  if (endpoint !== 'engine-enable-set') await flow.next()
+  if (endpoint === 'workspace-create') await flow.next()
+  if (endpoint === 'workspace-create') {
+    flow.input('项目名称').props.onChange({ target: { value: 'Project' } })
+    flow.input('项目目录').props.onChange({ target: { value: '/tmp/project' } })
+  }
+  const title = flow.modal().props.title
+  await flow.next()
+  assert.equal(flow.modal().props.title, title)
+  assert.equal(flow.done(), 0)
+  assert.equal(flow.render().find(node => node.props?.role === 'alert').children[0], `${endpoint} refused`)
+  flow.modal().props.onClose(); await tickAll()
+  assert.equal(flow.done(), 1)
+})
+
+test('onboarding offers the native directory picker for its project step', async () => {
+  const flow = await onboardingFixture({ view: { profiles: [{ id: 'worker' }], workspaces: [] }, pickDirectory: async () => '/tmp/picked' })
+  await flow.next()
+  flow.input('项目名称').props.onChange({ target: { value: 'Picked' } })
+  flow.render().find(node => node.type === 'Button' && node.children.includes('选择目录…')).props.onClick()
+  await tickAll()
+  await flow.next()
+  assert.deepEqual(flow.requests.at(-1), { endpoint: 'workspace-create', payload: { name: 'Picked', cwd: '/tmp/picked' } })
 })
 
 // A destructive confirmation that forgets its write closes the dialog and
@@ -838,7 +964,7 @@ test('the header avatar opens the template grid and submits the selected templat
 
 // The rail loads with its real ui-shared helpers; kit members stand in as their
 // own names and hooks come from the caller's fakes.
-const loadRail = async react => loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], { react })
+const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
 
 test('the global archive lists only archived sessions with a deleted role or project and keeps their names', async () => {
   const loaded = await loadRail()
@@ -1088,7 +1214,7 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
     const slot = cursor++
     if (!(slot in slots)) slots[slot] = initial
     return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
-  } })
+  } }, { relativeTime: () => ({ unit: 'now', n: 0 }) })
   const workspace = { id: 'w', name: 'bot', cwd: '/bot', createdAt: 1 }
   const view = { workspaces: [workspace], work: {}, profiles: [
     { id: 'fish', name: '大肥鱼', sessions: [{ id: 'a', name: '读当前任务', workspaceRef: 'w', updatedAt: 2 }] },
@@ -1096,9 +1222,9 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
   const resumed = []
-  const render = draft => {
+  const render = (draft, extra = {}) => {
     cursor = 0
-    return nodes(Rail({ view, workspace, draft, onResumeDraft: () => resumed.push(draft.id), onSelect: () => {} }))
+    return nodes(Rail({ view, workspace, draft, onResumeDraft: () => resumed.push(draft.id), onSelect: () => {}, ...extra }))
   }
   const draftRow = tree => tree.find(node => node.props?.title === '新会话（草稿）')
   let tree = render({ id: 'd1', workspace: 'w', profile: 'fish' })
@@ -1117,6 +1243,15 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   tree.find(node => node.props?.className === 'nodo-roster-item' && node.props.title === '大肥鱼').props.onClick()
   assert.ok(draftRow(render({ id: 'd1', workspace: 'w', profile: 'fish' })), 'the draft survives its own role filter')
   assert.equal(draftRow(render({ id: 'd1', workspace: 'w', profile: 'other' })), undefined, 'a role filter hides foreign drafts')
+  const openedRow = () => tree.find(node => node.type === SessionRow && node.props.session.id === 'a')
+  const rowButton = row => nodes(SessionRow(row.props)).find(node => node.props.className === 'nodo-row nodo-session')
+  tree = render({ id: 'd1', workspace: 'w', profile: 'fish' }, { sessionId: 'a', drafting: true })
+  assert.equal(draftRow(tree).props['aria-current'], 'page', 'the draft row carries the highlight while drafting')
+  assert.equal(openedRow().props.current, false)
+  assert.equal(rowButton(openedRow()).props['aria-current'], undefined, 'no session row stays current while drafting')
+  tree = render({ id: 'd1', workspace: 'w', profile: 'fish' }, { sessionId: 'a' })
+  assert.equal(draftRow(tree).props['aria-current'], undefined, 'leaving the draft drops the highlight again')
+  assert.equal(rowButton(openedRow()).props['aria-current'], 'page', 'the opened session is current again')
 })
 
 // A running session in a collapsed project or branch must stay findable: its tree
@@ -1588,7 +1723,7 @@ test('the role editor edits an existing role and confirms its deletion inline', 
   const menu = () => actions().find(node => node.type === 'Menu')
   assert.deepEqual([...menu().props.items].map(item => item.label), ['删除角色'])
   menu().props.onSelect('delete')
-  assert.equal(text('nodo-role-confirm'), '将删除角色“Reviewer”，其 3 个会话会自动归档，可在「已归档」中查看。项目目录和文件会保留。')
+  assert.equal(text('nodo-role-confirm'), '将删除角色“Reviewer”，其 3 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。')
   confirmRow().children.find(node => node?.type === 'Button' && node.children.join('') === '取消').props.onClick()
   assert.equal(confirmRow(), undefined, 'cancelling closes the confirmation')
   assert.equal(deleted, undefined)
@@ -1888,13 +2023,16 @@ test('the composer drops its submit button without onSend and leaves Enter to th
     createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
     react: { useState: value => [value, () => {}], useRef: () => ({ current: null }), useEffect: () => {} },
     uiShared: { ComposerGlyph: running => running ? 'Stop' : 'Send' },
+    stubs: { 'feed.js': { ModelPicker: 'ModelPicker' } },
   })
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
   const tooltip = tree => all(tree).find(item => item.type === 'Tooltip')
   const submit = tree => tooltip(tree).props.children
-  const silent = Composer({ value: '任务', images: [] })
+  const silent = Composer({ value: '任务', images: [], rolePicker: { type: 'RolePicker', props: {}, children: [] }, onModelChange() {} })
   assert.equal(tooltip(silent), undefined, 'no send or save button is drawn')
-  assert.equal(all(silent).find(item => item.props.className === 'nodo-composer-row').children.at(-1).props.className, 'nodo-composer-target', 'the role and model group closes the row')
+  assert.deepEqual(all(silent).find(item => item.props.className === 'nodo-composer-row').children.slice(1).map(item => item.type), ['RolePicker', 'ModelPicker'], 'role and model controls close the row directly')
+  assert.doesNotMatch(clientSource('styles.js'), /nodo-composer-target/)
+  assert.match(clientSource('styles.js'), /\.nodo-composer-tools\{[^}]*margin-right:auto/)
   all(silent).find(item => item.type === 'textarea').props.onKeyDown({ key: 'Enter', preventDefault() { assert.fail('Enter inserts a line break when there is nothing to send') } })
   silent.props.onSubmit({ preventDefault() {} })
   let sends = 0
@@ -2440,6 +2578,90 @@ const rolesTree = node => node && typeof node === 'object'
 const rolesText = node => ['string', 'number'].includes(typeof node) ? String(node) : (node?.children ?? []).map(rolesText).join('')
 const tickAll = async () => { for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve)) }
 
+test('fallback controls and deletion safeguards appear only when a lead exists', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  const view = { profiles: [
+    { id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] },
+    { id: 'a', name: 'First', engine: 'echo', fallback: true, taskTypes: ['docs'], sessions: [] },
+    { id: 'b', name: 'Second', engine: 'echo', sessions: [] },
+  ], taskTypes: [{ id: 'docs', name: '文档' }, { id: 'ops', name: '运维' }] }
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
+    calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+    if (endpoint === 'engine-catalog') return []
+    if (endpoint === 'profile-update') {
+      view.profiles.forEach(role => { delete role.fallback })
+      view.profiles.find(role => role.id === payload.id).fallback = true
+    }
+    return {}
+  } })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const trigger = name => render().find(node => node.props?.['aria-label'] === `承接任务 ${name}`)
+  const action = (verb, name) => render().find(node => node.props?.['aria-label'] === `${verb} ${name}`)
+  const box = () => render().find(node => node.type === 'input' && node.props['aria-label'] === '兜底')
+  assert.equal(rolesText(trigger('First')), '文档、兜底')
+  trigger('First').props.onClick()
+  assert.equal(box().props.checked, true)
+  assert.equal(box().props.disabled, true)
+  action('删除', 'First').props.onClick()
+  const confirmation = () => render().find(node => node.type === 'Modal' && node.props.title === '删除角色“First”？')
+  assert.match(rolesText(confirmation()), /兜底将转给「Second」。/)
+  confirmation().props.onClose()
+  trigger('Second').props.onClick()
+  assert.equal(box().props.checked, false)
+  box().props.onChange(); await tickAll()
+  assert.deepEqual(calls.at(-1), { endpoint: 'profile-update', payload: { id: 'b', changes: { fallback: true } } })
+  assert.equal(rolesText(trigger('Second')), '兜底')
+  assert.equal(rolesText(trigger('First')), '文档')
+  action('编辑', 'Second').props.onClick()
+  assert.equal(render().find(node => node.type === loaded.RoleEditor).props.deleteHint, '兜底将转给「First」。')
+  render().find(node => node.props?.className === 'nodo-roles-crumbs').children[0].props.onClick()
+  view.profiles = view.profiles.filter(role => role.id !== 'lead')
+  assert.equal(rolesText(trigger('Second')), '选择承接任务')
+  trigger('Second').props.onClick()
+  assert.equal(box(), undefined)
+  assert.equal(render().some(node => rolesText(node).includes('兜底')), false)
+  action('删除', 'Second').props.onClick()
+  assert.equal(render().some(node => node.type === 'p' && rolesText(node).includes('兜底将转给')), false)
+  render().find(node => node.type === 'Modal' && node.props.title === '删除角色“Second”？').props.onClose()
+  view.profiles = [{ id: 'lead', name: 'Lead', lead: true, sessions: [] }, view.profiles[1]]
+  const remove = action('删除', 'Second')
+  assert.equal(remove.props.disabled, true)
+  assert.equal(remove.props.title, '主控至少需要一个执行角色')
+  action('编辑', 'Second').props.onClick()
+  assert.equal(render().find(node => node.type === loaded.RoleEditor).props.deleteReason, '主控至少需要一个执行角色')
+})
+
+test('an empty roles page starts an executor and disables adding a lead', async () => {
+  const loaded = await loadRolesPage({ call: async () => [] })
+  const render = () => { loaded.host.reset(); return rolesTree(loaded.RolesPage({ view: { profiles: [] }, readOnly: false, refresh: async () => {} })) }
+  assert.equal(render().find(node => node.type === 'form').props['aria-label'], '添加角色')
+  const lead = render().find(node => node.type === 'button' && node.children.includes('添加主控'))
+  assert.equal(lead.props.disabled, true)
+  assert.equal(lead.props.title, '先添加执行角色')
+})
+
+test('onboarding stays mounted when enabling engines refreshes onboardedAt', async () => {
+  const view = { profiles: [], workspaces: [], work: {}, prefs: {} }
+  const states = [], pending = []
+  const react = rolesReact(states, pending)
+  const loaded = await loadClient('page.js', {
+    react: { ...react, useRef: initial => react.useState(() => ({ current: initial }))[0] },
+    uiShared: { useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) }, subscribeNativeSession() {}, readNativeSession: () => null },
+    stubs: { 'engine-settings.js': { OnboardingDialog: 'Onboarding', EngineSettingsDialog: 'Settings' } },
+    globals: { document: { visibilityState: 'visible', hasFocus: () => true }, localStorage: { getItem: () => null, setItem() {} } },
+  })
+  const render = () => { cursor = 0; return rolesTree(loaded.NodoPage()) }
+  assert.equal(render().find(node => node.type === 'Onboarding').props.view, view)
+  view.prefs.onboardedAt = 1
+  assert.ok(render().find(node => node.type === 'Onboarding'), 'the current three-step dialog survives the first-step save')
+  render().find(node => node.type === 'Onboarding').props.onDone()
+  assert.equal(render().find(node => node.type === 'Onboarding'), undefined)
+})
+
 test('the executor table reorders through keyboard handles and drag, keeping leads in their slots', async () => {
   const states = [], pending = []
   cursor = 0
@@ -2447,7 +2669,7 @@ test('the executor table reorders through keyboard handles and drag, keeping lea
   const view = {
     profiles: [
       { id: 'a', name: '大肥鱼', engine: 'echo', taskTypes: ['docs'], sessions: [{ id: 'sa' }] },
-      { id: 'lead', name: '决策者', engine: 'echo', lead: true, role: '拆分任务', model: 'opus', sessions: [] },
+      { id: 'lead', name: '决策者', engine: 'echo', lead: true, role: '拆分任务', instructions: 'Standing instructions', model: 'opus', sessions: [] },
       { id: 'b', name: '贼 coder', engine: 'echo', taskTypes: ['docs'], sessions: [] },
       { id: 'c', name: 'Reviewer', engine: 'echo', hard: {}, sessions: [] },
     ],
@@ -2480,7 +2702,7 @@ test('the executor table reorders through keyboard handles and drag, keeping lea
   assert.equal(render().some(node => node.type === 'Menu'), false, 'row actions no longer use a menu')
   assert.ok(action('编辑', '大肥鱼') && action('删除', '大肥鱼'))
   assert.equal(cell(rows()[0], 'nodo-roles-identity').props['data-empty'], '')
-  assert.equal(rolesText(cell(rows()[0], 'nodo-roles-identity')), '自定义')
+  assert.equal(rolesText(cell(rows()[0], 'nodo-roles-identity')), '—')
   handle('大肥鱼').props.onKeyDown({ altKey: true, key: 'ArrowUp', preventDefault() {} })
   assert.equal(orders().length, 0, 'the first row cannot move up')
   handle('大肥鱼').props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} })
@@ -2645,6 +2867,8 @@ test('the lead section creates with a fixed leader identity and shares one creat
   const add = label => render().find(node => node.type === 'button' && node.children.includes(label))
   const field = label => rolesTree(form()).find(node => node.props?.['aria-label'] === label)
   const create = () => rolesTree(form()).find(node => node.type === 'Button' && node.children.includes('创建'))
+  assert.equal(form(), undefined, 'having no lead does not open a lead creation row')
+  add('添加主控').props.onClick()
   assert.equal(form().props['aria-label'], '添加主控')
   assert.equal(create().props.disabled, true, 'the Agent is not loaded and the name is empty')
   assert.equal(add('添加主控'), undefined)
@@ -2848,7 +3072,7 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   const view = {
     profiles: [
       { id: 'lead', name: '决策者', engine: 'echo', lead: true, taskTypes: ['ops'], sessions: [] },
-      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], hard: {}, sessions: [] },
+      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], fallback: true, hard: {}, sessions: [] },
       { id: 'b', name: '编码', engine: 'echo', taskTypes: ['docs', 'review'], sessions: [] },
     ],
     workspaces: [], work: {},
@@ -2858,8 +3082,8 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
   const note = () => render().find(node => node.props?.className === 'nodo-roles-gap-note')
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维、测试没有角色承接', '审查没有可接难题的角色'],
-    'a lead takes nothing; hard misses with no routine owner appear only on the first line')
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维没有角色承接，由「资深」兜底', '测试没有角色承接，由「资深」兜底', '审查没有可接难题的角色'],
+    'unclaimed types use fallback; an accepting role without hard settings still leaves a hard gap')
   assert.equal(note().props.role, 'status')
   assert.equal(render().some(node => rolesText(node).includes('派活结果') || rolesText(node).includes('管理任务类型')), false)
   view.taskTypes = [view.taskTypes[1]]
@@ -2867,10 +3091,9 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   view.taskTypes = [{ id: 'docs', name: '文档' }]
   assert.equal(note(), undefined, 'no gaps, no status block')
   view.profiles = view.profiles.map(item => ({ ...item, taskTypes: [] }))
-  assert.equal(note(), undefined)
-  const fallback = render().find(node => node.props?.className === 'nodo-roles-plan-none')
-  assert.equal(rolesText(fallback), '还没有角色承接任务类型，主控会按角色名自己挑选')
-  assert.equal(fallback.props.role, 'status')
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['文档没有角色承接，由「资深」兜底'])
+  view.profiles = view.profiles.filter(item => !item.lead)
+  assert.equal(note(), undefined, 'without a lead no routing gaps or fallback hints are shown')
 })
 
 test('with no executors the overview offers the inline form and lists every lead', async () => {
@@ -2906,120 +3129,10 @@ test('with no executors the overview offers the inline form and lists every lead
   assert.equal(calls.at(-1).endpoint, 'profile-create')
   view.profiles = []
   assert.equal(render().some(node => node.props?.className === 'nodo-roles-lead-none'), false)
-  assert.ok(render().find(node => node.type === 'form' && node.props['aria-label'] === '添加主控'))
-})
-
-test('a lead conversation shows the executor picker, sends its pick once and returns to 自动', async () => {
-  const calls = []
-  const view = { profiles: [
-    { id: 'lead', name: '主控', engine: 'echo', lead: true, activeSessionId: 's', sessions: [{ id: 's', name: '会话', workspaceRef: 'p' }] },
-    { id: 'worker', name: '工人', engine: 'echo', sessions: [] },
-    { id: 'second', name: '副主控', engine: 'echo', lead: true, sessions: [] },
-    { id: 'removed', name: '已删除', engine: 'echo', deletedAt: 1, sessions: [] },
-  ], workspaces: [{ id: 'p', name: '项目' }], work: { s: { active: false } }, stats: {}, prefs: { onboardedAt: 1 } }
-  const loaded = await loadClient(['page.js', 'role-seat.js'], {
-    uiShared: {
-      useStateView: () => ({ view, refresh: async () => {} }),
-      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
-      completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
-      subscribeNativeSession() {}, readNativeSession: () => null,
-      call: async (endpoint, payload) => { calls.push(JSON.parse(JSON.stringify({ endpoint, payload }))); return {} },
-    },
-    globals: {
-      document: { visibilityState: 'visible', hasFocus: () => true },
-      window: { addEventListener() {}, removeEventListener() {} },
-      localStorage: { getItem: key => key === 'nodo.navigation'
-        ? JSON.stringify({ profile: 'lead', workspace: 'p', sessions: { 'p:lead': 's' } }) : null, setItem() {} },
-    },
-  })
-  const all = node => node && typeof node === 'object'
-    ? [node, ...[...(node.children ?? []), ...Object.values(node.props ?? {})].flatMap(all)] : []
-  const render = () => { loaded.host.reset(); return all(loaded.NodoPage({ contentOnly: true })) }
-  const composer = () => render().find(node => node.props?.onModelChange)
-  const picker = () => composer().props.assigneePicker
-  const trigger = () => all(loaded.AssigneePicker(picker().props)).find(node => node.props?.['aria-label']?.startsWith('执行者：'))
-
-  assert.ok(picker(), 'a lead with a roster shows the executor picker')
-  assert.deepEqual(picker().props.roster.map(role => role.id), ['worker'], 'the roster drops the lead itself, other leads and deleted roles')
-  assert.equal(trigger().props['aria-label'], '执行者：自动')
-  picker().props.onSelect('worker')
-  assert.equal(trigger().props['aria-label'], '执行者：工人')
-  composer().props.onChange('派活')
-  await composer().props.onSend()
-  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
-  assert.equal(calls.find(item => item.endpoint === 'send').payload.assignee, 'worker')
-  assert.equal(picker().props.value, undefined, 'the pick returns to 自动 after the send')
-  picker().props.onSelect('worker')
-  view.profiles[0].lead = false
-  composer().props.onChange('再派一次')
-  await composer().props.onSend()
-  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
-  assert.equal('assignee' in calls.filter(item => item.endpoint === 'send').at(-1).payload, false,
-    'a pick that left the roster does not ride along')
-  view.profiles[0].lead = true
-  view.work.s = { active: true }
-  assert.equal(picker().props.disabled, true, 'a running lead turn disables the picker')
-  view.work.s = { active: false }
-  view.profiles[0].lead = false
-  assert.equal(picker(), false, 'a plain role has no picker')
-  view.profiles[0].lead = true
-  view.profiles[0].engine = 'dsh'
-  assert.equal(picker(), false, 'a dsh lead sends natively and has no picker')
-})
-
-test('the new conversation names an assignee for a lead and clears it after the send', async () => {
-  const calls = []
-  let local = 0
-  cursor = 0
-  const states = []
-  const view = { profiles: [
-    { id: 'lead', name: '主控', engine: 'echo', lead: true, sessions: [] },
-    { id: 'worker', name: '工人', engine: 'echo', sessions: [] },
-    { id: 'other', name: '副主控', engine: 'echo', lead: true, sessions: [] },
-  ], workspaces: [{ id: 'project', name: '项目', cwd: '/tmp' }] }
-  const draft = { id: 'd1', profile: 'lead', workspace: 'project' }
-  const { createNewConversation, Composer } = await loadClient(['new-conversation.js', 'composer.js', 'role-seat.js'], {
-    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
-    react: {
-      useState: initial => {
-        const at = cursor++
-        if (!(at in states)) states[at] = typeof initial === 'function' ? initial() : initial
-        return [states[at], next => { states[at] = typeof next === 'function' ? next(states[at]) : next }]
-      },
-      useRef: initial => ({ current: initial }), useEffect: () => {},
-    },
-    uiShared: {
-      useStateView: () => ({ view, error: '' }),
-      readImage: async file => file,
-      call: async (endpoint, payload) => {
-        calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
-        if (endpoint === 'session-create') return { id: 'session-1' }
-        return {}
-      },
-    },
-    globals: {
-      crypto: { randomUUID: () => '00000000-0000-0000-0000-000000000000' },
-      localStorage: { getItem: key => key === 'nodo.navigation' ? JSON.stringify({ profile: 'lead', workspace: 'project' }) : null, setItem() {} },
-    },
-  })
-  const all = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(all)] : []
-  const space = { getSnapshot: () => ({ active: true, drafting: true, draft }), showLegacy() {}, endDraft() {} }
-  const { NewConversation } = createNewConversation({ uiSession: { adapter: { current: { getSnapshot: () => ({ key: 'native-1' }) } } } }, space, 'ReferenceDialog')
-  const composer = () => { cursor = 0; return all(NewConversation({ draft })).find(node => node.type === Composer).props }
-  assert.deepEqual(composer().assigneePicker.props.roster.map(role => role.id), ['worker'])
-  composer().assigneePicker.props.onSelect('worker')
-  composer().onChange('派活')
-  await composer().onSend()
-  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
-  assert.equal(calls.find(item => item.endpoint === 'send').payload.assignee, 'worker')
-  assert.equal(composer().assigneePicker.props.value, undefined, 'the cleared draft returns the picker to 自动')
-  composer().assigneePicker.props.onSelect('worker')
-  composer().rolePicker.props.onSelect('worker')
-  composer().onChange('换个角色再发')
-  await composer().onSend()
-  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
-  assert.equal('assignee' in calls.filter(item => item.endpoint === 'send').at(-1).payload, false,
-    'switching roles drops the executor pick')
+  assert.ok(render().find(node => node.type === 'form' && node.props['aria-label'] === '添加角色'))
+  const addLead = render().find(node => node.type === 'button' && node.children.includes('添加主控'))
+  assert.equal(addLead.props.disabled, true)
+  assert.equal(addLead.props.title, '先添加执行角色')
 })
 
 test('roster buttons open the roles page with the role selected or a new draft', async () => {
@@ -3170,7 +3283,7 @@ test('deleting a lead or executor confirms and drops session drafts from memory 
     view.work = {}
     render().find(node => node.props?.['aria-label'] === '删除 Writer').props.onClick()
     assert.equal(modal().props.title, '删除角色“Writer”？')
-    assert.equal(rolesText(modal().children[0]), '将删除角色“Writer”，其 1 个会话会自动归档，可在「已归档」中查看。项目目录和文件会保留。')
+    assert.equal(rolesText(modal().children[0]), '将删除角色“Writer”，其 1 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。')
     assert.equal(calls.some(item => item.endpoint === 'profile-delete'), false, 'nothing is deleted before confirming')
     modal().props.footer.find(node => node.children.includes('取消')).props.onClick()
     assert.equal(modal(), undefined, 'cancel keeps the role and its drafts')

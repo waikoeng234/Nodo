@@ -49,7 +49,7 @@ export function PendingMessages({ items, disabled, onAction }) {
         }, label))))))
 }
 
-export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, assigneePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function Composer({ profile, workspace, value, images, running, busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
@@ -179,9 +179,8 @@ export function Composer({ profile, workspace, value, images, running, busy, rea
       (onInsert || onReference) && h(AddMenu, { key: profile?.engine, profile: profile ?? { engine: '' }, workspace, disabled: readOnly || busy, trigger, onInsert, onToken: insertToken, onGoal, onModelChange, onCompact, onReference,
         onUpload: onAttachFiles ? () => picker.current?.click() : undefined }),
       onModelChange && h(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange })),
-    h('span', { className: 'nodo-composer-target' }, assigneePicker,
-      rolePicker,
-      onModelChange && h(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange })),
+    rolePicker,
+    onModelChange && h(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange }),
     onSend && running && hasContent && h('button', { type: 'button', className: 'nodo-pending-stop',
       disabled: busy || readOnly, 'aria-label': '停止生成', title: '停止生成', onClick: onStop }, ComposerGlyph(true)),
     onSend && h(Tooltip, {

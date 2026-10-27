@@ -1,11 +1,93 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { boot, until, withHost } from './helpers/host.js'
 import templates from '../core/shared/avatar-templates.json' with { type: 'json' }
 import { MAX_PROFILES } from '../core/src/constants.js'
+
+test('fallback is unique, transfers explicitly, survives ordering and passes on deletion', () => withHost(async ({ api, runtime }) => {
+  const first = await api('profile-create', { name: 'First', engine: 'echo', fallback: false })
+  const second = await api('profile-create', { name: 'Second', engine: 'echo', fallback: true })
+  const third = await api('profile-create', { name: 'Third', engine: 'echo' })
+  const rt = await runtime
+  const holders = () => Object.values(rt.state.profiles).filter(profile => profile.fallback === true).map(profile => profile.id)
+  assert.equal(first.fallback, true)
+  assert.equal(Object.hasOwn(second, 'fallback'), false, 'create ignores caller fallback')
+  await api('profile-update', { id: second.id, changes: { fallback: false } })
+  assert.equal(Object.hasOwn(rt.findProfile(second.id), 'fallback'), false)
+  for (const fallback of [false, null]) await assert.rejects(api('profile-update', { id: first.id, changes: { fallback } }), { code: 'orch/invalid', message: '兜底标记只能转移给其他角色' })
+  await api('profile-update', { id: second.id, changes: { fallback: true } })
+  assert.deepEqual(holders(), [second.id])
+  assert.equal(Object.hasOwn(rt.findProfile(first.id), 'fallback'), false)
+  await api('profile-order', { ids: [third.id, first.id, second.id] })
+  assert.deepEqual(holders(), [second.id], 'reordering keeps the current fallback')
+  await api('profile-delete', { id: second.id })
+  assert.deepEqual(holders(), [third.id], 'the first remaining executor takes over')
+  assert.equal(Object.hasOwn(rt.state.profiles[second.id], 'fallback'), false)
+  await api('profile-delete', { id: third.id })
+  await api('profile-delete', { id: first.id })
+  assert.deepEqual(holders(), [])
+}))
+
+test('leads require an executor and cannot remove or promote the last one before host archival', () => withHost(async ({ api, runtime }) => {
+  await assert.rejects(api('profile-create', { name: 'Lead', engine: 'echo', lead: true }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
+  const worker = await api('profile-create', { name: 'Worker', engine: 'echo' })
+  await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true } }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
+  const lead = await api('profile-create', { name: 'Lead', engine: 'echo', lead: true, fallback: true })
+  assert.equal(Object.hasOwn(lead, 'fallback'), false)
+  const rt = await runtime
+  let archived = false
+  rt.archiveHostSessions = async () => { archived = true }
+  await assert.rejects(api('profile-delete', { id: worker.id }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
+  assert.equal(archived, false)
+  await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true, name: 'Refused' } }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
+  assert.equal(rt.findProfile(worker.id).name, 'Worker')
+  await assert.rejects(api('profile-update', { id: lead.id, changes: { fallback: true } }), { code: 'orch/invalid', message: '兜底角色必须是执行角色' })
+  await assert.rejects(api('task-types-update', { types: [] }), { code: 'orch/invalid', message: '至少保留一个任务类型' })
+  const second = await api('profile-create', { name: 'Second', engine: 'echo' })
+  await api('profile-update', { id: worker.id, changes: { lead: true } })
+  assert.equal(rt.findProfile(second.id).fallback, true, 'promoting fallback hands it to the remaining executor')
+  assert.equal(Object.hasOwn(rt.findProfile(worker.id), 'fallback'), false)
+  await api('profile-delete', { id: lead.id })
+  await api('profile-delete', { id: worker.id })
+  await api('profile-delete', { id: second.id })
+}))
+
+for (const [label, profiles, holder] of [
+  ['legacy', { a: { id: 'a' }, b: { id: 'b' } }, 'a'],
+  ['invalid holders', { lead: { id: 'lead', lead: true, fallback: true }, removed: { id: 'removed', deletedAt: 1, fallback: true }, a: { id: 'a' }, b: { id: 'b', fallback: true }, c: { id: 'c', fallback: true } }, 'b'],
+  ['empty roster', { lead: { id: 'lead', lead: true, fallback: true }, removed: { id: 'removed', deletedAt: 1, fallback: true } }, undefined],
+]) test(`loading ${label} state repairs fallback in roster order`, async () => {
+  const home = mkdtempSync(join(tmpdir(), 'orch-fallback-'))
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ version: 2, profiles }))
+  const host = boot(home)
+  try {
+    const view = await host.api('state')
+    assert.deepEqual(view.profiles.filter(profile => profile.fallback).map(profile => profile.id), holder ? [holder] : [])
+    for (const profile of view.profiles.filter(profile => profile.id !== holder)) assert.equal(Object.hasOwn(profile, 'fallback'), false)
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('transferring fallback keeps the conversation, identity and driver', () => withHost(async ({ api, runtime, home }) => {
+  const first = await api('profile-create', { name: 'First', engine: 'echo' })
+  const second = await api('profile-create', { name: 'Second', engine: 'echo' })
+  const workspace = await api('workspace-create', { name: 'Project', cwd: join(home, 'ws') })
+  const session = await api('session-create', { profile: first.id, workspace: workspace.id, lazy: true })
+  const rt = await runtime
+  await (await rt.send(first.id, 'Question', session.id)).completion
+  const before = (await api('state')).profiles.find(profile => profile.id === first.id)
+  const driver = rt.driverOf(session.id), identity = rt.renderIdentity(before)
+  await api('profile-update', { id: second.id, changes: { fallback: true } })
+  const edited = (await api('state')).profiles.find(profile => profile.id === first.id)
+  assert.deepEqual(edited.sessions, before.sessions)
+  assert.equal(edited.activeSessionId, before.activeSessionId)
+  assert.equal(rt.renderIdentity(edited), identity)
+  assert.equal(await rt.ensureDriver(await rt.prepareConversation(session.id)), driver)
+  await api('profile-update', { id: first.id, changes: { fallback: true } })
+  assert.equal(await rt.ensureDriver(await rt.prepareConversation(session.id)), driver)
+}))
 
 test('deleting a role archives its sessions and preserves history, stats and references across restart', async () => {
   const home = mkdtempSync(join(tmpdir(), 'orch-soft-delete-'))
@@ -126,23 +208,27 @@ test('editing display identity leaves prompts, conversations and the running dri
   }
 }))
 
-test('lead flags normalize, persist only when true and keep the existing conversation and driver', () => withHost(async ({ api, runtime, home }) => {
+test('lead flags normalize, persist only when true, keep the existing conversation and respawn the driver only when the flag flips', () => withHost(async ({ api, runtime, home }) => {
   const rt = await runtime
   const workspace = await api('workspace-create', { name: 'Lead flag', cwd: join(home, 'ws') })
+  await api('profile-create', { name: 'Executor', engine: 'echo' })
   const profile = await api('profile-create', { name: 'Lead', engine: 'echo', lead: true, engineOptions: { script: [{ kind: 'text', text: 'Done' }] } })
   assert.equal(profile.lead, true)
   const session = await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })
   await api('send', { profile: profile.id, session: session.id, text: 'Question' })
   await until(() => !rt.workView()[session.id]?.active && rt.conversation(profile.id, session.id).session.briefSent)
-  const driver = rt.driverOf(session.id)
+  let driver = rt.driverOf(session.id), wasLead = true
   const before = (await api('state')).profiles.find(item => item.id === profile.id)
   for (const lead of [false, 1, 'yes', 'false', true, null]) {
     const edited = await api('profile-update', { id: profile.id, changes: { lead } })
     assert.equal(edited.lead, lead === true ? true : undefined)
     assert.equal(Object.hasOwn(rt.findProfile(profile.id), 'lead'), lead === true)
-    assert.deepEqual(edited.sessions, before.sessions)
+    assert.deepEqual(edited.sessions.map(({ updatedAt, ...item }) => item), before.sessions.map(({ updatedAt, ...item }) => item))
     assert.equal(edited.activeSessionId, session.id)
-    assert.equal(await rt.ensureDriver(await rt.prepareConversation(session.id)), driver)
+    const next = await rt.ensureDriver(await rt.prepareConversation(session.id))
+    assert.equal(next === driver, (lead === true) === wasLead)
+    driver = next
+    wasLead = lead === true
   }
   for (const lead of [false, 1, 'yes', 'false', null]) {
     const ordinary = await api('profile-create', { name: `Ordinary ${typeof lead} ${lead}`, engine: 'echo', lead })

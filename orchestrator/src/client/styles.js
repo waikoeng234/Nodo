@@ -287,9 +287,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 /* The caret marks focus in the text surface; the page's control ring stays off it. */
 .nodo-page .nodo-composer textarea:focus-visible{outline:none}
 .nodo-composer-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:2px 8px 6px}
-.nodo-composer-tools{display:flex;align-items:center;gap:12px;min-width:0}
-.nodo-composer-target{display:inline-flex;align-items:center;gap:8px;min-width:0;margin-left:auto;max-width:calc(100% - 46px)}
-.nodo-composer-target:last-child{max-width:100%}
+.nodo-composer-tools{display:flex;align-items:center;gap:12px;min-width:0;margin-right:auto}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px;max-height:90px;overflow:auto}
 .nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
@@ -520,6 +518,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-engine-pick:hover:not(:disabled),.nodo-engine-pick[aria-pressed=true]{border-color:var(--dsw-alias-border-l4)}
 .nodo-engine-pick[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-onboard-dialog{width:min(760px,100%);gap:14px;padding-bottom:16px}
+.nodo-onboard-dialog .nodo-engine-content{height:min(320px,50vh)}
 .nodo-engine-detail{margin:0 5px 5px;padding:16px;border-radius:calc(var(--nodo-engine-radius) + 4px);background:var(--dsw-specific-sidebar-fill)}
 .nodo-engine-connection{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .nodo-engine-connection strong,.nodo-engine-scan strong{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;line-height:20px}

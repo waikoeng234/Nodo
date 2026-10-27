@@ -101,7 +101,7 @@ export const workspacePicker = ({ workspaces, workspace, running = new Set(), op
 
 interface RailProps {
   view: RailView; profile?: RailRole | null; workspace?: RailWorkspace | null; sessionId?: string
-  editing?: { kind?: string; profile?: RailRole | null } | null; draft?: { profile?: string; workspace?: string } | null
+  editing?: { kind?: string; profile?: RailRole | null } | null; draft?: { profile?: string; workspace?: string } | null; drafting?: boolean
   readOnly?: boolean; busy?: boolean; runsWaiting?: boolean; navigation?: RailNavigation | null
   onResumeDraft: () => void; onSelect: (id: string) => void
   onSelectSession: (role: RailRole, id: string, project?: RailWorkspace) => void; onArchiveSession: (role: RailRole, id: string, archived: boolean) => void
@@ -111,7 +111,7 @@ interface RailProps {
   onNewWorkspace: () => void; onRenameWorkspace: (workspace: RailWorkspace) => void; onDeleteWorkspace: (workspace: RailWorkspace) => void
 }
 
-export function Rail({ view, profile, workspace, sessionId, editing, draft, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
+export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
   const [queries, setQueries] = useState<Record<string, string>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [archives, setArchives] = useState<Record<string, Archived>>({})
@@ -175,12 +175,12 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
     const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries
     return (
       <div className="nodo-tree-children">
-        {pending && <button type="button" className="nodo-row nodo-session" onClick={onResumeDraft} title="新会话（草稿）">
+        {pending && <button type="button" className="nodo-row nodo-session" aria-current={drafting ? 'page' : undefined} onClick={onResumeDraft} title="新会话（草稿）">
           {draftRole ? <RoleAvatar profile={draftRole} size={18} /> : <span className="nodo-folder"><IconNewChatOutlineRegular size={16} /></span>}
           <span className="nodo-row-title">新会话</span>
         </button>}
         {visible.map(({ role, session }) => <SessionRow key={session.id} role={role} session={session} busy={busy}
-          current={session.id === sessionId && !editing} work={view.work[session.id]}
+          current={session.id === sessionId && !editing && !drafting} work={view.work[session.id]}
           onSelect={() => onSelectSession(role, session.id, item)} onArchive={archived => onArchiveSession(role, session.id, archived)}
           onRename={() => onRenameSession(role, session)} onPin={pinned => onPinSession(role, session.id, pinned)} />)}
         {folded && <button type="button" className="nodo-show-more" aria-expanded={!!expanded[item.id]}
@@ -313,7 +313,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, onRe
               <div className="nodo-project">{toggle(':archived', !!opened[':archived'], IconArchiveOutlineRegular, '已移除', undefined, [])}</div>
               {opened[':archived'] && <div className="nodo-tree-children">
                 {archivedSessions.map(({ role, session, workspaceId }) => <SessionRow key={session.id} role={role} session={session} busy={busy} readOnly
-                  current={session.id === sessionId && !editing}
+                  current={session.id === sessionId && !editing && !drafting}
                   context={`${session.profileName ?? role.name} · ${session.workspaceName ?? view.workspaces.find(item => item.id === workspaceId)?.name ?? session.cwd ?? '未指定项目'}`}
                   onSelect={() => onSelectSession(role, session.id)} onArchive={() => {}} onRename={() => {}} onPin={() => {}} />)}
               </div>}

@@ -8,6 +8,7 @@ import { basename, join } from 'node:path'
 import { NAME_MAX, TRANSCRIPT_MAX } from './constants.js'
 import { normalize } from './text.js'
 import { homeLock } from './home-lock.js'
+import { ensureFallback } from './profiles.js'
 
 const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'stats', 'workflows', 'engineCatalogs', 'prefs']
 const blank = () => ({ version: 2, workspaces: {}, profiles: {}, transcripts: {}, stats: {}, workflows: {}, engineCatalogs: {}, prefs: {}, probe: null, revision: 0 })
@@ -104,6 +105,7 @@ export function install(rt) {
     for (const key of SECTIONS) if (!isRecord(state[key])) state[key] = {}
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
+    ensureFallback(state.profiles)
     const choices = [...Object.values(state.prefs.engineConfigs ?? {}),
       ...Object.values(state.profiles).flatMap(profile => [profile, ...(profile.sessions ?? [])])]
     for (const choice of choices) if (choice?.thinking === 'default') delete choice.thinking

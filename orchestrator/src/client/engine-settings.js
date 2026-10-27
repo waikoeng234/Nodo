@@ -1,9 +1,11 @@
 import {
-  h, Fragment, useState, useEffect, call, ENGINE_FORM, Modal, Button, StateDot,
+  h, Fragment, useState, useEffect, call, nativePickDirectory, nativeSpace, ENGINE_FORM, Modal, Button, StateDot,
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconRefreshOutlineRegular,
 } from './ui-shared.js'
 import { Field } from './profile-dialogs.js'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
+import { setNavigation } from './page.js'
+import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 
 // Settings is the host's modal too: the same card and field metrics as the role
 // dialog, with the primary action submitting the form inside it
@@ -173,14 +175,19 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
     error !== '' && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)))
 }
 
-// First-run onboarding: the engines we adapt and detected on this machine, one
-// tap each to choose which to enable. Skipping (or closing) keeps them all —
-// the host only marks onboarding done when the list arrives empty.
-export function OnboardingDialog({ onDone }) {
+export function OnboardingDialog({ view, onDone }) {
   const [engines, setEngines] = useState(null)
   const [picked, setPicked] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [step, setStep] = useState('engines')
+  const [name, setName] = useState('万能助手')
+  const [engine, setEngine] = useState('')
+  const [project, setProject] = useState({ name: '', cwd: '' })
+  const [picking, setPicking] = useState(false)
+  const [created, setCreated] = useState({})
+  const executor = view?.profiles.find(profile => !profile.deletedAt && profile.lead !== true)
+  const hasWorkspace = (view?.workspaces.length ?? 0) > 0
   useEffect(() => {
     let live = true
     void call('engine-detect').then(items => {
@@ -196,10 +203,50 @@ export function OnboardingDialog({ onDone }) {
   const finish = async () => {
     if (busy) return
     setBusy(true); setError('')
-    try { await call('engine-enable-set', { engines: picked ? [...picked] : [] }) }
+    try { if (step === 'engines') await call('engine-enable-set', { engines: picked ? [...picked] : [] }) }
     catch (failure) { setError(failure.message) }
     finally { setBusy(false) }
     onDone()
+  }
+  const complete = saved => {
+    if (saved.profile || saved.workspace) {
+      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view?.workspaces[0]?.id }
+      setNavigation(current => ({ ...current, archivedSession: undefined, ...selection }))
+      nativeSpace?.startDraft(selection)
+    }
+    onDone()
+  }
+  const next = async () => {
+    if (busy || (step === 'engines' && !picked?.size) || (step === 'role' && (!name.trim() || !picked?.has(engine)))
+      || (step === 'workspace' && (!project.name.trim() || !project.cwd.trim()))) return
+    setBusy(true); setError('')
+    try {
+      if (step === 'engines') {
+        await call('engine-enable-set', { engines: [...picked] })
+        if (!executor) { setEngine([...picked][0]); setStep('role') }
+        else if (!hasWorkspace) setStep('workspace')
+        else complete(created)
+      } else if (step === 'role') {
+        const profile = await call('profile-create', { name: name.trim(), engine, avatarTemplate: AVATAR_TEMPLATES[0].id })
+        const saved = { ...created, profile: profile.id }
+        setCreated(saved)
+        if (!hasWorkspace) setStep('workspace')
+        else complete(saved)
+      } else {
+        const workspace = await call('workspace-create', { name: project.name.trim(), cwd: project.cwd.trim() })
+        complete({ ...created, workspace: workspace.id })
+      }
+    } catch (failure) { setError(failure.message) }
+    finally { setBusy(false) }
+  }
+  const choose = async () => {
+    if (busy || picking || !nativePickDirectory) return
+    setPicking(true); setError('')
+    try {
+      const path = await nativePickDirectory()
+      if (path) setProject(current => ({ ...current, cwd: path }))
+    } catch (failure) { setError(failure.message) }
+    finally { setPicking(false) }
   }
   const toggle = id => setPicked(current => {
     if (current.has(id) && current.size === 1) return current
@@ -209,19 +256,21 @@ export function OnboardingDialog({ onDone }) {
   })
   return h(Modal, {
     open: true, onClose: () => void finish(), closeLabel: '跳过',
-    title: '欢迎使用 Nodo',
-    description: '检测到本机已安装 Nodo 适配的编码智能体。选择要启用的 Agent，随时可在设置中调整。',
+    title: step === 'engines' ? '启用 Agent' : step === 'role' ? '创建万能角色' : '添加项目',
+    description: step === 'engines' ? '选择要启用的 Agent，随时可在设置中调整。'
+      : step === 'role' ? '为万能助手取个名字，选择使用的 Agent。' : '选择本机工作目录，角色将在其中工作。',
     className: 'nodo-dialog nodo-onboard-dialog',
     contentClassName: 'nodo-engine-shell',
     footer: [
-      h('span', { key: 'hint', className: 'nodo-dialog-leading nodo-dialog-hint' }, '新角色默认使用第一个启用的 Agent'),
-      h(Button, { key: 'go', variant: 'primary', disabled: busy || picked === null || picked.size === 0, onClick: () => void finish() },
-        busy ? '保存中…' : '开始使用'),
+      h('span', { key: 'hint', className: 'nodo-dialog-leading nodo-dialog-hint' }, step === 'engines' ? '新角色默认使用第一个启用的 Agent' : ''),
+      h(Button, { key: 'go', type: 'submit', form: 'nodo-onboard-form', variant: 'primary',
+        disabled: busy || (step === 'engines' ? !picked?.size : step === 'role' ? !name.trim() || !picked?.has(engine) : !project.name.trim() || !project.cwd.trim()),
+      }, busy ? '保存中…' : step === 'workspace' ? '完成' : '下一步'),
     ],
   },
-  h('div', { className: 'nodo-engine-content' },
-    engines === null && h('p', { className: 'nodo-dialog-hint', role: 'status' }, '正在检测本机 Agent…'),
-    engines !== null && [
+  h('form', { id: 'nodo-onboard-form', className: 'nodo-engine-content', onSubmit: event => { event.preventDefault(); void next() } },
+    step === 'engines' && engines === null && h('p', { className: 'nodo-dialog-hint', role: 'status' }, '正在检测本机 Agent…'),
+    step === 'engines' && engines !== null && [
       h('h3', { key: 'group', className: 'nodo-engine-group' }, '在系统中已检测', h('span', null, engines.length)),
       h('div', { key: 'grid', className: 'nodo-engine-grid' }, ...engines.map(item => {
         const on = picked?.has(item.id) === true
@@ -233,5 +282,21 @@ export function OnboardingDialog({ onDone }) {
       })),
       engines.length === 0 && h('p', { className: 'nodo-dialog-hint' }, '未检测到已适配的 Agent；安装 CLI 或在设置的 Agent 卡片中填写路径后即可使用。'),
     ],
+    step === 'role' && h('div', { className: 'nodo-dialog-fields' },
+      h(Field, { label: '名字', required: true }, h('input', { className: 'nodo-dialog-input', 'aria-label': '名字',
+        'data-modal-autofocus': true, required: true, maxLength: 40, disabled: busy, value: name, onChange: event => setName(event.target.value) })),
+      h(Field, { label: 'Agent', required: true }, h('select', { className: 'nodo-dialog-input nodo-dialog-select', 'aria-label': 'Agent',
+        disabled: busy, value: engine, onChange: event => setEngine(event.target.value) },
+      ...[...picked].map(id => h('option', { key: id, value: id }, engineDisplayName(engines.find(item => item.id === id))))))),
+    step === 'workspace' && h('div', { className: 'nodo-dialog-fields' },
+      h(Field, { label: '名字', required: true }, h('input', { className: 'nodo-dialog-input', 'aria-label': '项目名称',
+        'data-modal-autofocus': true, required: true, maxLength: 40, disabled: busy, value: project.name,
+        placeholder: '例如 Website', onChange: event => setProject(current => ({ ...current, name: event.target.value })) })),
+      h(Field, { label: '工作区目录', required: true }, nativePickDirectory
+        ? h('div', { className: 'nodo-dialog-pick' },
+          h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() }, picking ? '选择中…' : '选择目录…'),
+          h('p', { className: 'nodo-dialog-path', title: project.cwd }, project.cwd || '尚未选择目录'))
+        : h('input', { className: 'nodo-dialog-input', 'aria-label': '项目目录', required: true, disabled: busy, value: project.cwd,
+          placeholder: '/absolute/path (created if missing)', onChange: event => setProject(current => ({ ...current, cwd: event.target.value })) }))),
     error !== '' && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)))
 }

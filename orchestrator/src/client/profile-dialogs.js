@@ -22,9 +22,10 @@ export function Field({ label, children, group = false, required = false }) {
  * @param {{ profile?: RoleCard | null, avatarSeed?: number, enabledEngines?: string[] | null,
  *   savedIdentities?: unknown[] | null, refresh?: ((force?: boolean) => Promise<void>) | null, readOnly?: boolean,
  *   onSaved: (saved: { id: string }) => Promise<void> | void, onCancel: () => void,
- *   onDeleted: (item: { id: string }) => Promise<void> | void, onDirtyChange?: ((dirty: boolean) => void) | null }} props
+ *   onDeleted: (item: { id: string }) => Promise<void> | void, onDirtyChange?: ((dirty: boolean) => void) | null,
+ *   deleteReason?: string, deleteHint?: string }} props
  */
-export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange }) {
+export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason, deleteHint }) {
   // Saved identities ride prefs, so the picker offers them to every later new
   // role and a deleted role card never takes its saved identity along.
   const lead = profile?.lead === true
@@ -189,18 +190,18 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
           h('p', null, meta)),
         h('div', { className: 'nodo-role-actions' },
           profile && h(Menu, { open: menuOpen, onClose: () => setMenuOpen(false), portal: true,
-            items: [{ id: 'delete', label: '删除角色', disabled }],
-            onSelect: () => { setMenuOpen(false); setConfirming(true) },
+            items: [{ id: 'delete', label: '删除角色', disabled: disabled || !!deleteReason }],
+            onSelect: () => { if (!deleteReason) { setMenuOpen(false); setConfirming(true) } },
             anchor: h('button', { type: 'button', className: 'nodo-row-action nodo-role-more', 'aria-haspopup': 'menu', 'aria-expanded': menuOpen,
-              'aria-label': '更多操作', disabled, onClick: () => setMenuOpen(open => !open) }, h(IconEllipsisOutlineRegular, { size: 16 })) }),
+              'aria-label': '更多操作', disabled: disabled || !!deleteReason, title: deleteReason, onClick: () => setMenuOpen(open => !open) }, h(IconEllipsisOutlineRegular, { size: 16 })) }),
           h(Button, { type: 'button', variant: 'outline', disabled, onClick: onCancel }, '取消'),
           h(Button, { type: 'submit', form: ROLE_FORM, variant: 'primary',
             disabled: disabled || loading || !engine || !draft.name.trim() || !dirty,
           }, busy ? '保存中…' : profile ? '保存' : '创建角色'))),
       confirming && h('div', { className: 'nodo-role-confirm-row', role: 'alert' },
-        h('p', { className: 'nodo-role-confirm' }, `将删除角色“${profile.name}”，其 ${sessions} 个会话会自动归档，可在「已归档」中查看。项目目录和文件会保留。`),
+        h('p', { className: 'nodo-role-confirm' }, `将删除角色“${profile.name}”，其 ${sessions} 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。${deleteHint ?? ''}`),
         h(Button, { type: 'button', variant: 'outline', disabled, onClick: () => setConfirming(false) }, '取消'),
-        h(Button, { type: 'button', variant: 'outline', className: 'nodo-dialog-danger', disabled, onClick: () => void removeProfile() },
+        h(Button, { type: 'button', variant: 'outline', className: 'nodo-dialog-danger', disabled: disabled || !!deleteReason, title: deleteReason, onClick: () => void removeProfile() },
           busy ? '删除中…' : '删除角色')),
       h('div', { className: 'nodo-field nodo-templates', role: 'group', 'aria-label': '模板' },
         h('div', { className: 'nodo-templates-head' },

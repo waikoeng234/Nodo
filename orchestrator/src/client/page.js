@@ -2,7 +2,7 @@ import {
   h, useState, useEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
   subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular,
 } from './ui-shared.js'
-import { RolePicker, AssigneePicker } from './role-seat.js'
+import { RolePicker } from './role-seat.js'
 import { Rail } from './session-rail.tsx'
 import { RunningLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
@@ -157,6 +157,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // First-run onboarding dismisses for the rest of the browser session even if
   // the host could not persist the flag, so it can never block the page.
   const [onboardDone, setOnboardDone] = useState(false)
+  const onboarding = useRef(false)
+  if (view && view.prefs?.onboardedAt == null) onboarding.current = true
   const [busy, setBusy] = useState(false)
   const selection = useRef(0)
   const [pending, setPending] = useState([])
@@ -165,9 +167,6 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // the host chat's rule that submitted input supersedes reader position.
   const [sentTick, setSentTick] = useState(0)
   const [actionError, setActionError] = useState('')
-  // One message's executor pick, keyed like the drafts; a sent message returns
-  // the picker to 自动.
-  const [assignees, setAssignees] = useState({})
   const archived = view?.profiles.flatMap(role => role.sessions.filter(session => session.id === navigation.archivedSession && session.archivedAt)
     .map(session => ({ role, session })))[0]
   const profiles = view?.profiles.filter(item => !item.deletedAt) ?? []
@@ -190,11 +189,6 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const composerProfile = profile && session
     ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission }
     : profile
-  // The executor picker exists for a lead conversation whose engine goes through
-  // send: its roster follows the core's rule (no self, no leads), roster order.
-  const roster = profile?.lead === true && profile.engine !== 'dsh'
-    ? profiles.filter(item => item.id !== profile.id && item.lead !== true) : []
-  const assignee = assignees[draftKey]
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
     ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
@@ -332,12 +326,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     try {
       const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })).id
       const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) }))
-      // A pick that dropped out of the roster (the role stopped being a lead,
-      // the executor became one or was deleted) must not ride along and fail the send.
-      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue',
-        ...(roster.some(item => item.id === assignee) ? { assignee } : {}) })
+      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue' })
       if (current()) setSentTick(tick => tick + 1)
-      setAssignees(current => ({ ...current, [draftKey]: undefined }))
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
       await refresh(true)
@@ -409,9 +399,6 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       onGoal: () => setGoalOpen(true), onCompact: () => void compactSession(),
       onModelChange: changes => void updateEngineChoice(changes),
       rolePicker: h(RolePicker, { profiles: view.profiles, profile }),
-      assigneePicker: roster.length > 0 && h(AssigneePicker, { roster, value: assignee,
-        disabled: sessionBusy || readOnly || work?.active === true,
-        onSelect: id => setAssignees(current => ({ ...current, [draftKey]: id })) }),
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -435,7 +422,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     error && h('p', { className: 'nodo-error-line', role: 'alert' }, error),
     h('div', { className: 'nodo-frame' },
       !contentOnly && view && h(Rail, {
-        view: railView, profile, workspace, sessionId, editing, draft: space.draft, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, navigation: railNavigation,
+        view: railView, profile, workspace, sessionId, editing, draft: space.draft, drafting: space.drafting, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, navigation: railNavigation,
         onSelect: id => {
           const role = view.profiles.find(item => item.id === id)
           if (role && workspace) void select(role)
@@ -491,8 +478,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     editing?.kind === 'settings' && h(EngineSettingsDialog, {
       key: 'settings', view, workspace, refresh, readOnly, onClose: cancelEditing,
     }),
-    view && !readOnly && !onboardDone && view.prefs?.onboardedAt == null && h(OnboardingDialog, {
-      key: 'onboard', onDone: () => { setOnboardDone(true); refresh(true) },
+    view && !readOnly && !onboardDone && onboarding.current && h(OnboardingDialog, {
+      key: 'onboard', view, onDone: () => { setOnboardDone(true); refresh(true) },
     }),
     )
 }
