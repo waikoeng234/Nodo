@@ -14,11 +14,11 @@ test('a new installation creates no roles, before or after onboarding', async ()
   })
 })
 
-test('the role dialog offers three identity presets with duties, limits and deliverables', () => {
-  assert.deepEqual(presets.map(item => item.name), ['decider', 'coder', 'reviewer'])
+test('the role dialog offers identity presets with limits and deliverables', () => {
+  assert.deepEqual(presets.map(item => item.name), ['leader', 'researcher', 'coder', 'tester', 'reviewer', 'writer'])
   for (const preset of presets) {
     assert.deepEqual(Object.keys(preset), ['name', 'role', 'instructions'], 'a preset carries identity only, never an engine')
     assert.match(preset.instructions, new RegExp(`你是 ${preset.name}`))
-    for (const section of [/职责：/, /边界：/, /交付：/]) assert.match(preset.instructions, section)
+    for (const section of [/边界：/, /交付：/]) assert.match(preset.instructions, section)
   }
 })

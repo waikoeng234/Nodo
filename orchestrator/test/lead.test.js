@@ -116,30 +116,6 @@ test('lead briefs refresh the roster without changing identity, stored user text
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
 }))
 
-for (const routing of [false, true]) test(`coordination guidance reaches initial and report turns in ${routing ? 'task-type' : 'roster'} mode without changing identity or task history`, () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
-  const worker = await role('Worker', 'Work completed', routing ? { taskTypes: ['bug-fix'] } : {})
-  const lead = await role('Lead', 'Accepted', { lead: true })
-  const conversation = await session(lead)
-  const identity = rt.renderIdentity(rt.findProfile(lead.id))
-  await send(lead, conversation, 'Fix the reported issue')
-  await rt.followLead(lead.id, conversation.id, completed(routing ? delegateType('bug-fix', false) : delegate(worker.id)))
-
-  const marker = '## 任务组织与验收\n'
-  const leadInputs = inputs.filter(input => input.profileId === lead.id)
-  assert.equal(leadInputs.length, 2)
-  const guidance = leadInputs.map(input => input.text.split(marker)[1]?.split(routing ? '## Task types' : '## Roster')[0])
-  assert.ok(guidance[0])
-  assert.equal(guidance[1], guidance[0], 'the report turn must retain the initial coordination guidance')
-  for (const section of ['开始任务时：', '分配工作时：', '划分任务时：', '收到任何交付后：']) assert.ok(guidance[0].includes(section))
-  assert.ok(leadInputs[0].text.endsWith('\n\nFix the reported issue'))
-  assert.ok(leadInputs[1].text.includes('Report from Worker'))
-  assert.equal(rt.renderIdentity(rt.findProfile(lead.id)), identity)
-  assert.ok(lines(conversation).every(line => !line.text?.includes(marker)))
-  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  assert.ok(lines(work).every(line => !line.text?.includes(marker)))
-  assert.ok(!inputs.find(input => input.profileId === worker.id).text.includes(marker))
-}))
-
 for (const [name, output, expected] of [
   ['invalid JSON', () => '```nodo\n{bad}\n```', /有效的 JSON/],
   ['unsupported action', () => '```nodo\n{"action":"plan"}\n```', /action 必须/],

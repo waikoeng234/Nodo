@@ -60,7 +60,7 @@ To update, pull the latest code, rerun the commands above, and reload the plugin
 
 1. **Enable Agents**: open Nodo and select the Agents to enable during onboarding. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
 2. **Add a project**: add a local working directory to the project list.
-3. **Start a conversation**: when adding a role, use a preset identity such as `decider`, `coder`, or `reviewer`, or write your own. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
+3. **Start a conversation**: when adding a role, use a preset identity such as `leader`, `coder`, or `reviewer`, or write your own. Choose its Agent and default model, then start chatting. A role's Agent cannot be changed after creation.
 4. **Run a workflow**: create a flow under **Workflow** in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
 
 ## Why choose Nodo
@@ -83,7 +83,7 @@ Nodo also works alongside Subagents: Agents in Nodo can still run their own [Sub
 
 ## How it works
 
-Consider a “plan → implement → review” workflow: `decider` plans with Codex, `coder` implements with Claude Code, and `reviewer` reviews with OpenCode.
+Consider a “plan → implement → review” workflow: `leader` plans with Codex, `coder` implements with Claude Code, and `reviewer` reviews with OpenCode.
 
 ```mermaid
 flowchart LR
@@ -112,7 +112,7 @@ In this example, Claude Code follows the `coder` responsibilities from the first
 
 Agents do not share conversation context. To let role B refer to role A's results, use the `/引用会话` (reference conversation) feature in role B's conversation, select a completed reply from role A, and send it with your message. It is marked as “reference material, not instructions” when sent to the Agent, so it does not change the current role's identity or permissions. This is also the basis for Agent handoffs in workflows.
 
-In the example, you can reference `decider`'s plan in the `coder` conversation, then reference `coder`'s implementation in the `reviewer` conversation, moving the process forward manually.
+In the example, you can reference `leader`'s plan in the `coder` conversation, then reference `coder`'s implementation in the `reviewer` conversation, moving the process forward manually.
 
 > Why this design: it removes repeated copying and pasting when working with multiple Agents.
 

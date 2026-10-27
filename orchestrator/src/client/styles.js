@@ -456,9 +456,9 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-role-panel[hidden]{display:none}
 .nodo-templates-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .nodo-templates-head>.nodo-text-button{margin-right:-8px}
-.nodo-templates-row{display:flex;gap:8px;padding-bottom:6px;overflow-x:auto;scroll-snap-type:x proximity}
-.nodo-template{position:relative;flex:none;scroll-snap-align:start}
-.nodo-role-dialog .nodo-template-pick{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:168px;height:52px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
+.nodo-templates-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.nodo-template{position:relative;min-width:0}
+.nodo-role-dialog .nodo-template-pick{display:flex;flex-direction:column;align-items:flex-start;gap:0;width:100%;height:52px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-template[data-saved] .nodo-template-pick{padding-right:26px}
 .nodo-template-pick:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-template-pick[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent)}
@@ -469,7 +469,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-template-remove{opacity:0}
 .nodo-template:is(:hover,:focus-within) .nodo-template-remove{opacity:1}
 .nodo-template-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
-.nodo-templates-divider{flex:none;width:1px;margin:8px 2px;background:var(--dsw-alias-border-l2)}
+.nodo-templates-divider{grid-column:1/-1;height:1px;background:var(--dsw-alias-border-l2)}
 .nodo-template-filled{display:flex;align-items:center;gap:8px;margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-template-filled>.nodo-text-button{height:24px;padding:0 6px}
 .nodo-identity-options{display:flex;flex-wrap:wrap;gap:8px}

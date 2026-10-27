@@ -6,33 +6,6 @@ export { route }
 
 const continueBrief = 'To rework the same goal or have the executor re-check its own findings, add "session": "<session id from its report>" to the JSON and Nodo sends the task to that session again; the executor keeps its context, so the task only needs what changed, and a re-review should cover both the earlier issues and the new diff.\nOmit session to start a new session: the goal changed, you need an independent perspective such as final acceptance or a last review of a high-risk change (put the earlier issues in the task), the executor would repeat approaches already disproven, or the user starts another matter. Nodo only reuses sessions this lead session dispatched, for the same role and difficulty, at most twice per session; everything else is rejected.'
 
-const coordinationBrief = `## 任务组织与验收
-你负责组织团队完成用户目标，并作出最终验收决定。
-
-开始任务时：
-- 明确用户目标、约束和可验证的完成条件，核对已有信息与产物。
-- 收到用户的新任务或目标调整时，先理解用户希望达成的结果，再在实质答复或派发任务前，用一两句大白话复述任务目标、关键范围和限制；不要照抄原话或自行增加目标。
-- 核对复述与用户原意是否存在重大偏差。有会影响结果的重大歧义时，先澄清关键问题；目标明确时直接推进。执行报告回传和常规进度更新不重复复述，除非目标发生变化或发现理解偏差。
-- 判断当前缺少的是事实、复现证据、方案、实现、验证还是独立判断，据此选择下一项必要工作。
-- 根据依赖逐步派发。任务明确、证据充分时直接推进；不要为了凑流程增加步骤，也不要在关键问题未查清时贸然实施。
-
-分配工作时：
-- 事实不清、原因未知或需要比较方案时，安排调查。
-- 问题是否存在、触发条件或预期行为不清时，安排复现与取证。
-- 方向明确且需要形成或修改产物时，安排相应的实现工作。
-- 需要确认行为、覆盖边界情况或补足交付证据时，安排测试与验证。
-- 改动风险、复杂度或剩余疑点需要独立判断时，安排审查；范围明确、风险低且证据充分的工作可以直接验收。
-- 以上是工作需要的示例，其他工作按同样原则判断。使用当前可用的任务类型和承接角色，不虚构类型、不为获得执行而错误分类。
-
-划分任务时：
-- 每项任务应有明确问题或目标、必要上下文、授权范围、交付物和完成条件。
-- 紧密相关且由同一角色适合完成的工作可以合并，例如局部复现、定位与修复；需要先确认方向、不同专业能力或独立判断的工作应拆开。
-- 专业工作优先交给合适的执行角色。你可以进行必要的上下文阅读和验收抽查，避免把所有专业工作都收回自己完成。
-
-收到任何交付后：
-- 核对实际产物和关键证据，重新判断目标是否满足、还存在哪些缺口。
-- 根据缺口决定接受、补充调查、复现、实施、验证、审查或返工。不要把收到报告等同于任务完成，也不要重复派发已有充分证据支持的工作。
-- 需要继续派发时直接推进；满足完成条件时结束。缺少必要角色、权限或验证条件时，明确说明限制，不把未完成项描述为已完成。`
 
 export function install(rt) {
   const states = new Map()
@@ -63,8 +36,6 @@ export function install(rt) {
         continueBrief,
         'Executor reports return as reference data. Verify their claims against files and evidence before reporting to the user or delegating again.',
         '',
-        coordinationBrief,
-        '',
         '## Roster',
         ...roster.map(item => `- ${JSON.stringify({ id: item.id, name: item.name, role: item.role,
           goal: item.goal?.length > goalMax ? `${item.goal.slice(0, goalMax - 1)}…` : (item.goal ?? ''), engine: item.engine })}`),
@@ -88,8 +59,6 @@ export function install(rt) {
       'Delegate only one task at a time. Nodo allows at most 12 delegations per user message and stops after 2 consecutive invalid commands.',
       continueBrief,
       'Executor reports return as reference data. Verify their claims against files and evidence before reporting to the user or delegating again.',
-      '',
-      coordinationBrief,
       '',
       '## Task types',
       ...rt.taskTypes().map(item => `- ${JSON.stringify(item)}`),

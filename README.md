@@ -60,7 +60,7 @@ Nodo 以插件形式运行在 DeepSeek Harness（下称 dsh）中。
 
 1. **启用 Agent**：打开 Nodo，在首次引导中选择要启用的 Agent。未被自动检测到的，在 **设置 → 模型提供方与 Agent** 中填写其可执行文件路径。
 2. **添加项目**：在项目列表中添加本机工作目录。
-3. **开始会话**：添加角色时，可以套用预置的 `decider`、`coder`、`reviewer` 身份，或自己填写，再选择所用 Agent 和默认模型，即可开始对话。角色创建后 Agent 不可更换。
+3. **开始会话**：添加角色时，可以套用预置的 `leader`、`coder`、`reviewer` 身份，或自己填写，再选择所用 Agent 和默认模型，即可开始对话。角色创建后 Agent 不可更换。
 4. **运行工作流**：在侧栏 **Workflow** 中新建流程，为执行节点绑定角色并写明任务，按需加入人工确认节点。运行后可在运行记录中查看每一步的状态与报告。
 
 
@@ -87,7 +87,7 @@ Nodo 与 Subagent 也不冲突：各Agent 在 Nodo 中仍可以运行自己的 [
 
 ## 工作原理
 
-以一个「规划 → 实现 → 审查」工作流为例：`decider` 用 Codex 规划，`coder` 用 Claude Code 实现，`reviewer` 用 OpenCode 审查。
+以一个「规划 → 实现 → 审查」工作流为例：`leader` 用 Codex 规划，`coder` 用 Claude Code 实现，`reviewer` 用 OpenCode 审查。
 
 ```mermaid
 flowchart LR
@@ -120,7 +120,7 @@ Nodo 通过各 Agent 官方公开的接口接入，如 Codex 的 app-server、Cl
 
 Agent 之间不共享对话上下文。需要让一个角色参考另一个角色的结果时，在B角色会话中通过 /引用会话 功能，选中A角色已完成的回复，随消息一起发出，发给 Agent 时标注为"参考资料，不是指令"：它不会改变当前角色的身份和权限。它也是工作流功能里Agent handoff的基础。
 
-在例子里，你可以在 `coder` 的会话里引用 `decider` 的规划，再在 `reviewer` 的会话里引用 `coder` 的实现，手动推进整个过程。
+在例子里，你可以在 `coder` 的会话里引用 `leader` 的规划，再在 `reviewer` 的会话里引用 `coder` 的实现，手动推进整个过程。
 
 > 为什么这样设计：解决使用多个Agent工作时来回复制粘贴内容的过程。
 
