@@ -116,6 +116,30 @@ test('lead briefs refresh the roster without changing identity, stored user text
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
 }))
 
+for (const routing of [false, true]) test(`coordination guidance reaches initial and report turns in ${routing ? 'task-type' : 'roster'} mode without changing identity or task history`, () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
+  const worker = await role('Worker', 'Work completed', routing ? { taskTypes: ['bug-fix'] } : {})
+  const lead = await role('Lead', 'Accepted', { lead: true })
+  const conversation = await session(lead)
+  const identity = rt.renderIdentity(rt.findProfile(lead.id))
+  await send(lead, conversation, 'Fix the reported issue')
+  await rt.followLead(lead.id, conversation.id, completed(routing ? delegateType('bug-fix', false) : delegate(worker.id)))
+
+  const marker = '## 任务组织与验收\n'
+  const leadInputs = inputs.filter(input => input.profileId === lead.id)
+  assert.equal(leadInputs.length, 2)
+  const guidance = leadInputs.map(input => input.text.split(marker)[1]?.split(routing ? '## Task types' : '## Roster')[0])
+  assert.ok(guidance[0])
+  assert.equal(guidance[1], guidance[0], 'the report turn must retain the initial coordination guidance')
+  for (const section of ['开始任务时：', '分配工作时：', '划分任务时：', '收到任何交付后：']) assert.ok(guidance[0].includes(section))
+  assert.ok(leadInputs[0].text.endsWith('\n\nFix the reported issue'))
+  assert.ok(leadInputs[1].text.includes('Report from Worker'))
+  assert.equal(rt.renderIdentity(rt.findProfile(lead.id)), identity)
+  assert.ok(lines(conversation).every(line => !line.text?.includes(marker)))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  assert.ok(lines(work).every(line => !line.text?.includes(marker)))
+  assert.ok(!inputs.find(input => input.profileId === worker.id).text.includes(marker))
+}))
+
 for (const [name, output, expected] of [
   ['invalid JSON', () => '```nodo\n{bad}\n```', /有效的 JSON/],
   ['unsupported action', () => '```nodo\n{"action":"plan"}\n```', /action 必须/],
@@ -180,10 +204,56 @@ test('a running delegation excludes a second one in the same lead session', () =
   assert.ok(lines(conversation).some(line => /已有派活任务在执行/.test(line.text)))
   await rt.interrupt(worker.id, work.id)
   await first
-  const returned = lines(conversation).find(line => line.who === 'user')
-  assert.match(returned.text, /ended: interrupted/)
-  assert.match(returned.text, /Progress/)
-  assert.equal(returned.references, undefined)
+  assert.equal(lines(conversation).filter(line => line.who === 'user').length, 0)
+  const note = lines(conversation).find(line => line.who === 'system' && line.text.startsWith('执行未完成'))
+  assert.match(note.text, new RegExp(`执行未完成：Worker · ${work.name}（会话 ${work.id}，ended: interrupted），未回报主控`))
+}))
+
+test('failed or unconfirmed executor turns leave a note instead of reporting to the lead', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const send = rt.send
+  for (const outcome of [{ reason: 'error' }, { reason: 'done', unconfirmed: true }]) {
+    rt.send = async (profileId, text, sessionId, ...rest) => {
+      const placed = await send(profileId, text, sessionId, ...rest)
+      return profileId === worker.id ? { ...placed, completion: Promise.resolve(outcome) } : placed
+    }
+    await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  }
+  rt.send = send
+  const works = rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead')
+  assert.equal(works.length, 2)
+  assert.deepEqual(lines(conversation).filter(line => line.who === 'system' && line.text.startsWith('执行未完成')).map(line => line.text), [
+    `执行未完成：Worker · ${works[0].name}（会话 ${works[0].id}，ended: error），未回报主控。可打开该执行会话继续，或给主控发消息在原会话续跑。`,
+    `执行未完成：Worker · ${works[1].name}（会话 ${works[1].id}，ended: done，未确认），未回报主控。可打开该执行会话继续，或给主控发消息在原会话续跑。`,
+  ])
+  assert.equal(lines(conversation).filter(line => line.who === 'user').length, 0)
+}))
+
+test('a failed executor turn leaves a one-time resume hint in the brief and stays continuable', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const send = rt.send
+  rt.send = async (profileId, text, sessionId, ...rest) => {
+    const placed = await send(profileId, text, sessionId, ...rest)
+    if (profileId !== worker.id) return placed
+    await placed.completion
+    return { ...placed, completion: Promise.resolve({ reason: 'error' }) }
+  }
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
+  rt.send = send
+  const failed = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  const brief = rt.leadBrief(rt.findProfile(lead.id), conversation)
+  assert.ok(brief.includes(`Your last delegation to Worker (session ${failed.id}) ended: error without a report.`))
+  assert.ok(brief.includes(`delegate again with "session": "${failed.id}"`))
+  assert.ok(!brief.includes('unconfirmed'))
+  assert.ok(!rt.leadBrief(rt.findProfile(lead.id), conversation).includes(failed.id))
+  await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, failed.id)))
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  assert.equal(inputs.filter(item => item.sessionId === failed.id).length, 2)
+  assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${failed.name}`))
 }))
 
 test('a new user message does not extend the delegation budget of the chain already running', () => withLead(async ({ host, rt, role, session, tracked, lines }) => {
@@ -617,7 +687,7 @@ test('continuation is refused for unknown, foreign and archived sessions', () =>
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 2)
 }))
 
-test('continuation is refused when the executor or the last result does not match', () => withLead(async ({ rt, role, session, lines }) => {
+test('continuation is refused for a foreign executor and allowed after a failed or unconfirmed result', () => withLead(async ({ rt, role, session, inputs, lines }) => {
   const worker = await role('Worker', 'Done')
   const other = await role('Other', 'Done')
   const lead = await role('Lead', 'Reviewed', { lead: true })
@@ -633,21 +703,25 @@ test('continuation is refused when the executor or the last result does not matc
   const send = rt.send
   rt.send = async (profileId, text, sessionId, ...rest) => {
     const placed = await send(profileId, text, sessionId, ...rest)
-    return profileId === worker.id ? { ...placed, completion: Promise.resolve({ reason: 'done', unconfirmed: true }) } : placed
+    if (profileId !== worker.id) return placed
+    const outcome = await placed.completion
+    return { ...placed, completion: Promise.resolve({ ...outcome, unconfirmed: true }) }
   }
   await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
   rt.send = send
   const flagged = rt.sessionsOf(rt.findProfile(worker.id))[1]
   await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, flagged.id)))
-  assert.match(feedback(), /该执行会话上次没有正常完成/)
+  assert.equal(inputs.filter(item => item.sessionId === flagged.id).length, 2)
   rt.findProfile(worker.id).engineOptions.script = [{ kind: 'ask' }]
   const pending = rt.followLead(lead.id, conversation.id, completed(delegate(worker.id)))
   const stopped = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[2])
   await until(() => rt.approvalsView().some(item => item.profileId === stopped.id))
   await rt.interrupt(worker.id, stopped.id)
   await pending
+  rt.conversation(worker.id, stopped.id).session.engineOptions.script[0] = { kind: 'text', text: 'Done' }
   await rt.followLead(lead.id, conversation.id, completed(delegate(worker.id, undefined, stopped.id)))
-  assert.match(feedback(), /该执行会话上次没有正常完成/)
+  assert.equal(inputs.filter(item => item.sessionId === stopped.id).length, 2)
+  assert.equal(lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令')).length, 2)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 3)
 }))
 
