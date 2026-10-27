@@ -115,6 +115,15 @@ const receive = line => {
       finish()
       return
     }
+    if (text === 'PHASE_RETRY') {
+      const phase = (name, extra = {}) => update({ sessionUpdate: 'session_info_update', _meta: { 'codebuddy.ai/agentPhase': { phase: name, startedAt: 1760000000000, ...extra } } })
+      phase('model_requesting')
+      phase('retrying')
+      phase('retrying', { retry: { reason: 'network' } })
+      phase('model_streaming')
+      chunks('Hello world')
+      return finish()
+    }
     if (text === 'ENABLE_MULTITASK') {
       update({ sessionUpdate: 'config_option_update', configOptions: [{ id: 'multitask', type: 'boolean', currentValue: true }] })
       chunks('Unsupported background output')

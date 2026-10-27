@@ -20,6 +20,9 @@ export const TASK_TYPE_NAME_MAX = 20
 export const TASK_TYPE_WHEN_MAX = 200
 // How long a driver spawn may take to say anything before a turn is failed.
 export const TURN_IDLE_TIMEOUT_MS = 120_000
+// An engine-announced retry waits out its own backoff, so that stretch of
+// silence gets a wider window.
+export const RETRY_IDLE_TIMEOUT_MS = 600_000
 // Workflow run defaults, fixed into each run's snapshot when it starts.
 export const RUN_LIMITS = { cancelConfirmMs: 15_000, backMax: 2, eventsMax: 1000 }
 // The most times one back edge of a workflow may be declared to be taken.

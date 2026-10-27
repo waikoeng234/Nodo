@@ -76,6 +76,22 @@ test('Claude preserves streamed and assembled thinking and tool input/results wi
   })
 })
 
+test('Claude maps the CLI api_retry frame to a retry lifecycle with attempt identity', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('RETRY')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const retry = events.find(event => event.type === 'lifecycle' && event.kind === 'retry')
+      assert.equal(retry.phase, 'start')
+      assert.equal(retry.turnId, events.find(event => event.type === 'turn/start').turnId)
+      assert.equal(retry.entityId, 'retry-2')
+      assert.equal(retry.detail, '第 2/6 次，等待 5 秒：rate limited')
+    } finally { driver.dispose() }
+  })
+})
+
 test('Claude compaction boundaries close one status and subagent tasks stay attributed activity', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

@@ -130,6 +130,10 @@ const receive = line => {
     send({ type: 'system', subtype: 'task_notification', task_id: 'task-1', tool_use_id: 'spawn-tool', status: 'completed', summary: 'child one done', output_file: '/tmp/out', session_id: session })
     return say('Lifecycle done')
   }
+  if (text === 'RETRY') {
+    send({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 6, retry_delay_ms: 5000, error_status: 429, error: 'rate limited', session_id: session })
+    return say('Retried')
+  }
   if (text.includes('ASK_PERMISSION')) {
     pending = { id: 'perm-' + turn, tool: 'Write', input: { file_path: '/tmp/fixture', content: 'hi' } }
     send({ type: 'control_request', request_id: pending.id, request: { subtype: 'can_use_tool', tool_name: 'Write', display_name: 'Write', input: pending.input, description: '/tmp/fixture', title: 'Write file', options: [], decision_reason: 'default' } })

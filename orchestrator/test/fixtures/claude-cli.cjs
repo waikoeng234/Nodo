@@ -133,6 +133,10 @@ const receive = line => {
     toolResult('assembled-tool', 'Write', true)
     return say('Events done')
   }
+  if (text === 'RETRY') {
+    send({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 6, retry_delay_ms: 5000, error_status: 429, error: 'rate limited', session_id: session })
+    return say('Retry done')
+  }
   if (text === 'LIFECYCLE') {
     send({ type: 'system', subtype: 'status', status: 'compacting', session_id: session })
     send({ type: 'system', subtype: 'status', status: null, session_id: session })

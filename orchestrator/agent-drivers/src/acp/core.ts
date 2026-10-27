@@ -43,6 +43,7 @@ type AcpMeta = {
   'opencode/child-session'?: { id?: unknown; title?: unknown; parentID?: string }
   'opencode/retry'?: { attempt?: unknown; error?: unknown } | null
   'opencode/compaction'?: { status?: unknown; error?: unknown } | null
+  'codebuddy.ai/agentPhase'?: { phase?: string; retry?: { reason?: unknown } | null } | null
   [key: string]: unknown
 }
 type AcpPlanEntry = { content?: string; status?: unknown }
@@ -63,7 +64,7 @@ type AcpTool = { name: string; input?: unknown; output?: unknown; rawOutput?: un
 type AcpTurn = {
   id: string; started: boolean; messages: Map<string, string>; tools: Map<string, AcpTool>; completedTools: Set<string>
   children: Map<string, { text: string; title?: string; started?: boolean }>; changes: FileChanges
-  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; done?: Promise<void>; settle?: () => void
+  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; retrying?: boolean; done?: Promise<void>; settle?: () => void
 }
 type AcpPending = { id: RpcId; params: AcpParams; replied?: boolean; gated?: boolean; busy?: boolean } & (
   { kind: 'permission' } | { kind: 'question'; question: AcpQuestion }
@@ -296,6 +297,16 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
           ...(Number.isFinite(retry.attempt) ? { entityId: `retry:${turn.id}:${retry.attempt}` } : {}),
           ...(errorText(retry.error) ? { detail: errorText(retry.error) } : {}) })
       } else emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: 'end' })
+    }
+    // CodeBuddy announces run phases through `session_info_update` `_meta`;
+    // the retrying phase repeats until the next phase closes the banner.
+    if (update.sessionUpdate === 'session_info_update' && meta['codebuddy.ai/agentPhase'] && typeof meta['codebuddy.ai/agentPhase'] === 'object') {
+      const retrying = meta['codebuddy.ai/agentPhase'].phase === 'retrying'
+      if (retrying ? turn.retrying !== true : turn.retrying === true) {
+        turn.retrying = retrying
+        const reason = retrying ? errorText(meta['codebuddy.ai/agentPhase'].retry?.reason) ?? '网络重试' : undefined
+        emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: retrying ? 'start' : 'end', ...(reason ? { detail: reason } : {}) })
+      }
     }
     if (update.sessionUpdate === 'session_info_update' && meta['opencode/compaction'] && typeof meta['opencode/compaction'] === 'object') {
       // The degraded channel reports started/completed/failed; the reducer

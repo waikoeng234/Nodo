@@ -4,7 +4,7 @@
 // of its own once the current one ends. A steer the engine did not confirm in time
 // joins the turn too: it may already be inside, and sending it again could do the
 // work twice.
-import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, UNCONFIRMED_STEER } from './constants.js'
+import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TIMEOUT_MS, UNCONFIRMED_STEER } from './constants.js'
 import { clip } from './text.js'
 import { projectContent } from './resources.js'
 import { changesTool, normalizeProgress, planObservation, previewRecord } from './stream-records.js'
@@ -211,7 +211,7 @@ export function install(rt) {
             if (event.phase === 'start') st.lifecycles.set(key, line)
             else st.lifecycles.delete(key)
           }
-          armIdle(profileId, st)
+          armIdle(profileId, st, event.kind === 'retry' && event.phase === 'start' ? RETRY_IDLE_TIMEOUT_MS : TURN_IDLE_TIMEOUT_MS)
         }
         return
       case 'tool':
@@ -396,14 +396,14 @@ export function install(rt) {
   // TURN_IDLE_TIMEOUT_MS is failed rather than left hanging open. A driver with
   // `watchdog: false` reports only whole messages and its host owns liveness. A
   // card waiting on the user is not silence; the engine is stopped with the turn.
-  const armIdle = (profileId, st) => {
+  const armIdle = (profileId, st, ms = TURN_IDLE_TIMEOUT_MS) => {
     disarmIdle(st)
     if (st.finishing || (!st.active && !st.starting) || !st.watched || rt.awaitingAnswer?.(profileId)) return
     st.idleTimer = setTimeout(() => {
       st.idleTimer = null
-      driverSink(profileId, { type: 'turn/end', reason: 'error', error: `no engine activity for ${TURN_IDLE_TIMEOUT_MS / 1000}s; the turn was failed`, unconfirmed: true })
+      driverSink(profileId, { type: 'turn/end', reason: 'error', error: `no engine activity for ${ms / 1000}s; the turn was failed`, unconfirmed: true })
       void rt.interruptDriver?.(profileId)
-    }, TURN_IDLE_TIMEOUT_MS)
+    }, ms)
     st.idleTimer.unref?.()
   }
   const disarmIdle = (st) => {

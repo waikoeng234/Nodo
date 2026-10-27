@@ -264,6 +264,16 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             else
                 emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: 'end' });
         }
+        // CodeBuddy announces run phases through `session_info_update` `_meta`;
+        // the retrying phase repeats until the next phase closes the banner.
+        if (update.sessionUpdate === 'session_info_update' && meta['codebuddy.ai/agentPhase'] && typeof meta['codebuddy.ai/agentPhase'] === 'object') {
+            const retrying = meta['codebuddy.ai/agentPhase'].phase === 'retrying';
+            if (retrying ? turn.retrying !== true : turn.retrying === true) {
+                turn.retrying = retrying;
+                const reason = retrying ? errorText(meta['codebuddy.ai/agentPhase'].retry?.reason) ?? '网络重试' : undefined;
+                emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: retrying ? 'start' : 'end', ...(reason ? { detail: reason } : {}) });
+            }
+        }
         if (update.sessionUpdate === 'session_info_update' && meta['opencode/compaction'] && typeof meta['opencode/compaction'] === 'object') {
             // The degraded channel reports started/completed/failed; the reducer
             // folds a cancellation into failed with an aborted error type, the same

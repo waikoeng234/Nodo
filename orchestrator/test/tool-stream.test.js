@@ -1,7 +1,7 @@
 import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { install } from '../core/src/dispatch.js'
-import { TURN_IDLE_TIMEOUT_MS } from '../core/src/constants.js'
+import { TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TIMEOUT_MS } from '../core/src/constants.js'
 import { toolText } from '../core/src/text.js'
 import { redactDeep, redactor } from '../core/src/secrets.js'
 
@@ -382,6 +382,56 @@ test('an open card holds the idle watchdog, and a silent turn it fails stops its
       await tick(); await tick()
       assert.equal(outcome?.reason, 'error')
       assert.deepEqual(interrupted, ['profile'])
+    } finally { cleanup() }
+  } finally { mock.timers.reset() }
+})
+
+test('an announced retry holds the turn past the ordinary idle limit and fails at the retry limit', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    const { rt, lines, cleanup } = turnHarness(() => {
+      rt.driverSink('profile', { type: 'turn/start', turnId: 'T1' })
+      rt.driverSink('profile', { type: 'lifecycle', turnId: 'T1', kind: 'retry', phase: 'start', entityId: 'retry-1', detail: '第 1/5 次，等待 120 秒' })
+    })
+    try {
+      const { completion } = await rt.send('profile', 'TASK')
+      let outcome
+      completion.then(value => { outcome = value })
+      await tick()
+      mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
+      await tick(); await tick()
+      assert.equal(outcome, undefined, 'the retry backoff outlasts the ordinary idle window')
+      mock.timers.tick(RETRY_IDLE_TIMEOUT_MS - TURN_IDLE_TIMEOUT_MS)
+      await tick(); await tick()
+      assert.equal(outcome?.reason, 'error')
+      assert.match(lines.find(line => line.kind === 'error').text, /no engine activity for 600s/)
+    } finally { cleanup() }
+  } finally { mock.timers.reset() }
+})
+
+test('an ordinary event after a retry returns the turn to the ordinary idle window', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    let resume
+    const { rt, lines, cleanup } = turnHarness(() => new Promise(resolve => {
+      rt.driverSink('profile', { type: 'turn/start', turnId: 'T1' })
+      rt.driverSink('profile', { type: 'lifecycle', turnId: 'T1', kind: 'retry', phase: 'start', entityId: 'retry-1' })
+      resume = () => { rt.driverSink('profile', { type: 'delta', turnId: 'T1', text: 'back online' }); resolve() }
+    }))
+    try {
+      const { completion } = await rt.send('profile', 'TASK')
+      let outcome
+      completion.then(value => { outcome = value })
+      await tick()
+      mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
+      await tick(); await tick()
+      assert.equal(outcome, undefined, 'the retry window still holds')
+      resume()
+      await tick()
+      mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
+      await tick(); await tick()
+      assert.equal(outcome?.reason, 'error')
+      assert.match(lines.find(line => line.kind === 'error').text, /no engine activity for 120s/)
     } finally { cleanup() }
   } finally { mock.timers.reset() }
 })

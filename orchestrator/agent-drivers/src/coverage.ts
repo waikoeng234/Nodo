@@ -56,9 +56,9 @@ const INDEX: Record<string, CoverageDeclaration> = {
     },
   },
   claude: {
-    revision: '2026-10-17 · 官方SDK reference 2.1.301 · CLI对应未证明',
+    revision: '2026-10-26 · 本机 2.1.310 探针 · 官方SDK reference 2.1.301',
     closureOpen: true,
-    verified: { versions: ['2.1.301'] },
+    verified: { versions: ['2.1.301', '2.1.310'] },
     notifications: {
       assistant: 'partial', user: 'partial', result: 'partial', stream_event: 'partial',
       tool_progress: 'partial', auth_status: 'unmapped', rate_limit_event: 'unmapped',
@@ -66,7 +66,7 @@ const INDEX: Record<string, CoverageDeclaration> = {
     },
     requests: { can_use_tool: 'partial' },
     variants: {
-      init: 'partial', compact_boundary: 'partial', status: 'mapped', local_command_output: 'unmapped',
+      init: 'partial', compact_boundary: 'partial', status: 'mapped', api_retry: 'mapped', local_command_output: 'unmapped',
       hook_started: 'unmapped', hook_progress: 'unmapped', hook_response: 'unmapped', plugin_install: 'unmapped',
       task_notification: 'mapped', task_started: 'mapped', task_progress: 'mapped', task_updated: 'mapped',
       background_tasks_changed: 'unmapped', thinking_tokens: 'unmapped', session_state_changed: 'unmapped',
@@ -74,10 +74,10 @@ const INDEX: Record<string, CoverageDeclaration> = {
       permission_denied: 'unmapped', informational: 'unmapped',
     },
     // Declared in the SDK union but with no standalone section: notification,
-    // memory recall, elicitation complete, API retry, mirror error. Their wire
+    // memory recall, elicitation complete, mirror error. Their wire
     // type strings are unknown, so they cannot be classified at runtime and
     // count as unknown notifications if they ever appear.
-    openTypes: 5,
+    openTypes: 4,
   },
   qoder: {
     revision: '2026-10-22 · 本机 qodercli 1.1.76 探针 · protocol 1.5.0',
@@ -88,7 +88,7 @@ const INDEX: Record<string, CoverageDeclaration> = {
     },
     requests: { can_use_tool: 'partial' },
     variants: {
-      init: 'partial', status: 'mapped', compact_boundary: 'partial',
+      init: 'partial', status: 'mapped', compact_boundary: 'partial', api_retry: 'mapped',
       task_started: 'mapped', task_progress: 'mapped', task_notification: 'mapped',
       permission_denied: 'unmapped', hook_started: 'unmapped', hook_response: 'unmapped', artifacts_update: 'unmapped',
     },

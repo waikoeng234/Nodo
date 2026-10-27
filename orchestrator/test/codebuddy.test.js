@@ -119,6 +119,21 @@ test('CodeBuddy turns the gated question call into a question card and returns t
   })
 })
 
+test('CodeBuddy folds repeated agentPhase retrying updates into one retry lifecycle', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('codebuddy', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('PHASE_RETRY')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const retry = events.filter(event => event.type === 'lifecycle' && event.kind === 'retry')
+      assert.deepEqual(retry.map(event => [event.phase, event.detail]), [['start', '网络重试'], ['end', undefined]])
+      assert.equal(retry[0].turnId, events.find(event => event.type === 'turn/start').turnId)
+      assert.equal(deltas(events), 'Hello world')
+    } finally { driver.dispose() }
+  })
+})
+
 test('CodeBuddy environment check handshakes and the scan reads per-model thought levels', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const result = await checkEngine({ engine: 'codebuddy', cwd, engineOptions: { bin } })

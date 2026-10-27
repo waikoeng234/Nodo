@@ -300,6 +300,13 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
                 running.compacting = false;
                 emit({ type: 'lifecycle', turnId: running.id, kind: 'compaction', phase: 'end' });
             }
+            // The engine's own API retry banner; it has no end frame, so the turn end closes it.
+            if (running && frame.subtype === 'api_retry') {
+                const reason = typeof frame.error === 'string' ? frame.error : frame.error?.message;
+                emit({ type: 'lifecycle', turnId: running.id, kind: 'retry', phase: 'start',
+                    ...(typeof frame.attempt === 'number' && Number.isFinite(frame.attempt) ? { entityId: `retry-${frame.attempt}` } : {}),
+                    detail: `第 ${frame.attempt ?? '?'}/${frame.max_retries ?? '?'} 次，等待 ${typeof frame.retry_delay_ms === 'number' ? Math.ceil(frame.retry_delay_ms / 1000) : 0} 秒${reason ? `：${reason}` : ''}` });
+            }
             // Subagent tasks are engine-declared members with their own identity and
             // lifecycle; a member's failure never ends the owning turn.
             if (running && frame.subtype === 'task_started' && typeof frame.task_id === 'string' && frame.task_id !== '') {

@@ -42,6 +42,8 @@ type QoderSystem = { type: 'system' } & (
   | { subtype: 'init'; protocol_version: string; qodercli_version: string }
   | { subtype: 'status'; status: string }
   | { subtype: 'compact_boundary' }
+  | { subtype: 'api_retry'; attempt?: number; max_retries?: number; retry_delay_ms?: number
+      ; error_status?: number | null; error?: string | { message?: string } }
   | { subtype: 'task_started'; task_id?: unknown; description?: unknown; parent_task_id?: string; tool_use_id?: string }
   | { subtype: 'task_progress'; task_id: string; summary?: unknown; last_tool_name?: unknown }
   | { subtype: 'task_notification'; task_id: string; summary?: unknown; status: string }
@@ -301,6 +303,13 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
       if (running && frame.subtype === 'compact_boundary') {
         running.compacting = false
         emit({ type: 'lifecycle', turnId: running.id, kind: 'compaction', phase: 'end' })
+      }
+      // The engine's own API retry banner; it has no end frame, so the turn end closes it.
+      if (running && frame.subtype === 'api_retry') {
+        const reason = typeof frame.error === 'string' ? frame.error : frame.error?.message
+        emit({ type: 'lifecycle', turnId: running.id, kind: 'retry', phase: 'start',
+          ...(typeof frame.attempt === 'number' && Number.isFinite(frame.attempt) ? { entityId: `retry-${frame.attempt}` } : {}),
+          detail: `第 ${frame.attempt ?? '?'}/${frame.max_retries ?? '?'} 次，等待 ${typeof frame.retry_delay_ms === 'number' ? Math.ceil(frame.retry_delay_ms / 1000) : 0} 秒${reason ? `：${reason}` : ''}` })
       }
       if (running && frame.subtype === 'task_started' && typeof frame.task_id === 'string' && frame.task_id !== '') {
         if (running.tasks.has(frame.task_id)) return
