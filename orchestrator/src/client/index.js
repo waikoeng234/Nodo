@@ -1,5 +1,6 @@
 import { PANEL_ID, setHostServices } from './ui-shared.js'
 import { createNativeSpace } from './native-space.js'
+import { createRightPanel } from './right-panel.tsx'
 import { createNativeWelcome } from './native-welcome.js'
 import { createCompletionTracker } from './completion-tracker.js'
 import { createModelSeat } from './model-seat.js'
@@ -30,6 +31,7 @@ export function apply(ctx) {
     nativeSessionState: ctx.uiSession.adapter.current,
     NewConversation,
     layoutService: ctx.layout,
+    rightPanelService: createRightPanel(ctx),
   })
   ctx.effect(() => () => completionTracker.dispose(), 'nodo: completion read state')
   ctx.effect(() => {

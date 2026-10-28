@@ -1,10 +1,11 @@
 import {
   h, Fragment, useState, useEffect, useRef, useId, useStateView, call, sessionTime, layoutService, openNativeSession, nativeSpace,
-  Button, Menu, Modal, Tag, StateDot, IconPanelLeftOutlineRegular, IconTrashOutlineRegular, IconBranchOutlineRegular,
+  Button, Menu, Modal, StateDot, IconPanelLeftOutlineRegular, IconTrashOutlineRegular, IconBranchOutlineRegular,
   IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconUsersOutlineRegular, IconGoalOutlineRegular,
-  IconPlusOutlineRegular, IconChevronDownOutlineRegular,
+  IconPlusOutlineRegular, IconChevronDownOutlineRegular, WARN_INK,
 } from './ui-shared.js'
 import { avatarTemplateOf, RoleAvatar } from './avatar.tsx'
+import { engineDisplayName } from './engine-logos.js'
 import { runDuration } from './running.js'
 import { RUN_STATUS, RUN_DOT, statusLine, taskName, RunDetail, ApprovalCard } from './run-cards.js'
 import { Field } from './profile-dialogs.js'
@@ -325,7 +326,7 @@ export function WorkflowCanvas({ graph, view, selected, onSelect, positions, onP
         const start = pan.current
         if (start) setCam(current => ({ ...current, x: start.baseX + event.clientX - start.originX, y: start.baseY + event.clientY - start.originY }))
       }, onPointerUp: () => { pan.current = null }, onPointerCancel: () => { pan.current = null } },
-      h('div', { className: 'nodo-wf-plane', ref: plane, style: { width, height, transform: `translate(${cam.x}px, ${cam.y}px) scale(${zoom})` } },
+      h('div', { className: 'nodo-wf-plane', ref: plane, style: { width, height, '--nodo-wf-zoom': zoom, transform: `translate(${cam.x}px, ${cam.y}px) scale(${zoom})` } },
           h('svg', { className: 'nodo-wf-wires', width, height, 'aria-label': '节点连线' },
             h('defs', null, ...[false, true].map(back => h('marker', { id: `${marker}${back ? '-back' : ''}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' },
               h('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: back ? 'var(--nodo-wf-rework)' : 'currentColor' })))),
@@ -440,7 +441,7 @@ export function WorkflowInspector({ draft, node, profile, disabled, onChange, on
   }
   const target = exit => {
     const edge = wire(exit)
-    return h('span', { className: 'nodo-wf-target', 'data-linked': edge ? '' : undefined }, edge ? `${edge.back ? '↺' : '→'} ${nameOf(edge.to)}` : '未连接')
+    return h('span', { className: 'nodo-tag nodo-wf-target', 'data-tone': edge ? 'exit' : undefined }, edge ? `${edge.back ? '↺' : '→'} ${nameOf(edge.to)}` : '未连接')
   }
   // One exit: its destination beside the title, an input per line and an optional add button.
   const group = ({ exit, tone = exit, title, rows, add }) => h('div', { className: 'nodo-wf-checks', 'data-exit': tone, role: 'group', 'aria-label': title },
@@ -520,7 +521,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
   const [launch, setLaunch] = useState(false), [runTitle, setRunTitle] = useState('')
   const [checks, setChecks] = useState({}), [confirm, setConfirm] = useState(null)
   const [addOpen, setAddOpen] = useState(false), [menu, setMenu] = useState(null), [placeOpen, setPlaceOpen] = useState(false)
-  const [inputBusy, setInputBusy] = useState(false), [saveOpen, setSaveOpen] = useState(false)
+  const [inputBusy, setInputBusy] = useState(false), [saveOpen, setSaveOpen] = useState(false), [undo, setUndo] = useState(null)
   const inspectorCollapsed = saved.inspectorCollapsed === true
   const gate = useRef(false), request = useRef(0)
   const definitions = view.workflows?.definitions ?? []
@@ -533,10 +534,18 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
   const history = wfHistoryGraph(definitions, run)
   const shown = run?.id === runId ? run : null
   const blocked = !!busy || readOnly || inputBusy
+  const runWhy = missing.length ? '请为节点选择已关联项目的角色' : errors[0]?.message ?? (view.workflows?.running ? '已有流程正在运行' : '')
   const update = changes => setSaved(current => ({ ...current, ...changes }))
   const changeTask = (id, changes) => setSaved(current => ({ ...current, draft: { ...current.draft,
     nodes: current.draft.nodes.map(item => item.id === id ? { ...item, ...(typeof changes === 'function' ? changes(item) : changes) } : item) } }))
   useEffect(() => { try { localStorage.setItem('nodo.workflow.draft', JSON.stringify(saved)) } catch {} }, [saved])
+  useEffect(() => {
+    if (!undo) return
+    if (!undo.after) return setUndo({ ...undo, after: draft })
+    if (draft !== undo.after) return setUndo(null)
+    const timer = setTimeout(() => setUndo(null), 6000)
+    return () => clearTimeout(timer)
+  }, [undo, draft])
   useEffect(() => {
     if (readOnly) { setRuns([]); setRun(null); return }
     let live = true
@@ -608,9 +617,17 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
     if (!blocked) setSaved(current => ({ ...current, draft: wfConnect(current.draft, from, exit, to) }))
   }
   const disconnect = edge => {
-    if (!blocked) setSaved(current => ({ ...current, draft: wfDisconnect(current.draft, edge) }))
+    if (blocked || wfDisconnect(draft, edge) === draft) return
+    setUndo({ before: draft, label: '已删除连线' })
+    setSaved(current => ({ ...current, draft: wfDisconnect(current.draft, edge) }))
   }
-  const removeNode = id => update({ draft: wfRemove(draft, id), selected: 'start' })
+  const removeNode = id => {
+    const removed = draft.nodes.find(item => item.id === id)
+    if (!removed) return
+    const after = wfRemove(draft, id)
+    setUndo({ before: draft, after, label: `已删除「${removed.name || WF_KIND[removed.kind]}」` })
+    update({ draft: after, selected: 'start' })
+  }
   const deletable = () => draft.nodes.find(item => item.id === selected && item.kind !== 'start')
   const changeNode = changes => {
     const next = { ...node, ...changes, ...(changes.profileId && changes.profileId !== node.profileId ? { choices: {} } : {}) }, before = wfExits(node), after = wfExits(next)
@@ -673,7 +690,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
           h('strong', { title: `${item.title ?? '未命名任务'}\n流程：${item.workflowName ?? '未知流程'}` }, item.title ?? '未命名任务'), statusLine(item.status), h('time', null, sessionTime(item.createdAt)))),
           !runs.length && h('p', { className: 'nodo-dialog-hint' }, readOnly ? '请在主窗口查看。' : '还没有运行记录。保存流程后即可启动。')))
   useEffect(() => { wfPublishSidebar({ view: 'workflow', content: navigation }) }, [navigation])
-  return h('section', { className: 'nodo-page nodo-workflow', 'aria-label': 'Workflow 工作流', onKeyDown: event => {
+  return h('section', { className: 'nodo-page nodo-workflow', 'aria-label': '工作流', onKeyDown: event => {
     if (mode !== 'edit' || blocked || menu || event.nativeEvent?.isComposing) return
     if (event.key !== 'Backspace' && event.key !== 'Delete') return
     if (event.target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return
@@ -701,9 +718,8 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
             anchor: h(Button, { variant: 'ghost', size: 'sm', className: 'nodo-wf-save-more', 'aria-label': '更多保存选项', 'aria-haspopup': 'menu', 'aria-expanded': saveOpen,
               disabled: blocked, icon: h(IconChevronDownOutlineRegular, { size: 12 }), onClick: () => setSaveOpen(open => !open) }) })),
         h('div', { className: 'nodo-wf-action-group', role: 'group', 'aria-label': '运行' },
-          h(Button, { variant: 'outline', size: 'sm', disabled: blocked || !!errors.length || !!missing.length || !!view.workflows?.running,
-            title: missing.length ? '需要已有的工作区和角色，请在输入栏为节点选择已关联项目的角色。' : errors[0]?.message
-              ?? (view.workflows?.running ? '已有流程正在运行。' : dirty ? '运行前会先保存当前修改。' : undefined),
+          runWhy && h('span', { className: 'nodo-wf-run-why', role: 'status', title: runWhy }, runWhy),
+          h(Button, { variant: 'outline', size: 'sm', disabled: blocked || !!runWhy, title: !runWhy && dirty ? '运行前会先保存当前修改。' : undefined,
             onClick: () => { setRunTitle(workflowTaskTitle(draft)); setLaunch(true) } },
             h('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true }, h('path', { d: 'M7 4.5v15l12.5-7.5z' })), '运行')))),
     readOnly && h('p', { className: 'nodo-wf-notice', role: 'status' }, '只读窗口不读取运行记录，请在主窗口查看和处理工作流。'),
@@ -716,19 +732,21 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
           h(WorkflowCanvas, { graph: draft, view, selected, positions, busy: blocked, onSelect: id => update({ selected: id }), onPosition: (id, point) => update({ positions: { ...positions, [id]: point } }),
             onConnect: connect, onDisconnect: disconnect, onContext: setMenu,
             trailing: workspacePicker({ workspaces: view.workspaces, workspace: view.workspaces.find(item => item.id === draft.workspaceId), open: placeOpen, setOpen: setPlaceOpen,
-              onSelect: id => update({ draft: { ...draft, workspaceId: id || undefined } }), none: '跟随角色会话', button: true, label: '流程运行的工作区', disabled: blocked }),
+              onSelect: id => update({ draft: { ...draft, workspaceId: id || undefined } }), none: '跟随角色会话', button: true, label: '流程运行的项目', disabled: blocked }),
             tools: h('div', { className: 'nodo-wf-addbar' },
               h(Menu, { open: addOpen, onClose: () => setAddOpen(false), portal: true, align: 'start',
                 items: ['agent', 'human', 'end'].map(kind => ({ id: kind, label: `添加${WF_KIND[kind]}`, icon: h(wfIcon(kind)) })),
                 onSelect: kind => { setAddOpen(false); add(kind) },
                 anchor: h(Button, { variant: 'outline', size: 'sm', disabled: blocked, 'aria-haspopup': 'menu', 'aria-expanded': addOpen, onClick: () => setAddOpen(open => !open) }, '+ 添加节点') })) }),
+          undo && h('div', { className: 'nodo-wf-undo', role: 'status' }, h('span', null, undo.label),
+            h(Button, { variant: 'ghost', size: 'sm', disabled: blocked, onClick: () => { update({ draft: undo.before }); setUndo(null) } }, '撤销')),
           node?.kind === 'agent' && h('section', { className: 'nodo-wf-task-dock', 'aria-label': '节点任务输入' },
             h(WorkflowTaskComposer, { key: node.id, node, view, disabled: blocked, onBusy: setInputBusy, onChange: changes => changeTask(node.id, changes) })))
           : shown && shown.status !== 'unreadable' ? h(Fragment, null,
             history ? h(WorkflowCanvas, { key: shown.id, graph: history, view, selected: history.nodes.find(node => node.name === focusTask?.name && node.kind === focusTask?.kind)?.id, positions: {}, history: true, dock,
               onSelect: id => setSelectedTask(history.nodes.find(node => node.id === id)?.kind === 'end' ? '' : history.tasks.get(id)?.at(-1)?.id ?? '') })
               : h('p', { className: 'nodo-wf-notice' }, '原定义已删除或节点名称无法唯一对应，步骤记录见右侧运行概览。'), !history && dock)
-          : h('div', { className: 'nodo-wf-empty' }, h(IconBranchOutlineRegular, { size: 36 }), h('h2', null, shown?.status === 'unreadable' ? '这条运行记录无法读取' : loading ? '正在读取运行记录…' : '每一步，都有迹可循'),
+          : h('div', { className: 'nodo-wf-empty' }, h(IconBranchOutlineRegular, { size: 36 }), h('h2', null, shown?.status === 'unreadable' ? '这条运行记录无法读取' : loading ? '正在读取运行记录…' : '选择一条运行'),
             h('p', null, shown?.status === 'unreadable' ? '记录文件保留原样，请返回原会话核对。' : '从左侧选择运行，查看步骤产出、人工决定与执行会话。'))))),
       h('div', { className: 'nodo-wf-drawer', 'data-collapsed': inspectorCollapsed ? '' : undefined },
         h('div', { className: 'nodo-wf-drawer-chrome' }, h(Button, { variant: 'ghost',
@@ -744,7 +762,7 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
             focusTask && h(Button, { variant: 'ghost', size: 'sm', onClick: () => setSelectedTask('') }, '查看全流程')),
           !focusTask && delivery && h('section', { className: 'nodo-wf-section', 'aria-label': '交付结果' },
             h('h3', null, '交付结果'),
-            h('div', { className: 'nodo-run-line' }, h('strong', null, delivery.name), delivery.provenance === 'human' && h(Tag, { tone: 'neutral' }, '人工产出')),
+            h('div', { className: 'nodo-run-line' }, h('strong', null, delivery.name), delivery.provenance === 'human' && h('span', { className: 'nodo-tag' }, '人工产出')),
             h('p', { className: 'nodo-run-output nodo-wf-delivery' }, delivery.output === undefined ? '没有可用的产出预览' : `${delivery.output}${delivery.more ? '…' : ''}`),
             delivery.attempts.at(-1)?.sessionId && h(Button, { variant: 'outline', size: 'sm', disabled: blocked || !canOpen(delivery.attempts.at(-1)),
               onClick: () => perform('open', () => onOpenSession(delivery.attempts.at(-1))) }, '打开交付会话')),
@@ -754,21 +772,22 @@ export function WorkflowPage({ view, readOnly, refresh, onOpenSession }) {
             h(RunDetail, { run: focusTask ? { ...shown, tasks: [focusTask], settle: shown.settle === focusTask.id ? shown.settle : undefined } : shown,
               step: Boolean(focusTask), onPick: focusTask ? undefined : setSelectedTask,
               work: view.work, draft: reconcile, busy, readOnly, canOpen, onDraft: setReconcile, onAct: actRun, onOpenSession: attempt => perform('open', () => onOpenSession(attempt)),
-              exitHint: currentNode && (currentNode.exits ?? []).map(exit => exit.id), answerHint: currentNode?.options?.map(option => option.label) })),
+              exitHint: currentNode && (currentNode.exits ?? []).map(exit => ({ id: exit.id, label: wfPortLabel(currentNode, exit.id, true) })), answerHint: currentNode?.options?.map(option => option.label) })),
           h('p', { className: 'nodo-dialog-hint' }, '步骤产出为最多 400 字的预览。完整过程与报告请打开原会话。')))),
     launch && h(Modal, { open: true, title: '启动流程', onClose: () => !busy && setLaunch(false), closeLabel: '关闭', className: 'nodo-dialog', footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: blocked, onClick: () => setLaunch(false) }, '取消'),
       h(Button, { key: 'run', variant: 'primary', disabled: blocked || !runTitle.trim() || !!errors.length || !!missing.length || !!view.workflows?.running, onClick: start }, busy === 'launch' ? '启动中…' : '确认运行') ] },
-      h('strong', null, draft.name), h('p', { className: 'nodo-dialog-hint' }, `${dirty || !original ? source ? '运行前先把修改保存到当前流程。' : '运行前先保存为新流程。' : ''}按连线顺序派发，每个执行节点使用角色当前项目。启动后清空各执行节点的任务与附件，本次输入记入运行记录。`),
+      h('strong', null, draft.name), h('p', { className: 'nodo-dialog-hint' }, `${dirty || !original ? source ? '运行前先保存修改。' : '运行前先保存为新流程。' : ''}按连线顺序派发，启动后清空各节点的任务与附件。`),
       h(Field, { label: '本次任务标题' }, h('input', { className: 'nodo-dialog-input', 'aria-label': '本次任务标题', value: runTitle, maxLength: 80, disabled: blocked, onChange: event => setRunTitle(event.target.value) })),
-      h('div', { className: 'nodo-dialog-fields nodo-wf-steps' }, ...wfSteps(draft).map((step, index) => {
-        const item = participants.find(entry => entry.id === step.profileId)
+      h('ol', { className: 'nodo-wf-steps' }, ...wfSteps(draft).map((step, index) => {
+        const item = participants.find(entry => entry.id === step.profileId), check = item?.profile && checks[checkKey(item)]
         const routes = draft.edges.filter(edge => edge.from === step.id).map(edge => `${wfPortLabel(step, edge.exit, !edge.back)} ${edge.back ? '↺' : '→'} ${draft.nodes.find(node => node.id === edge.to)?.name ?? '未连接'}`)
-        return h('section', { key: step.id, className: 'nodo-wf-association' },
-          h('div', { className: 'nodo-wf-person' }, item?.profile ? h(RoleAvatar, { profile: item.profile, size: 20 }) : h(wfIcon(step.kind)), h('strong', null, `${index + 1}. ${step.name}`)),
-          h('p', null, step.kind === 'human' ? '人工节点 · 查看上一步产出并选择下一步' : `${item?.profile?.name ?? '角色不可用'} · ${item?.profile?.engine ?? '未知 Agent'} · ${item?.workspace?.name ?? '缺少项目关联'}`),
-          routes.length > 0 && h('p', { className: 'nodo-dialog-hint' }, routes.join('；')),
-          item?.profile && checks[checkKey(item)] && h('p', { className: 'nodo-dialog-hint' }, checks[checkKey(item)].ok ? '环境检查通过' : '环境需要处理，请返回 Nodo 设置查看'))
+        return h('li', { key: step.id, className: 'nodo-wf-association' },
+          item?.profile ? h(RoleAvatar, { profile: item.profile, size: 20 }) : h(wfIcon(step.kind), { size: 16 }),
+          h('strong', null, `${index + 1}. ${step.name}`),
+          h('span', null, step.kind === 'human' ? '人工节点' : [item?.profile?.name ?? '角色不可用', item?.profile ? engineDisplayName({ id: item.profile.engine ?? '' }) : '', item?.workspace?.name ?? '缺少项目关联'].filter(Boolean).join(' · ')),
+          check ? h('span', { className: 'nodo-runs-meta' }, h(StateDot, { state: check.ok ? 'done' : 'warning', size: 8 }), check.ok ? '环境正常' : '环境需处理') : h('span'),
+          routes.length > 1 && h('small', null, routes.join('；')))
       })),
       ...draft.nodes.filter(node => node.kind === 'end').map(node => h('p', { key: node.id, className: 'nodo-dialog-hint' }, `${node.name}的交付来源：${draft.nodes.find(item => item.id === node.deliver)?.name ?? '未选择'}`)),
       h(Button, { variant: 'outline', size: 'sm', disabled: blocked || !!missing.length, onClick: inspect }, busy === 'check' ? '检查中…' : '检查参与 Agent'),
@@ -838,21 +857,22 @@ export const WORKFLOW_CSS = `
 .nodo-wf-header{--nodo-wf-header-gutter:20px;box-sizing:border-box;display:flex;align-items:center;gap:12px;min-height:max(44px,var(--dsh-frame-top-clearance,0px));padding:6px var(--nodo-wf-header-gutter);padding-inline-start:max(var(--nodo-wf-header-gutter),var(--dsh-frame-leading-clearance,0px));border-bottom:1px solid var(--dsw-alias-border-l2);flex:none;-webkit-app-region:drag}
 .nodo-wf-heading{display:flex;flex-direction:column;flex:1;min-width:80px}
 .nodo-wf-header input,.nodo-wf-toolbar,.nodo-wf-drawer-chrome button{-webkit-app-region:no-drag}
-.nodo-wf-meta{display:flex;align-items:center;gap:8px;min-width:0;font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;color:var(--dsw-alias-label-tertiary)}
+.nodo-wf-meta{display:flex;align-items:center;gap:8px;min-width:0;font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;color:var(--dsw-alias-label-tertiary)}
 .nodo-wf-save-state::before{content:'· '}
 .nodo-wf-toolbar{margin-left:auto;display:flex;flex:none;align-items:center;gap:12px;max-width:calc(100% - 92px);overflow-x:auto}
 .nodo-wf-views{display:flex;flex:none;gap:20px;padding:0 8px;border-bottom:.5px solid var(--dsw-alias-border-l2)}
 .nodo-wf-views .nodo-wf-mode{height:32px;padding:0;border-radius:0;background:0 0;color:var(--dsw-alias-label-tertiary);box-shadow:inset 0 -2px transparent}
 .nodo-wf-views .nodo-wf-mode:hover,.nodo-wf-views .nodo-wf-mode[aria-pressed=true]{background:0 0;color:var(--dsw-alias-label-primary)}
 .nodo-wf-views .nodo-wf-mode[aria-pressed=true]{box-shadow:inset 0 -2px var(--dsw-alias-label-primary)}
-.nodo-wf-action-group{display:flex;align-items:center;gap:6px;flex:none}
+.nodo-wf-action-group{display:flex;align-items:center;gap:8px;min-width:0}
+.nodo-wf-run-why{min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-wf-action-group button{border-radius:999px}
 .nodo-wf-action-group svg{margin-right:4px;color:var(--dsw-alias-state-business-primary)}
 .nodo-wf-body{display:flex;flex:1;min-height:0;min-width:0}
 .nodo-wf-navigation{display:flex;flex-direction:column;gap:12px;padding:18px 0 8px;flex:1;min-height:0}
 .nodo-wf-side-title{display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:13px;flex:none}
 .nodo-wf-side-title>strong{font-weight:600}
-.nodo-wf-side-title>span{font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.nodo-wf-side-title>span{font-size:12px;color:var(--dsw-alias-label-tertiary)}
 .nodo-wf-definitions{max-height:28%;overflow:auto;flex-shrink:0}
 .nodo-wf-definitions .nodo-runs-row{display:flex;flex-direction:row;justify-content:space-between;gap:8px;align-items:center}
 .nodo-wf-definitions .nodo-session-item>.nodo-runs-row{flex:1;min-width:0}
@@ -860,15 +880,17 @@ export const WORKFLOW_CSS = `
 .nodo-wf-cast{display:flex;flex:none}
 .nodo-wf-cast>*+*{margin-left:2px}
 .nodo-wf-cast>.nodo-wf-cast-more{margin-left:2px;color:var(--dsw-alias-label-tertiary);line-height:18px}
-.nodo-wf-outline{max-height:24%;overflow:auto;font-size:11px;color:var(--dsw-alias-label-secondary);flex-shrink:0}
+.nodo-wf-outline{max-height:24%;overflow:auto;font-size:12px;color:var(--dsw-alias-label-secondary);flex-shrink:0}
 .nodo-wf-outline summary{padding:4px 8px;cursor:pointer}
 .nodo-wf-runs{flex:1;min-height:0;overflow:auto}
-.nodo-wf-runs .nodo-runs-row{flex-direction:row;align-items:center;gap:8px;padding:6px 10px;margin-bottom:2px}
+.nodo-wf-runs .nodo-runs-row{flex-direction:row;align-items:center;gap:8px;padding:6px 12px;margin-bottom:2px}
 .nodo-wf-runs .nodo-runs-row>*{flex:none;white-space:nowrap}
 .nodo-wf-runs .nodo-runs-row>strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-navigation .nodo-runs-row[aria-pressed=true]{background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-state-business-primary)}
-.nodo-wf-runs time{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.nodo-wf-runs time{font-size:12px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
 .nodo-wf-main{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;position:relative}
+.nodo-wf-undo{position:absolute;top:52px;left:50%;z-index:3;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);padding:4px 4px 4px 12px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-elevation-soft);font-size:13px;line-height:20px;transform:translateX(-50%)}
+.nodo-wf-undo>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-drawer{display:flex;flex-direction:column;width:320px;flex:none;min-height:0;border-left:1px solid var(--dsw-alias-border-l2);transition:width .16s ease;overflow:hidden}
 .nodo-wf-drawer[data-collapsed]{width:fit-content}
 .nodo-wf-drawer-chrome{box-sizing:border-box;display:flex;justify-content:flex-end;align-items:flex-start;height:max(36px,var(--dsh-frame-top-clearance,0px));padding:10px 12px 0;flex:none;-webkit-app-region:drag}
@@ -897,13 +919,14 @@ export const WORKFLOW_CSS = `
 .nodo-wf-plane{position:relative;transform-origin:top left}
 .nodo-wf-wires{position:absolute;inset:0;overflow:visible;color:var(--dsw-alias-state-business-primary)}
 .nodo-wf-wire{stroke:currentColor;stroke-width:2.2;cursor:pointer}
-.nodo-wf-wire text{font-size:11px;font-weight:600;fill:currentColor;paint-order:stroke;stroke:var(--dsw-alias-bg-base);stroke-width:4px;stroke-linejoin:round}
+.nodo-wf-wire text{font-size:max(12px,calc(12px / var(--nodo-wf-zoom,1)));font-weight:600;fill:currentColor;paint-order:stroke;stroke:var(--dsw-alias-bg-base);stroke-width:max(4px,calc(4px / var(--nodo-wf-zoom,1)));stroke-linejoin:round}
 .nodo-wf-wire-hit{stroke:transparent;stroke-width:18px}
 .nodo-wf-wire-action{opacity:0;pointer-events:none}
 .nodo-wf-wire:is(:hover,:focus-within) .nodo-wf-wire-action{opacity:1;pointer-events:auto}
 .nodo-wf-wire-delete{display:flex;align-items:center;justify-content:center;width:24px;height:24px;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:50%;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-state-error-primary);cursor:pointer;stroke:none}
 .nodo-wf-wire-delete:hover{color:var(--dsw-alias-state-error-primary);border-color:currentColor}
 .nodo-wf-back{color:var(--nodo-wf-rework)}
+.nodo-wf-back text{fill:${WARN_INK}}
 .nodo-wf-back>path:not(.nodo-wf-wire-hit){stroke-dasharray:6 5}
 .nodo-wf-wire-unused{opacity:.24}
 .nodo-wf-wire-preview{stroke:var(--dsw-alias-state-business-primary);stroke-width:2.2;stroke-dasharray:6 5;pointer-events:none}
@@ -925,52 +948,54 @@ export const WORKFLOW_CSS = `
 :is(.nodo-wf-node,.nodo-wf-node-icon)[data-kind=start] .nodo-wf-node-icon,.nodo-wf-node-icon[data-kind=start]{--nodo-wf-kind:var(--dsw-alias-state-success-primary)}
 :is(.nodo-wf-node,.nodo-wf-node-icon)[data-kind=human] .nodo-wf-node-icon,.nodo-wf-node-icon[data-kind=human]{--nodo-wf-kind:var(--dsw-alias-state-warn-primary)}
 .nodo-wf-node-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
-.nodo-wf-node-copy strong{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-wf-node-copy strong{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-node-copy>span,.nodo-wf-node-copy small{font-size:12px;color:color-mix(in srgb,var(--dsw-alias-label-secondary) 80%,var(--dsw-alias-label-primary));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-canvas-tools{position:absolute;top:12px;left:16px;z-index:2;display:flex;align-items:center;gap:16px;max-width:calc(100% - 32px)}
 .nodo-wf-canvas-trail{position:absolute;top:12px;right:16px;z-index:2;display:flex;align-items:center}
 .nodo-wf-canvas-trail .nodo-project-pick{border-radius:999px;background:var(--dsw-alias-bg-base);box-shadow:1px 1px 0 var(--nodo-wf-shadow)}
-.nodo-wf-zoom{display:flex;align-items:center;font-size:11px;color:var(--dsw-alias-label-tertiary)}
-.nodo-wf-zoom button{min-width:28px;height:28px;padding:0 6px;color:inherit;font-size:11px}
+.nodo-wf-zoom{display:flex;align-items:center;font-size:12px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
+.nodo-wf-zoom button{min-width:28px;height:28px;padding:0 6px;color:inherit;font-size:12px}
 .nodo-wf-zoom>span{min-width:36px;text-align:center}
 .nodo-wf-inspector{display:flex;flex-direction:column;flex:1;min-width:0;gap:16px;min-height:0;overflow:auto;padding:0 20px 20px}
-.nodo-wf-inspector-head{display:flex;align-items:center;gap:10px}
+.nodo-wf-inspector-head{display:flex;align-items:center;gap:8px}
 .nodo-wf-inspector-head>div{display:flex;flex-direction:column;min-width:0}
-.nodo-wf-inspector-head strong{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-wf-inspector-head strong{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-wf-inspector-head span{font-size:12px;color:var(--dsw-alias-label-secondary)}
-.nodo-wf-inspector .nodo-field{display:flex;flex-direction:column;gap:7px;padding:0;border:0;font-size:12px}
-.nodo-wf-inspector .nodo-dialog-input{font-size:12px;padding:7px 10px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-wf-inspector .nodo-field{display:flex;flex-direction:column;gap:6px;padding:0;border:0;font-size:12px}
+.nodo-wf-inspector .nodo-dialog-input{font-size:12px;padding:7px 12px;height:36px;border-radius:var(--dsw-radius-md)}
 .nodo-wf-inspector .nodo-dialog-textarea{height:auto;min-height:116px}
-.nodo-wf-steps{margin:12px 0;border-block:.5px solid var(--dsw-alias-border-l2)}
-.nodo-wf-association{display:flex;flex-direction:column;gap:2px;padding:8px 0;font-size:13px;line-height:1.5}
+.nodo-wf-steps{margin:12px 0;padding:0;border-block:.5px solid var(--dsw-alias-border-l2);list-style:none}
+.nodo-wf-association{display:grid;grid-template-columns:20px minmax(0,max-content) minmax(0,1fr) auto;align-items:center;gap:2px 8px;padding:8px 0;font-size:13px;line-height:20px}
 .nodo-wf-association+.nodo-wf-association{border-top:.5px solid var(--dsw-alias-border-l2)}
-.nodo-wf-association p{margin:0}
-.nodo-wf-person{display:flex;align-items:center;gap:8px}
+.nodo-wf-association>:is(strong,span){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-wf-association>span:nth-child(3){color:var(--dsw-alias-label-secondary)}
+.nodo-wf-association>small{grid-column:2/-1;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;overflow-wrap:anywhere}
 .nodo-wf-section{display:flex;flex-direction:column;gap:12px;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-wf-section h3{font-size:13px;margin:0;font-weight:600}
 .nodo-wf-inspector>.nodo-field>span{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
-.nodo-wf-choice{display:flex;flex-direction:column;gap:9px;padding:10px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg)}
-.nodo-wf-choice:has(>.nodo-wf-checks){gap:12px;padding:14px;border-radius:20px}
+.nodo-wf-choice{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg)}
+.nodo-wf-choice:has(>.nodo-wf-checks){gap:12px;padding:16px;border-radius:20px}
 .nodo-wf-checks{--nodo-wf-exit:var(--dsw-alias-state-business-primary);display:flex;flex-direction:column;gap:6px}
 .nodo-wf-checks[data-exit=rework]{--nodo-wf-exit:var(--nodo-wf-rework)}
 .nodo-wf-checks+.nodo-wf-checks{padding-top:12px;border-top:1px dashed var(--dsw-alias-border-l2)}
 .nodo-wf-checks-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .nodo-wf-checks-head strong{display:flex;align-items:center;gap:6px;flex:none}
 .nodo-wf-checks-head strong::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--nodo-wf-exit)}
-.nodo-wf-target{min-width:0;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-overlay)}
-.nodo-wf-target[data-linked]{color:var(--nodo-wf-exit);background:color-mix(in srgb,var(--nodo-wf-exit) 12%,transparent)}
+.nodo-wf-target{flex-shrink:1;min-width:0}
+.nodo-wf-target[data-tone]{--nodo-tag-tone:var(--nodo-wf-exit)}
 .nodo-wf-checks>button{align-self:flex-start;color:var(--nodo-wf-exit)}
+.nodo-wf-checks[data-exit=rework] .nodo-wf-target[data-tone],.nodo-wf-checks[data-exit=rework]>button{color:${WARN_INK}}
 .nodo-wf-choice>button{align-self:flex-start;color:var(--dsw-alias-state-business-primary)}
 .nodo-wf-check{position:relative;display:flex}
 .nodo-wf-check>input{flex:1;min-width:0}
 .nodo-wf-check:has(>button)>.nodo-dialog-input{padding-right:34px}
 .nodo-wf-check>button{position:absolute;top:50%;right:4px;width:28px;min-width:0;height:28px;padding:0;transform:translateY(-50%)}
-.nodo-wf-limit{display:flex;align-items:center;gap:4px;padding:4px 4px 4px 10px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-overlay)}
+.nodo-wf-limit{display:flex;align-items:center;gap:4px;padding:4px 4px 4px 12px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-overlay)}
 .nodo-wf-limit>span{flex:1;font-weight:600}
 .nodo-wf-limit output{min-width:36px;text-align:center;font-weight:600}
 .nodo-wf-node-actions{display:flex;margin-top:auto;padding-top:16px}
 .nodo-wf-node-actions>button{flex:1;justify-content:center;height:36px;border-radius:var(--dsw-radius-lg)}
-.nodo-wf-notice{margin:0;padding:10px 20px;background:var(--dsw-alias-bg-overlay);font-size:12px;flex:none}
+.nodo-wf-notice{margin:0;padding:8px 20px;background:var(--dsw-alias-bg-overlay);font-size:12px;flex:none}
 .nodo-wf-run-inspector .nodo-run{overflow:visible;flex:none;padding:0}
 .nodo-wf-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .nodo-wf-run-inspector .nodo-wf-inspector-head{justify-content:space-between}
@@ -980,9 +1005,9 @@ export const WORKFLOW_CSS = `
 .nodo-wf-run-inspector .nodo-run-actions,.nodo-wf-run-inspector .nodo-run-attempt{flex-wrap:wrap;justify-content:flex-start}
 .nodo-wf-run-inspector .nodo-question-frame,.nodo-wf-run-inspector .nodo-approval{width:100%;margin:0}
 .nodo-wf-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;flex:1;text-align:center;padding:32px;color:var(--dsw-alias-label-secondary)}
-.nodo-wf-empty h2{font-size:18px;color:var(--dsw-alias-label-primary)}
+.nodo-wf-empty h2{font-size:18px;font-weight:600;line-height:26px;text-wrap:balance;color:var(--dsw-alias-label-primary)}
 .nodo-workflow button:focus-visible,.nodo-workflow summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
-@media(max-width:1100px){.nodo-wf-drawer:not([data-collapsed]){width:280px}.nodo-wf-inspector{padding:0 14px 14px}.nodo-wf-header{gap:10px}.nodo-wf-save-state{display:none}}
+@media(max-width:1100px){.nodo-wf-drawer:not([data-collapsed]){width:280px}.nodo-wf-inspector{padding:0 16px 16px}.nodo-wf-header{gap:8px}.nodo-wf-save-state{display:none}}
 @media(max-width:800px){.nodo-wf-drawer:not([data-collapsed]){width:min(280px,55%)}.nodo-wf-header{--nodo-wf-header-gutter:14px}}
 @media(max-width:520px){.nodo-wf-canvas-tools{gap:8px;left:8px}.nodo-wf-canvas-trail{right:8px}.nodo-wf-toolbar{gap:8px}.nodo-wf-header{gap:8px}}
 @media(prefers-reduced-motion:reduce){.nodo-wf-drawer{transition:none}}

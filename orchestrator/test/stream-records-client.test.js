@@ -242,3 +242,29 @@ test('empty, missing and binary current files show explicit results and retain t
     assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
   }
 })
+
+test('current image files including SVG render an image and can return to their diff', async () => {
+  for (const [extension, mediaType] of [['png', 'image/png'], ['svg', 'image/svg+xml']]) {
+    const path = `/ws/image.${extension}`
+    const dataUrl = `data:${mediaType};base64,AA==`
+    const view = await harness(async (endpoint, payload) => {
+      assert.equal(endpoint, 'workspace-file')
+      assert.equal(payload.path, path)
+      return { path, image: { mediaType, dataUrl } }
+    })
+    const props = { file: { path, edits: [] }, inline: true, request: { profile: 'p', session: 's' } }
+    descendants(view.renderFile(props)).find(node => node.type === 'Button').props.onClick()
+    await new Promise(done => setImmediate(done))
+    let tree = view.renderFile(props)
+    const image = descendants(tree).find(node => node.type === 'img')
+    assert.equal(image.props.src, dataUrl)
+    assert.equal(image.props.alt, path)
+    assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
+    image.props.onError()
+    tree = view.renderFile(props)
+    assert.equal(descendants(tree).find(node => node.props.role === 'alert').children[0], '无法显示')
+    assert.ok(!descendants(tree).some(node => node.type === 'img'))
+    descendants(tree).find(node => node.type === 'Button' && node.children.includes('返回差异')).props.onClick()
+    assert.ok(descendants(view.renderFile(props)).some(node => node.children.includes('查看当前内容')))
+  }
+})

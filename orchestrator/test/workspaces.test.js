@@ -1,10 +1,11 @@
 // Legacy workspace-bound profiles remain readable; new roles can be global.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { boot, until, withHost } from './helpers/host.js'
+import { IMAGE_BYTES_MAX } from '../core/src/constants.js'
 
 test('workspace lifecycle: deletion keeps roles, conversation history and the directory', async () => {
   await withHost(async ({ api, post, home }) => {
@@ -228,5 +229,118 @@ test('workspace-file follows links only inside the workspace and redacts saved k
     assert.equal((await post('workspace-file', { profile: profile.id, path: 'escape.txt' })).error.code, 'orch/invalid')
     assert.equal((await api('workspace-file', { profile: profile.id, path: '..note.md' })).text, 'key [secret:FIXTURE_KEY]')
     assert.equal((await api('workspace-file', { profile: profile.id, path: 'alias.md' })).text, 'key [secret:FIXTURE_KEY]')
+  })
+})
+
+test('workspace-dir lists one sorted level including dotfiles and node_modules, confines links and truncates at 1000', async () => {
+  await withHost(async ({ api, post, home }) => {
+    const root = join(home, 'browse')
+    mkdirSync(root)
+    for (const name of ['z-dir', 'a-dir', '.git', 'node_modules']) mkdirSync(join(root, name))
+    for (const name of ['z.txt', 'a.txt', '.env']) writeFileSync(join(root, name), name)
+    writeFileSync(join(root, 'a-dir', 'nested.txt'), 'nested')
+    writeFileSync(join(home, 'outside.txt'), 'outside')
+    symlinkSync(join(root, 'a-dir'), join(root, 'linked-dir'))
+    symlinkSync(join(root, 'a.txt'), join(root, 'linked.txt'))
+    symlinkSync(home, join(root, 'escape-dir'))
+    symlinkSync(join(home, 'outside.txt'), join(root, 'escape.txt'))
+    symlinkSync(join(root, 'gone'), join(root, 'broken'))
+    const workspace = await api('workspace-create', { name: 'Browse', cwd: root })
+    const profile = await api('profile-create', { name: 'Browser', engine: 'echo', workspace: workspace.id })
+    const request = { profile: profile.id, path: '' }
+    assert.deepEqual(await api('workspace-dir', request), { entries: [
+      { name: 'a-dir', kind: 'dir' }, { name: 'linked-dir', kind: 'dir' }, { name: 'node_modules', kind: 'dir' }, { name: 'z-dir', kind: 'dir' },
+      { name: '.env', kind: 'file' }, { name: 'a.txt', kind: 'file' }, { name: 'linked.txt', kind: 'file' }, { name: 'z.txt', kind: 'file' },
+    ] })
+    assert.deepEqual((await api('workspace-dir', { ...request, path: 'linked-dir' })).entries, [{ name: 'nested.txt', kind: 'file' }])
+    for (const path of ['..', '../browse-other', 'escape-dir']) assert.equal((await post('workspace-dir', { ...request, path })).error.code, 'orch/invalid')
+    assert.equal((await post('workspace-dir', { ...request, path: 'gone' })).error.code, 'orch/not-found')
+    assert.equal((await post('workspace-dir', { ...request, path: 'a.txt' })).error.code, 'orch/not-found')
+    for (let i = 0; i < 1001; i++) writeFileSync(join(root, 'a-dir', `file-${String(i).padStart(4, '0')}`), '')
+    const large = await api('workspace-dir', { ...request, path: 'a-dir' })
+    assert.equal(large.entries.length, 1000)
+    assert.equal(large.truncated, true)
+    assert.deepEqual(large.entries[0], { name: 'file-0000', kind: 'file' })
+    assert.deepEqual(large.entries.at(-1), { name: 'file-0999', kind: 'file' })
+  })
+})
+
+test('workspace-dir and workspace-file use the selected session cwd and worktree even on a read-only host', async () => {
+  await withHost(async ({ api, home, runtime }) => {
+    const rt = await runtime
+    const roots = ['main', 'worktree', 'session-cwd'].map(name => join(home, name))
+    for (const root of roots) { mkdirSync(root); writeFileSync(join(root, 'note.txt'), root) }
+    const main = await api('workspace-create', { name: 'Main', cwd: roots[0] })
+    const branch = await rt.createWorkspace({ name: 'Branch', cwd: roots[1], worktree: { parent: main.id } })
+    const role = await api('profile-create', { name: 'Reader', engine: 'echo', workspace: main.id })
+    const session = await api('session-create', { profile: role.id, workspace: branch.id, lazy: true })
+    const request = { profile: role.id, session: session.id }
+    assert.equal((await api('workspace-file', { ...request, path: 'note.txt' })).text, roots[1])
+    const record = rt.state.profiles[role.id].sessions.find(item => item.id === session.id)
+    record.cwd = roots[2]
+    await rt.save()
+    writeFileSync(join(roots[2], 'session-only.txt'), 'own')
+    rt.readOnly = () => 'Fixture read-only'
+    assert.deepEqual((await api('workspace-dir', { ...request, path: '' })).entries.map(item => item.name), ['note.txt', 'session-only.txt'])
+    assert.equal((await api('workspace-file', { ...request, path: 'note.txt' })).text, roots[2])
+  })
+})
+
+test('workspace-dir maps permission errors to a path-free refusal without recording an internal diagnostic', async () => {
+  await withHost(async ({ api, post, home }) => {
+    const root = join(home, 'restricted')
+    const locked = join(root, 'locked')
+    mkdirSync(join(locked, 'nested'), { recursive: true })
+    const workspace = await api('workspace-create', { name: 'Restricted', cwd: root })
+    const profile = await api('profile-create', { name: 'Reader', engine: 'echo', workspace: workspace.id })
+    const before = await api('diag')
+    chmodSync(locked, 0o000)
+    try {
+      for (const path of ['locked', 'locked/nested']) {
+        const result = await post('workspace-dir', { profile: profile.id, path })
+        assert.equal(result.ok, false)
+        assert.deepEqual(result.error, { code: 'orch/invalid', message: '目录不可读', details: {} })
+        assert.equal(JSON.stringify(result).includes(root), false)
+      }
+      assert.deepEqual(await api('diag'), before)
+    } finally { chmodSync(locked, 0o755) }
+    assert.deepEqual((await api('workspace-dir', { profile: profile.id, path: 'locked' })).entries, [{ name: 'nested', kind: 'dir' }])
+  })
+})
+
+test('workspace directory and file paths reject null bytes before touching the filesystem', async () => {
+  await withHost(async ({ api, post, home }) => {
+    const workspace = await api('workspace-create', { name: 'Null path', cwd: join(home, 'null-path') })
+    const profile = await api('profile-create', { name: 'Reader', engine: 'echo', workspace: workspace.id })
+    const before = await api('diag')
+    for (const endpoint of ['workspace-dir', 'workspace-file']) {
+      const result = await post(endpoint, { profile: profile.id, path: 'bad\0path' })
+      assert.equal(result.ok, false)
+      assert.equal(result.error.code, 'orch/invalid')
+      assert.equal(JSON.stringify(result).includes(home), false)
+    }
+    assert.deepEqual(await api('diag'), before)
+  })
+})
+
+test('workspace-file returns common images as data URLs through IMAGE_BYTES_MAX and larger images as binary', async () => {
+  await withHost(async ({ api, home }) => {
+    const root = join(home, 'images')
+    mkdirSync(root)
+    const workspace = await api('workspace-create', { name: 'Images', cwd: root })
+    const profile = await api('profile-create', { name: 'Viewer', engine: 'echo', workspace: workspace.id })
+    const types = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
+    const bytes = Buffer.from([0x89, 0, 0x50, 0x4e, 0x47])
+    for (const [extension, mediaType] of Object.entries(types)) {
+      const path = `image.${extension.toUpperCase()}`
+      writeFileSync(join(root, path), bytes)
+      const read = await api('workspace-file', { profile: profile.id, path })
+      assert.deepEqual(read.image, { mediaType, dataUrl: `data:${mediaType};base64,${bytes.toString('base64')}` })
+      assert.equal(read.text, undefined)
+    }
+    writeFileSync(join(root, 'limit.png'), Buffer.alloc(IMAGE_BYTES_MAX))
+    assert.equal((await api('workspace-file', { profile: profile.id, path: 'limit.png' })).image.dataUrl.length, 'data:image/png;base64,'.length + Math.ceil(IMAGE_BYTES_MAX / 3) * 4)
+    writeFileSync(join(root, 'large.png'), Buffer.alloc(IMAGE_BYTES_MAX + 1))
+    assert.deepEqual(await api('workspace-file', { profile: profile.id, path: 'large.png' }), { path: join(root, 'large.png'), binary: true })
   })
 })

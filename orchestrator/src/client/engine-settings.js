@@ -292,7 +292,7 @@ export function OnboardingDialog({ view, onDone }) {
       h(Field, { label: '名字', required: true }, h('input', { className: 'nodo-dialog-input', 'aria-label': '项目名称',
         'data-modal-autofocus': true, required: true, maxLength: 40, disabled: busy, value: project.name,
         placeholder: '例如 Website', onChange: event => setProject(current => ({ ...current, name: event.target.value })) })),
-      h(Field, { label: '工作区目录', required: true }, nativePickDirectory
+      h(Field, { label: '项目目录', required: true }, nativePickDirectory
         ? h('div', { className: 'nodo-dialog-pick' },
           h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() }, picking ? '选择中…' : '选择目录…'),
           h('p', { className: 'nodo-dialog-path', title: project.cwd }, project.cwd || '尚未选择目录'))

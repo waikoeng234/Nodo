@@ -1,6 +1,8 @@
-import { h, Fragment, useState, call, Button, Tag, StateDot, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular } from './ui-shared.js'
+import { h, Fragment, useState, call, Button, StateDot, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular } from './ui-shared.js'
 import { Field } from './profile-dialogs.js'
 import { RunningLine } from './running.js'
+import { RoleAvatar } from './avatar.tsx'
+import { engineDisplayName } from './engine-logos.js'
 
 // A pending request takes the host's own composer takeover for the same thing:
 // a permission is the host's approval panel (warning strip, headline, reject /
@@ -11,9 +13,10 @@ import { RunningLine } from './running.js'
 export const RUN_STATUS = { running: '运行中', waiting_human: '等待人工', paused: '已暂停', needs_reconcile: '待核对', done: '已完成', failed: '失败',
   cancelled: '已取消', unreadable: '无法读取', pending: '待调度', active: '执行中' }
 export const RUN_DOT = { running: 'ongoing', active: 'ongoing', waiting_human: 'warning', paused: 'warning', needs_reconcile: 'warning', done: 'done', failed: 'error', unreadable: 'error' }
-const RUN_REASONS = { interrupted: '执行中断', host_restarted: '宿主重启', workspace_occupied: '工作区被占用', workspace_missing: '工作区已删除', stop_unconfirmed: '停止未确认',
+const RUN_REASONS = { interrupted: '执行中断', host_restarted: '宿主重启', workspace_occupied: '项目被占用', workspace_missing: '项目已删除', stop_unconfirmed: '停止未确认',
   end_unconfirmed: '结束未确认', profile_missing: '角色已删除', profile_changed: '角色配置已变', no_exit: '没有出口', blocked: '无法继续', back_limit: '返工次数已满', timeout: '超时',
   empty_reply: '空回复', missing_deliverable: '没有最终交付', cancelled: '已取消', no_pending_task: '没有待执行的步骤' }
+const REASON_PRESETS = ['原执行已结束', '已人工核对']
 const REASON_WORDS = { retry: '重试：', accepted: '已接受：', cancelled: '已放弃：' }
 const ATTEMPT_PHASE = { dispatching: '投递中', running: '执行中', parsing: '解析中', ended: '已结束', cancelling: '停止中', interrupted: '已中断' }
 const ATTEMPT_END = { done: '完成', error: '出错', interrupted: '中断', timeout: '超时' }
@@ -37,6 +40,9 @@ export function RunDetail({ run, work, draft, busy, readOnly, canOpen, onDraft, 
   const last = settle?.attempts.at(-1)
   const blocked = Boolean(busy) || readOnly
   const reason = draft.reason.trim()
+  const choices = settle?.kind === 'human' ? answerHint?.length ? answerHint.map(label => ({ id: label, label })) : null : exitHint?.length > 1 ? exitHint : null
+  const picked = settle?.kind === 'human' ? draft.text : draft.exit
+  const accepted = settle?.kind === 'agent' && choices && picked ? `${draft.text.replace(/\n?[ \t]*NEXT:.*\s*$/, '').trim()}\nNEXT: ${picked}` : draft.text
   const open = attempt => h(Button, { variant: 'outline', size: 'sm', disabled: Boolean(busy) || !canOpen(attempt), onClick: () => onOpenSession(attempt) }, '打开会话')
   const running = (attempt, live = work?.[attempt?.sessionId]) => live?.active && !attempt.end
     && h(RunningLine, { key: attempt.sessionId, since: live.since, engine: live.engine })
@@ -51,7 +57,7 @@ export function RunDetail({ run, work, draft, busy, readOnly, canOpen, onDraft, 
         h('span', { className: 'nodo-run-step-state' }, task.card ? '等待回答' : RUN_STATUS[task.status] ?? task.status))))),
     ...(onPick ? [] : run.tasks).map(task => h('div', { key: task.id, className: 'nodo-run-task' },
       h('div', { className: 'nodo-run-line' }, h('strong', null, taskName(task)), state(task),
-        task.provenance === 'human' && h(Tag, { tone: 'neutral' }, '人工产出')),
+        task.provenance === 'human' && h('span', { className: 'nodo-tag' }, '人工产出')),
       task.input && h('div', { className: 'nodo-run-input' }, h('span', { className: 'nodo-runs-meta' }, '输入任务'),
         h('p', { className: 'nodo-run-output' }, task.input.text || '（无文字说明）'),
         task.input.attachments && h('span', { className: 'nodo-runs-meta' }, `附件：${task.input.attachments.join('、')}`)),
@@ -62,25 +68,26 @@ export function RunDetail({ run, work, draft, busy, readOnly, canOpen, onDraft, 
       task.output !== undefined && h('div', { className: 'nodo-run-result' }, h('span', { className: 'nodo-runs-meta' }, '步骤产出'),
         h('p', { className: 'nodo-run-output' }, task.more ? `${task.output}…` : task.output)))),
     settle && h('div', { className: 'nodo-run-task', role: 'group', 'aria-label': '人工核对' },
-      h('p', { className: 'nodo-dialog-hint' }, `“${taskName(settle)}”停在这里。${settle.kind !== 'agent' ? '核对原问题与已有产出，再填写理由选择处理方式；理由会记入运行记录。'
-        : run.status === 'needs_reconcile' ? '重试前先打开原会话，确认原执行已经结束；理由会作为这次确认记入运行记录。'
-          : '重试时原会话仍可用就在原会话继续，否则新建会话；理由会作为说明交给执行角色，并记入运行记录。'}`),
+      h('p', { className: 'nodo-dialog-hint' }, `“${taskName(settle)}”停在这里。${settle.kind !== 'agent' ? '核对原问题与已有产出后选择处理方式。'
+        : run.status === 'needs_reconcile' ? '先打开原会话确认原执行已结束，再重试或接受产出。' : '重试会在原会话继续，原会话不可用时新建。'}`),
       run.status === 'waiting_human' && /^not sent: Workflow handoff context exceeds \d+ characters;/.test(settle.reason ?? run.reason ?? '')
-        && h('p', { className: 'nodo-dialog-hint' }, '交接内容超出预算，当前步骤尚未发送。重试不会改变本次运行的流程快照，仍会遇到同一限制。你可以核对任务后补充并接受人工产出，承担当前步骤未由角色执行的核验责任；多出口产出须写有效的 NEXT 行。也可以取消运行，缩短流程中的出口条件或其他交接设置后重新启动。'),
-      h(Field, { label: '理由' }, h('input', { className: 'nodo-dialog-input', value: draft.reason, maxLength: 500, disabled: blocked,
+        && h('p', { className: 'nodo-dialog-hint' }, '交接内容超出预算，当前步骤尚未发送；重试不会改变本次运行的流程快照。可补充并接受人工产出（由你承担这一步的核验），或取消运行、缩短交接设置后重新启动。'),
+      h(Field, { label: '理由' }, h('input', { className: 'nodo-dialog-input', value: draft.reason, maxLength: 500, disabled: blocked, placeholder: '记入运行记录',
         onChange: event => onDraft({ ...draft, reason: event.target.value }) })),
-      accepts && h(Field, { label: '接受的产出' }, h('textarea', { className: 'nodo-dialog-input nodo-dialog-textarea', value: draft.text, disabled: blocked,
+      h('div', { className: 'nodo-run-presets' }, ...REASON_PRESETS.map(text => h(Button, { key: text, variant: 'ghost', size: 'sm', disabled: blocked,
+        'aria-pressed': draft.reason === text, onClick: () => onDraft({ ...draft, reason: text }) }, text))),
+      accepts && choices && h('div', { className: 'nodo-run-exits', role: 'radiogroup', 'aria-label': settle.kind === 'human' ? '选择的选项' : '下一步出口' },
+        ...choices.map(choice => h('label', { key: choice.id }, h('input', { type: 'radio', name: `nodo-exit-${settle.id}`, checked: picked === choice.id, disabled: blocked,
+          onChange: () => onDraft(settle.kind === 'human' ? { ...draft, text: choice.id } : { ...draft, exit: choice.id }) }), choice.label))),
+      accepts && !(settle.kind === 'human' && choices) && h(Field, { label: '接受的产出' }, h('textarea', { className: 'nodo-dialog-input nodo-dialog-textarea', value: draft.text, disabled: blocked,
         placeholder: '接受时填写这一步的产出', onChange: event => onDraft({ ...draft, text: event.target.value }) })),
-      accepts && h('p', { className: 'nodo-dialog-hint' }, settle.kind === 'human'
-        ? `人工节点须填写其中一个选项的文字${answerHint?.length ? `：${answerHint.join('、')}` : '，请核对原问题'}。`
-        : exitHint?.length > 1 ? `多出口产出的最后一行必须填写 NEXT: <出口>；可用出口：${exitHint.join('、')}。`
-          : exitHint ? '这一步只有一个出口，产出无需写 NEXT 行。'
-            : '若这一步有多个出口，产出最后一行须写 NEXT: <出口>；单出口无需写。请按原会话中的任务说明核对。'),
+      accepts && !choices && !exitHint && h('p', { className: 'nodo-dialog-hint' }, settle.kind === 'human'
+        ? '人工节点须填写其中一个选项的文字，请核对原问题。' : '多出口步骤的产出最后一行须写 NEXT: <出口>。'),
       h('div', { className: 'nodo-run-actions' },
         last?.sessionId && open(last),
         h(Button, { variant: 'outline', size: 'sm', disabled: blocked || reason === '', onClick: () => onAct('run-reconcile', { action: 'retry', reason }) }, '重试'),
-        accepts && h(Button, { variant: 'primary', size: 'sm', disabled: blocked || reason === '' || draft.text.trim() === '',
-          onClick: () => onAct('run-reconcile', { action: 'accept', text: draft.text, reason }) }, '接受产出'))),
+        accepts && h(Button, { variant: 'primary', size: 'sm', disabled: blocked || reason === '' || draft.text.trim() === '' || Boolean(choices && !picked),
+          onClick: () => onAct('run-reconcile', { action: 'accept', text: accepted, reason }) }, '接受产出'))),
     !step && STOPPABLE_RUN.includes(run.status) && h('div', { className: 'nodo-run-actions' },
       run.status === 'needs_reconcile'
         ? h(Button, { variant: 'outline', size: 'sm', disabled: blocked || reason === '', title: '填写理由后放弃，视为确认原执行已结束',
@@ -120,7 +127,7 @@ export function DecisionCard({ card, refresh, readOnly }) {
     h('section', { className: 'nodo-question-card', 'aria-labelledby': `nodo-question-${card.id}` },
       h('header', { className: 'nodo-question-head' },
         h('div', null,
-          h('div', { className: 'nodo-question-eyebrow' }, '等待你的决定'),
+          h('div', { className: 'nodo-question-eyebrow', role: 'alert' }, '等待你的决定'),
           h('h2', { className: 'nodo-question-title', id: `nodo-question-${card.id}` }, card.reason))),
       h('div', { className: 'nodo-question-body' },
         report && h('div', { className: 'nodo-question-report', role: 'group', 'aria-label': `${report.step} 的产出` },
@@ -149,7 +156,7 @@ export function DecisionCard({ card, refresh, readOnly }) {
           !legacy && h(Button, { variant: 'primary', disabled: blocked, onClick: () => void answer(exit) }, busy ? '提交中…' : '提交')))))
 }
 
-export function ApprovalCard({ card, refresh, readOnly }) {
+export function ApprovalCard({ card, refresh, readOnly, from }) {
   if (card.detail?.exits) return h(DecisionCard, { card, refresh, readOnly })
   const questions = card.detail?.questions?.length
     ? card.detail.questions
@@ -195,8 +202,10 @@ export function ApprovalCard({ card, refresh, readOnly }) {
     }
     return h('div', { className: 'nodo-approval', onKeyDown: keydown, 'aria-busy': busy ? 'true' : undefined },
       h('section', { className: 'nodo-approval-card' },
-        h('div', { className: 'nodo-approval-strip' },
-          h(StateDot, { state: busy ? 'ongoing' : 'warning' }), '等待审批'),
+        h('div', { className: 'nodo-approval-strip', role: 'alert' },
+          h(StateDot, { state: busy ? 'ongoing' : 'warning' }), from ? '等待审批 ·' : '等待审批',
+          from && h('span', { className: 'nodo-approval-from' }, h(RoleAvatar, { profile: from.role, size: 16 }),
+            h('span', null, [from.role.name, from.role.engine && engineDisplayName({ id: from.role.engine }), from.session.name].filter(Boolean).join(' · ')))),
         h('div', { className: 'nodo-approval-body', tabIndex: 0, role: 'group', 'aria-label': '审批详情' },
           h('p', { className: 'nodo-approval-headline' }, card.tool ? `工具「${card.tool}」请求执行` : card.reason),
           card.tool && card.reason ? h('p', { className: 'nodo-approval-command' }, card.reason) : null),
@@ -210,7 +219,7 @@ export function ApprovalCard({ card, refresh, readOnly }) {
     h('section', { className: 'nodo-question-card', 'aria-labelledby': `nodo-question-${card.id}` },
       h('header', { className: 'nodo-question-head' },
         h('div', null,
-          h('div', { className: 'nodo-question-eyebrow' }, question.header ?? '等待回答'),
+          h('div', { className: 'nodo-question-eyebrow', role: 'alert' }, question.header ?? '等待回答'),
           h('h2', { className: 'nodo-question-title', id: `nodo-question-${card.id}` }, question.question))),
       h('div', { className: 'nodo-question-body' },
         h('div', { className: 'nodo-question-options', role: 'radiogroup', 'aria-label': question.header ?? question.question },
@@ -225,7 +234,7 @@ export function ApprovalCard({ card, refresh, readOnly }) {
             h('span', { className: 'nodo-question-copy' },
               h('span', { className: 'nodo-question-line' },
                 h('span', { className: 'nodo-question-label' }, display.text),
-                display.recommended && h('span', { className: 'nodo-question-badge' }, '推荐'),
+                display.recommended && h('span', { className: 'nodo-tag', 'data-tone': 'accent' }, '推荐'),
                 option.description && h('span', { className: 'nodo-question-description' }, option.description))))
           })),
         question.allowText !== false && card.detail?.allowText !== false && h('textarea', {

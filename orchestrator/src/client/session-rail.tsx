@@ -1,6 +1,6 @@
 import type { ReactNode } from './ui-shared.js'
 import {
-  h, Fragment, useState, Menu, Tooltip, Button, Input, StateDot, Tag, workLabel, workDot, runningOf,
+  h, Fragment, useState, Menu, Tooltip, Button, Input, StateDot, workLabel, workDot, runningOf,
   sessionTime, workspaceIdOf, roleStateOf, ARCHIVED_VIEWS, SESSION_FOLD, layoutService,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconBranchOutlineRegular, IconChevronDownOutlineRegular,
   IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
@@ -221,29 +221,28 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
             item.worktree ? `${item.worktree.branch} · ${item.cwd}` : item.cwd, liveIn([item]))}
           {archived !== 'hide' && <span className="nodo-tree-flag" title={ARCHIVED_VIEWS[archived]}><IconArchiveOutlineRegular size={14} /></span>}
           <span className="nodo-row-actions">
+            {action('搜索会话', `搜索“${item.name}”的会话`, <IconSearchOutlineRegular />, () => {
+              if (searchOpen) { setQueries(current => ({ ...current, [item.id]: '' })); setSearching(null) }
+              else { setSearching(item.id); setOpened(current => ({ ...current, [item.id]: true })) }
+            })}
             {action('新会话', `在“${item.name}”中新建会话`, <IconNewChatOutlineRegular />, () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow)}
             <Menu open={menuOpen === item.id} onClose={() => setMenuOpen(null)} portal closeOnPointerLeave selectedId={`archived:${archived}`}
               items={[
-                { id: 'search', label: '搜索会话', icon: <IconSearchOutlineRegular /> },
                 ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({ id: `archived:${id}`, label,
                   icon: id === 'hide' ? <IconArchiveOffOutlineRegular /> : <IconArchiveOutlineRegular /> })),
                 ...(item.worktree ? [] : [{ id: 'worktree', label: '创建工作树…', icon: <IconBranchOutlineRegular />, disabled: busyNow }]),
                 { id: 'rename', label: '重命名', icon: <IconEditOutlineRegular />, disabled: busyNow },
-                { id: 'delete', label: '删除工作区', icon: <IconTrashOutlineRegular />, danger: true, disabled: busyNow },
+                { id: 'delete', label: '删除项目', icon: <IconTrashOutlineRegular />, danger: true, disabled: busyNow },
               ]}
               onSelect={(id: string) => {
                 setMenuOpen(null)
-                if (id === 'search') {
-                  if (searchOpen) { setQueries(current => ({ ...current, [item.id]: '' })); setSearching(null) }
-                  else { setSearching(item.id); setOpened(current => ({ ...current, [item.id]: true })) }
-                }
-                else if (id.startsWith('archived:')) setArchives(current => ({ ...current, [item.id]: id.slice('archived:'.length) as Archived }))
+                if (id.startsWith('archived:')) setArchives(current => ({ ...current, [item.id]: id.slice('archived:'.length) as Archived }))
                 else if (id === 'worktree') onNewWorktree(item)
                 else if (id === 'rename') onRenameWorkspace(item)
                 else if (id === 'delete') onDeleteWorkspace(item)
               }}
               anchor={<button type="button" className="nodo-row-action" aria-haspopup="menu" aria-expanded={menuOpen === item.id}
-                aria-label={`工作区“${item.name}”的操作`}
+                aria-label={`项目“${item.name}”的操作`}
                 onClick={event => { event.stopPropagation(); setMenuOpen(current => current === item.id ? null : item.id) }}><IconEllipsisOutlineRegular /></button>} />
           </span>
         </div>
@@ -266,12 +265,12 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     const label = workLabel(state)
     return (
       <div key={item.id} className="nodo-roster-cell">
-        <button type="button" className="nodo-roster-item" aria-pressed={pressed} title={item.name}
+        <button type="button" className="nodo-roster-item" aria-current={pressed || undefined} title={item.name}
           aria-label={`${label ? `${item.name}，${label}` : item.name}${item.lead === true ? '，主控' : ''}`}
           onClick={() => { if (pressed) setRoleFilter(null); else { onSelect(item.id); setRoleFilter(item.id) } }}>
           <span className="nodo-roster-avatar"><RoleAvatar profile={item} running={state.active} size={28} />
             {item.lead === true && <span className="nodo-roster-badge"><IconSparkleRegular size={8} /></span>}
-            {workDot(state) === 'warning' && <span className="nodo-roster-dot"><StateDot state="warning" size={8} /></span>}</span>
+            {['warning', 'ongoing'].includes(workDot(state)) && <span className="nodo-roster-dot"><StateDot state={workDot(state)} size={8} /></span>}</span>
           <span className="nodo-roster-name">{item.name}</span>
         </button>
         <button type="button" className="nodo-roster-edit" aria-label={`配置角色 ${item.name}`} title={`配置角色 ${item.name}`}
@@ -292,8 +291,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
           <Tooltip label="会话" side="right" delayMs={500}>
             <button type="button" aria-label="会话" aria-pressed={!navigation} onClick={navigation ? onSessions : undefined}><IconFlatListOutlineRegular size={18} /></button>
           </Tooltip>
-          <Tooltip label="Workflow" side="right" delayMs={500}>
-            <button type="button" aria-label={runsWaiting ? 'Workflow（有待处理）' : 'Workflow'} aria-pressed={navigation?.view === 'workflow'}
+          <Tooltip label="工作流" side="right" delayMs={500}>
+            <button type="button" aria-label={runsWaiting ? '工作流（有待处理）' : '工作流'} aria-pressed={navigation?.view === 'workflow'}
               onClick={navigation?.view === 'workflow' ? undefined : onWorkflows}><IconWorkspaceTreeOutlineRegular size={18} />
               {runsWaiting && <span className="nodo-rail-badge"><StateDot state="warning" size={8} /></span>}</button>
           </Tooltip>
@@ -309,8 +308,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
       </div>
       <div className="nodo-rail-body">
         {navigation?.content ?? <Fragment>
-          <div className="nodo-roster" role="group" aria-label="按角色筛选会话">
-            <button type="button" className="nodo-roster-item" aria-pressed={!filterRole} onClick={() => setRoleFilter(null)}>
+          <div className="nodo-roster" role="group" aria-label="按角色查看会话">
+            <button type="button" className="nodo-roster-item" aria-current={!filterRole || undefined} onClick={() => setRoleFilter(null)}>
               <span className="nodo-roster-avatar"><IconUsersOutlineRegular size={16} /></span>
               <span className="nodo-roster-name">全部</span>
             </button>
@@ -328,7 +327,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
               </div>
               {projectsOpen && <div className="nodo-tree-children">
                 {tree}
-                {!tree.length && <p className="nodo-rail-empty" role="status">{view.workspaces.length ? '没有找到匹配的会话' : '添加项目 workspace'}</p>}
+                {!tree.length && <p className="nodo-rail-empty" role="status">{view.workspaces.length ? '没有找到匹配的会话' : '添加项目'}</p>}
               </div>}
             </div>
             {!!archivedSessions.length && <div className="nodo-tree-node">
@@ -342,7 +341,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
             </div>}
           </nav>
         </Fragment>}
-        {readOnly && <p className="nodo-rail-foot"><Tag tone="neutral">只读模式</Tag></p>}
+        {readOnly && <p className="nodo-rail-foot"><span className="nodo-tag">只读模式</span></p>}
       </div>
     </aside>
   )

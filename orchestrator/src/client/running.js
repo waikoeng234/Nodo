@@ -96,7 +96,7 @@ export const RUNNING_CSS = `
 .nodo-running-dock{flex:none;padding:0 calc(var(--dsh-composer-side-clearance,16px) + 16px) 8px}
 .nodo-running-dock>.nodo-running{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto}
 .nodo-running{display:flex;flex-direction:column;align-items:flex-start;color:color-mix(in srgb,var(--nodo-running-tint) 38%,var(--dsw-alias-label-primary));font-size:calc(var(--dsh-content-font-size,14px) - 2px);line-height:calc(22px + var(--dsh-content-font-delta,0px))}
-.nodo-running-divider{width:100%;height:.5px;margin:8px 0 10px;background:color-mix(in srgb,var(--dsw-alias-border-l1) 75%,var(--dsw-alias-border-l2))}
+.nodo-running-divider{width:100%;height:.5px;margin:8px 0;background:color-mix(in srgb,var(--dsw-alias-border-l1) 75%,var(--dsw-alias-border-l2))}
 .nodo-running-line{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0;max-width:100%;font-variant-numeric:tabular-nums}
 .nodo-running-icon{display:inline-flex;flex:none;width:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);height:clamp(16px,calc(18px + var(--dsh-content-font-delta,0px)),20px);transform-origin:50% 85%;animation:nodo-running-hop 1.58s infinite;animation-delay:var(--nodo-running-phase)}
 .nodo-running-icon .nodo-avatar-body{fill:var(--nodo-running-tint)}

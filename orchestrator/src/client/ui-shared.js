@@ -11,35 +11,35 @@ import { createElement as h, Fragment, useState, useEffect, useLayoutEffect, use
 // reuses the host's own controls, rows, markdown renderer and icon artwork (the
 // native packages require it the same way).
 import {
-  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
+  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
-  IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular,
+  IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
   IconSparkleRegular, IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconDatabaseOutlineRegular, IconGaugeOutlineRegular,
   IconBranchOutlineRegular,
   IconWorkspaceTreeOutlineRegular, PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
-  IconDataOutlineRegular,
+  IconDataOutlineRegular, IconGlobeOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import NODO_LOGO from './assets/nodo-logo.png'
 
 export { h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore }
 export {
-  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tag, Tooltip, relativeTime,
+  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
-  IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular,
+  IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
   IconSparkleRegular, IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconDatabaseOutlineRegular, IconGaugeOutlineRegular,
   IconBranchOutlineRegular,
   IconWorkspaceTreeOutlineRegular, PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
-  IconDataOutlineRegular,
+  IconDataOutlineRegular, IconGlobeOutlineRegular,
 }
 
 export const PANEL_ID = 'nodo'
@@ -60,8 +60,10 @@ export let nativeSessionState = null
 export let NewConversation = null
 export const readNativeSession = () => nativeSessionState.getSnapshot().key
 export const subscribeNativeSession = listener => nativeSessionState.subscribe(listener)
-/** @type {{ selectPanel?: (key: string | null) => void, toggleSidebar?: () => void } | null} */
+/** @type {{ selectPanel?: (key: string | null) => void, toggleSidebar?: () => void, openRightbar?: (track: boolean, fullscreen: boolean) => void, closeRightbar?: () => void } | null} */
 export let layoutService = null
+/** @type {import('./right-panel.tsx').RightPanelService} */
+export let rightPanelService
 
 // apply() seeds the host services once per registration; the modules above read
 // them through these live bindings.
@@ -73,6 +75,7 @@ export function setHostServices(services) {
   nativeSessionState = services.nativeSessionState
   NewConversation = services.NewConversation
   layoutService = services.layoutService
+  rightPanelService = services.rightPanelService
 }
 
 export const call = async (endpoint, payload) => {
@@ -135,6 +138,9 @@ export function useStateView() {
 
   return { view, error, refresh }
 }
+
+// The host amber is too light for text on light surfaces; mixing toward the label colour keeps it readable in both themes.
+export const WARN_INK = 'color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,var(--dsw-alias-label-primary))'
 
 // Markdown chrome for the host's own renderer, word for word from the shell's
 // Chinese dictionary (dsh-client-locale: copy / copied / codeBlock.* / footnotes).

@@ -46,7 +46,7 @@ async function harness({ draft = draftOf(), definition, readOnly = false, api = 
       },
       ...react,
     },
-    globals: { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) }, ...globals },
+    globals: { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) }, setTimeout: () => 0, clearTimeout() {}, ...globals },
   })
   const flushEffects = () => { const run = pending; pending = []; run.forEach(effect => effect()) }
   return { loaded, view, calls, storage,
@@ -741,7 +741,7 @@ test('missing workspace still blocks launch and explains the association in the 
   const h = await harness({ definition }); h.view.workspaces = []
   const tree = h.render()
   assert.equal(button(tree, '运行').props.disabled, true)
-  assert.match(button(tree, '运行').props.title, /需要已有的工作区和角色/)
+  assert.equal(text(all(tree).find(item => item.props?.className === 'nodo-wf-run-why')), '请为节点选择已关联项目的角色')
   assert.equal(all(tree).some(item => item.props.className === 'nodo-wf-validation'), false)
   assert.equal(JSON.parse(h.storage.get('nodo.workflow.draft')).draft.name, definition.name)
   h.dispose()
@@ -823,7 +823,7 @@ test('an incomplete draft saves while launch names its first problem; a blank ne
   assert.equal(saveButton(h.render()).props.disabled, false)
   assert.equal(saveButton(h.render()).props.title, '保存')
   assert.equal(button(tree, '运行').props.disabled, true)
-  assert.match(button(tree, '运行').props.title, /请填写任务说明/)
+  assert.match(text(all(tree).find(item => item.props?.className === 'nodo-wf-run-why')), /请填写任务说明/)
   saveButton(h.render()).props.onClick(); await h.flush()
   assert.equal(h.calls.find(call => call.endpoint === 'workflow-create').payload.nodes[1].task, '')
   assert.equal(button(h.render(), '运行').props.disabled, true, 'launch still waits for the task after saving')
@@ -1087,13 +1087,13 @@ test('the launch card lists every step in wire order with its role and routes', 
   const h = await harness({ draft })
   button(h.render(), '运行').props.onClick()
   const modal = all(h.render()).find(node => node.type === 'Modal' && node.props.title === '启动流程')
-  const list = all(modal).find(node => node.props?.className === 'nodo-dialog-fields nodo-wf-steps'), steps = list.children
-  assert.ok(steps.every(step => step.props.className === 'nodo-wf-association'), 'the steps scroll inside the dialog body')
-  assert.deepEqual(steps.map(step => text(step.children[0])), ['1. review', '2. fixbug', '3. 同步文档', '4. 人工验收', '5. commit'])
+  const list = all(modal).find(node => node.props?.className === 'nodo-wf-steps'), steps = list.children
+  assert.ok(steps.every(step => step.type === 'li' && step.props.className === 'nodo-wf-association'), 'the steps form one compact list')
+  assert.deepEqual(steps.map(step => text(step.children[1])), ['1. review', '2. fixbug', '3. 同步文档', '4. 人工验收', '5. commit'])
   assert.match(text(steps[0]), /开发伙伴 · echo · 项目/)
   assert.match(text(steps[0]), /通过 → 同步文档；不通过 → fixbug/)
   assert.match(text(steps[1]), /返工 ↺ review/)
-  assert.match(text(steps[3]), /人工节点 · 查看上一步产出并选择下一步继续 → commit/)
+  assert.equal(text(steps[3]), '4. 人工验收人工节点', 'a single route adds nothing to the wire order')
   h.dispose()
 })
 
@@ -1102,7 +1102,7 @@ test('launching a modified flow saves it in place first and runs that version', 
   const h = await harness({ definition: structuredClone(definition), draft, api: launchApi(definition) })
   assert.equal(button(h.render(), '运行').props.disabled, false)
   const modal = await confirmLaunch(h)
-  assert.match(text(modal), /运行前先把修改保存到当前流程/)
+  assert.match(text(modal), /运行前先保存修改/)
   const order = h.calls.map(call => call.endpoint).filter(endpoint => /workflow-(create|update|run)/.test(endpoint))
   assert.deepEqual(order, ['workflow-update', 'workflow-run', 'workflow-update'])
   assert.equal(h.calls.find(call => call.endpoint === 'workflow-update').payload.nodes[1].task, '本次的新任务')

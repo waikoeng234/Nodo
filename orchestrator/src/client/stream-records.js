@@ -111,6 +111,8 @@ export function ChangedFile({ file, load, loaded, available, root, request, cycl
       content?.error && h('p', { role: 'alert', className: 'nodo-error-line' }, content.error),
       content?.missing && h('p', { className: 'nodo-note' }, '文件已不存在或不是普通文件。'),
       content?.binary && h('p', { className: 'nodo-note' }, '二进制文件，无法作为文本展示。'),
+      content?.image && h('img', { className: 'nodo-file-view-image', src: content.image.dataUrl, alt: path,
+        onError: () => setContent({ error: '无法显示' }) }),
       typeof content?.text === 'string' && h('div', null,
         content.truncated && h('p', { className: 'nodo-note' }, '文件超过展示上限，仅显示开头部分。'),
         content.text === '' ? h('p', { className: 'nodo-note' }, '文件为空。')

@@ -92,6 +92,7 @@ export function RoundMember({ step, round }) {
   const work = round.work?.[step.session]
   const live = !step.report && !step.ended && work?.active === true
   const [open, setOpen] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!live) return
@@ -100,17 +101,20 @@ export function RoundMember({ step, round }) {
     return () => clearInterval(timer)
   }, [live])
   const { summary, rest } = reportParts(step.report)
-  const tag = (text, tone) => h('span', { className: 'nodo-round-tag', 'data-tone': tone }, text)
+  const tag = (text, tone) => h('span', { className: 'nodo-tag', 'data-tone': tone }, text)
   return h('article', { className: 'nodo-round-member', 'aria-label': role.name },
     h(RoleAvatar, { profile: role, size: 28, running: live }),
     h('div', { className: 'nodo-round-body' },
       h('div', { className: 'nodo-round-head' },
         h('span', { className: 'nodo-round-role' }, role.name),
         tag(round.taskTypes?.find(item => item.id === step.type)?.name ?? step.type),
-        step.hard && tag('难题', 'hard'), step.reused && tag('续用', 'reused'),
+        step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
         live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: 'ongoing', size: 7 }), runDuration(now - (work.since ?? now)))
-          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, '未完成')
+          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.ended === 'interrupted' ? '已中断' : '已结束')
             : step.report ? h(MessageTime, { at: step.at }) : h('span', { className: 'nodo-round-status' }, '未回报'),
+        live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
+          onClick: () => { setStopping(true); void round.onStop(step).finally(() => setStopping(false)) } },
+          h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'currentColor', 'aria-hidden': true }, h('rect', { width: 10, height: 10, rx: 2 })), stopping ? '停止中…' : '停止'),
         h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
           h(IconBrowseOutlineRegular, { size: 14 }), '查看会话')),
       step.report ? rest
@@ -118,7 +122,7 @@ export function RoundMember({ step, round }) {
           h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
         : h('p', { className: 'nodo-round-summary' }, summary)
         : live ? h(RoundTools, { step, work })
-          : step.ended && h('p', { className: 'nodo-round-quiet' }, step.ended === 'interrupted' ? '已中断，没有回报主控。' : '没有回报主控。'),
+          : step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
       open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))))
 }
 

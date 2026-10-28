@@ -80,7 +80,7 @@ export const TOOL_CALL_CSS = `
 .nodo-tool-call-content{min-width:0;padding:4px 0 6px 22px}
 .nodo-tool-call-content>.nodo-io-card{margin:0}
 .nodo-tool-call-content .nodo-io-section+.nodo-io-section{border-top:.5px solid var(--dsw-alias-border-l1)}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:10px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:8px}
 .nodo-tool-call[data-compact=true] .nodo-tool-call-label{flex:none;max-width:40%}
 .nodo-tool-call[data-compact=true] .nodo-tool-call-query{max-width:min(65%,48ch);padding:2px 8px;border:0;border-radius:8px;line-height:22px;color:var(--dsw-alias-label-secondary)}
 .nodo-tool-call[data-compact=true]:not([data-kind=tool]) .nodo-tool-call-query{max-width:min(65%,52ch);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:22px}

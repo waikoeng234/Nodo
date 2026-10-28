@@ -5,11 +5,11 @@
 //
 //   { id, name, cwd, createdAt, updatedAt }
 import { randomUUID } from 'node:crypto'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { readdirSync } from 'node:fs'
-import { open, realpath, stat } from 'node:fs/promises'
+import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { validateWorkspace } from '../../agent-drivers/dist/cli.js'
-import { NAME_MAX } from './constants.js'
+import { IMAGE_BYTES_MAX, NAME_MAX } from './constants.js'
 import { normalize, unquote } from './text.js'
 
 // The @-context search answers at most this many paths and walks at most this
@@ -18,6 +18,21 @@ const FILES_MAX = 30
 const FILES_DEPTH = 6
 // The changes card's on-demand file view reads at most this many bytes.
 const FILE_VIEW_LIMIT = 512 * 1024
+const DIR_MAX = 1000
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
+
+const confine = (base, path) => {
+  const rest = relative(base, path)
+  if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)) throw Object.assign(new Error('文件不在会话工作区内'), { code: 'orch/invalid' })
+}
+const unreadable = error => {
+  if (error.code === 'ENOENT') return null
+  throw Object.assign(new Error(`文件不可读：${error.message}`), { code: 'orch/invalid' })
+}
+const directoryUnreadable = error => {
+  const missing = error.code === 'ENOENT'
+  throw Object.assign(new Error(missing ? '目录不存在' : '目录不可读'), { code: missing ? 'orch/not-found' : 'orch/invalid' })
+}
 
 export function install(rt) {
   const { state } = rt
@@ -139,9 +154,7 @@ export function install(rt) {
     return { files: found }
   }
 
-  // The changes card's 查看当前内容: one bounded read, constrained to the
-  // conversation's own workspace so a captured path cannot reach elsewhere.
-  const workspaceFile = async ({ profile, session, target, path: wanted }) => {
+  const workspacePath = async ({ profile, session, target, path: wanted }, directory = false) => {
     await rt.load()
     let found
     if (target !== undefined) {
@@ -151,27 +164,61 @@ export function install(rt) {
     } else {
       try { found = rt.conversation(profile, session) } catch { throw Object.assign(new Error('No such session'), { code: 'orch/not-found' }) }
     }
-    const root = resolve(rt.sessionWorkspace(found.profile, found.session)?.cwd ?? '')
-    if (root === '' || typeof wanted !== 'string' || wanted === '') throw Object.assign(new Error('需要会话工作区内的文件路径'), { code: 'orch/invalid' })
+    const cwd = found.session.cwd ?? rt.sessionWorkspace(found.profile, found.session)?.cwd
+    if (!cwd || typeof wanted !== 'string' || (!directory && wanted === '') || wanted.includes('\0')) throw Object.assign(new Error('需要会话工作区内的文件路径'), { code: 'orch/invalid' })
+    const root = resolve(cwd)
     const full = resolve(root, wanted)
-    const confine = (base, path) => {
-      const rest = relative(base, path)
-      if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)) throw Object.assign(new Error('文件不在会话工作区内'), { code: 'orch/invalid' })
-    }
     confine(root, full)
-    const unreadable = error => {
-      if (error.code === 'ENOENT') return null
-      throw Object.assign(new Error(`文件不可读：${error.message}`), { code: 'orch/invalid' })
-    }
     // Symbolic links are followed only while they stay inside the workspace.
-    const real = await realpath(full).catch(unreadable)
+    const real = await realpath(full).catch(directory ? directoryUnreadable : unreadable)
+    const realRoot = real === null ? null : await (directory ? realpath(root).catch(directoryUnreadable) : realpath(root))
+    if (real !== null) confine(realRoot, real)
+    return { full, real, root: realRoot }
+  }
+
+  const workspaceDir = async body => {
+    const { real, root } = await workspacePath(body, true)
+    if (real === null || !(await stat(real).catch(directoryUnreadable)).isDirectory()) throw Object.assign(new Error('目录不存在'), { code: 'orch/not-found' })
+    const entries = []
+    for (const entry of await readdir(real, { withFileTypes: true }).catch(directoryUnreadable)) {
+      if (entry.name === '.git') continue
+      let info = entry
+      if (entry.isSymbolicLink()) {
+        try {
+          const target = await realpath(join(real, entry.name))
+          confine(root, target)
+          info = await stat(target)
+        } catch { continue }
+      }
+      if (info.isDirectory() || info.isFile()) entries.push({ name: entry.name, kind: info.isDirectory() ? 'dir' : 'file' })
+    }
+    entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1))
+    return { entries: entries.slice(0, DIR_MAX), ...(entries.length > DIR_MAX ? { truncated: true } : {}) }
+  }
+
+  // The changes card's 查看当前内容: one bounded read, constrained to the
+  // conversation's own workspace so a captured path cannot reach elsewhere.
+  const workspaceFile = async body => {
+    const { full, real } = await workspacePath(body)
     if (real === null) return { path: full, missing: true }
-    confine(await realpath(root), real)
     const info = await stat(real).catch(unreadable)
     if (!info?.isFile()) return { path: full, missing: true }
+    const mediaType = IMAGE_TYPES[extname(full).toLowerCase()]
+    if (mediaType && info.size > IMAGE_BYTES_MAX) return { path: full, binary: true }
     await rt.loadSecrets()
     const handle = await open(real, 'r')
     try {
+      if (mediaType) {
+        const chunk = Buffer.alloc(Math.min(info.size, IMAGE_BYTES_MAX) + 1)
+        let size = 0
+        while (size < chunk.length) {
+          const { bytesRead } = await handle.read(chunk, size, chunk.length - size, size)
+          if (!bytesRead) break
+          size += bytesRead
+        }
+        return size > IMAGE_BYTES_MAX ? { path: full, binary: true }
+          : { path: full, image: { mediaType, dataUrl: `data:${mediaType};base64,${chunk.subarray(0, size).toString('base64')}` } }
+      }
       const chunk = Buffer.alloc(FILE_VIEW_LIMIT + 1)
       const { bytesRead } = await handle.read(chunk, 0, FILE_VIEW_LIMIT + 1, 0)
       if (chunk.subarray(0, bytesRead).includes(0)) return { path: full, binary: true }
@@ -180,7 +227,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    createWorkspace, updateWorkspace, deleteWorkspace, findWorkspace, workspaceOf, workspaceFiles, workspaceFile, cleanWorkspaceName: cleanName,
+    createWorkspace, updateWorkspace, deleteWorkspace, findWorkspace, workspaceOf, workspaceFiles, workspaceDir, workspaceFile, cleanWorkspaceName: cleanName,
     workspacesView: () => Object.values(state.workspaces).map(workspaceView),
   })
 }

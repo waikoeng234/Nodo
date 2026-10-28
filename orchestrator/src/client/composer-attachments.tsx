@@ -58,13 +58,13 @@ export function ComposerAttachmentChip({ attachment, onRemove, onPreview, disabl
 }
 
 export const COMPOSER_ATTACHMENTS_CSS = `
-.nodo-composer-attachments{display:flex;flex-wrap:wrap;gap:8px;max-height:144px;overflow:auto;padding:0 14px}
-.nodo-composer-attachment{position:relative;display:flex;align-items:center;gap:10px;max-width:100%;min-width:0;padding:6px 10px 6px 6px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-composer-attachments{display:flex;flex-wrap:wrap;gap:8px;max-height:144px;overflow:auto;padding:0 12px}
+.nodo-composer-attachment{position:relative;display:flex;align-items:center;gap:8px;max-width:100%;min-width:0;padding:6px 12px 6px 6px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
 .nodo-composer-attachment-icon{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;border:0;border-radius:10px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 button.nodo-composer-attachment-icon{cursor:zoom-in}
 .nodo-composer-attachment-label{display:flex;flex-direction:column;min-width:0}
 .nodo-composer-attachment-name{max-width:144px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;line-height:18px}
-.nodo-composer-attachment-meta{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.nodo-composer-attachment-meta{font-size:12px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .nodo-composer-attachment[data-state=error] .nodo-composer-attachment-meta{color:var(--dsw-alias-state-error-primary)}
 .nodo-composer-attachment-trailing{display:flex;align-items:center;justify-content:flex-end;flex:none;width:20px;margin-left:4px}
 .nodo-composer-attachment-remove{display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:16px;cursor:pointer}

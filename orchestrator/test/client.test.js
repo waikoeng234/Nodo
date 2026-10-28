@@ -75,7 +75,7 @@ test('client registers matching sidebar/main seats after the shell declares them
     },
   })
   assert.equal(registrations.length, 0, 'wait for the shell-owned slot declarations')
-  assert.deepEqual([...pending.keys()], ['sidebar', 'conversation.input.model', 'conversation.input.right', 'conversation.input.dock', 'conversation.chat.node', 'main', 'main.conversation', 'sidebar.panellist'])
+  assert.deepEqual([...pending.keys()], ['sidebar', 'conversation.input.model', 'conversation.input.right', 'rightbar', 'shell.overlay', 'conversation.input.dock', 'conversation.chat.node', 'main', 'main.conversation', 'sidebar.panellist'])
   for (const factory of pending.values()) disposers.push(factory())
   const page = registrations.find(row => row.options.name === 'main')
   const nav = registrations.find(row => row.options.name === 'sidebar.panellist')
@@ -105,6 +105,20 @@ test('client registers matching sidebar/main seats after the shell declares them
   assert.equal(registrations.length, 0)
   assert.equal(listeners.size, 0, 'the scroll listener leaves with the plugin')
   assert.equal(attributes.size, 0)
+})
+
+test('the conversation frame paints its border above the transcript and keeps its background below', async () => {
+  const { CSS } = await loadClient('styles.js')
+  const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
+  const column = 'html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])'
+  const geometry = rule(`${column}::before,${column}::after`)
+  assert.match(geometry, /inset:var\(--dsh-frame-top-clearance,0px\) 0 0/, 'both layers start at the content frame edge')
+  assert.match(geometry, /pointer-events:none/, 'the foreground stroke leaves controls clickable')
+  assert.equal(rule(`${column}::before`), 'z-index:-1;background:var(--dsw-alias-bg-base)')
+  assert.equal(rule(`${column}::after`), 'z-index:1;border:var(--nodo-card-edge);border-left:0')
+  assert.match(rule('.nodo-head'), /min-height:var\(--dsh-frame-top-clearance,0px\)/)
+  assert.match(rule('.nodo-feedwrap'), /flex:1;min-height:0/, 'the feed retains the existing space below the header')
+  assert.match(rule('.nodo-feed'), /overflow-y:auto/, 'the inner feed remains the scroll owner')
 })
 
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
@@ -877,7 +891,7 @@ test('every host UI kit member the page uses is destructured from the kit', () =
   const imported = new Set(source.slice(open + 'import {'.length, close)
     .split(',').map(name => name.trim()).filter(Boolean))
   const members = ['Button', 'DisclosureRow', 'Input', 'MarkdownText', 'Menu', 'Modal',
-    'StateDot', 'Tag', 'Tooltip', 'relativeTime']
+    'StateDot', 'Tooltip', 'relativeTime']
   const named = [...source.matchAll(/\bIcon[A-Za-z]+(?:Regular|Medium)\b/g)].map(match => match[0])
   for (const name of new Set([...members, ...named])) {
     assert.ok(imported.has(name), `${name} is used but not imported from the kit`)
@@ -1112,7 +1126,7 @@ test('the rail filters sessions by the role picked in the roster', async () => {
   const roster = tree => tree.filter(node => node.props?.className === 'nodo-roster-item')
   const name = node => node.children[1].children[0]
   const press = label => roster(render()).find(node => name(node) === label).props.onClick()
-  const pressed = tree => roster(tree).filter(node => node.props['aria-pressed']).map(name)
+  const pressed = tree => roster(tree).filter(node => node.props['aria-current']).map(name)
   const edit = (tree, label) => tree.find(node => node.props?.className === 'nodo-roster-edit' && node.props['aria-label'] === `配置角色 ${label}`)
   let tree = render()
   assert.deepEqual(roster(tree).map(name), ['全部', '大肥鱼', '贼 coder'])
@@ -1173,11 +1187,11 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   toggle(render()).props.onClick()
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'folding again hides the tail')
   const views = tree.find(node => node.props?.className === 'nodo-rail-switch')
-  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['Workflow', false], ['角色', false]], 'the dock switch replaces the logo and the workflow entry')
+  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['工作流', false], ['角色', false]], 'the dock switch replaces the logo and the workflow entry')
   const search = () => tree.find(node => node.type === 'Input')
-  const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'search'))
-  assert.equal(search(), undefined, 'search waits in the project menu')
-  menu().props.onSelect('search')
+  const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'archived:only'))
+  assert.equal(search(), undefined, 'search waits behind the project row action')
+  tree.find(node => node.props?.className === 'nodo-row-action' && node.props['aria-label'] === '搜索“bot”的会话').props.onClick({ stopPropagation() {} })
   tree = render()
   assert.equal(search().props['aria-label'], '搜索“bot”的会话')
   search().props.onChange({ target: { value: '会话0' } })
@@ -1708,7 +1722,7 @@ test('the role editor edits an existing role and confirms its deletion inline', 
   assert.equal(render().find(node => node.props.className === 'nodo-role-head-copy').children.find(node => node?.type === 'p').children.join(''),
     'Echo，3 个会话')
   assert.deepEqual(tabs(), [])
-  assert.equal(text('nodo-role-badge'), '执行角色')
+  assert.equal(text('nodo-tag'), '执行角色')
   const select = render().find(node => node.type === 'select')
   assert.equal(select.props.disabled, true, 'the engine is fixed once created')
   assert.equal(select.props.title, '创建后不能更换 Agent')
@@ -2286,7 +2300,7 @@ test('the run view lists each step and offers only what the run allows a person 
   assert.match(text(empty), /已完成 · 已接受：read it/)
   assert.match(text(empty), /第 1 次 · Writer · 出错（未确认）/)
   assert.match(text(empty), /Notes…/, 'a cut output says so')
-  assert.ok(nodes(empty).some(node => node.type === 'Tag' && node.children.includes('人工产出')))
+  assert.ok(nodes(empty).some(node => node.props?.className === 'nodo-tag' && node.children.includes('人工产出')))
   for (const label of ['重试', '接受产出', '放弃运行']) assert.equal(button(empty, label).props.disabled, true, `${label} needs a reason first`)
   assert.equal(button(empty, '取消运行'), undefined, 'a run waiting to be reconciled is given up, not plainly cancelled')
   const opens = nodes(empty).filter(node => node.type === 'Button' && node.children.includes('打开会话'))
@@ -2294,18 +2308,22 @@ test('the run view lists each step and offers only what the run allows a person 
   opens[1].props.onClick()
   assert.deepEqual(opened, ['live'])
 
-  assert.match(text(empty), /若这一步有多个出口，产出最后一行须写 NEXT: <出口>；单出口无需写/, 'an unknown node names both rules')
-  assert.match(text(render(stuck, undefined, { exitHint: [] })), /这一步只有一个出口，产出无需写 NEXT 行/)
-  assert.doesNotMatch(text(render(stuck, undefined, { exitHint: ['done'] })), /NEXT: </)
-  assert.match(text(render(stuck, undefined, { exitHint: ['approve', 'revise'] })), /可用出口：approve、revise/)
+  assert.match(text(empty), /多出口步骤的产出最后一行须写 NEXT: <出口>/, 'an unknown node names the rule')
+  assert.doesNotMatch(text(render(stuck, undefined, { exitHint: [] })), /NEXT/)
+  assert.doesNotMatch(text(render(stuck, undefined, { exitHint: [{ id: 'done', label: '完成' }] })), /NEXT/)
+  const exits = [{ id: 'approve', label: '通过' }, { id: 'revise', label: '不通过' }]
+  const choosing = render(stuck, { reason: 'checked', text: 'Copy' }, { exitHint: exits })
+  assert.deepEqual(nodes(choosing).filter(node => node.props?.type === 'radio').map(node => node.props.checked), [false, false], 'a multi-exit step offers its exits instead of the NEXT syntax')
+  assert.match(text(choosing), /通过不通过/)
+  assert.doesNotMatch(text(choosing), /NEXT/)
+  assert.equal(button(choosing, '接受产出').props.disabled, true, 'accepting a multi-exit step needs an exit')
 
   const notSent = reason => ({ ...stuck, status: 'waiting_human', reason,
     tasks: [stuck.tasks[0], { ...stuck.tasks[1], status: 'waiting_human', reason }] })
   const budget = render(notSent('not sent: Workflow handoff context exceeds 16000 characters; shorten user decisions or step settings'))
   assert.match(text(budget), /当前步骤尚未发送/)
   assert.match(text(budget), /重试不会改变本次运行的流程快照/)
-  assert.match(text(budget), /补充并接受人工产出.*承担当前步骤未由角色执行的核验责任/)
-  assert.match(text(budget), /多出口产出须写有效的 NEXT 行/)
+  assert.match(text(budget), /补充并接受人工产出（由你承担这一步的核验）/)
   assert.match(text(budget), /取消运行.*重新启动/)
   assert.equal(button(budget, '接受产出').props.disabled, true, 'budget guidance does not bypass the required output and reason')
   for (const reason of ['not sent: engine failed', 'not sent: Workflow report files are unavailable', 'ended error']) {
@@ -2320,6 +2338,9 @@ test('the run view lists each step and offers only what the run allows a person 
   button(render(stuck, { reason: 'checked', text: 'Copy' }), '接受产出').props.onClick()
   assert.deepEqual(JSON.parse(JSON.stringify(acts)), [['run-reconcile', { action: 'retry', reason: 'checked' }], ['run-cancel', { reason: 'checked' }],
     ['run-reconcile', { action: 'accept', text: 'Copy', reason: 'checked' }]])
+  acts.length = 0
+  button(render(stuck, { reason: 'checked', text: 'Copy\nNEXT: approve', exit: 'revise' }, { exitHint: exits }), '接受产出').props.onClick()
+  assert.deepEqual(JSON.parse(JSON.stringify(acts)), [['run-reconcile', { action: 'accept', text: 'Copy\nNEXT: revise', reason: 'checked' }]], 'the picked exit replaces a typed NEXT line')
 
   const asking = { ...stuck, status: 'running', reason: undefined, tasks: [{ id: 't3', name: 'gate', kind: 'human', status: 'active', card: 'run:r:q:1', attempts: [] }] }
   const shown = render(asking)
@@ -2464,7 +2485,7 @@ test('the single-page editor scopes templates by role kind and reports all templ
     assert.equal(cards().find(card => card.props['aria-pressed']).children[0].children[0], template.name)
     input('身份').props.onChange({ target: { value: '自由身份' } })
     assert.equal(cards().some(card => card.props['aria-pressed']), false)
-    assert.equal(render().find(node => node.props.className === 'nodo-role-badge').children[0], lead ? '主控' : '执行角色')
+    assert.equal(render().find(node => node.props.className === 'nodo-tag').children[0], lead ? '主控' : '执行角色')
   }
 })
 
@@ -2700,8 +2721,8 @@ test('the executor table reorders through keyboard handles and drag, keeping lea
 
   assert.equal(render().some(node => node.type === 'Menu'), false, 'row actions no longer use a menu')
   assert.ok(action('编辑', '大肥鱼') && action('删除', '大肥鱼'))
-  assert.equal(cell(rows()[0], 'nodo-roles-identity').props['data-empty'], '')
-  assert.equal(rolesText(cell(rows()[0], 'nodo-roles-identity')), '—')
+  assert.equal(cell(rows()[0], 'nodo-tag nodo-roles-identity').props['data-empty'], '')
+  assert.equal(rolesText(cell(rows()[0], 'nodo-tag nodo-roles-identity')), '—')
   handle('大肥鱼').props.onKeyDown({ altKey: true, key: 'ArrowUp', preventDefault() {} })
   assert.equal(orders().length, 0, 'the first row cannot move up')
   handle('大肥鱼').props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} })
@@ -2725,6 +2746,7 @@ test('the executor table reorders through keyboard handles and drag, keeping lea
   assert.equal(running.props.draggable, false, 'a running role cannot be dragged')
   assert.equal(action('编辑', '大肥鱼').props.disabled, true)
   assert.equal(action('删除', '大肥鱼').props.disabled, true)
+  assert.deepEqual(['编辑', '删除'].map(verb => action(verb, '大肥鱼').props.title), ['角色运行中，结束后再修改', '角色运行中，结束后再修改'], 'disabled actions say why')
   assert.equal(handle('大肥鱼').props['aria-disabled'], true)
   const count = orders().length
   handle('大肥鱼').props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} })
@@ -2873,7 +2895,7 @@ test('the lead section creates with a fixed leader identity and shares one creat
   assert.equal(add('添加主控'), undefined)
   assert.equal(rolesTree(form()).some(node => node.children?.includes('取消')), false)
   assert.equal(rolesTree(form()).filter(node => node.type === 'select').length, 1, 'only Agent is selectable')
-  assert.equal(rolesText(rolesTree(form()).find(node => node.props?.className === 'nodo-roles-identity')), 'leader')
+  assert.equal(rolesText(rolesTree(form()).find(node => node.props?.className === 'nodo-tag nodo-roles-identity')), 'leader')
   assert.equal(field('身份'), undefined)
   await tickAll()
   field('名字').props.onChange({ target: { value: '  Leader  ' } })

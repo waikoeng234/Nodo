@@ -1,6 +1,10 @@
 // The shell seeds both packages into the module table; exact component types
 // arrive when a surface needs them.
 declare module '@deepseek-ai/dsh-client-ui-primitives';
+declare module '*.css' {
+  const css: string
+  export default css
+}
 
 declare module '*.png' {
   const src: string;

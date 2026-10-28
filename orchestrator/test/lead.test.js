@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX } from '../core/src/constants.js'
 import { leadRules, route } from '../core/src/lead.js'
 import { until, withHost } from './helpers/host.js'
@@ -838,4 +838,26 @@ test('send ignores the removed executor override on lead and ordinary conversati
     if (profile.lead) await tracked.at(-1)
     else await until(() => !rt.workView()[conversation.id]?.active)
   }
+}))
+
+test('images sent to a lead are placed in its workspace and their paths reach the prompt', () => withLead(async ({ host, rt, role, session, inputs, send, lines }) => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')
+  const worker = await role('Worker')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  for (const profile of [lead, worker]) {
+    const conversation = await session(profile)
+    await send(profile, conversation, 'See screenshot', { images: [{ mediaType: 'image/png', data: png, name: '' }] })
+    await until(() => inputs.some(input => input.sessionId === conversation.id))
+    const input = inputs.find(item => item.sessionId === conversation.id).text
+    if (profile.lead) {
+      const [path] = input.match(/"([^"]+\.png)"/).slice(1)
+      assert.ok(path.startsWith(join(realpathSync(join(host.home, 'ws')), '.nodo', 'workflow-inputs')))
+      assert.match(path, /1-image\.png$/)
+      assert.equal(readFileSync(path).toString('base64'), png)
+    } else assert.doesNotMatch(input, /Attached files/)
+    const [line] = lines(conversation).filter(item => item.who === 'user')
+    assert.equal(line.images.length, 1)
+    assert.equal(line.files, undefined)
+  }
+  assert.match(rt.leadBrief(lead, { id: 'x' }), /paths of attached files and images/)
 }))

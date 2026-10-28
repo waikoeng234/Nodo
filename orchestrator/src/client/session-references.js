@@ -182,12 +182,12 @@ export function createSessionReferences(ctx, space) {
 export const REFERENCE_CSS = `
 .nodo-reference-dialog{width:min(900px,calc(100vw - 32px));max-height:calc(100vh - 120px)}
 .nodo-reference-layout{display:flex;gap:16px;height:min(50vh,560px);min-height:180px}
-.nodo-reference-sources{display:flex;flex-direction:column;gap:10px;width:280px;flex:none;min-width:0}
+.nodo-reference-sources{display:flex;flex-direction:column;gap:8px;width:280px;flex:none;min-width:0}
 .nodo-reference-list{overflow:auto;min-height:0;flex:1}
-.nodo-reference-row{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;padding:10px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer}
+.nodo-reference-row{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;padding:8px 12px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer}
 .nodo-reference-row:hover,.nodo-reference-row[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-reference-row strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
-.nodo-reference-row time{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.nodo-reference-row time{font-size:12px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
 .nodo-reference-layout select{width:100%;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:inherit}
 .nodo-reference-scope{display:flex;gap:8px;min-width:0}
 .nodo-reference-scope select{flex:1;min-width:0}
@@ -196,7 +196,7 @@ export const REFERENCE_CSS = `
 .nodo-reference-tag{display:inline-flex;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);overflow:hidden}
 .nodo-reference-tag button{border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;padding:5px 7px;cursor:pointer;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
 .nodo-reference-tag button:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-reference-history{margin:6px 0 14px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:13px;overflow-wrap:anywhere}
+.nodo-reference-history{margin:6px 0 16px;padding:8px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:13px;overflow-wrap:anywhere}
 .nodo-reference-history summary{cursor:pointer;color:var(--dsw-alias-label-secondary)}
 .nodo-reference-history section{margin-top:12px}
 @media(max-width:640px){.nodo-reference-layout{flex-direction:column;height:min(70vh,520px)}.nodo-reference-sources{width:auto;height:180px}.nodo-reference-preview{min-height:0}}

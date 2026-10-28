@@ -72,7 +72,7 @@ export const TOOL_TIMELINE_CSS = `
 .nodo-tool-timeline-clip{min-height:0;overflow:hidden}
 .nodo-tool-timeline-content{padding:8px 0 6px 22px;min-width:0}
 .nodo-tool-timeline-steps{list-style:none;margin:0;padding:0}
-.nodo-tool-timeline-step{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr);gap:10px;min-width:0;padding:0 0 4px;animation:nodo-timeline-enter 200ms ease-out}
+.nodo-tool-timeline-step{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;min-width:0;padding:0 0 4px;animation:nodo-timeline-enter 200ms ease-out}
 .nodo-tool-timeline-step:last-child{padding-bottom:0}
 .nodo-tool-timeline-icon{display:flex;align-items:center;justify-content:center;height:32px;color:var(--dsw-alias-label-tertiary)}
 .nodo-tool-timeline-detail{min-width:0}

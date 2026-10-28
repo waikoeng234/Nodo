@@ -55,6 +55,7 @@ See the [Agent adapter overview](../orchestrator/agent-drivers/README.md) and [d
 
 - **Use only public Agent interfaces.** Do not modify Agent programs or read or write their private files. Explicitly mark capabilities the Agent does not expose as unsupported.
 - **Follow existing module boundaries.** Host modules register through `install(rt)` and call each other only at runtime through `rt`; see [host modules](architecture.md#host-modules).
+- **Follow the design system.** [DESIGN.md](../DESIGN.md) defines the palette, type scale, spacing, corners, and motion rules; use its tokens and the `.nodo-tag` label component instead of raw values or new badge classes.
 - **Keep the code concise.** Do not introduce abstractions when a simple implementation works. Comments should explain only constraints the code cannot express.
 - **Use mature libraries for general capabilities.** Do not implement formats, protocols, parsing, cryptography, dates, or similar low-level functionality from scratch.
 - **Do not expose secrets.** Code, logs, tests, and PRs must not contain API keys, tokens, cookies, or contents of the plugin data directory.

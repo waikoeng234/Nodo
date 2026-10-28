@@ -72,8 +72,16 @@ test('an executor message shows its role, tags and state, expands the rest of it
   assert.equal(text(live.find(node => node.props['data-state'] === 'live')), '5s')
   assert.equal(live.find(node => node.props.step?.session === 'e2' && node.type !== RoundMember).props.work, round.work.e2)
   const ended = view({ session: 'e3', profile: 'tester', type: 'test', hard: false, reused: false, ended: 'interrupted' })
-  assert.equal(head(ended), 'Tester|测试|未完成|查看会话')
-  assert.equal(text(ended.find(node => node.props.className === 'nodo-round-quiet')), '已中断，没有回报主控。')
+  assert.equal(head(ended), 'Tester|测试|已中断|查看会话')
+  assert.equal(text(ended.find(node => node.props.className === 'nodo-round-quiet')), '没有回报主控，可查看会话了解进度。')
+  assert.equal(head(view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done' })), 'Tester|测试|已结束|查看会话')
+  const stopped = []
+  round.onStop = async step => { stopped.push(step.session) }
+  const stop = view({ session: 'e2', profile: 'tester', type: 'test' }).find(node => node.props['aria-label'] === '停止 Tester')
+  stop.props.onClick()
+  assert.deepEqual(stopped, ['e2'], 'a live member stops on its own')
+  assert.equal(view({ ...done }).find(node => node.props['aria-label'] === '停止 Coder'), undefined, 'a reported member has nothing to stop')
+  delete round.onStop
   assert.equal(head(view({ session: 'e4', profile: 'tester', type: 'test', hard: false, reused: false })), 'Tester|测试|未回报|查看会话')
 })
 
@@ -176,12 +184,12 @@ test('the rail folds executor sessions into their lead row for state, highlight,
   press('Other')
   assert.deepEqual(rows().map(row => row.props.session.id), ['o1'])
   press('Other')
-  render().find(node => node.type === 'Menu' && node.props.items?.some(item => item.id === 'search')).props.onSelect('search')
+  render().find(node => node.props.className === 'nodo-row-action' && node.props['aria-label']?.startsWith('搜索')).props.onClick({ stopPropagation() {} })
   render().find(node => node.type === 'Input').props.onChange({ target: { value: 'refresh' } })
   assert.deepEqual(rows().map(row => row.props.session.id), ['l1'])
 })
 
-test('the rail search closes from the menu, on blur when empty and on Escape, and stays open on blur with a query', async () => {
+test('the rail search closes from its row action, on blur when empty and on Escape, and stays open on blur with a query', async () => {
   const slots = []
   let cursor = 0
   const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
@@ -196,21 +204,21 @@ test('the rail search closes from the menu, on blur when empty and on Escape, an
     { id: 'coder', name: 'Coder', sessions: [{ id: 's1', name: 'Refresh race', workspaceRef: 'w', updatedAt: 1 }] },
   ] }
   const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 's1', onSelect() {}, onSelectSession() {} })) }
-  const menu = () => render().find(node => node.type === 'Menu' && node.props.items?.some(item => item.id === 'search'))
+  const toggle = () => render().find(node => node.props.className === 'nodo-row-action' && node.props['aria-label'] === '搜索“Project”的会话').props.onClick({ stopPropagation() {} })
   const search = () => render().find(node => node.type === 'Input')
-  assert.equal(search(), undefined, 'search waits in the project menu')
-  menu().props.onSelect('search')
+  assert.equal(search(), undefined, 'search waits behind the project row action')
+  toggle()
   assert.equal(search().props.placeholder, '搜索会话')
   search().props.onChange({ target: { value: 'refresh' } })
   search().props.onBlur?.()
   assert.equal(search().props.value, 'refresh', 'a non-empty query survives the blur')
-  menu().props.onSelect('search')
-  assert.equal(search(), undefined, 'the menu item closes an open search')
-  menu().props.onSelect('search')
+  toggle()
+  assert.equal(search(), undefined, 'the row action closes an open search')
+  toggle()
   assert.equal(search().props.value, '', 'reopening starts from a cleared query')
   search().props.onBlur?.()
   assert.equal(search(), undefined, 'an empty query closes on blur')
-  menu().props.onSelect('search')
+  toggle()
   search().props.onKeyDown({ key: 'Escape' })
   assert.equal(search(), undefined, 'Escape still closes the search')
 })

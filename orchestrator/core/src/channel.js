@@ -52,7 +52,7 @@ export function install(rt) {
 
   // Endpoints a read-only host still serves. Cards are answered from this host's
   // memory, not the file, so a reading window keeps them.
-  const READS = new Set(['state', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-file', 'worktree-refs', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment'])
+  const READS = new Set(['state', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-dir', 'workspace-file', 'worktree-refs', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment'])
 
   const resolveProfileRef = (ref) => {
     const profile = rt.findProfile(ref)
@@ -94,6 +94,8 @@ export function install(rt) {
         return rt.workspaceFiles({ workspace: body.workspace, query: body.query })
       case 'workspace-file':
         return rt.workspaceFile(body)
+      case 'workspace-dir':
+        return rt.workspaceDir(body)
       case 'worktree-refs':
         return rt.worktreeRefs(body)
       case 'engine-check':
@@ -176,8 +178,10 @@ export function install(rt) {
         const profile = resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
         rt.assertSessionWritable(profile, session)
-        const files = body.files?.length ? { refs: rt.cleanFileRefs(body.files),
-          paths: await rt.materializeFiles(body.files, session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd) } : undefined
+        const cwd = session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd
+        const images = profile.lead && cwd ? await rt.materializeImages(rt.admitImages(body.images), cwd) : []
+        const files = body.files?.length || images.length ? { refs: body.files?.length ? rt.cleanFileRefs(body.files) : undefined,
+          paths: [...await rt.materializeFiles(body.files, cwd), ...images] } : undefined
         const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined,
           { files, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
         if (profile.lead) void rt.followLead(profile.id, session.id, placed)

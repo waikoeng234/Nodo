@@ -62,6 +62,14 @@ export function install(rt) {
   const materializeFiles = async (files, cwd) => {
     if (!files?.length) return []
     const refs = cleanFileRefs(files), contents = await Promise.all(refs.map(fileOf))
+    return place(refs.map((file, index) => ({ name: file.name, bytes: contents[index] })), cwd)
+  }
+  const materializeImages = (images, cwd) => place(images.map(image => {
+    const extension = EXTENSIONS.get(image.mediaType), name = fileName(image.name || 'image')
+    return { name: name.toLowerCase().endsWith(`.${extension}`) ? name : `${name}.${extension}`, bytes: Buffer.from(image.data, 'base64') }
+  }), cwd)
+  const place = async (entries, cwd) => {
+    if (!entries.length) return []
     await mkdir(cwd, { recursive: true })
     const root = await realpath(cwd)
     let base = root
@@ -74,9 +82,9 @@ export function install(rt) {
       if (segment === '.nodo') await ignoreFolder(base)
     }
     const folder = await mkdtemp(join(base, 'task-'))
-    return Promise.all(refs.map(async (file, index) => {
+    return Promise.all(entries.map(async (file, index) => {
       const destination = join(folder, `${index + 1}-${file.name}`)
-      await writeFile(destination, contents[index], { flag: 'wx', mode: 0o600 })
+      await writeFile(destination, file.bytes, { flag: 'wx', mode: 0o600 })
       return destination
     }))
   }
@@ -134,5 +142,5 @@ export function install(rt) {
     return saved
   }
 
-  Object.assign(rt, { admitImages, saveImages, imageOf, cleanImageRefs, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, saveReplyImages })
+  Object.assign(rt, { admitImages, saveImages, imageOf, cleanImageRefs, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, saveReplyImages })
 }

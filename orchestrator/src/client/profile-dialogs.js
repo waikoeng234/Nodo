@@ -185,7 +185,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
             h(RoleAvatar, { profile: { avatarTemplate: item.id }, size: 30 }), item.label))))),
         h('div', { className: 'nodo-role-head-copy' },
           h('h2', { 'data-empty': draft.name.trim() ? undefined : 'true' }, draft.name.trim() || '未命名角色',
-            h('span', { className: 'nodo-role-badge', 'data-lead': lead ? '' : undefined }, lead ? '主控' : '执行角色')),
+            h('span', { className: 'nodo-tag', 'data-tone': lead ? 'accent' : undefined }, lead ? '主控' : '执行角色')),
           h('p', null, meta)),
         h('div', { className: 'nodo-role-actions' },
           profile && h(Menu, { open: menuOpen, onClose: () => setMenuOpen(false), portal: true,

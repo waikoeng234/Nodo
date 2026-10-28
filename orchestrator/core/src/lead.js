@@ -5,7 +5,7 @@ import { route } from '../shared/route.js'
 export { route }
 
 export const leadRules = [
-  'The executor cannot see your conversation with the user. The task must include all context, constraints and delivery requirements.',
+  'The executor cannot see your conversation with the user. The task must include all context, constraints and delivery requirements, and the paths of attached files and images it needs.',
   'The executor\'s final message is its report and returns to you, so ask for findings in that report, not in a report file. Executors put their own standing instructions above the task, and some roles are read-only, such as investigation and review; give work that must write files only to a task type that changes files.',
   'Delegate only one task at a time. Nodo allows at most 12 delegations per user message and stops after 2 consecutive invalid commands.',
   'To rework the same goal or have the executor re-check its own findings, add "session": "<session id from its report>" to the JSON and Nodo sends the task to that session again; the executor keeps its context, so the task only needs what changed, and a re-review should cover both the earlier issues and the new diff.\nOmit session to start a new session: the goal changed, you need an independent perspective such as final acceptance or a last review of a high-risk change (put the earlier issues in the task), the executor would repeat approaches already disproven, or the user starts another matter. Nodo only reuses sessions this lead session dispatched, for the same role and difficulty, at most twice per session; everything else is rejected.',

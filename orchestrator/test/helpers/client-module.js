@@ -60,7 +60,7 @@ export function fakeHost({ react = {}, primitives = {} } = {}) {
 // A `call` handler becomes the fetch stand-in the real ui-shared `call` hits.
 export const callFetch = handler => async (_url, options) => {
   const body = options?.body ? JSON.parse(options.body) : {}
-  const value = await handler(body.endpoint, body.payload)
+  const value = await handler(body.endpoint ?? body.op, body.op === undefined ? body.payload : body, _url)
   return { json: async () => ({ ok: true, value }) }
 }
 
@@ -118,6 +118,7 @@ export function uiSharedStub(values) {
 
 export async function loadClient(entries, {
   globals = {}, stubs = {}, uiShared, react = {}, primitives = {}, createElement, call, filename = 'client-module.js',
+  modules = { '@xterm/xterm': 'export class Terminal {}', '@xterm/addon-fit': 'export class FitAddon {}' },
 } = {}) {
   const list = Array.isArray(entries) ? entries : [entries]
   const host = fakeHost({ react: createElement ? { createElement, ...react } : react, primitives })
@@ -141,6 +142,13 @@ export async function loadClient(entries, {
       compile.onLoad({ filter: /.*/, namespace: name }, () => ({ contents, loader: 'js' }))
     },
   }))
+  plugins.push({
+    name: 'nodo-test-packages',
+    setup(compile) {
+      compile.onResolve({ filter: /^@xterm\/(xterm|addon-fit)$/ }, args => args.path in modules ? { path: args.path, namespace: 'test-package' } : undefined)
+      compile.onLoad({ filter: /.*/, namespace: 'test-package' }, args => ({ contents: modules[args.path], loader: 'js' }))
+    },
+  })
   if (Object.keys(stubMap).length) plugins.push({
     name: 'nodo-test-stubs',
     setup(compile) {
@@ -157,8 +165,9 @@ export async function loadClient(entries, {
       ? { entryPoints: [join(CLIENT, list[0])] }
       : { stdin: { contents: list.map(file => `export * from './${file}';`).join('\n'), resolveDir: CLIENT, loader: 'js' } }),
     bundle: true, format: 'cjs', platform: 'neutral', target: 'es2022', minify: false, write: false, logLevel: 'silent',
+    mainFields: ['module', 'main'],
     external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
-    loader: { '.png': 'dataurl' },
+    loader: { '.png': 'dataurl', '.css': 'text' },
     jsx: 'transform', jsxFactory: 'h', jsxFragment: 'Fragment',
     plugins,
   })

@@ -19,8 +19,9 @@ Nodo runs as a plugin in DeepSeek Harness (dsh).
 
 - **Use multiple Agents together**: access different Agents in one interface, each using its existing configuration and authentication.
 - **Assign roles**: define each role's summary and instructions, then assign work by task type.
-- **Delegate through a lead**: once at least one executor exists, optionally add a lead under 主控 on the roles page to assign tasks by type and difficulty in the current project and receive the reports; a lead is created with the `leader` identity. A lead session takes one row in the sidebar, and its page merges delegations and reports round by round — one message makes one round — with 查看会话 opening each executor session; sessions on the dsh engine are not merged and stay as ordinary conversations. Unclaimed task types go to the fallback role, initially the first executor; transfer it in the task acceptance settings.
+- **Delegate through a lead**: once at least one executor exists, optionally add a lead under 主控 on the roles page to assign tasks by type and difficulty in the current project and receive the reports; a lead is created with the `leader` identity. A lead session takes one row in the sidebar, and its page merges delegations and reports round by round — one message makes one round — with 查看会话 opening each executor session; sessions on the dsh engine are not merged and stay as ordinary conversations. Unclaimed task types go to the fallback role, initially the first executor; transfer it in the task acceptance settings. Files and images sent to a lead are copied under the project's `.nodo/workflow-inputs/` with their paths in the message, so the lead can include them in a task and the executor can read them.
 - **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry in the sidebar.
+- **Use session tools**: the right sidebar on a conversation page browses the current project's files (code, Markdown, images), opens multiple terminals in the project directory, and embeds a browser for local dev pages.
 - **Build visual workflows**: arrange tasks and handoffs, with human checkpoints, conditional branches, and rework.
 - **Allocate cost by task**: assign complex work to more capable Agents and routine tasks to less expensive Agents.
 
@@ -61,7 +62,7 @@ To update, pull the latest code, rerun the commands above, and reload the plugin
 1. **Complete onboarding**: open Nodo, enable Agents, create a general-purpose role, then add a project to start chatting. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
 2. **Add more projects**: keep adding local working directories from the sidebar's project list.
 3. **Add roles as needed**: to delegate work, add a lead on the roles page (requires at least one executor); it is created with the `leader` identity. An executor can use a preset identity such as `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or fill in its own identity, role summary, and instructions. Choose its Agent and default model. A role's Agent cannot be changed after creation.
-4. **Run a workflow**: create a flow under **Workflow** in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
+4. **Run a workflow**: create a flow under **工作流** (Workflows) in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
 
 ## Why choose Nodo
 
@@ -136,6 +137,8 @@ In the example, `reviewer` reads the implementation report. If the review reques
 - Models, thinking levels, images, attachments, input during running turns, and compaction differ across Agents. Nodo integrates only the capabilities each Agent actually provides.
 - Whether conversations can also be viewed in an Agent's own application depends on its integration method.
 - Workflows currently support sequential steps, branches, and bounded rework. Parallel execution is not supported.
+- The right sidebar's terminals require terminal support from the host. Nodo conversations opened in the native conversation view keep dsh's own right sidebar.
+- The embedded browser opens HTTP(S) pages only. Outside the desktop app it uses an iframe, and some sites refuse to be framed; open those in an external browser.
 - Tool details, file changes, and run status shown in the interface are for reference. Actual files and Agent state are authoritative.
 - An integration does not mean every version and platform has been accepted. Host or CLI version changes may affect compatibility.
 
@@ -177,6 +180,7 @@ Issue reports, documentation corrections, and code contributions are welcome. Se
 
 - [Development guide](docs/development.md): building, testing, adding Agents, and submitting PRs.
 - [Architecture guide](docs/architecture.md): code structure, message paths, and data storage.
+- [Design system](DESIGN.md): palette, typography, spacing, and component rules.
 
 ## License and third-party content
 

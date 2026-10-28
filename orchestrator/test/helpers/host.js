@@ -25,7 +25,7 @@ export function boot(home, nativeHost = {}) {
     if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
     return result.value
   }
-  return { home, api, post, runtime, dispose() { for (const dispose of disposers.reverse()) dispose() } }
+  return { home, api, post, runtime, routes, dispose() { for (const dispose of disposers.reverse()) dispose() } }
 }
 
 export async function withHost(run, nativeHost = {}) {

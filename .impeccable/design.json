@@ -1,0 +1,551 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-28T03:44:19.856Z",
+  "title": "Design System: Nodo",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#4176e6",
+        "dark": "#7aaaff",
+        "tonalRamp": [
+          "#283142",
+          "#34415b",
+          "#4868b2",
+          "#4176e6",
+          "#7aaaff",
+          "#b7c8fe",
+          "#e4edfd",
+          "#edf3fe"
+        ]
+      },
+      "signal-blue-wash": {
+        "role": "primary",
+        "displayName": "Signal Blue Wash",
+        "canonical": "#edf3fe",
+        "dark": "#2c2c2e",
+        "tonalRamp": [
+          "#283142",
+          "#34415b",
+          "#4868b2",
+          "#4176e6",
+          "#7aaaff",
+          "#b7c8fe",
+          "#e4edfd",
+          "#edf3fe"
+        ]
+      },
+      "signal-blue-tint": {
+        "role": "primary",
+        "displayName": "Signal Blue Tint",
+        "canonical": "#e4edfd",
+        "dark": "#34415b",
+        "tonalRamp": [
+          "#283142",
+          "#34415b",
+          "#4868b2",
+          "#4176e6",
+          "#7aaaff",
+          "#b7c8fe",
+          "#e4edfd",
+          "#edf3fe"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#0f1115",
+        "dark": "#f9fafb",
+        "tonalRamp": [
+          "#0f1115",
+          "#151517",
+          "#232324",
+          "#353638",
+          "#61666b",
+          "#adb2b8",
+          "#e9ecf2",
+          "#f9fafb"
+        ]
+      },
+      "slate": {
+        "role": "neutral",
+        "displayName": "Slate",
+        "canonical": "#61666b",
+        "dark": "#cfd3d6",
+        "tonalRamp": [
+          "#0f1115",
+          "#151517",
+          "#232324",
+          "#353638",
+          "#61666b",
+          "#adb2b8",
+          "#e9ecf2",
+          "#f9fafb"
+        ]
+      },
+      "pebble": {
+        "role": "neutral",
+        "displayName": "Pebble",
+        "canonical": "#81858c",
+        "dark": "#adb2b8",
+        "tonalRamp": [
+          "#0f1115",
+          "#151517",
+          "#232324",
+          "#353638",
+          "#61666b",
+          "#adb2b8",
+          "#e9ecf2",
+          "#f9fafb"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "dark": "#151517",
+        "tonalRamp": [
+          "#0f1115",
+          "#151517",
+          "#232324",
+          "#353638",
+          "#61666b",
+          "#adb2b8",
+          "#e9ecf2",
+          "#f9fafb"
+        ]
+      },
+      "mist": {
+        "role": "neutral",
+        "displayName": "Mist",
+        "canonical": "#f9fafb",
+        "dark": "#1b1b1c",
+        "tonalRamp": [
+          "#0f1115",
+          "#151517",
+          "#232324",
+          "#353638",
+          "#61666b",
+          "#adb2b8",
+          "#e9ecf2",
+          "#f9fafb"
+        ]
+      },
+      "haze": {
+        "role": "neutral",
+        "displayName": "Haze",
+        "canonical": "#e9ecf2",
+        "dark": "#61666b",
+        "tonalRamp": [
+          "#0f1115",
+          "#151517",
+          "#232324",
+          "#353638",
+          "#61666b",
+          "#adb2b8",
+          "#e9ecf2",
+          "#f9fafb"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#0000001a",
+        "dark": "#ffffff1f"
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "canonical": "#0000001f",
+        "dark": "#ffffff29"
+      },
+      "hover-veil": {
+        "role": "neutral",
+        "displayName": "Hover Veil",
+        "canonical": "#2631480f",
+        "dark": "#ffffff14"
+      },
+      "done-green": {
+        "role": "status",
+        "displayName": "Done Green",
+        "canonical": "#22c55e",
+        "dark": "#22c55e",
+        "tonalRamp": [
+          "oklch(15.0% 0.084 149.6)",
+          "oklch(26.0% 0.145 149.6)",
+          "oklch(37.0% 0.192 149.6)",
+          "oklch(48.0% 0.192 149.6)",
+          "oklch(59.0% 0.192 149.6)",
+          "oklch(70.0% 0.192 149.6)",
+          "oklch(82.0% 0.156 149.6)",
+          "oklch(95.0% 0.084 149.6)"
+        ]
+      },
+      "caution-amber": {
+        "role": "status",
+        "displayName": "Caution Amber",
+        "canonical": "#f59e0b",
+        "dark": "#f59e0b",
+        "tonalRamp": [
+          "oklch(15.0% 0.072 70.1)",
+          "oklch(26.0% 0.125 70.1)",
+          "oklch(37.0% 0.165 70.1)",
+          "oklch(48.0% 0.165 70.1)",
+          "oklch(59.0% 0.165 70.1)",
+          "oklch(70.0% 0.165 70.1)",
+          "oklch(82.0% 0.134 70.1)",
+          "oklch(95.0% 0.072 70.1)"
+        ]
+      },
+      "caution-amber-wash": {
+        "role": "status",
+        "displayName": "Caution Amber Wash",
+        "canonical": "#fef5e7",
+        "dark": "#27241f",
+        "tonalRamp": [
+          "oklch(15.0% 0.009 79.1)",
+          "oklch(26.0% 0.016 79.1)",
+          "oklch(37.0% 0.021 79.1)",
+          "oklch(48.0% 0.021 79.1)",
+          "oklch(59.0% 0.021 79.1)",
+          "oklch(70.0% 0.021 79.1)",
+          "oklch(82.0% 0.017 79.1)",
+          "oklch(95.0% 0.009 79.1)"
+        ]
+      },
+      "fault-red": {
+        "role": "status",
+        "displayName": "Fault Red",
+        "canonical": "#ec1313",
+        "dark": "#f25a5a",
+        "tonalRamp": [
+          "oklch(15.0% 0.104 28.6)",
+          "oklch(26.0% 0.180 28.6)",
+          "oklch(37.0% 0.238 28.6)",
+          "oklch(48.0% 0.238 28.6)",
+          "oklch(59.0% 0.238 28.6)",
+          "oklch(70.0% 0.238 28.6)",
+          "oklch(82.0% 0.194 28.6)",
+          "oklch(95.0% 0.104 28.6)"
+        ]
+      },
+      "crew-sky": {
+        "role": "crew",
+        "displayName": "Sky",
+        "canonical": "#7cc8f5",
+        "tonalRamp": [
+          "oklch(15.0% 0.043 235.8)",
+          "oklch(26.0% 0.075 235.8)",
+          "oklch(37.0% 0.099 235.8)",
+          "oklch(48.0% 0.099 235.8)",
+          "oklch(59.0% 0.099 235.8)",
+          "oklch(70.0% 0.099 235.8)",
+          "oklch(82.0% 0.081 235.8)",
+          "oklch(95.0% 0.043 235.8)"
+        ]
+      },
+      "crew-peach": {
+        "role": "crew",
+        "displayName": "Peach",
+        "canonical": "#f7a27a",
+        "tonalRamp": [
+          "oklch(15.0% 0.050 45.8)",
+          "oklch(26.0% 0.087 45.8)",
+          "oklch(37.0% 0.115 45.8)",
+          "oklch(48.0% 0.115 45.8)",
+          "oklch(59.0% 0.115 45.8)",
+          "oklch(70.0% 0.115 45.8)",
+          "oklch(82.0% 0.094 45.8)",
+          "oklch(95.0% 0.050 45.8)"
+        ]
+      },
+      "crew-olive": {
+        "role": "crew",
+        "displayName": "Olive",
+        "canonical": "#b8bf4c",
+        "tonalRamp": [
+          "oklch(15.0% 0.060 112.5)",
+          "oklch(26.0% 0.104 112.5)",
+          "oklch(37.0% 0.138 112.5)",
+          "oklch(48.0% 0.138 112.5)",
+          "oklch(59.0% 0.138 112.5)",
+          "oklch(70.0% 0.138 112.5)",
+          "oklch(82.0% 0.112 112.5)",
+          "oklch(95.0% 0.060 112.5)"
+        ]
+      },
+      "crew-mint": {
+        "role": "crew",
+        "displayName": "Mint",
+        "canonical": "#7fd39b",
+        "tonalRamp": [
+          "oklch(15.0% 0.050 153.8)",
+          "oklch(26.0% 0.087 153.8)",
+          "oklch(37.0% 0.115 153.8)",
+          "oklch(48.0% 0.115 153.8)",
+          "oklch(59.0% 0.115 153.8)",
+          "oklch(70.0% 0.115 153.8)",
+          "oklch(82.0% 0.094 153.8)",
+          "oklch(95.0% 0.050 153.8)"
+        ]
+      },
+      "crew-lavender": {
+        "role": "crew",
+        "displayName": "Lavender",
+        "canonical": "#b9a3f5",
+        "tonalRamp": [
+          "oklch(15.0% 0.051 295.8)",
+          "oklch(26.0% 0.089 295.8)",
+          "oklch(37.0% 0.117 295.8)",
+          "oklch(48.0% 0.117 295.8)",
+          "oklch(59.0% 0.117 295.8)",
+          "oklch(70.0% 0.117 295.8)",
+          "oklch(82.0% 0.096 295.8)",
+          "oklch(95.0% 0.051 295.8)"
+        ]
+      },
+      "crew-butter": {
+        "role": "crew",
+        "displayName": "Butter",
+        "canonical": "#f5c84c",
+        "tonalRamp": [
+          "oklch(15.0% 0.064 88.6)",
+          "oklch(26.0% 0.111 88.6)",
+          "oklch(37.0% 0.147 88.6)",
+          "oklch(48.0% 0.147 88.6)",
+          "oklch(59.0% 0.147 88.6)",
+          "oklch(70.0% 0.147 88.6)",
+          "oklch(82.0% 0.119 88.6)",
+          "oklch(95.0% 0.064 88.6)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Empty-state and welcome headlines only."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Page and panel titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Transcripts and composer text; follows the host content-size setting."
+      },
+      "item": {
+        "displayName": "Item",
+        "purpose": "List row names, step names, section headings (600 for headings)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Meta lines, tags, chips, counters; numbers use tabular-nums."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel",
+        "value": "0 0 0 .5px rgba(0,0,0,.1), 0 3px 8px 0 rgba(0,0,0,.03), 0 0 16px 0 rgba(0,0,0,.02)",
+        "purpose": "Composer and question cards."
+      },
+      {
+        "name": "soft",
+        "value": "0 0 0 .5px rgba(0,0,0,.1), 0 4px 16px 0 rgba(0,0,0,.03), 0 0 24px 0 rgba(0,0,0,.03)",
+        "purpose": "Menus and popovers."
+      },
+      {
+        "name": "lift",
+        "value": "0 4px 12px 0 rgba(0,0,0,.02), 0 2px 8px 0 rgba(0,0,0,.04)",
+        "purpose": "Approval cards."
+      },
+      {
+        "name": "pressed-tab",
+        "value": "0 1px 2px rgba(0,0,0,.1), 0 0 0 .5px rgba(0,0,0,.1)",
+        "purpose": "Selected segment in the rail switch."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-fade",
+        "value": "background-color .1s, color .1s",
+        "purpose": "Hover and active fades on icon buttons and rows."
+      },
+      {
+        "name": "panel-slide",
+        "value": "transform .15s",
+        "purpose": "Collapsing and expanding panels and chevrons."
+      },
+      {
+        "name": "avatar-hop",
+        "value": "1.6s ease-in-out infinite",
+        "purpose": "Role avatar while its Agent is running."
+      },
+      {
+        "name": "avatar-blink",
+        "value": "3.8s ease-in-out infinite",
+        "purpose": "Role avatar eyes while running."
+      },
+      {
+        "name": "avatar-greet",
+        "value": ".45s ease-in-out",
+        "purpose": "Role avatar wobble on hover."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "max-420",
+        "value": "420px"
+      },
+      {
+        "name": "max-520",
+        "value": "520px"
+      },
+      {
+        "name": "max-640",
+        "value": "640px"
+      },
+      {
+        "name": "max-720",
+        "value": "720px"
+      },
+      {
+        "name": "max-800",
+        "value": "800px"
+      },
+      {
+        "name": "max-820",
+        "value": "820px"
+      },
+      {
+        "name": "max-1100",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "Toolbar and row actions; 28px square, quiet until hovered.",
+      "html": "<button class=\"ds-icon-btn\" aria-label=\"Settings\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\"><circle cx=\"8\" cy=\"8\" r=\"2.2\"/><path d=\"M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4\"/></svg></button>",
+      "css": ".ds-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-secondary,#61666b);cursor:pointer;transition:background-color .1s,color .1s}.ds-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover,#2631480f);color:var(--dsw-alias-label-primary,#0f1115)}.ds-icon-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:1px}"
+    },
+    {
+      "name": "Sidebar Row",
+      "kind": "nav",
+      "refersTo": "list-row",
+      "description": "Role and conversation rows in the rail; hover and active share one veil.",
+      "html": "<div class=\"ds-rail\"><button class=\"ds-row\" aria-pressed=\"true\"><strong>重置仙人</strong><span>明确目标、制定方案</span></button><button class=\"ds-row\"><strong>大肥鱼</strong><span>独立检查实现</span></button></div>",
+      "css": ".ds-rail{display:flex;flex-direction:column;gap:2px;width:280px;padding:12px;background:var(--dsw-specific-sidebar-fill,#f9fafb);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif}.ds-row{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:0;border-radius:var(--dsw-radius-md,12px);background:transparent;color:var(--dsw-alias-label-primary,#0f1115);text-align:left;font:inherit;cursor:pointer}.ds-row strong{font-size:13px;font-weight:500;line-height:20px}.ds-row span{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#81858c)}.ds-row:hover,.ds-row[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover,#2631480f)}.ds-row:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:1px}"
+    },
+    {
+      "name": "Composer",
+      "kind": "input",
+      "refersTo": "composer",
+      "description": "The floating message box: 28px panel radius, ambient panel shadow, blue caret.",
+      "html": "<div class=\"ds-composer\"><textarea rows=\"2\" placeholder=\"发消息或创建任务，/ 调用指令，@ 文件或对话\"></textarea><div class=\"ds-composer-row\"><span>工作区内修改</span><button class=\"ds-send\" aria-label=\"Send\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"><path d=\"M8 13V3M3.5 7.5 8 3l4.5 4.5\"/></svg></button></div></div>",
+      "css": ".ds-composer{display:flex;flex-direction:column;gap:12px;width:520px;padding-top:8px;border-radius:var(--dsw-radius-panel,28px);background:var(--dsw-specific-input-major,#fff);box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 3px 8px rgba(0,0,0,.03),0 0 16px rgba(0,0,0,.02);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif}.ds-composer textarea{padding:4px 8px 0 14px;border:0;outline:none;background:transparent;color:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:14px;line-height:24px;caret-color:var(--dsw-alias-state-business-primary,#4176e6);resize:none}.ds-composer textarea::placeholder{color:var(--dsw-alias-label-caption,#81858c)}.ds-composer-row{display:flex;align-items:center;justify-content:space-between;padding:2px 8px 8px 14px;font-size:13px;color:var(--dsw-alias-label-secondary,#61666b)}.ds-send{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:50%;background:var(--dsw-alias-state-business-primary,#4176e6);color:#fff;cursor:pointer;transition:opacity .1s}.ds-send:hover{opacity:.88}.ds-send:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:2px}"
+    },
+    {
+      "name": "Tag",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "The single small-label component; neutral by default, tinted by data-tone.",
+      "html": "<div class=\"ds-tags\"><span class=\"ds-tag\">coding</span><span class=\"ds-tag\" data-tone=\"caution\">难题</span><span class=\"ds-tag\" data-tone=\"accent\">主控</span></div>",
+      "css": ".ds-tags{display:flex;gap:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif}.ds-tag{--tone:var(--dsw-alias-label-secondary,#61666b);display:inline-block;max-width:100%;height:20px;padding:0 7px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover,#2631480f);color:var(--tone);font-size:12px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-tag[data-tone]{background:color-mix(in srgb,var(--tone) 10%,transparent)}.ds-tag[data-tone=accent]{--tone:var(--dsw-alias-state-business-primary,#4176e6)}.ds-tag[data-tone=caution]{--tone:var(--dsw-alias-state-warn-primary,#f59e0b);color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#f59e0b) 55%,var(--dsw-alias-label-primary,#0f1115))}"
+    },
+    {
+      "name": "Inline Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat Paper card with a 0.5px hairline; hover adds the veil, no shadow.",
+      "html": "<button class=\"ds-card\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\"><path d=\"M3 5.5A1.5 1.5 0 0 1 4.5 4h3.6l1.6 2h5.8A1.5 1.5 0 0 1 17 7.5v7A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5z\"/></svg><span><strong>文件</strong><small>~/projects/nodo-test</small></span></button>",
+      "css": ".ds-card{display:flex;align-items:center;gap:12px;width:300px;padding:16px;border:.5px solid var(--dsw-alias-border-l3,#0000001f);border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#0f1115);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;font-size:14px;text-align:left;cursor:pointer;transition:background-color .1s}.ds-card span{display:flex;flex-direction:column;gap:2px}.ds-card strong{font-weight:500}.ds-card small{font-size:12px;color:var(--dsw-alias-label-tertiary,#81858c)}.ds-card:hover{background:var(--dsw-alias-interactive-bg-hover,#2631480f)}.ds-card:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4176e6);outline-offset:2px}"
+    },
+    {
+      "name": "Role Avatar",
+      "kind": "custom",
+      "description": "Signature pastel blob with two pill eyes; greets on hover, hops while running.",
+      "html": "<div class=\"ds-crew\"><span class=\"ds-avatar\" style=\"color:#7cc8f5\"><svg viewBox=\"0 0 64 64\" width=\"40\" height=\"40\"><rect width=\"64\" height=\"64\" rx=\"18\" class=\"ds-avatar-tile\"/><g transform=\"translate(6.86 6.86) scale(.786)\"><g class=\"ds-avatar-art\"><circle cx=\"32\" cy=\"32\" r=\"24\" fill=\"currentColor\"/><g fill=\"#172021\"><rect x=\"21\" y=\"23\" width=\"5.5\" height=\"15\" rx=\"2.75\"/><rect x=\"38\" y=\"23\" width=\"5.5\" height=\"15\" rx=\"2.75\"/></g></g></g></svg></span><span class=\"ds-avatar\" data-running style=\"color:#f7a27a\"><svg viewBox=\"0 0 64 64\" width=\"40\" height=\"40\"><rect width=\"64\" height=\"64\" rx=\"18\" class=\"ds-avatar-tile\"/><g transform=\"translate(6.86 6.86) scale(.786)\"><g class=\"ds-avatar-art\"><circle cx=\"32\" cy=\"32\" r=\"24\" fill=\"currentColor\"/><g fill=\"#172021\"><rect x=\"21\" y=\"23\" width=\"5.5\" height=\"15\" rx=\"2.75\"/><rect x=\"38\" y=\"23\" width=\"5.5\" height=\"15\" rx=\"2.75\"/></g></g></g></svg></span><span class=\"ds-avatar\" style=\"color:#b8bf4c\"><svg viewBox=\"0 0 64 64\" width=\"40\" height=\"40\"><rect width=\"64\" height=\"64\" rx=\"18\" class=\"ds-avatar-tile\"/><g transform=\"translate(6.86 6.86) scale(.786)\"><g class=\"ds-avatar-art\"><circle cx=\"32\" cy=\"32\" r=\"24\" fill=\"currentColor\"/><g fill=\"#172021\"><rect x=\"21\" y=\"23\" width=\"5.5\" height=\"15\" rx=\"2.75\"/><rect x=\"38\" y=\"23\" width=\"5.5\" height=\"15\" rx=\"2.75\"/></g></g></g></svg></span></div>",
+      "css": ".ds-crew{display:flex;gap:12px}.ds-avatar{display:inline-flex;border-radius:28%}.ds-avatar svg{display:block;overflow:visible}.ds-avatar-tile{fill:color-mix(in srgb,currentColor 20%,var(--dsw-alias-bg-base,#fff))}.ds-avatar-art{transform-box:fill-box;transform-origin:50% 85%}.ds-avatar[data-running] .ds-avatar-art{animation:ds-hop 1.6s ease-in-out infinite}.ds-avatar:not([data-running]):hover .ds-avatar-art{animation:ds-greet .45s ease-in-out}@keyframes ds-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-8px) rotate(4deg) scale(.98,1.02)}}@keyframes ds-greet{0%,100%{transform:rotate(0)}35%{transform:rotate(-9deg)}70%{transform:rotate(7deg)}}@media(prefers-reduced-motion:reduce){.ds-avatar-art{animation:none!important}}"
+    },
+    {
+      "name": "Workflow Node",
+      "kind": "card",
+      "refersTo": "workflow-node",
+      "description": "204px canvas node with a 24px radius and a border tinted by node kind.",
+      "html": "<div class=\"ds-canvas\"><div class=\"ds-node\"><span class=\"ds-node-mark\">#</span><span><strong>review</strong><small>选择执行伙伴</small></span></div><div class=\"ds-node\" data-kind=\"human\"><span class=\"ds-node-mark\">✓</span><span><strong>人工验收</strong><small>等待你的决定</small></span></div></div>",
+      "css": ".ds-canvas{display:flex;gap:24px;padding:24px;background:radial-gradient(var(--dsw-alias-border-l2,#0000001a) 1px,transparent 1.2px) 0 0/16px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif}.ds-node{--tint:var(--dsw-alias-state-business-primary,#4176e6);display:flex;align-items:center;gap:12px;width:204px;min-height:96px;padding:16px;border:2px solid color-mix(in srgb,var(--tint) 45%,var(--dsw-alias-border-l2,#0000001a));border-radius:24px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#0f1115)}.ds-node[data-kind=human]{--tint:var(--dsw-alias-state-warn-primary,#f59e0b)}.ds-node span:last-child{display:flex;flex-direction:column}.ds-node strong{font-size:13px;font-weight:600}.ds-node small{font-size:11px;color:var(--dsw-alias-label-tertiary,#81858c)}.ds-node-mark{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint);font-size:13px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Studio, Lively Crew",
+    "overview": "Nodo is a workbench people keep open all day while several Agents work in parallel. The room itself is quiet: cool bluish-neutral paper, hairline edges, one blue that only ever means \"selected\", \"running\" or \"go\". All personality is handed to the crew. Every role is a soft, colourful blob with two upright eyes, and those faces are the only saturated colour on a normal screen. They hop while their Agent is running, blink, and wave when hovered. The interface frames the team rather than performing for it.\n\nDensity follows a chat-and-sidebar tool, not a dashboard: a 312px rail with roles and project trees, a reading column capped at the host chat width (748px), and an optional right panel for files, terminal and preview. Text is mostly 12–14px with generous 24px body leading so long transcripts stay readable. Depth is flat, with layers separated by tone and 0.5px hairlines. Shadows are reserved for the few things that genuinely float: the composer, approval and question cards, menus.\n\nToday every value resolves through the dsh host's `--dsw-*` tokens and primitives, so Nodo follows the host's light and dark themes automatically. The hex values in this file are the light-theme resolution; dark values live in `.impeccable/design.json`. The look must stay recognisable if Nodo leaves dsh, so the rules below describe the system, not the host.\n\nConfirmed rejections: large blocks of colour or decorative gradients, and the \"terminal hacker\" look (black screens, green text, monospace everywhere).",
+    "keyCharacteristics": [
+      "Neutral, cool, low-contrast chrome; colour belongs to role avatars and status.",
+      "One accent (Signal Blue) used for state and focus, never for decoration.",
+      "Flat surfaces, 0.5px hairlines, tonal layering between sidebar fill and base.",
+      "Rounded, concentric corners from 4px up to the 28px composer.",
+      "System sans with CJK fallbacks; small sizes, generous leading.",
+      "Motion is small and functional: about 0.1–0.16s state fades, plus the avatars' running hop. All of it is disabled under reduced motion."
+    ],
+    "rules": [
+      {
+        "name": "The Crew Carries the Colour Rule",
+        "body": "Saturated colour belongs to avatars and status marks. Chrome, panels and backgrounds stay neutral. If a screen has a colourful surface that is not an avatar, a status or the user's bubble, it is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Signal Rule",
+        "body": "Signal Blue means selection, focus or activity. It is never used as decoration or to brand a section.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tinted-Not-Filled Rule",
+        "body": "Status colour on surfaces is mixed at 8–14% into transparent (`color-mix`) or uses the host's tertiary wash. Solid status fills are limited to small dots and marks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Readable Amber Rule",
+        "body": "Caution Amber is a fill, stroke and icon colour, never a text colour: at about 2:1 on its own wash it fails contrast. Amber text uses `WARN_INK` from `ui-shared.js`, which mixes Caution Amber 55% into the primary label colour (about 5.2:1 on the light wash, and lighter in dark theme).",
+        "section": "colors"
+      },
+      {
+        "name": "The Small-and-Airy Rule",
+        "body": "Keep the scale small (12–18px for nearly everything) and let leading carry readability. Do not add large display type to working screens.",
+        "section": "typography"
+      },
+      {
+        "name": "The Only-What-Floats Rule",
+        "body": "A surface gets a shadow only if it sits above the content it relates to (composer, approval, menu, popover). Lists, rows and inline cards stay flat with a hairline.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Concentric Corner Rule",
+        "body": "A nested surface's radius equals its parent's radius minus the inset between them (and minus the 0.5px edge), as the right panel already does with `calc(var(--nodo-card-radius) - 12px - .5px)`. Never put a larger or equal radius inside a tighter one.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** reference colours, radii, fonts and shadows through tokens (`var(--dsw-…)` today, or the Nodo `--nodo-*` aliases), never raw hex in component CSS.",
+      "**Do** keep chrome neutral and let role avatars and status marks carry colour.",
+      "**Do** use 0.5px hairlines and tonal steps (Mist vs Paper) to separate regions.",
+      "**Do** make nested corners concentric (inner radius = outer radius − inset).",
+      "**Do** use `.nodo-tag` for every small inline label instead of the host `Tag` or a new badge or pill class.",
+      "**Do** colour amber text with `WARN_INK`, never with the raw warn token.",
+      "**Do** tint status surfaces at 8–14% and keep solid status colour to dots, marks and borders.",
+      "**Do** wrap every animation in a `prefers-reduced-motion` override.",
+      "**Do** lay out text so Chinese and English copy of different lengths both fit, using truncation with an ellipsis and `overflow-wrap:anywhere`."
+    ],
+    "donts": [
+      "**Don't** use large blocks of colour or decorative gradients as backgrounds, headers or section fills.",
+      "**Don't** drift into a terminal-hacker look: no black-and-green screens and no monospace outside code, diffs, the terminal and tool output.",
+      "**Don't** add shadows to rows, inline cards or list items.",
+      "**Don't** use Signal Blue decoratively or give it a second meaning.",
+      "**Don't** replace role avatars with initials, generic person icons or engine logos when the subject is a role.",
+      "**Don't** restyle host primitives (`Button`, `Input`, `Menu`, `Tooltip`) locally."
+    ]
+  }
+}

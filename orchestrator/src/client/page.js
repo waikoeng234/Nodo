@@ -1,6 +1,6 @@
 import {
   h, useState, useEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
-  subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular,
+  subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular, rightPanelService,
 } from './ui-shared.js'
 import { RolePicker } from './role-seat.js'
 import { Rail } from './session-rail.tsx'
@@ -190,6 +190,10 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const rounds = view ? roundIndex(view) : null
   const members = (sessionId && rounds?.members.get(sessionId)) || []
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
+  const panelCwd = session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd
+  useEffect(() => {
+    if (!sidebarOnly && space.active && space.legacy && sessionId && !editing) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd })
+  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, panelCwd, !!editing])
   const roundLive = [{ role: profile, session }, ...members].filter(item => members.length && view.work[item.session?.id]?.active === true)
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
@@ -377,6 +381,10 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     catch (failure) { if (current()) setActionError(failure.message) }
     finally { setSessionBusy(false) }
   }
+  const stopMember = async step => {
+    try { await call('interrupt', { profile: step.profile, session: step.session }); await refresh(true) }
+    catch (failure) { setActionError(failure.message) }
+  }
   // Compaction runs the engine's own channel; there is nothing to show in the
   // feed afterwards — the engine's context shrinks, the transcript stays.
   const compactSession = async () => {
@@ -405,17 +413,19 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         h('span', { className: 'nodo-crumb', title: session?.name ?? workspace?.name ?? profile.name },
           session?.name ?? workspace?.name ?? profile.name),
         members.length > 0 && h(RoundFaces, { roles: [...new Map([profile, ...members.map(item => item.role)].map(role => [role.id, role])).values()] }),
-        members.length > 0 && h('span', { className: 'nodo-head-actions' }, h(RoundMenu, { members, work: view.work, raw: rawRound === sessionId,
-          onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId), onOpen: openSession })))),
+        h('span', { className: 'nodo-head-actions' },
+          members.length > 0 && h(RoundMenu, { members, work: view.work, raw: rawRound === sessionId,
+            onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId), onOpen: openSession })))),
     h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick,
-      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession } : undefined }),
+      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since })),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
-      || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly })),
+      || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly,
+      from: members.find(item => item.session.id === card.profileId) })),
     !archivedConversation && h(Composer, {
       profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,
-      stoppable: members.length ? roundLive.length > 0 : undefined, busy: sessionBusy, readOnly: readOnly || !workspace,
+      stoppable: members.length ? roundLive.length > 0 : undefined, stopLabel: roundLive.length > 1 ? `停止全部 ${roundLive.length} 个` : undefined, busy: sessionBusy, readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
@@ -471,7 +481,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         onDeleteWorkspace: workspace => setWorkspaceDialog({ kind: 'delete', workspace }),
       }),
       !sidebarOnly && h('main', { className: 'nodo-main' },
-        !view ? h('p', { className: 'nodo-note' }, 'Loading…') : page(),
+        !view ? h('p', { className: 'nodo-note' }, '加载中…') : page(),
         actionError && h('p', { className: 'nodo-error-line', role: 'alert' }, actionError))),
     sidebarOnly && actionError && h('p', { className: 'nodo-error-line', role: 'alert' }, actionError),
     sessionDialog && h(SessionRenameDialog, {

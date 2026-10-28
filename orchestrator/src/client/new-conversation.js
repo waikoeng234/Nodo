@@ -29,6 +29,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const [reference, setReference] = useState(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
+    const [notice, setNotice] = useState('')
     const pending = useRef(false), created = useRef(null), uploading = useRef(false)
     const profiles = view?.profiles.filter(role => !role.deletedAt) ?? []
     const sourceRole = sourceSessionId && profiles.find(role => role.sessions.some(session =>
@@ -138,7 +139,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
           onRemoveImage: index => changeImages(images.filter((_, position) => position !== index)),
           onRemoveFile: index => updateSelection(current => ({ ...current, files: (current.files ?? []).filter((_, at) => at !== index) })),
           onInsert: profile ? value => changeText(`${text}${text && !/\s$/.test(text) ? ' ' : ''}${value}`) : undefined,
-          onGoal: () => setError('请在角色配置中修改职责说明。'), onCompact: () => setError('发送后可压缩会话上下文。'),
+          onGoal: () => { setError(''); setNotice('请在角色配置中修改职责说明。') }, onCompact: () => { setError(''); setNotice('发送后可压缩会话上下文。') },
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
             ...(changes.permission === '' && profile.engine !== 'dsh' ? { permission: 'workspace' } : {}) } })) : undefined,
           rolePicker: h(RolePicker, { profiles, profile, disabled, onSelect: chooseRole }),
@@ -151,7 +152,8 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
             updateSelection(current => ({ ...current, references: [...(current.references ?? []),
               { id: value.id, label: `${value.source.profileName} · ${value.source.sessionName}` }] }))
           } }),
-        (error || loadError) && h('p', { className: 'nodo-error-line', role: 'alert' }, error || loadError)))
+        (error || loadError) ? h('p', { className: 'nodo-error-line', role: 'alert' }, error || loadError)
+          : notice && h('p', { className: 'nodo-note', role: 'status' }, notice)))
   }
   return { NewConversation }
 }

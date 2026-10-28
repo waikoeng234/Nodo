@@ -1,7 +1,7 @@
 import type { ReactNode } from './ui-shared.js'
 import {
   h, Fragment, useState, useEffect, useRef, useSyncExternalStore, useStateView, call,
-  Modal, Button, roleStateOf, layoutService, IconChevronRightOutlineRegular, IconDataOutlineRegular, IconEditOutlineRegular,
+  Modal, Button, roleStateOf, WARN_INK, layoutService, IconChevronRightOutlineRegular, IconDataOutlineRegular, IconEditOutlineRegular,
   IconPlusOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
@@ -308,7 +308,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     finally { setPendingHard(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
   }
 
-  const identityCell = (role: RoleCard) => <span className="nodo-roles-identity" title={role.identity} data-empty={!role.identity ? '' : undefined}>{role.identity || (role.instructions ? '自定义' : '—')}</span>
+  const identityCell = (role: RoleCard) => <span className="nodo-tag nodo-roles-identity" title={role.identity} data-empty={!role.identity ? '' : undefined}>{role.identity || (role.instructions ? '自定义' : '—')}</span>
   const createForm = (className: string, order?: number) => (
     <form className={className} aria-label={createKind === 'lead' ? '添加主控' : '添加角色'} onSubmit={createRole}
       onKeyDown={event => { if (event.key === 'Escape' && adding !== null) cancelAdding() }}>
@@ -363,12 +363,14 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
             ))}
             {leads.length > 0 && <label className="nodo-roles-takes-option">
               <input type="checkbox" aria-label="兜底" checked={role.fallback === true} disabled={saving || role.fallback === true}
-                onChange={() => void perform(async () => { await call('profile-update', { id: role.id, changes: { fallback: true } }) })} />兜底
+                onChange={() => void perform(async () => { await call('profile-update', { id: role.id, changes: { fallback: true } }) })} />
+              <span>兜底<small>没有角色承接的任务交给它</small></span>
             </label>}
             <div className="nodo-roles-hard-settings">
               <label className="nodo-roles-takes-option">
                 <input type="checkbox" role="switch" aria-label="可接难题" checked={hard !== undefined} disabled={saving}
-                  onChange={event => void updateHard(role, event.target.checked ? {} : null)} />可接难题
+                  onChange={event => void updateHard(role, event.target.checked ? {} : null)} />
+                <span>可接难题<small>主控判为难题时派给它，可另选模型和思考档位</small></span>
               </label>
               {hard !== undefined && <Fragment>
                 <Field label="难题模型">
@@ -392,15 +394,16 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       </span>
     )
   }
-  const roleActions = (role: RoleCard, held: boolean, locked: boolean) => (
-    <span className="nodo-roles-actions">
-      <button type="button" className="nodo-row-action" aria-label={`编辑 ${role.name}`} disabled={held}
+  const roleActions = (role: RoleCard, held: boolean, locked: boolean) => {
+    const running = roleStateOf(role, view).active === true ? '角色运行中，结束后再修改' : undefined
+    return <span className="nodo-roles-actions">
+      <button type="button" className="nodo-row-action" aria-label={`编辑 ${role.name}`} disabled={held} title={held ? running : undefined}
         onClick={() => switchTo(() => openRole(role.id))}><IconEditOutlineRegular size={16} /></button>
       <button type="button" className="nodo-row-action nodo-roles-delete" aria-label={`删除 ${role.name}`}
-        disabled={locked || !!deleteReason(role)} title={deleteReason(role)}
+        disabled={locked || !!deleteReason(role)} title={deleteReason(role) ?? (locked ? running : undefined)}
         onClick={() => setDeleting(role)}><IconTrashOutlineRegular size={16} /></button>
     </span>
-  )
+  }
   const executorRow = (role: RoleCard, index: number) => {
     const state = roleStateOf(role, view)
     const held = busy || state.active === true
@@ -592,31 +595,31 @@ export const ROLES_CSS = `
 .nodo-roles-main[data-screen=overview]{min-width:820px}
 .nodo-roles-main[data-screen=role]{width:min(800px,100%)}
 .nodo-roles-nav{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
-.nodo-role-types{display:flex;align-items:center;gap:10px;flex:none;width:100%;height:36px;padding:0 10px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}
+.nodo-role-types{display:flex;align-items:center;gap:8px;flex:none;width:100%;height:36px;padding:0 12px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}
 .nodo-role-types:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
 .nodo-role-types-label{flex:1;min-width:0}
 .nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
-.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px}
+.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px;container-type:inline-size}
 .nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.nodo-roles-head h1{display:flex;align-items:baseline;gap:10px;margin:0;font-size:20px;font-weight:600;line-height:28px}
+.nodo-roles-head h1{display:flex;align-items:baseline;gap:8px;margin:0;font-size:18px;font-weight:600;line-height:26px}
 .nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
 .nodo-roles-copy>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nodo-roles-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
+.nodo-roles-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
 .nodo-roles-sub{font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
-.nodo-roles-identity{justify-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 10px;border-radius:999px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:20px}
-.nodo-roles-identity[data-empty]{background:0 0;color:var(--dsw-alias-label-secondary);font-family:inherit}
+.nodo-roles-identity{justify-self:start;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}
+.nodo-roles-identity[data-empty]{background:0 0;font-family:inherit}
 .nodo-roles-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:28px 24px 24px;border:1px dashed var(--dsw-alias-border-l1);border-radius:calc(var(--nodo-role-radius) + 10px);text-align:center}
-.nodo-roles-empty h2{margin:0;font-size:16px;font-weight:600;line-height:24px}
+.nodo-roles-empty h2{margin:0;font-size:18px;font-weight:600;line-height:26px;text-wrap:balance}
 .nodo-roles-empty p{max-width:420px;margin:0 0 12px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-roles-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:min(600px,100%);padding:8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);text-align:left}
 .nodo-roles-create>select{flex:0 1 160px}
 .nodo-roles-create>.nodo-role-identity{flex:0 1 100px;min-width:0}
-.nodo-roles-new-who{display:flex;align-items:center;gap:10px;flex:1 1 220px;min-width:0}
+.nodo-roles-new-who{display:flex;align-items:center;gap:8px;flex:1 1 220px;min-width:0}
 .nodo-roles-new-who>.nodo-dialog-input{flex:1;min-width:0}
 .nodo-roles-new-actions{display:flex;justify-content:flex-end;gap:8px;flex:none}
 .nodo-roles-section{display:flex;flex-direction:column;gap:8px}
-.nodo-roles-section h2{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;font-weight:600;line-height:22px}
+.nodo-roles-section h2{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;font-weight:600;line-height:20px}
 .nodo-roles-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .nodo-roles-table,.nodo-types-table{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
 .nodo-roles-row,.nodo-roles-lead{display:grid;grid-template-columns:var(--nodo-roles-columns);align-items:center;gap:12px;min-height:56px;padding:6px 12px}
@@ -641,6 +644,8 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-hard-settings{display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:4px;border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-role-dialog .nodo-roles-hard-settings>.nodo-field{padding:0 8px 4px}
 .nodo-roles-takes-option{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;border-radius:var(--nodo-role-radius);font-size:13px;line-height:20px;cursor:pointer}
+.nodo-roles-takes-option>span{display:flex;flex-direction:column;min-width:0;padding:6px 0}
+.nodo-roles-takes-option small{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-roles-takes-option:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-roles-takes-option input{margin:0;accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-roles-hard{color:var(--dsw-alias-label-secondary);font-size:13px}
@@ -650,12 +655,12 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-actions>.nodo-roles-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary)}
 .nodo-roles-new{border-radius:0 0 calc(var(--nodo-role-radius) + 7px) calc(var(--nodo-role-radius) + 7px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-roles-new>.nodo-roles-new-actions{grid-column:5/-1}
-.nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 10px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 12px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
 .nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-roles-gap-note{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);font-size:13px;line-height:22px}
+.nodo-roles-gap-note{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:22px}
 .nodo-roles-gap-note>svg{flex:none;margin-top:3px}
 .nodo-roles-gap-note p{margin:0}
-.nodo-roles-miss{color:var(--dsw-alias-state-warn-primary);font-size:13px}
+.nodo-roles-miss{color:${WARN_INK};font-size:13px}
 .nodo-text-button{height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;cursor:pointer}
 .nodo-text-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-text-button:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
@@ -686,4 +691,17 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-types .nodo-dialog-hint{padding:16px}
 .nodo-types-bar{position:sticky;bottom:24px;align-self:center;display:flex;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
 @media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
+@container (width<640px){
+.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-row:not(.nodo-roles-new)>:nth-child(3),.nodo-roles-lead:not(.nodo-roles-new)>:nth-child(2){display:none}
+.nodo-roles-new{display:flex;flex-wrap:wrap;align-items:center}
+.nodo-roles-new>*{flex:1 1 140px;min-width:0}
+.nodo-roles-new>.nodo-roles-order,.nodo-roles-new>.nodo-tag{flex:none}
+.nodo-roles-new>.nodo-roles-new-who{flex:2 1 180px}
+.nodo-roles-new>.nodo-roles-new-actions{flex:none;margin-left:auto}
+}
+@container (width<480px){
+.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-row:not(.nodo-roles-new)>:nth-child(4),.nodo-roles-lead:not(.nodo-roles-new)>:nth-child(3){display:none}
+}
 `

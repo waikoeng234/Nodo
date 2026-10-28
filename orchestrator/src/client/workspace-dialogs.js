@@ -38,23 +38,23 @@ export function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
   }
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭',
-    title: workspace ? '编辑工作区' : '新建工作区',
-    description: '工作区是本机上的一个目录，角色在其中工作。',
+    title: workspace ? '编辑项目' : '新建项目',
+    description: '项目是本机上的一个目录，角色在其中工作。',
     className: 'nodo-dialog',
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, {
         key: 'save', type: 'submit', form: WORKSPACE_FORM, variant: 'primary',
         disabled: busy || !draft.name.trim() || !draft.cwd.trim(),
-      }, busy ? '保存中…' : workspace ? '保存修改' : '创建工作区'),
+      }, busy ? '保存中…' : workspace ? '保存修改' : '创建项目'),
     ],
   },
-  h('form', { id: WORKSPACE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': workspace ? '编辑工作区' : '新建工作区' },
+  h('form', { id: WORKSPACE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': workspace ? '编辑项目' : '新建项目' },
     h(Field, { label: '名字', required: true }, h('input', {
       className: 'nodo-dialog-input', 'data-modal-autofocus': true, disabled: busy, value: draft.name, onChange: edit('name'),
       required: true, maxLength: 40, placeholder: '例如 Website',
     })),
-    h(Field, { label: '工作区目录', required: true },
+    h(Field, { label: '项目目录', required: true },
       nativePickDirectory
         ? h('div', { className: 'nodo-dialog-pick' },
           h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() },
@@ -144,14 +144,14 @@ export function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭',
     title: '新建工作树',
-    description: '从当前项目创建独立检出，并作为新的工作区继续工作。',
+    description: '从当前项目创建独立检出，并作为新的项目继续工作。',
     className: 'nodo-dialog',
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, {
         key: 'save', type: 'submit', form: WORKTREE_FORM, variant: 'primary',
         disabled: !canSubmit,
-      }, busy ? '创建中…' : openSession && profile != null ? '创建并打开' : '创建工作区'),
+      }, busy ? '创建中…' : openSession && profile != null ? '创建并打开' : '创建项目'),
     ],
   },
   h('form', { id: WORKTREE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': '新建工作树' },
@@ -221,7 +221,7 @@ export function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
           className: 'nodo-dialog-input', value: branch, disabled: busy, required: true, maxLength: 200,
           onChange: event => setBranch(event.target.value), placeholder: '例如 feature/login',
         }))),
-    h(Field, { label: '工作区名称' }, h('input', {
+    h(Field, { label: '项目名称' }, h('input', {
       className: 'nodo-dialog-input', value: name, disabled: busy, maxLength: 40,
       onChange: event => setName(event.target.value), placeholder: (existingMode ? effectiveExisting : branch.trim()) || '默认使用分支名',
     })),
@@ -258,14 +258,14 @@ export function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
     try { await onSaved(workspace.id, name) } catch (failure) { setError(failure.message); setBusy(false) }
   }
   return h(Modal, {
-    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '重命名工作区',
+    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '重命名项目',
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, { key: 'save', variant: 'primary', disabled: blocked, onClick: () => void submit() }, '重命名'),
     ],
   },
   h('input', {
-    className: 'nodo-dialog-input', value: draft, 'aria-label': '工作区名称', 'data-modal-autofocus': true, disabled: busy,
+    className: 'nodo-dialog-input', value: draft, 'aria-label': '项目名称', 'data-modal-autofocus': true, disabled: busy,
     onFocus: event => event.target.select(),
     onChange: event => { setDraft(event.target.value); setError('') },
     onCompositionStart: () => { composing.current = true },
@@ -276,7 +276,7 @@ export function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
       void submit()
     },
   }),
-  conflict && h('div', { className: 'nodo-dialog-error', role: 'alert' }, `已存在名为“${name}”的工作区。`),
+  conflict && h('div', { className: 'nodo-dialog-error', role: 'alert' }, `已存在名为“${name}”的项目。`),
   error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
 }
 
@@ -324,15 +324,15 @@ export function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
     try { await onDeleted(workspace.id) } catch (failure) { setError(failure.message); setBusy(false) }
   }
   return h(Modal, {
-    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '删除工作区',
+    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '删除项目',
     description: workspace.worktree
-      ? `将删除工作区“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色、工作树目录和分支会保留；相关任务和工作流需先结束。`
-      : `将删除工作区“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色和目录文件会保留；相关任务和工作流需先结束。`,
+      ? `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色、工作树目录和分支会保留；相关任务和工作流需先结束。`
+      : `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色和目录文件会保留；相关任务和工作流需先结束。`,
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
-      h(Button, { key: 'delete', variant: 'outline', className: 'nodo-dialog-danger', disabled: busy, onClick: () => void remove() }, '删除工作区'),
+      h(Button, { key: 'delete', variant: 'outline', className: 'nodo-dialog-danger', disabled: busy, onClick: () => void remove() }, '删除项目'),
     ],
   },
-  busy && h('div', { className: 'nodo-dialog-status', role: 'status' }, '正在删除工作区…'),
+  busy && h('div', { className: 'nodo-dialog-status', role: 'status' }, '正在删除项目…'),
   error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
 }

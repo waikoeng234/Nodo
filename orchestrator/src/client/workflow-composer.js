@@ -41,7 +41,7 @@ export function WorkflowTaskComposer({ node, view, disabled, onChange, onBusy })
     h(Composer, {
       profile: composerProfile, workspace, value: node.task ?? '', images: refs.map(image => ({ ...image, dataUrl: previews[image.id] })), files: node.files ?? [],
       readOnly: disabled, busy: disabled, modelDisabled: disabled || !profile,
-      placeholder: '输入节点任务，/ 选择指令，@ 引用工作区文件；可粘贴图片或文件',
+      placeholder: '输入节点任务，/ 选择指令，@ 引用项目文件；可粘贴图片或文件',
       onChange: task => onChange({ task }),
       onAttach: attach, onAttachFiles: attach,
       onRemoveImage: index => onChange(current => ({ images: (current.images ?? []).filter((_, at) => at !== index) })),

@@ -121,7 +121,7 @@ test('a pending send keeps sidebar actions and other session composers available
   assert.equal(rail.busy, false)
   const props = { ...rail, onSelect() {} }
   const tree = h.railTree(props)
-  for (const label of ['添加角色', '添加项目', '在“Project”中新建会话', '工作区“Project”的操作']) {
+  for (const label of ['添加角色', '添加项目', '在“Project”中新建会话', '项目“Project”的操作']) {
     assert.equal(!!tree.find(node => node.props['aria-label'] === label).props.disabled, false, label)
   }
   assert.equal(tree.find(node => node.type === 'Menu' && node.props.items?.some(item => item.id === 'worktree')).props.items

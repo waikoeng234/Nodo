@@ -180,19 +180,19 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
 
 export const FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
 .nodo-changes-card{min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
-.nodo-changes-header{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 16px}
+.nodo-changes-header{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 16px}
 .nodo-changes-icon{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary)}
 .nodo-changes-heading{flex:1;min-width:0}
 .nodo-changes-title{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:var(--dsh-content-font-size,14px);font-weight:600;line-height:24px}
-.nodo-changes-coverage{font-size:11px;line-height:18px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-coverage{font-size:12px;line-height:18px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
 .nodo-changes-counts{display:inline-flex;flex:none;gap:6px;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .nodo-changes-added{color:var(--dsw-alias-state-success-primary)}
 .nodo-changes-removed{color:var(--dsw-alias-state-error-primary)}
-.nodo-changes-view{flex:none;padding:5px 10px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-weight:500;cursor:pointer}
+.nodo-changes-view{flex:none;padding:5px 12px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-base);color:inherit;font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;font-weight:500;cursor:pointer}
 .nodo-changes-files{border-top:.5px solid var(--dsw-alias-border-l1)}
 .nodo-changes-file-entry{min-width:0}
 .nodo-changes-file{display:block;min-width:0;width:100%;padding:0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;cursor:pointer}
-.nodo-changes-more{display:flex;align-items:center;gap:8px;width:100%;padding:10px 16px;border:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;text-align:left;cursor:pointer}
+.nodo-changes-more{display:flex;align-items:center;gap:8px;width:100%;padding:12px 16px;border:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px;text-align:left;cursor:pointer}
 .nodo-changes-view:hover:not(:disabled),.nodo-changes-file:hover:not(:disabled),.nodo-changes-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-changes-card button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
 .nodo-changes-card button:disabled{opacity:.5;cursor:default}

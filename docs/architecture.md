@@ -29,7 +29,7 @@ flowchart LR
 orchestrator/
   index.js             dsh plugin entry: data home, then core plus the dsh-only modules
   core/                Embedded host package: host modules under src/, plus shared/ used by host and client
-  src/host/            dsh-only host modules: native session status and HTTP route
+  src/host/            dsh-only host modules: native session status, HTTP route, and session terminals
   src/client/          Sidebar, conversations, settings, and workflow UI
   agent-drivers/       Agent registration, protocol adapters, and capability interfaces
   scripts/             Build, check, and verification scripts
@@ -48,6 +48,7 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 | Projects and roles | `workspaces` (project directories), `worktrees` (Git worktrees), `profiles` (roles), `sessions` (conversations) |
 | Agent bridging | `drivers` (driver process lifecycle), `engine-settings` (Agent settings), `dispatch` (sending, steering, and queuing messages), `approvals` (approval cards) |
 | Conversation content | `prompt` (rendering role briefs, references, and handoffs), `session-references` (conversation references), `attachments` (images and attachments), `stream-records` (tool details), `stats` (conversation statistics), `context`, `native-status` (plugin module in `src/host/`) |
+| Session tools | `terminal` (plugin module in `src/host/`: terminals over the host subprocess service and the `/api/nodo/terminal` route) |
 | Workflows | `workflows` (definitions and execution), `workflow-materials` (writing handoff materials to disk) |
 | Interface | `channel` (answers `POST /api/nodo`, called by the client), `route` (plugin module in `src/host/`, registers the HTTP route) |
 
@@ -57,6 +58,8 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 
 **DSH conversations.** The dsh driver uses the host's public native session controller. Its `driverSessionId` identifies the native conversation, which opens in the host view. Native status and references use that same identifier.
 
+**Lead attachments.** Files and images sent to a lead conversation are copied under the project's `.nodo/workflow-inputs/`, and their paths are appended to the message the lead receives. The executor never sees the lead's conversation, so the lead passes those paths in the task.
+
 **Workflow steps.** `workflows.js` creates a separate conversation for each execution step and sends its task exclusively through `rt.send`; `dispatch.js` passes it to the role's driver. `workflow-materials.js` writes the previous step's reports and human decisions under the project's `.nodo/`, and `prompt.js` renders them into the next task. Client messages sent through `channel.js` also use `rt.send`.
 
 ## Client
@@ -64,6 +67,8 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 `scripts/build-client.mjs` bundles `src/client/` (ESM, plus `core/shared/` data) into `client.js` with esbuild and inlines assets such as icons. dsh loads `client.js` as a plain script. React and UI components are supplied by the host and are not bundled separately.
 
 The client mounts its parts through host UI slots, including run status and references above the composer, conversation message nodes, and tool detail views. UI state such as drafts and navigation is saved in the browser's `localStorage`.
+
+The Nodo conversation page also owns a right sidebar in the host's `rightbar` slot, with tabs for project files, terminals, and a browser. Files are read through the read-only `workspace-dir` and `workspace-file` endpoints and rendered with host primitives; terminals run in that conversation's workspace through the host subprocess service and stream NDJSON from `/api/nodo/terminal`; the browser uses the desktop host's leased webview when available and an iframe otherwise. Open state and tabs live in memory: after a page refresh terminals are listed again and replayed from their buffers, while file and browser tabs are not restored. Terminals end when their tab closes, when the conversation is archived or deleted, or when the plugin unloads. Nodo sessions opened in the native conversation view keep dsh's own right sidebar.
 
 A lead conversation on a non-dsh engine owns one sidebar row: the executor conversations it dispatched are grouped under that row instead of listing separately, and the row's status, time, highlight, role filter and search cover the group. The conversation page renders the lead's transcript as a chat room — its own messages, each dispatch as a chip, and the executor's report beneath it — with 查看会话 switching to the raw transcript or opening an executor conversation. The merge is driven by record fields rather than text: dispatch notes carry `delegation`, returned reports carry `origin`, and records without those fields render as ordinary conversations. Executor conversations on the dsh engine are not grouped.
 
@@ -88,7 +93,7 @@ The plugin data directory defaults to `~/.dsh/orchestrator/`, or the `orchestrat
 | `stream-details/` | Tool call details |
 | `identities/`, `drivers/`, `agents/` | Role identity files and working directories used by drivers |
 
-`state.json` and run records are written through temporary files followed by renaming. The project's `.nodo/` stores workflow reports and attachment copies; Nodo automatically writes a `.gitignore` there.
+`state.json` and run records are written through temporary files followed by renaming. The project's `.nodo/` stores workflow reports and attachment copies, including files and images sent to a lead, and Nodo automatically writes a `.gitignore` there.
 
 Deleting a role marks it with `deletedAt` and archives its conversations; deleting a project archives the conversations that ran in it and records the original project name in `workspaceName`. Every archived conversation keeps its `cwd`, `workspaceRef`, and the role and project names it had. Transcripts, statistics, references, tool details, and identity files remain available. Deleted roles disappear from the lead roster, task routing, and workflow node validation, and no longer hold a name or a slot under the profile limit, so their names can be reused.
 
