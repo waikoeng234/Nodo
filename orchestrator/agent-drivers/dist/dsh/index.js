@@ -6,7 +6,7 @@ import { createNativeDshDriver } from './native.js';
 export { dshInfo, validateDshOptions, checkDsh, findDshExecutable, describeDsh } from './config.js';
 export { scanDsh } from './catalog.js';
 export { scanDshCommands } from './skills.js';
-export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, ...options } = {}) {
+export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, leadMcpServers, ...options } = {}) {
     if (nativeHost?.workspaceRegistry && nativeHost?.sessionController)
         return createNativeDshDriver({ ...options, nativeHost: nativeHost, name, sessionName, workspaceId, workspaceName });
     if (nativeHost && !options.bin)

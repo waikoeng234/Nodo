@@ -158,7 +158,7 @@ test('file edits distinguish confirmed creation, deletion, unknown before-images
   assert.match(JSON.stringify(tree), /二进制文件/)
 })
 
-test('turn patches preserve current-file access and revision metadata in the production summary', async () => {
+test('turn patches preserve revision metadata in the production summary', async () => {
   const { StreamRecordCard, FileChangesSummary, ChangedFile, CodeDiff } = await loadClient(['stream-records.js', 'code-diff.tsx', 'file-changes-summary.tsx'])
   const record = { runId: 'r', entityId: 'e', revision: 12, body: { scope: 'workspace-snapshot', cwd: '/ws', fileCount: 1,
     files: [{ path: '/ws/x', edits: [] }], turnDiff: '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b' } }
@@ -167,14 +167,13 @@ test('turn patches preserve current-file access and revision metadata in the pro
   assert.equal(tree.type, FileChangesSummary)
   const file = tree.props.renderFile(record.body.files[0], record.body.turnDiff)
   assert.equal(file.type, ChangedFile)
-  assert.equal(file.props.request, request)
   assert.equal(file.props.cycle, 12)
   const detail = ChangedFile(file.props)
   const patch = nodes(detail).find(node => node.type === CodeDiff)
   assert.equal(patch.props.filename, 'x')
   assert.equal(patch.props.patch, record.body.turnDiff)
   assert.equal(patch.props.cycle, 12)
-  assert.ok(nodes(detail).some(node => node.type === 'Button' && node.children.includes('查看当前内容')))
+  assert.ok(!nodes(detail).some(node => node.type === 'Button'))
 })
 
 test('large patches render a bounded preview with explicit expansion while copying the complete source', async () => {

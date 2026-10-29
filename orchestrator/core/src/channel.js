@@ -181,16 +181,14 @@ export function install(rt) {
         const profile = resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
         rt.assertSessionWritable(profile, session)
-        rt.cancelLeadRetry(session.id, true)
-        const pendingReport = session.source?.pendingReport
         const cwd = session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd
         const images = profile.lead && cwd ? await rt.materializeImages(rt.admitImages(body.images), cwd) : []
         const files = body.files?.length || images.length ? { refs: body.files?.length ? rt.cleanFileRefs(body.files) : undefined,
           paths: [...await rt.materializeFiles(body.files, cwd), ...images] } : undefined
         const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined,
-          { files, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
+          { files, userInput: true, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
         if (profile.lead) void rt.followLead(profile.id, session.id, placed, files?.paths)
-        else void rt.followLeadReport(session.id, placed, pendingReport)
+        else void rt.followLeadReport(session.id, placed, placed.leadFlight)
         void rt.flushLeadReports(session.id)
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
       }

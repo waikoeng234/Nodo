@@ -150,6 +150,16 @@ export function createEchoDriver({ onEvent, script = DEFAULT_SCRIPT, steerPolicy
 }
 
 // The registry entry, in the ENGINES shape; call once per test boot.
+export const echoEntry = { create: createEchoDriver, info: echoInfo, validate: validateEchoOptions, check: checkEcho }
+
 export function registerEchoEngine() {
-  registerEngine('echo', { create: createEchoDriver, info: echoInfo, validate: validateEchoOptions, check: checkEcho })
+  registerEngine('echo', echoEntry)
+}
+
+// The lead whitelist admits only engine id claude, so host tests register the
+// echo fixture under that id for lead roles. Call it at file top level, before
+// boot: only files that create leads may do this, so the real claude driver
+// stays untouched in processes that exercise it.
+export function registerClaudeFixtureEngine() {
+  registerEngine('claude', echoEntry)
 }

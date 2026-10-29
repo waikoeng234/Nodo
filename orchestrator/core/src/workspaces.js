@@ -205,8 +205,8 @@ export function install(rt) {
     return { entries: entries.slice(0, DIR_MAX), ...(entries.length > DIR_MAX ? { truncated: true } : {}) }
   }
 
-  // The changes card's 查看当前内容: one bounded read, constrained to the
-  // conversation's own workspace so a captured path cannot reach elsewhere.
+  // One bounded workspace-file read, constrained to the conversation's own
+  // workspace so a captured path cannot reach elsewhere.
   const workspaceFile = async body => {
     const { full, real } = await workspacePath(body)
     if (real === null) return { path: full, missing: true }

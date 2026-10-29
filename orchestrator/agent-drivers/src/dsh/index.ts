@@ -7,6 +7,7 @@ import type { AcpDriverOptions, AcpAttached } from '../acp/core.js'
 import type { AcpConfigOption } from '../acp/catalog.js'
 import type { NativeDshDriverOptions } from './native.js'
 import type { IdentityFiles } from '../identity-files.js'
+import type { RoleMcpServer } from '../role-mcp.js'
 import type { DshNativeHost, DshNativeRuntime } from './native-services.js'
 
 export type AcpDshDriverOptions = AcpDriverOptions & {
@@ -16,6 +17,7 @@ export type AcpDshDriverOptions = AcpDriverOptions & {
 export type DshDriverOptions = AcpDshDriverOptions & Omit<NativeDshDriverOptions, 'nativeHost'> & {
   nativeHost?: DshNativeHost
   workspaceKey?: string; allowEmptyResume?: boolean; identityFiles?: IdentityFiles; identityOwner?: string
+  leadMcpServers?: RoleMcpServer[]
 }
 type DshConfigChoice = { value?: unknown; name?: unknown; options?: unknown }
 type DshConfigOption = AcpConfigOption<unknown> & { options?: DshConfigChoice[] }
@@ -28,7 +30,7 @@ export { dshInfo, validateDshOptions, checkDsh, findDshExecutable, describeDsh }
 export { scanDsh } from './catalog.js'
 export { scanDshCommands } from './skills.js'
 
-export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, ...options }: DshDriverOptions = {}) {
+export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, leadMcpServers, ...options }: DshDriverOptions = {}) {
   if (nativeHost?.workspaceRegistry && nativeHost?.sessionController) return createNativeDshDriver({ ...options, nativeHost: nativeHost as DshNativeRuntime, name, sessionName, workspaceId, workspaceName })
   if (nativeHost && !options.bin) throw new Error('DSH native workspace/session services are unavailable on this host')
   return createAcpDshDriver(options)

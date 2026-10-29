@@ -7,8 +7,10 @@ import { boot, until, withHost } from './helpers/host.js'
 import templates from '../core/shared/avatar-templates.json' with { type: 'json' }
 import { MAX_PROFILES } from '../core/src/constants.js'
 import { registerEngine } from '../agent-drivers/dist/index.js'
-import { createEchoDriver, echoInfo, validateEchoOptions } from './helpers/echo-driver.js'
+import { createEchoDriver, echoInfo, registerClaudeFixtureEngine, validateEchoOptions } from './helpers/echo-driver.js'
 import { loadClient } from './helpers/client-module.js'
+
+registerClaudeFixtureEngine()
 
 test('role permissions are explicit, validated atomically and persisted', () => withHost(async ({ api, post, home }) => {
   const card = await api('profile-create', { name: 'Planner', engine: 'echo', permission: 'plan' })
@@ -159,9 +161,9 @@ test('fallback is unique, transfers explicitly, survives ordering and passes on 
 
 test('leads require an executor and cannot remove or promote the last one before host archival', () => withHost(async ({ api, runtime }) => {
   await assert.rejects(api('profile-create', { name: 'Lead', engine: 'echo', lead: true }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
-  const worker = await api('profile-create', { name: 'Worker', engine: 'echo' })
+  const worker = await api('profile-create', { name: 'Worker', engine: 'claude' })
   await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true } }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
-  const lead = await api('profile-create', { name: 'Lead', engine: 'echo', lead: true, fallback: true })
+  const lead = await api('profile-create', { name: 'Lead', engine: 'claude', lead: true, fallback: true })
   assert.equal(Object.hasOwn(lead, 'fallback'), false)
   const rt = await runtime
   let archived = false
@@ -179,6 +181,21 @@ test('leads require an executor and cannot remove or promote the last one before
   await api('profile-delete', { id: lead.id })
   await api('profile-delete', { id: worker.id })
   await api('profile-delete', { id: second.id })
+}))
+
+test('lead roles are limited to whitelisted engines and never the plan tier', () => withHost(async ({ api }) => {
+  const worker = await api('profile-create', { name: 'Worker', engine: 'echo' })
+  await assert.rejects(api('profile-create', { name: 'Lead', engine: 'echo', lead: true }), { code: 'orch/invalid', message: '引擎 echo 暂不支持主控，主控请选择 claude' })
+  await assert.rejects(api('profile-create', { name: 'Lead', engine: 'claude', lead: true, permission: 'plan' }), { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
+  const lead = await api('profile-create', { name: 'Lead', engine: 'claude', lead: true })
+  await api('profile-create', { name: 'Helper', engine: 'echo' })
+  await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true } }), { code: 'orch/invalid', message: '引擎 echo 暂不支持主控；引擎创建后不能更换，请新建 claude 的主控角色' })
+  await assert.rejects(api('profile-update', { id: lead.id, changes: { permission: 'plan' } }), { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
+  // A whitelisted executor already on the plan tier cannot become the lead either.
+  const planner = await api('profile-create', { name: 'Planner', engine: 'claude', permission: 'plan' })
+  await assert.rejects(api('profile-update', { id: planner.id, changes: { lead: true } }), { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
+  await api('profile-update', { id: planner.id, changes: { lead: true, permission: 'workspace' } })
+  assert.equal((await api('state')).profiles.find(item => item.id === planner.id).lead, true)
 }))
 
 for (const [label, profiles, holder] of [
@@ -338,7 +355,7 @@ test('lead flags normalize, persist only when true, keep the existing conversati
   const rt = await runtime
   const workspace = await api('workspace-create', { name: 'Lead flag', cwd: join(home, 'ws') })
   await api('profile-create', { name: 'Executor', engine: 'echo' })
-  const profile = await api('profile-create', { name: 'Lead', engine: 'echo', lead: true, engineOptions: { script: [{ kind: 'text', text: 'Done' }] } })
+  const profile = await api('profile-create', { name: 'Lead', engine: 'claude', lead: true, engineOptions: { script: [{ kind: 'text', text: 'Done' }] } })
   assert.equal(profile.lead, true)
   const session = await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })
   await api('send', { profile: profile.id, session: session.id, text: 'Question' })

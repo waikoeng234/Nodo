@@ -6,6 +6,7 @@
 // work twice.
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TIMEOUT_MS, RUN_LIMITS, UNCONFIRMED_STEER } from './constants.js'
 import { clip } from './text.js'
+import { LEAD_ENGINES } from '../shared/lead.js'
 import { projectContent } from './resources.js'
 import { changesTool, normalizeProgress, planObservation, previewRecord } from './stream-records.js'
 import { createMessageStream } from './message-stream.js'
@@ -117,6 +118,7 @@ export function install(rt) {
     switch (event?.type) {
       case 'session':
         if (event.state === 'closed') { say(profileId, { who: 'system', kind: 'note', text: 'engine session closed' }) }
+        else if (event.state === 'ready') void rt.flushLeadReports?.(profileId)
         return
       case 'turn/start':
         if (!st.active && !st.starting && st.cancelledStart && !rt.isCompacting(profileId)) {
@@ -315,6 +317,7 @@ export function install(rt) {
           st.requests.delete(event.id)
         }
         rt.closeApproval(event.id)
+        void rt.flushLeadReports?.(profileId)
         if (!foreign(st, event)) armIdle(profileId, st)
         return
       case 'note':
@@ -349,6 +352,7 @@ export function install(rt) {
         const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
         const reply = replyLines.find(line => line.reply)
         const session = rt.conversationOf?.(profileId)?.session
+        rt.leadEnded?.(profileId, event)
         const replyId = session?.engine === 'dsh' ? reply?.messageId : reply ? (reply.replyId ??= randomUUID()) : undefined
         const flushed = st.messages.text()
         rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
@@ -427,10 +431,11 @@ export function install(rt) {
     if (st.active || st.starting || st.finishing || rt.isCompacting(profileId) || st.queued.length === 0 || st.queued[0].sending) return
     const next = st.queued.shift()
     if (next.pendingLine) say(profileId, next.pendingLine)
-    startTurn(profileId, st, next.text, next.seq, next.images, next.task)
+    startTurn(profileId, st, next.text, next.seq, next.images, next.task, next.onInput)
   }
 
-  const startTurn = (profileId, st, text, seq, images, task = text) => {
+  const startTurn = (profileId, st, text, seq, images, task = text, onInput) => {
+    onInput?.()
     st.seq = seq
     st.task = task
     st.starting = true
@@ -465,7 +470,9 @@ export function install(rt) {
       let sent = false
       try {
         const { session } = rt.conversationOf(profileId)
-        const message = restoreContext || session.restoreContext ? rt.renderRecovery(session, text) : text
+        const snapshot = rt.leadSnapshot?.(profileId)
+        const input = snapshot ? `${text}\n\n${snapshot}` : text
+        const message = restoreContext || session.restoreContext ? rt.renderRecovery(session, input) : input
         const instructionMode = driver.instructionMode === 'native' ? 'native' : 'none'
         if (instructionMode === 'none' && session.instructionMode !== 'none') {
           const reason = IDENTITY_FALLBACK[driver.instructionFallback]
@@ -500,9 +507,13 @@ export function install(rt) {
     const { profile, session } = rt.conversationOf(profileId)
     const host = st.seq
     const outcome = item.images.length === 0 && !rt.isCompacting(profileId) && st.settings === settingsOf(profile, session)
-      ? await Promise.resolve().then(() => rt.driverOf(profileId)?.steer(item.text)).catch(() => undefined) : undefined
+      ? await Promise.resolve().then(() => {
+        const snapshot = rt.leadSnapshot?.(profileId)
+        return rt.driverOf(profileId)?.steer(snapshot ? `${item.text}\n\n${snapshot}` : item.text)
+      }).catch(() => undefined) : undefined
     if (outcome !== 'steered' && outcome !== 'indeterminate') return null
     if (item.cancelled) return outcome
+    item.onInput?.()
     if (item.pendingLine) say(profileId, item.pendingLine)
     say(profileId, { who: 'system', kind: 'note', text: outcome === 'steered' ? 'steered into the running turn' : UNCONFIRMED_STEER })
     if (st.seq === host && occupied(profileId, st)) {
@@ -512,9 +523,16 @@ export function install(rt) {
     } else settle(st, item.seq, st.ended?.seq === host ? st.ended.outcome : { reason: 'done' })
     return outcome
   }
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false, origin, cancelled } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false, origin, cancelled, userInput = false } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
     rt.assertSessionWritable?.(profile, session)
+    // createProfile and updateProfile keep new leads compliant; this catches
+    // cards saved before the rules, which never migrate in place. The dedicated
+    // code lets result delivery tell the executor why its report cannot land.
+    if (profile.lead === true) {
+      if (!LEAD_ENGINES.includes(profile.engine)) throw Object.assign(new Error(`主控「${profile.name}」的引擎 ${profile.engine} 暂不支持主控，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`), { code: 'orch/lead-invalid' })
+      if ((session.permission ?? profile.permission) === 'plan') throw Object.assign(new Error(`主控「${profile.name}」是计划模式权限，请改成其他权限后再发送`), { code: 'orch/lead-invalid' })
+    }
     profileId = session.id
     const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
     refuseBusy()
@@ -544,24 +562,28 @@ export function install(rt) {
     if (cancelled?.()) throw Object.assign(new Error('Send cancelled'), { code: 'orch/cancelled' })
     refuseBusy()
     const st = stateOf(profileId)
+    const leadFlight = userInput ? rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
+    if (userInput && profile.lead) rt.resetLeadBudget?.(session.id)
+    const onInput = userInput && profile.lead ? () => rt.leadInputStarted?.(session.id, files?.paths) : undefined
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
+    if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
     const line = { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
       ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
     const pendingLine = queue && occupied(profileId, st) ? line : undefined
     if (!pendingLine) say(profileId, line)
     if (occupied(profileId, st)) {
-      const item = { text: input, task: text, images, seq, pendingLine, resolve: outcome => settle(st, seq, outcome) }
+      const item = { text: input, task: text, images, seq, pendingLine, onInput, resolve: outcome => settle(st, seq, outcome) }
       const outcome = queue ? null : await steer(profileId, st, item)
-      if (outcome) return { mode: outcome, seq, completion, turn }
+      if (outcome) return { mode: outcome, seq, completion, turn, leadFlight }
       st.queued.push(item)
       // The turn may have ended while the engine answered; nothing else would start this one.
       drain(profileId, st)
-      return { mode: 'queued', seq, completion, turn }
+      return { mode: 'queued', seq, completion, turn, leadFlight }
     }
-    startTurn(profileId, st, input, seq, images, text)
-    return { mode: 'turn', seq, completion, turn }
+    startTurn(profileId, st, input, seq, images, text, onInput)
+    return { mode: 'turn', seq, completion, turn, leadFlight }
   }
 
   const queuedMessage = async (profileId, sessionId, seq, action) => {
@@ -572,7 +594,7 @@ export function install(rt) {
     if (item.sending) throw new Error('消息正在发送，请稍后再试')
     if (action === 'edit' || action === 'delete') {
       st.queued.splice(st.queued.indexOf(item), 1)
-      item.resolve({ reason: 'interrupted' })
+      item.resolve({ reason: 'interrupted', discarded: true })
       drain(profileId, st)
       return action === 'edit' ? { text: rt.redactDeepSecrets(item.task), images: item.images } : { mode: 'deleted' }
     }
@@ -580,7 +602,7 @@ export function install(rt) {
     if (!occupied(profileId, st)) {
       st.queued.splice(st.queued.indexOf(item), 1)
       say(profileId, item.pendingLine)
-      startTurn(profileId, st, item.text, item.seq, item.images, item.task)
+      startTurn(profileId, st, item.text, item.seq, item.images, item.task, item.onInput)
       return { mode: 'turn' }
     }
     item.sending = true
@@ -654,5 +676,11 @@ export function install(rt) {
     for (const st of turns.values()) { disarmIdle(st); clearTimeout(st.cancelTimer) }
   }, 'nodo: dispatch idle timers')
 
-  Object.assign(rt, { driverSink, send, queuedMessage, interrupt, workView, drainQueue: id => drain(id, stateOf(id)), rearmIdle: id => armIdle(id, stateOf(id)) })
+  const dispatchWork = id => {
+    const st = turns.get(id)
+    if (!st) return
+    return { suspect: st.suspect, stopping: st.cancelTimer !== null,
+      retry: [...st.lifecycles?.values() ?? []].some(line => line.event === 'retry') }
+  }
+  Object.assign(rt, { driverSink, send, queuedMessage, interrupt, workView, dispatchWork, drainQueue: id => drain(id, stateOf(id)), rearmIdle: id => armIdle(id, stateOf(id)) })
 }

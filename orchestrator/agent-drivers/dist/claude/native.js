@@ -7,7 +7,19 @@ import { createInterface } from 'node:readline';
 // replayed user frames (they carry tool results), and prompts routed to us over
 // the control channel (--permission-prompt-tool=stdio is the value the Agent SDK
 // itself passes; the space-separated spelling does not arm the dispatcher).
-export function claudeArgs({ model, thinking, instructions, driverSessionId, permission } = {}) {
+// The lead tools by exact name: only these skip the CLI's approval flow, and
+// nothing else is loosened.
+const LEAD_TOOLS = ['nodo_board', 'nodo_delegate', 'nodo_interrupt'];
+// NODO_LEAD_* values (socket, token) ride the CLI process environment for the
+// MCP child to inherit — never argv or the config JSON.
+export function leadMcpEnv(servers) {
+    return Object.fromEntries((servers ?? []).flatMap(({ env }) => env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])));
+}
+const leadMcpConfig = (servers) => JSON.stringify({ mcpServers: Object.fromEntries(servers.map(({ name, command, args, env }) => [name, {
+            command, args, env: Object.fromEntries(env.filter(({ name }) => !name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])),
+        }])) });
+export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers } = {}) {
+    const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => LEAD_TOOLS.map(tool => `mcp__${name}__${tool}`)) : [];
     return [
         '--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
         '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',
@@ -17,6 +29,10 @@ export function claudeArgs({ model, thinking, instructions, driverSessionId, per
         // recognized-dangerous ones ask — matching the workspace tier zcode calls
         // guarded; acceptEdits would still ask for every ordinary command.
         ...(permission === 'plan' ? ['--permission-mode', 'plan'] : permission === 'full' ? ['--permission-mode', 'bypassPermissions'] : permission === 'workspace' ? ['--permission-mode', 'auto'] : []),
+        // The lead mount is per-process and per-resume; without --strict-mcp-config
+        // the user's own MCP servers stay loaded.
+        ...(tools.length ? ['--allowedTools', ...tools] : []),
+        ...(leadMcpServers?.length ? ['--mcp-config', leadMcpConfig(leadMcpServers)] : []),
         ...(instructions ? ['--append-system-prompt', instructions] : []),
         ...(driverSessionId ? ['--resume', driverSessionId] : []),
     ];

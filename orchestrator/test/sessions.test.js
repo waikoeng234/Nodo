@@ -5,8 +5,11 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { boot, until } from './helpers/host.js'
+import { registerClaudeFixtureEngine } from './helpers/echo-driver.js'
 import { install as installSessions } from '../core/src/sessions.js'
 import { registerEngine } from '../agent-drivers/dist/index.js'
+
+registerClaudeFixtureEngine()
 
 test('legacy orphan sessions remain selectable, writable and editable without being migrated', async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-legacy-orphan-'))
@@ -871,5 +874,24 @@ test('shared native DSH role keeps plugin workspace references separate from nat
       assert.equal(native.agents.get(session.driverSessionId).session.header.title, `Fixture Coder · ${session.name}`)
       assert.equal(native.agents.get(session.driverSessionId).session.header.cwd, realpathSync(workspace.cwd))
     }
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('lead conversations refuse the plan tier on create and update; executors keep it', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-lead-plan-'))
+  const host = boot(home)
+  try {
+    const workspace = await host.api('workspace-create', { name: 'Lead plan', cwd: join(home, 'ws') })
+    await host.api('profile-create', { name: 'Worker', engine: 'echo' })
+    const lead = await host.api('profile-create', { name: 'Lead', engine: 'claude', lead: true })
+    await assert.rejects(host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true, choices: { permission: 'plan' } }),
+      { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
+    const session = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
+    await assert.rejects(host.api('session-update', { profile: lead.id, session: session.id, changes: { permission: 'plan' } }),
+      { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
+    await host.api('session-update', { profile: lead.id, session: session.id, changes: { permission: 'workspace' } })
+    const executor = await host.api('session-create', { profile: (await host.api('state')).profiles.find(item => item.name === 'Worker').id,
+      workspace: workspace.id, lazy: true, choices: { permission: 'plan' } })
+    assert.equal(executor.permission, 'plan')
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })

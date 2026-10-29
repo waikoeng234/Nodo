@@ -93,15 +93,15 @@ test('panel edits with only new text wrap numbered content without guessing a be
   assert.match(JSON.stringify(tree), /来源未提供修改前内容/)
 })
 
-test('hover previews share the numbered colored diff while keeping current-file access', async () => {
+test('hover previews share the numbered colored diff', async () => {
   const h = await harness()
   const file = { path: '/ws/x.ts', edits: [{ operation: 'update', oldText: '  before();\n', newText: '  after();\n' }] }
-  const tree = h.renderFile({ file, root: '/ws', request: { profile: 'p', session: 's' }, inline: true, preview: true })
+  const tree = h.renderFile({ file, root: '/ws', inline: true, preview: true })
   const diff = descendants(tree).find(node => node.type === h.context.CodeDiff)
   assert.equal(diff.props.panel, false)
   assert.equal(diff.props.preview, true)
   assert.equal(diff.props.diff.oldText, '  before();\n')
-  assert.ok(descendants(tree).some(node => node.type === 'Button' && node.children.includes('查看当前内容')))
+  assert.ok(!descendants(tree).some(node => node.type === 'Button'))
 })
 
 test('detached changes readers keep the saved revision ref after the live record finishes', async () => {
@@ -161,13 +161,12 @@ test('workspace snapshots retain their own attribution and explain binary, overs
   assert.match(JSON.stringify(content), /可能包含其他会话或进程的修改/)
   const entry = summary.props.renderFile(record.body.files[0])
   assert.equal(entry.props.inline, true)
-  assert.deepEqual(entry.props.request, {})
   const file = view.context.ChangedFile(entry.props)
   assert.match(JSON.stringify(file), /二进制文件/)
   assert.match(JSON.stringify(file), /超过来源大小上限/)
   assert.match(JSON.stringify(file), /粗略差异/)
   assert.match(JSON.stringify(file), /来源未能提供此文件的差异/)
-  assert.ok(descendants(file).some(node => node.type === 'Button' && node.children.includes('查看当前内容')))
+  assert.ok(!descendants(file).some(node => node.type === 'Button'))
 })
 
 test('a running record shows only the progress facts the source supplied, then drops them at the end', async () => {
@@ -224,108 +223,4 @@ test('a pending image says it is saved at the end and a record without resources
   const tree = view.render({ record, request: { profile: 'p', session: 's' } })
   assert.doesNotMatch(JSON.stringify(tree), /data-nodo-resources/)
   assert.match(JSON.stringify(tree), /no resource fixture/)
-})
-
-test('current file content replaces the diff, returns to the original evidence, and retries failed reads', async () => {
-  const requests = []
-  const view = await harness(async (endpoint, payload) => {
-    requests.push({ endpoint, payload })
-    if (requests.length === 2) throw new Error('文件不在会话工作区内')
-    return { path: '/ws/note.md', text: 'current body', truncated: true }
-  })
-  const file = { path: '/ws/note.md', edits: [{ operation: 'update', oldText: 'before', newText: 'after' }] }
-  const props = { file, inline: true, request: { profile: 'p', session: 's' } }
-  let tree = view.renderFile(props)
-  assert.equal(descendants(tree).filter(node => node.type === 'Button').length, 1)
-  const click = async label => {
-    descendants(view.renderFile(props)).find(node => node.type === 'Button' && node.children.includes(label)).props.onClick()
-    await new Promise(resolve => setImmediate(resolve))
-  }
-  const originalDiff = descendants(tree).find(node => node.type === view.context.CodeDiff).props.diff
-  await click('查看当前内容')
-  assert.equal(requests[0].endpoint, 'workspace-file')
-  assert.deepEqual(JSON.parse(JSON.stringify(requests[0].payload)), { profile: 'p', session: 's', path: '/ws/note.md' })
-  tree = view.renderFile(props)
-  assert.equal(descendants(tree).find(node => node.type === 'CodeBlock').props.code, 'current body')
-  assert.ok(!descendants(tree).some(node => node.type === view.context.CodeDiff))
-  assert.ok(descendants(tree).some(node => node.type === 'Button' && node.children.includes('返回差异')))
-  assert.match(JSON.stringify(tree), /仅显示开头部分/)
-  const root = descendants(tree).find(node => node.props['data-nodo-tool-file'] === file.path)
-  const popup = { scrollTop: 300 }
-  root.props.ref.current = { closest: selector => { assert.equal(selector, '.nodo-changes-preview'); return popup } }
-  view.effects.at(-1)()
-  assert.equal(popup.scrollTop, 0, 'switching views resets only the preview scroll position')
-  await click('返回差异')
-  tree = view.renderFile(props)
-  assert.deepEqual(descendants(tree).find(node => node.type === view.context.CodeDiff).props.diff, originalDiff)
-  assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
-  assert.equal(requests.length, 1, 'returning to the diff does not read or alter it')
-  await click('查看当前内容')
-  tree = view.renderFile(props)
-  assert.equal(descendants(tree).find(node => node.props.role === 'alert').children[0], '文件不在会话工作区内')
-  assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock' || node.type === view.context.CodeDiff))
-  await click('重试')
-  tree = view.renderFile(props)
-  assert.equal(requests.length, 3)
-  assert.equal(descendants(tree).find(node => node.type === 'CodeBlock').props.code, 'current body')
-  assert.ok(!descendants(tree).some(node => node.props.role === 'alert'))
-  assert.equal(descendants(view.renderFile({ file, loaded: true })).filter(node => node.type === 'Button').length, 0)
-})
-
-test('returning to the diff during a read never lets its late response reopen the content view', async () => {
-  let resolve
-  const view = await harness(() => new Promise(done => { resolve = done }))
-  const props = { file: { path: '/ws/x', edits: [{ operation: 'update', oldText: 'old', newText: 'new' }] },
-    inline: true, request: { profile: 'p', session: 's' } }
-  let tree = view.renderFile(props)
-  descendants(tree).find(node => node.type === 'Button').props.onClick()
-  tree = view.renderFile(props)
-  assert.ok(descendants(tree).some(node => node.props.role === 'status' && node.children.includes('读取中…')))
-  assert.ok(!descendants(tree).some(node => node.type === view.context.CodeDiff))
-  descendants(tree).find(node => node.type === 'Button' && node.children.includes('返回差异')).props.onClick()
-  resolve({ text: 'late file contents' })
-  await new Promise(done => setImmediate(done))
-  tree = view.renderFile(props)
-  assert.ok(descendants(tree).some(node => node.type === view.context.CodeDiff))
-  assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
-})
-
-test('empty, missing and binary current files show explicit results and retain the return action', async () => {
-  for (const [result, label] of [[{ text: '' }, '文件为空。'], [{ missing: true }, '文件已不存在或不是普通文件。'],
-    [{ binary: true }, '二进制文件，无法作为文本展示。']]) {
-    const view = await harness(async () => result)
-    const props = { file: { path: '/ws/x', edits: [] }, inline: true, request: { profile: 'p', session: 's' } }
-    descendants(view.renderFile(props)).find(node => node.type === 'Button').props.onClick()
-    await new Promise(done => setImmediate(done))
-    const tree = view.renderFile(props)
-    assert.ok(descendants(tree).some(node => node.children.includes(label)))
-    assert.ok(descendants(tree).some(node => node.type === 'Button' && node.children.includes('返回差异')))
-    assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
-  }
-})
-
-test('current image files including SVG render an image and can return to their diff', async () => {
-  for (const [extension, mediaType] of [['png', 'image/png'], ['svg', 'image/svg+xml']]) {
-    const path = `/ws/image.${extension}`
-    const dataUrl = `data:${mediaType};base64,AA==`
-    const view = await harness(async (endpoint, payload) => {
-      assert.equal(endpoint, 'workspace-file')
-      assert.equal(payload.path, path)
-      return { path, image: { mediaType, dataUrl } }
-    })
-    const props = { file: { path, edits: [] }, inline: true, request: { profile: 'p', session: 's' } }
-    descendants(view.renderFile(props)).find(node => node.type === 'Button').props.onClick()
-    await new Promise(done => setImmediate(done))
-    let tree = view.renderFile(props)
-    const image = descendants(tree).find(node => node.type === 'img')
-    assert.equal(image.props.src, dataUrl)
-    assert.equal(image.props.alt, path)
-    assert.ok(!descendants(tree).some(node => node.type === 'CodeBlock'))
-    image.props.onError()
-    tree = view.renderFile(props)
-    assert.equal(descendants(tree).find(node => node.props.role === 'alert').children[0], '无法显示')
-    assert.ok(!descendants(tree).some(node => node.type === 'img'))
-    descendants(tree).find(node => node.type === 'Button' && node.children.includes('返回差异')).props.onClick()
-    assert.ok(descendants(view.renderFile(props)).some(node => node.children.includes('查看当前内容')))
-  }
 })

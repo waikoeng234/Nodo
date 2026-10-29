@@ -294,8 +294,8 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
     ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
     // Only a plan↔workspace pair is a safe toggle: without workspace the row
     // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card.
-    ...(modes.includes('plan') && modes.includes('workspace') ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
+    // confirmation on the role card. Leads never run in plan mode.
+    ...(modes.includes('plan') && modes.includes('workspace') && profile.lead !== true ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
     { type: 'label', id: 'cmd-title', text: '指令' },
     ...commandSection,
   ] : [{ type: 'label', id: 'cmd-title', text: '指令' }, ...commandSection]
@@ -358,6 +358,10 @@ export function PermissionSelect({ modes = [], value, disabled = false, onChange
       h('select', { className: 'nodo-dialog-input nodo-dialog-select', 'aria-label': label,
         value: value ?? '', disabled: disabled || !modes.length, onChange: event => onChange(event.target.value) },
       !modes.length && h('option', { value: '', disabled: true }, '无可用权限档位'),
+      // A saved tier the role may no longer hold (a lead's plan) shows disabled
+      // instead of the select silently displaying a different tier.
+      value !== undefined && value !== '' && !modes.includes(value)
+        && h('option', { value, disabled: true }, PERMISSION_LABELS[value] ?? value),
       ...modes.map(mode => h('option', { key: mode, value: mode }, PERMISSION_LABELS[mode] ?? mode))))
 }
 
@@ -380,7 +384,8 @@ export function PermissionMenu({ profile, disabled, onChange }) {
       setModes(Array.isArray(offered) ? offered : [])
     }).catch(() => { loaded.current = null; setModes([]) })
   }
-  const offered = (loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])
+  const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : []))
+    .filter(mode => profile.lead !== true || mode !== 'plan')
   const label = offered.length ? PERMISSION_LABELS[current] ?? current : '无可用权限档位'
   const items = offered.map(mode => ({ id: mode, label: PERMISSION_LABELS[mode] ?? mode,
     ...(PERMISSION_GLYPHS[mode] ? { icon: h(PERMISSION_GLYPHS[mode]) } : {}) }))

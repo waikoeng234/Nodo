@@ -76,6 +76,7 @@ export function install(rt) {
     const reply = { decision, value: typeof value === 'string' ? value.slice(0, ANSWER_TEXT_MAX) : undefined }
     await entry.answer({ ...reply, ...(held.has(id) ? { exit } : {}) })
     if (!entry.cancelled) await entry.onAnswered?.(reply)
+    if (entry.profileId) void rt.flushLeadReports?.(entry.profileId)
   }
 
   // A profile gone or its driver disposed: settle its cards as denied so neither

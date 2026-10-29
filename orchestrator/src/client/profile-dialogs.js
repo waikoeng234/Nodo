@@ -244,7 +244,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
             !engine && h('option', { value: draft.engine }, loading ? '正在加载 Agent…' : `不可用：${draft.engine}`),
             ...engines.map(item => h('option', { key: item.id, value: item.id }, engineDisplayName(item))))),
         h(Field, { label: '权限' }, h(PermissionSelect, {
-          modes: engine?.capabilities?.permissionModes, value: draft.permission, disabled: disabled || loading,
+          modes: engine?.capabilities?.permissionModes?.filter(mode => !lead || mode !== 'plan'), value: draft.permission, disabled: disabled || loading,
           onChange: permission => choosePermission(permission, draft.permission, permission => update({ permission })),
         })),
         h(Field, { label: '模型' },

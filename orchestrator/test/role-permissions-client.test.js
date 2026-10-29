@@ -5,6 +5,7 @@ import { loadClient } from './helpers/client-module.js'
 const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const engines = [
+  { id: 'claude', capabilities: { permissionModes: ['plan', 'workspace', 'full'] }, catalog: { models: [] } },
   { id: 'codex', capabilities: { permissionModes: ['plan', 'workspace', 'full'] }, catalog: { models: [] } },
   { id: 'first', capabilities: { permissionModes: ['plan', 'full'] }, catalog: { models: [] } },
   { id: 'dsh', capabilities: { permissionModes: [] }, catalog: { models: [] } },
@@ -69,7 +70,7 @@ test('role editor saves permission for either role kind and recalibrates a new r
     assert.equal(permission().props.value, 'full')
     assert.equal(calls.some(call => /^profile-(create|update)$/.test(call.endpoint)), false, 'confirmation only changes the draft')
     if (!profile) {
-      const agent = () => render().find(node => node.type === 'select' && node.props.value === 'codex')
+      const agent = () => render().find(node => node.type === 'select' && node.props.value === 'claude')
       agent().props.onChange({ target: { value: 'first' } })
       assert.equal(permission().props.value, 'plan')
       render().find(node => node.type === 'select' && node.props.value === 'first').props.onChange({ target: { value: 'dsh' } })
@@ -78,11 +79,12 @@ test('role editor saves permission for either role kind and recalibrates a new r
       render().find(node => node.type === 'select' && node.props.value === 'dsh').props.onChange({ target: { value: 'codex' } })
       render().find(node => node.type === 'input' && node.props.maxLength === 40).props.onChange({ target: { value: 'New role' } })
     }
-    permission().props.onChange('plan')
+    if (lead === true) assert.deepEqual([...permission().props.modes], ['workspace', 'full'], 'the lead editor offers no plan tier')
+    permission().props.onChange(lead === true ? 'workspace' : 'plan')
     await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
     const saved = calls.at(-1)
     assert.equal(saved.endpoint, profile ? 'profile-update' : 'profile-create')
-    assert.equal((profile ? saved.payload.changes : saved.payload).permission, 'plan')
+    assert.equal((profile ? saved.payload.changes : saved.payload).permission, lead === true ? 'workspace' : 'plan')
   }
 })
 
@@ -115,17 +117,26 @@ test('both create rows submit chosen permissions and reset them for another engi
     assert.equal(permission().props.value, 'full')
     assert.equal(calls.some(call => call.endpoint === 'profile-create'), false)
     const agent = () => nodes(form()).find(node => node.props['aria-label'] === 'Agent')
-    agent().props.onChange({ target: { value: 'first' } })
-    assert.equal(permission().props.value, 'plan')
-    agent().props.onChange({ target: { value: 'dsh' } })
-    assert.equal(permission().props.value, undefined)
-    agent().props.onChange({ target: { value: 'codex' } })
-    assert.equal(permission().props.value, 'workspace')
-    permission().props.onChange('plan')
+    if (lead) {
+      assert.deepEqual(agent().children.filter(option => option.props?.value).map(option => option.props.value), ['claude'],
+        'the lead row only offers whitelisted engines')
+      assert.deepEqual([...permission().props.modes], ['workspace', 'full'], 'the lead row offers no plan tier')
+    } else {
+      agent().props.onChange({ target: { value: 'first' } })
+      assert.equal(permission().props.value, 'plan')
+      agent().props.onChange({ target: { value: 'dsh' } })
+      assert.equal(permission().props.value, undefined)
+      agent().props.onChange({ target: { value: 'codex' } })
+      assert.equal(permission().props.value, 'workspace')
+      permission().props.onChange('plan')
+    }
+    agent().props.onChange({ target: { value: 'claude' } })
+    permission().props.onChange(lead ? 'workspace' : 'plan')
     nodes(form()).find(node => node.props['aria-label'] === '名字').props.onChange({ target: { value: 'Created' } })
     form().props.onSubmit({ preventDefault() {} }); await tick()
     const saved = calls.find(call => call.endpoint === 'profile-create')
-    assert.equal(saved.payload.permission, 'plan')
+    assert.equal(saved.payload.permission, lead ? 'workspace' : 'plan')
+    assert.equal(saved.payload.engine, 'claude')
     assert.equal(saved.payload.lead === true, lead)
   }
 })
@@ -152,6 +163,11 @@ test('each role row saves permission immediately, rolls back failures and locks 
   }
   const field = (name, readOnly) => render(readOnly).find(node => node.type === loaded.PermissionSelect && node.props.label === `权限 ${name}`)
   render(); await tick()
+  const leadTiers = () => { const cell = field('Lead'); return nodes(cell.type(cell.props)).find(node => node.type === 'select').children }
+  assert.equal(field('Lead').props.value, 'plan')
+  assert.deepEqual(leadTiers().filter(option => option.props.disabled).map(option => option.props.value), ['plan'],
+    'the saved plan tier still shows, disabled, instead of another tier standing in')
+  assert.deepEqual(leadTiers().filter(option => !option.props.disabled).map(option => option.props.value), ['workspace', 'full'])
   field('Worker').props.onChange('plan')
   assert.equal(field('Worker').props.value, 'plan')
   assert.equal(field('Worker').props.disabled, true)

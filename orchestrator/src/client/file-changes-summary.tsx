@@ -216,8 +216,6 @@ export const FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
 .nodo-changes-preview{inset:auto;margin:0;box-sizing:border-box;height:360px;padding:8px 12px;overflow:auto;overscroll-behavior:contain;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-panel);z-index:40}
 .nodo-changes-preview .nodo-code-diff{border-radius:var(--dsw-radius-md)}
 .nodo-changes-preview .nodo-code-diff-patch{max-height:none}
-.nodo-file-view-header{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 0;background:var(--dsw-alias-bg-base)}
-.nodo-file-view-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}
 .nodo-changes-preview::backdrop{background:transparent;pointer-events:none}
 @media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-coverage{display:none}}
 `

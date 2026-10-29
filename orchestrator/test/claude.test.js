@@ -176,6 +176,56 @@ test('Claude permission tiers reach the spawned CLI args', async () => {
   })
 })
 
+test('Claude mounts the lead MCP on start and resume with exact allowedTools and an env-only token', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const socket = join(cwd, 'lead.sock')
+    const leadMcpServers = [{ name: 'nodo_lead', command: process.execPath, args: [join(cwd, 'lead-server.js')],
+      env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }, { name: 'NODO_LEAD_SOCKET', value: socket }, { name: 'NODO_LEAD_TOKEN', value: 'lead-token-secret' }] }]
+    let events = []
+    let driver = createDriver('claude', { bin, cwd, leadMcpServers, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('FIRST')
+      await until(() => events.find(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    events = []
+    driver = createDriver('claude', { bin, cwd, driverSessionId: 'fixture-claude-session', leadMcpServers, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('SECOND')
+      await until(() => events.find(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+
+    const spawns = readFileSync(join(cwd, 'claude-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(entry => entry.spawn)
+    assert.equal(spawns.length, 2)
+    assert.equal(spawns[0].resume, undefined)
+    assert.equal(spawns[1].resume, 'fixture-claude-session')
+    for (const spawn of spawns) {
+      assert.equal(JSON.stringify(spawn.spawn).includes('lead-token-secret'), false, 'the token never rides argv')
+      assert.equal(spawn.spawn.includes('--strict-mcp-config'), false, 'user MCP servers stay loaded')
+      const config = JSON.parse(spawn.mcpConfig)
+      assert.deepEqual(config.mcpServers.nodo_lead, { command: process.execPath, args: [join(cwd, 'lead-server.js')], env: { ELECTRON_RUN_AS_NODE: '1' } },
+        'only env without channel secrets enters the config')
+      assert.equal(JSON.stringify(config).includes('lead-token-secret'), false)
+      assert.equal(JSON.stringify(config).includes(socket), false)
+      assert.deepEqual(spawn.allowedTools, ['mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_delegate', 'mcp__nodo_lead__nodo_interrupt'],
+        'exactly the three lead tools skip approval, nothing injectable')
+      assert.equal(spawn.leadSocketEnv, socket)
+      assert.equal(spawn.leadTokenEnv, 'lead-token-secret', 'the token reaches the CLI process env for the MCP child to inherit')
+    }
+    events = []
+    const plain = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await plain.sendTurn('THIRD')
+      await until(() => events.find(event => event.type === 'turn/end'))
+    } finally { plain.dispose() }
+    const executor = readFileSync(join(cwd, 'claude-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(entry => entry.spawn).at(-1)
+    assert.equal(executor.mcpConfig, undefined)
+    assert.equal(executor.allowedTools, undefined)
+    assert.equal(executor.leadTokenEnv, undefined)
+    assert.equal(executor.leadSocketEnv, undefined)
+    assert.equal(executor.spawn.includes('--mcp-config'), false)
+  })
+})
+
 test('Claude interrupt rides the control channel and ends the turn as interrupted', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

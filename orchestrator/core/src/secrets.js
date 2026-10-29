@@ -90,6 +90,14 @@ export function install(rt) {
     redact = redactor([...secrets.values(), ...[...retired].map(([value, name]) => ({ name, value }))])
   }
   const retire = secret => secret && retired.set(secret.value, secret.name)
+  // Issued values (lead channel tokens) join the same set: never saved keys, but a
+  // running engine may still hold them, so they stay redacted after revoke.
+  const retireValue = (value, name) => {
+    if (typeof value !== 'string' || value.length < MIN_VALUE) return false
+    retired.set(value, name)
+    changed()
+    return true
+  }
   // A JSON.parse message would quote the file, so logs carry only the error code.
   const codeOf = error => error?.code ?? error?.name ?? 'error'
 
@@ -231,7 +239,7 @@ export function install(rt) {
   }, 'nodo: load secrets')
 
   Object.assign(rt, {
-    secretsView, secretSet, secretDelete, secretEnv, secretKeys, secretStamp,
+    secretsView, secretSet, secretDelete, secretEnv, secretKeys, secretStamp, retireValue,
     loadSecrets, redactSecrets: text => redact(text), redactHead: (text, max) => redact.head(text, max), redactDeepSecrets: value => redactDeep(value, redact),
   })
 }

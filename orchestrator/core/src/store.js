@@ -148,6 +148,7 @@ export function install(rt) {
   const restore = async () => {
     await rt.driversReady()
     adopt(await readSaved())
+    rt.recoverLeadDelegations?.()
   }
 
   // A failed load is tried again by the next caller.

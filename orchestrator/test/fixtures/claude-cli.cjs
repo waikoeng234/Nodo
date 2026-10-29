@@ -5,6 +5,7 @@ const { appendFileSync } = require('node:fs')
 const log = entry => appendFileSync('claude-requests.jsonl', JSON.stringify(entry) + '\n')
 if (process.argv.includes('--version')) { console.log('claude-cli fixture'); process.exit(0) }
 const arg = name => { const at = process.argv.indexOf(name); return at === -1 ? undefined : process.argv[at + 1] }
+const list = name => { const at = process.argv.indexOf(name); if (at === -1) return undefined; const out = []; for (const value of process.argv.slice(at + 1)) { if (value.startsWith('--')) break; out.push(value) } return out }
 const session = 'fixture-claude-session'
 // The initialize control response's model table, in the shape the real CLI
 // writes: alias value, resolved versioned id, display name, per-model efforts.
@@ -36,7 +37,7 @@ const init = () => send({ type: 'system', subtype: 'init', session_id: session, 
 let initialized = !process.env.CLAUDE_FIXTURE_DELAY_INIT
 if (process.env.CLAUDE_FIXTURE_NOISE) send({ type: 'future_frame', session_id: session })
 if (initialized) init()
-log({ spawn: process.argv.slice(1), instructions: arg('--append-system-prompt'), effort: arg('--effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume') })
+log({ spawn: process.argv.slice(1), instructions: arg('--append-system-prompt'), effort: arg('--effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume'), mcpConfig: arg('--mcp-config'), allowedTools: list('--allowedTools'), leadSocketEnv: process.env.NODO_LEAD_SOCKET, leadTokenEnv: process.env.NODO_LEAD_TOKEN })
 let pending = null // can_use_tool awaiting the host decision
 const receive = line => {
   const frame = JSON.parse(line)

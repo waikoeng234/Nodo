@@ -35,3 +35,43 @@ test('a conversation that already holds a direct engine thread keeps its engine 
     driver.dispose()
   } finally { h.dispose() }
 })
+
+test('driver bindings are issued once and revoked on replacement and release', async () => {
+  const h = harness(), revoked = []
+  let issued = 0
+  h.rt.issueLeadMcp = async () => { const id = ++issued; return { servers: [], revoke: () => revoked.push(id) } }
+  try {
+    const profile = conversation({ lead: true })
+    await h.rt.ensureDriver(profile)
+    await h.rt.ensureDriver(profile)
+    assert.equal(issued, 1)
+    await h.rt.ensureDriver({ ...profile, model: 'different' })
+    assert.deepEqual(revoked, [1])
+    h.rt.releaseDriver(profile.id)
+    assert.deepEqual(revoked, [1, 2])
+    await h.rt.ensureDriver(profile)
+    h.rt.releaseDriver(profile.id)
+    assert.deepEqual(revoked, [1, 2, 3])
+    await assert.rejects(h.rt.ensureDriver({ ...profile, engine: 'missing-engine' }), /Unknown engine/)
+    assert.deepEqual(revoked, [1, 2, 3, 4])
+  } finally { h.dispose() }
+})
+
+test('an idle engine driver is released after two minutes, a busy one is kept', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = harness(), work = {}
+  h.rt.workView = () => work
+  try {
+    const driver = await h.rt.ensureDriver(conversation())
+    work['conv-1'] = { active: true, queued: 0 }
+    t.mock.timers.tick(120_000)
+    assert.equal(h.rt.driverOf('conv-1'), driver, 'a running turn keeps its engine')
+    work['conv-1'] = { active: false, queued: 0 }
+    t.mock.timers.tick(119_999)
+    assert.equal(h.rt.driverOf('conv-1'), driver)
+    t.mock.timers.tick(1)
+    assert.equal(h.rt.driverOf('conv-1'), undefined)
+    assert.notEqual(await h.rt.ensureDriver(conversation()), driver, 'the next turn starts a fresh engine')
+    h.rt.releaseDriver('conv-1')
+  } finally { h.dispose() }
+})

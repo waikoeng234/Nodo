@@ -344,3 +344,13 @@ test('DSH prompt may run longer than a transport handshake timeout', async () =>
     } finally { driver.dispose() }
   })
 })
+
+test('standalone DSH ignores lead MCP server options it does not consume', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const servers = [{ name: 'nodo_role', command: process.execPath, args: [], env: [] }]
+    for (const leadMcpServers of [undefined, servers]) {
+      const driver = createDriver('dsh', { bin, cwd, leadMcpServers })
+      driver.dispose()
+    }
+  })
+})

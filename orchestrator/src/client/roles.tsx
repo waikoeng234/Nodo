@@ -11,6 +11,7 @@ import { modelChoices, thinkingAfterModelChange, thinkingOptions } from './model
 import type { ModelChoice } from './model-options.js'
 import { engineDisplayName } from './engine-logos.js'
 import { route } from '../../core/shared/route.js'
+import { LEAD_ENGINES } from '../../core/shared/lead.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 import ROLE_PRESETS from '../../core/shared/role-presets.json'
 
@@ -203,6 +204,9 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   }))
   const createKind = adding ?? (!executors.length ? 'executor' : null)
   typedRef.current = newName.trim() !== '' || newIdentity.trim() !== ''
+  // The engine catalog answers after a click may have switched the create row kind.
+  const addingRef = useRef(createKind)
+  addingRef.current = createKind
   const perform = async (action: () => Promise<void>) => {
     if (busy) return
     setBusy(true); setError('')
@@ -228,7 +232,14 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   const switchTo = (action: () => void) => { if (dirtyRef.current || typedRef.current) setConfirm({ action: () => run(action) }); else run(action) }
   const showOverview = () => { setTypeOpen(false); setRoleId(null) }
   const openRole = (id: string) => { setTypeOpen(false); setRoleId(id) }
-  const startAdding = (kind: 'lead' | 'executor' = 'executor') => { showOverview(); setAdding(kind) }
+  const startAdding = (kind: 'lead' | 'executor' = 'executor') => {
+    showOverview()
+    addingRef.current = kind
+    setAdding(kind)
+    // A lead row starts on a whitelisted engine; the executor default may not be one.
+    if (kind === 'lead') setNewEngine(current => LEAD_ENGINES.includes(current) ? current
+      : creationEngines(engines ?? []).find(item => LEAD_ENGINES.includes(item.id))?.id ?? '')
+  }
   useEffect(() => {
     leaveGuard = switchTo
     return () => { leaveGuard = null }
@@ -245,7 +256,9 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     void call('engine-catalog').then((items: EngineChoice[]) => {
       setEngines(items)
       const choices = creationEngines(items)
-      setNewEngine(current => current || choices[0]?.id || '')
+      // A lead row opened while the catalog loaded only accepts whitelisted engines.
+      const first = choices.find(item => addingRef.current !== 'lead' || LEAD_ENGINES.includes(item.id))
+      setNewEngine(current => current || first?.id || '')
     }).catch(failure => setError((failure as Error).message))
   }, [engines])
   useEffect(() => {
@@ -277,7 +290,9 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     return scoped.length ? scoped : items
   }
   const newAvatar = AVATAR_TEMPLATES[roles.length % AVATAR_TEMPLATES.length].id
-  const newEngineAvailable = creationEngines(engines ?? []).some(item => item.id === newEngine)
+  // The lead row only offers engines wired to lead dispatch.
+  const kindEngines = creationEngines(engines ?? []).filter(item => createKind !== 'lead' || LEAD_ENGINES.includes(item.id))
+  const newEngineAvailable = kindEngines.some(item => item.id === newEngine)
   const newEngineInfo = engines?.find(item => item.id === newEngine)
   const newPermissionValue = permissionForEngine(newEngineInfo, newPermission)
   const createRole = (event: { preventDefault: () => void }) => {
@@ -321,7 +336,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     finally { setPendingPermission(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
   }
   const permissionCell = (role: RoleCard, locked: boolean) => (
-    <PermissionSelect modes={engines?.find(item => item.id === role.engine)?.capabilities?.permissionModes}
+    <PermissionSelect modes={engines?.find(item => item.id === role.engine)?.capabilities?.permissionModes?.filter(mode => role.lead !== true || mode !== 'plan')}
       value={pendingPermission[role.id] ?? role.permission} className="nodo-roles-permission" label={`权限 ${role.name}`}
       disabled={locked || Object.hasOwn(pendingPermission, role.id)}
       onChange={(permission: string) => choosePermission(permission, role.permission, (next: string) => void updatePermission(role, next))} />
@@ -344,9 +359,9 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       <select className="nodo-dialog-input nodo-dialog-select" aria-label="Agent" value={newEngine} disabled={readOnly || busy || !engines?.length}
         onChange={event => { setNewEngine(event.target.value); setNewPermission(undefined) }}>
         {!engines?.length && <option value="">正在加载 Agent…</option>}
-        {creationEngines(engines ?? []).map(item => <option key={item.id} value={item.id}>{engineDisplayName(item)}</option>)}
+        {kindEngines.map(item => <option key={item.id} value={item.id}>{engineDisplayName(item)}</option>)}
       </select>
-      <PermissionSelect modes={newEngineInfo?.capabilities?.permissionModes} value={newPermissionValue}
+      <PermissionSelect modes={newEngineInfo?.capabilities?.permissionModes?.filter(mode => createKind !== 'lead' || mode !== 'plan')} value={newPermissionValue}
         disabled={readOnly || busy} onChange={(permission: string) => choosePermission(permission, newPermissionValue, setNewPermission)} />
       <span className="nodo-roles-new-actions">
         {(createKind === 'lead' ? leads.length > 0 : executors.length > 0) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={cancelAdding}>取消</Button>}

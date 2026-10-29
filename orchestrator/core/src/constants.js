@@ -23,6 +23,8 @@ export const TURN_IDLE_TIMEOUT_MS = 120_000
 // An engine-announced retry waits out its own backoff, so that stretch of
 // silence gets a wider window before warning.
 export const RETRY_IDLE_TIMEOUT_MS = 600_000
+// An engine process with no work for this long is stopped; the next turn resumes its session.
+export const DRIVER_IDLE_RELEASE_MS = 120_000
 // Workflow run defaults, fixed into each run's snapshot when it starts.
 export const RUN_LIMITS = { cancelConfirmMs: 15_000, backMax: 2, eventsMax: 1000 }
 // The most times one back edge of a workflow may be declared to be taken.

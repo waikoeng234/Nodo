@@ -90,6 +90,7 @@ export function install(rt) {
     const model = choices.model !== undefined ? cleanModel(choices.model) : inherited.model
     const thinking = choices.thinking !== undefined ? cleanThinking(choices.thinking) : inherited.thinking
     const permission = choices.permission !== undefined ? rt.cleanPermission(profile.engine, choices.permission) : inherited.permission
+    if (profile.lead === true && permission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
     const session = { id: randomUUID(), name: String(name ?? (draft ? '新会话' : `Session ${profile.sessions.length + 1}`)).slice(0, 80), workspaceRef: workspace.id,
       engine: profile.engine, model, thinking,
       engineOptions: { ...profile.engineOptions }, briefSent: false, createdAt: Date.now(),
@@ -149,6 +150,7 @@ export function install(rt) {
     assertSessionWritable(profile, session)
     const choices = cleanSessionChoices(profile, Object.fromEntries(['model', 'thinking', 'permission']
       .filter(key => changes[key] !== undefined).map(key => [key, changes[key]])))
+    if (profile.lead === true && (choices.permission ?? session.permission) === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
     let taskState
     if (changes.taskState !== undefined) {
       if (rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the task before editing its saved context'), { code: 'orch/busy' })

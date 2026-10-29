@@ -1,8 +1,8 @@
 // Drivers: the bridge from profiles to the agent-drivers package. One live driver
-// process per profile while it works, spawned lazily on the profile's first turn
-// and respawned when its role card changes (engine, cwd, model, env). This module
-// owns engine lifecycle only; message routing is dispatch.js and cards are
-// approvals.js.
+// process per profile while it works, spawned lazily on the profile's first turn,
+// stopped after it idles and respawned when its role card changes (engine, cwd,
+// model, env). This module owns engine lifecycle only; message routing is
+// dispatch.js and cards are approvals.js.
 //
 // The package import is dynamic and degrades to an empty engine list when
 // agent-drivers cannot be loaded, so the plugin still loads and can say why. It
@@ -12,15 +12,17 @@
 // switching this specifier.
 import { join } from 'node:path'
 import { createIdentityFiles } from '../../agent-drivers/dist/identity-files.js'
+import { DRIVER_IDLE_RELEASE_MS } from './constants.js'
 
 const DRIVERS_SPECIFIER = '../../agent-drivers/dist/index.js'
 const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' })
 
 export function install(rt) {
   const { ctx } = rt
-  /** @type {Map<string, {driver:any, signature:string}>} */
+  /** @type {Map<string, {driver:any, signature:string, revoke?:Function, releasable:boolean, idle?:any}>} */
   const instances = new Map()
   const compactions = new Set()
+  const idled = new WeakSet()
   const identityFiles = createIdentityFiles(join(rt.home, 'identities'))
   let api = null
   let apiError = null
@@ -45,14 +47,14 @@ export function install(rt) {
   const ensureDriver = async (profile) => {
     await driversReady()
     if (api === null) throw Object.assign(new Error(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`), { code: 'orch/no-drivers' })
-    const signature = signatureOf(profile)
+    const signature = JSON.stringify([signatureOf(profile), profile.lead === true])
     const existing = instances.get(profile.id)
-    if (existing !== undefined && existing.signature === signature) return existing.driver
-    if (existing !== undefined) {
-      instances.delete(profile.id)
-      try { existing.driver.dispose() } catch { /* a half-dead engine is fine to drop */ }
-    }
-    const driver = api.createDriver(profile.engine, {
+    if (existing !== undefined && existing.signature === signature && (profile.lead !== true || existing.revoke)) return armIdle(profile.id, existing).driver
+    const leadMcp = await rt.issueLeadMcp?.(profile.id)
+    if (existing !== undefined && existing.signature === signature && !leadMcp) return armIdle(profile.id, existing).driver
+    if (existing !== undefined) releaseDriver(profile.id)
+    let driver
+    try { driver = api.createDriver(profile.engine, {
       ...(profile.engineOptions ?? {}),
       cwd: profile.cwd,
       model: profile.model,
@@ -70,27 +72,48 @@ export function install(rt) {
       name: profile.name,
       sessionName: profile.sessionName,
       instructions: rt.renderIdentity(profile),
+      leadMcpServers: leadMcp?.servers,
       identityFiles,
       identityOwner: profile.id,
       instructionDir: join(rt.home, 'drivers', profile.id),
       onEvent: (event) => {
+        if (idled.has(driver)) return
         if (event?.type === 'session' && typeof event.sessionId === 'string' && event.sessionId !== '') {
           void rt.saveSessionEvent(profile.id, event).catch(() => {})
         }
         rt.driverSink?.(profile.id, event)
-        if (event?.type === 'turn/end') for (const line of instances.get(profile.id)?.driver?.coverage?.drain?.() ?? []) rt.warn('%s', line)
+        if (event?.type !== 'turn/end') return
+        const entry = instances.get(profile.id)
+        for (const line of entry?.driver?.coverage?.drain?.() ?? []) rt.warn('%s', line)
+        if (entry?.driver === driver) armIdle(profile.id, entry)
       },
-    })
-    instances.set(profile.id, { driver, signature })
+    }) } catch (error) { leadMcp?.revoke(); throw error }
+    const entry = { driver, signature, revoke: leadMcp?.revoke, releasable: profile.engine !== 'dsh' }
+    instances.set(profile.id, armIdle(profile.id, entry))
     collectIdentityFiles()
     return driver
   }
 
+  // DSH sessions run inside the host, not in a child process, so they are never armed.
+  const armIdle = (profileId, entry) => {
+    if (!entry.releasable) return entry
+    clearTimeout(entry.idle)
+    entry.idle = setTimeout(() => {
+      if (instances.get(profileId) !== entry) return
+      const work = rt.workView?.()[profileId]
+      if (work?.active || work?.queued) armIdle(profileId, entry)
+      else { idled.add(entry.driver); releaseDriver(profileId) }
+    }, DRIVER_IDLE_RELEASE_MS)
+    entry.idle.unref?.()
+    return entry
+  }
   const driverOf = (profileId) => instances.get(profileId)?.driver
   const releaseDriver = (profileId) => {
     const entry = instances.get(profileId)
     if (entry === undefined) return
     instances.delete(profileId)
+    clearTimeout(entry.idle)
+    entry.revoke?.()
     try { entry.driver.dispose() } catch { /* a half-dead engine is fine to drop */ }
   }
   const collectIdentityFiles = () => {
@@ -123,6 +146,7 @@ export function install(rt) {
     } finally {
       compactions.delete(profileId)
       rt.drainQueue(profileId)
+      void rt.flushLeadReports?.(profileId)
     }
     return true
   }

@@ -6,7 +6,7 @@ import { STEER, addUsage, usageOf } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { collector } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
-import { claudeArgs, connectClaude } from './native.js'
+import { claudeArgs, connectClaude, leadMcpEnv } from './native.js'
 import { createFileChanges } from '../file-changes.js'
 import { claudeFileChanges } from './file-changes.js'
 import type { ClaudeConnection } from './native.js'
@@ -15,11 +15,13 @@ import type { Coverage } from '../coverage.js'
 import type { FileChanges } from '../file-changes.js'
 import type { EngineScanOptions, ModelCatalog } from '../index.js'
 import type { SkillInventory } from '../skills.js'
+import type { RoleMcpServer } from '../role-mcp.js'
 
 export type ClaudeOptions = { bin?: string }
 export type ClaudeDriverOptions = {
   onEvent?: (event: DriverEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
   model?: string; thinking?: string; permission?: PermissionMode; driverSessionId?: string; instructions?: string
+  leadMcpServers?: RoleMcpServer[]
 }
 type ClaudeHandshakeOptions = { executable: string; cwd?: string; env?: NodeJS.ProcessEnv }
 type ClaudeModel = { value?: unknown; displayName?: unknown; supportedEffortLevels?: unknown[] }
@@ -232,7 +234,7 @@ const claudePromptTokens = (raw: ClaudeUsage | undefined) => {
     : undefined
 }
 
-export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions }: ClaudeDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
+export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers }: ClaudeDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   let peer: ClaudeConnection | null = null
   let ready: Promise<void> | null = null
@@ -530,7 +532,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       const executable = findExecutable(bin)
       if (!executable) throw new Error('Claude Code executable not found. Install Claude Code or edit the profile CLI path.')
       emit({ type: 'session', state: 'starting' })
-      connection = connectClaude<ClaudeFrame, ClaudeRequest>({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId }), cwd, env,
+      connection = connectClaude<ClaudeFrame, ClaudeRequest>({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
         onFrame: receive, onRequest: ask,
         onClose(error) {
           if (peer !== connection) return

@@ -11200,8 +11200,6 @@ var FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
 .nodo-changes-preview{inset:auto;margin:0;box-sizing:border-box;height:360px;padding:8px 12px;overflow:auto;overscroll-behavior:contain;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-panel);z-index:40}
 .nodo-changes-preview .nodo-code-diff{border-radius:var(--dsw-radius-md)}
 .nodo-changes-preview .nodo-code-diff-patch{max-height:none}
-.nodo-file-view-header{position:sticky;top:-8px;z-index:1;display:flex;align-items:center;gap:8px;padding:8px 0;background:var(--dsw-alias-bg-base)}
-.nodo-file-view-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);color:var(--dsw-alias-label-secondary)}
 .nodo-changes-preview::backdrop{background:transparent;pointer-events:none}
 @media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-coverage{display:none}}
 `;
@@ -11310,33 +11308,12 @@ function streamProgress(progress) {
   if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${streamSize(progress.stderrBytes)}`);
   return parts.length ? parts.join(" \xB7 ") : null;
 }
-function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch, panel = false, preview = false }) {
+function ChangedFile({ file, load, loaded, available, root, cycle = 0, inline = false, patch, panel = false, preview = false }) {
   const [open, setOpen] = (0, import_react.useState)(false);
-  const [content, setContent] = (0, import_react.useState)(null);
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [showContent, setShowContent] = (0, import_react.useState)(false);
-  const body = (0, import_react.useRef)(null);
   const path = root && file.path.startsWith(`${root}/`) ? file.path.slice(root.length + 1) : file.path;
-  (0, import_react.useLayoutEffect)(() => {
-    const popup = body.current?.closest(".nodo-changes-preview");
-    if (popup) popup.scrollTop = 0;
-  }, [showContent]);
   const toggle = async () => {
     if (!open && !loaded && available && !await load()) return;
     setOpen((value) => !value);
-  };
-  const viewContent = async () => {
-    if (busy) return;
-    setShowContent(true);
-    setContent(null);
-    setBusy(true);
-    try {
-      setContent(await call("workspace-file", { ...request, path: file.path }));
-    } catch (failure) {
-      setContent({ error: failure.message || "\u6587\u4EF6\u5185\u5BB9\u8BFB\u53D6\u5931\u8D25\u3002" });
-    } finally {
-      setBusy(false);
-    }
   };
   const edits = patch ? (0, import_react.createElement)(CodeDiff, { filename: path, patch, cycle, panel, preview }) : file.edits.map((edit, index) => (0, import_react.createElement)(
     "div",
@@ -11350,38 +11327,11 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
       (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: edit.newText, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236", ...panel || preview ? { wrap: true, lineNumbers: true, showHeader: false } : {} })
     ) : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6B64\u7F16\u8F91\u7684\u5DEE\u5F02\u8BE6\u60C5\u4E0D\u53EF\u5F97\u3002")
   ));
-  const view = (0, import_react.createElement)("div", { ref: body, "data-nodo-tool-file": file.path }, request && showContent ? (0, import_react.createElement)(
+  const view = (0, import_react.createElement)(
     "div",
-    { "data-nodo-file-view": "" },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-file-view-header" },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", onClick: () => setShowContent(false) }, "\u8FD4\u56DE\u5DEE\u5F02"),
-      (0, import_react.createElement)("span", { className: "nodo-file-view-title", title: path }, `${path} \xB7 \u5F53\u524D\u5185\u5BB9`),
-      content?.error && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", onClick: () => void viewContent() }, "\u91CD\u8BD5")
-    ),
-    busy && (0, import_react.createElement)("p", { className: "nodo-note", role: "status" }, "\u8BFB\u53D6\u4E2D\u2026"),
-    content?.error && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, content.error),
-    content?.missing && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6587\u4EF6\u5DF2\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u666E\u901A\u6587\u4EF6\u3002"),
-    content?.binary && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u4F5C\u4E3A\u6587\u672C\u5C55\u793A\u3002"),
-    content?.image && (0, import_react.createElement)("img", {
-      className: "nodo-file-view-image",
-      src: content.image.dataUrl,
-      alt: path,
-      onError: () => setContent({ error: "\u65E0\u6CD5\u663E\u793A" })
-    }),
-    typeof content?.text === "string" && (0, import_react.createElement)(
-      "div",
-      null,
-      content.truncated && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6587\u4EF6\u8D85\u8FC7\u5C55\u793A\u4E0A\u9650\uFF0C\u4EC5\u663E\u793A\u5F00\u5934\u90E8\u5206\u3002"),
-      content.text === "" ? (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6587\u4EF6\u4E3A\u7A7A\u3002") : (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
-    )
-  ) : (0, import_react.createElement)(
-    "div",
-    null,
-    patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002"),
-    request && !panel && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy, onClick: () => void viewContent() }, busy ? "\u8BFB\u53D6\u4E2D\u2026" : "\u67E5\u770B\u5F53\u524D\u5185\u5BB9")
-  ));
+    { "data-nodo-tool-file": file.path },
+    patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002")
+  );
   if (inline) return view;
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
     title: path,
@@ -11441,7 +11391,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
     busy,
     available,
     error,
-    renderFile: (file, patch, panel = false, preview = false) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, panel, preview, inline: true, root: body.cwd, request, cycle: record.revision })
+    renderFile: (file, patch, panel = false, preview = false) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, panel, preview, inline: true, root: body.cwd, cycle: record.revision })
   });
   const status2 = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
   const notice = record.capture !== "complete" ? STREAM_REASON[record.reason] ?? "\u6765\u6E90\u5185\u5BB9\u4E0D\u5B8C\u6574" : null;
@@ -14060,8 +14010,8 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     ...onGoal ? [{ id: "goal", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular), label: row("\u804C\u8D23", "goal", "\u8BBE\u7F6E\u6216\u67E5\u770B\u89D2\u8272\u804C\u8D23") }] : [],
     // Only a plan↔workspace pair is a safe toggle: without workspace the row
     // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card.
-    ...modes.includes("plan") && modes.includes("workspace") ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
+    // confirmation on the role card. Leads never run in plan mode.
+    ...modes.includes("plan") && modes.includes("workspace") && profile.lead !== true ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
     { type: "label", id: "cmd-title", text: "\u6307\u4EE4" },
     ...commandSection
   ] : [{ type: "label", id: "cmd-title", text: "\u6307\u4EE4" }, ...commandSection];
@@ -14147,6 +14097,9 @@ function PermissionSelect({ modes = [], value, disabled = false, onChange, class
         onChange: (event) => onChange(event.target.value)
       },
       !modes.length && (0, import_react.createElement)("option", { value: "", disabled: true }, "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D"),
+      // A saved tier the role may no longer hold (a lead's plan) shows disabled
+      // instead of the select silently displaying a different tier.
+      value !== void 0 && value !== "" && !modes.includes(value) && (0, import_react.createElement)("option", { value, disabled: true }, PERMISSION_LABELS[value] ?? value),
       ...modes.map((mode) => (0, import_react.createElement)("option", { key: mode, value: mode }, PERMISSION_LABELS[mode] ?? mode))
     )
   );
@@ -14171,7 +14124,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
       setModes([]);
     });
   };
-  const offered = (loaded.current === profile.engine ? modes : null) ?? (current ? [current] : []);
+  const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])).filter((mode) => profile.lead !== true || mode !== "plan");
   const label = offered.length ? PERMISSION_LABELS[current] ?? current : "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D";
   const items = offered.map((mode) => ({
     id: mode,
@@ -14749,7 +14702,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
           )
         ),
         (0, import_react.createElement)(Field, { label: "\u6743\u9650" }, (0, import_react.createElement)(PermissionSelect, {
-          modes: engine?.capabilities?.permissionModes,
+          modes: engine?.capabilities?.permissionModes?.filter((mode) => !lead || mode !== "plan"),
           value: draft.permission,
           disabled: disabled || loading,
           onChange: (permission) => choosePermission(permission, draft.permission, (permission2) => update({ permission: permission2 }))
@@ -17916,6 +17869,9 @@ var route = ({ type, hard }, roster, fallback) => {
   return profile ? { profile, choices: {}, by: "route" } : { miss: true };
 };
 
+// core/shared/lead.js
+var LEAD_ENGINES = ["claude"];
+
 // src/client/roles.tsx
 var sidebarContent = null;
 var sidebarListeners = /* @__PURE__ */ new Set();
@@ -18075,6 +18031,8 @@ function RolesPage({ view, readOnly, refresh }) {
   }));
   const createKind = adding ?? (!executors.length ? "executor" : null);
   typedRef.current = newName.trim() !== "" || newIdentity.trim() !== "";
+  const addingRef = (0, import_react.useRef)(createKind);
+  addingRef.current = createKind;
   const perform = async (action) => {
     if (busy) return;
     setBusy(true);
@@ -18127,7 +18085,9 @@ function RolesPage({ view, readOnly, refresh }) {
   };
   const startAdding = (kind = "executor") => {
     showOverview();
+    addingRef.current = kind;
     setAdding(kind);
+    if (kind === "lead") setNewEngine((current) => LEAD_ENGINES.includes(current) ? current : creationEngines(engines ?? []).find((item) => LEAD_ENGINES.includes(item.id))?.id ?? "");
   };
   (0, import_react.useEffect)(() => {
     leaveGuard = switchTo;
@@ -18146,7 +18106,8 @@ function RolesPage({ view, readOnly, refresh }) {
     void call("engine-catalog").then((items) => {
       setEngines(items);
       const choices = creationEngines(items);
-      setNewEngine((current) => current || choices[0]?.id || "");
+      const first = choices.find((item) => addingRef.current !== "lead" || LEAD_ENGINES.includes(item.id));
+      setNewEngine((current) => current || first?.id || "");
     }).catch((failure) => setError(failure.message));
   }, [engines]);
   (0, import_react.useEffect)(() => {
@@ -18182,7 +18143,8 @@ function RolesPage({ view, readOnly, refresh }) {
     return scoped.length ? scoped : items;
   };
   const newAvatar = avatar_templates_default[roles.length % avatar_templates_default.length].id;
-  const newEngineAvailable = creationEngines(engines ?? []).some((item) => item.id === newEngine);
+  const kindEngines = creationEngines(engines ?? []).filter((item) => createKind !== "lead" || LEAD_ENGINES.includes(item.id));
+  const newEngineAvailable = kindEngines.some((item) => item.id === newEngine);
   const newEngineInfo = engines?.find((item) => item.id === newEngine);
   const newPermissionValue = permissionForEngine(newEngineInfo, newPermission);
   const createRole = (event) => {
@@ -18254,7 +18216,7 @@ function RolesPage({ view, readOnly, refresh }) {
   const permissionCell = (role, locked) => /* @__PURE__ */ (0, import_react.createElement)(
     PermissionSelect,
     {
-      modes: engines?.find((item) => item.id === role.engine)?.capabilities?.permissionModes,
+      modes: engines?.find((item) => item.id === role.engine)?.capabilities?.permissionModes?.filter((mode) => role.lead !== true || mode !== "plan"),
       value: pendingPermission[role.id] ?? role.permission,
       className: "nodo-roles-permission",
       label: `\u6743\u9650 ${role.name}`,
@@ -18312,12 +18274,12 @@ function RolesPage({ view, readOnly, refresh }) {
         }
       },
       !engines?.length && /* @__PURE__ */ (0, import_react.createElement)("option", { value: "" }, "\u6B63\u5728\u52A0\u8F7D Agent\u2026"),
-      creationEngines(engines ?? []).map((item) => /* @__PURE__ */ (0, import_react.createElement)("option", { key: item.id, value: item.id }, engineDisplayName(item)))
+      kindEngines.map((item) => /* @__PURE__ */ (0, import_react.createElement)("option", { key: item.id, value: item.id }, engineDisplayName(item)))
     ),
     /* @__PURE__ */ (0, import_react.createElement)(
       PermissionSelect,
       {
-        modes: newEngineInfo?.capabilities?.permissionModes,
+        modes: newEngineInfo?.capabilities?.permissionModes?.filter((mode) => createKind !== "lead" || mode !== "plan"),
         value: newPermissionValue,
         disabled: readOnly || busy,
         onChange: (permission) => choosePermission(permission, newPermissionValue, setNewPermission)
@@ -21375,7 +21337,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-right-preview-head>span{flex:1}
 .nodo-right-preview-body{flex:1;min-height:0;overflow:auto;padding:12px;overflow-wrap:anywhere}
 .nodo-right-image{display:block;width:100%;padding:0;border:0;border-radius:var(--dsw-radius-md);background:transparent;cursor:zoom-in;overflow:hidden}
-.nodo-right-image>img,.nodo-file-view-image{display:block;max-width:100%;height:auto;margin:auto}
+.nodo-right-image>img{display:block;max-width:100%;height:auto;margin:auto}
 .nodo-browser,.nodo-browser-viewport{display:flex;flex:1;min-height:0;min-width:0;overflow:hidden}
 .nodo-browser{flex-direction:column;border-radius:inherit}
 .nodo-browser-toolbar{display:flex;align-items:center;flex:none;gap:4px;padding:6px 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}

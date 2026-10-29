@@ -6,7 +6,7 @@ import { STEER, addUsage, usageOf } from '../spi.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
-import { claudeArgs, connectClaude } from './native.js';
+import { claudeArgs, connectClaude, leadMcpEnv } from './native.js';
 import { createFileChanges } from '../file-changes.js';
 import { claudeFileChanges } from './file-changes.js';
 export { findExecutable } from '../cli.js';
@@ -209,7 +209,7 @@ const claudePromptTokens = (raw) => {
         ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
         : undefined;
 };
-export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
+export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -547,7 +547,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             if (!executable)
                 throw new Error('Claude Code executable not found. Install Claude Code or edit the profile CLI path.');
             emit({ type: 'session', state: 'starting' });
-            connection = connectClaude({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId }), cwd, env,
+            connection = connectClaude({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
                 onFrame: receive, onRequest: ask,
                 onClose(error) {
                     if (peer !== connection)

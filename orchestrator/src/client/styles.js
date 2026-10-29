@@ -233,7 +233,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-right-preview-head>span{flex:1}
 .nodo-right-preview-body{flex:1;min-height:0;overflow:auto;padding:12px;overflow-wrap:anywhere}
 .nodo-right-image{display:block;width:100%;padding:0;border:0;border-radius:var(--dsw-radius-md);background:transparent;cursor:zoom-in;overflow:hidden}
-.nodo-right-image>img,.nodo-file-view-image{display:block;max-width:100%;height:auto;margin:auto}
+.nodo-right-image>img{display:block;max-width:100%;height:auto;margin:auto}
 .nodo-browser,.nodo-browser-viewport{display:flex;flex:1;min-height:0;min-width:0;overflow:hidden}
 .nodo-browser{flex-direction:column;border-radius:inherit}
 .nodo-browser-toolbar{display:flex;align-items:center;flex:none;gap:4px;padding:6px 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}

@@ -1813,6 +1813,8 @@ test('the composer add menu offers the native sections and inserts text picks in
   const gated = render({ profile: { engine: 'pi', permission: 'plan' } })
   assert.equal(gated.props.items.some(item => item.id === 'plan'), false,
     'an engine without a workspace tier gets no plan row: it could not leave plan and stepping up to full belongs to the role card')
+  const leading = render({ profile: { engine: 'claude', permission: 'workspace', lead: true } })
+  assert.equal(leading.props.items.some(item => item.id === 'plan'), false, 'a lead gets no plan row in the add menu')
   render().props.onSelect('file')
   assert.equal(inserted.at(-1), '@', 'the file row types an @ that opens the composer file card')
   const file = render({ workspace: null }).props.items.find(item => item.id === 'file')
@@ -2192,6 +2194,8 @@ test('the permission control copies the native select, glyphs and full-tier conf
   menuOf(render({ engine: 'zcode', permission: 'full' })).props.onSelect('workspace')
   assert.deepEqual([...changes.map(change => ({ ...change }))], [{ permission: 'workspace' }], 'workspace is saved explicitly for every engine')
   changes.length = 0
+  assert.deepEqual([...menuOf(render({ engine: 'zcode', permission: 'full', lead: true })).props.items].map(item => item.id),
+    ['workspace', 'full'], 'a lead is offered no plan tier')
   const dshClosed = render({ engine: 'dsh', permission: 'full' })
   menuOf(dshClosed).props.anchor.props.onClick()
   await tick(); await tick()
@@ -2890,7 +2894,7 @@ test('the lead section creates with a fixed leader identity and shares one creat
   const view = { profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [] }], taskTypes: [] }
   const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
     calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
-    if (endpoint === 'engine-catalog') return [{ id: 'echo', catalog: { models: [] } }]
+    if (endpoint === 'engine-catalog') return [{ id: 'claude', catalog: { models: [] } }, { id: 'echo', catalog: { models: [] } }]
     if (endpoint === 'profile-create') view.profiles.push({ id: `lead${view.profiles.length}`, ...payload, sessions: [] })
     return {}
   } })
@@ -2914,7 +2918,7 @@ test('the lead section creates with a fixed leader identity and shares one creat
   form().props.onSubmit({ preventDefault() {} })
   await tickAll()
   const created = calls.find(item => item.endpoint === 'profile-create')
-  assert.deepEqual(created.payload, { name: 'Leader', engine: 'echo', avatarTemplate: created.payload.avatarTemplate,
+  assert.deepEqual(created.payload, { name: 'Leader', engine: 'claude', avatarTemplate: created.payload.avatarTemplate,
     lead: true, identity: 'leader', role: preset.role, instructions: preset.instructions })
   add('添加主控').props.onClick()
   assert.equal(form().props['aria-label'], '添加主控')
@@ -2935,6 +2939,30 @@ test('the lead section creates with a fixed leader identity and shares one creat
   form().props.onSubmit({ preventDefault() {} })
   await tickAll()
   assert.equal(render().filter(node => node.props?.className === 'nodo-roles-lead').length, 2)
+})
+
+test('a lead row opened before the catalog answers lands on a whitelisted engine', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  let resolveCatalog
+  const view = { profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [] }], taskTypes: [] }
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
+    calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+    if (endpoint === 'engine-catalog') return new Promise(resolve => { resolveCatalog = resolve })
+    return { id: 'new' }
+  } })
+  const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    pending.splice(0).forEach(effect => effect()); return tree }
+  const form = () => render().find(node => node.type === 'form')
+  const field = label => rolesTree(form()).find(node => node.props?.['aria-label'] === label)
+  render()
+  render().find(node => node.type === 'button' && node.children.includes('添加主控')).props.onClick()
+  resolveCatalog([{ id: 'claude', catalog: { models: [] } }, { id: 'echo', catalog: { models: [] } }])
+  await tickAll()
+  assert.equal(field('Agent').props.value, 'claude', 'the backfill skips engines outside the lead whitelist')
+  field('名字').props.onChange({ target: { value: 'Leader' } })
+  form().props.onSubmit({ preventDefault() {} }); await tickAll()
+  assert.equal(calls.find(item => item.endpoint === 'profile-create').payload.engine, 'claude')
 })
 
 test('executor creation matches exact built-in and saved identity names without applying leader', async () => {

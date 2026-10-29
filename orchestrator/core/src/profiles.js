@@ -14,6 +14,7 @@ import { INSTRUCTIONS_MAX, MAX_PROFILES, NAME_MAX, ROLE_MAX } from './constants.
 import { normalize, unquote } from './text.js'
 import avatarTemplates from '../shared/avatar-templates.json' with { type: 'json' }
 import builtInPresets from '../shared/role-presets.json' with { type: 'json' }
+import { LEAD_ENGINES } from '../shared/lead.js'
 
 const cleanIdentity = raw => String(raw ?? '').trim().slice(0, NAME_MAX)
 
@@ -113,6 +114,10 @@ export function install(rt) {
     const chosenModel = cleanModel(model === undefined ? defaults.model : model)
     const chosenThinking = cleanThinking(thinking === undefined ? defaults.thinking : thinking)
     const chosenPermission = cleanPermission(engine, permission === undefined ? defaultPermission(engine) : permission)
+    if (lead === true) {
+      if (!LEAD_ENGINES.includes(engine)) throw Object.assign(new Error(`引擎 ${engine} 暂不支持主控，主控请选择 ${LEAD_ENGINES.join('、')}`), { code: 'orch/invalid' })
+      if (chosenPermission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+    }
     const profile = {
       id: randomUUID(),
       name: cleanName(name),
@@ -173,6 +178,10 @@ export function install(rt) {
     next.model = cleanModel(changes.model !== undefined ? changes.model : profile.model)
     next.thinking = cleanThinking(changes.thinking !== undefined ? changes.thinking : profile.thinking)
     next.permission = cleanPermission(next.engine, changes.permission !== undefined ? changes.permission : profile.permission)
+    if (next.lead === true) {
+      if (!LEAD_ENGINES.includes(next.engine)) throw Object.assign(new Error(`引擎 ${next.engine} 暂不支持主控；引擎创建后不能更换，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`), { code: 'orch/invalid' })
+      if (next.permission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+    }
     next.engineOptions = rt.validateEngineOptions(next.engine, changes.engineOptions !== undefined ? changes.engineOptions : profile.engineOptions)
     if (changes.taskTypes !== undefined) next.taskTypes = cleanTaskTypes(changes.taskTypes)
     if (changes.hard !== undefined) next.hard = cleanHard(changes.hard)
