@@ -29,7 +29,7 @@ export const transcriptReplies = lines => lines.flatMap((line, index) => {
   const text = line.final ?? line.text
   return line.who === 'agent' && line.kind === 'text' && (line.timeline !== true || line.reply === true)
     && (line.reason ?? 'done') === 'done' && typeof text === 'string' && text.trim()
-    ? [{ id: `legacy:${index}:${line.at}`, at: line.at, text }] : []
+    ? [{ id: line.replyId ?? `legacy:${index}:${line.at}`, at: line.at, text }] : []
 })
 
 export function install(rt) {

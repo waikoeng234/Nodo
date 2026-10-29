@@ -12,6 +12,26 @@ const record = files => ({ version: 1, kind: 'changes', mode: 'snapshot', runId:
   status: 'done', capture: 'complete', truncated: false,
   body: { scope: 'edit-tools', coverage: 'partial', cwd: '/ws', fileCount: files.length, files } })
 
+test('turn-only summaries keep their diff heading as text even with a bound project', async () => {
+  let opened
+  const { FileChangesSummary, ChangesView, CodeDiff, host } = await loadClient(['file-changes-summary.tsx', 'changes-panel.tsx', 'code-diff.tsx'], { uiShared: {
+    rightPanelService: { subscribe() {}, getSnapshot: () => ({ target: { workspace: 'project' } }), openChanges: source => { opened = source }, openFile() { assert.fail('a turn heading has no file') } },
+  } })
+  const source = record([])
+  source.body.turnDiff = patch
+  const props = { record: source, value: source, full: source, load: async () => source, renderFile() {} }
+  let tree = FileChangesSummary(props)
+  await find(tree, 'nodo-changes-view').props.onClick()
+  host.cells.length = 0
+  host.reset(); tree = ChangesView({ source: opened, openFile() { assert.fail('a turn heading has no file') } })
+  const diff = nodes(tree).find(node => node.type === CodeDiff)
+  assert.equal(diff.props.filename, '轮次差异')
+  assert.equal(diff.props.previewable, false)
+  assert.equal(diff.props.panel, true)
+  host.reset()
+  assert.ok(!find(CodeDiff(diff.props), 'nodo-code-diff-filename'), 'the panel does not add a clickable current-file heading for a turn diff')
+})
+
 test('summary counts validated patch lines, excluding headers, and prefers the source turn diff for net stats', async () => {
   const { summarizeChanges, parsedPatch, patchCounts } = await loadClient('file-diffs.ts')
   assert.deepEqual(JSON.parse(JSON.stringify(patchCounts(parsedPatch(patch)))), { added: 2, removed: 1 })
@@ -282,4 +302,91 @@ test('loading missing preview files precedes expansion, and source limits remain
   tree = FileChangesSummary({ ...props, value: preview, full: preview, available: false })
   assert.equal(find(tree, 'nodo-changes-notice').children.join(''), '仅保存 3 / 10 个文件')
   assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-file').length, 3)
+})
+
+test('bound projects send file-row clicks to the right panel while hover previews and unbound clicks keep their popups', async () => {
+  const opened = []
+  let dismiss, target = { workspace: 'project' }
+  const { FileChangesSummary, host } = await loadClient('file-changes-summary.tsx', {
+    uiShared: { rightPanelService: { subscribe() {}, getSnapshot: () => ({ target }), openChanges: (source, path) => opened.push({ source, path }), openFile() { assert.fail('card clicks open changes') } } },
+    globals: { setTimeout: handler => { dismiss = handler; return 1 }, clearTimeout: () => { dismiss = undefined } },
+  })
+  const source = record([file('/ws/x.ts')])
+  const props = { record: source, value: source, full: source, load: async () => source,
+    renderFile: value => ({ type: 'file-detail', props: { path: value.path }, children: [] }) }
+  const render = () => { host.reset(); return FileChangesSummary(props) }
+  let tree = render()
+  const row = () => find(tree, 'nodo-changes-file')
+  row().props.onPointerEnter({ pointerType: 'mouse', currentTarget: {} })
+  tree = render()
+  assert.ok(find(tree, 'nodo-changes-preview'), 'hovering still previews the diff with a bound project')
+  row().props.onFocus({ currentTarget: {} })
+  tree = render()
+  assert.ok(find(tree, 'nodo-changes-preview'), 'keyboard focus keeps the same diff popup')
+  assert.equal(row().props['aria-haspopup'], 'dialog')
+  assert.equal(row().props['aria-controls'], undefined)
+  assert.equal(find(tree, 'nodo-changes-view').props['aria-controls'], undefined)
+  assert.equal(row().props['aria-expanded'], undefined)
+  assert.equal(row().props['aria-label'], '查看 x.ts 的变更')
+  row().props.onClick({ currentTarget: {} })
+  assert.equal(opened[0].path, '/ws/x.ts')
+  assert.equal(opened[0].source.body, source.body)
+  dismiss()
+  tree = render()
+  assert.ok(!find(tree, 'nodo-changes-preview'), 'opening the right panel dismisses the hover popup')
+  assert.ok(!find(tree, 'nodo-changes-details'))
+  await find(tree, 'nodo-changes-view').props.onClick()
+  tree = render()
+  assert.ok(!find(tree, 'nodo-changes-details'), 'the bound card does not expand inline')
+  assert.equal(opened[1].path, undefined, 'view changes opens the list')
+  row().props.onClick({ currentTarget: {} })
+  assert.equal(opened[2].path, '/ws/x.ts')
+  tree = render()
+  assert.ok(!find(tree, 'nodo-changes-details'))
+  assert.ok(!find(tree, 'nodo-changes-preview'))
+  assert.equal(row().props['aria-controls'], undefined)
+  target = null
+  tree = render()
+  row().props.onClick({ currentTarget: {} })
+  assert.equal(opened.length, 3, 'without a target the click keeps opening the popup')
+  tree = render()
+  const preview = find(tree, 'nodo-changes-preview')
+  assert.equal(preview.props.id, row().props['aria-controls'])
+  assert.equal(row().props['aria-haspopup'], 'dialog')
+  assert.equal(nodes(preview).find(node => node.type === 'file-detail').props.path, '/ws/x.ts')
+})
+
+test('bound view changes passes a complete snapshot or a loader for missing files even without a truncated flag', async () => {
+  const opened = []
+  const { FileChangesSummary, host } = await loadClient('file-changes-summary.tsx', { uiShared: {
+    rightPanelService: { subscribe() {}, getSnapshot: () => ({ target: { workspace: 'project' } }), openChanges: source => opened.push(source) },
+  } })
+  const complete = record(Array.from({ length: 5 }, (_, index) => file(`/ws/${index}.ts`)))
+  const preview = { ...complete, body: { ...complete.body, files: complete.body.files.slice(0, 3) } }
+  let loads = 0
+  const props = { record: preview, value: preview, full: null, available: true,
+    load: async () => { loads++; return complete }, renderFile: () => null }
+  await find(FileChangesSummary(props), 'nodo-changes-view').props.onClick()
+  assert.equal(opened.length, 1)
+  assert.equal(opened[0].body.files.length, 3)
+  const body = await opened[0].load()
+  assert.equal(loads, 1)
+  assert.equal(body.files.length, 5)
+  host.reset()
+  await find(FileChangesSummary({ ...props, value: complete, full: complete }), 'nodo-changes-view').props.onClick()
+  assert.equal(opened[1].load, undefined)
+  assert.equal(opened[1].body, complete.body)
+})
+
+test('hover and focus request the shared diff preview layout', async () => {
+  const { FileChangesSummary, host } = await loadClient('file-changes-summary.tsx')
+  const source = record([file('/ws/x.ts')]), calls = []
+  const props = { record: source, value: source, full: source, load: async () => source,
+    renderFile: (...args) => { calls.push(args); return 'preview' } }
+  let tree = FileChangesSummary(props)
+  find(tree, 'nodo-changes-file').props.onFocus({ currentTarget: {} })
+  host.reset(); tree = FileChangesSummary(props)
+  assert.equal(find(tree, 'nodo-changes-preview').props.role, 'dialog')
+  assert.equal(calls.at(-1)[2], false)
+  assert.equal(calls.at(-1)[3], true)
 })

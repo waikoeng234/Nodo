@@ -1,9 +1,12 @@
-import { h, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, IconCodeOutlineRegular, IconChevronDownOutlineRegular } from './ui-shared.js'
+import { h, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, IconCodeOutlineRegular, IconChevronDownOutlineRegular, rightPanelService } from './ui-shared.js'
 import type { ReactNode } from './ui-shared.js'
 import { CodeDiff } from './code-diff.tsx'
 import { relativeFile, summarizeChanges } from './file-diffs.ts'
 import type { ChangedFileData, ChangesBody, DiffCounts } from './file-diffs.ts'
 import { buildFileTree, FileTree, FILE_TREE_CSS } from './file-tree.tsx'
+
+const subscribePanel = (listener: () => void) => rightPanelService?.subscribe(listener) ?? (() => {})
+const panelTarget = () => rightPanelService?.getSnapshot().target ?? null
 
 interface ChangeRecord {
   runId: string
@@ -20,11 +23,12 @@ interface FileChangesSummaryProps {
   busy?: boolean
   available?: unknown
   error?: string
-  load: () => Promise<unknown>
-  renderFile: (file: ChangedFileData, patch?: string) => ReactNode
+  load: () => Promise<ChangeRecord | null | void>
+  loadChanges?: () => Promise<ChangeRecord | null | void>
+  renderFile: (file: ChangedFileData, patch?: string, panel?: boolean, preview?: boolean) => ReactNode
 }
 
-function Counts({ value }: { value?: DiffCounts }) {
+export function Counts({ value }: { value?: DiffCounts }) {
   return value ? <span className="nodo-changes-counts" aria-label={`新增 ${value.added} 行，删除 ${value.removed} 行`}>
     <span className="nodo-changes-added">+{value.added.toLocaleString()}</span>
     <span className="nodo-changes-removed">−{value.removed.toLocaleString()}</span>
@@ -41,10 +45,11 @@ export function diffPreviewPosition(row: Pick<DOMRect, 'left' | 'top' | 'bottom'
     maxHeight: `${Math.min(360, onTop ? above : below)}px` }
 }
 
-export function FileChangesSummary({ record, value, full, load, busy = false, available, error, renderFile }: FileChangesSummaryProps) {
+export function FileChangesSummary({ record, value, full, load, loadChanges = load, busy = false, available, error, renderFile }: FileChangesSummaryProps) {
   const [expanded, setExpanded] = useState(false)
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
+  const target = useSyncExternalStore(subscribePanel, panelTarget)
   const box = useRef<HTMLDivElement>(null)
   const anchor = useRef<HTMLButtonElement | null>(null)
   const preview = useRef<HTMLDivElement>(null)
@@ -117,11 +122,18 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
   }
   const showAll = async () => {
     keepPreview(); setSelected(null)
+    if (target) { openChanges(); return }
     if (open) { setOpen(false); return }
     if (canLoad && record.truncated && !await load()) return
     setExpanded(true)
     setOpen(true)
   }
+  const openChanges = (path?: string) => rightPanelService?.openChanges({ body: value.body, revision: record.revision, renderFile,
+    load: canLoad && (record.truncated || files.length < count) ? async () => {
+      const loaded = await loadChanges()
+      if (!loaded) throw new Error('变更详情读取失败')
+      return loaded.body
+    } : undefined }, path)
   const more = async () => {
     if (!expanded && files.length < count && canLoad && !await load()) return
     if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setSelected(null)
@@ -139,19 +151,20 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
         </div>
         <Counts value={totals} />
       </div>
-      <button type="button" className="nodo-changes-view" disabled={busy} aria-expanded={open}
-        aria-controls={detailsId} onClick={() => showAll()}>{busy ? '加载中…' : open ? '收起变更' : '查看变更'}</button>
+      <button type="button" className="nodo-changes-view" disabled={busy} aria-expanded={target ? undefined : open}
+        aria-controls={target ? undefined : detailsId} onClick={() => showAll()}>{busy ? '加载中…' : !target && open ? '收起变更' : '查看变更'}</button>
     </div>
     <FileTree id={detailsId} className="nodo-changes-files" nodes={tree} header={false} renderFile={(node, content) => {
         const { file, patch, index } = byPath.get(node.path)!
         const fileDetailsId = `${detailsId}-${index}`
         return <div key={file.path} className="nodo-changes-file-entry">
-          <button type="button" className="nodo-changes-file" disabled={busy} aria-expanded={open || selected === file.path}
-            aria-haspopup="dialog" aria-controls={open ? fileDetailsId : previewId}
+          <button type="button" className="nodo-changes-file" disabled={busy} aria-expanded={target ? undefined : open || selected === file.path}
+            aria-label={target ? `查看 ${relativeFile(file.path, value.body.cwd)} 的变更` : undefined}
+            aria-haspopup="dialog" aria-controls={target ? undefined : open ? fileDetailsId : previewId}
             onPointerEnter={event => { if (!open && event.pointerType !== 'touch') showFile(file.path, event.currentTarget) }}
             onPointerLeave={closePreview} onFocus={event => { if (!open) showFile(file.path, event.currentTarget) }}
             onBlur={event => { if (!preview.current?.contains(event.relatedTarget)) closePreview() }}
-            onClick={event => { setOpen(false); showFile(file.path, event.currentTarget) }}>
+            onClick={event => { if (target) { closePreview(); openChanges(file.path); return } setOpen(false); showFile(file.path, event.currentTarget) }}>
             {content}
           </button>
           {open && <div id={fileDetailsId} className="nodo-changes-details" role="region" aria-label={`${relativeFile(file.path, value.body.cwd)} 变更详情`}>
@@ -170,10 +183,10 @@ export function FileChangesSummary({ record, value, full, load, busy = false, av
       onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget) && !anchor.current?.contains(event.relatedTarget)) closePreview() }}>
       {busy && canLoad ? <div className="nodo-changes-notice" role="status">加载中…</div>
         : error ? <div className="nodo-changes-notice" role="alert">{error}</div>
-          : renderFile(selectedFile.file, selectedFile.patch)}
+          : renderFile(selectedFile.file, selectedFile.patch, false, true)}
     </div>}
     {open && files.length === 0 && value.body.turnDiff && <div className="nodo-changes-details" role="region" aria-label="文件变更详情">
-      <CodeDiff filename="轮次差异" patch={value.body.turnDiff} cycle={record.revision} />
+      <CodeDiff filename="轮次差异" previewable={false} patch={value.body.turnDiff} cycle={record.revision} />
     </div>}
   </div>
 }

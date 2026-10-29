@@ -1,11 +1,137 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { boot, until, withHost } from './helpers/host.js'
 import templates from '../core/shared/avatar-templates.json' with { type: 'json' }
 import { MAX_PROFILES } from '../core/src/constants.js'
+import { registerEngine } from '../agent-drivers/dist/index.js'
+import { createEchoDriver, echoInfo, validateEchoOptions } from './helpers/echo-driver.js'
+import { loadClient } from './helpers/client-module.js'
+
+test('role permissions are explicit, validated atomically and persisted', () => withHost(async ({ api, post, home }) => {
+  const card = await api('profile-create', { name: 'Planner', engine: 'echo', permission: 'plan' })
+  assert.equal(card.permission, 'plan')
+  assert.equal((await api('profile-create', { name: 'Workspace', engine: 'echo' })).permission, 'workspace')
+  assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[card.id].permission, 'plan')
+  for (const permission of ['', null, 'invented']) {
+    assert.equal((await post('profile-create', { name: 'Invalid', engine: 'echo', permission })).error.code, 'orch/invalid')
+    assert.equal((await post('profile-update', { id: card.id, changes: { name: 'Changed', permission } })).error.code, 'orch/invalid')
+    const saved = (await api('state')).profiles.find(item => item.id === card.id)
+    assert.equal(saved.name, 'Planner')
+    assert.equal(saved.permission, 'plan')
+  }
+  assert.equal((await post('profile-create', { name: 'Unsupported full', engine: 'opencode', permission: 'full' })).error.code, 'orch/invalid')
+  assert.equal((await api('profile-update', { id: card.id, changes: { permission: 'full' } })).permission, 'full')
+  assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[card.id].permission, 'full')
+}))
+
+test('loading old cards fills declared permissions and leaves DSH without presets unset', async () => {
+  registerEngine('permission-first', { info: { ...echoInfo, id: 'permission-first', capabilities: { ...echoInfo.capabilities, permissionModes: ['plan', 'full'] } },
+    create: createEchoDriver, validate: validateEchoOptions, check: async () => ({ ok: true }) })
+  const home = mkdtempSync(join(tmpdir(), 'orch-permission-migration-'))
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ version: 2, profiles: Object.fromEntries([
+    { id: 'legacy', name: 'Legacy', engine: 'echo' },
+    { id: 'empty', name: 'Empty', engine: 'echo', permission: '' },
+    { id: 'first', name: 'First', engine: 'permission-first' },
+    { id: 'stored', name: 'Stored', engine: 'permission-first', permission: 'workspace' },
+    { id: 'native', name: 'Native', engine: 'dsh' },
+    { id: 'held', name: 'Held', engine: 'echo', permission: 'full' },
+  ].map(card => [card.id, { ...card, sessions: [] }])) }))
+  let host = boot(home)
+  try {
+    const cards = (await host.api('state')).profiles
+    for (const id of ['legacy', 'empty']) assert.equal(cards.find(card => card.id === id).permission, 'workspace')
+    assert.equal(cards.find(card => card.id === 'first').permission, 'plan')
+    assert.equal(cards.find(card => card.id === 'stored').permission, 'plan', 'a stored tier the engine no longer offers falls back to its first declared mode')
+    assert.equal(cards.find(card => card.id === 'held').permission, 'full')
+    assert.equal(Object.hasOwn(cards.find(card => card.id === 'native'), 'permission'), false)
+    assert.equal((await host.api('profile-create', { name: 'No workspace mode', engine: 'permission-first' })).permission, 'plan')
+    const persisted = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles
+    assert.equal(persisted.legacy.permission, 'workspace')
+    assert.equal(persisted.first.permission, 'plan')
+    assert.equal(persisted.stored.permission, 'plan')
+    assert.equal(Object.hasOwn(persisted.native, 'permission'), false)
+    host.dispose()
+    host = boot(home, { workspaceRegistry: {}, sessionController: {}, get: name => name === 'permissionPresets'
+      ? { names: ['workspace-write'], resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }), set() {} } : undefined })
+    assert.equal((await host.api('state')).profiles.find(card => card.id === 'native').permission, 'workspace')
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('a tier change keeps an implicit conversation current instead of opening an empty one', async () => {
+  registerEngine('permission-first', { info: { ...echoInfo, id: 'permission-first', capabilities: { ...echoInfo.capabilities, permissionModes: ['plan', 'full'] } },
+    create: createEchoDriver, validate: validateEchoOptions, check: async () => ({ ok: true }) })
+  await withHost(async ({ api, runtime, home }) => {
+    const rt = await runtime
+    const workspace = await api('workspace-create', { name: 'Tier', cwd: join(home, 'ws') })
+    const card = await api('profile-create', { name: 'Implicit', engine: 'permission-first', workspace: workspace.id, engineOptions: { script: [{ kind: 'text', text: 'Done' }] } })
+    await api('send', { profile: card.id, text: 'Question' })
+    await until(() => !rt.workView()[card.id]?.active && rt.conversation(card.id).session.briefSent)
+    const before = (await api('state')).profiles.find(item => item.id === card.id)
+    assert.equal(before.sessions.length, 1)
+    assert.equal(before.activeSessionId, card.id, 'the implicit conversation is the current one')
+    const edited = await api('profile-update', { id: card.id, changes: { permission: 'full' } })
+    assert.equal(edited.sessions.length, before.sessions.length, 'no empty replacement conversation opens')
+    assert.equal(edited.activeSessionId, before.activeSessionId)
+    assert.equal(edited.sessions.find(item => item.id === card.id).permission, 'full', 'the new tier lands on the conversation in use')
+  })
+})
+
+for (const native of [false, true]) test(`loading ${native ? 'reduced native' : 'ACP'} DSH permissions repairs stale roles and sessions`, async () => {
+  const home = mkdtempSync(join(tmpdir(), 'orch-permission-repair-'))
+  const permissionPresets = { names: ['read-only'], resolve: () => ({ sandbox: 'read-only', approval: 'ask' }), set() {} }
+  const nativeHost = native ? { workspaceRegistry: {}, sessionController: {}, get: name => name === 'permissionPresets' ? permissionPresets : undefined } : {}
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ version: 2,
+    workspaces: { ws: { id: 'ws', name: 'Project', cwd: home } },
+    profiles: {
+      dsh: { id: 'dsh', name: 'Native', engine: 'dsh', workspaceId: 'ws', activeSessionId: 'stale', permission: 'workspace',
+        sessions: [{ id: 'stale', engine: 'dsh', workspaceRef: 'ws', permission: 'workspace' },
+          { id: 'empty', engine: 'dsh', workspaceRef: 'ws', permission: '' },
+          { id: 'plan', engine: 'dsh', workspaceRef: 'ws', permission: 'plan' }] },
+      echo: { id: 'echo', name: 'Worker', engine: 'echo', permission: 'workspace',
+        sessions: [{ id: 'echo-session', engine: 'echo', workspaceRef: 'ws', permission: '' }] },
+    },
+  }))
+  const host = boot(home, nativeHost)
+  try {
+    const rt = await host.runtime
+    const roles = (await host.api('state')).profiles
+    const dsh = roles.find(role => role.id === 'dsh')
+    assert.equal(dsh.permission, native ? 'plan' : undefined)
+    for (const id of ['stale', 'empty']) assert.equal(Object.hasOwn(dsh.sessions.find(session => session.id === id), 'permission'), false)
+    assert.equal(dsh.sessions.find(session => session.id === 'plan').permission, native ? 'plan' : undefined)
+    const renamed = await host.api('profile-update', { id: 'dsh', changes: { name: 'Renamed', model: 'new-model' } })
+    assert.equal(renamed.name, 'Renamed', 'a stale tier no longer blocks unrelated edits')
+    if (!native) assert.equal(Object.hasOwn(rt.findProfile('dsh'), 'permission'), false, 'updates do not leave an undefined permission property')
+    const created = await host.api('session-create', { profile: 'dsh', workspace: 'ws', lazy: true })
+    assert.equal(created.permission, native ? 'plan' : undefined)
+    assert.equal((await rt.prepareConversation(created.id)).permission, native ? 'plan' : undefined, 'only supported tiers reach driver preparation')
+    const echo = roles.find(role => role.id === 'echo')
+    assert.equal(Object.hasOwn(echo.sessions[0], 'permission'), false)
+    const { PermissionMenu } = await loadClient('composer.js')
+    const menu = PermissionMenu({ profile: { ...echo, ...echo.sessions[0] }, disabled: false, onChange() {} }).children.find(node => node.type === 'Menu')
+    assert.ok(menu.props.anchor.props['aria-label'].includes('工作区内修改'), 'an old empty session tier has a normal composer label')
+    const persisted = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles
+    assert.equal(persisted.dsh.permission, native ? 'plan' : undefined)
+    assert.equal(Object.hasOwn(persisted.echo.sessions[0], 'permission'), false)
+  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('state session views omit report queues while retaining their persisted contents', () => withHost(async ({ api, runtime, home }) => {
+  const role = await api('profile-create', { name: 'Worker', engine: 'echo' })
+  const workspace = await api('workspace-create', { name: 'Project', cwd: join(home, 'ws') })
+  const session = await api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+  const rt = await runtime
+  const queue = [{ id: 'pending-report', text: 'Frozen internal report', referenceId: 'reference-id' }]
+  rt.conversation(role.id, session.id).session.reportQueue = queue
+  await rt.save()
+  const view = (await api('state')).profiles.find(profile => profile.id === role.id).sessions.find(item => item.id === session.id)
+  assert.equal(Object.hasOwn(view, 'reportQueue'), false)
+  const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+  assert.deepEqual(saved.profiles[role.id].sessions.find(item => item.id === session.id).reportQueue, queue)
+}))
 
 test('fallback is unique, transfers explicitly, survives ordering and passes on deletion', () => withHost(async ({ api, runtime }) => {
   const first = await api('profile-create', { name: 'First', engine: 'echo', fallback: false })

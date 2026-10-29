@@ -1,9 +1,10 @@
 import { h, useEffect, useLayoutEffect, useRef, useState } from './ui-shared.js'
 
-export type TerminalTarget = { profile: string; session: string }
+export type TerminalTarget = { workspace: string; profile?: never; session?: never } | { profile: string; session: string; workspace?: never }
+export const terminalScope = (target: TerminalTarget): Record<string, string> => target.workspace !== undefined ? { workspace: target.workspace } : { profile: target.profile, session: target.session }
 export type TerminalSize = { cols: number; rows: number }
 export type TerminalRecord = { id: string; cols?: number; rows?: number; shell?: string; exited?: { code: number | null; signal?: string | null; failed?: boolean } }
-export type TerminalList = { available: boolean; terminals: TerminalRecord[] }
+export type TerminalList = { cwd?: string; available: boolean; terminals: TerminalRecord[] }
 const ROUTE = '/api/nodo/terminal'
 export class TerminalMissingError extends Error {}
 
@@ -48,13 +49,14 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
   const [message, setMessage] = useState('')
   const gone = useRef(onGone)
   gone.current = onGone
+  const scope = useRef(terminalScope(target))
+  scope.current = terminalScope(target)
   useLayoutEffect(() => {
     const element = container.current
     if (!element) return
     let live = true, cleanup = () => {}
     void openTerminal(element, initialSize).then(({ terminal, fit }) => {
       if (!live) { terminal.dispose(); return }
-      const scope = { profile: target.profile, session: target.session }
       let exited = false, seq = 0, writing = Promise.resolve()
       let frame: number | undefined, retry: ReturnType<typeof setTimeout> | undefined, resizing = false, resizeFailures = 0
       let applied = initialSize, desired: TerminalSize | undefined
@@ -76,7 +78,7 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
         const size = desired
         resizing = true
         try {
-          await terminalRequest('resize', { ...scope, id, ...size })
+          await terminalRequest('resize', { ...scope.current, id, ...size })
           if (!live) return
           applied = size; resizeFailures = 0
           terminal.resize(size.cols, size.rows)
@@ -113,7 +115,7 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
             let end = Math.min(start + 256 * 1024, data.length)
             const last = data.charCodeAt(end - 1)
             if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--
-            await terminalRequest('write', { ...scope, id, data: data.slice(start, end) })
+            await terminalRequest('write', { ...scope.current, id, data: data.slice(start, end) })
             start = end
           }
         }).catch(error => { if (live && !missing(error)) setMessage('输入失败') })
@@ -134,7 +136,7 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
         while (live && !exited) {
           const before = seq
           try {
-            const query = new URLSearchParams({ ...scope, id, since: String(seq) })
+            const query = new URLSearchParams({ ...scope.current, id, since: String(seq) })
             const response = await fetch(`${ROUTE}?${query}`, { signal: abort.signal })
             if (!live) return
             if (response.status === 404) { exited = true; gone.current(); return }
@@ -175,7 +177,7 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
       }
     }).catch(() => { if (live) setMessage('终端不可用') })
     return () => { live = false; cleanup() }
-  }, [id, target.profile, target.session])
+  }, [id])
   useEffect(() => { if (active) resize.current() }, [active])
   return <div className="nodo-terminal">
     <div className="nodo-terminal-screen" ref={container} />

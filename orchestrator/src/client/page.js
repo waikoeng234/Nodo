@@ -1,5 +1,5 @@
 import {
-  h, useState, useEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
+  h, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
   subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular, rightPanelService,
 } from './ui-shared.js'
 import { RolePicker } from './role-seat.js'
@@ -190,10 +190,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const rounds = view ? roundIndex(view) : null
   const members = (sessionId && rounds?.members.get(sessionId)) || []
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
-  const panelCwd = session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd
-  useEffect(() => {
-    if (!sidebarOnly && space.active && space.legacy && sessionId && !editing) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd })
-  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, panelCwd, !!editing])
+  const panelCwd = sessionId ? session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd
+  useLayoutEffect(() => {
+    if (sidebarOnly || !space.active || !space.legacy || editing) return
+    if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...(conversationReadOnly ? { readOnly: true } : {}) })
+    if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...(readOnly ? { readOnly: true } : {}) })
+  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing])
   const roundLive = [{ role: profile, session }, ...members].filter(item => members.length && view.work[item.session?.id]?.active === true)
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
@@ -419,7 +421,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick,
       round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
-      h(RunningLine, { key: sessionId, since: work.since })),
+      h(RunningLine, { key: sessionId, since: work.since, work })),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
       || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly,
       from: members.find(item => item.session.id === card.profileId) })),

@@ -7,6 +7,33 @@ const nodes = node => !node || typeof node !== 'object' ? [] : [node,
   ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(nodes)]
 const find = (tree, className) => nodes(tree).find(node => node.props.className === className)
 
+test('filenames open the bound right panel and remain text without a target', async () => {
+  const opened = [], listeners = new Set()
+  let target = { workspace: 'project' }
+  const { CodeDiff } = await loadClient('code-diff.tsx', { uiShared: {
+    rightPanelService: {
+      subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
+      getSnapshot: () => ({ target }), openFile: path => opened.push(path),
+    },
+  } })
+  for (const filename of ['src/main.ts', '/workspace/src/main.ts', '/outside/file.ts']) {
+    const name = find(CodeDiff({ filename, patch: 'raw' }), 'nodo-code-diff-filename')
+    assert.equal(name.type, 'button')
+    assert.equal(name.props['aria-label'], `预览文件 ${filename}`)
+    name.props.onClick()
+  }
+  assert.deepEqual(opened, ['src/main.ts', '/workspace/src/main.ts', '/outside/file.ts'])
+  const fragment = find(CodeDiff({ filename: 'x.ts', patch: replacementEdit('x.ts', 'before', 'after').diffText }), 'nodo-code-diff-filename')
+  assert.equal(fragment.props['aria-label'], '预览文件 x.ts · 替换片段')
+  const label = find(CodeDiff({ filename: '轮次差异', previewable: false, patch: 'raw' }), 'nodo-code-diff-filename')
+  assert.equal(label.type, 'span')
+  assert.equal(label.props.onClick, undefined)
+  target = null
+  const name = find(CodeDiff({ filename: 'main.ts', patch: 'raw' }), 'nodo-code-diff-filename')
+  assert.equal(name.type, 'span')
+  assert.equal(name.props.onClick, undefined)
+})
+
 test('replacement fragments display their scope and relative line numbers without merging separate edits', async () => {
   const { CodeDiff } = await loadClient('code-diff.tsx')
   const tree = CodeDiff({ filename: 'x', patch: replacementEdit('x', 'before\n', 'after\n').diffText })
@@ -170,4 +197,125 @@ test('large patches render a bounded preview with explicit expansion while copyi
   assert.equal(rows(tree).length, 1001)
   find(tree, 'nodo-code-diff-expand').props.onClick()
   assert.equal(rows(render()).length, 200)
+})
+
+test('panel diffs use one number column, highlight words, fold context and preserve wrapped text without changing native cards', async () => {
+  const { CodeDiff, CODE_DIFF_CSS, host } = await loadClient('code-diff.tsx', { primitives: { diffTotals: () => ({ added: 1, removed: 1 }) } })
+  const context = Array.from({ length: 31 }, (_, index) => `unchanged ${index}\n`).join('')
+  const long = `const message = "${'long_payload_'.repeat(80)}";  `
+  const props = { filename: 'x.ts', panel: true, diff: { path: 'x.ts', oldText: `${context}const old = 1;\n`, newText: `${context}${long}\n` } }
+  const render = () => { host.reset(); const panel = CodeDiff(props); return panel.type(panel.props) }
+  let tree = render()
+  const gap = find(tree, 'nodo-panel-diff-gap')
+  assert.equal(gap.type, 'button')
+  assert.equal(gap.children.join(''), '25 行未修改')
+  const lines = () => nodes(tree).filter(node => node.props.className === 'nodo-panel-diff-line')
+  const removed = lines().find(node => node.props['data-kind'] === 'removed')
+  const added = lines().find(node => node.props['data-kind'] === 'added')
+  assert.deepEqual(removed.children[0].children, [32])
+  assert.deepEqual(added.children[0].children, [32])
+  assert.ok(lines().every(row => nodes(row).filter(node => node.props.className === 'nodo-panel-diff-number').length === 1))
+  assert.ok(nodes(removed).some(node => node.type === 'mark'))
+  const code = nodes(added).find(node => node.type === 'CodeBlock')
+  assert.equal(code.props.code, long, 'syntax coloring preserves source whitespace')
+  assert.equal(code.props.lang, 'ts')
+  assert.equal(code.props.wrap, true)
+  assert.equal(code.props.showHeader, false)
+  const overlay = find(added, 'nodo-panel-diff-words')
+  assert.equal(overlay.props['aria-hidden'], true)
+  assert.equal(overlay.children.map(node => typeof node === 'string' ? node : node.children.join('')).join(''), long, 'word highlights use the exact same text as syntax coloring')
+  assert.ok(nodes(added).some(node => node.type === 'mark'), 'changed words receive inline emphasis')
+  gap.props.onClick()
+  tree = render()
+  assert.equal(lines().length, 33)
+  assert.ok(!find(tree, 'nodo-panel-diff-gap'))
+  assert.ok(!find(tree, 'nodo-code-diff-header'))
+  assert.ok(!nodes(tree).some(node => node.type === 'DiffBlock' || node.children.includes('复制')))
+  assert.match(CODE_DIFF_CSS, /\.nodo-panel-diff-text\{[^}]*white-space:pre-wrap;overflow-wrap:anywhere/)
+  assert.match(CODE_DIFF_CSS, /\.nodo-panel-diff-line\{[^}]*grid-template-columns:calc\(4ch \+ 20px\) minmax\(0,1fr\)/)
+  assert.match(CODE_DIFF_CSS, /\.nodo-panel-diff-gap\{[^}]*text-align:left/)
+  assert.match(CODE_DIFF_CSS, /\.nodo-panel-diff-number\{[^}]*border-left:3px solid var\(--nodo-line-tone,transparent\)/)
+  host.reset()
+  assert.ok(nodes(CodeDiff({ ...props, panel: false })).some(node => node.type === 'DiffBlock'), 'cards still render the host primitive')
+})
+
+test('panel patch rows preserve hunk offsets, prefixes, fragment scope and raw fallback wrapping', async () => {
+  const { CodeDiff, host } = await loadClient('code-diff.tsx')
+  const render = props => { host.reset(); const panel = CodeDiff({ panel: true, filename: 'x.ts', ...props }); return panel.type(panel.props) }
+  const tree = render({ patch: '@@ -8,2 +10,3 @@\n same\n-before\n+after\n+extra\n' })
+  assert.match(JSON.stringify(tree), /@@ -8,2 \+10,3 @@/, 'unequal offsets remain explicit instead of inventing unchanged lines')
+  const lines = nodes(tree).filter(node => node.props.className === 'nodo-panel-diff-line' && node.props['data-kind'] !== 'meta')
+  assert.deepEqual(lines.map(node => node.children[0].children), [[10], [9], [11], [12]], 'context and additions use new numbers; deletions use old numbers')
+  assert.equal(lines[2].props['data-kind'], 'added')
+  assert.match(JSON.stringify(render({ patch: replacementEdit('x.ts', 'old', 'new').diffText })), /行号相对片段/)
+  const fallback = render({ patch: '@@ incomplete patch' })
+  assert.match(JSON.stringify(find(fallback, 'nodo-note')), /无法解析差异，以下为原始内容/)
+  const raw = nodes(fallback).find(node => node.type === 'CodeBlock')
+  assert.equal(raw.type, 'CodeBlock')
+  assert.equal(raw.props.wrap, true)
+  assert.equal(raw.props.lineNumbers, true)
+  assert.equal(raw.props.showHeader, false)
+  assert.equal(raw.props.code, '@@ incomplete patch')
+})
+
+test('medium panel edits retain a diff when the local calculation exhausts its budget', async () => {
+  for (const expired of [false, true]) {
+    let now = 0
+    const { CodeDiff } = await loadClient('code-diff.tsx', {
+      globals: expired ? { Date: { now: () => now += 100 } } : {},
+      primitives: { diffTotals: () => ({ added: 500, removed: 500 }) },
+    })
+    const before = Array.from({ length: 2000 }, (_, index) => `original ${index}\n`)
+    const after = before.map((line, index) => index >= 750 && index < 1250 ? `replacement ${index}\n` : line)
+    const diff = { path: 'large.ts', oldText: before.join(''), newText: after.join('') }
+    const panel = CodeDiff({ filename: diff.path, diff, panel: true })
+    const tree = panel.type(panel.props)
+    assert.ok(nodes(tree).filter(node => node.type === 'CodeBlock').every(node => node.props.className === 'nodo-panel-diff-code'), 'code blocks only color numbered diff rows; the comparison never silently becomes plain source')
+    const native = nodes(tree).find(node => node.type === 'DiffBlock')
+    assert.ok(native || nodes(tree).some(node => node.props['data-kind'] === 'added'))
+    if (expired) assert.equal(native.props.diffs[0], diff, 'the host receives both complete images after timeout')
+  }
+})
+
+test('panel replacements without final newlines keep word emphasis and metadata', async () => {
+  const { CodeDiff } = await loadClient('code-diff.tsx')
+  const panel = CodeDiff({ filename: 'x.ts', panel: true, patch: replacementEdit('x.ts', 'const before = 1', 'const after = 2').diffText })
+  const tree = panel.type(panel.props)
+  for (const kind of ['removed', 'added']) {
+    const row = nodes(tree).find(node => node.props['data-kind'] === kind)
+    assert.ok(nodes(row).some(node => node.type === 'mark'))
+  }
+  assert.equal(nodes(tree).filter(node => node.props['data-kind'] === 'meta').length, 2)
+})
+
+test('turn-only multi-file panel patches separate filenames and do not fold across files', async () => {
+  const { CodeDiff } = await loadClient('code-diff.tsx')
+  const patch = '--- a/first.ts\n+++ b/first.ts\n@@ -1 +1 @@\n-old\n+new\n--- a/second.ts\n+++ b/second.ts\n@@ -80 +80 @@\n-before\n+after\n'
+  const panel = CodeDiff({ filename: '轮次差异', patch, panel: true })
+  const tree = panel.type(panel.props)
+  assert.deepEqual(nodes(tree).filter(node => node.props.className === 'nodo-panel-diff-filename').map(node => node.children[0]), ['first.ts', 'second.ts'])
+  assert.ok(!find(tree, 'nodo-panel-diff-gap'))
+  assert.deepEqual(nodes(tree).filter(node => node.props.className === 'nodo-panel-diff-number').map(node => node.children[0]), [1, 1, 80, 80])
+  assert.ok(nodes(tree).filter(node => node.type === 'CodeBlock').every(node => node.props.lang === 'ts'), 'each file supplies its own syntax language even when the heading is a turn summary')
+})
+
+test('panel replacement rows follow the reference single-gutter numbering sequence', async () => {
+  const { CodeDiff } = await loadClient('code-diff.tsx')
+  const panel = CodeDiff({ filename: 'components/card.tsx', panel: true,
+    patch: '@@ -12,4 +12,8 @@\n const shouldReduceMotion = useReducedMotion();\n \n-transition={{ ease: "easeInOut", duration: 0.6 }}\n+transition={\n+  shouldReduceMotion\n+    ? { duration: 0 }\n+    : { type: "spring", duration: 0.25, bounce: 0.1 }\n+}\n \n' })
+  const rows = nodes(panel.type(panel.props)).filter(node => node.props.className === 'nodo-panel-diff-line')
+  assert.deepEqual(rows.map(row => find(row, 'nodo-panel-diff-number').children[0]), [12, 13, 14, 14, 15, 16, 17, 18, 19])
+  assert.ok(rows.every(row => nodes(row).filter(node => node.props.className === 'nodo-panel-diff-number').length === 1))
+  assert.deepEqual(rows.map(row => row.props['data-kind']), ['context', 'context', 'removed', 'added', 'added', 'added', 'added', 'added', 'context'])
+  assert.ok(rows.every(row => !find(row, 'nodo-panel-diff-sign')), 'the marker lives on the gutter without consuming a separate text column')
+})
+
+test('numbered syntax-colored rows preserve nested indentation, tabs, blank lines and continuation text', async () => {
+  const { CodeDiff } = await loadClient('code-diff.tsx')
+  const text = '              const value = "long payload";  '
+  const panel = CodeDiff({ filename: 'nested.tsx', panel: true, patch: `@@ -1,3 +1,3 @@\n ${text}\n-\t  before();\n+\t  after();\n \n` })
+  const rows = nodes(panel.type(panel.props)).filter(node => node.props.className === 'nodo-panel-diff-line')
+  const colored = rows.map(row => nodes(row).find(node => node.type === 'CodeBlock'))
+  assert.deepEqual(colored.map(node => node.props.code), [text, '\t  before();', '\t  after();', ''])
+  assert.ok(colored.every(node => node.props.lang === 'tsx' && node.props.wrap && node.props.showHeader === false))
 })

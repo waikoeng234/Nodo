@@ -1,13 +1,37 @@
-import { test } from 'node:test'
+import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { readFileSync, realpathSync } from 'node:fs'
-import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX } from '../core/src/constants.js'
+import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RUN_LIMITS, TURN_IDLE_TIMEOUT_MS } from '../core/src/constants.js'
 import { leadRules, route } from '../core/src/lead.js'
+import { install as installLead } from '../core/src/lead.js'
+import { registerEngine } from '../agent-drivers/dist/index.js'
 import { until, withHost } from './helpers/host.js'
 
 const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.', session) => `\`\`\`nodo\n${JSON.stringify({ action: 'delegate', type, hard, task, session })}\n\`\`\``
 const completed = text => ({ mode: 'turn', completion: Promise.resolve({ reason: 'done', text }) })
+const interruptTask = session => completed(`\`\`\`nodo\n${JSON.stringify({ action: 'interrupt', session })}\n\`\`\``)
+
+registerEngine('lead-report-fixture', {
+  info: { id: 'lead-report-fixture', label: 'Lead report fixture', capabilities: { resume: true, steer: true } },
+  validate: raw => raw,
+  create({ onEvent }) {
+    let turn = 0
+    const driver = {
+      calls: [], guides: [], openSession: async () => {}, hasSession: () => true, dispose() {}, onEvent() {},
+      async respondToRequest() { return false },
+      async sendTurn(text) { driver.active = true; driver.calls.push(text); onEvent({ type: 'turn/start', turnId: `turn-${++turn}` }) },
+      async steer(text) { driver.guides.push(text); return 'steered' },
+      async interruptTurn() { driver.finish('interrupted') },
+      finish(reason = 'done', text = 'Completed this turn', unconfirmed = false, retryable = false) {
+        driver.active = false
+        onEvent({ type: 'text', turnId: `turn-${turn}`, messageId: `reply-${turn}`, text })
+        onEvent({ type: 'turn/end', turnId: `turn-${turn}`, reason, text, unconfirmed, ...(retryable ? { retryable: true } : {}) })
+      },
+    }
+    return driver
+  },
+})
 
 test('deleted roles leave the lead roster and routing', () => withHost(async ({ api, runtime, home }) => {
   const removed = await api('profile-create', { name: 'Removed', engine: 'echo' })
@@ -193,10 +217,290 @@ test('a running delegation excludes a second one in the same lead session', () =
   assert.ok(lines(conversation).some(line => /已有派活任务在执行/.test(line.text)))
   await rt.interrupt(worker.id, work.id)
   await first
-  assert.equal(lines(conversation).filter(line => line.who === 'user').length, 0)
+  assert.equal(lines(conversation).filter(line => line.origin?.kind === 'reject').length, 1)
+  assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0)
   const note = lines(conversation).find(line => line.who === 'system' && line.text.startsWith('执行未完成'))
   assert.match(note.text, new RegExp(`执行未完成：Worker · ${work.name}（会话 ${work.id}，ended: interrupted），未回报主控`))
   assert.deepEqual(note.delegation, { session: work.id, ended: 'interrupted' })
+}))
+
+test('a lead can interrupt only its own running delegation before replacing it', () => withLead(async ({ host, rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'ask' }, { kind: 'wait', ms: 5000 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const other = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => lines(conversation).some(line => line.delegation?.session === work.id))
+  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  try {
+    assert.match(rt.leadBrief(lead, conversation), new RegExp(`"session":"${work.id}"`))
+    await host.api('send', { profile: lead.id, session: conversation.id, text: 'How is it going?' })
+    assert.equal(rt.workView()[work.id].active, true, 'a progress question does not stop work')
+    await rt.followLead(lead.id, other.id, interruptTask(work.id))
+    assert.equal(rt.workView()[work.id].active, true, 'another lead session cannot stop this task')
+    assert.ok(lines(other).some(line => /只能中断本主控会话当前派出的执行任务/.test(line.text)))
+    await rt.followLead(lead.id, conversation.id, interruptTask(work.id))
+    await pending
+    assert.equal(rt.workView()[work.id].active, false)
+    assert.ok(lines(conversation).some(line => line.delegation?.session === work.id && line.delegation.ended === 'interrupted'))
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0, 'the old task cannot restart the lead')
+    rt.findProfile(worker.id).engineOptions.script = [{ kind: 'text', text: 'New task done' }]
+    await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false, 'Use the revised plan')))
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 1)
+    assert.ok(inputs.some(item => item.text.includes('已确认结束')))
+  } finally {
+    await rt.interrupt(worker.id, work.id)
+    await pending
+  }
+}))
+
+test('a stop request keeps the delegation occupied until its completion is confirmed', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'wait', ms: 5000 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => rt.workView()[work.id]?.active && lines(conversation).some(line => line.delegation))
+  const interrupt = rt.interrupt
+  let requested = false, release
+  const gate = new Promise(resolve => { release = resolve })
+  rt.interrupt = async (...args) => { requested = true; await gate; return interrupt(...args) }
+  const stopping = rt.followLead(lead.id, conversation.id, interruptTask(work.id))
+  try {
+    await until(() => requested)
+    await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+    assert.ok(lines(conversation).some(line => /等待执行任务确认结束/.test(line.text)))
+  } finally {
+    release()
+    await stopping
+    await interrupt(worker.id, work.id)
+    await pending
+  }
+}))
+
+test('a busy delegation feeds back an interrupt command and can continue the same executor session', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done', { engineOptions: { script: [{ kind: 'wait', ms: 500 }, { kind: 'text', text: 'Revised work done' }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => lines(conversation).some(line => line.delegation))
+  const send = rt.send
+  rt.send = (...args) => {
+    if (args[0] === lead.id && args[6]?.origin?.kind === 'reject') return interruptTask(work.id)
+    if (args[0] === lead.id && args[6]?.origin?.kind === 'interrupt') return completed(delegateType('feature', false, 'Apply the new constraint', work.id))
+    return send(...args)
+  }
+  try {
+    await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false, 'Apply the new constraint')))
+    await pending
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+    assert.equal(inputs.filter(item => item.sessionId === work.id).length, 2)
+    assert.deepEqual(lines(conversation).filter(line => line.delegation && !line.delegation.ended).map(line => line.delegation.reused), [false, true])
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 1)
+  } finally {
+    rt.send = send
+    await rt.interrupt(worker.id, work.id)
+    await pending
+  }
+}))
+
+for (const unconfirmed of [false, true]) test(`a stop waits for its ${unconfirmed ? 'unconfirmed' : 'confirmed'} settlement without a separate timeout note`, () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'wait', ms: 5000 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => lines(conversation).some(line => line.delegation))
+  const interrupt = rt.interrupt
+  let requested = false, stopped = false
+  rt.interrupt = async () => { requested = true; return true }
+  const stopping = rt.followLead(lead.id, conversation.id, interruptTask(work.id))
+  stopping.then(() => { stopped = true })
+  try {
+    await until(() => requested)
+    mock.timers.enable({ apis: ['setTimeout'] })
+    mock.timers.tick(RUN_LIMITS.cancelConfirmMs * 2)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(stopped, false, 'the lead waits for the tracker instead of racing another deadline')
+    assert.equal(lines(conversation).some(line => /仍在等待执行任务确认结束/.test(line.text)), false)
+    assert.match(rt.leadBrief(lead, conversation), /Current delegation/)
+    rt.driverSink(work.id, { type: 'turn/end', reason: 'interrupted', ...(unconfirmed ? { unconfirmed: true } : {}) })
+    mock.timers.reset()
+    await Promise.all([pending, stopping])
+    assert.equal(lines(conversation).filter(line => line.delegation?.ended).length, 1)
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'interrupt').length, unconfirmed ? 0 : 1)
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0)
+    assert.doesNotMatch(rt.leadBrief(lead, conversation), /Current delegation/)
+  } finally {
+    mock.timers.reset()
+    rt.interrupt = interrupt
+    await interrupt(worker.id, work.id)
+    await Promise.all([pending, stopping])
+  }
+}))
+
+test('a task finishing during interruption cannot return a stale report to the lead', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Old plan completed')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => lines(conversation).some(line => line.delegation))
+  const interrupt = rt.interrupt
+  rt.interrupt = async (...args) => { await pending; return interrupt(...args) }
+  try {
+    await rt.followLead(lead.id, conversation.id, interruptTask(work.id))
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0)
+    assert.ok(lines(conversation).some(line => line.delegation?.ended === 'done'))
+    assert.ok(lines(conversation).some(line => line.origin?.kind === 'interrupt'))
+  } finally { rt.interrupt = interrupt; await pending }
+}))
+
+test('interruption waits for the original delegation tracker before acknowledging the end', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'wait', ms: 5000 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const save = rt.save
+  let held = false, release
+  const gate = new Promise(resolve => { release = resolve })
+  rt.save = async () => {
+    if (!held && lines(conversation).some(line => line.delegation)) { held = true; await gate }
+    return save()
+  }
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  await until(() => held)
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  await until(() => rt.workView()[work.id]?.active)
+  const stopping = rt.followLead(lead.id, conversation.id, interruptTask(work.id))
+  try {
+    await until(() => !rt.workView()[work.id].active)
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'interrupt').length, 0)
+    release()
+    await Promise.all([pending, stopping])
+    assert.ok(lines(conversation).some(line => line.origin?.kind === 'interrupt'))
+    assert.ok(lines(conversation).some(line => line.delegation?.ended === 'interrupted'))
+  } finally {
+    release()
+    rt.save = save
+    await rt.interrupt(worker.id, work.id)
+    await Promise.all([pending, stopping])
+  }
+}))
+
+test('overlapping stop commands confirm once and only the latest control continues', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'wait', ms: 5000 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => lines(conversation).some(line => line.delegation))
+  const interrupt = rt.interrupt
+  let requests = 0, release
+  const gate = new Promise(resolve => { release = resolve })
+  rt.interrupt = async (...args) => { requests++; await gate; return interrupt(...args) }
+  const stops = [rt.followLead(lead.id, conversation.id, interruptTask(work.id)), rt.followLead(lead.id, conversation.id, interruptTask(work.id))]
+  try {
+    await until(() => requests > 0)
+    release()
+    await Promise.all([pending, ...stops])
+    assert.equal(requests, 1)
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'interrupt').length, 1)
+  } finally {
+    release()
+    rt.interrupt = interrupt
+    await interrupt(worker.id, work.id)
+    await Promise.all([pending, ...stops])
+  }
+}))
+
+test('dispatch cancellation fallback releases the lead for a new delegation with only one end note', () => withLead(async ({ rt, role, session, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'wait', ms: 5000 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => lines(conversation).some(line => line.delegation) && rt.driverOf(work.id))
+  const interruptDriver = rt.interruptDriver, timeout = RUN_LIMITS.cancelConfirmMs
+  let requests = 0
+  rt.interruptDriver = async () => { requests++; return new Promise(() => {}) }
+  RUN_LIMITS.cancelConfirmMs = 30
+  try {
+    await rt.followLead(lead.id, conversation.id, interruptTask(work.id))
+    await pending
+    assert.equal(requests, 1)
+    assert.equal(rt.workView()[work.id].active, false, 'dispatch releases occupancy despite a stuck driver stop')
+    assert.equal(rt.workView()[work.id].suspect, false)
+    const ended = () => lines(conversation).filter(line => line.delegation?.ended)
+    assert.deepEqual(ended().map(line => line.delegation), [{ session: work.id, ended: 'interrupted', unconfirmed: true }])
+    assert.match(ended()[0].text, /未确认.*未回报主控/)
+    assert.equal(lines(conversation).some(line => /仍在等待执行任务确认结束/.test(line.text)), false)
+    assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report' || line.origin?.kind === 'interrupt').length, 0)
+    const brief = rt.leadBrief(lead, conversation)
+    assert.doesNotMatch(brief, /Current delegation/)
+    assert.match(brief, /ended: interrupted, unconfirmed without a report/)
+    rt.driverSink(work.id, { type: 'turn/end', turnId: 'turn-1', reason: 'done', text: 'Stale report' })
+    rt.interruptDriver = interruptDriver
+    rt.findProfile(worker.id).engineOptions = { script: [{ kind: 'text', text: 'Fresh work' }] }
+    await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+    assert.equal(ended().length, 1)
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2, 'a settled unconfirmed stop allows an explicitly requested new delegation')
+    const reports = lines(conversation).filter(line => line.origin?.kind === 'report')
+    assert.equal(reports.length, 1)
+    assert.notEqual(reports[0].origin.session, work.id, 'the late old end cannot generate a report')
+    assert.equal(reports[0].references[0].messages[0].text, 'Fresh work')
+  } finally {
+    RUN_LIMITS.cancelConfirmMs = timeout
+    rt.interruptDriver = interruptDriver
+    await rt.interrupt(worker.id, work.id)
+    await pending
+  }
+}))
+
+test('an executor idle warning keeps its delegation occupied and a late success reaches the lead', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'wait', ms: TURN_IDLE_TIMEOUT_MS * 2 }] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const pending = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+  const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
+  await until(() => rt.workView()[work.id]?.active && lines(conversation).some(line => line.delegation))
+  let settled = false
+  pending.then(() => { settled = true })
+  const interruptDriver = rt.interruptDriver
+  const interrupted = []
+  rt.interruptDriver = async id => { interrupted.push(id); return interruptDriver(id) }
+  try {
+    mock.timers.enable({ apis: ['setTimeout'] })
+    try {
+      rt.rearmIdle(work.id)
+      mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
+      await new Promise(resolve => setImmediate(resolve))
+      assert.equal(settled, false)
+      assert.equal(rt.workView()[work.id].active, true)
+      assert.equal(rt.workView()[work.id].suspect, true)
+      assert.deepEqual(interrupted, [])
+      assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0)
+    } finally { mock.timers.reset() }
+    await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1, 'silence cannot release the lead delegation')
+    assert.ok(lines(work).some(line => line.kind === 'note' && /仍在等待.*手动停止/.test(line.text)))
+    rt.driverSink(work.id, { type: 'turn/end', turnId: 'turn-1', reason: 'done', text: 'Late work completed' })
+    await pending
+    assert.equal(rt.workView()[work.id].active, false)
+    assert.equal(rt.workView()[work.id].suspect, false)
+    const reports = lines(conversation).filter(line => line.origin?.kind === 'report')
+    assert.equal(reports.length, 1)
+    assert.match(reports[0].text, /ended: done/)
+    assert.equal(reports[0].references[0].messages[0].text, 'Late work completed')
+    assert.ok(inputs.some(item => item.profileId === lead.id && item.text.includes('Late work completed')))
+  } finally {
+    rt.interruptDriver = interruptDriver
+    await rt.interrupt(worker.id, work.id)
+    await pending
+  }
 }))
 
 test('failed or unconfirmed executor turns leave a note instead of reporting to the lead', () => withLead(async ({ rt, role, session, lines }) => {
@@ -840,7 +1144,7 @@ test('send ignores the removed executor override on lead and ordinary conversati
   }
 }))
 
-test('images sent to a lead are placed in its workspace and their paths reach the prompt', () => withLead(async ({ host, rt, role, session, inputs, send, lines }) => {
+test('images sent to a lead are placed in its workspace and their paths reach the prompt and every delegation', () => withLead(async ({ host, rt, role, session, inputs, send, lines }) => {
   const png = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64')
   const worker = await role('Worker')
   const lead = await role('Lead', 'Answered', { lead: true })
@@ -854,10 +1158,672 @@ test('images sent to a lead are placed in its workspace and their paths reach th
       assert.ok(path.startsWith(join(realpathSync(join(host.home, 'ws')), '.nodo', 'workflow-inputs')))
       assert.match(path, /1-image\.png$/)
       assert.equal(readFileSync(path).toString('base64'), png)
+      await rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)), [path])
+      const delegated = inputs.find(item => item.profileId === worker.id)
+      assert.ok(delegated.text.endsWith(`## Attached files (user provided)\n- ${JSON.stringify(path)}`))
+      assert.doesNotMatch(lines({ id: delegated.sessionId }).find(item => item.who === 'user').text, /Attached files/)
     } else assert.doesNotMatch(input, /Attached files/)
     const [line] = lines(conversation).filter(item => item.who === 'user')
     assert.equal(line.images.length, 1)
     assert.equal(line.files, undefined)
   }
-  assert.match(rt.leadBrief(lead, { id: 'x' }), /paths of attached files and images/)
+  assert.match(rt.leadBrief(lead, { id: 'x' }), /Nodo appends the paths of files and images/)
+}))
+
+const withRecovery = run => withLead(async h => {
+  const { rt, host, role, session, lines } = h
+  const options = { engine: 'lead-report-fixture', engineOptions: {} }
+  const worker = await role('Worker', '', options)
+  const lead = await role('Lead', '', { ...options, lead: true })
+  const conversation = await session(lead)
+  const reports = () => lines(conversation).filter(line => line.origin?.kind === 'report')
+  const delegate = async (reuse, text) => {
+    const count = rt.sessionsOf(rt.findProfile(worker.id)).length
+    const following = rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false, text, reuse?.id)))
+    const work = reuse ?? await until(() => rt.sessionsOf(rt.findProfile(worker.id))[count])
+    const previous = reuse ? rt.driverOf(work.id).calls.length : 0
+    const driver = await until(() => rt.driverOf(work.id)?.calls.length > previous && rt.driverOf(work.id))
+    return { work, driver, following }
+  }
+  const failed = async () => {
+    const task = await delegate()
+    task.driver.finish('error', 'Original failed reply')
+    await task.following
+    assert.ok(task.work.source.pendingReport?.id)
+    return task
+  }
+  const input = async (work, text = 'Resume this task', extra = {}) => {
+    const driver = rt.driverOf(work.id)
+    const count = driver?.calls.length ?? 0
+    const placed = await host.api('send', { profile: worker.id, session: work.id, text, ...extra })
+    if (placed.mode === 'turn') await until(() => rt.driverOf(work.id)?.calls.length > count)
+    return placed
+  }
+  const finishLead = async (text = 'Reviewed') => {
+    const driver = await until(() => rt.driverOf(conversation.id)?.active && rt.driverOf(conversation.id))
+    const count = driver.calls.length
+    driver.finish('done', text)
+    await until(() => !rt.workView()[conversation.id]?.active || driver.calls.length > count)
+  }
+  await run({ ...h, worker, lead, conversation, reports, delegate, failed, input, finishLead })
+})
+
+test('a Nodo manual recovery reports its exact reply once and the lead can delegate again', () => withRecovery(async h => {
+  const { rt, worker, lead, conversation, reports, failed, input, finishLead, lines } = h
+  const { work, driver } = await failed()
+  await input(work)
+  driver.finish('done', 'Recovered changes and verified tests')
+  const report = await until(() => reports()[0])
+  assert.match(report.text, /manually resumed/)
+  assert.equal(report.references[0].messages[0].text, 'Recovered changes and verified tests')
+  assert.equal(report.references[0].messages[0].id, lines(work).findLast(line => line.reply).replyId)
+  await until(() => !work.source.pendingReport)
+  await until(() => rt.driverOf(conversation.id)?.active)
+  assert.doesNotMatch(rt.driverOf(conversation.id).calls[0], /last delegation/)
+  assert.doesNotMatch(rt.leadBrief(rt.findProfile(lead.id), conversation), /last delegation/)
+  const next = rt.sessionsOf(rt.findProfile(worker.id)).length
+  await finishLead(delegateType('feature', false, 'Next task'))
+  const nextWork = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[next])
+  const nextDriver = await until(() => rt.driverOf(nextWork.id)?.calls.length && rt.driverOf(nextWork.id))
+  nextDriver.finish('done', 'Next task complete')
+  await until(() => reports().length === 2)
+  await finishLead()
+  await input(work, 'Ordinary later conversation')
+  driver.finish('done', 'Unrelated later reply')
+  await until(() => !rt.workView()[work.id].active)
+  await rt.flushLeadReports(conversation.id)
+  assert.equal(reports().length, 2)
+}))
+
+for (const [reason, unconfirmed] of [['error', false], ['interrupted', false], ['done', true]]) {
+  test(`manual recovery keeps its marker after ${reason}, unconfirmed=${unconfirmed}`, () => withRecovery(async h => {
+    const { work, driver } = await h.failed()
+    const marker = work.source.pendingReport.id
+    await h.input(work)
+    driver.finish(reason, 'Still incomplete', unconfirmed)
+    await until(() => !h.rt.workView()[work.id].active)
+    assert.equal(work.source.pendingReport.id, marker)
+    assert.equal(h.reports().length, 0)
+    await h.input(work)
+    driver.finish('done', 'Finally complete')
+    await until(() => h.reports().length === 1)
+    await h.finishLead()
+    assert.equal(work.source.pendingReport, undefined)
+  }))
+}
+
+for (const queue of [false, true]) test(`shared ${queue ? 'queued send-now' : 'steered'} completion claims a manual report once`, () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  await h.input(work)
+  const joined = await h.input(work, 'Additional constraint', queue ? { mode: 'queue' } : {})
+  if (queue) {
+    const result = await h.host.api('queued-message', { profile: h.worker.id, session: work.id, seq: joined.seq, action: 'send' })
+    assert.equal(result.mode, 'steered')
+  } else assert.equal(joined.mode, 'steered')
+  driver.finish('done', 'One shared final reply')
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  await h.rt.flushLeadReports(h.conversation.id)
+  assert.equal(h.reports().length, 1)
+  assert.equal(work.source.pendingReport, undefined)
+}))
+
+test('a queued Nodo recovery also reports after its own turn completes', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  await h.input(work)
+  assert.equal((await h.input(work, 'Queued recovery', { mode: 'queue' })).mode, 'queued')
+  driver.finish('error', 'First recovery failed')
+  await until(() => driver.calls.length === 3)
+  assert.ok(work.source.pendingReport)
+  assert.equal(h.reports().length, 0)
+  driver.finish('done', 'Queued recovery succeeded')
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].references[0].messages[0].text, 'Queued recovery succeeded')
+  await h.finishLead()
+}))
+
+test('manual reports freeze before FIFO delivery and never steer into a busy lead', () => withRecovery(async h => {
+  const first = await h.failed(), second = await h.failed()
+  await h.host.api('send', { profile: h.lead.id, session: h.conversation.id, text: 'User is talking to the lead' })
+  const leadDriver = await until(() => h.rt.driverOf(h.conversation.id)?.calls.length && h.rt.driverOf(h.conversation.id))
+  for (const [task, text] of [[first, 'First recovered round'], [second, 'Second recovered round']]) {
+    await h.input(task.work)
+    task.driver.finish('done', text)
+    await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.find(item => item.session === task.work.id)?.referenceId)
+  }
+  const leadSession = h.rt.conversationOf(h.conversation.id).session
+  const saved = JSON.parse(readFileSync(join(h.host.home, 'state.json'), 'utf8'))
+  assert.equal(saved.profiles[h.lead.id].sessions.find(item => item.id === leadSession.id).reportQueue.length, 2)
+  await h.input(first.work, 'Another completed round before delivery')
+  first.driver.finish('done', 'Wrong newer reply')
+  await until(() => !h.rt.workView()[first.work.id].active)
+  assert.equal(h.reports().length, 0)
+  assert.deepEqual(leadDriver.guides, [])
+  await h.finishLead()
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].origin.session, first.work.id)
+  assert.equal(h.reports()[0].references[0].messages[0].text, 'First recovered round')
+  await h.finishLead()
+  await until(() => h.reports().length === 2)
+  assert.equal(h.reports()[1].origin.session, second.work.id)
+  await h.finishLead()
+  assert.deepEqual(leadDriver.guides, [])
+  assert.equal(first.work.source.pendingReport, undefined)
+  assert.equal(second.work.source.pendingReport, undefined)
+}))
+
+test('manual reports wait while another delegation runs and drain when it fails', () => withRecovery(async h => {
+  const recovered = await h.failed()
+  const running = await h.delegate()
+  await h.input(recovered.work)
+  recovered.driver.finish('done', 'Recovered while another task runs')
+  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+  assert.equal(h.reports().length, 0)
+  running.driver.finish('error')
+  await running.following
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  assert.ok(running.work.source.pendingReport)
+}))
+
+for (const action of ['archive', 'delete-profile', 'remove-session']) test(`manual report discards a lead target after ${action}`, () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  if (action === 'archive') await h.host.api('session-archive', { profile: h.lead.id, session: h.conversation.id, archived: true })
+  else if (action === 'delete-profile') await h.host.api('profile-delete', { id: h.lead.id })
+  else h.rt.findProfile(h.lead.id).sessions = []
+  await h.input(work)
+  driver.finish('done', 'Cannot deliver this')
+  await until(() => !work.source.pendingReport)
+  assert.equal(h.reports().length, 0)
+  assert.ok(h.lines(work).some(line => line.kind === 'note' && /未回报主控/.test(line.text)))
+}))
+
+test('a queued report rechecks writability before delivery', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  await h.host.api('send', { profile: h.lead.id, session: h.conversation.id, text: 'Busy lead' })
+  await until(() => h.rt.driverOf(h.conversation.id)?.calls.length)
+  await h.input(work)
+  driver.finish('done', 'Queued report')
+  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+  h.rt.conversationOf(h.conversation.id).session.archivedAt = Date.now()
+  await h.finishLead()
+  await until(() => !work.source.pendingReport)
+  assert.equal(h.reports().length, 0)
+  assert.ok(h.lines(work).some(line => /read-only/.test(line.text)))
+}))
+
+test('persisted pending markers and continuation budgets survive clearing lead memory', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const stored = () => JSON.parse(readFileSync(join(h.host.home, 'state.json'), 'utf8')).profiles[h.worker.id].sessions.find(item => item.id === work.id)
+  assert.deepEqual(stored().source.pendingReport, work.source.pendingReport)
+  installLead(h.rt)
+  assert.equal(driver.calls.length, 1, 'reinstalling lead state does not resend executor work')
+  await h.input(work)
+  driver.finish('done', 'Recovered after restart')
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  await until(() => !work.source.pendingReport)
+  for (let count = 1; count <= 2; count++) {
+    installLead(h.rt)
+    const task = await h.delegate(work, 'Recheck after restart')
+    task.driver.finish('error')
+    await task.following
+    assert.equal(stored().source.continued, count)
+  }
+  installLead(h.rt)
+  const rejected = h.rt.followLead(h.lead.id, h.conversation.id, completed(delegateType('feature', false, 'Third continuation', work.id)))
+  await until(() => h.lines(h.conversation).some(line => /已续用 2 次/.test(line.text)))
+  await h.finishLead()
+  await rejected
+  assert.equal(driver.calls.length, 4)
+}))
+
+test('persisted FIFO recovers on session load and a delivered report id is not resent', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const workView = h.rt.workView
+  h.rt.workView = () => ({ ...workView(), [h.conversation.id]: { active: true } })
+  await h.input(work)
+  driver.finish('done', 'Frozen before restart')
+  const leadSession = h.rt.conversationOf(h.conversation.id).session
+  await until(() => leadSession.reportQueue?.[0]?.referenceId)
+  const savedQueue = JSON.parse(JSON.stringify(leadSession.reportQueue))
+  const savedSource = JSON.parse(JSON.stringify(work.source))
+  h.rt.workView = workView
+  installLead(h.rt)
+  Object.assign(work, { source: JSON.parse(JSON.stringify(savedSource)) })
+  leadSession.reportQueue = savedQueue
+  await h.host.api('session-select', { profile: h.lead.id, session: h.conversation.id })
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  await until(() => !leadSession.reportQueue)
+  leadSession.reportQueue = savedQueue
+  work.source = JSON.parse(JSON.stringify(savedSource))
+  installLead(h.rt)
+  await h.rt.flushLeadReports(h.conversation.id)
+  assert.equal(h.reports().length, 1)
+  assert.equal(work.source.pendingReport, undefined)
+  assert.equal(leadSession.reportQueue, undefined)
+}))
+
+test('native executor completion freezes its message id rather than a newer native reply', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  await h.input(work)
+  h.rt.conversationOf(work.id).session.engine = 'dsh'
+  work.driverSessionId = 'native-executor'
+  h.rt.ctx.sessionController = { inspect: async () => ({ events: [2, 3].flatMap(turn => [
+    { type: 'assistant/message', seq: turn * 2, time: turn, data: { turn, message: { id: `reply-${turn}`, content: `Native round ${turn}` } } },
+    { type: 'turn/end', data: { turn, reason: { kind: 'completed' } } },
+  ]) }) }
+  driver.finish('done', 'Native round 2')
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].references[0].messages[0].id, 'reply-2')
+  assert.equal(h.reports()[0].references[0].messages[0].text, 'Native round 2')
+  await h.finishLead()
+}))
+
+test('a busy admission race leaves the frozen report queued instead of steering', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const send = h.rt.send
+  let raced = false
+  h.rt.send = async (...args) => {
+    if (args[6]?.origin?.kind === 'report' && !raced) {
+      raced = true
+      await h.host.api('send', { profile: h.lead.id, session: h.conversation.id, text: 'User wins admission' })
+      await until(() => h.rt.driverOf(h.conversation.id)?.active)
+    }
+    return send(...args)
+  }
+  await h.input(work)
+  driver.finish('done', 'Frozen report after admission race')
+  await until(() => raced && h.rt.driverOf(h.conversation.id)?.active)
+  assert.equal(h.reports().length, 0)
+  assert.ok(work.source.pendingReport)
+  await h.finishLead()
+  await until(() => h.reports().length === 1)
+  assert.deepEqual(h.rt.driverOf(h.conversation.id).guides, [])
+  await h.finishLead()
+}))
+
+test('a completion outside the Nodo channel does not claim the manual recovery marker', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const marker = work.source.pendingReport.id
+  const sent = await h.rt.send(h.worker.id, 'Outside the channel', work.id)
+  await until(() => driver.calls.length === 2)
+  driver.finish('done', 'Untracked completion')
+  await sent.completion
+  assert.equal(work.source.pendingReport.id, marker)
+  assert.equal(h.reports().length, 0)
+  await h.input(work)
+  driver.finish('done', 'Tracked completion')
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].references[0].messages[0].text, 'Tracked completion')
+  await h.finishLead()
+}))
+
+test('a normal successful delegation joins the FIFO behind a ready manual report', () => withRecovery(async h => {
+  const recovered = await h.failed()
+  const running = await h.delegate()
+  await h.input(recovered.work)
+  recovered.driver.finish('done', 'Earlier supplemental report')
+  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+  running.driver.finish('done', 'Later normal report')
+  await running.following
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].origin.session, recovered.work.id)
+  await h.finishLead()
+  await until(() => h.reports().length === 2)
+  assert.equal(h.reports()[1].origin.session, running.work.id)
+  assert.equal(h.reports()[1].references[0].messages[0].text, 'Later normal report')
+  await h.finishLead()
+}))
+
+for (const reason of ['done', 'error']) test(`manual recovery waits for its last queued turn (${reason})`, () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const marker = work.source.pendingReport.id
+  await h.input(work, 'Start recovery', { mode: 'queue' })
+  assert.equal((await h.input(work, 'Finish the recovery', { mode: 'queue' })).mode, 'queued')
+  driver.finish('done', 'Received; starting work')
+  await until(() => driver.calls.length === 3)
+  assert.equal(h.reports().length, 0)
+  assert.equal(work.source.pendingReport.id, marker)
+  assert.equal(work.source.pendingReport.ready, undefined)
+  driver.finish(reason, 'Queued final reply')
+  await until(() => !h.rt.workView()[work.id].active)
+  if (reason === 'error') {
+    assert.equal(h.reports().length, 0)
+    assert.equal(work.source.pendingReport.id, marker)
+    await h.input(work)
+    driver.finish('done', 'Recovered after queued failure')
+  }
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].references[0].messages[0].text, reason === 'done' ? 'Queued final reply' : 'Recovered after queued failure')
+  await h.finishLead()
+  assert.equal(work.source.pendingReport, undefined)
+  assert.equal(h.reports().length, 1)
+}))
+
+test('a failed source lookup during freezing removes the head and delivers the next frozen report', () => withRecovery(async h => {
+  const first = await h.failed(), second = await h.failed()
+  const workView = h.rt.workView
+  h.rt.workView = () => ({ ...workView(), [h.conversation.id]: { active: true } })
+  const leadSession = h.rt.conversationOf(h.conversation.id).session
+  for (const task of [first, second]) {
+    await h.input(task.work)
+    task.driver.finish('done', `Report for ${task.work.id}`)
+    await until(() => leadSession.reportQueue?.find(item => item.session === task.work.id)?.referenceId)
+  }
+  leadSession.reportQueue[0].result = { replyId: 'reply-before-freeze' }
+  const conversation = h.rt.conversation
+  h.rt.conversation = (profile, session) => {
+    if (session === first.work.id) throw new Error('Executor session unavailable')
+    return conversation(profile, session)
+  }
+  h.rt.workView = workView
+  const flushing = h.rt.flushLeadReports(h.conversation.id)
+  await until(() => h.reports().length === 1)
+  assert.equal(h.reports()[0].origin.session, second.work.id)
+  assert.ok(h.lines(first.work).some(line => /未回报主控：Executor session unavailable/.test(line.text)))
+  assert.equal(first.work.source.pendingReport, undefined)
+  await h.finishLead()
+  await flushing
+  assert.equal(leadSession.reportQueue, undefined)
+}))
+
+test('a rejected report send preserves the failed delegation hint', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const send = h.rt.send
+  h.rt.send = (...args) => {
+    if (args[6]?.origin?.kind === 'report') throw new Error('Report send rejected')
+    return send(...args)
+  }
+  await h.input(work)
+  driver.finish('done', 'Recovered but not delivered')
+  await until(() => !work.source.pendingReport)
+  assert.equal(h.reports().length, 0)
+  assert.ok(h.lines(work).some(line => /未回报主控：Report send rejected/.test(line.text)))
+  assert.match(h.rt.leadBrief(h.rt.findProfile(h.lead.id), h.conversation), /Your last delegation to Worker .*without a report/)
+}))
+
+test('a manual recovery completion without replyId reports inline without a reference', () => withRecovery(async h => {
+  const { work, driver } = await h.failed()
+  const send = h.rt.send
+  h.rt.send = async (...args) => {
+    const placed = await send(...args)
+    return args[0] === h.worker.id
+      ? { ...placed, completion: placed.completion.then(({ replyId, ...result }) => result) } : placed
+  }
+  await h.input(work)
+  driver.finish('done', 'Exact recovered result without a reply id')
+  const report = await until(() => h.reports()[0])
+  assert.equal(report.references, undefined)
+  assert.match(report.text, /No reference attached: No completed reply is available/)
+  assert.ok(report.text.endsWith('Exact recovered result without a reply id'))
+  await h.finishLead()
+  assert.equal(work.source.pendingReport, undefined)
+}))
+
+const retryUntil = async check => {
+  for (let attempts = 0; attempts < 4000; attempts++) {
+    const result = check()
+    if (result) return result
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  assert.fail('Retry state did not settle')
+}
+
+test('a stop during automatic send admission prevents that continuation', () => withRecovery(async h => {
+  const task = await h.delegate()
+  let release, admitting = false
+  const saveImages = h.rt.saveImages
+  h.rt.saveImages = async (...args) => {
+    admitting = true
+    await new Promise(resolve => { release = resolve })
+    return saveImages(...args)
+  }
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await temporaryFailure(h, task)
+    mock.timers.tick(30_000)
+    await retryUntil(() => admitting)
+    await h.host.api('interrupt', { profile: h.worker.id, session: task.work.id })
+    release()
+    await task.following
+    assert.equal(task.driver.calls.length, 1)
+    assert.ok(task.work.source.pendingReport)
+    assert.ok(h.lines(h.conversation).some(line => /已取消自动继续/.test(line.text)))
+  } finally { release?.(); mock.timers.reset() }
+}))
+
+test('a stop of the automatic turn prevents further retries and retains manual reporting', () => withRecovery(async h => {
+  const task = await h.delegate()
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await temporaryFailure(h, task)
+    mock.timers.tick(30_000)
+    await retryUntil(() => task.driver.calls.length === 2)
+    await h.host.api('interrupt', { profile: h.worker.id, session: task.work.id })
+    await task.following
+    mock.timers.tick(300_000)
+    assert.equal(task.driver.calls.length, 2)
+    assert.ok(task.work.source.pendingReport)
+  } finally { mock.timers.reset() }
+  await h.input(task.work)
+  task.driver.finish('done', 'Recovered after stopping automatic work')
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  assert.equal(task.work.source.pendingReport, undefined)
+}))
+const temporaryFailure = async (h, task, attempt = 1) => {
+  task.driver.finish('error', 'Temporary outage', false, true)
+  await retryUntil(() => h.rt.leadRetryWaiting(task.work.id) && h.lines(h.conversation).some(line => line.text?.includes(`自动继续（${attempt}/5）`)))
+}
+
+test('unloading lead cancels automatic continuation waits and preserves pending reporting', () => withRecovery(async h => {
+  let cleanup
+  const effect = h.rt.ctx.effect
+  h.rt.ctx.effect = (factory, ...args) => effect(() => { cleanup = factory(); return cleanup }, ...args)
+  try { installLead(h.rt) } finally { h.rt.ctx.effect = effect }
+  const task = await h.delegate()
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await temporaryFailure(h, task)
+    const marker = task.work.source.pendingReport.id
+    cleanup()
+    await task.following
+    mock.timers.tick(30_000)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(task.driver.calls.length, 1)
+    assert.equal(h.rt.leadRetryWaiting(task.work.id), false)
+    assert.equal(task.work.source.pendingReport.id, marker)
+    assert.equal(h.reports().length, 0)
+  } finally { mock.timers.reset() }
+}))
+
+test('pending recovery survives losing an automatic wait on restart', () => withRecovery(async h => {
+  const task = await h.delegate()
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await temporaryFailure(h, task)
+    const saved = JSON.parse(readFileSync(join(h.host.home, 'state.json'), 'utf8'))
+    task.work.source = saved.profiles[h.worker.id].sessions.find(item => item.id === task.work.id).source
+  } finally { mock.timers.reset() }
+  installLead(h.rt)
+  assert.equal(task.driver.calls.length, 1)
+  await h.input(task.work)
+  task.driver.finish('done', 'Recovered after losing the wait')
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  assert.equal(task.work.source.pendingReport, undefined)
+}))
+
+test('a user takeover completing during cancellation reports once', () => withRecovery(async h => {
+  const task = await h.delegate()
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await temporaryFailure(h, task)
+    await h.host.api('send', { profile: h.worker.id, session: task.work.id, text: 'Take over and finish' })
+    await retryUntil(() => task.driver.calls.length === 2)
+    task.driver.finish('done', 'Quick manual recovery')
+    await task.following
+  } finally { mock.timers.reset() }
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  assert.equal(task.work.source.pendingReport, undefined)
+  await h.rt.flushLeadReports(h.conversation.id)
+  assert.equal(h.reports().length, 1)
+}))
+
+test('a transient delegation waits exactly 30s, continues its context and reports normally', () => withRecovery(async h => {
+  const task = await h.delegate(undefined, 'Original unique task')
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await temporaryFailure(h, task)
+    const stored = JSON.parse(readFileSync(join(h.host.home, 'state.json'), 'utf8'))
+    assert.ok(stored.profiles[h.worker.id].sessions.find(item => item.id === task.work.id).source.pendingReport.id)
+    assert.equal(h.rt.workView()[task.work.id].retryWaiting, true)
+    assert.equal(h.rt.workView()[task.work.id].active, true)
+    assert.match(h.rt.leadBrief(h.lead, h.conversation), /Current delegation/)
+    assert.match(h.rt.leadBrief(h.lead, h.conversation), /"status":"waiting-retry"/)
+    mock.timers.tick(29_999)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(task.driver.calls.length, 1)
+    mock.timers.tick(1)
+    await retryUntil(() => task.driver.calls.length === 2)
+    assert.match(task.driver.calls[1], /^Task from lead/)
+    assert.equal(h.lines(task.work).filter(line => line.who === 'user').at(-1).origin?.kind, 'retry')
+    assert.match(h.rt.leadBrief(h.lead, h.conversation), /"status":"running"/)
+    assert.match(task.driver.calls[1], /从中断处继续完成原任务/)
+    assert.doesNotMatch(task.driver.calls[1], /Original unique task/)
+    assert.equal(task.work.source.continued, undefined)
+  } finally { mock.timers.reset() }
+  task.driver.finish('done', 'Recovered automatically')
+  await until(() => h.reports().length === 1)
+  assert.doesNotMatch(h.reports()[0].text, /manually resumed/)
+  assert.equal(h.reports()[0].references[0].messages[0].text, 'Recovered automatically')
+  await h.finishLead()
+  await task.following
+  assert.equal(task.work.source.pendingReport, undefined)
+  for (let count = 1; count <= 2; count++) {
+    const reused = await h.delegate(task.work, 'Recheck')
+    reused.driver.finish('error')
+    await reused.following
+    assert.equal(task.work.source.continued, count, 'automatic continuation does not spend reuse budget')
+  }
+}))
+
+test('five automatic continuations exhaust the retry budget and retain the pending report', () => withRecovery(async h => {
+  const task = await h.delegate()
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    let marker
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await temporaryFailure(h, task, attempt)
+      marker ??= task.work.source.pendingReport.id
+      assert.equal(task.work.source.pendingReport.id, marker)
+      mock.timers.tick(30_000)
+      await retryUntil(() => task.driver.calls.length === attempt + 1)
+    }
+    task.driver.finish('error', 'Still overloaded', false, true)
+    await task.following
+    mock.timers.tick(300_000)
+    assert.equal(task.driver.calls.length, 6)
+    assert.equal(task.work.source.pendingReport.id, marker)
+    assert.ok(h.lines(h.conversation).some(line => /自动继续已用尽（5\/5）/.test(line.text)))
+    assert.equal(h.reports().length, 0)
+  } finally { mock.timers.reset() }
+  await h.input(task.work)
+  task.driver.finish('done', 'Manual recovery after exhaustion')
+  await until(() => h.reports().length === 1)
+  await h.finishLead()
+  assert.equal(task.work.source.pendingReport, undefined)
+}))
+
+for (const action of ['lead-interrupt', 'user-stop', 'user-message', 'busy']) {
+  test(`automatic continuation is cancelled by ${action}; manual completion reports once`, () => withRecovery(async h => {
+    const task = await h.delegate()
+    mock.timers.enable({ apis: ['setTimeout'] })
+    let stopping
+    try {
+      await temporaryFailure(h, task)
+      const marker = task.work.source.pendingReport.id
+      if (action === 'lead-interrupt') {
+        stopping = h.rt.followLead(h.lead.id, h.conversation.id, interruptTask(task.work.id))
+      } else if (action === 'user-stop') {
+        await h.host.api('interrupt', { profile: h.worker.id, session: task.work.id })
+      } else if (action === 'user-message') {
+        await h.host.api('send', { profile: h.worker.id, session: task.work.id, text: 'User takes over' })
+        await retryUntil(() => task.driver.calls.length === 2)
+      } else {
+        const send = h.rt.send
+        h.rt.send = (...args) => {
+          if (args[0] === h.worker.id && args[6]?.exclusive) throw Object.assign(new Error('Busy'), { code: 'orch/busy' })
+          return send(...args)
+        }
+        mock.timers.tick(30_000)
+      }
+      await task.following
+      assert.equal(task.work.source.pendingReport.id, marker)
+      assert.ok(h.lines(h.conversation).some(line => /已取消自动继续/.test(line.text)))
+      mock.timers.tick(300_000)
+      assert.equal(task.driver.calls.length, action === 'user-message' ? 2 : 1)
+      assert.equal(h.reports().length, 0)
+    } finally { mock.timers.reset() }
+    if (stopping) { await h.finishLead(); await stopping }
+    if (action !== 'user-message') await h.input(task.work)
+    task.driver.finish('done', 'User completed the task')
+    await until(() => h.reports().length === 1)
+    await h.finishLead()
+    await h.input(task.work, 'Later chat')
+    task.driver.finish('done', 'Unrelated')
+    await until(() => !h.rt.workView()[task.work.id].active)
+    assert.equal(h.reports().length, 1)
+    assert.equal(task.work.source.pendingReport, undefined)
+  }))
+}
+
+for (const [reason, unconfirmed, retryable] of [['error', false, false], ['error', true, true], ['interrupted', false, true]]) {
+  test(`delegation does not auto-continue ${reason}, unconfirmed=${unconfirmed}, retryable=${retryable}`, () => withRecovery(async h => {
+    const task = await h.delegate()
+    task.driver.finish(reason, 'Not eligible', unconfirmed, retryable)
+    await task.following
+    assert.equal(task.driver.calls.length, 1)
+    assert.ok(task.work.source.pendingReport)
+    assert.equal(h.rt.workView()[task.work.id].retryWaiting, undefined)
+  }))
+}
+
+test('ordinary chat does not automatically continue a transient failure', () => withRecovery(async h => {
+  const work = await h.session(h.worker)
+  await h.input(work)
+  const driver = h.rt.driverOf(work.id)
+  driver.finish('error', 'Temporary failure', false, true)
+  await until(() => !h.rt.workView()[work.id].active)
+  assert.equal(driver.calls.length, 1)
+  assert.equal(work.source, undefined)
+  assert.equal(h.reports().length, 0)
+}))
+
+test('automatic continuations leave the 12 delegation budget intact', () => withLead(async h => {
+  const worker = await h.role('Worker')
+  const lead = await h.role('Lead', delegateType('feature', false), { lead: true })
+  const conversation = await h.session(lead)
+  const send = h.rt.send
+  let calls = 0
+  h.rt.send = (...args) => {
+    if (args[0] === worker.id && ++calls <= 5) return Promise.resolve({ mode: 'turn', completion: Promise.resolve({ reason: 'error', retryable: true }) })
+    return send(...args)
+  }
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    const following = h.rt.followLead(lead.id, conversation.id, completed(delegateType('feature', false)))
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await retryUntil(() => h.lines(conversation).some(line => line.text?.includes(`自动继续（${attempt}/5）`)))
+      mock.timers.tick(30_000)
+    }
+    mock.timers.reset()
+    await following
+    assert.equal(calls, 17, '12 delegations plus 5 automatic continuations')
+    assert.equal(h.rt.sessionsOf(h.rt.findProfile(worker.id)).length, 12)
+    assert.ok(h.lines(conversation).some(line => /12 次派活上限/.test(line.text)))
+  } finally { mock.timers.reset() }
 }))

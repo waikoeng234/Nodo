@@ -1,4 +1,4 @@
-import { h, useState, useRef, useSyncExternalStore, useStateView, call, readImage, NodoLogo } from './ui-shared.js'
+import { h, useState, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, NodoLogo, rightPanelService } from './ui-shared.js'
 import { Composer } from './composer.js'
 import { RolePicker } from './role-seat.js'
 import { nativeRole, readDrafts, heldImages, subscribeNavigation, readNavigation, setNavigation } from './page.js'
@@ -16,6 +16,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
   function NewConversation({ draft, sourceSessionId }) {
     const { view, error: loadError } = useStateView()
     const navigation = useSyncExternalStore(subscribeNavigation, readNavigation)
+    const state = useSyncExternalStore(space.subscribe, space.getSnapshot)
     const key = `new:${draft?.id ?? sourceSessionId}`
     const [text, setText] = useState(() => readDrafts()[key] ?? '')
     const [images, setImages] = useState(() => heldImages[key] ?? [])
@@ -37,9 +38,14 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const sourceSession = sourceRole?.sessions.find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId)
     const profile = profiles.find(role => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : undefined)))
     const workspace = view?.workspaces.find(item => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view?.workspaces[0]
+    const panelVisible = !sourceSessionId && draft && state.active && state.drafting && state.draft?.id === draft.id
+    useLayoutEffect(() => {
+      if (panelVisible && workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: workspace.cwd, ...(view.readOnly != null ? { readOnly: true } : {}) })
+    }, [panelVisible, workspace?.id, workspace?.cwd, view?.readOnly])
     const disabled = busy || !view || view.readOnly != null
     const active = () => space.getSnapshot().active && (draft
-      ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id : ctx.uiSession.adapter.current.getSnapshot().key === sourceSessionId)
+      ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id
+      : ctx.uiSession.adapter.current.getSnapshot().key === sourceSessionId)
     const changeText = value => {
       setText(value)
       try { localStorage.setItem('nodo.drafts', JSON.stringify({ ...readDrafts(), [key]: value })) } catch {}
@@ -54,11 +60,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
       return next
     })
     const chooseRole = id => { updateSelection(current => ({ ...current, profile: id, choices: {} })); setError('') }
-    // The card's model and thinking seed a new conversation; the tier still carries
-    // over from the role's last conversation that chose one.
-    const held = profile && { permission: profile.sessions.slice().reverse().find(session =>
-      !(session.draftedAt && !session.briefSent) && session.permission !== undefined)?.permission ?? profile.permission }
-    const composerProfile = profile && { ...profile, ...held, ...choices }
+    const composerProfile = profile && { ...profile, ...choices }
     const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
     // The picker's files split the way the workflow composer's do: images ride
     // the draft inline, documents become stored references that only turn into

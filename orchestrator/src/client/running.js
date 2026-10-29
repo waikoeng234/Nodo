@@ -1,4 +1,4 @@
-import { h, useState, useEffect, useRef, useSyncExternalStore, useStateView, nativeSpace } from './ui-shared.js'
+import { h, useState, useEffect, useRef, useSyncExternalStore, useStateView, nativeSpace, workLabel, workDot, StateDot } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 
@@ -47,7 +47,7 @@ export function engineRunningLabel(engine, now) {
   return silent >= 30000 ? `${label} · ${runDuration(silent)} 未收到新事件` : label
 }
 
-export function RunningLine({ since, engine }) {
+export function RunningLine({ since, engine, work }) {
   const clock = useRef({ since, at: Date.now() })
   if (clock.current.since !== since) clock.current = { since, at: Date.now() }
   const epoch = Number.isFinite(since) ? since : clock.current.at
@@ -66,7 +66,7 @@ export function RunningLine({ since, engine }) {
     return () => media.removeEventListener('change', update)
   }, [])
   const elapsed = Math.max(0, now - epoch)
-  const label = engineRunningLabel(engine, now)
+  const label = work?.suspect ? workLabel(work) : engineRunningLabel(engine, now)
   const template = RUNNING_COLORS[reduced ? 0 : Math.floor(elapsed / RUNNING_COLOR_HOLD) % RUNNING_COLORS.length]
   const letter = (text, index) => h('span', {
     key: index, className: 'nodo-running-letter', style: { '--nodo-running-stagger': `${180 + index * 45}ms` },
@@ -77,7 +77,7 @@ export function RunningLine({ since, engine }) {
   } },
   h('span', { className: 'nodo-running-divider', 'aria-hidden': true }),
   h('span', { className: 'nodo-running-line' },
-    h('span', { className: 'nodo-running-icon', 'aria-hidden': true },
+    work?.suspect ? h(StateDot, { state: workDot(work), size: 7 }) : h('span', { className: 'nodo-running-icon', 'aria-hidden': true },
       h(RoleAvatar, { profile: { avatarTemplate: 'sky' }, size: '100%' })),
     h('span', { className: 'nodo-running-label', 'aria-label': label },
       h('span', { 'aria-hidden': true }, Array.from(label, letter))),
@@ -86,7 +86,7 @@ export function RunningLine({ since, engine }) {
       h('span', { 'aria-label': `用时 ${runDuration(elapsed)}` },
         h('span', { 'aria-hidden': true }, letter('用', 4), letter('时', 5), ' ',
           h('span', { className: 'nodo-running-time' }, letter(runDuration(elapsed), 6))))),
-    h('span', { className: 'nodo-running-dots', 'aria-hidden': true },
+    !work?.suspect && h('span', { className: 'nodo-running-dots', 'aria-hidden': true },
       [0, 1, 2].map(index => h('span', { key: index, className: 'nodo-running-dot',
         style: { '--nodo-running-stagger': `${120 + index * 170}ms` } })))))
 }

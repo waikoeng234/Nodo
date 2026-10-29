@@ -116,7 +116,7 @@ export function jsonRpcProcess<Params = unknown>({ bin, args, cwd, env, jsonrpc,
       return new Promise<unknown>((resolve, reject) => {
         const id = ++sequence
         // ACP session/prompt settles only at turn completion; null leaves its
-        // lifetime to the driver's cancel/dispose and the host's idle watchdog.
+        // lifetime to the Agent's result or explicit cancel/dispose; host idle checks only warn.
         const timer = timeout === null ? null : setTimeout(() => { pending.delete(id); reject(Object.assign(new Error(`CLI request timed out: ${method}`), { name: 'TimeoutError' })) }, timeout)
         pending.set(id, { resolve, reject, timer, method })
         try { write({ id, method, params }) }

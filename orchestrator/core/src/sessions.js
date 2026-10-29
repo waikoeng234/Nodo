@@ -59,13 +59,8 @@ export function install(rt) {
     await rt.save()
     return { ...profile, ...session, model: session.model, thinking: session.thinking, driverSessionId: session.driverSessionId, workspaceId: session.workspaceId, workspaceName: workspace?.name, name: session.profileName, sessionName: session.name, profileId: profile.id, workspaceKey: `${session.engine}:${session.cwd}` }
   }
-  // A new conversation starts from the role card's model and thinking; the
-  // permission tier still carries over from the last conversation that chose one.
-  const sessionChoices = (profile) => {
-    const lastChoice = key => sessionsOf(profile).slice().reverse()
-      .find(item => !(item.draftedAt && !item.briefSent) && item[key] !== undefined)?.[key]
-    return { model: profile.model, thinking: profile.thinking, permission: lastChoice('permission') }
-  }
+  // A new conversation starts from the role card's model, thinking and permission.
+  const sessionChoices = profile => ({ model: profile.model, thinking: profile.thinking, permission: profile.permission })
   const cleanSessionChoices = (profile, choices = {}) => {
     if (!choices || typeof choices !== 'object' || Array.isArray(choices)
       || Object.keys(choices).some(key => !['model', 'thinking', 'permission'].includes(key))) {

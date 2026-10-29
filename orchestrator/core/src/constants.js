@@ -18,10 +18,10 @@ export const MAX_PROFILES = 24
 export const TASK_TYPES_MAX = 20
 export const TASK_TYPE_NAME_MAX = 20
 export const TASK_TYPE_WHEN_MAX = 200
-// How long a driver spawn may take to say anything before a turn is failed.
+// Silence limit before warning for a starting or active turn.
 export const TURN_IDLE_TIMEOUT_MS = 120_000
 // An engine-announced retry waits out its own backoff, so that stretch of
-// silence gets a wider window.
+// silence gets a wider window before warning.
 export const RETRY_IDLE_TIMEOUT_MS = 600_000
 // Workflow run defaults, fixed into each run's snapshot when it starts.
 export const RUN_LIMITS = { cancelConfirmMs: 15_000, backMax: 2, eventsMax: 1000 }

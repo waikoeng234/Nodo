@@ -61,8 +61,8 @@ type ClaudeFrame<Response = unknown> = { session_id?: unknown } & (
       | { subtype: 'error'; response?: never; error?: string }) }
   | ClaudeSystem
   | { type: 'user'; isReplay?: boolean; message?: { content?: ClaudeContent[] }; tool_use_result?: Parameters<typeof claudeFileChanges>[2] }
-  | { type: 'assistant'; message?: { id?: string; content?: ClaudeContent[]; usage?: ClaudeUsage }; parent_tool_use_id?: string | null }
-  | { type: 'result'; subtype?: string; is_error?: boolean; errors?: (string | { message?: string })[]; error?: { message?: string }
+  | { type: 'assistant'; error?: string; message?: { id?: string; content?: ClaudeContent[]; usage?: ClaudeUsage }; parent_tool_use_id?: string | null }
+  | { type: 'result'; subtype?: string; is_error?: boolean; api_error_status?: number | null; errors?: (string | { message?: string })[]; error?: { message?: string }
       result?: unknown; modelUsage?: Record<string, { contextWindow?: number }>; usage?: ClaudeUsage
       user_message_uuids?: string[]; user_message_uuid?: string }
   | { type: 'stream_event'; event?: ClaudeStreamEvent; parent_tool_use_id?: string | null }
@@ -74,7 +74,7 @@ type ClaudeTurn = {
   id: string; started: boolean; tools: Map<string, ClaudeTool>; completedTools: Set<string>; blocks: Map<number, ClaudeBlock>
   thinking: Map<number | undefined, string>; texts: Map<number | undefined, string>; messages: Set<string>; steers: Set<string | undefined>; sawText: boolean
   interrupting: boolean; settle: (() => void) | null; changes?: FileChanges; done?: Promise<void>
-  compacting?: boolean; messageId?: string; contextUsed?: number; usage?: Usage; unconfirmed?: boolean
+  compacting?: boolean; messageId?: string; contextUsed?: number; usage?: Usage; unconfirmed?: boolean; errorKind?: string
 }
 type ClaudeControl = { resolve(value: unknown): void; reject(error: Error): void }
 
@@ -251,7 +251,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     for (const id of requests.keys()) emit({ type: 'request/closed', id })
     requests.clear()
   }
-  const end = (reason: 'done' | 'interrupted' | 'error', error?: unknown, usage?: Usage, text?: string) => {
+  const end = (reason: 'done' | 'interrupted' | 'error', error?: unknown, usage?: Usage, text?: string, retryable = false) => {
     if (!running) return
     const turn = running
     running = null
@@ -260,7 +260,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     turn.settle?.()
     closeRequests()
     if (turn.changes) emit(turn.changes.snapshot(turn.id))
-    emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) })
+    emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) })
   }
   const control = (request: { subtype: string; cancel_queued?: boolean }) => new Promise<unknown>((resolve, reject) => {
     const request_id = `orch-${++controlSeq}`
@@ -437,6 +437,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       return
     }
     if (frame.type === 'assistant') {
+      if (!frame.parent_tool_use_id) turn.errorKind = frame.error
       const used = claudePromptTokens(frame.message?.usage)
       if (used !== undefined) turn.contextUsed = used
       const messageId = frame.message?.id
@@ -494,7 +495,9 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       }))
       for (const uuid of frame.user_message_uuids ?? [frame.user_message_uuid]) turn.steers.delete(uuid)
       if (!turn.interrupting && turn.steers.size > 0) { turn.usage = usage; turn.sawText = false; return }
-      end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined)
+      const retryable = turn.errorKind !== undefined ? ['overloaded', 'server_error'].includes(turn.errorKind)
+        : typeof frame.api_error_status === 'number' && (frame.api_error_status === 408 || frame.api_error_status >= 500 && frame.api_error_status < 600)
+      end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, retryable)
     }
   }
   const ask = (frame: ClaudeRequest) => {

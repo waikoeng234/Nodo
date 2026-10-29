@@ -59,12 +59,15 @@ export const cleanHard = raw => {
 export function install(rt) {
   const { state } = rt
 
-  // A permission tier is one of the host's three autonomy levels (spi.js), kept
-  // only when the engine declares it. An unset tier is the engine's default.
+  const defaultPermission = engine => {
+    const modes = rt.enginePermissionModes(engine)
+    return modes.includes('workspace') ? 'workspace' : modes[0]
+  }
   const cleanPermission = (engine, raw) => {
-    if (raw === undefined || raw === null || raw === '') return undefined
+    const modes = rt.enginePermissionModes(engine)
+    if ((raw === undefined || raw === null || raw === '') && !modes.length) return undefined
     const permission = String(raw)
-    if (!rt.enginePermissionModes(engine).includes(permission)) throw Object.assign(new Error(`Engine ${engine} does not offer the permission tier "${permission}"`), { code: 'orch/invalid' })
+    if (!modes.includes(permission)) throw Object.assign(new Error(`Engine ${engine} does not offer the permission tier "${permission}"`), { code: 'orch/invalid' })
     return permission
   }
 
@@ -109,7 +112,7 @@ export function install(rt) {
     const defaults = rt.engineConfig(engine)
     const chosenModel = cleanModel(model === undefined ? defaults.model : model)
     const chosenThinking = cleanThinking(thinking === undefined ? defaults.thinking : thinking)
-    const chosenPermission = cleanPermission(engine, permission)
+    const chosenPermission = cleanPermission(engine, permission === undefined ? defaultPermission(engine) : permission)
     const profile = {
       id: randomUUID(),
       name: cleanName(name),
@@ -136,6 +139,14 @@ export function install(rt) {
     await rt.save()
     rt.releaseDriver?.(profile.id)
     return profileView(profile)
+  }
+
+  // The session the card is talking in: the explicit pointer, or — unset on an
+  // implicit first conversation — the first live session, exactly as the rail
+  // shows it.
+  const activeSessionOf = profile => {
+    const activeId = profile.activeSessionId ?? rt.sessionsOf(profile).find(session => !session.archivedAt)?.id
+    return rt.sessionsOf(profile).find(item => item.id === activeId)
   }
 
   const updateProfile = async (id, changes) => {
@@ -189,12 +200,13 @@ export function install(rt) {
     ensureFallback(state.profiles)
     if (profile.model === undefined) delete profile.model
     if (profile.thinking === undefined) delete profile.thinking
+    if (profile.permission === undefined) delete profile.permission
     if (profile.taskTypes === undefined) delete profile.taskTypes
     if (profile.hard === undefined) delete profile.hard
     if (!profile.lead) delete profile.lead
     if (!profile.identity) delete profile.identity
     if (respawn || permissionChanged) {
-      const active = rt.sessionsOf(profile).find(item => item.id === profile.activeSessionId)
+      const active = activeSessionOf(profile)
       // The card's model/thinking pair is the default for conversations it opens
       // later: a started conversation keeps its own pair, an unsent draft adopts
       // the card in place. Any other card change outlives a started conversation,
@@ -318,18 +330,18 @@ export function install(rt) {
       sessions: rt.sessionsOf(profile)
         .filter(session => session.archivedAt || session.id !== profile.id || used)
         .filter(session => session.archivedAt || !session.draftedAt || session.briefSent || session.id === profile.activeSessionId)
-        .map(session => ({ ...session, workspaceRef: rt.sessionWorkspace(profile, session)?.id,
+        .map(({ reportQueue, ...session }) => ({ ...session, workspaceRef: rt.sessionWorkspace(profile, session)?.id,
           // The rail's session time is its latest activity — the dispatch
           // transcript's last line, the native twin's last turn, or a native
           // send stamp — falling back to when the session was created.
           updatedAt: (Math.max(state.transcripts[session.id]?.at(-1)?.at ?? 0, rt.nativeWork?.(session)?.lastAt ?? 0, session.lastActiveAt ?? 0)
             || session.createdAt) ?? profile.createdAt })),
-      activeSessionId: profile.deletedAt ? undefined : profile.activeSessionId ?? rt.sessionsOf(profile).find(session => !session.archivedAt)?.id }
+      activeSessionId: profile.deletedAt ? undefined : activeSessionOf(profile)?.id }
   }
 
   Object.assign(rt, {
     createProfile, updateProfile, deleteProfile, findProfile, activeProfiles, profileView, restartConversations, orderProfiles,
-    saveRolePreset, deleteRolePreset, cleanPermission,
+    saveRolePreset, deleteRolePreset, cleanPermission, defaultPermission,
     profilesView: () => Object.values(state.profiles).map(profileView),
   })
 }

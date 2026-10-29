@@ -4,11 +4,12 @@
 // of its own once the current one ends. A steer the engine did not confirm in time
 // joins the turn too: it may already be inside, and sending it again could do the
 // work twice.
-import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TIMEOUT_MS, UNCONFIRMED_STEER } from './constants.js'
+import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TIMEOUT_MS, RUN_LIMITS, UNCONFIRMED_STEER } from './constants.js'
 import { clip } from './text.js'
 import { projectContent } from './resources.js'
 import { changesTool, normalizeProgress, planObservation, previewRecord } from './stream-records.js'
 import { createMessageStream } from './message-stream.js'
+import { randomUUID } from 'node:crypto'
 
 const readable = (value, imageOutput = false) => projectContent(value, imageOutput).text
 
@@ -24,12 +25,12 @@ const IDENTITY_FALLBACK = {
 export function install(rt) {
   const { ctx } = rt
   const settingsOf = (profile, session = profile) => JSON.stringify([session.model, session.thinking, session.permission ?? profile.permission])
-  /** @type {Map<string, {starting:boolean, active:boolean, turnId:?string, seq:number, buffer:string, toolOpen:string|null, queued:{text:string, images:object[], seq:number, resolve:Function}[], waiters:{seq:number, resolve:Function}[], binds:{seq:number, resolve:Function}[], idleTimer:?Object}>} */
+  /** @type {Map<string, {starting:boolean, active:boolean, finishing:boolean, suspect:boolean, cancelledStart:boolean, turnId:?string, seq:number, buffer:string, toolOpen:string|null, queued:{text:string, images:object[], seq:number, resolve:Function}[], waiters:{seq:number, resolve:Function}[], binds:{seq:number, resolve:Function}[], idleTimer:?Object, cancelTimer:?Object}>} */
   const turns = new Map()
   const stateOf = (profileId) => {
     let entry = turns.get(profileId)
     if (entry === undefined) {
-      entry = { starting: false, active: false, finishing: false, turnId: null, endedTurn: null, startedAt: null, task: null, seq: 0, nextSeq: 0, joined: [], buffer: '', messages: null, planLine: null, planTurn: null, toolOpen: null, tools: new Map(), closedTools: new Set(), queued: [], waiters: [], binds: [], idleTimer: null, watched: true }
+      entry = { starting: false, active: false, finishing: false, suspect: false, cancelledStart: false, turnId: null, endedTurn: null, startedAt: null, task: null, seq: 0, nextSeq: 0, joined: [], buffer: '', messages: null, planLine: null, planTurn: null, toolOpen: null, tools: new Map(), closedTools: new Set(), queued: [], waiters: [], binds: [], idleTimer: null, cancelTimer: null, watched: true }
       turns.set(profileId, entry)
     }
     return entry
@@ -66,8 +67,8 @@ export function install(rt) {
       return false
     })
   }
-  // Between turns the engine can still report the turn that ended here (watchdog,
-  // unconfirmed stop); those events belong to no later turn.
+  // Between turns the engine can still report the turn that ended here;
+  // those events belong to no later turn.
   const foreign = (st, event) => event.turnId !== undefined
     && (st.turnId === null ? String(event.turnId) === st.endedTurn : String(event.turnId) !== String(st.turnId))
   const settle = (st, seq, outcome) => {
@@ -110,11 +111,19 @@ export function install(rt) {
   // The one event sink every driver of this plugin reports through (drivers.js).
   const driverSink = (profileId, event) => {
     const st = stateOf(profileId)
+    if (event && event.type !== 'session' && event.type !== 'turn/start' && event.type !== 'turn/end' && !foreign(st, event) && (st.active || st.starting)) {
+      armIdle(profileId, st, event.kind === 'retry' && event.phase === 'start' ? RETRY_IDLE_TIMEOUT_MS : TURN_IDLE_TIMEOUT_MS)
+    }
     switch (event?.type) {
       case 'session':
         if (event.state === 'closed') { say(profileId, { who: 'system', kind: 'note', text: 'engine session closed' }) }
         return
       case 'turn/start':
+        if (!st.active && !st.starting && st.cancelledStart && !rt.isCompacting(profileId)) {
+          st.endedTurn = event.turnId == null ? null : String(event.turnId)
+          return
+        }
+        st.cancelledStart = false
         st.active = true
         st.starting = false
         st.turnId = event.turnId ?? null
@@ -139,7 +148,6 @@ export function install(rt) {
         if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
         messagesOf(profileId, st).accept(event)
         if (typeof event.text === 'string' && event.text !== '') rt.statsOutput(profileId)
-        armIdle(profileId, st)
         return
       case 'changes': {
         if (foreign(st, event) || st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
@@ -176,7 +184,6 @@ export function install(rt) {
           st.planTurn = event.turnId !== undefined ? String(event.turnId) : null
         }
         void rt.save().catch(() => {})
-        armIdle(profileId, st)
         return
       }
       case 'activity': {
@@ -211,7 +218,6 @@ export function install(rt) {
             if (event.phase === 'start') st.lifecycles.set(key, line)
             else st.lifecycles.delete(key)
           }
-          armIdle(profileId, st, event.kind === 'retry' && event.phase === 'start' ? RETRY_IDLE_TIMEOUT_MS : TURN_IDLE_TIMEOUT_MS)
         }
         return
       case 'tool':
@@ -237,7 +243,6 @@ export function install(rt) {
           applyToolFields(line, event)
           const record = event.noRecord ? null : st.records?.accept(event)
           if (record) line.presentation = previewRecord(record)
-          armIdle(profileId, st)
           return
         }
         const repeated = phase === 'start' && key !== null && st.tools.has(key)
@@ -274,7 +279,6 @@ export function install(rt) {
           saveRecord(profileId, st, line, record)
         }
         st.toolOpen = phase === 'end' ? null : String(event.name ?? 'tool')
-        armIdle(profileId, st)
         return
       }
       case 'request/opened': {
@@ -301,7 +305,7 @@ export function install(rt) {
           if (st.requests.get(event.id) === request) st.requests.delete(event.id)
           await rt.save()
         } : undefined)
-        armIdle(profileId, st)
+        if (!foreign(st, event)) armIdle(profileId, st)
         return
       }
       case 'request/closed':
@@ -311,15 +315,16 @@ export function install(rt) {
           st.requests.delete(event.id)
         }
         rt.closeApproval(event.id)
-        armIdle(profileId, st)
+        if (!foreign(st, event)) armIdle(profileId, st)
         return
       case 'note':
         closeMessages(st)
         if (typeof event.text === 'string' && event.text) say(profileId, { who: 'system', kind: 'note', text: event.text })
-        armIdle(profileId, st)
         return
       case 'turn/end': {
-        if (st.finishing || foreign(st, event)) return
+        if ((!st.active && !st.starting) || st.finishing || foreign(st, event)) return
+        clearTimeout(st.cancelTimer)
+        st.cancelTimer = null
         st.finishing = true
         const ended = st.turnId ?? event.turnId
         if (ended !== undefined && ended !== null) st.endedTurn = String(ended)
@@ -342,6 +347,9 @@ export function install(rt) {
         }
         const seq = st.seq
         const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
+        const reply = replyLines.find(line => line.reply)
+        const session = rt.conversationOf?.(profileId)?.session
+        const replyId = session?.engine === 'dsh' ? reply?.messageId : reply ? (reply.replyId ??= randomUUID()) : undefined
         const flushed = st.messages.text()
         rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
         st.task = null
@@ -376,10 +384,13 @@ export function install(rt) {
           const unconfirmed = event.unconfirmed === true ? { unconfirmed: true } : {}
           // `final` is the engine's own last message of the turn; `text` stays the whole turn.
           const final = typeof event.text === 'string' && event.text.trim() !== '' ? { final: event.text } : {}
-          settle(st, seq, { reason, text: flushed !== '' ? flushed : final.final, ...final, ...unconfirmed })
-          st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed } }
+          const reply = replyId ? { replyId } : {}
+          const retryable = reason === 'error' && event.retryable === true ? { retryable: true } : {}
+          settle(st, seq, { reason, text: flushed !== '' ? flushed : final.final, ...final, ...unconfirmed, ...reply, ...retryable })
+          st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed, ...reply, ...retryable } }
           for (const joined of st.joined.splice(0)) settle(st, joined, st.ended.outcome)
           drain(profileId, st)
+          void rt.flushLeadReports?.(profileId)
         }
         void Promise.resolve(st.recordWrites).then(() => rt.save()).then(() => finish(event.reason), () => {
           rt.appendLine(profileId, { who: 'agent', kind: 'error', text: 'Task finished, but its saved context could not be persisted.' })
@@ -392,21 +403,20 @@ export function install(rt) {
     }
   }
 
-  // A safety net for engines that die silently: a turn that shows no life for
-  // TURN_IDLE_TIMEOUT_MS is failed rather than left hanging open. A driver with
-  // `watchdog: false` reports only whole messages and its host owns liveness. A
-  // card waiting on the user is not silence; the engine is stopped with the turn.
+  // A driver with `watchdog: false` leaves liveness to its host. Waiting on
+  // a user card is not silence; idle turns only warn until their engine ends them.
   const armIdle = (profileId, st, ms = TURN_IDLE_TIMEOUT_MS) => {
     disarmIdle(st)
     if (st.finishing || (!st.active && !st.starting) || !st.watched || rt.awaitingAnswer?.(profileId)) return
     st.idleTimer = setTimeout(() => {
       st.idleTimer = null
-      driverSink(profileId, { type: 'turn/end', reason: 'error', error: `no engine activity for ${ms / 1000}s; the turn was failed`, unconfirmed: true })
-      void rt.interruptDriver?.(profileId)
+      st.suspect = true
+      say(profileId, { who: 'system', kind: 'note', text: `${ms / 1000} 秒未收到引擎活动，疑似卡住；仍在等待，可手动停止。` })
     }, ms)
     st.idleTimer.unref?.()
   }
   const disarmIdle = (st) => {
+    st.suspect = false
     if (st.idleTimer !== null) {
       clearTimeout(st.idleTimer)
       st.idleTimer = null
@@ -424,6 +434,9 @@ export function install(rt) {
     st.seq = seq
     st.task = task
     st.starting = true
+    st.cancelledStart = false
+    st.messages = null
+    st.buffer = ''
     st.startedAt = Date.now()
     st.watched = true
     rt.statsRound(profileId)
@@ -499,7 +512,7 @@ export function install(rt) {
     } else settle(st, item.seq, st.ended?.seq === host ? st.ended.outcome : { reason: 'done' })
     return outcome
   }
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false, origin } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false, origin, cancelled } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
     rt.assertSessionWritable?.(profile, session)
     profileId = session.id
@@ -528,6 +541,7 @@ export function install(rt) {
     }
     const refs = await rt.saveImages(images)
     rt.assertSessionWritable?.(profile, session)
+    if (cancelled?.()) throw Object.assign(new Error('Send cancelled'), { code: 'orch/cancelled' })
     refuseBusy()
     const st = stateOf(profileId)
     const seq = ++st.nextSeq
@@ -582,18 +596,24 @@ export function install(rt) {
 
   const interrupt = async (profileId, sessionId) => {
     profileId = rt.conversation(profileId, sessionId).session.id
+    if (rt.cancelLeadRetry?.(profileId)) return true
     const st = stateOf(profileId)
     for (const queued of st.queued) { queued.cancelled = true; queued.resolve({ reason: 'interrupted' }) }
     st.queued.length = 0
     const seq = st.seq
-    await rt.interruptDriver(profileId)
-    if (st.starting && !st.active && st.seq === seq) {
-      st.task = null
-      st.starting = false
-      void rt.save().catch(() => {})
-      disarmIdle(st)
-      settle(st, seq, { reason: 'interrupted', unconfirmed: true })
+    const ended = st.active || st.starting ? new Promise(resolve => st.waiters.push({ seq, resolve })) : null
+    if ((st.active || st.starting) && !st.finishing && st.cancelTimer === null) {
+      st.cancelTimer = setTimeout(() => {
+        st.cancelTimer = null
+        if (st.seq === seq && (st.active || st.starting) && !st.finishing) {
+          st.cancelledStart = st.turnId === null
+          driverSink(profileId, { type: 'turn/end', reason: 'interrupted', unconfirmed: true })
+        }
+      }, RUN_LIMITS.cancelConfirmMs)
+      st.cancelTimer.unref?.()
     }
+    const stopped = rt.interruptDriver(profileId)
+    await (ended ? Promise.race([stopped, ended]) : stopped)
     return true
   }
 
@@ -603,6 +623,7 @@ export function install(rt) {
       const buffer = st.active || st.starting ? st.messages?.text() ?? st.buffer : ''
       return [profileId, {
         active: st.active || st.starting || st.finishing || rt.isCompacting(profileId),
+        suspect: st.suspect,
         tool: st.toolOpen,
         since: st.startedAt,
         buffer: buffer === '' ? null : clip(rt.redactDeepSecrets(buffer), 4000, 'live reply'),
@@ -623,11 +644,14 @@ export function install(rt) {
           queued: local.queued + native.queued }
       }
     }
+    for (const [id, work] of Object.entries(view)) {
+      if (rt.leadRetryWaiting?.(id)) Object.assign(work, { active: true, retryWaiting: true })
+    }
     return view
   }
 
   ctx.effect(() => () => {
-    for (const st of turns.values()) disarmIdle(st)
+    for (const st of turns.values()) { disarmIdle(st); clearTimeout(st.cancelTimer) }
   }, 'nodo: dispatch idle timers')
 
   Object.assign(rt, { driverSink, send, queuedMessage, interrupt, workView, drainQueue: id => drain(id, stateOf(id)), rearmIdle: id => armIdle(id, stateOf(id)) })

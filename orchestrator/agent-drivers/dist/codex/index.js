@@ -183,7 +183,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             emit({ type: 'request/closed', id });
         requests.clear();
     };
-    const end = (reason, error) => {
+    const end = (reason, error, retryable = false) => {
         if (!running)
             return;
         const turn = running;
@@ -192,7 +192,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         if (!turn.compacting && turn.started)
             emit(turn.changes.snapshot(turn.id));
         turn.settle?.();
-        emit({ type: 'turn/end', turnId: turn.id, reason, ...(turn.final !== undefined ? { text: turn.final } : {}), ...(error ? { error } : {}), ...(turn.usage ? { usage: turn.usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) });
+        emit({ type: 'turn/end', turnId: turn.id, reason, ...(turn.final !== undefined ? { text: turn.final } : {}), ...(error ? { error } : {}), ...(turn.usage ? { usage: turn.usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && !turn.cancelled && retryable ? { retryable: true } : {}) });
     };
     const start = (id) => {
         if (!running || running.started)
@@ -376,7 +376,13 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         }
         if (method === 'turn/completed' && running.started && params.turn?.id === running.id) {
             const status = params.turn?.status;
-            end(status === 'completed' ? 'done' : status === 'interrupted' ? 'interrupted' : 'error', params.turn?.error?.message);
+            const info = params.turn.error?.codexErrorInfo;
+            const connection = typeof info === 'object' && info !== null
+                ? ['httpConnectionFailed', 'responseStreamConnectionFailed', 'responseStreamDisconnected', 'responseTooManyFailedAttempts'].find(key => Object.hasOwn(info, key)) : undefined;
+            const http = connection && typeof info === 'object' ? info[connection]?.httpStatusCode : undefined;
+            const retryable = typeof info === 'string' ? ['serverOverloaded', 'rateLimitExceeded', 'internalServerError'].includes(info)
+                : !!connection && (http == null || http === 408 || http >= 500 && http < 600);
+            end(status === 'completed' ? 'done' : status === 'interrupted' ? 'interrupted' : 'error', params.turn.error?.message, retryable);
         }
     };
     const ask = (message) => {
@@ -557,6 +563,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             const turn = running;
             if (!turn)
                 return;
+            turn.cancelled = true;
             if (!turn.started) {
                 turn.unconfirmed = true;
                 end('interrupted');

@@ -9291,8 +9291,8 @@ var ComposerGlyph = (running) => (0, import_react.createElement)(
   { width: 16, height: 16, viewBox: "0 0 16 16", "aria-hidden": true },
   running ? (0, import_react.createElement)("rect", { x: 3, y: 3, width: 10, height: 10, rx: 3, fill: "currentColor" }) : (0, import_react.createElement)("path", { fill: "currentColor", d: GLYPH.send })
 );
-var workLabel = (work) => work?.seen ? "" : { "waiting-approval": "\u7B49\u5F85\u5BA1\u6279", "waiting-question": "\u7B49\u5F85\u56DE\u7B54", completed: "\u5DF2\u5B8C\u6210", stopped: "\u5DF2\u505C\u6B62", blocked: "\u672A\u5B8C\u6210", error: "\u6267\u884C\u5931\u8D25", unavailable: "\u72B6\u6001\u4E0D\u53EF\u7528" }[work?.status] ?? (work?.active ? "\u8FD0\u884C\u4E2D" : "");
-var workDot = (work) => work?.status?.startsWith("waiting-") || work?.status === "blocked" ? "warning" : work?.active ? "ongoing" : work?.status === "completed" ? "done" : work?.status === "error" ? "error" : "idle";
+var workLabel = (work) => work?.seen ? "" : { "waiting-approval": "\u7B49\u5F85\u5BA1\u6279", "waiting-question": "\u7B49\u5F85\u56DE\u7B54", completed: "\u5DF2\u5B8C\u6210", stopped: "\u5DF2\u505C\u6B62", blocked: "\u672A\u5B8C\u6210", error: "\u6267\u884C\u5931\u8D25", unavailable: "\u72B6\u6001\u4E0D\u53EF\u7528" }[work?.status] ?? (work?.suspect ? "\u7591\u4F3C\u5361\u4F4F" : work?.active ? "\u8FD0\u884C\u4E2D" : "");
+var workDot = (work) => work?.suspect || work?.status?.startsWith("waiting-") || work?.status === "blocked" ? "warning" : work?.active ? "ongoing" : work?.status === "completed" ? "done" : work?.status === "error" ? "error" : "idle";
 var runningOf = (profile, work) => {
   const states = (profile.sessions ?? []).map((session) => work?.[session.id]).filter(Boolean);
   const active = states.filter((state) => state.active);
@@ -9777,6 +9777,271 @@ var Diff = class {
   }
 };
 
+// node_modules/diff/libesm/util/string.js
+function longestCommonPrefix(str1, str2) {
+  let i;
+  for (i = 0; i < str1.length && i < str2.length; i++) {
+    if (str1[i] != str2[i]) {
+      return str1.slice(0, i);
+    }
+  }
+  return str1.slice(0, i);
+}
+function longestCommonSuffix(str1, str2) {
+  let i;
+  if (!str1 || !str2 || str1[str1.length - 1] != str2[str2.length - 1]) {
+    return "";
+  }
+  for (i = 0; i < str1.length && i < str2.length; i++) {
+    if (str1[str1.length - (i + 1)] != str2[str2.length - (i + 1)]) {
+      return str1.slice(-i);
+    }
+  }
+  return str1.slice(-i);
+}
+function replacePrefix(string, oldPrefix, newPrefix) {
+  if (string.slice(0, oldPrefix.length) != oldPrefix) {
+    throw Error(`string ${JSON.stringify(string)} doesn't start with prefix ${JSON.stringify(oldPrefix)}; this is a bug`);
+  }
+  return newPrefix + string.slice(oldPrefix.length);
+}
+function replaceSuffix(string, oldSuffix, newSuffix) {
+  if (!oldSuffix) {
+    return string + newSuffix;
+  }
+  if (string.slice(-oldSuffix.length) != oldSuffix) {
+    throw Error(`string ${JSON.stringify(string)} doesn't end with suffix ${JSON.stringify(oldSuffix)}; this is a bug`);
+  }
+  return string.slice(0, -oldSuffix.length) + newSuffix;
+}
+function removePrefix(string, oldPrefix) {
+  return replacePrefix(string, oldPrefix, "");
+}
+function removeSuffix(string, oldSuffix) {
+  return replaceSuffix(string, oldSuffix, "");
+}
+function maximumOverlap(string1, string2) {
+  return string2.slice(0, overlapCount(string1, string2));
+}
+function overlapCount(a, b2) {
+  let startA = 0;
+  if (a.length > b2.length) {
+    startA = a.length - b2.length;
+  }
+  let endB = b2.length;
+  if (a.length < b2.length) {
+    endB = a.length;
+  }
+  const map = Array(endB);
+  let k = 0;
+  map[0] = 0;
+  for (let j2 = 1; j2 < endB; j2++) {
+    if (b2[j2] == b2[k]) {
+      map[j2] = map[k];
+    } else {
+      map[j2] = k;
+    }
+    while (k > 0 && b2[j2] != b2[k]) {
+      k = map[k];
+    }
+    if (b2[j2] == b2[k]) {
+      k++;
+    }
+  }
+  k = 0;
+  for (let i = startA; i < a.length; i++) {
+    while (k > 0 && a[i] != b2[k]) {
+      k = map[k];
+    }
+    if (a[i] == b2[k]) {
+      k++;
+    }
+  }
+  return k;
+}
+function segment(string, segmenter2) {
+  const parts = [];
+  for (const segmentObj of Array.from(segmenter2.segment(string))) {
+    const segment2 = segmentObj.segment;
+    if (parts.length && /\s/.test(parts[parts.length - 1]) && /\s/.test(segment2)) {
+      parts[parts.length - 1] += segment2;
+    } else {
+      parts.push(segment2);
+    }
+  }
+  return parts;
+}
+function trailingWs(string, segmenter2) {
+  if (segmenter2) {
+    return leadingAndTrailingWs(string, segmenter2)[1];
+  }
+  let i;
+  for (i = string.length - 1; i >= 0; i--) {
+    if (!string[i].match(/\s/)) {
+      break;
+    }
+  }
+  return string.substring(i + 1);
+}
+function leadingWs(string, segmenter2) {
+  if (segmenter2) {
+    return leadingAndTrailingWs(string, segmenter2)[0];
+  }
+  const match = string.match(/^\s*/);
+  return match ? match[0] : "";
+}
+function leadingAndTrailingWs(string, segmenter2) {
+  if (!segmenter2) {
+    return [leadingWs(string), trailingWs(string)];
+  }
+  if (segmenter2.resolvedOptions().granularity != "word") {
+    throw new Error('The segmenter passed must have a granularity of "word"');
+  }
+  const segments = segment(string, segmenter2);
+  const firstSeg = segments[0];
+  const lastSeg = segments[segments.length - 1];
+  const head = /\s/.test(firstSeg) ? firstSeg : "";
+  const tail = /\s/.test(lastSeg) ? lastSeg : "";
+  return [head, tail];
+}
+
+// node_modules/diff/libesm/diff/word.js
+var extendedWordChars = "a-zA-Z0-9_\\u{AD}\\u{C0}-\\u{D6}\\u{D8}-\\u{F6}\\u{F8}-\\u{2C6}\\u{2C8}-\\u{2D7}\\u{2DE}-\\u{2FF}\\u{1E00}-\\u{1EFF}";
+var tokenizeIncludingWhitespace = new RegExp(`[${extendedWordChars}]+|\\s+|[^${extendedWordChars}]`, "ug");
+var WordDiff = class extends Diff {
+  equals(left, right, options) {
+    if (options.ignoreCase) {
+      left = left.toLowerCase();
+      right = right.toLowerCase();
+    }
+    return left.trim() === right.trim();
+  }
+  tokenize(value, options = {}) {
+    let parts;
+    if (options.intlSegmenter) {
+      const segmenter2 = options.intlSegmenter;
+      if (segmenter2.resolvedOptions().granularity != "word") {
+        throw new Error('The segmenter passed must have a granularity of "word"');
+      }
+      parts = segment(value, segmenter2);
+    } else {
+      parts = value.match(tokenizeIncludingWhitespace) || [];
+    }
+    const tokens = [];
+    let prevPart = null;
+    parts.forEach((part) => {
+      if (/\s/.test(part)) {
+        if (prevPart == null) {
+          tokens.push(part);
+        } else {
+          tokens.push(tokens.pop() + part);
+        }
+      } else if (prevPart != null && /\s/.test(prevPart)) {
+        if (tokens[tokens.length - 1] == prevPart) {
+          tokens.push(tokens.pop() + part);
+        } else {
+          tokens.push(prevPart + part);
+        }
+      } else {
+        tokens.push(part);
+      }
+      prevPart = part;
+    });
+    return tokens;
+  }
+  join(tokens) {
+    return tokens.map((token, i) => {
+      if (i == 0) {
+        return token;
+      } else {
+        return token.replace(/^\s+/, "");
+      }
+    }).join("");
+  }
+  postProcess(changes, options) {
+    if (!changes || options.oneChangePerToken) {
+      return changes;
+    }
+    let lastKeep = null;
+    let insertion = null;
+    let deletion = null;
+    changes.forEach((change) => {
+      if (change.added) {
+        insertion = change;
+      } else if (change.removed) {
+        deletion = change;
+      } else {
+        if (insertion || deletion) {
+          dedupeWhitespaceInChangeObjects(lastKeep, deletion, insertion, change, options.intlSegmenter);
+        }
+        lastKeep = change;
+        insertion = null;
+        deletion = null;
+      }
+    });
+    if (insertion || deletion) {
+      dedupeWhitespaceInChangeObjects(lastKeep, deletion, insertion, null, options.intlSegmenter);
+    }
+    return changes;
+  }
+};
+var wordDiff = new WordDiff();
+function dedupeWhitespaceInChangeObjects(startKeep, deletion, insertion, endKeep, segmenter2) {
+  if (deletion && insertion) {
+    const [oldWsPrefix, oldWsSuffix] = leadingAndTrailingWs(deletion.value, segmenter2);
+    const [newWsPrefix, newWsSuffix] = leadingAndTrailingWs(insertion.value, segmenter2);
+    if (startKeep) {
+      const commonWsPrefix = longestCommonPrefix(oldWsPrefix, newWsPrefix);
+      startKeep.value = replaceSuffix(startKeep.value, newWsPrefix, commonWsPrefix);
+      deletion.value = removePrefix(deletion.value, commonWsPrefix);
+      insertion.value = removePrefix(insertion.value, commonWsPrefix);
+    }
+    if (endKeep) {
+      const commonWsSuffix = longestCommonSuffix(oldWsSuffix, newWsSuffix);
+      endKeep.value = replacePrefix(endKeep.value, newWsSuffix, commonWsSuffix);
+      deletion.value = removeSuffix(deletion.value, commonWsSuffix);
+      insertion.value = removeSuffix(insertion.value, commonWsSuffix);
+    }
+  } else if (insertion) {
+    if (startKeep) {
+      const ws2 = leadingWs(insertion.value, segmenter2);
+      insertion.value = insertion.value.substring(ws2.length);
+    }
+    if (endKeep) {
+      const ws2 = leadingWs(endKeep.value, segmenter2);
+      endKeep.value = endKeep.value.substring(ws2.length);
+    }
+  } else if (startKeep && endKeep) {
+    const newWsFull = leadingWs(endKeep.value, segmenter2), [delWsStart, delWsEnd] = leadingAndTrailingWs(deletion.value, segmenter2);
+    const newWsStart = longestCommonPrefix(newWsFull, delWsStart);
+    deletion.value = removePrefix(deletion.value, newWsStart);
+    const newWsEnd = longestCommonSuffix(removePrefix(newWsFull, newWsStart), delWsEnd);
+    deletion.value = removeSuffix(deletion.value, newWsEnd);
+    endKeep.value = replacePrefix(endKeep.value, newWsFull, newWsEnd);
+    startKeep.value = replaceSuffix(startKeep.value, newWsFull, newWsFull.slice(0, newWsFull.length - newWsEnd.length));
+  } else if (endKeep) {
+    const endKeepWsPrefix = leadingWs(endKeep.value, segmenter2);
+    const deletionWsSuffix = trailingWs(deletion.value, segmenter2);
+    const overlap = maximumOverlap(deletionWsSuffix, endKeepWsPrefix);
+    deletion.value = removeSuffix(deletion.value, overlap);
+  } else if (startKeep) {
+    const startKeepWsSuffix = trailingWs(startKeep.value, segmenter2);
+    const deletionWsPrefix = leadingWs(deletion.value, segmenter2);
+    const overlap = maximumOverlap(startKeepWsSuffix, deletionWsPrefix);
+    deletion.value = removePrefix(deletion.value, overlap);
+  }
+}
+var WordsWithSpaceDiff = class extends Diff {
+  tokenize(value) {
+    const regex = new RegExp(`(\\r?\\n)|[${extendedWordChars}]+|[^\\S\\n\\r]+|[^${extendedWordChars}]`, "ug");
+    return value.match(regex) || [];
+  }
+};
+var wordsWithSpaceDiff = new WordsWithSpaceDiff();
+function diffWordsWithSpace(oldStr, newStr, options) {
+  return wordsWithSpaceDiff.diff(oldStr, newStr, options);
+}
+
 // node_modules/diff/libesm/diff/line.js
 var LineDiff = class extends Diff {
   constructor() {
@@ -10212,6 +10477,112 @@ var INCLUDE_HEADERS = {
   includeUnderline: true,
   includeFileHeaders: true
 };
+function structuredPatch(oldFileName, newFileName, oldStr, newStr, oldHeader, newHeader, options) {
+  let optionsObj;
+  if (!options) {
+    optionsObj = {};
+  } else if (typeof options === "function") {
+    optionsObj = { callback: options };
+  } else {
+    optionsObj = options;
+  }
+  if (typeof optionsObj.context === "undefined") {
+    optionsObj.context = 4;
+  }
+  const context = optionsObj.context;
+  if (optionsObj.newlineIsToken) {
+    throw new Error("newlineIsToken may not be used with patch-generation functions, only with diffing functions");
+  }
+  if (!optionsObj.callback) {
+    return diffLinesResultToPatch(diffLines(oldStr, newStr, optionsObj));
+  } else {
+    const { callback } = optionsObj;
+    diffLines(oldStr, newStr, Object.assign(Object.assign({}, optionsObj), { callback: (diff) => {
+      const patch = diffLinesResultToPatch(diff);
+      callback(patch);
+    } }));
+  }
+  function diffLinesResultToPatch(diff) {
+    if (!diff) {
+      return;
+    }
+    diff.push({ value: "", lines: [] });
+    function contextLines(lines) {
+      return lines.map(function(entry) {
+        return " " + entry;
+      });
+    }
+    const hunks = [];
+    let oldRangeStart = 0, newRangeStart = 0, curRange = [], oldLine = 1, newLine = 1;
+    for (let i = 0; i < diff.length; i++) {
+      const current = diff[i], lines = current.lines || splitLines(current.value);
+      current.lines = lines;
+      if (current.added || current.removed) {
+        if (!oldRangeStart) {
+          const prev = diff[i - 1];
+          oldRangeStart = oldLine;
+          newRangeStart = newLine;
+          if (prev) {
+            curRange = context > 0 ? contextLines(prev.lines.slice(-context)) : [];
+            oldRangeStart -= curRange.length;
+            newRangeStart -= curRange.length;
+          }
+        }
+        for (const line of lines) {
+          curRange.push((current.added ? "+" : "-") + line);
+        }
+        if (current.added) {
+          newLine += lines.length;
+        } else {
+          oldLine += lines.length;
+        }
+      } else {
+        if (oldRangeStart) {
+          if (lines.length <= context * 2 && i < diff.length - 2) {
+            for (const line of contextLines(lines)) {
+              curRange.push(line);
+            }
+          } else {
+            const contextSize = Math.min(lines.length, context);
+            for (const line of contextLines(lines.slice(0, contextSize))) {
+              curRange.push(line);
+            }
+            const hunk = {
+              oldStart: oldRangeStart,
+              oldLines: oldLine - oldRangeStart + contextSize,
+              newStart: newRangeStart,
+              newLines: newLine - newRangeStart + contextSize,
+              lines: curRange
+            };
+            hunks.push(hunk);
+            oldRangeStart = 0;
+            newRangeStart = 0;
+            curRange = [];
+          }
+        }
+        oldLine += lines.length;
+        newLine += lines.length;
+      }
+    }
+    for (const hunk of hunks) {
+      for (let i = 0; i < hunk.lines.length; i++) {
+        if (hunk.lines[i].endsWith("\n")) {
+          hunk.lines[i] = hunk.lines[i].slice(0, -1);
+        } else {
+          hunk.lines.splice(i + 1, 0, "\\ No newline at end of file");
+          i++;
+        }
+      }
+    }
+    return {
+      oldFileName,
+      newFileName,
+      oldHeader,
+      newHeader,
+      hunks
+    };
+  }
+}
 function formatPatch(patch, headerOptions) {
   var _a, _b, _c2, _d, _e3, _f;
   if (!headerOptions) {
@@ -10282,6 +10653,16 @@ function formatPatch(patch, headerOptions) {
   }
   return ret.join("\n") + "\n";
 }
+function splitLines(text) {
+  const hasTrailingNl = text.endsWith("\n");
+  const result = text.split("\n").map((line) => line + "\n");
+  if (hasTrailingNl) {
+    result.pop();
+  } else {
+    result.push(result.pop().slice(0, -1));
+  }
+  return result;
+}
 
 // src/client/file-diffs.ts
 function parsedPatch(text) {
@@ -10342,7 +10723,11 @@ var LABELS = {
   expand: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C`
 };
 var PREVIEW_LINES = 200;
-function CodeDiff({ filename, diff, patch, cycle = 0 }) {
+var subscribePanel = (listener) => rightPanelService?.subscribe(listener) ?? (() => {
+});
+var panelTarget = () => rightPanelService?.getSnapshot().target ?? null;
+function CodeDiff({ filename, previewable = true, diff, patch, cycle = 0, panel = false, preview = false }) {
+  const target = (0, import_react.useSyncExternalStore)(subscribePanel, panelTarget);
   const [copied, setCopied] = (0, import_react.useState)(false);
   const [expanded, setExpanded] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
@@ -10363,9 +10748,21 @@ function CodeDiff({ filename, diff, patch, cycle = 0 }) {
     ...hunk.lines.map((text) => ({ kind: text.startsWith("+") ? "added" : text.startsWith("-") ? "removed" : text.startsWith("\\") ? "meta" : "context", text }))
   ])), [parsed]);
   if (!diff && patch === void 0) return null;
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-filename", title: filename }, filename, fragment ? " \xB7 \u66FF\u6362\u7247\u6BB5" : ""), totals && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-counts", "aria-label": `\u65B0\u589E ${totals.added} \u884C\uFF0C\u5220\u9664 ${totals.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-added" }, "+", totals.added), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-removed" }, "\u2212", totals.removed)), parsed && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-code-diff-copy", onClick: async () => {
+  if (panel) return /* @__PURE__ */ (0, import_react.createElement)(PanelDiff, { key: `${filename}:${cycle}`, filename, diff, patch });
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 })), target && previewable ? /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-code-diff-filename",
+      title: filename,
+      "aria-label": `\u9884\u89C8\u6587\u4EF6 ${filename}${fragment ? " \xB7 \u66FF\u6362\u7247\u6BB5" : ""}`,
+      onClick: () => rightPanelService?.openFile(filename)
+    },
+    filename,
+    fragment ? " \xB7 \u66FF\u6362\u7247\u6BB5" : ""
+  ) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-filename", title: filename }, filename, fragment ? " \xB7 \u66FF\u6362\u7247\u6BB5" : ""), totals && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-counts", "aria-label": `\u65B0\u589E ${totals.added} \u884C\uFF0C\u5220\u9664 ${totals.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-added" }, "+", totals.added), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-removed" }, "\u2212", totals.removed)), parsed && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-code-diff-copy", onClick: async () => {
     if (patch !== void 0 && await (0, import_dsh_client_ui_primitives.writeClipboard)(patch)) setCopied(true);
-  } }, copied ? LABELS.copied : LABELS.copy)), diff ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { key: cycle, className: "nodo-code-diff-native", diffs, labels: LABELS }) : lines ? /* @__PURE__ */ (0, import_react.createElement)("pre", { className: "nodo-code-diff-patch", tabIndex: 0, "aria-label": `${filename} \u5DEE\u5F02` }, /* @__PURE__ */ (0, import_react.createElement)("code", null, (expanded ? lines : lines.slice(0, PREVIEW_LINES)).map((line, index) => /* @__PURE__ */ (0, import_react.createElement)(
+  } }, copied ? LABELS.copied : LABELS.copy)), preview ? /* @__PURE__ */ (0, import_react.createElement)(PanelDiff, { key: `${filename}:${cycle}`, filename, diff, patch }) : diff ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { key: cycle, className: "nodo-code-diff-native", diffs, labels: LABELS }) : lines ? /* @__PURE__ */ (0, import_react.createElement)("pre", { className: "nodo-code-diff-patch", tabIndex: 0, "aria-label": `${filename} \u5DEE\u5F02` }, /* @__PURE__ */ (0, import_react.createElement)("code", null, (expanded ? lines : lines.slice(0, PREVIEW_LINES)).map((line, index) => /* @__PURE__ */ (0, import_react.createElement)(
     "span",
     {
       key: `${cycle}:${index}`,
@@ -10374,7 +10771,7 @@ function CodeDiff({ filename, diff, patch, cycle = 0 }) {
       style: { animationDelay: `${Math.min(index * 60, 900)}ms` }
     },
     line.text
-  )))) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { key: cycle, className: "nodo-code-diff-native", code: patch, lang: "diff", copyLabel: LABELS.copy, copiedLabel: LABELS.copied }), lines && lines.length > PREVIEW_LINES && /* @__PURE__ */ (0, import_react.createElement)(
+  )))) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { key: cycle, className: "nodo-code-diff-native", code: patch, lang: "diff", copyLabel: LABELS.copy, copiedLabel: LABELS.copied }), !preview && lines && lines.length > PREVIEW_LINES && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -10385,11 +10782,86 @@ function CodeDiff({ filename, diff, patch, cycle = 0 }) {
     expanded ? LABELS.collapse : LABELS.expand(lines.length - PREVIEW_LINES)
   ));
 }
+function numberedSections(patches) {
+  const sections = [];
+  for (const patch of patches) {
+    if (patches.length > 1) sections.push({ lines: [], filename: (patch.newFileName === "/dev/null" ? patch.oldFileName : patch.newFileName)?.replace(/^[ab]\//, "") ?? "\u672A\u77E5\u6587\u4EF6" });
+    let oldEnd = 0, newEnd = 0;
+    for (const hunk of patch.hunks) {
+      if (patches.length > 1 && hunk === patch.hunks[0]) {
+        oldEnd = hunk.oldStart - 1;
+        newEnd = hunk.newStart - 1;
+      }
+      const oldGap = hunk.oldStart - oldEnd - 1, newGap = hunk.newStart - newEnd - 1;
+      if (oldGap > 0 && oldGap === newGap) sections.push({ lines: [], hidden: oldGap });
+      else if (oldGap > 0 || newGap > 0) sections.push({ lines: [{ kind: "meta", text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@` }] });
+      let old = hunk.oldStart, next = hunk.newStart;
+      const rows = hunk.lines.map((text) => {
+        const kind = text.startsWith("+") ? "added" : text.startsWith("-") ? "removed" : text.startsWith("\\") ? "meta" : "context";
+        return {
+          kind,
+          text: kind === "meta" ? text : text.slice(1),
+          filename: patch.newFileName === "/dev/null" ? patch.oldFileName : patch.newFileName,
+          old: kind === "removed" || kind === "context" ? old++ : void 0,
+          next: kind === "added" || kind === "context" ? next++ : void 0
+        };
+      });
+      oldEnd = old - 1;
+      newEnd = next - 1;
+      for (let at2 = 0; at2 < rows.length; ) {
+        const kind = rows[at2].kind;
+        let end = at2 + 1;
+        while (end < rows.length && rows[end].kind === kind) end++;
+        if (kind === "context" && end - at2 > 6) {
+          sections.push({ lines: rows.slice(at2, at2 + 3) }, { lines: rows.slice(at2 + 3, end - 3), hidden: end - at2 - 6 }, { lines: rows.slice(end - 3, end) });
+        } else sections.push({ lines: rows.slice(at2, end) });
+        at2 = end;
+      }
+    }
+  }
+  for (let index = 0; index < sections.length - 1; index++) {
+    let next = index + 1;
+    while (next < sections.length && sections[next].lines.length && sections[next].lines.every((line) => line.kind === "meta" && line.text.startsWith("\\"))) next++;
+    const before = sections[index].lines, after = sections[next]?.lines ?? [];
+    if (before[0]?.kind !== "removed" || after[0]?.kind !== "added") continue;
+    before.forEach((line, index2) => {
+      const added = after[index2];
+      if (!added) return;
+      const parts = diffWordsWithSpace(line.text, added.text, { timeout: 40, maxEditLength: 1e3 });
+      if (parts) {
+        line.parts = parts.filter((part) => !part.added);
+        added.parts = parts.filter((part) => !part.removed);
+      }
+    });
+  }
+  return sections;
+}
+function PanelDiff({ filename, diff, patch }) {
+  const [expanded, setExpanded] = (0, import_react.useState)({});
+  const patches = (0, import_react.useMemo)(() => diff ? [structuredPatch(filename, filename, diff.oldText ?? "", diff.newText, "", "", { context: Infinity, timeout: 40, maxEditLength: 1e4 })].filter((patch2) => !!patch2) : parsedPatch(patch ?? "") ?? [], [filename, diff, patch]);
+  const sections = (0, import_react.useMemo)(() => numberedSections(patches), [patches]);
+  if (!patches.length) return diff ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { diffs: [diff], labels: LABELS }) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff" }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u65E0\u6CD5\u89E3\u6790\u5DEE\u5F02\uFF0C\u4EE5\u4E0B\u4E3A\u539F\u59CB\u5185\u5BB9"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: patch ?? "", lang: "diff", wrap: true, lineNumbers: true, showHeader: false }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff" }, patches.some((patch2) => patch2.oldHeader === "Nodo replacement fragment") && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u66FF\u6362\u7247\u6BB5 \xB7 \u884C\u53F7\u76F8\u5BF9\u7247\u6BB5"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff-patch", tabIndex: 0, role: "region", "aria-label": `${filename} \u5DEE\u5F02` }, sections.map((section, index) => section.filename ? /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-panel-diff-filename" }, section.filename) : section.hidden && !expanded[index] ? section.lines.length ? /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      key: index,
+      className: "nodo-panel-diff-gap",
+      "aria-expanded": false,
+      onClick: () => setExpanded((value) => ({ ...value, [index]: true }))
+    },
+    section.hidden,
+    " \u884C\u672A\u4FEE\u6539"
+  ) : /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-panel-diff-gap" }, section.hidden, " \u884C\u672A\u4FEE\u6539") : section.lines.map((line, at2) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: `${index}:${at2}`, className: "nodo-panel-diff-line", "data-kind": line.kind }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-panel-diff-number", "aria-hidden": true }, line.kind === "removed" ? line.old : line.next), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff-text" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { className: "nodo-panel-diff-code", code: line.text, lang: line.kind === "meta" ? "text" : (line.filename ?? filename).split(".").at(-1)?.toLowerCase(), wrap: true, showHeader: false }), line.parts && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-panel-diff-words", "aria-hidden": true }, line.parts.map((part, index2) => part.added || part.removed ? /* @__PURE__ */ (0, import_react.createElement)("mark", { key: index2 }, part.value) : part.value))))))));
+}
 var CODE_DIFF_CSS = `
 .nodo-code-diff{position:relative;min-width:0;max-width:100%;margin:6px 0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);overflow:hidden;background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-primary)}
 .nodo-code-diff-header{display:flex;align-items:center;gap:8px;min-height:36px;min-width:0;padding:6px 84px 6px 12px;border-bottom:.5px solid var(--dsw-alias-border-l1);font:var(--dsw-font-markdown-code-block-small)}
 .nodo-code-diff-icon{display:flex;flex:none;color:var(--dsw-alias-label-tertiary)}
 .nodo-code-diff-filename{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button.nodo-code-diff-filename{padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:start;cursor:pointer}
+button.nodo-code-diff-filename:hover{text-decoration:underline}
+button.nodo-code-diff-filename:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary)}
 .nodo-code-diff-counts{display:inline-flex;gap:6px;flex:none;font-size:12px}
 .nodo-code-diff-copy{position:absolute;top:6px;right:10px;padding:2px 6px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:20px;cursor:pointer}
 .nodo-code-diff-copy:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary)}
@@ -10421,6 +10893,24 @@ ${Array.from({ length: 16 }, (_2, index) => `.nodo-code-diff-native[data-diff]>d
 .nodo-code-diff-native[data-diff]>div:last-child>button{margin:4px 12px;color:var(--dsw-alias-label-tertiary)}
 @keyframes nodo-code-diff-enter{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.nodo-code-diff-native[data-diff]>div:last-child>div,.nodo-code-diff-line{animation:none}}
+.nodo-panel-diff{min-width:0;max-width:100%;color:var(--dsw-alias-label-primary)}
+.nodo-panel-diff *{box-sizing:border-box}
+.nodo-panel-diff-patch{margin:0;padding:8px 0;white-space:normal;font:var(--dsw-font-markdown-code-block-small);tab-size:4}
+.nodo-panel-diff-filename{display:block;padding:8px 12px;font-weight:600;background:var(--dsw-alias-bg-layer-1)}
+.nodo-panel-diff-line{display:grid;grid-template-columns:calc(4ch + 20px) minmax(0,1fr);min-height:22px;line-height:22px}
+.nodo-panel-diff-number{text-align:right;padding:0 10px 0 6px;border-left:3px solid var(--nodo-line-tone,transparent);border-right:2px solid var(--dsw-alias-bg-base);color:var(--nodo-line-tone,var(--dsw-alias-label-secondary));user-select:none}
+.nodo-panel-diff-text{position:relative;min-width:0;min-height:22px;padding:0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-panel-diff-code{margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;font:inherit!important}
+.nodo-panel-diff-code [data-code-block-content]{padding:0;overflow:visible}
+.nodo-panel-diff-code pre,.nodo-panel-diff-code code{margin:0!important;padding:0!important;background:transparent!important;font:inherit!important;white-space:pre-wrap!important;overflow-wrap:anywhere!important;overflow:visible!important}
+.nodo-panel-diff-words{position:absolute;inset:0;padding:0 12px;color:transparent;pointer-events:none;user-select:none;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-panel-diff-line[data-kind=added]{--nodo-line-tone:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--nodo-line-tone) 10%,transparent)}
+.nodo-panel-diff-line[data-kind=removed]{--nodo-line-tone:var(--dsw-alias-state-error-primary);background:color-mix(in srgb,var(--nodo-line-tone) 10%,transparent)}
+.nodo-panel-diff-words mark{color:transparent;background:color-mix(in srgb,var(--nodo-line-tone) 25%,transparent)}
+.nodo-panel-diff-line[data-kind=meta]{color:var(--dsw-alias-label-tertiary)}
+.nodo-panel-diff-gap{display:block;width:100%;padding:8px 12px;border:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;text-align:left;white-space:normal}
+button.nodo-panel-diff-gap{cursor:pointer}
+button.nodo-panel-diff-gap:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
 `;
 
 // src/client/file-tree.tsx
@@ -10463,6 +10953,9 @@ var FILE_TREE_CSS = `
 `;
 
 // src/client/file-changes-summary.tsx
+var subscribePanel2 = (listener) => rightPanelService?.subscribe(listener) ?? (() => {
+});
+var panelTarget2 = () => rightPanelService?.getSnapshot().target ?? null;
 function Counts({ value }) {
   return value ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${value.added} \u884C\uFF0C\u5220\u9664 ${value.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", value.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", value.removed.toLocaleString())) : null;
 }
@@ -10479,10 +10972,11 @@ function diffPreviewPosition(row, width, height, bounds = { top: 0, bottom: heig
     maxHeight: `${Math.min(360, onTop ? above : below)}px`
   };
 }
-function FileChangesSummary({ record, value, full, load, busy = false, available, error, renderFile }) {
+function FileChangesSummary({ record, value, full, load, loadChanges = load, busy = false, available, error, renderFile }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
   const [open, setOpen] = (0, import_react.useState)(false);
   const [selected, setSelected] = (0, import_react.useState)(null);
+  const target = (0, import_react.useSyncExternalStore)(subscribePanel2, panelTarget2);
   const box = (0, import_react.useRef)(null);
   const anchor = (0, import_react.useRef)(null);
   const preview = (0, import_react.useRef)(null);
@@ -10577,6 +11071,10 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
   const showAll = async () => {
     keepPreview();
     setSelected(null);
+    if (target) {
+      openChanges();
+      return;
+    }
     if (open) {
       setOpen(false);
       return;
@@ -10585,6 +11083,16 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
     setExpanded(true);
     setOpen(true);
   };
+  const openChanges = (path) => rightPanelService?.openChanges({
+    body: value.body,
+    revision: record.revision,
+    renderFile,
+    load: canLoad && (record.truncated || files.length < count) ? async () => {
+      const loaded = await loadChanges();
+      if (!loaded) throw new Error("\u53D8\u66F4\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25");
+      return loaded.body;
+    } : void 0
+  }, path);
   const more = async () => {
     if (!expanded && files.length < count && canLoad && !await load()) return;
     if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setSelected(null);
@@ -10597,11 +11105,11 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
       type: "button",
       className: "nodo-changes-view",
       disabled: busy,
-      "aria-expanded": open,
-      "aria-controls": detailsId,
+      "aria-expanded": target ? void 0 : open,
+      "aria-controls": target ? void 0 : detailsId,
       onClick: () => showAll()
     },
-    busy ? "\u52A0\u8F7D\u4E2D\u2026" : open ? "\u6536\u8D77\u53D8\u66F4" : "\u67E5\u770B\u53D8\u66F4"
+    busy ? "\u52A0\u8F7D\u4E2D\u2026" : !target && open ? "\u6536\u8D77\u53D8\u66F4" : "\u67E5\u770B\u53D8\u66F4"
   )), /* @__PURE__ */ (0, import_react.createElement)(FileTree, { id: detailsId, className: "nodo-changes-files", nodes: tree, header: false, renderFile: (node, content) => {
     const { file, patch, index } = byPath.get(node.path);
     const fileDetailsId = `${detailsId}-${index}`;
@@ -10611,9 +11119,10 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
         type: "button",
         className: "nodo-changes-file",
         disabled: busy,
-        "aria-expanded": open || selected === file.path,
+        "aria-expanded": target ? void 0 : open || selected === file.path,
+        "aria-label": target ? `\u67E5\u770B ${relativeFile(file.path, value.body.cwd)} \u7684\u53D8\u66F4` : void 0,
         "aria-haspopup": "dialog",
-        "aria-controls": open ? fileDetailsId : previewId,
+        "aria-controls": target ? void 0 : open ? fileDetailsId : previewId,
         onPointerEnter: (event) => {
           if (!open && event.pointerType !== "touch") showFile(file.path, event.currentTarget);
         },
@@ -10625,6 +11134,11 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
           if (!preview.current?.contains(event.relatedTarget)) closePreview();
         },
         onClick: (event) => {
+          if (target) {
+            closePreview();
+            openChanges(file.path);
+            return;
+          }
           setOpen(false);
           showFile(file.path, event.currentTarget);
         }
@@ -10658,8 +11172,8 @@ function FileChangesSummary({ record, value, full, load, busy = false, available
         if (!event.currentTarget.contains(event.relatedTarget) && !anchor.current?.contains(event.relatedTarget)) closePreview();
       }
     },
-    busy && canLoad ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error) : renderFile(selectedFile.file, selectedFile.patch)
-  ), open && files.length === 0 && value.body.turnDiff && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-details", role: "region", "aria-label": "\u6587\u4EF6\u53D8\u66F4\u8BE6\u60C5" }, /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", patch: value.body.turnDiff, cycle: record.revision })));
+    busy && canLoad ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error) : renderFile(selectedFile.file, selectedFile.patch, false, true)
+  ), open && files.length === 0 && value.body.turnDiff && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-details", role: "region", "aria-label": "\u6587\u4EF6\u53D8\u66F4\u8BE6\u60C5" }, /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: value.body.turnDiff, cycle: record.revision })));
 }
 var FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
 .nodo-changes-card{min-width:0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
@@ -10796,7 +11310,7 @@ function streamProgress(progress) {
   if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${streamSize(progress.stderrBytes)}`);
   return parts.length ? parts.join(" \xB7 ") : null;
 }
-function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch }) {
+function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch, panel = false, preview = false }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [content, setContent] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -10824,16 +11338,16 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
       setBusy(false);
     }
   };
-  const edits = patch ? (0, import_react.createElement)(CodeDiff, { filename: path, patch, cycle }) : file.edits.map((edit, index) => (0, import_react.createElement)(
+  const edits = patch ? (0, import_react.createElement)(CodeDiff, { filename: path, patch, cycle, panel, preview }) : file.edits.map((edit, index) => (0, import_react.createElement)(
     "div",
     { key: index },
-    (0, import_react.createElement)("p", { className: "nodo-note" }, { add: "\u65B0\u589E", update: "\u4FEE\u6539", delete: "\u5220\u9664", move: "\u79FB\u52A8", unknown: "\u7F16\u8F91" }[edit.operation], edit.fromPath ? ` \xB7 \u6765\u81EA ${edit.fromPath}` : ""),
+    !panel && (0, import_react.createElement)("p", { className: "nodo-note" }, { add: "\u65B0\u589E", update: "\u4FEE\u6539", delete: "\u5220\u9664", move: "\u79FB\u52A8", unknown: "\u7F16\u8F91" }[edit.operation], edit.fromPath ? ` \xB7 \u6765\u81EA ${edit.fromPath}` : ""),
     edit.availability && (0, import_react.createElement)("p", { className: "nodo-note" }, { binary: "\u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u6765\u6E90\u4E0D\u63D0\u4F9B\u6587\u672C\u5DEE\u5F02\u3002", oversized: "\u6587\u4EF6\u8D85\u8FC7\u6765\u6E90\u5927\u5C0F\u4E0A\u9650\uFF0C\u5DEE\u5F02\u4E0D\u53EF\u5F97\u3002", coarse: "\u6765\u6E90\u6BD4\u8F83\u8D85\u65F6\uFF0C\u4EE5\u4E0B\u4E3A\u6574\u6BB5\u66FF\u6362\u7684\u7C97\u7565\u5DEE\u5F02\u3002", unavailable: "\u6765\u6E90\u672A\u80FD\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u3002" }[edit.availability]),
-    typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.oldText === null && edit.operation === "add") ? (0, import_react.createElement)(CodeDiff, { filename: path, diff: { path, oldText: edit.oldText, newText: edit.newText }, cycle }) : typeof edit.diffText === "string" ? (0, import_react.createElement)(CodeDiff, { filename: path, patch: edit.diffText, cycle }) : typeof edit.newText === "string" ? (0, import_react.createElement)(
+    typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.oldText === null && edit.operation === "add") ? (0, import_react.createElement)(CodeDiff, { filename: path, diff: { path, oldText: edit.oldText, newText: edit.newText }, cycle, panel, preview }) : typeof edit.diffText === "string" ? (0, import_react.createElement)(CodeDiff, { filename: path, patch: edit.diffText, cycle, panel, preview }) : typeof edit.newText === "string" ? (0, import_react.createElement)(
       "div",
       null,
       (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u4FEE\u6539\u524D\u5185\u5BB9\uFF0C\u4EE5\u4E0B\u4E3A\u4FEE\u6539\u540E\u5185\u5BB9\u3002"),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: edit.newText, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: edit.newText, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236", ...panel || preview ? { wrap: true, lineNumbers: true, showHeader: false } : {} })
     ) : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6B64\u7F16\u8F91\u7684\u5DEE\u5F02\u8BE6\u60C5\u4E0D\u53EF\u5F97\u3002")
   ));
   const view = (0, import_react.createElement)("div", { ref: body, "data-nodo-tool-file": file.path }, request && showContent ? (0, import_react.createElement)(
@@ -10866,7 +11380,7 @@ function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, 
     "div",
     null,
     patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002"),
-    request && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy, onClick: () => void viewContent() }, busy ? "\u8BFB\u53D6\u4E2D\u2026" : "\u67E5\u770B\u5F53\u524D\u5185\u5BB9")
+    request && !panel && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy, onClick: () => void viewContent() }, busy ? "\u8BFB\u53D6\u4E2D\u2026" : "\u67E5\u770B\u5F53\u524D\u5185\u5BB9")
   ));
   if (inline) return view;
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
@@ -10894,13 +11408,17 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
       generation.current += 1;
     };
   }, [record.runId, record.entityId, record.revision, request.profile, request.session, request.target]);
+  const readDetails = async () => {
+    const value2 = await call("stream-detail", { ...request, ref: record.details.ref });
+    if (!supportedStreamRecord(value2) || value2.runId !== record.runId || value2.entityId !== record.entityId || value2.revision !== record.revision) throw new Error("\u5DE5\u5177\u8BE6\u60C5\u7248\u672C\u4E0D\u5339\u914D\u3002");
+    return value2;
+  };
   const load = async () => {
     const current = generation.current;
     setBusy(true);
     setError("");
     try {
-      const value2 = await call("stream-detail", { ...request, ref: record.details.ref });
-      if (!supportedStreamRecord(value2) || value2.runId !== record.runId || value2.entityId !== record.entityId || value2.revision !== record.revision) throw new Error("\u5DE5\u5177\u8BE6\u60C5\u7248\u672C\u4E0D\u5339\u914D\u3002");
+      const value2 = await readDetails();
       if (generation.current === current) setFull(value2);
       return generation.current === current ? value2 : null;
     } catch (failure) {
@@ -10919,10 +11437,11 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
     record,
     full: currentFull,
     load,
+    loadChanges: readDetails,
     busy,
     available,
     error,
-    renderFile: (file, patch) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, inline: true, root: body.cwd, request, cycle: record.revision })
+    renderFile: (file, patch, panel = false, preview = false) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, panel, preview, inline: true, root: body.cwd, request, cycle: record.revision })
   });
   const status2 = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
   const notice = record.capture !== "complete" ? STREAM_REASON[record.reason] ?? "\u6765\u6E90\u5185\u5BB9\u4E0D\u5B8C\u6574" : null;
@@ -12417,7 +12936,7 @@ function engineRunningLabel(engine, now) {
   const silent = Number.isFinite(engine.lastEventAt) ? Math.max(0, now - engine.lastEventAt) : 0;
   return silent >= 3e4 ? `${label} \xB7 ${runDuration(silent)} \u672A\u6536\u5230\u65B0\u4E8B\u4EF6` : label;
 }
-function RunningLine({ since, engine }) {
+function RunningLine({ since, engine, work }) {
   const clock = (0, import_react.useRef)({ since, at: Date.now() });
   if (clock.current.since !== since) clock.current = { since, at: Date.now() };
   const epoch = Number.isFinite(since) ? since : clock.current.at;
@@ -12436,7 +12955,7 @@ function RunningLine({ since, engine }) {
     return () => media.removeEventListener("change", update);
   }, []);
   const elapsed = Math.max(0, now - epoch);
-  const label = engineRunningLabel(engine, now);
+  const label = work?.suspect ? workLabel(work) : engineRunningLabel(engine, now);
   const template = RUNNING_COLORS[reduced ? 0 : Math.floor(elapsed / RUNNING_COLOR_HOLD) % RUNNING_COLORS.length];
   const letter = (text, index) => (0, import_react.createElement)("span", {
     key: index,
@@ -12453,7 +12972,7 @@ function RunningLine({ since, engine }) {
     (0, import_react.createElement)(
       "span",
       { className: "nodo-running-line" },
-      (0, import_react.createElement)(
+      work?.suspect ? (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }) : (0, import_react.createElement)(
         "span",
         { className: "nodo-running-icon", "aria-hidden": true },
         (0, import_react.createElement)(RoleAvatar, { profile: { avatarTemplate: "sky" }, size: "100%" })
@@ -12480,7 +12999,7 @@ function RunningLine({ since, engine }) {
           )
         )
       ),
-      (0, import_react.createElement)(
+      !work?.suspect && (0, import_react.createElement)(
         "span",
         { className: "nodo-running-dots", "aria-hidden": true },
         [0, 1, 2].map((index) => (0, import_react.createElement)("span", {
@@ -12550,7 +13069,11 @@ function roundLines(lines) {
       Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {});
       continue;
     }
-    if (line.origin?.kind === "report" && step) Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
+    if (line.origin?.kind === "report" && step) {
+      delete step.ended;
+      delete step.unconfirmed;
+      Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
+    }
     if (line.origin) continue;
     const text = line.who === "agent" && line.kind === "text" ? stripNodo(line.text) : null;
     if (text === "") continue;
@@ -12581,12 +13104,15 @@ function RoundTools({ step, work }) {
     return () => {
       live = false;
     };
-  }, [step.session, work?.active === true ? work : null]);
-  const rows = transcriptRows(lines.slice(lines.findLastIndex((line) => line.who === "user") + 1)).filter((row) => row.item.kind === "tool").slice(-5);
+  }, [step.session, step.at, work?.active === true ? work : null]);
+  const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
+  const start = lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
+  const end = lines.findIndex((line, index) => index >= start && boundary(line));
+  const rows = transcriptRows(lines.slice(start, end < 0 ? void 0 : end)).filter((row) => row.item.kind === "tool").slice(-5);
   return rows.length > 0 && (0, import_react.createElement)(
     "div",
     { className: "nodo-round-tools" },
-    rows.map((row) => toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work, timeline: true }))
+    rows.map((row) => toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work: step.ended ? void 0 : work, timeline: true }))
   );
 }
 function RoundSpeaker({ role, running }) {
@@ -12615,6 +13141,7 @@ function RoundMember({ step, round }) {
   const role = roleOf(round, step.profile);
   const work = round.work?.[step.session];
   const live = !step.report && !step.ended && work?.active === true;
+  const label = work?.retryWaiting ? "\u7B49\u5F85\u81EA\u52A8\u7EE7\u7EED" : work?.suspect ? workLabel(work) : "";
   const [open, setOpen] = (0, import_react.useState)(false);
   const [stopping, setStopping] = (0, import_react.useState)(false);
   const [now, setNow] = (0, import_react.useState)(() => Date.now());
@@ -12640,7 +13167,7 @@ function RoundMember({ step, round }) {
         tag(round.taskTypes?.find((item) => item.id === step.type)?.name ?? step.type),
         step.hard && tag("\u96BE\u9898", "caution"),
         step.reused && tag("\u7EED\u7528", "accent"),
-        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing", size: 7 }), runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
+        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
         live && round.onStop && (0, import_react.createElement)(
           "button",
           {
@@ -12668,7 +13195,8 @@ function RoundMember({ step, round }) {
         { type: "button", className: "nodo-round-summary", "aria-expanded": open, onClick: () => setOpen((value) => !value) },
         (0, import_react.createElement)("span", null, summary),
         (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
-      ) : (0, import_react.createElement)("p", { className: "nodo-round-summary" }, summary) : live ? (0, import_react.createElement)(RoundTools, { step, work }) : step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),
+      ) : (0, import_react.createElement)("p", { className: "nodo-round-summary" }, summary) : (0, import_react.createElement)(RoundTools, { step, work }),
+      !step.report && step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),
       open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))
     )
   );
@@ -13502,7 +14030,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     if (id === "upload") return act(onUpload);
     if (id === "reference") return act(onReference);
     if (id === "goal") return act(onGoal);
-    if (id === "plan") return act(() => onModelChange({ permission: (profile.permission || "workspace") === "plan" ? "" : "plan" }));
+    if (id === "plan") return act(() => onModelChange({ permission: profile.permission === "plan" ? "workspace" : "plan" }));
     if (id === "compact") return act(onCompact);
     if (typeof id === "string" && id.startsWith("cmd:")) {
       close();
@@ -13512,6 +14040,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
   };
   const row = addRow;
   const engine = (catalog ?? []).find((item) => item.id === profile.engine);
+  const modes = engine?.capabilities?.permissionModes ?? [];
   const commands = scan?.commands ?? [];
   const query = trigger === null ? "" : trigger.query.trim().toLowerCase();
   const scopeLabel = { project: "\u9879\u76EE", plugin: "\u63D2\u4EF6" };
@@ -13529,7 +14058,10 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     { id: onUpload ? "upload" : "file", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPaperclipOutlineRegular), label: row("\u6587\u4EF6", "file"), disabled: !onUpload && (!workspace || !onInsert) },
     ...onReference ? [{ id: "reference", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular), label: addRow("\u5F15\u7528\u4F1A\u8BDD", "", "\u9009\u62E9\u5176\u4ED6\u89D2\u8272\u7684\u4E00\u6761\u56DE\u590D") }] : [],
     ...onGoal ? [{ id: "goal", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular), label: row("\u804C\u8D23", "goal", "\u8BBE\u7F6E\u6216\u67E5\u770B\u89D2\u8272\u804C\u8D23") }] : [],
-    ...engine?.capabilities?.permissionModes?.includes("plan") ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
+    // Only a plan↔workspace pair is a safe toggle: without workspace the row
+    // could not leave plan, and stepping up to full must go through the risk
+    // confirmation on the role card.
+    ...modes.includes("plan") && modes.includes("workspace") ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
     { type: "label", id: "cmd-title", text: "\u6307\u4EE4" },
     ...commandSection
   ] : [{ type: "label", id: "cmd-title", text: "\u6307\u4EE4" }, ...commandSection];
@@ -13556,8 +14088,12 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     )
   });
 }
-var PERMISSION_LABELS = { "": "Agent \u9ED8\u8BA4\u6743\u9650", plan: "\u4EC5\u53EF\u67E5\u770B", workspace: "\u5DE5\u4F5C\u533A\u5185\u4FEE\u6539", full: "\u5B8C\u5168\u6743\u9650" };
+var PERMISSION_LABELS = { plan: "\u4EC5\u53EF\u67E5\u770B", workspace: "\u5DE5\u4F5C\u533A\u5185\u4FEE\u6539", full: "\u5B8C\u5168\u6743\u9650" };
 var PERMISSION_GLYPHS = { plan: import_dsh_client_ui_primitives.PermissionIconReadOnlyRegular, workspace: import_dsh_client_ui_primitives.PermissionIconWorkspaceWriteRegular, full: import_dsh_client_ui_primitives.PermissionIconFullAccessRegular };
+var permissionForEngine = (engine, current) => {
+  const modes = engine?.capabilities?.permissionModes ?? [];
+  return modes.includes(current) ? current : modes.includes("workspace") ? "workspace" : modes[0];
+};
 var FULL_ACCESS_CONFIRM = {
   title: "\u786E\u8BA4\u542F\u7528\u5B8C\u5168\u6743\u9650\uFF1F",
   description: "\u542F\u7528\u5B8C\u5168\u6743\u9650\u540E\uFF0C\u667A\u80FD\u4F53\u5C06\u51CF\u5C11\u786E\u8BA4\u6B65\u9AA4\uFF0C\u5E76\u4E14\u53EF\u4EE5\u76F4\u63A5\u6267\u884C\u66F4\u591A\u64CD\u4F5C\uFF0C\u5305\u62EC\u654F\u611F\u64CD\u4F5C\u3001\u6587\u4EF6\u4FEE\u6539\u6216\u5916\u90E8\u547D\u4EE4\u3002\u4EC5\u5EFA\u8BAE\u5728\u4F60\u4FE1\u4EFB\u5F53\u524D\u4EFB\u52A1\u65F6\u4F7F\u7528\u3002",
@@ -13566,41 +14102,77 @@ var FULL_ACCESS_CONFIRM = {
   closeLabel: "\u5173\u95ED",
   confirmLabel: "\u542F\u7528\u5B8C\u5168\u6743\u9650"
 };
+function usePermissionChange(disabled) {
+  const [confirming, setConfirming] = (0, import_react.useState)(null);
+  const [acknowledged, setAcknowledged] = (0, import_react.useState)(false);
+  const apply2 = (mode, onChange) => {
+    setConfirming(null);
+    setAcknowledged(false);
+    onChange(mode);
+  };
+  const pick = (mode, current, onChange) => {
+    if (disabled || !mode || mode === current) return;
+    if (mode === "full") {
+      setAcknowledged(false);
+      setConfirming({ onChange });
+      return;
+    }
+    apply2(mode, onChange);
+  };
+  return { pick, confirmation: confirming !== null && (0, import_react.createElement)(import_dsh_client_ui_primitives.RiskConfirmation, {
+    open: true,
+    ...FULL_ACCESS_CONFIRM,
+    acknowledged,
+    disabled,
+    onAcknowledgedChange: setAcknowledged,
+    onCancel: () => {
+      setConfirming(null);
+      setAcknowledged(false);
+    },
+    onConfirm: () => apply2("full", confirming.onChange)
+  }) };
+}
+function PermissionSelect({ modes = [], value, disabled = false, onChange, className = "", label = "\u6743\u9650" }) {
+  return (0, import_react.createElement)(
+    "span",
+    { className: `nodo-permission-select ${className}` },
+    PERMISSION_GLYPHS[value] && (0, import_react.createElement)("span", { className: "nodo-perm-icon", "aria-hidden": true }, (0, import_react.createElement)(PERMISSION_GLYPHS[value])),
+    (0, import_react.createElement)(
+      "select",
+      {
+        className: "nodo-dialog-input nodo-dialog-select",
+        "aria-label": label,
+        value: value ?? "",
+        disabled: disabled || !modes.length,
+        onChange: (event) => onChange(event.target.value)
+      },
+      !modes.length && (0, import_react.createElement)("option", { value: "", disabled: true }, "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D"),
+      ...modes.map((mode) => (0, import_react.createElement)("option", { key: mode, value: mode }, PERMISSION_LABELS[mode] ?? mode))
+    )
+  );
+}
 function PermissionMenu({ profile, disabled, onChange }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [modes, setModes] = (0, import_react.useState)(null);
-  const [confirming, setConfirming] = (0, import_react.useState)(null);
-  const [acknowledged, setAcknowledged] = (0, import_react.useState)(false);
   const loaded = (0, import_react.useRef)(null);
-  const current = profile.permission || (profile.engine === "dsh" ? "" : "workspace");
+  const current = profile.permission;
+  const { pick, confirmation } = usePermissionChange(disabled);
   const openMenu = () => {
-    if (open || confirming !== null) return setOpen(false);
+    if (open && loaded.current === profile.engine || confirmation) return setOpen(false);
     setOpen(true);
     if (loaded.current === profile.engine) return;
     loaded.current = profile.engine;
     setModes(null);
     void call("engine-catalog").then((items2) => {
       const offered2 = items2.find((item) => item.id === profile.engine)?.capabilities?.permissionModes;
-      setModes(Array.isArray(offered2) ? offered2 : ["workspace"]);
-    }).catch(() => setModes(["workspace"]));
+      setModes(Array.isArray(offered2) ? offered2 : []);
+    }).catch(() => {
+      loaded.current = null;
+      setModes([]);
+    });
   };
-  const apply2 = (mode) => {
-    setOpen(false);
-    setConfirming(null);
-    setAcknowledged(false);
-    onChange({ permission: mode === "workspace" && profile.engine !== "dsh" ? "" : mode });
-  };
-  const pick = (mode) => {
-    setOpen(false);
-    if (mode === current) return;
-    if (mode === "full") {
-      setAcknowledged(false);
-      setConfirming("full");
-      return;
-    }
-    apply2(mode);
-  };
-  const offered = profile.engine === "dsh" && modes?.length === 0 ? [""] : modes ?? (current ? [current] : []);
+  const offered = (loaded.current === profile.engine ? modes : null) ?? (current ? [current] : []);
+  const label = offered.length ? PERMISSION_LABELS[current] ?? current : "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D";
   const items = offered.map((mode) => ({
     id: mode,
     label: PERMISSION_LABELS[mode] ?? mode,
@@ -13619,35 +14191,27 @@ function PermissionMenu({ profile, disabled, onChange }) {
       className: "nodo-perm",
       selectedId: current,
       items,
-      onSelect: pick,
+      onSelect: (mode) => {
+        setOpen(false);
+        pick(mode, current, (permission) => onChange({ permission }));
+      },
       anchor: (0, import_react.createElement)(
         "button",
         {
           type: "button",
           className: "nodo-perm-trigger",
-          disabled,
+          disabled: disabled || loaded.current === profile.engine && modes?.length === 0,
           "aria-haspopup": "menu",
           "aria-expanded": open,
-          "aria-label": `\u8BBF\u95EE\u6A21\u5F0F\uFF0C\u5F53\u524D\uFF1A${PERMISSION_LABELS[current] ?? current}`,
+          "aria-label": `\u8BBF\u95EE\u6A21\u5F0F\uFF0C\u5F53\u524D\uFF1A${label}`,
           onClick: openMenu
         },
         PERMISSION_GLYPHS[current] && (0, import_react.createElement)("span", { className: "nodo-perm-icon", "aria-hidden": true }, (0, import_react.createElement)(PERMISSION_GLYPHS[current])),
-        (0, import_react.createElement)("span", { className: "nodo-perm-label" }, PERMISSION_LABELS[current] ?? current),
+        (0, import_react.createElement)("span", { className: "nodo-perm-label" }, label),
         (0, import_react.createElement)("span", { className: `nodo-perm-chevron${open ? " nodo-perm-chevron-open" : ""}`, "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular))
       )
     }),
-    confirming !== null && (0, import_react.createElement)(import_dsh_client_ui_primitives.RiskConfirmation, {
-      open: true,
-      ...FULL_ACCESS_CONFIRM,
-      acknowledged,
-      disabled,
-      onAcknowledgedChange: setAcknowledged,
-      onCancel: () => {
-        setConfirming(null);
-        setAcknowledged(false);
-      },
-      onConfirm: () => apply2("full")
-    })
+    confirmation
   );
 }
 function GoalDialog({ profile, onSaved, onCancel }) {
@@ -13800,7 +14364,8 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     instructions: profile?.instructions ?? "",
     avatarTemplate: profile ? avatarTemplateOf(profile).id : avatar_templates_default[avatarSeed % avatar_templates_default.length].id,
     model: profile?.model ?? "",
-    thinking: profile?.thinking ?? ""
+    thinking: profile?.thinking ?? "",
+    permission: profile?.permission
   });
   const [avatarOpen, setAvatarOpen] = (0, import_react.useState)(false);
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(false);
@@ -13830,7 +14395,10 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
       const scoped = profile === null && enabledEngines !== null ? items.filter((item) => enabledEngines.includes(item.id)) : items;
       const choices = scoped.length > 0 ? scoped : items;
       setEngines(choices);
-      setDraft((current2) => ({ ...current2, engine: current2.engine || choices[0]?.id || "" }));
+      setDraft((current2) => {
+        const engine2 = choices.find((item) => item.id === current2.engine) ?? choices[0];
+        return { ...current2, engine: current2.engine || engine2?.id || "", permission: permissionForEngine(engine2, current2.permission) };
+      });
     }).catch((failure) => {
       if (live) setError(failure.message);
     }).finally(() => {
@@ -13855,8 +14423,15 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     setDirty(true);
     setDraft((current2) => ({ ...current2, ...typeof patch === "function" ? patch(current2) : patch }));
   };
+  const { pick: choosePermission, confirmation: permissionConfirmation } = usePermissionChange(disabled || loading);
   const edit = (key) => (event) => update({ [key]: event.target.value });
-  const chooseEngine = (event) => update((current2) => ({ ...current2, engine: event.target.value, model: "", thinking: "" }));
+  const chooseEngine = (event) => update((current2) => ({
+    ...current2,
+    engine: event.target.value,
+    model: "",
+    thinking: "",
+    permission: permissionForEngine(engines.find((item) => item.id === event.target.value), void 0)
+  }));
   const applyTemplate = (item) => {
     if (matches(item)) return;
     setFilled({ name: item.name, before: { identity: draft.identity, role: draft.role, instructions: draft.instructions } });
@@ -13886,7 +14461,8 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
         instructions: draft.instructions,
         avatarTemplate: draft.avatarTemplate,
         model,
-        thinking: draft.thinking
+        thinking: draft.thinking,
+        permission: draft.permission
       };
       const saved2 = await call(profile ? "profile-update" : "profile-create", profile ? { id: profile.id, changes: values } : values);
       setBusy(false);
@@ -14172,6 +14748,12 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
             ...engines.map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, engineDisplayName(item)))
           )
         ),
+        (0, import_react.createElement)(Field, { label: "\u6743\u9650" }, (0, import_react.createElement)(PermissionSelect, {
+          modes: engine?.capabilities?.permissionModes,
+          value: draft.permission,
+          disabled: disabled || loading,
+          onChange: (permission) => choosePermission(permission, draft.permission, (permission2) => update({ permission: permission2 }))
+        })),
         (0, import_react.createElement)(
           Field,
           { label: "\u6A21\u578B" },
@@ -14233,6 +14815,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
       ),
       error && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
     ),
+    permissionConfirmation,
     deletingIdentity && (0, import_react.createElement)(IdentityDeleteDialog, {
       identity: deletingIdentity,
       onCancel: () => setDeletingIdentity(null),
@@ -15758,8 +16341,7 @@ function WorkflowTaskComposer({ node, view, disabled, onChange, onBusy }) {
   const uploading = (0, import_react.useRef)(false);
   const profile = view.profiles.find((item) => !item.deletedAt && item.id === node.profileId);
   const workspace = wfWorkspace(view, profile, wfCurrentSession(profile));
-  const held = profile && { permission: profile.sessions.slice().reverse().find((session) => !(session.draftedAt && !session.briefSent) && session.permission !== void 0)?.permission ?? profile.permission };
-  const composerProfile = profile && { ...profile, ...held, ...node.choices };
+  const composerProfile = profile && { ...profile, ...node.choices };
   const refs = node.images ?? [];
   (0, import_react.useEffect)(() => {
     let live = true;
@@ -17473,10 +18055,13 @@ function RolesPage({ view, readOnly, refresh }) {
   const [newName, setNewName] = (0, import_react.useState)("");
   const [newIdentity, setNewIdentity] = (0, import_react.useState)("");
   const [newEngine, setNewEngine] = (0, import_react.useState)("");
+  const [newPermission, setNewPermission] = (0, import_react.useState)(void 0);
   const [engines, setEngines] = (0, import_react.useState)(null);
   const [takesOpen, setTakesOpen] = (0, import_react.useState)(null);
   const [pendingTypes, setPendingTypes] = (0, import_react.useState)({});
   const [pendingHard, setPendingHard] = (0, import_react.useState)({});
+  const [pendingPermission, setPendingPermission] = (0, import_react.useState)({});
+  const { pick: choosePermission, confirmation: permissionConfirmation } = usePermissionChange(readOnly || busy);
   const [deleting, setDeleting] = (0, import_react.useState)(null);
   const dirtyRef = (0, import_react.useRef)(false);
   const typedRef = (0, import_react.useRef)(false);
@@ -17523,6 +18108,7 @@ function RolesPage({ view, readOnly, refresh }) {
     setAdding(null);
     setNewName("");
     setNewIdentity("");
+    setNewPermission(void 0);
     setTakesOpen(null);
     setError("");
     action();
@@ -17597,6 +18183,8 @@ function RolesPage({ view, readOnly, refresh }) {
   };
   const newAvatar = avatar_templates_default[roles.length % avatar_templates_default.length].id;
   const newEngineAvailable = creationEngines(engines ?? []).some((item) => item.id === newEngine);
+  const newEngineInfo = engines?.find((item) => item.id === newEngine);
+  const newPermissionValue = permissionForEngine(newEngineInfo, newPermission);
   const createRole = (event) => {
     event.preventDefault();
     const name = newName.trim();
@@ -17607,6 +18195,7 @@ function RolesPage({ view, readOnly, refresh }) {
       await call("profile-create", {
         name,
         engine: newEngine,
+        permission: newPermissionValue,
         avatarTemplate: newAvatar,
         identity: identity2,
         ...createKind === "lead" ? { lead: true } : {},
@@ -17615,12 +18204,14 @@ function RolesPage({ view, readOnly, refresh }) {
       setAdding(null);
       setNewName("");
       setNewIdentity("");
+      setNewPermission(void 0);
     });
   };
   const cancelAdding = () => {
     setAdding(null);
     setNewName("");
     setNewIdentity("");
+    setNewPermission(void 0);
   };
   const toggleType = async (role, id) => {
     const held = role.taskTypes ?? [];
@@ -17648,6 +18239,29 @@ function RolesPage({ view, readOnly, refresh }) {
       setPendingHard((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id)));
     }
   };
+  const updatePermission = async (role, permission) => {
+    setPendingPermission((current) => ({ ...current, [role.id]: permission }));
+    setError("");
+    try {
+      await call("profile-update", { id: role.id, changes: { permission } });
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setPendingPermission((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id)));
+    }
+  };
+  const permissionCell = (role, locked) => /* @__PURE__ */ (0, import_react.createElement)(
+    PermissionSelect,
+    {
+      modes: engines?.find((item) => item.id === role.engine)?.capabilities?.permissionModes,
+      value: pendingPermission[role.id] ?? role.permission,
+      className: "nodo-roles-permission",
+      label: `\u6743\u9650 ${role.name}`,
+      disabled: locked || Object.hasOwn(pendingPermission, role.id),
+      onChange: (permission) => choosePermission(permission, role.permission, (next) => void updatePermission(role, next))
+    }
+  );
   const identityCell = (role) => /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag nodo-roles-identity", title: role.identity, "data-empty": !role.identity ? "" : void 0 }, role.identity || (role.instructions ? "\u81EA\u5B9A\u4E49" : "\u2014"));
   const createForm = (className, order) => /* @__PURE__ */ (0, import_react.createElement)(
     "form",
@@ -17692,10 +18306,22 @@ function RolesPage({ view, readOnly, refresh }) {
         "aria-label": "Agent",
         value: newEngine,
         disabled: readOnly || busy || !engines?.length,
-        onChange: (event) => setNewEngine(event.target.value)
+        onChange: (event) => {
+          setNewEngine(event.target.value);
+          setNewPermission(void 0);
+        }
       },
       !engines?.length && /* @__PURE__ */ (0, import_react.createElement)("option", { value: "" }, "\u6B63\u5728\u52A0\u8F7D Agent\u2026"),
       creationEngines(engines ?? []).map((item) => /* @__PURE__ */ (0, import_react.createElement)("option", { key: item.id, value: item.id }, engineDisplayName(item)))
+    ),
+    /* @__PURE__ */ (0, import_react.createElement)(
+      PermissionSelect,
+      {
+        modes: newEngineInfo?.capabilities?.permissionModes,
+        value: newPermissionValue,
+        disabled: readOnly || busy,
+        onChange: (permission) => choosePermission(permission, newPermissionValue, setNewPermission)
+      }
     ),
     /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-new-actions" }, (createKind === "lead" ? leads.length > 0 : executors.length > 0) && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", size: "sm", disabled: busy, onClick: cancelAdding }, "\u53D6\u6D88"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "submit", variant: "primary", size: "sm", disabled: readOnly || busy || !newName.trim() || !newEngineAvailable }, "\u521B\u5EFA"))
   );
@@ -17877,6 +18503,7 @@ function RolesPage({ view, readOnly, refresh }) {
       ),
       identityCell(role),
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, engineName(role)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, role.model || "\u9ED8\u8BA4\u6A21\u578B")),
+      permissionCell(role, locked),
       takesCell(role, locked),
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-hard" }, role.hard !== void 0 ? "\u53EF\u63A5" : ""),
       roleActions(role, held, locked)
@@ -17904,7 +18531,7 @@ function RolesPage({ view, readOnly, refresh }) {
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }),
     "\u6DFB\u52A0\u4E3B\u63A7"
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-lead nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), leads.map((lead) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: lead.id, className: "nodo-roles-lead" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-who-cell" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: lead, size: 28, running: roleStateOf(lead, view).active }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name" }, lead.name), lead.role && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, lead.role))), identityCell(lead), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, engineName(lead)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, lead.model || "\u9ED8\u8BA4\u6A21\u578B")), roleActions(lead, busy || roleStateOf(lead, view).active === true, readOnly || busy || roleStateOf(lead, view).active === true))), createKind === "lead" && createForm("nodo-roles-lead nodo-roles-new"))), executors.length === 0 ? /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-empty", "aria-labelledby": "nodo-roles-empty-title" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-empty-title" }, leads.length ? "\u7ED9\u4E3B\u63A7\u914D\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : "\u6DFB\u52A0\u7B2C\u4E00\u4E2A\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("p", null, leads.length ? "\u4E3B\u63A7\u62C6\u597D\u4EFB\u52A1\u540E\uFF0C\u4F1A\u4EA4\u7ED9\u8FD9\u91CC\u7684\u89D2\u8272\u53BB\u505A" : "\u9009\u62E9 Agent\uFF0C\u521B\u5EFA\u89D2\u8272\u540E\u5373\u53EF\u5BF9\u8BDD"), createKind === "executor" ? createForm("nodo-roles-create") : /* @__PURE__ */ (0, import_react.createElement)(
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-lead nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6743\u9650"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), leads.map((lead) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: lead.id, className: "nodo-roles-lead" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-who-cell" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: lead, size: 28, running: roleStateOf(lead, view).active }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name" }, lead.name), lead.role && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, lead.role))), identityCell(lead), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, engineName(lead)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, lead.model || "\u9ED8\u8BA4\u6A21\u578B")), permissionCell(lead, readOnly || busy || roleStateOf(lead, view).active === true), roleActions(lead, busy || roleStateOf(lead, view).active === true, readOnly || busy || roleStateOf(lead, view).active === true))), createKind === "lead" && createForm("nodo-roles-lead nodo-roles-new"))), executors.length === 0 ? /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-empty", "aria-labelledby": "nodo-roles-empty-title" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-empty-title" }, leads.length ? "\u7ED9\u4E3B\u63A7\u914D\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : "\u6DFB\u52A0\u7B2C\u4E00\u4E2A\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("p", null, leads.length ? "\u4E3B\u63A7\u62C6\u597D\u4EFB\u52A1\u540E\uFF0C\u4F1A\u4EA4\u7ED9\u8FD9\u91CC\u7684\u89D2\u8272\u53BB\u505A" : "\u9009\u62E9 Agent\uFF0C\u521B\u5EFA\u89D2\u8272\u540E\u5373\u53EF\u5BF9\u8BDD"), createKind === "executor" ? createForm("nodo-roles-create") : /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -17924,7 +18551,7 @@ function RolesPage({ view, readOnly, refresh }) {
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }),
     "\u6DFB\u52A0\u89D2\u8272"
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), createKind === "executor" && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)))), leads.length > 0 && (routineGaps || hardGaps || fallbackTypes.length > 0) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-gap-note", role: "status" }, /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 3 2 21h20L12 3Z" }), /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 9v5m0 3v1" })), /* @__PURE__ */ (0, import_react.createElement)("div", null, routineGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${routineGaps}\u6CA1\u6709\u89D2\u8272\u627F\u63A5`), fallbackTypes.map((name) => /* @__PURE__ */ (0, import_react.createElement)("p", { key: name }, `${name}\u6CA1\u6709\u89D2\u8272\u627F\u63A5\uFF0C\u7531\u300C${fallback?.name}\u300D\u515C\u5E95`)), hardGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${hardGaps}\u6CA1\u6709\u53EF\u63A5\u96BE\u9898\u7684\u89D2\u8272`))));
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6743\u9650"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), createKind === "executor" && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)))), leads.length > 0 && (routineGaps || hardGaps || fallbackTypes.length > 0) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-gap-note", role: "status" }, /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 3 2 21h20L12 3Z" }), /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 9v5m0 3v1" })), /* @__PURE__ */ (0, import_react.createElement)("div", null, routineGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${routineGaps}\u6CA1\u6709\u89D2\u8272\u627F\u63A5`), fallbackTypes.map((name) => /* @__PURE__ */ (0, import_react.createElement)("p", { key: name }, `${name}\u6CA1\u6709\u89D2\u8272\u627F\u63A5\uFF0C\u7531\u300C${fallback?.name}\u300D\u515C\u5E95`)), hardGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${hardGaps}\u6CA1\u6709\u53EF\u63A5\u96BE\u9898\u7684\u89D2\u8272`))));
   const sidebar = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-nav", role: "navigation", "aria-label": "\u89D2\u8272" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": !typeOpen, onClick: () => switchTo(showOverview) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, roles.length)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": typeOpen, onClick: () => switchTo(() => setTypeOpen(true)) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDataOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u4EFB\u52A1\u7C7B\u578B"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, types.length)));
   (0, import_react.useEffect)(() => {
     rolesPublishSidebar({ view: "roles", content: sidebar });
@@ -17962,7 +18589,7 @@ function RolesPage({ view, readOnly, refresh }) {
         dirtyRef.current = value;
       }
     }
-  )) : overview, error && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error))), confirm2 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
+  )) : overview, error && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error))), permissionConfirmation, confirm2 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", onClick: () => setConfirm(null) }, "\u7EE7\u7EED\u7F16\u8F91"),
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "drop", variant: "primary", onClick: () => {
       const { action } = confirm2;
@@ -18010,7 +18637,7 @@ var ROLES_CSS = `
 .nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
 .nodo-role-types-label{flex:1;min-width:0}
 .nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
-.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px;container-type:inline-size}
+.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px;container-type:inline-size}
 .nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .nodo-roles-head h1{display:flex;align-items:baseline;gap:8px;margin:0;font-size:18px;font-weight:600;line-height:26px}
 .nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
@@ -18023,7 +18650,7 @@ var ROLES_CSS = `
 .nodo-roles-empty h2{margin:0;font-size:18px;font-weight:600;line-height:26px;text-wrap:balance}
 .nodo-roles-empty p{max-width:420px;margin:0 0 12px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-roles-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:min(600px,100%);padding:8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);text-align:left}
-.nodo-roles-create>select{flex:0 1 160px}
+.nodo-roles-create>select,.nodo-roles-create>.nodo-permission-select{flex:0 1 160px}
 .nodo-roles-create>.nodo-role-identity{flex:0 1 100px;min-width:0}
 .nodo-roles-new-who{display:flex;align-items:center;gap:8px;flex:1 1 220px;min-width:0}
 .nodo-roles-new-who>.nodo-dialog-input{flex:1;min-width:0}
@@ -18034,7 +18661,8 @@ var ROLES_CSS = `
 .nodo-roles-table,.nodo-types-table{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
 .nodo-roles-row,.nodo-roles-lead{display:grid;grid-template-columns:var(--nodo-roles-columns);align-items:center;gap:12px;min-height:56px;padding:6px 12px}
 .nodo-roles-lead>:first-child{grid-column:1/3}
-.nodo-roles-lead>:last-child{grid-column:5/-1;justify-self:end}
+.nodo-roles-lead>:last-child{grid-column:6/-1;justify-self:end}
+.nodo-roles-permission>.nodo-dialog-select{border-color:transparent;background-color:transparent;font-size:12px;text-overflow:ellipsis}
 .nodo-roles-row+.nodo-roles-row,.nodo-roles-lead+.nodo-roles-lead,.nodo-type-row+.nodo-type-row{border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-roles-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-roles-row[data-dragging]{opacity:.4}
@@ -18064,7 +18692,7 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-actions>.nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-roles-actions>.nodo-roles-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary)}
 .nodo-roles-new{border-radius:0 0 calc(var(--nodo-role-radius) + 7px) calc(var(--nodo-role-radius) + 7px);background:var(--dsw-alias-bg-layer-1)}
-.nodo-roles-new>.nodo-roles-new-actions{grid-column:5/-1}
+.nodo-roles-new>.nodo-roles-new-actions{grid-column:6/-1}
 .nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 12px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
 .nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-roles-gap-note{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:22px}
@@ -18102,7 +18730,8 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-types-bar{position:sticky;bottom:24px;align-self:center;display:flex;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
 @media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
 @container (width<640px){
-.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-lead>:last-child{grid-column:5/-1}
 .nodo-roles-row:not(.nodo-roles-new)>:nth-child(3),.nodo-roles-lead:not(.nodo-roles-new)>:nth-child(2){display:none}
 .nodo-roles-new{display:flex;flex-wrap:wrap;align-items:center}
 .nodo-roles-new>*{flex:1 1 140px;min-width:0}
@@ -18111,7 +18740,8 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-new>.nodo-roles-new-actions{flex:none;margin-left:auto}
 }
 @container (width<480px){
-.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-lead>:last-child{grid-column:4/-1}
 .nodo-roles-row:not(.nodo-roles-new)>:nth-child(4),.nodo-roles-lead:not(.nodo-roles-new)>:nth-child(3){display:none}
 }
 `;
@@ -18293,10 +18923,12 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const rounds = view ? roundIndex(view) : null;
   const members = sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
-  const panelCwd = session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd;
-  (0, import_react.useEffect)(() => {
-    if (!sidebarOnly && space.active && space.legacy && sessionId && !editing) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd });
-  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, panelCwd, !!editing]);
+  const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
+  (0, import_react.useLayoutEffect)(() => {
+    if (sidebarOnly || !space.active || !space.legacy || editing) return;
+    if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
+    if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
+  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
   const roundLive = [{ role: profile, session }, ...members].filter((item) => members.length && view.work[item.session?.id]?.active === true);
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
@@ -18600,7 +19232,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     work?.active === true && (0, import_react.createElement)(
       "div",
       { className: "nodo-running-dock" },
-      (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since })
+      (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work })
     ),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
       key: card.id,
@@ -18941,6 +19573,59 @@ function createNativeSpace(ctx, Sidebar) {
   };
 }
 
+// src/client/changes-panel.tsx
+function ChangesView({ source, initialPath = "", openFile }) {
+  const [body, setBody] = (0, import_react.useState)(source.body);
+  const [selected, setSelected] = (0, import_react.useState)(initialPath);
+  const [busy, setBusy] = (0, import_react.useState)(!!source.load);
+  const [error, setError] = (0, import_react.useState)("");
+  const [attempt, setAttempt] = (0, import_react.useState)(0);
+  (0, import_react.useEffect)(() => {
+    if (!source.load) return;
+    let live = true;
+    setBusy(true);
+    setError("");
+    void source.load().then((value) => {
+      if (live) setBody(value);
+    }).catch((failure) => {
+      if (live) setError(failure.message || "\u53D8\u66F4\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25");
+    }).finally(() => {
+      if (live) setBusy(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [source, attempt]);
+  const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(body), [body]);
+  const current = files.find(({ file }) => file.path === selected);
+  const row = (entry, detail = false) => {
+    const path = relativeFile(entry.file.path, body.cwd), slash = path.lastIndexOf("/") + 1;
+    const content = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: path }, /* @__PURE__ */ (0, import_react.createElement)("span", { dir: "ltr" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-directory" }, path.slice(0, slash)), /* @__PURE__ */ (0, import_react.createElement)("strong", null, path.slice(slash)))), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }));
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: entry.file.path, className: "nodo-changes-row" }, detail ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-row-title" }, content) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-changes-row-title", "aria-label": `\u67E5\u770B ${path} \u7684\u53D8\u66F4`, onClick: () => setSelected(entry.file.path) }, content), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${path}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBrowseOutlineRegular, { size: 16 }) }));
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, selected ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-detail-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u53D8\u66F4\u5217\u8868", onClick: () => setSelected(""), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), current && row(current, true)) : totals && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-total" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals }))), busy ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : selected ? current ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff", key: selected }, source.renderFile(current.file, current.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u6587\u4EF6\u53D8\u66F4\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-list" }, files.map((entry) => row(entry)), files.length < body.fileCount && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", body.fileCount, " \u4E2A\u6587\u4EF6"), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u65E0\u6587\u4EF6\u53D8\u66F4"))));
+}
+var CHANGES_PANEL_CSS = `
+.nodo-right-changes{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.nodo-changes-total{padding:12px 16px 8px}
+.nodo-changes-total>.nodo-tag{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:var(--dsw-radius-full,999px)}
+.nodo-changes-list,.nodo-changes-diff{flex:1;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden}
+.nodo-changes-list{padding:0 8px 12px}
+.nodo-changes-row{display:flex;align-items:center;gap:4px;min-width:0;border-radius:var(--dsw-radius-sm)}
+.nodo-changes-list>.nodo-changes-row:hover,.nodo-changes-list>.nodo-changes-row:focus-within{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-changes-row-title{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:36px;padding:4px 8px;border:0;border-radius:inherit;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left}
+button.nodo-changes-row-title{cursor:pointer}
+.nodo-changes-row-title>svg{flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-path{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;direction:rtl;text-align:left}
+.nodo-changes-directory{color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-path strong{font-weight:600}
+.nodo-changes-detail-head{display:flex;align-items:center;gap:4px;flex:none;padding:6px 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-changes-detail-head>.nodo-changes-row{flex:1;min-width:0}
+.nodo-changes-load-error{display:flex;align-items:center;gap:8px;padding-right:8px}
+.nodo-changes-row-title:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
+.nodo-right-changes .nodo-note{padding:0 12px;overflow-wrap:anywhere}
+`;
+
 // src/client/browser.tsx
 var desktopBrowser = () => globalThis.dshDesktop?.browser;
 function normalizeBrowserAddress(input) {
@@ -19121,6 +19806,7 @@ function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
 }
 
 // src/client/terminal.tsx
+var terminalScope = (target) => target.workspace !== void 0 ? { workspace: target.workspace } : { profile: target.profile, session: target.session };
 var ROUTE2 = "/api/nodo/terminal";
 var TerminalMissingError = class extends Error {
 };
@@ -19169,6 +19855,8 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
   const [message, setMessage] = (0, import_react.useState)("");
   const gone = (0, import_react.useRef)(onGone);
   gone.current = onGone;
+  const scope = (0, import_react.useRef)(terminalScope(target));
+  scope.current = terminalScope(target);
   (0, import_react.useLayoutEffect)(() => {
     const element = container.current;
     if (!element) return;
@@ -19179,7 +19867,6 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
         terminal.dispose();
         return;
       }
-      const scope = { profile: target.profile, session: target.session };
       let exited = false, seq = 0, writing = Promise.resolve();
       let frame, retry, resizing = false, resizeFailures = 0;
       let applied = initialSize, desired;
@@ -19205,7 +19892,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
         const size = desired;
         resizing = true;
         try {
-          await terminalRequest("resize", { ...scope, id, ...size });
+          await terminalRequest("resize", { ...scope.current, id, ...size });
           if (!live) return;
           applied = size;
           resizeFailures = 0;
@@ -19249,7 +19936,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
             let end = Math.min(start + 256 * 1024, data.length);
             const last = data.charCodeAt(end - 1);
             if (end < data.length && last >= 55296 && last <= 56319) end--;
-            await terminalRequest("write", { ...scope, id, data: data.slice(start, end) });
+            await terminalRequest("write", { ...scope.current, id, data: data.slice(start, end) });
             start = end;
           }
         }).catch((error) => {
@@ -19274,7 +19961,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
         while (live && !exited) {
           const before = seq;
           try {
-            const query = new URLSearchParams({ ...scope, id, since: String(seq) });
+            const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
             const response = await fetch(`${ROUTE2}?${query}`, { signal: abort.signal });
             if (!live) return;
             if (response.status === 404) {
@@ -19343,7 +20030,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
       live = false;
       cleanup();
     };
-  }, [id, target.profile, target.session]);
+  }, [id]);
   (0, import_react.useEffect)(() => {
     if (active) resize.current();
   }, [active]);
@@ -19354,12 +20041,15 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
 var terminalTab = ({ id, cols, rows, shell }) => ({ kind: "terminal", id, ...cols && rows ? { cols, rows } : {}, ...shell ? { shell } : {} });
 var tabId = (tab) => tab.kind === "files" ? "files" : tab.id;
 function createRightPanel(ctx) {
-  let state = { target: null, expanded: false, tabs: [], active: "", available: false, creating: false, error: "" };
+  let state = { target: null, expanded: false, tabs: [], active: "", selected: "", available: false, creating: false, error: "" };
   let generation = 0;
   let browserSequence = 0;
+  let changesSequence = 0;
   let bound;
   const listeners = /* @__PURE__ */ new Set();
   const closed = /* @__PURE__ */ new Set();
+  const directories = /* @__PURE__ */ new Map();
+  const normalized = (cwd) => cwd && (directories.get(cwd) ?? cwd);
   const publish = (changes) => {
     state = { ...state, ...changes };
     for (const listener of listeners) listener();
@@ -19374,38 +20064,69 @@ function createRightPanel(ctx) {
     getSnapshot: () => state,
     bind(target) {
       const current = ++generation;
-      const same = bound?.profile === target.profile && bound.session === target.session;
-      bound = target;
-      const tabs = same ? state.tabs : state.tabs.filter((tab) => tab.kind === "files");
-      publish({ target, tabs, active: same ? state.active : tabs[0] ? tabId(tabs[0]) : "", available: false, creating: false, error: "" });
+      const previous = bound;
+      let adopted = false;
+      const adopt = (cwd = target.cwd) => {
+        const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd);
+        bound = { ...target, cwd: normalized(cwd) };
+        const tabs = (same ? state.tabs : state.tabs.filter((tab) => tab.kind === "files")).filter((tab) => !target.readOnly || tab.kind !== "terminal");
+        publish({ target: bound, tabs, selected: same ? state.selected : "", active: same && (state.active === "" || tabs.some((tab) => tabId(tab) === state.active)) ? state.active : tabs[0] ? tabId(tabs[0]) : "", available: false, creating: false, ...adopted ? {} : { error: "" } });
+        adopted = true;
+      };
+      if (!previous || normalized(previous.cwd) === normalized(target.cwd) || target.readOnly) adopt();
+      else publish({ available: false, creating: false, error: "" });
       const restore = async () => {
         for (let attempt = 0; attempt < 2 && current === generation; attempt++) {
           try {
-            const value = await terminalRequest("list", { profile: target.profile, session: target.session });
+            const value = await terminalRequest("list", terminalScope(target));
+            if (target.cwd && value.cwd) directories.set(target.cwd, value.cwd);
             if (current !== generation) return;
-            const tabs2 = [...state.tabs.filter((tab) => tab.kind !== "terminal"), ...value.terminals.filter((terminal) => !closed.has(terminal.id)).map(terminalTab)];
+            adopt(value.cwd ?? target.cwd);
+            const restored = value.terminals.filter((terminal) => !closed.has(terminal.id));
+            const tabs = [
+              ...state.tabs.filter((tab) => tab.kind !== "terminal" || restored.some((terminal) => terminal.id === tab.id)),
+              ...restored.filter((terminal) => !state.tabs.some((tab) => tabId(tab) === terminal.id)).map(terminalTab)
+            ];
             publish({
-              tabs: tabs2,
+              target: bound,
+              tabs,
               available: value.available,
-              active: tabs2.some((tab) => tabId(tab) === state.active) ? state.active : tabs2[0] ? tabId(tabs2[0]) : "",
+              active: tabs.some((tab) => tabId(tab) === state.active) ? state.active : tabs[0] ? tabId(tabs[0]) : "",
               error: state.error === "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" || state.error === "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : state.error
             });
             return;
           } catch {
-            if (current === generation) publish({ error: attempt ? "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" : "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" });
+            if (current === generation) {
+              if (!adopted) adopt();
+              publish({ error: attempt ? "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" : "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" });
+            }
           }
         }
       };
-      void restore();
+      if (!target.readOnly) void restore();
       return () => {
-        if (state.target === target) {
-          generation++;
-          publish({ target: null });
-        }
+        void Promise.resolve().then(() => {
+          if (current === generation) {
+            generation++;
+            publish({ target: null });
+          }
+        });
       };
     },
     toggle: () => publish({ expanded: !state.expanded }),
     openFiles: () => publish({ tabs: state.tabs.some((tab) => tab.kind === "files") ? state.tabs : [...state.tabs, { kind: "files" }], active: "files" }),
+    openFile(path) {
+      if (state.target) {
+        panel.openFiles();
+        publish({ expanded: true, selected: path });
+      }
+    },
+    openChanges(source, path) {
+      if (!state.target) return;
+      const tab = { kind: "changes", id: "changes", source, path, version: ++changesSequence };
+      publish({ tabs: state.tabs.some((tab2) => tab2.kind === "changes") ? state.tabs.map((current) => current.kind === "changes" ? tab : current) : [...state.tabs, tab], active: "changes", expanded: true });
+    },
+    selectFile: (selected) => publish({ selected }),
     openHome: () => {
       if (state.active) publish({ active: "" });
     },
@@ -19424,12 +20145,12 @@ function createRightPanel(ctx) {
     },
     async newTerminal(element) {
       if (!state.target || !state.available || state.creating) return;
-      const current = generation, { profile, session } = state.target;
+      const current = generation, scope = terminalScope(state.target);
       publish({ creating: true, error: "" });
       try {
         const size = await measureTerminal(element);
         if (current !== generation) return;
-        const terminal = await terminalRequest("create", { profile, session, ...size });
+        const terminal = await terminalRequest("create", { ...scope, ...size });
         if (current === generation) publish({ tabs: [...state.tabs, terminalTab({ ...size, ...terminal })], active: terminal.id });
       } catch {
         if (current === generation) publish({ error: "\u65E0\u6CD5\u65B0\u5EFA\u7EC8\u7AEF" });
@@ -19444,11 +20165,11 @@ function createRightPanel(ctx) {
     async closeTab(id) {
       const current = generation, target = state.target;
       const index = state.tabs.findIndex((tab2) => tabId(tab2) === id), tab = state.tabs[index];
-      if (!tab) return;
+      if (!tab || tab.kind === "terminal" && target?.readOnly) return;
       if (tab.kind === "terminal") closed.add(id);
       panel.forgetTab(id);
       try {
-        if (tab.kind === "terminal" && target) await terminalRequest("close", { profile: target.profile, session: target.session, id });
+        if (tab.kind === "terminal" && target) await terminalRequest("close", { ...terminalScope(target), id });
       } catch (error) {
         if (!(error instanceof TerminalMissingError)) {
           closed.delete(id);
@@ -19463,19 +20184,29 @@ function createRightPanel(ctx) {
   };
   ctx.slots.inject("rightbar", () => {
     let unregister;
+    let owned = false;
+    const close = () => {
+      if (owned) ctx.layout.closeRightbar();
+      owned = false;
+    };
     const Owner = ({ width }) => {
       const { expanded } = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
+      (0, import_react.useLayoutEffect)(() => {
+        owned = true;
+        return () => {
+          owned = false;
+        };
+      }, []);
       (0, import_react.useLayoutEffect)(() => {
         if (expanded) ctx.layout.openRightbar(true, false);
         else ctx.layout.closeRightbar();
       }, [expanded]);
-      (0, import_react.useLayoutEffect)(() => () => ctx.layout.closeRightbar(), []);
       return /* @__PURE__ */ (0, import_react.createElement)(RightPanel, { panel, width });
     };
     const update = () => {
       if (state.target && !unregister) unregister = ctx.slots.register({ name: "rightbar", priority: -100 }, Owner);
       if (!state.target && unregister) {
-        ctx.layout.closeRightbar();
+        close();
         unregister();
         unregister = void 0;
       }
@@ -19485,7 +20216,7 @@ function createRightPanel(ctx) {
     return () => {
       stop();
       if (unregister) {
-        ctx.layout.closeRightbar();
+        close();
         unregister();
       }
     };
@@ -19531,7 +20262,7 @@ function RightPanel({ panel, width }) {
   if (!target) return null;
   const counts = /* @__PURE__ */ new Map();
   const titles = state.tabs.map((tab) => {
-    const title = tab.kind === "files" ? "\u9879\u76EE\u6587\u4EF6" : tab.kind === "browser" ? tab.title : tab.shell || "\u7EC8\u7AEF";
+    const title = tab.kind === "files" ? "\u9879\u76EE\u6587\u4EF6" : tab.kind === "changes" ? "\u53D8\u66F4" : tab.kind === "browser" ? tab.title : tab.shell || "\u7EC8\u7AEF";
     const base = tab.kind === "browser" && title.length > 28 ? `${title.slice(0, 27)}\u2026` : title;
     const nth = (counts.get(base) ?? 0) + 1;
     counts.set(base, nth);
@@ -19556,7 +20287,7 @@ function RightPanel({ panel, width }) {
       tabIndex: state.active === tabId(tab) ? 0 : -1,
       onClick: () => panel.selectTab(tabId(tab))
     },
-    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 }),
+    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, { size: 14 }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 14 }),
     titles[index]
   ), /* @__PURE__ */ (0, import_react.createElement)(
     import_dsh_client_ui_primitives.Button,
@@ -19577,7 +20308,7 @@ function RightPanel({ panel, width }) {
       "aria-labelledby": `nodo-right-tab-${tabId(tab)}`,
       hidden: state.active !== tabId(tab)
     },
-    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(WorkspaceFiles, { key: `${target.profile}:${target.session}:${target.cwd}`, target }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(
+    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(WorkspaceFiles, { key: target.cwd, target, selected: state.selected, onSelect: panel.selectFile }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(ChangesView, { key: tab.version, source: tab.source, initialPath: tab.path, openFile: panel.openFile }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(
       BrowserView,
       {
         cwd: target.cwd,
@@ -19598,10 +20329,11 @@ function RightPanel({ panel, width }) {
   )), state.active === "" && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-home" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", onClick: panel.openFiles }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u9879\u76EE\u6587\u4EF6"), target.cwd && /* @__PURE__ */ (0, import_react.createElement)("small", { title: target.cwd }, target.cwd))), state.available && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", disabled: state.creating, onClick: create }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u65B0\u5EFA\u7EC8\u7AEF"), target.cwd && /* @__PURE__ */ (0, import_react.createElement)("small", { title: target.cwd }, target.cwd))), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", onClick: () => panel.newBrowser() }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u6D4F\u89C8\u5668"))))));
 }
 var status = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
-function WorkspaceFiles({ target }) {
+function WorkspaceFiles({ target, selected: selection, onSelect }) {
   const [directories, setDirectories] = (0, import_react.useState)({});
   const [expanded, setExpanded] = (0, import_react.useState)({ "": true });
-  const [selected, setSelected] = (0, import_react.useState)("");
+  const [localSelected, setLocalSelected] = (0, import_react.useState)("");
+  const selected = selection ?? localSelected, setSelected = onSelect ?? setLocalSelected;
   const live = (0, import_react.useRef)(false);
   const pending = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   (0, import_react.useEffect)(() => {
@@ -19614,7 +20346,7 @@ function WorkspaceFiles({ target }) {
   (0, import_react.useEffect)(() => {
     for (const path of Object.keys(expanded).filter((path2) => expanded[path2] && !directories[path2] && !pending.current.has(path2))) {
       pending.current.add(path);
-      void call("workspace-dir", { ...target, path }).then((value) => {
+      void call("workspace-dir", { ...terminalScope(target), path }).then((value) => {
         if (live.current) setDirectories((current) => ({ ...current, [path]: value }));
       }).catch(() => {
         if (live.current) setDirectories((current) => ({ ...current, [path]: { error: true } }));
@@ -19679,7 +20411,7 @@ function FilePreview({ target, path, onBack }) {
   const [imageError, setImageError] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("workspace-file", { ...target, path }).then((value) => {
+    void call("workspace-file", { ...terminalScope(target), path }).then((value) => {
       if (live) setContent(value);
     }).catch(() => {
       if (live) setError(true);
@@ -19909,6 +20641,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
   function NewConversation2({ draft, sourceSessionId }) {
     const { view, error: loadError } = useStateView();
     const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
+    const state = (0, import_react.useSyncExternalStore)(space.subscribe, space.getSnapshot);
     const key = `new:${draft?.id ?? sourceSessionId}`;
     const [text, setText] = (0, import_react.useState)(() => readDrafts()[key] ?? "");
     const [images, setImages] = (0, import_react.useState)(() => heldImages[key] ?? []);
@@ -19929,6 +20662,10 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const sourceSession = sourceRole?.sessions.find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId);
     const profile = profiles.find((role) => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : void 0)));
     const workspace = view?.workspaces.find((item) => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view?.workspaces[0];
+    const panelVisible = !sourceSessionId && draft && state.active && state.drafting && state.draft?.id === draft.id;
+    (0, import_react.useLayoutEffect)(() => {
+      if (panelVisible && workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: workspace.cwd, ...view.readOnly != null ? { readOnly: true } : {} });
+    }, [panelVisible, workspace?.id, workspace?.cwd, view?.readOnly]);
     const disabled = busy || !view || view.readOnly != null;
     const active = () => space.getSnapshot().active && (draft ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id : ctx.uiSession.adapter.current.getSnapshot().key === sourceSessionId);
     const changeText = (value) => {
@@ -19952,8 +20689,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       updateSelection((current) => ({ ...current, profile: id, choices: {} }));
       setError("");
     };
-    const held = profile && { permission: profile.sessions.slice().reverse().find((session) => !(session.draftedAt && !session.briefSent) && session.permission !== void 0)?.permission ?? profile.permission };
-    const composerProfile = profile && { ...profile, ...held, ...choices };
+    const composerProfile = profile && { ...profile, ...choices };
     const clearDraft = () => {
       changeText("");
       changeImages([]);
@@ -20417,7 +21153,7 @@ var xterm_default = `/**
 
 // src/client/styles.js
 var TERMINAL_CSS = xterm_default.replace(/#000\b/gi, "var(--dsw-alias-bg-base)").replace(/#fff\b/gi, "var(--dsw-alias-label-primary)").replaceAll("rgba(0,0,0,0)", "transparent");
-var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + COMPOSER_ATTACHMENTS_CSS + `
+var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-runs-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 12px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
@@ -20987,7 +21723,9 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-role-dialog .nodo-identity-save .nodo-dialog-input{height:34px}
 .nodo-role-notice{margin:0;padding:8px 12px;border-radius:var(--nodo-role-radius);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:12px;line-height:18px}
 .nodo-role-names,.nodo-role-run{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.nodo-role-run{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nodo-permission-select{position:relative;display:flex;align-items:center;min-width:0}
+.nodo-permission-select>.nodo-perm-icon{position:absolute;left:10px;pointer-events:none}
+.nodo-permission-select>.nodo-perm-icon+.nodo-dialog-select{padding-left:32px}
 .nodo-role-identity{font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}
 @media(max-width:640px){.nodo-role-names,.nodo-role-run{grid-template-columns:minmax(0,1fr)}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}}
 .nodo-worktree-toggle{display:flex;align-items:center;gap:8px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}

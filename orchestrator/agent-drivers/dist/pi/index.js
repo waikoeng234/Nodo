@@ -13,7 +13,7 @@ export const piInfo = {
         { name: 'bin', target: 'engineOptions', label: 'CLI executable (optional)', type: 'text', placeholder: 'Auto-detect pi; or enter an absolute path' },
         { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'Model such as provider/id or a pattern; blank uses pi settings' },
     ],
-    capabilities: { resume: true, steer: true, permissions: false, questions: true, commands: true, compact: true },
+    capabilities: { resume: true, steer: true, permissions: false, questions: true, commands: true, compact: true, permissionModes: ['plan', 'full'] },
 };
 export function validatePiOptions(raw = {}) {
     for (const key of Object.keys(raw))
@@ -34,7 +34,9 @@ function rpcPeek(executable, { cwd, env = {}, commands }) {
         let answered = 0;
         const settle = () => { clearTimeout(timer); const done = peer; peer = null; done?.dispose(); resolvePeek(answers); };
         try {
-            peer = connectPi({ executable, args: piArgs({}), cwd, env, onFrame: record => {
+            // State-only probes never run a turn, so they launch unrestricted: the
+            // plan tool list would hide /mcp and the MCP tables these checks observe.
+            peer = connectPi({ executable, args: piArgs({ permission: 'full' }), cwd, env, onFrame: record => {
                     if (record.type !== 'response' || !commands.some(command => command.id === record.id))
                         return;
                     answers[record.id] = record.success === true ? record.data ?? {} : { error: record.error };
@@ -427,7 +429,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
             if (!executable)
                 throw new Error('pi CLI executable not found. Install pi or edit the profile CLI path.');
             emit({ type: 'session', state: 'starting' });
-            connection = connectPi({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId }), cwd, env,
+            connection = connectPi({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId, permission }), cwd, env,
                 onFrame: receive,
                 onClose(error) {
                     if (peer !== connection)

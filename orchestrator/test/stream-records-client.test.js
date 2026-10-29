@@ -59,6 +59,67 @@ test('detail errors are visible and stale requests cannot populate a remounted r
   assert.equal(pending.state[1], null)
 })
 
+test('changes panel readers survive card unmount and retain stream-detail identity validation', async () => {
+  const gate = Promise.withResolvers(), requests = []
+  const record = { ...sample(), kind: 'changes', body: { scope: 'edit-tools', cwd: '/ws', fileCount: 2, files: [] } }
+  const full = { ...record, body: { ...record.body, files: [{ path: '/ws/a', edits: [] }, { path: '/ws/b', edits: [] }] } }
+  const h = await harness(async (endpoint, payload) => { requests.push({ endpoint, payload }); return gate.promise })
+  const tree = h.render({ record, request: { profile: 'p', session: 's' } })
+  const unmount = h.effects[0]()
+  const reading = tree.props.loadChanges()
+  unmount()
+  gate.resolve(full)
+  assert.equal(await reading, full)
+  assert.equal(h.state[1], null, 'the detached reader never writes to card state')
+  assert.deepEqual(JSON.parse(JSON.stringify(requests)), [{ endpoint: 'stream-detail', payload: { profile: 'p', session: 's', ref: 'fixed-ref' } }])
+  const entry = tree.props.renderFile(full.body.files[0], undefined, true)
+  assert.equal(entry.props.panel, true)
+  const detail = h.renderFile(entry.props)
+  assert.ok(!descendants(detail).some(node => node.type === 'Button' && node.children.includes('查看当前内容')))
+  const invalid = await harness(async () => ({ ...full, revision: 99 }))
+  const summary = invalid.render({ record, request: { profile: 'p', session: 's' } })
+  await assert.rejects(summary.props.loadChanges(), /版本不匹配/)
+})
+
+test('panel edits with only new text wrap numbered content without guessing a before image or showing another toolbar', async () => {
+  const h = await harness()
+  const tree = h.renderFile({ file: { path: '/ws/x', edits: [{ operation: 'update', newText: 'known after\n' }] }, root: '/ws', inline: true, panel: true })
+  const code = descendants(tree).find(node => node.type === 'CodeBlock')
+  assert.equal(code.props.code, 'known after\n')
+  assert.equal(code.props.wrap, true)
+  assert.equal(code.props.lineNumbers, true)
+  assert.equal(code.props.showHeader, false)
+  assert.ok(!descendants(tree).some(node => node.type === h.context.CodeDiff))
+  assert.match(JSON.stringify(tree), /来源未提供修改前内容/)
+})
+
+test('hover previews share the numbered colored diff while keeping current-file access', async () => {
+  const h = await harness()
+  const file = { path: '/ws/x.ts', edits: [{ operation: 'update', oldText: '  before();\n', newText: '  after();\n' }] }
+  const tree = h.renderFile({ file, root: '/ws', request: { profile: 'p', session: 's' }, inline: true, preview: true })
+  const diff = descendants(tree).find(node => node.type === h.context.CodeDiff)
+  assert.equal(diff.props.panel, false)
+  assert.equal(diff.props.preview, true)
+  assert.equal(diff.props.diff.oldText, '  before();\n')
+  assert.ok(descendants(tree).some(node => node.type === 'Button' && node.children.includes('查看当前内容')))
+})
+
+test('detached changes readers keep the saved revision ref after the live record finishes', async () => {
+  const running = { ...sample(), kind: 'changes', status: 'running', body: { scope: 'edit-tools', fileCount: 0, files: [] } }
+  const done = { ...running, status: 'done', revision: running.revision + 1, details: { state: 'stored', ref: 'done-ref' } }
+  const requests = []
+  const h = await harness(async (_endpoint, payload) => {
+    requests.push(payload.ref)
+    return payload.ref === running.details.ref ? running : done
+  })
+  const old = h.render({ record: running, request: { profile: 'p', session: 's' } }).props.loadChanges
+  const current = h.render({ record: done, request: { profile: 'p', session: 's' } }).props.loadChanges
+  assert.equal(await old(), running)
+  assert.equal(await current(), done)
+  assert.equal(await old(), running, 'retry still reads the immutable snapshot, not the latest revision')
+  assert.deepEqual(requests, ['fixed-ref', 'done-ref', 'fixed-ref'])
+})
+
 test('file summary distinguishes ten source files, three preview entries and seven expandable entries', async () => {
   const files = Array.from({ length: 10 }, (_, i) => ({ path: `file-${i}`, edits: [] }))
   const record = { ...sample(), kind: 'changes', status: 'done', body: { scope: 'edit-tools', coverage: 'partial', fileCount: 10, files: files.slice(0, 3) } }

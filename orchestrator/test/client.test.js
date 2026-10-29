@@ -510,6 +510,16 @@ test('sidebar status labels and role aggregation preserve concurrent native wait
   assert.equal(workLabel(runningOf(role, work)), '', 'a viewed failure leaves no permanent badge either')
   work.two = { active: true }
   assert.equal(workLabel(runningOf(role, work)), '运行中')
+  work.two.suspect = true
+  assert.equal(workLabel(runningOf(role, work)), '疑似卡住')
+  assert.equal(workDot(work.two), 'warning')
+  work.two.suspect = false
+  assert.equal(workLabel(runningOf(role, work)), '运行中')
+  assert.equal(workDot(work.two), 'ongoing')
+  for (const [status, label] of [['waiting-approval', '等待审批'], ['waiting-question', '等待回答'], ['error', '执行失败'], ['completed', '已完成']]) {
+    assert.equal(workLabel({ active: true, suspect: true, status }), label, 'explicit status takes precedence over suspicion')
+  }
+  assert.equal(workLabel({ active: true, suspect: true, seen: true }), '', 'seen states keep their label hidden')
 })
 
 test('a finished role label only counts sessions the current workspace lists', async () => {
@@ -1505,7 +1515,7 @@ test('the role dialog offers the model and thinking defaults and saves them', as
   const select = (held, label) => field(held, label).children.filter(Boolean).find(node => node.type === 'select')
   render(profile); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(render(profile).filter(node => node.type === Field).map(node => node.props.label),
-    ['名字', '身份', 'Agent', '模型', '思考档位', '职责概述', '身份信息'], 'the single page follows the specified field order')
+    ['名字', '身份', 'Agent', '权限', '模型', '思考档位', '职责概述', '身份信息'], 'the single page follows the specified field order')
   assert.deepEqual(render(profile).filter(node => node.type === 'select').map(node => node.props.value), ['zcode', 'glm-x', 'high'],
     'the card shows the pair it already carries')
   assert.deepEqual(select(profile, '模型').children.filter(Boolean).map(option => [option.type, option.props.label]),
@@ -1764,7 +1774,8 @@ test('the composer add menu offers the native sections and inserts text picks in
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }] }
-      if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] } }]
+      if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] } },
+        { id: 'pi', capabilities: { permissionModes: ['plan', 'full'] } }]
     },
   })
   const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -1798,7 +1809,10 @@ test('the composer add menu offers the native sections and inserts text picks in
   assert.deepEqual([...requested], ['compact', 'goal'], 'the goal row opens the goal dialog')
   const planned = render({ profile: { engine: 'claude', permission: 'plan' } })
   planned.props.onSelect('plan')
-  assert.deepEqual([...changed.map(change => ({ ...change }))], [{ permission: 'plan' }, { permission: '' }], 'plan is a toggle')
+  assert.deepEqual([...changed.map(change => ({ ...change }))], [{ permission: 'plan' }, { permission: 'workspace' }], 'plan toggles back to an explicit workspace tier')
+  const gated = render({ profile: { engine: 'pi', permission: 'plan' } })
+  assert.equal(gated.props.items.some(item => item.id === 'plan'), false,
+    'an engine without a workspace tier gets no plan row: it could not leave plan and stepping up to full belongs to the role card')
   render().props.onSelect('file')
   assert.equal(inserted.at(-1), '@', 'the file row types an @ that opens the composer file card')
   const file = render({ workspace: null }).props.items.find(item => item.id === 'file')
@@ -2119,7 +2133,7 @@ test('the composer command token reads a / or $ from a line start or after a spa
 })
 
 // The permission control is the host's own PermissionSelect copy: kit glyphs on
-// trigger and rows, only the tiers the engine declares, explicit DSH defaults,
+// trigger and rows, only the tiers the engine declares,
 // and the native risk confirmation gating the full tier. The catalog is
 // re-read when a role moves engines, so a stale engine's tiers never show.
 test('the permission control copies the native select, glyphs and full-tier confirmation', async () => {
@@ -2152,13 +2166,13 @@ test('the permission control copies the native select, glyphs and full-tier conf
   const changes = []
   const render = profile => { cursor = 0; refCursor = 0; return nodes(PermissionMenu({ profile, disabled: false, onChange: change => changes.push(change) })) }
   const menuOf = tree => tree.find(node => node.type === 'Menu')
-  const closed = render({ engine: 'zcode', permission: '' })
-  assert.ok(menuOf(closed).props.anchor.props['aria-label'].includes('工作区内修改'), 'the default tier labels the trigger')
+  const closed = render({ engine: 'zcode', permission: 'workspace' })
+  assert.ok(menuOf(closed).props.anchor.props['aria-label'].includes('工作区内修改'), 'the explicit tier labels the trigger')
   assert.deepEqual([...menuOf(closed).props.items].map(item => item.id), ['workspace'], 'only the current tier shows before the catalog answers')
   menuOf(closed).props.anchor.props.onClick()
   await tick(); await tick()
   assert.equal(requests.at(-1).endpoint, 'engine-catalog')
-  const open = menuOf(render({ engine: 'zcode', permission: '' }))
+  const open = menuOf(render({ engine: 'zcode', permission: 'workspace' }))
   assert.deepEqual([...open.props.items].map(item => item.id), ['plan', 'workspace', 'full'])
   assert.deepEqual([...open.props.items.map(item => item.icon.type)], ['GlyphPlan', 'GlyphWorkspace', 'GlyphFull'], 'native permission glyphs ride the rows')
   assert.equal(open.props.selectedId, 'workspace')
@@ -2176,7 +2190,7 @@ test('the permission control copies the native select, glyphs and full-tier conf
   assert.deepEqual([...changes.map(change => ({ ...change }))], [{ permission: 'full' }])
   changes.length = 0
   menuOf(render({ engine: 'zcode', permission: 'full' })).props.onSelect('workspace')
-  assert.deepEqual([...changes.map(change => ({ ...change }))], [{ permission: '' }], 'other engines retain default clearing')
+  assert.deepEqual([...changes.map(change => ({ ...change }))], [{ permission: 'workspace' }], 'workspace is saved explicitly for every engine')
   changes.length = 0
   const dshClosed = render({ engine: 'dsh', permission: 'full' })
   menuOf(dshClosed).props.anchor.props.onClick()
@@ -2186,7 +2200,6 @@ test('the permission control copies the native select, glyphs and full-tier conf
   assert.deepEqual([...dshOpen.props.items].map(item => item.id), ['workspace'], 'an engine without a tier does not offer it')
   dshOpen.props.onSelect('workspace')
   assert.deepEqual([...changes.map(change => ({ ...change }))], [{ permission: 'workspace' }], 'DSH needs an explicit tier to leave full access instead of preserving the native selection')
-  assert.ok(menuOf(render({ engine: 'dsh', permission: '' })).props.anchor.props['aria-label'].includes('Agent 默认权限'))
   menuOf(render({ engine: 'unavailable', permission: '' })).props.anchor.props.onClick()
   await tick(); await tick()
   assert.deepEqual([...menuOf(render({ engine: 'unavailable', permission: '' })).props.items], [], 'a host without permission presets must not gain a workspace option')
@@ -2194,10 +2207,9 @@ test('the permission control copies the native select, glyphs and full-tier conf
   menuOf(render({ engine: 'dsh', permission: 'workspace' })).props.anchor.props.onClick()
   await tick(); await tick()
   const inherited = menuOf(render({ engine: 'dsh', permission: 'workspace' }))
-  assert.deepEqual([...inherited.props.items].map(item => item.id), [''])
-  changes.length = 0
-  inherited.props.onSelect('')
-  assert.deepEqual([...changes.map(change => ({ ...change }))], [{ permission: '' }], 'an unsupported stored tier can be cleared explicitly')
+  assert.deepEqual([...inherited.props.items], [])
+  assert.equal(inherited.props.anchor.props.disabled, true, 'a host without presets has a disabled placeholder')
+  assert.ok(inherited.props.anchor.children.some(node => node.children?.includes('无可用权限档位')))
 })
 
 // The statistics line is the host chat's own three pills, and both it and the

@@ -520,6 +520,7 @@ test('the autonomy tier maps onto each engine sandbox channel and validates on t
   assert.equal(modeOf(claudeArgs({ permission: 'workspace' })), 'auto', 'the engine classifier tier: ordinary actions run, dangerous ones ask')
   assert.deepEqual(enginePermissionModes('claude'), ['plan', 'workspace', 'full'])
   assert.deepEqual(enginePermissionModes('opencode'), ['plan', 'workspace'])
+  assert.deepEqual(enginePermissionModes('pi'), ['plan', 'full'])
   assert.deepEqual(enginePermissionModes('dsh'), [])
   assert.throws(() => enginePermissionModes('constructor'), /Unknown engine/)
   await withFixture(async ({ bin, cwd }) => {
@@ -924,3 +925,26 @@ test('Every engine declares commands exactly when it has a command scanner', asy
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+test('codex only marks confirmed structured transient failures retryable', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('codex', { bin, cwd, onEvent: event => events.push(event) })
+  try {
+    for (const [failure, retryable] of [ [{ info: 'serverOverloaded' }, true], [{ info: 'rateLimitExceeded' }, true], [{ info: 'internalServerError' }, true],
+  ...['httpConnectionFailed', 'responseStreamConnectionFailed', 'responseStreamDisconnected', 'responseTooManyFailedAttempts'].flatMap(kind =>
+    [null, 408, 503, 401, 402, 404, 429].map(httpStatusCode => [{ info: { [kind]: { httpStatusCode } } }, httpStatusCode == null || httpStatusCode === 408 || httpStatusCode === 503])),
+  ...['unauthorized', 'usageLimitExceeded', 'sessionBudgetExceeded', 'badRequest', 'modelNotFound', 'other', 'future'].map(info => [{ info }, false]),
+  [{ info: 'serverOverloaded', status: 'interrupted' }, false], [{ info: 'serverOverloaded', status: 'completed' }, false] ]) {
+      events.length = 0
+      await driver.sendTurn('FAILURE ' + JSON.stringify(failure))
+      const ended = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(ended.retryable, retryable ? true : undefined, JSON.stringify(failure))
+    }
+    events.length = 0
+    await driver.sendTurn('WAIT')
+    await driver.interruptTurn()
+    const ended = await until(() => events.find(event => event.type === 'turn/end'))
+    assert.equal(ended.reason, 'interrupted')
+    assert.equal(ended.retryable, undefined)
+  } finally { driver.dispose() }
+}))

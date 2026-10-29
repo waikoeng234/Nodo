@@ -77,3 +77,13 @@ test('the running dock disappears only after work becomes inactive', async () =>
     assert.equal(tree.children.some(node => node?.props?.className === 'nodo-running-dock'), false)
   }
 })
+
+test('a suspected turn keeps its dock clock and passes its state to the running line', async () => {
+  const { loaded, render } = await mount()
+  const work = { active: true, suspect: true, since: 1234 }
+  const dock = nodes(render(work)).find(node => node.props?.className === 'nodo-running-dock')
+  const line = dock.children[0]
+  assert.equal(line.type, loaded.RunningLine)
+  assert.equal(line.props.work, work)
+  assert.equal(line.props.since, 1234)
+})

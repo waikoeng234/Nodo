@@ -380,3 +380,26 @@ test('Claude cards settle through the host approval pipeline', async () => {
     assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[profile.id].driverSessionId, 'fixture-claude-session')
   }))
 })
+
+test('claude only marks structured transient failures retryable', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+  try {
+    for (const [failure, retryable] of [ [{ kind: 'rate_limit', apiError: 'usage_limit_reached', status: 429 }, false],
+  [{ kind: 'rate_limit' }, false], ...['overloaded', 'server_error'].map(kind => [{ kind }, true]),
+  ...['authentication_failed', 'billing_error', 'invalid_request', 'model_not_found', 'unknown'].map(kind => [{ kind, status: 503 }, false]),
+  ...[408, 500, 529, 401, 402, 404, 429].map(status => [{ status }, status === 408 || status >= 500]),
+  [{}, false] ]) {
+      events.length = 0
+      await driver.sendTurn('FAILURE ' + JSON.stringify(failure))
+      const ended = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(ended.retryable, retryable ? true : undefined, JSON.stringify(failure))
+    }
+    events.length = 0
+    await driver.sendTurn('WAIT')
+    await driver.interruptTurn()
+    const ended = await until(() => events.find(event => event.type === 'turn/end'))
+    assert.equal(ended.reason, 'interrupted')
+    assert.equal(ended.retryable, undefined)
+  } finally { driver.dispose() }
+}))

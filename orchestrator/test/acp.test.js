@@ -23,6 +23,24 @@ const withDriver = async (run, { env = {}, driverSessionId } = {}) => {
 }
 const ended = events => events.find(event => event.type === 'turn/end')
 
+test('other ACP engines do not classify OpenCode-shaped provider failures', async () => {
+  const events = []
+  const driver = createAcpDriver({ cwd: tmpdir(), onEvent: event => events.push(event) }, {
+    id: 'fixture', label: 'Fixture',
+    connect: () => ({ request: async method => {
+      if (method === 'initialize') return { protocolVersion: 1, agentCapabilities: {} }
+      if (method === 'session/new') return { sessionId: 'fixture-session' }
+      throw Object.assign(new Error('Provider failure'), { data: { errorName: 'provider.transport' } })
+    }, notify() {}, dispose() {} }),
+  })
+  try {
+    await driver.sendTurn('TASK')
+    await until(() => ended(events))
+    assert.equal(ended(events).reason, 'error')
+    assert.equal(ended(events).retryable, undefined)
+  } finally { driver.dispose() }
+})
+
 test('ACP transport reaps an unresponsive owned process and settles pending work once', async () => {
   const ready = Promise.withResolvers()
   let closed = 0

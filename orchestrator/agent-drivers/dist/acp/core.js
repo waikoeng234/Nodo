@@ -87,7 +87,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         }
         requests.clear();
     };
-    const end = (turn, reason, error, usage) => {
+    const end = (turn, reason, error, usage, retryable = false) => {
         if (running !== turn)
             return;
         running = null;
@@ -101,7 +101,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             emit(turn.changes.snapshot(turn.id));
         // Only the source's messageId bounds a message; without it the last one is unknown.
         const last = turn.unbounded ? undefined : [...turn.messages.values()].at(-1);
-        emit({ type: 'turn/end', turnId: turn.id, reason, ...(last ? { text: last } : {}), ...(error ? { error } : {}), ...(merged ? { usage: merged } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) });
+        emit({ type: 'turn/end', turnId: turn.id, reason, ...(last ? { text: last } : {}), ...(error ? { error } : {}), ...(merged ? { usage: merged } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) });
     };
     const disconnect = () => {
         const connection = peer;
@@ -414,7 +414,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                     // still wins so engine-specific reason maps stay authoritative.
                     const reason = turn.cancelled || stop === 'cancelled' ? 'interrupted' : support.stopReason?.(stop) ?? (stop === 'end_turn' ? 'done' : 'error');
                     end(turn, reason, reason === 'error' ? `${label} stopped: ${stop ?? 'unknown reason'}` : undefined, result?.usage);
-                }, error => end(turn, turn.cancelled ? 'interrupted' : 'error', turn.cancelled ? undefined : translateError(error).message));
+                }, error => end(turn, turn.cancelled ? 'interrupted' : 'error', turn.cancelled ? undefined : translateError(error).message, undefined, support.id === 'opencode' && ['provider.rate-limit', 'provider.transport', 'provider.timeout', 'provider.internal'].includes(error?.data?.errorName)));
                 return turn.id;
             }
             catch (error) {

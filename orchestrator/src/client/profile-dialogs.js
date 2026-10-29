@@ -2,6 +2,7 @@ import { h, Fragment, useState, useEffect, useRef, call, Menu, Modal, Button, RO
 import { avatarTemplateOf, RoleAvatar } from './avatar.tsx'
 import { engineDisplayName } from './engine-logos.js'
 import { modelChoices, thinkingAfterModelChange, thinkingOptions } from './model-options.js'
+import { PermissionSelect, permissionForEngine, usePermissionChange } from './composer.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 import ROLE_PRESETS from '../../core/shared/role-presets.json'
 
@@ -14,7 +15,7 @@ export function Field({ label, children, group = false, required = false }) {
 // A role card as the editor sees it.
 /**
  * @typedef {{ id?: string, name?: string, identity?: string, engine?: string, role?: string, instructions?: string,
- *   lead?: boolean, avatarTemplate?: string, model?: string, thinking?: string,
+ *   lead?: boolean, avatarTemplate?: string, model?: string, thinking?: string, permission?: string,
  *   taskTypes?: string[], hard?: Record<string, string>, sessions?: { id: string, draftedAt?: number, briefSent?: boolean }[] }} RoleCard
  */
 
@@ -36,7 +37,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
     name: profile?.name ?? '', identity: profile?.identity ?? '', engine: profile?.engine ?? '', role: profile?.role ?? '',
     instructions: profile?.instructions ?? '',
     avatarTemplate: profile ? avatarTemplateOf(profile).id : AVATAR_TEMPLATES[avatarSeed % AVATAR_TEMPLATES.length].id,
-    model: profile?.model ?? '', thinking: profile?.thinking ?? '',
+    model: profile?.model ?? '', thinking: profile?.thinking ?? '', permission: profile?.permission,
   })
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -72,7 +73,10 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
         : items
       const choices = scoped.length > 0 ? scoped : items
       setEngines(choices)
-      setDraft(current => ({ ...current, engine: current.engine || choices[0]?.id || '' }))
+      setDraft(current => {
+        const engine = choices.find(item => item.id === current.engine) ?? choices[0]
+        return { ...current, engine: current.engine || engine?.id || '', permission: permissionForEngine(engine, current.permission) }
+      })
     }).catch(failure => { if (live) setError(failure.message) })
       .finally(() => { if (live) setLoading(false) })
     return () => { live = false }
@@ -96,10 +100,12 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
   // Every user edit reports the card as changed; the engine-catalog fill above
   // writes the state directly so loading never counts as one.
   const update = patch => { setDirty(true); setDraft(current => ({ ...current, ...(typeof patch === 'function' ? patch(current) : patch) })) }
+  const { pick: choosePermission, confirmation: permissionConfirmation } = usePermissionChange(disabled || loading)
   const edit = key => event => update({ [key]: event.target.value })
   // Engines own separate model tables: a switch restarts the pair instead of
   // carrying one engine's ids onto the next engine's catalog.
-  const chooseEngine = event => update(current => ({ ...current, engine: event.target.value, model: '', thinking: '' }))
+  const chooseEngine = event => update(current => ({ ...current, engine: event.target.value, model: '', thinking: '',
+    permission: permissionForEngine(engines.find(item => item.id === event.target.value), undefined) }))
   const applyTemplate = (item) => {
     if (matches(item)) return
     setFilled({ name: item.name, before: { identity: draft.identity, role: draft.role, instructions: draft.instructions } })
@@ -123,7 +129,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
     setError('')
     try {
       const values = { name: draft.name.trim(), identity: draft.identity, engine: draft.engine, role: draft.role, instructions: draft.instructions,
-        avatarTemplate: draft.avatarTemplate, model, thinking: draft.thinking }
+        avatarTemplate: draft.avatarTemplate, model, thinking: draft.thinking, permission: draft.permission }
       const saved = await call(profile ? 'profile-update' : 'profile-create', profile ? { id: profile.id, changes: values } : values)
       setBusy(false)
       setDirty(false)
@@ -237,6 +243,10 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
             title: profile ? '创建后不能更换 Agent' : undefined, value: draft.engine, onChange: chooseEngine },
             !engine && h('option', { value: draft.engine }, loading ? '正在加载 Agent…' : `不可用：${draft.engine}`),
             ...engines.map(item => h('option', { key: item.id, value: item.id }, engineDisplayName(item))))),
+        h(Field, { label: '权限' }, h(PermissionSelect, {
+          modes: engine?.capabilities?.permissionModes, value: draft.permission, disabled: disabled || loading,
+          onChange: permission => choosePermission(permission, draft.permission, permission => update({ permission })),
+        })),
         h(Field, { label: '模型' },
           models.length
             ? h('select', { className: 'nodo-dialog-input nodo-dialog-select', disabled, value: model, onChange: chooseModel },
@@ -262,6 +272,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
           h('span', { className: 'nodo-dialog-count', 'aria-hidden': true }, `${draft.instructions.length}/8000`)),
         sessions > 0 && identityDirty && h('p', { className: 'nodo-role-notice', role: 'status' }, `身份已修改，保存后将于下轮生效 · 影响 ${sessions} 个会话`)),
       error && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)),
+    permissionConfirmation,
     deletingIdentity && h(IdentityDeleteDialog, { identity: deletingIdentity, onCancel: () => setDeletingIdentity(null),
       onDeleted: () => { setDeletingIdentity(null); void refresh?.(true) } }))
 }

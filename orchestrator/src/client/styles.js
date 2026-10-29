@@ -5,12 +5,13 @@ import { TOOL_CALL_CSS } from './tool-call.tsx'
 import { TOOL_TIMELINE_CSS } from './tool-timeline.tsx'
 import { CODE_DIFF_CSS } from './code-diff.tsx'
 import { FILE_CHANGES_SUMMARY_CSS } from './file-changes-summary.tsx'
+import { CHANGES_PANEL_CSS } from './changes-panel.tsx'
 import { COMPOSER_ATTACHMENTS_CSS } from './composer-attachments.tsx'
 import terminalCss from '@xterm/xterm/css/xterm.css'
 import { WARN_INK } from './ui-shared.js'
 const TERMINAL_CSS = terminalCss.replace(/#000\b/gi, 'var(--dsw-alias-bg-base)').replace(/#fff\b/gi, 'var(--dsw-alias-label-primary)').replaceAll('rgba(0,0,0,0)', 'transparent')
 
-export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + COMPOSER_ATTACHMENTS_CSS + `
+export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-runs-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 12px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
@@ -580,7 +581,9 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-role-dialog .nodo-identity-save .nodo-dialog-input{height:34px}
 .nodo-role-notice{margin:0;padding:8px 12px;border-radius:var(--nodo-role-radius);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:12px;line-height:18px}
 .nodo-role-names,.nodo-role-run{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.nodo-role-run{grid-template-columns:repeat(3,minmax(0,1fr))}
+.nodo-permission-select{position:relative;display:flex;align-items:center;min-width:0}
+.nodo-permission-select>.nodo-perm-icon{position:absolute;left:10px;pointer-events:none}
+.nodo-permission-select>.nodo-perm-icon+.nodo-dialog-select{padding-left:32px}
 .nodo-role-identity{font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}
 @media(max-width:640px){.nodo-role-names,.nodo-role-run{grid-template-columns:minmax(0,1fr)}.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:160px}}
 .nodo-worktree-toggle{display:flex;align-items:center;gap:8px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}

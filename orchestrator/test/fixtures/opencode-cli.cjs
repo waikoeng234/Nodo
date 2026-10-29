@@ -80,6 +80,11 @@ const receive = line => {
     prompt = { id, text: params.prompt?.[0]?.text ?? '' }
     const text = prompt.text
     next++
+    if (text.startsWith('FAILURE ')) {
+      send({ id, error: { code: -32603, message: 'Fixture failure', data: { errorName: JSON.parse(text.slice(8)) } } })
+      prompt = null
+      return
+    }
     if (text.startsWith('HANDOFF ')) {
       const [, tag, outcome] = text.split(' ')
       setTimeout(() => {

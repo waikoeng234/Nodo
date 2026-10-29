@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PassThrough } from 'node:stream'
+import { symlinkSync, realpathSync, unlinkSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { install } from '../src/host/terminal.js'
 import { install as installSessions } from '../core/src/sessions.js'
 import { withHost } from './helpers/host.js'
@@ -34,7 +36,8 @@ function setup(subprocess = provider()) {
   const rt = {
     ctx: { inject(deps, run) { bindings.push({ deps, run }); if (subprocess) disposers.push(run({ subprocess })) },
       effect(run) { disposers.push(run()) }, connection: { fetch: { register(route) { routes.push(route); return () => {} } } } },
-    state: { profiles: { role: { id: 'role', sessions: [{ id: 'first', cwd: '/worktree' }, { id: 'second' }] } } },
+    state: { workspaces: { main: { id: 'main', cwd: '/workspace' }, branch: { id: 'branch', cwd: '/worktree' } },
+      profiles: { role: { id: 'role', sessions: [{ id: 'first', cwd: '/worktree' }, { id: 'second' }] } } },
     save: async () => {}, refresh: async () => {}, readOnly: () => undefined,
     sessionWorkspace: () => ({ cwd: '/workspace' }), handle: async () => ({ ok: true, value: {} }),
   }
@@ -53,6 +56,148 @@ function setup(subprocess = provider()) {
     dispose: async () => { for (const stop of [...disposers].reverse()) await stop?.() } }
 }
 const frame = async reader => { const value = await reader.read(); return value.done ? null : JSON.parse(new TextDecoder().decode(value.value)) }
+
+test('a welcome workspace and sessions at its real cwd share terminals, streams and control across roles', async () => {
+  const subprocess = provider()
+  await withHost(async host => {
+    const rt = await host.runtime
+    const alias = join(host.home, 'alias')
+    symlinkSync(host.home, alias)
+    const workspace = await host.api('workspace-create', { name: 'Shared', cwd: alias })
+    const other = await host.api('workspace-create', { name: 'Other', cwd: join(host.home, 'other') })
+    const roles = await Promise.all(['One', 'Two'].map(name => host.api('profile-create', { name, engine: 'echo' })))
+    const sessions = await Promise.all(roles.map(role => host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })))
+    rt.conversation(roles[1].id, sessions[1].id).session.cwd = realpathSync(host.home)
+    await rt.save()
+    const route = host.routes.find(route => route.path === '/api/nodo/terminal')
+    const post = async body => (await route.fetch(new Request('http://host/api/nodo/terminal', { method: 'POST', body: JSON.stringify(body) }))).json()
+    const scopes = [{ workspace: workspace.id }, ...sessions.map((session, i) => ({ profile: roles[i].id, session: session.id }))]
+    const id = (await post({ op: 'create', ...scopes[0], cols: 80, rows: 24, cwd: '/untrusted' })).value.id
+    assert.equal(subprocess.specs[0].cwd, realpathSync(host.home))
+    for (const scope of scopes) {
+      const value = (await post({ op: 'list', ...scope })).value
+      assert.equal(value.cwd, realpathSync(host.home))
+      assert.deepEqual(value.terminals.map(terminal => terminal.id), [id])
+      assert.equal((await post({ op: 'write', ...scope, id, data: 'shared' })).ok, true)
+    }
+    assert.deepEqual((await post({ op: 'list', workspace: other.id, cwd: alias })).value.terminals, [])
+    assert.equal((await post({ op: 'write', workspace: other.id, cwd: alias, id, data: 'denied' })).ok, false)
+    for (const scope of [{ cwd: alias }, { profile: roles[0].id }, { workspace: 'missing' }, { workspace: workspace.id, ...scopes[1] }]) {
+      for (const op of ['list', 'create']) assert.equal((await post({ op, ...scope, cols: 80, rows: 24 })).ok, false)
+    }
+    const response = await route.fetch(new Request(`http://host/api/nodo/terminal?workspace=${workspace.id}&id=${id}`))
+    const reader = response.body.getReader(), next = frame(reader)
+    subprocess.handles[0].output.write('welcome'); await tick()
+    assert.equal(Buffer.from((await next).data, 'base64').toString(), 'welcome')
+    await reader.cancel()
+    for (let i = 0; i < sessions.length; i++) {
+      await host.api('session-archive', { ...scopes[i + 1], archived: true })
+      assert.equal((await post({ op: 'list', ...scopes[i + 1] })).ok, false)
+      assert.deepEqual((await post({ op: 'list', ...scopes[0] })).value.terminals.map(terminal => terminal.id), [id])
+      assert.equal(subprocess.handles[0].terminated, 0)
+    }
+    await host.api('workspace-delete', { id: workspace.id })
+    assert.equal(subprocess.handles[0].terminated, 1)
+    assert.equal((await post({ op: 'list', ...scopes[0] })).ok, false)
+  }, { subprocess })
+})
+
+test('read-only mode refuses creation but keeps open terminals usable for both target forms', async () => {
+  const h = setup()
+  try {
+    const id = await h.create()
+    h.rt.readOnly = () => 'read-only'
+    for (const scope of [{ workspace: 'branch' }, { profile: 'role', session: 'first' }]) {
+      const value = await (await h.request({ op: 'list', ...scope })).json()
+      assert.equal(value.value.available, false)
+      assert.deepEqual(value.value.terminals.map(terminal => terminal.id), [id])
+      assert.equal((await (await h.request({ op: 'create', ...scope, cols: 80, rows: 24 })).json()).ok, false)
+      assert.equal((await (await h.request({ op: 'write', ...scope, id, data: 'typed' })).json()).ok, true)
+      assert.equal((await (await h.request({ op: 'resize', ...scope, id, cols: 90, rows: 30 })).json()).ok, true)
+    }
+    assert.equal(h.subprocess.handles.length, 1)
+    assert.deepEqual(h.subprocess.handles[0].writes, ['typed', 'typed'])
+    assert.deepEqual(h.subprocess.handles[0].sizes, [[90, 30], [90, 30]])
+    assert.equal((await (await h.request({ op: 'close', workspace: 'branch', id })).json()).ok, true)
+    assert.equal(h.subprocess.handles[0].terminated, 1)
+  } finally { await h.dispose() }
+})
+
+test('a valid old session without a cwd lists unavailable terminals without falling back to another session', async () => {
+  const h = setup()
+  try {
+    await h.create()
+    h.rt.state.profiles.role.activeSessionId = 'first'
+    h.rt.sessionWorkspace = () => undefined
+    assert.deepEqual(await h.post({ op: 'list', session: 'second' }), { ok: true, value: { available: false, terminals: [] } })
+    assert.equal((await h.post({ op: 'create', session: 'second', cols: 80, rows: 24 })).ok, false)
+    assert.equal((await h.post({ op: 'list', session: undefined })).ok, false)
+    assert.equal(h.subprocess.handles.length, 1)
+  } finally { await h.dispose() }
+})
+
+test('a non-ENOENT realpath failure keeps referenced terminals alive until cwd resolution recovers', async () => {
+  const subprocess = provider()
+  await withHost(async host => {
+    const rt = await host.runtime, alias = join(host.home, 'terminal-alias')
+    symlinkSync(host.home, alias)
+    const workspace = await host.api('workspace-create', { name: 'Linked terminal', cwd: alias })
+    const route = host.routes.find(route => route.path === '/api/nodo/terminal')
+    const post = async body => (await route.fetch(new Request('http://host/api/nodo/terminal', { method: 'POST', body: JSON.stringify({ workspace: workspace.id, ...body }) }))).json()
+    const id = (await post({ op: 'create', cols: 80, rows: 24 })).value.id
+    unlinkSync(alias); symlinkSync(alias, alias)
+    assert.throws(() => realpathSync(alias), { code: 'ELOOP' })
+    await rt.save(); await rt.refresh(); await tick()
+    assert.equal(subprocess.handles[0].terminated, 0)
+    unlinkSync(alias); symlinkSync(host.home, alias)
+    await rt.refresh()
+    assert.deepEqual((await post({ op: 'list' })).value.terminals.map(terminal => terminal.id), [id])
+    await host.api('workspace-delete', { id: workspace.id })
+    assert.equal(subprocess.handles[0].terminated, 1)
+  }, { subprocess })
+})
+
+test('a permanently broken path shields only its own terminal while another deleted project is reclaimed', async () => {
+  const subprocess = provider()
+  await withHost(async host => {
+    const rt = await host.runtime
+    const kept = join(host.home, 'terminal-kept'), loop = join(host.home, 'terminal-loop'), doomed = join(host.home, 'terminal-doomed')
+    mkdirSync(kept); mkdirSync(doomed); symlinkSync(kept, loop)
+    const loopWorkspace = await host.api('workspace-create', { name: 'Loop', cwd: loop })
+    const doomedWorkspace = await host.api('workspace-create', { name: 'Doomed', cwd: doomed })
+    const route = host.routes.find(route => route.path === '/api/nodo/terminal')
+    const create = async workspace => (await (await route.fetch(new Request('http://host/api/nodo/terminal', { method: 'POST', body: JSON.stringify({ op: 'create', workspace, cols: 80, rows: 24 }) }))).json()).value.id
+    await create(loopWorkspace.id)
+    await create(doomedWorkspace.id)
+    unlinkSync(loop); symlinkSync(loop, loop)
+    assert.throws(() => realpathSync(loop), { code: 'ELOOP' })
+    await host.api('workspace-delete', { id: doomedWorkspace.id })
+    await rt.refresh(); await tick()
+    assert.equal(subprocess.handles[1].terminated, 1)
+    assert.equal(subprocess.handles[0].terminated, 0)
+  }, { subprocess })
+})
+
+test('archiving or deleting a role retains its terminals while a workspace references their cwd', async () => {
+  const h = setup()
+  try {
+    const id = await h.create()
+    await h.rt.archiveSession('role', 'first', true)
+    h.rt.state.profiles.role.deletedAt = 1
+    await h.rt.save()
+    assert.equal(h.subprocess.handles[0].terminated, 0)
+    for (const op of ['list', 'create', 'write', 'resize', 'close']) {
+      assert.equal((await h.post({ op, id, data: 'denied', cols: 80, rows: 24 })).ok, false)
+    }
+    assert.deepEqual(h.subprocess.handles[0].writes, [])
+    assert.deepEqual(h.subprocess.handles[0].sizes, [])
+    const list = await (await h.request({ op: 'list', workspace: 'branch' })).json()
+    assert.deepEqual(list.value.terminals.map(terminal => terminal.id), [id])
+    delete h.rt.state.workspaces.branch
+    await h.rt.save(); await tick()
+    assert.equal(h.subprocess.handles[0].terminated, 1)
+  } finally { await h.dispose() }
+})
 
 test('terminal cwd is resolved from the session or its workspace; dimensions and text pass to the provider', async () => {
   const h = setup()
@@ -86,12 +231,12 @@ test('terminal records carry only the shell basename', async () => {
   } finally { await h.dispose() }
 })
 
-test('terminal operations require the matching profile and explicit session', async () => {
+test('terminal operations require a valid workspace or explicit session at the same cwd', async () => {
   const h = setup()
   try {
     const id = await h.create()
     h.rt.state.profiles.other = { id: 'other', sessions: [{ id: 'third' }] }
-    for (const scope of [{}, { profile: 'role' }, { session: 'first' }, { profile: 'role', session: 'second' }, { profile: 'other', session: 'third' }]) {
+    for (const scope of [{}, { cwd: '/worktree' }, { workspace: 'missing' }, { profile: 'role' }, { session: 'first' }, { profile: 'role', session: 'second' }, { profile: 'other', session: 'third' }]) {
       for (const op of ['write', 'resize', 'close']) {
         const response = await h.request({ op, id, data: 'test', cols: 80, rows: 24, ...scope })
         assert.equal(response.status, 404, `${op} ${JSON.stringify(scope)}`)
@@ -173,20 +318,26 @@ test('terminal buffer trimming skips UTF-8 continuation bytes, including split p
   }
 })
 
-test('pending termination never blocks save or refresh and failed cleanup remains retryable', async () => {
-  const h = setup()
+for (const trigger of ['save', 'refresh']) test(`sweep-triggered termination never blocks ${trigger}`, async () => {
+  const h = setup(), gate = Promise.withResolvers()
+  let sweeping
   try {
     await h.create()
     const handle = h.subprocess.handles[0], terminate = handle.terminate
-    let release
-    handle.terminate = () => new Promise(resolve => { release = resolve })
+    let started = false, settled = false
+    handle.terminate = async () => { started = true; await gate.promise; await terminate() }
+    delete h.rt.state.workspaces.branch
     h.rt.state.profiles.role.sessions[0].archivedAt = 1
-    await h.rt.save(); await h.rt.refresh(); await tick()
-    assert.equal(typeof release, 'function')
-    release(); await tick()
-    assert.deepEqual((await h.post({ op: 'list', profile: 'role', session: 'first' })).value.terminals, [])
-    await terminate()
-  } finally { await h.dispose() }
+    sweeping = h.rt[trigger]().then(() => { settled = true })
+    await tick()
+    assert.equal(started, true, 'sweep must initiate process termination')
+    assert.equal(settled, true, 'state operations must finish while termination is pending')
+    assert.equal(handle.terminated, 0)
+    h.rt.state.profiles.role.sessions[0].archivedAt = undefined
+    assert.deepEqual((await h.post({ op: 'list' })).value.terminals, [], 'swept terminals stay hidden while the provider is pending')
+    gate.resolve(); await sweeping; await tick()
+    assert.equal(handle.terminated, 1)
+  } finally { gate.resolve(); await sweeping; await h.dispose() }
 })
 
 test('cleanup rejection keeps closed terminals hidden and refresh retries their process cleanup without poisoning state', async () => {
@@ -207,10 +358,10 @@ test('cleanup rejection keeps closed terminals hidden and refresh retries their 
     await assert.doesNotReject(rt.save())
     await assert.doesNotReject(rt.refresh())
     assert.equal((await host.post('state', {})).ok, true)
-    assert.deepEqual((await post({ op: 'list' })).value.terminals, [])
+    assert.deepEqual((await post({ op: 'list', workspace: workspace.id, profile: undefined, session: undefined })).value.terminals, [])
     fail = false
     await rt.refresh(); await tick()
-    assert.deepEqual((await post({ op: 'list' })).value.terminals, [])
+    assert.deepEqual((await post({ op: 'list', workspace: workspace.id, profile: undefined, session: undefined })).value.terminals, [])
     assert.equal(handle.terminated, 1)
   }, { subprocess })
 })
@@ -307,11 +458,10 @@ test('plugin unload retries failed cleanup of an already hidden terminal', async
   assert.equal(handle.terminated, 1)
 })
 
-for (const action of ['archive', 'delete', 'unload']) test(`${action} terminates all affected terminals`, async () => {
+for (const action of ['unreferenced', 'unload']) test(`${action} terminates all affected terminals`, async () => {
   const h = setup()
   await h.create(); await h.create()
-  if (action === 'archive') await h.rt.archiveSession('role', 'first', true)
-  else if (action === 'delete') { h.rt.state.profiles.role.sessions = []; await h.rt.save() }
+  if (action === 'unreferenced') { h.rt.state.profiles.role.sessions = []; delete h.rt.state.workspaces.branch; await h.rt.save() }
   if (action !== 'unload') {
     await tick()
     assert.deepEqual(h.subprocess.handles.map(handle => handle.terminated), [1, 1])
@@ -369,7 +519,7 @@ test('the full plugin loads without subprocess and leaves terminal availability 
   })
 })
 
-for (const kind of ['profile', 'workspace']) test(`the ${kind}-delete API terminates the archived session's terminals`, async () => {
+for (const kind of ['profile', 'workspace']) test(`the ${kind}-delete API keeps terminals only while their cwd is referenced`, async () => {
   const subprocess = provider()
   await withHost(async host => {
     await host.runtime
@@ -382,6 +532,12 @@ for (const kind of ['profile', 'workspace']) test(`the ${kind}-delete API termin
     }) }))
     assert.equal((await response.json()).ok, true)
     await host.api(`${kind}-delete`, { id: kind === 'profile' ? profile.id : workspace.id })
-    assert.equal(subprocess.handles[0].terminated, 1)
+    assert.equal(subprocess.handles[0].terminated, kind === 'workspace' ? 1 : 0)
+    if (kind === 'profile') {
+      const listed = await route.fetch(new Request('http://host/api/nodo/terminal', { method: 'POST', body: JSON.stringify({ op: 'list', workspace: workspace.id }) }))
+      assert.equal((await listed.json()).value.terminals.length, 1)
+      await host.api('workspace-delete', { id: workspace.id })
+      assert.equal(subprocess.handles[0].terminated, 1)
+    }
   }, { subprocess })
 })

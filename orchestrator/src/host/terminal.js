@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { basename, isAbsolute } from 'node:path'
+import { basename, isAbsolute, resolve } from 'node:path'
+import { realpathSync } from 'node:fs'
 
 const BUFFER_MAX = 256 * 1024
 const INPUT_MAX = 1024 * 1024
@@ -9,6 +10,10 @@ const dimensions = ({ cols, rows }) => {
 }
 const describe = entry => ({ id: entry.id, cols: entry.cols, rows: entry.rows, shell: entry.shell, ...(entry.exited ? { exited: entry.exited } : {}) })
 const notFound = () => Object.assign(new Error('Terminal not found'), { code: 'terminal/not-found' })
+const directory = cwd => {
+  if (typeof cwd !== 'string' || !isAbsolute(cwd)) throw notFound()
+  try { return realpathSync(cwd) } catch (error) { if (error.code === 'ENOENT') return resolve(cwd); throw error }
+}
 
 export function install(rt) {
   const { ctx } = rt
@@ -32,13 +37,39 @@ export function install(rt) {
     cleanup.add(entry)
     void terminate(entry).catch(() => {})
   }
-  const active = entry => {
-    const profile = rt.state.profiles[entry.profile]
-    const session = profile && rt.sessionsOf(profile).find(session => session.id === entry.session)
-    return session && !session.archivedAt && !profile.deletedAt
+  const targetCwd = body => {
+    if (body.workspace !== undefined) {
+      if (typeof body.workspace !== 'string' || body.profile !== undefined || body.session !== undefined) throw notFound()
+      const workspace = rt.state.workspaces[body.workspace]
+      if (!workspace || workspace.deletedAt) throw notFound()
+      return workspace.cwd ? directory(workspace.cwd) : undefined
+    }
+    if (typeof body.profile !== 'string' || !body.profile || typeof body.session !== 'string' || !body.session) throw notFound()
+    let found
+    try { found = rt.conversation(body.profile, body.session) } catch { throw notFound() }
+    const { profile, session } = found
+    if (profile.deletedAt || session.archivedAt) throw notFound()
+    const cwd = session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd
+    return cwd ? directory(cwd) : undefined
+  }
+  // A path whose resolution fails only shields the terminals last seen at its directory.
+  const resolved = new Map()
+  const referenced = () => {
+    const paths = new Set([
+      ...Object.values(rt.state.workspaces).filter(workspace => !workspace.deletedAt).map(workspace => workspace.cwd),
+      ...Object.values(rt.state.profiles).filter(profile => !profile.deletedAt).flatMap(profile => rt.sessionsOf(profile)
+        .filter(session => !session.archivedAt).map(session => session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd)),
+    ].filter(Boolean))
+    const cwds = new Set()
+    for (const path of paths) {
+      try { const cwd = directory(path); resolved.set(path, cwd); cwds.add(cwd) }
+      catch { cwds.add(resolved.get(path) ?? resolve(path)) }
+    }
+    return cwds
   }
   const sweep = async () => {
-    for (const entry of entries.values()) if (!active(entry)) close(entry)
+    const cwds = referenced()
+    for (const entry of entries.values()) if (!cwds.has(entry.cwd)) close(entry)
     await Promise.allSettled([...cleanup].map(terminate))
   }
   const terminateAll = async () => {
@@ -58,21 +89,17 @@ export function install(rt) {
     const original = rt[name]
     rt[name] = async (...args) => { const value = await original(...args); void sweep().catch(() => {}); return value }
   }
-  const findEntry = ({ profile: ref, session: id, id: terminalId }) => {
-    if (typeof ref !== 'string' || !ref || typeof id !== 'string' || !id) throw notFound()
-    let conversation
-    try { conversation = rt.conversation(ref, id) } catch { throw notFound() }
-    const entry = entries.get(terminalId)
-    if (!entry || entry.profile !== conversation.profile.id || entry.session !== conversation.session.id) throw notFound()
+  const findEntry = body => {
+    const cwd = targetCwd(body)
+    const entry = entries.get(body.id)
+    if (!cwd || !entry || entry.cwd !== cwd) throw notFound()
     return entry
   }
 
   const create = async body => {
     if (!available() || rt.readOnly() != null) throw new Error('Terminal unavailable')
-    const { profile, session } = rt.conversation(body.profile, body.session)
-    rt.assertSessionWritable(profile, session)
-    const cwd = session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd
-    if (!cwd || !isAbsolute(cwd)) throw new Error('Workspace unavailable')
+    const cwd = targetCwd(body)
+    if (!cwd) throw new Error('Workspace unavailable')
     const size = dimensions(body)
     const provider = subprocess, signal = allocation.signal
     const environment = await provider.terminalEnvironment?.(signal)
@@ -81,7 +108,7 @@ export function install(rt) {
     if (disposed || signal.aborted) throw new Error('Terminal unavailable')
     const terminal = await provider.spawnTerminal({ argv: [executable, '-l', '-i'], cwd, ...size,
       terminalType: 'xterm-256color', graceMs: 1500, signal })
-    const entry = { id: randomUUID(), profile: profile.id, session: session.id, handle: terminal, shell: basename(executable), ...size,
+    const entry = { id: randomUUID(), cwd, handle: terminal, shell: basename(executable), ...size,
       buffer: Buffer.alloc(0), seq: 0, listeners: new Set() }
     entries.set(entry.id, entry)
     // Drain output before publishing exit; done may settle before its final bytes arrive.
@@ -109,7 +136,8 @@ export function install(rt) {
         failed: results.some(result => result.status === 'rejected') }
       notify(entry)
     })
-    if (disposed || signal.aborted || !active(entry)) { close(entry); throw new Error('Terminal unavailable') }
+    const cwds = referenced()
+    if (disposed || signal.aborted || rt.readOnly() != null || !cwds.has(cwd)) { close(entry); throw new Error('Terminal unavailable') }
     return describe(entry)
   }
 
@@ -155,7 +183,7 @@ export function install(rt) {
         if (disposed) throw new Error('Terminal unavailable')
         if (request.method === 'GET') {
           const query = new URL(request.url).searchParams
-          const entry = findEntry({ id: query.get('id'), profile: query.get('profile'), session: query.get('session') })
+          const entry = findEntry(Object.fromEntries(query))
           const since = Number(query.get('since') ?? 0)
           if (!Number.isSafeInteger(since) || since < 0) throw new Error('Invalid terminal stream')
           return stream(entry, since, request.signal)
@@ -167,9 +195,9 @@ export function install(rt) {
           pending.add(operation)
           try { value = await operation } finally { pending.delete(operation) }
         } else if (body.op === 'list') {
-          const { profile, session } = rt.conversation(body.profile, body.session)
-          value = { available: available() && rt.readOnly() == null && !profile.deletedAt && !session.archivedAt,
-            terminals: [...entries.values()].filter(entry => entry.profile === profile.id && entry.session === session.id).map(describe) }
+          const cwd = targetCwd(body)
+          value = { cwd, available: !!cwd && available() && rt.readOnly() == null,
+            terminals: cwd ? [...entries.values()].filter(entry => entry.cwd === cwd).map(describe) : [] }
         } else {
           const entry = findEntry(body)
           if (body.op === 'close') close(entry)

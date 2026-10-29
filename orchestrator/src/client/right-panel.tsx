@@ -2,24 +2,30 @@ import {
   h, Fragment, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore, call,
   Button, CodeBlock, MarkdownText, ImageLightbox, MARKDOWN_LABELS,
   IconPanelLeftOutlineRegular, IconFolderOpenOutlineRegular, IconCodeOutlineRegular, IconCloseOutlineRegular, IconPlusOutlineRegular,
-  IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconGlobeOutlineRegular,
+  IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconGlobeOutlineRegular, IconBranchOutlineRegular,
 } from './ui-shared.js'
+import { ChangesView } from './changes-panel.tsx'
+import type { ChangesSource } from './changes-panel.tsx'
 import { BrowserView, browserTitle, normalizeBrowserAddress } from './browser.tsx'
-import { TerminalView, terminalRequest, measureTerminal, TerminalMissingError } from './terminal.tsx'
-import type { TerminalList, TerminalRecord } from './terminal.tsx'
+import { TerminalView, terminalRequest, terminalScope, measureTerminal, TerminalMissingError } from './terminal.tsx'
+import type { TerminalList, TerminalRecord, TerminalTarget } from './terminal.tsx'
 
-type Target = { profile: string; session: string; cwd?: string }
+type Target = TerminalTarget & { cwd?: string; readOnly?: boolean }
 type Tab = { kind: 'files' } | ({ kind: 'terminal' } & TerminalRecord) | { kind: 'browser'; id: string; url: string; title: string }
+  | { kind: 'changes'; id: 'changes'; source: ChangesSource; path?: string; version: number }
 const terminalTab = ({ id, cols, rows, shell }: TerminalRecord): Tab =>
   ({ kind: 'terminal', id, ...(cols && rows ? { cols, rows } : {}), ...(shell ? { shell } : {}) })
 const tabId = (tab: Tab) => tab.kind === 'files' ? 'files' : tab.id
-type PanelState = { target: Target | null; expanded: boolean; tabs: Tab[]; active: string; available: boolean; creating: boolean; error: string }
+type PanelState = { target: Target | null; expanded: boolean; tabs: Tab[]; active: string; selected: string; available: boolean; creating: boolean; error: string }
 export type RightPanelService = {
   subscribe: (listener: () => void) => () => void
   getSnapshot: () => PanelState
   bind: (target: Target) => () => void
   toggle: () => void
   openFiles: () => void
+  openFile: (path: string) => void
+  openChanges: (source: ChangesSource, path?: string) => void
+  selectFile: (path: string) => void
   openHome: () => void
   newTerminal: (element: HTMLElement | null) => Promise<void>
   newBrowser: (url?: string) => void
@@ -36,12 +42,15 @@ export function createRightPanel(ctx: {
   }
   layout: { openRightbar: (track: boolean, fullscreen: boolean) => void; closeRightbar: () => void }
 }): RightPanelService {
-  let state: PanelState = { target: null, expanded: false, tabs: [], active: '', available: false, creating: false, error: '' }
+  let state: PanelState = { target: null, expanded: false, tabs: [], active: '', selected: '', available: false, creating: false, error: '' }
   let generation = 0
   let browserSequence = 0
+  let changesSequence = 0
   let bound: Target | undefined
   const listeners = new Set<() => void>()
   const closed = new Set<string>()
+  const directories = new Map<string, string>()
+  const normalized = (cwd?: string) => cwd && (directories.get(cwd) ?? cwd)
   const publish = (changes: Partial<PanelState>) => {
     state = { ...state, ...changes }
     for (const listener of listeners) listener()
@@ -51,27 +60,51 @@ export function createRightPanel(ctx: {
     getSnapshot: () => state,
     bind(target) {
       const current = ++generation
-      const same = bound?.profile === target.profile && bound.session === target.session
-      bound = target
-      const tabs = same ? state.tabs : state.tabs.filter(tab => tab.kind === 'files')
-      publish({ target, tabs, active: same ? state.active : tabs[0] ? tabId(tabs[0]) : '', available: false, creating: false, error: '' })
+      const previous = bound
+      let adopted = false
+      const adopt = (cwd = target.cwd) => {
+        const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd)
+        bound = { ...target, cwd: normalized(cwd) }
+        const tabs = (same ? state.tabs : state.tabs.filter(tab => tab.kind === 'files')).filter(tab => !target.readOnly || tab.kind !== 'terminal')
+        publish({ target: bound, tabs, selected: same ? state.selected : '', active: same && (state.active === '' || tabs.some(tab => tabId(tab) === state.active)) ? state.active : tabs[0] ? tabId(tabs[0]) : '', available: false, creating: false, ...(adopted ? {} : { error: '' }) })
+        adopted = true
+      }
+      if (!previous || normalized(previous.cwd) === normalized(target.cwd) || target.readOnly) adopt()
+      else publish({ available: false, creating: false, error: '' })
       const restore = async () => {
         for (let attempt = 0; attempt < 2 && current === generation; attempt++) {
           try {
-            const value: TerminalList = await terminalRequest('list', { profile: target.profile, session: target.session })
+            const value: TerminalList = await terminalRequest('list', terminalScope(target))
+            if (target.cwd && value.cwd) directories.set(target.cwd, value.cwd)
             if (current !== generation) return
-            const tabs: Tab[] = [...state.tabs.filter(tab => tab.kind !== 'terminal'), ...value.terminals.filter(terminal => !closed.has(terminal.id)).map(terminalTab)]
-            publish({ tabs, available: value.available, active: tabs.some(tab => tabId(tab) === state.active) ? state.active : tabs[0] ? tabId(tabs[0]) : '',
+            adopt(value.cwd ?? target.cwd)
+            const restored = value.terminals.filter(terminal => !closed.has(terminal.id))
+            const tabs: Tab[] = [...state.tabs.filter(tab => tab.kind !== 'terminal' || restored.some(terminal => terminal.id === tab.id)),
+              ...restored.filter(terminal => !state.tabs.some(tab => tabId(tab) === terminal.id)).map(terminalTab)]
+            publish({ target: bound, tabs, available: value.available, active: tabs.some(tab => tabId(tab) === state.active) ? state.active : tabs[0] ? tabId(tabs[0]) : '',
               error: state.error === '无法加载终端列表' || state.error === '终端列表加载失败，正在重试…' ? '' : state.error })
             return
-          } catch { if (current === generation) publish({ error: attempt ? '无法加载终端列表' : '终端列表加载失败，正在重试…' }) }
+          } catch {
+            if (current === generation) {
+              if (!adopted) adopt()
+              publish({ error: attempt ? '无法加载终端列表' : '终端列表加载失败，正在重试…' })
+            }
+          }
         }
       }
-      void restore()
-      return () => { if (state.target === target) { generation++; publish({ target: null }) } }
+      if (!target.readOnly) void restore()
+      // React cleans up the old page before binding its replacement.
+      return () => { void Promise.resolve().then(() => { if (current === generation) { generation++; publish({ target: null }) } }) }
     },
     toggle: () => publish({ expanded: !state.expanded }),
     openFiles: () => publish({ tabs: state.tabs.some(tab => tab.kind === 'files') ? state.tabs : [...state.tabs, { kind: 'files' }], active: 'files' }),
+    openFile(path) { if (state.target) { panel.openFiles(); publish({ expanded: true, selected: path }) } },
+    openChanges(source, path) {
+      if (!state.target) return
+      const tab: Tab = { kind: 'changes', id: 'changes', source, path, version: ++changesSequence }
+      publish({ tabs: state.tabs.some(tab => tab.kind === 'changes') ? state.tabs.map(current => current.kind === 'changes' ? tab : current) : [...state.tabs, tab], active: 'changes', expanded: true })
+    },
+    selectFile: selected => publish({ selected }),
     openHome: () => { if (state.active) publish({ active: '' }) },
     selectTab: active => publish({ active }),
     newBrowser(value = '') {
@@ -88,12 +121,12 @@ export function createRightPanel(ctx: {
     },
     async newTerminal(element) {
       if (!state.target || !state.available || state.creating) return
-      const current = generation, { profile, session } = state.target
+      const current = generation, scope = terminalScope(state.target)
       publish({ creating: true, error: '' })
       try {
         const size = await measureTerminal(element)
         if (current !== generation) return
-        const terminal: TerminalRecord = await terminalRequest('create', { profile, session, ...size })
+        const terminal: TerminalRecord = await terminalRequest('create', { ...scope, ...size })
         if (current === generation) publish({ tabs: [...state.tabs, terminalTab({ ...size, ...terminal })], active: terminal.id })
       } catch { if (current === generation) publish({ error: '无法新建终端' }) }
       finally { if (current === generation) publish({ creating: false }) }
@@ -105,11 +138,11 @@ export function createRightPanel(ctx: {
     async closeTab(id) {
       const current = generation, target = state.target
       const index = state.tabs.findIndex(tab => tabId(tab) === id), tab = state.tabs[index]
-      if (!tab) return
+      if (!tab || tab.kind === 'terminal' && target?.readOnly) return
       if (tab.kind === 'terminal') closed.add(id)
       panel.forgetTab(id)
       try {
-        if (tab.kind === 'terminal' && target) await terminalRequest('close', { profile: target.profile, session: target.session, id })
+        if (tab.kind === 'terminal' && target) await terminalRequest('close', { ...terminalScope(target), id })
       } catch (error) {
         if (!(error instanceof TerminalMissingError)) {
           closed.delete(id)
@@ -121,22 +154,24 @@ export function createRightPanel(ctx: {
   }
   ctx.slots.inject('rightbar', () => {
     let unregister: (() => void) | undefined
+    let owned = false
+    const close = () => { if (owned) ctx.layout.closeRightbar(); owned = false }
     const Owner = ({ width }: { width: number }) => {
       const { expanded } = useSyncExternalStore(panel.subscribe, panel.getSnapshot)
+      useLayoutEffect(() => { owned = true; return () => { owned = false } }, [])
       useLayoutEffect(() => {
         if (expanded) ctx.layout.openRightbar(true, false)
         else ctx.layout.closeRightbar()
       }, [expanded])
-      useLayoutEffect(() => () => ctx.layout.closeRightbar(), [])
       return <RightPanel panel={panel} width={width} />
     }
     const update = () => {
       if (state.target && !unregister) unregister = ctx.slots.register({ name: 'rightbar', priority: -100 }, Owner)
-      if (!state.target && unregister) { ctx.layout.closeRightbar(); unregister(); unregister = undefined }
+      if (!state.target && unregister) { close(); unregister(); unregister = undefined }
     }
     const stop = panel.subscribe(update)
     update()
-    return () => { stop(); if (unregister) { ctx.layout.closeRightbar(); unregister() } }
+    return () => { stop(); if (unregister) { close(); unregister() } }
   })
   ctx.slots.inject('shell.overlay', () => {
     let unregister: (() => void) | undefined
@@ -166,7 +201,7 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
   if (!target) return null
   const counts = new Map<string, number>()
   const titles = state.tabs.map(tab => {
-    const title = tab.kind === 'files' ? '项目文件' : tab.kind === 'browser' ? tab.title : tab.shell || '终端'
+    const title = tab.kind === 'files' ? '项目文件' : tab.kind === 'changes' ? '变更' : tab.kind === 'browser' ? tab.title : tab.shell || '终端'
     const base = tab.kind === 'browser' && title.length > 28 ? `${title.slice(0, 27)}…` : title
     const nth = (counts.get(base) ?? 0) + 1
     counts.set(base, nth)
@@ -186,7 +221,7 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
         {state.tabs.map((tab, index) => <div key={tabId(tab)} className="nodo-right-tab" data-active={state.active === tabId(tab) || undefined}>
           <button type="button" role="tab" id={`nodo-right-tab-${tabId(tab)}`} aria-controls={`nodo-right-pane-${tabId(tab)}`}
             aria-selected={state.active === tabId(tab)} tabIndex={state.active === tabId(tab) ? 0 : -1} onClick={() => panel.selectTab(tabId(tab))}>
-            {tab.kind === 'files' ? <IconFolderOpenOutlineRegular size={14} /> : tab.kind === 'browser' ? <IconGlobeOutlineRegular size={14} /> : <IconCodeOutlineRegular size={14} />}{titles[index]}
+            {tab.kind === 'files' ? <IconFolderOpenOutlineRegular size={14} /> : tab.kind === 'changes' ? <IconBranchOutlineRegular size={14} /> : tab.kind === 'browser' ? <IconGlobeOutlineRegular size={14} /> : <IconCodeOutlineRegular size={14} />}{titles[index]}
           </button>
           <Button variant="ghost" className="nodo-right-tab-close" aria-label={`关闭${titles[index]}`}
             onClick={() => void panel.closeTab(tabId(tab))} icon={<IconCloseOutlineRegular size={14} />} />
@@ -198,7 +233,8 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
       {state.error && status(state.error)}
       {state.tabs.map(tab => <div key={tabId(tab)} id={`nodo-right-pane-${tabId(tab)}`} className="nodo-right-pane" role="tabpanel"
         aria-labelledby={`nodo-right-tab-${tabId(tab)}`} hidden={state.active !== tabId(tab)}>
-        {tab.kind === 'files' ? <WorkspaceFiles key={`${target.profile}:${target.session}:${target.cwd}`} target={target} />
+        {tab.kind === 'files' ? <WorkspaceFiles key={target.cwd} target={target} selected={state.selected} onSelect={panel.selectFile} />
+          : tab.kind === 'changes' ? <ChangesView key={tab.version} source={tab.source} initialPath={tab.path} openFile={panel.openFile} />
           : tab.kind === 'browser' ? <BrowserView cwd={target.cwd} initialUrl={tab.url}
             onChange={(url, title) => panel.updateBrowser(tab.id, url, title)} onOpen={panel.newBrowser} />
           : <TerminalView id={tab.id} target={target} initialSize={tab.cols && tab.rows ? { cols: tab.cols, rows: tab.rows } : undefined}
@@ -224,10 +260,11 @@ type Directory = { entries?: Entry[]; truncated?: boolean; error?: boolean }
 type FileContent = { text?: string; image?: { mediaType: string; dataUrl: string }; binary?: boolean; truncated?: boolean; missing?: boolean }
 const status = (text: string) => <p className="nodo-right-status" role="status">{text}</p>
 
-export function WorkspaceFiles({ target }: { target: Target }) {
+export function WorkspaceFiles({ target, selected: selection, onSelect }: { target: Target; selected?: string; onSelect?: (path: string) => void }) {
   const [directories, setDirectories] = useState<Record<string, Directory>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ '': true })
-  const [selected, setSelected] = useState('')
+  const [localSelected, setLocalSelected] = useState('')
+  const selected = selection ?? localSelected, setSelected = onSelect ?? setLocalSelected
   const live = useRef(false)
   const pending = useRef(new Set<string>())
   useEffect(() => {
@@ -237,7 +274,7 @@ export function WorkspaceFiles({ target }: { target: Target }) {
   useEffect(() => {
     for (const path of Object.keys(expanded).filter(path => expanded[path] && !directories[path] && !pending.current.has(path))) {
       pending.current.add(path)
-      void call('workspace-dir', { ...target, path }).then((value: Directory) => {
+      void call('workspace-dir', { ...terminalScope(target), path }).then((value: Directory) => {
         if (live.current) setDirectories(current => ({ ...current, [path]: value }))
       }).catch(() => { if (live.current) setDirectories(current => ({ ...current, [path]: { error: true } })) })
     }
@@ -285,7 +322,7 @@ export function FilePreview({ target, path, onBack }: { target: Target; path: st
   const [imageError, setImageError] = useState(false)
   useEffect(() => {
     let live = true
-    void call('workspace-file', { ...target, path }).then((value: FileContent) => { if (live) setContent(value) })
+    void call('workspace-file', { ...terminalScope(target), path }).then((value: FileContent) => { if (live) setContent(value) })
       .catch(() => { if (live) setError(true) })
     return () => { live = false }
   }, [target, path])

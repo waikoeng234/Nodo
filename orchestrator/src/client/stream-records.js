@@ -68,7 +68,7 @@ function streamProgress(progress) {
   return parts.length ? parts.join(' · ') : null
 }
 
-export function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch }) {
+export function ChangedFile({ file, load, loaded, available, root, request, cycle = 0, inline = false, patch, panel = false, preview = false }) {
   const [open, setOpen] = useState(false)
   const [content, setContent] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -92,14 +92,14 @@ export function ChangedFile({ file, load, loaded, available, root, request, cycl
     catch (failure) { setContent({ error: failure.message || '文件内容读取失败。' }) }
     finally { setBusy(false) }
   }
-  const edits = patch ? h(CodeDiff, { filename: path, patch, cycle }) : file.edits.map((edit, index) => h('div', { key: index },
-    h('p', { className: 'nodo-note' }, ({ add: '新增', update: '修改', delete: '删除', move: '移动', unknown: '编辑' })[edit.operation], edit.fromPath ? ` · 来自 ${edit.fromPath}` : ''),
+  const edits = patch ? h(CodeDiff, { filename: path, patch, cycle, panel, preview }) : file.edits.map((edit, index) => h('div', { key: index },
+    !panel && h('p', { className: 'nodo-note' }, ({ add: '新增', update: '修改', delete: '删除', move: '移动', unknown: '编辑' })[edit.operation], edit.fromPath ? ` · 来自 ${edit.fromPath}` : ''),
     edit.availability && h('p', { className: 'nodo-note' }, ({ binary: '二进制文件，来源不提供文本差异。', oversized: '文件超过来源大小上限，差异不可得。', coarse: '来源比较超时，以下为整段替换的粗略差异。', unavailable: '来源未能提供此文件的差异。' })[edit.availability]),
     typeof edit.newText === 'string' && (typeof edit.oldText === 'string' || edit.oldText === null && edit.operation === 'add')
-      ? h(CodeDiff, { filename: path, diff: { path, oldText: edit.oldText, newText: edit.newText }, cycle })
-      : typeof edit.diffText === 'string' ? h(CodeDiff, { filename: path, patch: edit.diffText, cycle })
+      ? h(CodeDiff, { filename: path, diff: { path, oldText: edit.oldText, newText: edit.newText }, cycle, panel, preview })
+      : typeof edit.diffText === 'string' ? h(CodeDiff, { filename: path, patch: edit.diffText, cycle, panel, preview })
         : typeof edit.newText === 'string' ? h('div', null, h('p', { className: 'nodo-note' }, '来源未提供修改前内容，以下为修改后内容。'),
-          h(CodeBlock, { code: edit.newText, copyLabel: '复制', copiedLabel: '已复制' }))
+          h(CodeBlock, { code: edit.newText, copyLabel: '复制', copiedLabel: '已复制', ...(panel || preview ? { wrap: true, lineNumbers: true, showHeader: false } : {}) }))
           : h('p', { className: 'nodo-note' }, '此编辑的差异详情不可得。')))
   const view = h('div', { ref: body, 'data-nodo-tool-file': file.path }, request && showContent
     ? h('div', { 'data-nodo-file-view': '' },
@@ -118,7 +118,7 @@ export function ChangedFile({ file, load, loaded, available, root, request, cycl
         content.text === '' ? h('p', { className: 'nodo-note' }, '文件为空。')
           : h(CodeBlock, { code: content.text, copyLabel: '复制', copiedLabel: '已复制' })))
     : h('div', null, patch || edits.length ? edits : h('p', { className: 'nodo-note' }, '来源未提供此文件的差异详情。'),
-      request && h(Button, { size: 'sm', variant: 'outline', disabled: busy, onClick: () => void viewContent() }, busy ? '读取中…' : '查看当前内容')))
+      request && !panel && h(Button, { size: 'sm', variant: 'outline', disabled: busy, onClick: () => void viewContent() }, busy ? '读取中…' : '查看当前内容')))
   if (inline) return view
   return h(DisclosureRow, { title: path, open, expandable: true, expandOnRowClick: true, keepContentWhenOpen: true, onToggle: () => void toggle(),
     children: view })
@@ -135,12 +135,16 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
     setFull(null); setError(''); setBusy(false)
     return () => { generation.current += 1 }
   }, [record.runId, record.entityId, record.revision, request.profile, request.session, request.target])
+  const readDetails = async () => {
+    const value = await call('stream-detail', { ...request, ref: record.details.ref })
+    if (!supportedStreamRecord(value) || value.runId !== record.runId || value.entityId !== record.entityId || value.revision !== record.revision) throw new Error('工具详情版本不匹配。')
+    return value
+  }
   const load = async () => {
     const current = generation.current
     setBusy(true); setError('')
     try {
-      const value = await call('stream-detail', { ...request, ref: record.details.ref })
-      if (!supportedStreamRecord(value) || value.runId !== record.runId || value.entityId !== record.entityId || value.revision !== record.revision) throw new Error('工具详情版本不匹配。')
+      const value = await readDetails()
       if (generation.current === current) setFull(value)
       return generation.current === current ? value : null
     } catch (failure) { if (generation.current === current) setError(failure.message || '工具详情读取失败。') }
@@ -151,8 +155,8 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
   const body = value.body
   const failed = ['error', 'denied', 'unknown'].includes(record.status)
   const available = ['stored', 'truncated'].includes(record.details?.state) && record.details?.ref
-  if (record.kind === 'changes') return h(FileChangesSummary, { value, record, full: currentFull, load, busy, available, error,
-    renderFile: (file, patch) => h(ChangedFile, { key: file.path, file, patch, inline: true, root: body.cwd, request, cycle: record.revision }) })
+  if (record.kind === 'changes') return h(FileChangesSummary, { value, record, full: currentFull, load, loadChanges: readDetails, busy, available, error,
+    renderFile: (file, patch, panel = false, preview = false) => h(ChangedFile, { key: file.path, file, patch, panel, preview, inline: true, root: body.cwd, request, cycle: record.revision }) })
   const status = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown
   const notice = record.capture !== 'complete' ? STREAM_REASON[record.reason] ?? '来源内容不完整' : null
   const progress = record.status === 'running' ? streamProgress(body.progress) : null

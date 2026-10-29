@@ -8,6 +8,10 @@ const plain = value => JSON.parse(JSON.stringify(value))
 const target = { profile: 'role', session: 'first', cwd: '/workspace' }
 const button = (tree, label) => nodes(tree).find(node => node.props['aria-label'] === label)
 const unavailable = async endpoint => { assert.equal(endpoint, 'list'); return { available: false, terminals: [] } }
+const changesSource = (path = '/workspace/src/x.ts') => ({ revision: 1,
+  body: { scope: 'edit-tools', cwd: '/workspace', fileCount: 1, files: [{ path, edits: [{ operation: 'update', diffText: '@@ -8 +8 @@\n-before\n+after\n' }] }] },
+  renderFile: (file, patch, panel) => ({ type: 'file-detail', props: { path: file.path, patch, panel }, children: [] }),
+})
 
 function measurement() {
   const disposed = [], element = { clientWidth: 380, clientHeight: 500, appendChild() {} }
@@ -118,6 +122,116 @@ function mountedTree() {
   }
 }
 
+test('changes use one replaceable tab, retain files and browser neighbors, and follow target lifetimes including archives', async () => {
+  const loaded = await loadClient('right-panel.tsx', { call: unavailable, globals: { URL } })
+  const panel = loaded.createRightPanel(host().ctx), first = changesSource()
+  panel.openChanges(first)
+  assert.equal(panel.getSnapshot().tabs.length, 0, 'unbound panels cannot open changes')
+  const leave = panel.bind(target); await tick()
+  panel.openFiles(); panel.newBrowser(); panel.openChanges(first, first.body.files[0].path)
+  let state = panel.getSnapshot()
+  assert.equal(state.active, 'changes')
+  assert.equal(state.expanded, true)
+  assert.equal(state.tabs.at(-1).source, first)
+  const previous = state.tabs.at(-1).version
+  const second = changesSource('/workspace/other.ts')
+  panel.openChanges(second)
+  state = panel.getSnapshot()
+  assert.deepEqual(plain(state.tabs.map(tab => tab.kind)), ['files', 'browser', 'changes'])
+  assert.equal(state.tabs.at(-1).source, second)
+  assert.equal(state.tabs.at(-1).path, undefined)
+  assert.notEqual(state.tabs.at(-1).version, previous, 'replacement resets the detail view and pending loader')
+  const tree = loaded.RightPanel({ panel, width: 320 })
+  const tab = nodes(tree).find(node => node.props.id === 'nodo-right-tab-changes')
+  assert.equal(tab.children.at(-1), '变更')
+  assert.equal(tab.children[0].type, 'IconBranchOutlineRegular')
+  assert.equal(nodes(tree).find(node => node.props.id === 'nodo-right-pane-changes').children[0].props.source, second)
+  leave(); panel.bind({ ...target, session: 'archived', readOnly: true }); await tick()
+  assert.equal(panel.getSnapshot().tabs.at(-1).source, second)
+  panel.openChanges(first)
+  assert.equal(panel.getSnapshot().tabs.at(-1).source, first, 'archives can open changes')
+  panel.bind({ ...target, cwd: '/other', readOnly: true }); await tick()
+  assert.deepEqual(plain(panel.getSnapshot().tabs.map(tab => tab.kind)), ['files'], 'cwd changes discard comparisons')
+  panel.openChanges(second)
+  await panel.closeTab('changes')
+  assert.deepEqual(plain(panel.getSnapshot().tabs.map(tab => tab.kind)), ['files'])
+})
+
+test('changes list shows every file and totals, opens detail, returns to list, and previews current files independently', async () => {
+  const mounted = mountedTree()
+  const loaded = await loadClient('right-panel.tsx', { react: mounted.react, call: unavailable })
+  const panel = loaded.createRightPanel(host().ctx)
+  panel.bind(target); await tick()
+  const source = changesSource()
+  source.body.files = Array.from({ length: 5 }, (_, index) => ({ ...source.body.files[0], path: `/workspace/deep/src/${index}.ts` }))
+  source.body.fileCount = 5
+  panel.openChanges(source)
+  const render = () => mounted.render(() => ({ type: loaded.RightPanel, props: { panel, width: 320 }, children: [] }))
+  let tree = render()
+  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-row').length, 5)
+  assert.ok(button(tree, '新增 5 行，删除 5 行'))
+  assert.equal(nodes(tree).find(node => node.props.className === 'nodo-changes-directory').children[0], 'deep/src/')
+  button(tree, '查看 deep/src/3.ts 的变更').props.onClick()
+  tree = render()
+  const detail = nodes(tree).find(node => node.type === 'file-detail')
+  assert.equal(detail.props.path, '/workspace/deep/src/3.ts')
+  assert.equal(detail.props.panel, true)
+  button(tree, '返回变更列表').props.onClick()
+  tree = render()
+  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-row').length, 5)
+  button(tree, '打开文件 deep/src/3.ts').props.onClick()
+  assert.equal(panel.getSnapshot().active, 'files')
+  assert.equal(panel.getSnapshot().selected, '/workspace/deep/src/3.ts')
+  panel.selectTab('changes')
+  panel.openChanges(source, '/workspace/deep/src/1.ts')
+  tree = render()
+  assert.equal(nodes(tree).find(node => node.type === 'file-detail').props.path, '/workspace/deep/src/1.ts')
+  button(tree, '打开文件 deep/src/1.ts').props.onClick()
+  assert.equal(panel.getSnapshot().selected, '/workspace/deep/src/1.ts')
+  mounted.dispose()
+})
+
+test('changes totals center their counts and only interactive list rows receive hover fill', async () => {
+  const { CHANGES_PANEL_CSS } = await loadClient('changes-panel.tsx')
+  assert.match(CHANGES_PANEL_CSS, /\.nodo-changes-total>\.nodo-tag\{display:inline-flex;align-items:center;height:28px/)
+  assert.match(CHANGES_PANEL_CSS, /\.nodo-changes-list>\.nodo-changes-row:hover/)
+  assert.ok(!CHANGES_PANEL_CSS.includes('\n.nodo-changes-row:hover'))
+})
+
+test('changes load full lists, show errors and retry, and ignore late answers after replacement or close', async () => {
+  const mounted = mountedTree(), first = Promise.withResolvers(), second = Promise.withResolvers()
+  const loaded = await loadClient('right-panel.tsx', { react: mounted.react, call: unavailable })
+  const panel = loaded.createRightPanel(host().ctx)
+  panel.bind(target); await tick()
+  const source = changesSource(), complete = { ...source.body, files: [source.body.files[0], { path: '/workspace/extra.ts', edits: [] }], fileCount: 2 }
+  let loads = 0
+  source.load = () => { loads++; return loads === 1 ? first.promise : second.promise }
+  panel.openChanges(source)
+  const render = () => mounted.render(() => ({ type: loaded.RightPanel, props: { panel, width: 320 }, children: [] }))
+  assert.match(JSON.stringify(render()), /加载中…/)
+  assert.equal(loads, 1)
+  first.reject(new Error('saved details unavailable')); await tick()
+  let tree = render()
+  assert.match(JSON.stringify(tree), /saved details unavailable/)
+  nodes(tree).find(node => node.type === 'Button' && node.children.includes('重试')).props.onClick()
+  render()
+  assert.equal(loads, 2)
+  second.resolve(complete); await tick()
+  tree = render()
+  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-row').length, 2)
+  const late = Promise.withResolvers()
+  panel.openChanges({ ...source, load: () => late.promise }); render()
+  panel.openChanges(changesSource('/workspace/replacement.ts'))
+  render(); late.resolve(complete); await tick()
+  assert.ok(button(render(), '查看 replacement.ts 的变更'))
+  assert.equal(button(render(), '查看 extra.ts 的变更'), undefined)
+  const closed = Promise.withResolvers()
+  panel.openChanges({ ...source, load: () => closed.promise }); render()
+  await panel.closeTab('changes'); render(); closed.resolve(complete); await tick()
+  assert.equal(panel.getSnapshot().tabs.some(tab => tab.kind === 'changes'), false)
+  mounted.dispose()
+})
+
 test('rightbar and overlay register only for a displayed session and release both host slots on leave', async () => {
   const hooks = renderer()
   const loaded = await loadClient('right-panel.tsx', { react: hooks.react, call: unavailable })
@@ -148,6 +262,7 @@ test('rightbar and overlay register only for a displayed session and release bot
   panel.toggle()
   commit()
   leaveSecond()
+  await tick()
   hooks.dispose()
   assert.equal(h.registrations.length, 0)
   assert.deepEqual(h.presentations.at(-1), ['close'])
@@ -172,6 +287,52 @@ test('slots declared after a session is bound register both entries and clean up
   assert.deepEqual(h.registrations.map(entry => entry.options.name), ['rightbar', 'shell.overlay'])
   unmount()
   assert.equal(h.registrations.length, 0)
+})
+
+test('deferred release and owner cleanup cannot close a native rightbar that has taken over', async () => {
+  const hooks = renderer(), h = host()
+  const loaded = await loadClient('right-panel.tsx', { react: hooks.react, call: unavailable })
+  const panel = loaded.createRightPanel(h.ctx), unmount = h.mount()
+  h.ctx.layout.openRightbar(true, false)
+  const leave = panel.bind(target)
+  panel.toggle()
+  hooks.render(() => h.registrations[0].component({ width: 320 }))
+  const beforeCleanup = h.presentations.length
+  leave()
+  hooks.dispose()
+  assert.equal(h.presentations.length, beforeCleanup, 'the outgoing Owner never closes another owner during unmount')
+  h.ctx.layout.openRightbar(true, false)
+  const native = h.presentations.length
+  await tick()
+  assert.equal(h.registrations.length, 0)
+  assert.equal(h.presentations.length, native, 'the queued release leaves the restored native track open')
+  unmount()
+  assert.equal(h.presentations.length, native)
+})
+
+test('read-only targets keep files and browsers without restoring or operating terminals', async () => {
+  const requests = []
+  const loaded = await loadClient('right-panel.tsx', { globals: { URL }, call: async (op, payload) => {
+    requests.push({ op, ...payload })
+    return { cwd: target.cwd, available: true, terminals: [{ id: 'shared' }] }
+  } })
+  const panel = loaded.createRightPanel(host().ctx)
+  panel.bind(target); await tick()
+  panel.openFiles(); panel.newBrowser('3000')
+  panel.bind({ ...target, readOnly: true }); await tick()
+  assert.equal(panel.getSnapshot().error, '')
+  assert.equal(panel.getSnapshot().available, false)
+  assert.deepEqual(plain(panel.getSnapshot().tabs.map(tab => tab.kind)), ['files', 'browser'])
+  await panel.newTerminal(null)
+  await panel.closeTab('shared')
+  assert.deepEqual(requests.map(request => request.op), ['list'])
+  panel.openHome()
+  const tree = loaded.RightPanel({ panel, width: 320 })
+  assert.ok(nodes(tree).some(node => node.type === loaded.WorkspaceFiles))
+  assert.ok(nodes(tree).some(node => node.props.className === 'nodo-right-card' && JSON.stringify(node).includes('浏览器')))
+  assert.doesNotMatch(JSON.stringify(tree), /新建终端|无法加载终端列表|正在重试/)
+  panel.bind(target); await tick()
+  assert.ok(panel.getSnapshot().tabs.some(tab => tab.kind === 'terminal' && tab.id === 'shared'), 'writable views recover the host terminal')
 })
 
 test('the file entry card opens a closable file tab and the final close returns to the entry page', async () => {
@@ -199,6 +360,79 @@ test('the file entry card opens a closable file tab and the final close returns 
   assert.equal(nodes(render()).some(node => node.type === 'IconChevronRightOutlineRegular'), false)
   panel.toggle()
   assert.equal(render().props.hidden, true)
+})
+
+test('workspace welcomes retain tabs, previews, expansion and host slots on same-cwd conversation handoff', async () => {
+  const calls = []
+  const loaded = await loadClient('right-panel.tsx', { globals: { URL }, call: async (op, body) => {
+    calls.push({ op, ...body })
+    assert.equal(body.cwd, undefined)
+    return { cwd: '/workspace', available: true, terminals: [{ id: 'shared' }] }
+  } })
+  const h = host(), panel = loaded.createRightPanel(h.ctx), unmount = h.mount()
+  const leave = panel.bind({ workspace: 'project', cwd: '/alias' })
+  await tick()
+  panel.openFile('/workspace/src/main.ts')
+  panel.newBrowser('3000')
+  const before = panel.getSnapshot(), registrations = [...h.registrations]
+  const files = () => nodes(loaded.RightPanel({ panel, width: 320 })).find(node => node.type === loaded.WorkspaceFiles)
+  const key = files().props.key
+  leave()
+  const leaveSession = panel.bind(target)
+  await tick()
+  assert.deepEqual(h.registrations, registrations, 'handoff never unregisters either host slot')
+  assert.deepEqual(plain(panel.getSnapshot().tabs), plain(before.tabs))
+  assert.equal(panel.getSnapshot().expanded, true)
+  assert.equal(panel.getSnapshot().active, before.active)
+  assert.equal(files().props.key, key, 'the file tree stays mounted')
+  assert.equal(files().props.selected, '/workspace/src/main.ts')
+  files().props.onSelect('')
+  assert.equal(panel.getSnapshot().selected, '', 'back returns to the cached tree')
+  leaveSession()
+  const leaveWelcome = panel.bind({ workspace: 'project', cwd: '/alias' })
+  await tick()
+  assert.deepEqual(plain(panel.getSnapshot().tabs), plain(before.tabs), 'the canonical cwd also matches the welcome alias')
+  assert.equal(calls[0].workspace, 'project')
+  assert.equal(calls[0].profile, undefined)
+  assert.equal(calls[1].profile, 'role')
+  panel.openFile('relative.ts')
+  assert.equal(panel.getSnapshot().active, 'files')
+  assert.equal(panel.getSnapshot().selected, 'relative.ts')
+  leaveWelcome(); await tick()
+  assert.equal(h.registrations.length, 0, 'leaving for a native view releases both slots')
+  assert.equal(calls.some(call => call.op === 'close'), false, 'leaving a view never closes host terminals')
+  unmount()
+})
+
+test('a real-path session retains every tab when a previously unseen workspace alias resolves to the same cwd', async () => {
+  const pending = Promise.withResolvers()
+  const loaded = await loadClient('right-panel.tsx', { globals: { URL }, call: async (_op, payload) => payload.workspace
+    ? pending.promise : { cwd: '/workspace', available: true, terminals: [{ id: 'shared' }] } })
+  const h = host(), panel = loaded.createRightPanel(h.ctx), unmount = h.mount()
+  const leave = panel.bind(target); await tick()
+  panel.openFile('src/main.ts'); panel.newBrowser('3000')
+  const before = panel.getSnapshot(), registrations = [...h.registrations]
+  panel.bind({ workspace: 'project', cwd: '/unseen-alias' }); leave()
+  assert.deepEqual(plain(panel.getSnapshot().tabs), plain(before.tabs), 'normalization never speculatively clears tabs')
+  pending.resolve({ cwd: '/workspace', available: true, terminals: [{ id: 'shared' }] }); await tick()
+  assert.deepEqual(plain(panel.getSnapshot().tabs), plain(before.tabs))
+  assert.equal(panel.getSnapshot().selected, before.selected)
+  assert.equal(panel.getSnapshot().active, before.active)
+  assert.equal(panel.getSnapshot().expanded, true)
+  assert.equal(panel.getSnapshot().target.cwd, '/workspace')
+  assert.equal(panel.getSnapshot().target.workspace, 'project')
+  assert.deepEqual(h.registrations, registrations)
+  unmount()
+})
+
+test('a legacy session without a cwd quietly disables terminals', async () => {
+  const loaded = await loadClient('right-panel.tsx', { call: async () => ({ available: false, terminals: [] }) })
+  const panel = loaded.createRightPanel(host().ctx)
+  panel.bind({ profile: 'old', session: 'old-session' }); await tick()
+  assert.equal(panel.getSnapshot().error, '')
+  assert.equal(panel.getSnapshot().available, false)
+  assert.deepEqual(plain(panel.getSnapshot().tabs), [])
+  assert.doesNotMatch(JSON.stringify(loaded.RightPanel({ panel, width: 320 })), /新建终端|无法加载终端列表/)
 })
 
 test('terminal cards create multiple tabs, switch without removing panes, close through the host and return home', async () => {
@@ -573,12 +807,37 @@ async function terminalView({ get, post, initialSize } = {}) {
       },
     },
   })
-  const render = (active = true) => hooks.render(() => loaded.TerminalView({ id: 'term', target, initialSize, active, onGone: () => removed++ }))
+  const render = (active = true, scope = target) => hooks.render(() => loaded.TerminalView({ id: 'term', target: scope, initialSize, active, onGone: () => removed++ }))
   const flush = async () => { await tick(); const runs = [...frames.values()]; frames.clear(); for (const run of runs) run(); await tick() }
   const retry = async () => { const [id, run] = timers.entries().next().value; timers.delete(id); run(); await tick() }
   return { hooks, instances, requests, observers, themes, screen, frames, timers, delays, render, flush, retry,
     get controller() { return controller }, get removed() { return removed }, setSize: value => { size = value } }
 }
+
+test('xterm survives welcome and same-cwd session handoffs and uses the latest target for input and reconnect', async () => {
+  const f = await terminalView()
+  try {
+    f.render(true, { workspace: 'project', cwd: target.cwd }); await f.flush()
+    const terminal = f.instances[0]
+    assert.match(f.requests.find(request => request.url).url, /workspace=project/)
+    terminal.input('welcome'); await tick()
+    f.render(true, target)
+    terminal.input('first'); await tick()
+    f.render(true, { ...target, session: 'second' })
+    terminal.input('second'); await tick()
+    assert.equal(f.instances.length, 1)
+    assert.equal(terminal.disposed, false)
+    assert.deepEqual(f.requests.filter(request => request.op === 'write').map(({ data, workspace, profile, session }) =>
+      ({ data, workspace, profile, session })), [
+      { data: 'welcome', workspace: 'project', profile: undefined, session: undefined },
+      { data: 'first', workspace: undefined, profile: 'role', session: 'first' },
+      { data: 'second', workspace: undefined, profile: 'role', session: 'second' },
+    ])
+    f.controller.close(); await tick(); await f.retry()
+    assert.match(f.requests.filter(request => request.url).at(-1).url, /session=second/)
+    assert.equal(f.instances.length, 1)
+  } finally { f.hooks.dispose() }
+})
 
 test('xterm fits, writes input, follows theme, survives tab switches and reconnects by byte offset without duplicates', async () => {
   const f = await terminalView(), { hooks, instances, requests, observers, themes, render, flush } = f
@@ -718,6 +977,7 @@ test('the one overlay toggle keeps its mounted instance throughout opening, clos
   }
   assert.deepEqual(mounted.counts, { mounts: 1, unmounts: 0 })
   leave()
+  await tick()
   tree = render()
   assert.equal(nodes(tree).some(node => node.props.className === 'nodo-right-toggle'), false)
   assert.deepEqual(mounted.counts, { mounts: 1, unmounts: 1 })
@@ -860,6 +1120,7 @@ test('switching sessions remounts the file tree for the new workspace and retain
   const files = () => nodes(loaded.RightPanel({ panel, width: 320 })).find(node => node.type === loaded.WorkspaceFiles)
   const first = files()
   panel.bind({ profile: 'other', session: 'next', cwd: '/worktree' })
+  await tick()
   const next = files()
   assert.notEqual(first.props.key, next.props.key)
   assert.deepEqual(plain(next.props.target), { profile: 'other', session: 'next', cwd: '/worktree' })
@@ -874,6 +1135,7 @@ test('switching sessions remounts the file tree for the new workspace and retain
   assert.match(JSON.stringify(render()), /next.txt/)
   assert.doesNotMatch(JSON.stringify(render()), /first.txt/)
   panel.bind({ ...next.props.target, cwd: '/moved' })
+  await tick()
   assert.notEqual(files().props.key, next.props.key, 'a changed cwd also clears the tree')
   hooks.dispose()
 })
@@ -1015,6 +1277,7 @@ test('the page binds the displayed main session and releases the rightbar for na
   const callsBefore = h.presentations.length
   space.legacy = false
   hooks.render(() => loaded.NodoPage({ contentOnly: true }))
+  await tick()
   assert.equal(panel.getSnapshot().target, null)
   assert.equal(h.registrations.length, 0, 'the native conversation view restores the host rightbar occupant')
   assert.deepEqual(h.presentations.slice(callsBefore), [['close']])
@@ -1032,7 +1295,13 @@ test('the page binds the displayed main session and releases the rightbar for na
   hooks.render(() => loaded.NodoPage({ contentOnly: true }))
   session.archivedAt = 1
   hooks.render(() => loaded.NodoPage({ contentOnly: true }))
-  assert.equal(bindings.at(-1), null, 'no displayed session means no binding')
+  assert.deepEqual(plain(bindings.at(-1)), { workspace: 'branch', cwd: '/base' }, 'the legacy shell without a session binds its project')
+  loaded.setNavigation({ profile: 'lead', workspace: 'branch', archivedSession: session.id })
+  hooks.render(() => loaded.NodoPage({ contentOnly: true }))
+  assert.deepEqual(plain(bindings.at(-1)), { profile: 'lead', session: session.id, cwd: '/base', readOnly: true })
+  view.profiles[0].deletedAt = 1
+  hooks.render(() => loaded.NodoPage({ contentOnly: true }))
+  assert.equal(panel.getSnapshot().target.readOnly, true, 'deleted-role history keeps the file and browser panel')
   hooks.dispose()
   unmount()
 })
@@ -1111,7 +1380,7 @@ test('the browser card opens multiple closable tabs with short, numbered page ti
   assert.deepEqual(plain(loaded.createRightPanel(host().ctx).getSnapshot().tabs), [], 'a fresh page has no persisted browsers')
 })
 
-test('late terminal restoration preserves newly opened browser tabs and switching sessions clears them', async () => {
+test('late terminal restoration preserves browsers across same-cwd sessions and clears them on cwd changes', async () => {
   const list = Promise.withResolvers()
   const loaded = await loadClient('right-panel.tsx', { call: () => list.promise, globals: { URL } })
   const panel = loaded.createRightPanel(host().ctx)
@@ -1121,6 +1390,8 @@ test('late terminal restoration preserves newly opened browser tabs and switchin
   assert.equal(panel.getSnapshot().tabs[0].url, 'http://localhost:3000/')
   assert.equal(panel.getSnapshot().active, 'browser-1')
   panel.bind({ ...target, session: 'second' }); await tick()
+  assert.equal(panel.getSnapshot().tabs[0].url, 'http://localhost:3000/')
+  panel.bind({ ...target, session: 'third', cwd: '/worktree' }); await tick()
   assert.deepEqual(plain(panel.getSnapshot().tabs), [])
 })
 

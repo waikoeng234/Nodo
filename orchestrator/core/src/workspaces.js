@@ -154,21 +154,30 @@ export function install(rt) {
     return { files: found }
   }
 
-  const workspacePath = async ({ profile, session, target, path: wanted }, directory = false) => {
+  const workspacePath = async ({ workspace, profile, session, target, path: wanted }, directory = false) => {
     await rt.load()
-    let found
-    if (target !== undefined) {
+    let found, cwd
+    if (workspace !== undefined) {
+      const project = typeof workspace === 'string' && rt.state.workspaces[workspace]
+      if (!project || project.deletedAt) throw Object.assign(new Error('No such workspace'), { code: 'orch/not-found' })
+      cwd = project.cwd
+    } else if (target !== undefined) {
       found = Object.values(rt.state.profiles).flatMap(item => rt.sessionsOf(item).map(owned => ({ profile: item, session: owned })))
         .find(item => ((item.session.engine === 'dsh' ? item.session.driverSessionId : undefined) ?? item.session.id) === target)
       if (!found) throw Object.assign(new Error('No such session'), { code: 'orch/not-found' })
     } else {
       try { found = rt.conversation(profile, session) } catch { throw Object.assign(new Error('No such session'), { code: 'orch/not-found' }) }
     }
-    const cwd = found.session.cwd ?? rt.sessionWorkspace(found.profile, found.session)?.cwd
+    if (found) cwd = found.session.cwd ?? rt.sessionWorkspace(found.profile, found.session)?.cwd
     if (!cwd || typeof wanted !== 'string' || (!directory && wanted === '') || wanted.includes('\0')) throw Object.assign(new Error('需要会话工作区内的文件路径'), { code: 'orch/invalid' })
     const root = resolve(cwd)
     const full = resolve(root, wanted)
-    confine(root, full)
+    try { confine(root, full) } catch (error) {
+      if (workspace === undefined || !isAbsolute(wanted)) throw error
+      const actual = await realpath(root).catch(() => null)
+      if (!actual) throw error
+      confine(actual, full)
+    }
     // Symbolic links are followed only while they stay inside the workspace.
     const real = await realpath(full).catch(directory ? directoryUnreadable : unreadable)
     const realRoot = real === null ? null : await (directory ? realpath(root).catch(directoryUnreadable) : realpath(root))

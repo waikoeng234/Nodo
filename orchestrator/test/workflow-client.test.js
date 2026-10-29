@@ -204,6 +204,22 @@ test('task updates stay on their original node after selection changes and do no
   h.dispose()
 })
 
+test('task composer starts from the role tier and keeps explicit node permission choices', async () => {
+  const h = await harness()
+  h.view.profiles[0].permission = 'workspace'
+  h.view.profiles[0].sessions[0].permission = 'full'
+  let node = draftOf().nodes[1]
+  const props = () => ({ node, disabled: false, onBusy() {}, onChange: changes => {
+    node = { ...node, ...(typeof changes === 'function' ? changes(node) : changes) }
+  } })
+  const composer = () => all(h.task(props())).find(item => item.type === h.loaded.Composer).props
+  assert.equal(composer().profile.permission, 'workspace')
+  composer().onModelChange({ permission: 'plan' })
+  assert.equal(composer().profile.permission, 'plan')
+  assert.equal(h.view.profiles[0].permission, 'workspace')
+  h.dispose()
+})
+
 test('task composer reuses file intake and keeps choices local to the selected node', async () => {
   const ref = { id: 'image-id', mediaType: 'image/png', name: 'shot.png' }, file = { id: 'file-id', name: 'requirements.pdf' }
   const h = await harness({ api: async endpoint => endpoint === 'attachment-save' ? { images: [ref], files: [file] }

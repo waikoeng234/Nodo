@@ -53,7 +53,7 @@ type QoderFrame = { session_id?: unknown } & (
   | QoderSystem
   | { type: 'user'; isReplay?: boolean; message?: { content?: QoderContent[] } }
   | { type: 'assistant'; message?: { id?: string; content?: QoderContent[]; usage?: QoderUsage }; parent_tool_use_id?: string | null }
-  | { type: 'result'; subtype?: string; is_error?: boolean; errors?: (string | { message?: string })[]; error?: { message?: string }
+  | { type: 'result'; subtype?: string; is_error?: boolean; error_code?: number | string; errors?: (string | { message?: string })[]; error?: { message?: string }
       result?: unknown; modelUsage?: Record<string, { contextWindow?: number }>; usage?: QoderUsage }
   | { type: 'stream_event' | 'tool_progress' | 'auth_status' | 'rate_limit_event' | 'tool_use_summary' })
 type QoderTool = { name: string; input?: QoderInput; parentCallId?: string }
@@ -247,7 +247,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
     controls.clear()
     connection?.dispose()
   }
-  const end = (reason: 'done' | 'interrupted' | 'error', error?: unknown, usage?: Usage, text?: string) => {
+  const end = (reason: 'done' | 'interrupted' | 'error', error?: unknown, usage?: Usage, text?: string, retryable = false) => {
     if (!running) return
     const turn = running
     running = null
@@ -259,7 +259,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
     turn.settle?.()
     closeRequests()
     if (turn.changes) emit(turn.changes.snapshot(turn.id))
-    emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) })
+    emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) })
   }
   const control = (request: { subtype: string }) => new Promise<unknown>((resolve, reject) => {
     const request_id = `orch-${++controlSeq}`
@@ -384,7 +384,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
         contextUsed: turn.contextUsed || occupied,
         contextSize: contextWindow,
       }))
-      end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined)
+      end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, [10408, 10500, 10605].includes(Number(frame.error_code)))
     }
     // Frame types outside the declared union count by category only; the raw
     // type name and payload never reach a log or storage.

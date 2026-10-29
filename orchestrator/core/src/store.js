@@ -106,6 +106,15 @@ export function install(rt) {
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
     ensureFallback(state.profiles)
+    for (const profile of Object.values(state.profiles)) {
+      if (!rt.listEngines().includes(profile.engine)) continue
+      const modes = rt.enginePermissionModes(profile.engine)
+      if (!modes.includes(profile.permission)) profile.permission = rt.defaultPermission(profile.engine)
+      if (profile.permission === undefined) delete profile.permission
+      for (const session of profile.sessions ?? []) {
+        if (!modes.includes(session.permission)) delete session.permission
+      }
+    }
     const choices = [...Object.values(state.prefs.engineConfigs ?? {}),
       ...Object.values(state.profiles).flatMap(profile => [profile, ...(profile.sessions ?? [])])]
     for (const choice of choices) if (choice?.thinking === 'default') delete choice.thinking
@@ -136,7 +145,10 @@ export function install(rt) {
     }
   }
 
-  const restore = async () => adopt(await readSaved())
+  const restore = async () => {
+    await rt.driversReady()
+    adopt(await readSaved())
+  }
 
   // A failed load is tried again by the next caller.
   const load = () => loading ??= (async () => {

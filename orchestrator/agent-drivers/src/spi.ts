@@ -91,7 +91,7 @@ export type DriverEvent =
       name?: string; title?: string; detail?: string; parentId?: string; childId?: string; toolCallId?: string; isError?: boolean }
   | { type: 'lifecycle'; turnId?: string; kind: 'compaction' | 'retry'; phase: 'start' | 'end';
       entityId?: string; detail?: string; isError?: boolean; cancelled?: boolean }
-  | { type: 'turn/end'; turnId: string; reason: 'done' | 'interrupted' | 'error'; text?: string; error?: unknown; usage?: Usage; timing?: Timing; unconfirmed?: boolean }
+  | { type: 'turn/end'; turnId: string; reason: 'done' | 'interrupted' | 'error'; text?: string; error?: unknown; usage?: Usage; timing?: Timing; unconfirmed?: boolean; retryable?: true }
   | { type: 'request/opened'; id: string; kind: 'permission' | 'question'; tool?: string; reason?: string; options?: unknown; detail?: unknown }
   | { type: 'request/closed'; id: string }
 
@@ -184,7 +184,7 @@ export const DECISION = Object.freeze({
  *   { type: 'lifecycle',  turnId?, kind: 'compaction' | 'retry', phase: 'start' | 'end',
  *                         entityId?, detail?, isError?, cancelled? }
  *   { type: 'turn/end',   turnId, reason: 'done' | 'interrupted' | 'error',
- *                         text?, error?, usage?, timing?, unconfirmed? }
+ *                         text?, error?, usage?, timing?, unconfirmed?, retryable? }
  *                         // unconfirmed: the driver, or the host on its behalf, ended the
  *                         // turn locally after a failed or unanswered stop; the engine may
  *                         // still be working.

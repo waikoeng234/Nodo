@@ -40,11 +40,22 @@ Events use the factory callback. Optional fields remain absent when the source c
 | `plan` | `turnId`; whole-plan snapshot, optional text, steps and removal flag. |
 | `activity` | `turnId`, `entityId`, `phase`; source-declared member activity. |
 | `lifecycle` | Optional `turnId`, `kind: compaction / retry`, `phase: start / end`; optional error/cancellation. |
-| `turn/end` | `turnId`, `reason: done / interrupted / error`; optional final text, error, usage, timing and `unconfirmed`. |
+| `turn/end` | `turnId`, `reason: done / interrupted / error`; optional final text, error, usage, timing, `unconfirmed` and `retryable: true`. |
 | `request/opened` | `id`, `kind: permission / question`; optional tool, reason, options and detail. |
 | `request/closed` | `id`; request already settled by the source. |
 
 Complete text may be emitted without deltas. Final snapshots must not duplicate streamed content. `turn/end.text`, when available, is the final assistant message used for workflow handoff, distinct from accumulated text.
+
+`retryable` is emitted only for the structured transient classifications listed below, never cancellation. Other errors omit it; error text is not classified.
+
+| Engine | Structured source | Transient values |
+| --- | --- | --- |
+| Codex | `turn.error.codexErrorInfo` (local 0.163.0 `codex app-server generate-ts`, `v2/CodexErrorInfo.ts` and `v2/TurnError.ts`) | `serverOverloaded`, `rateLimitExceeded`, `internalServerError`; `httpConnectionFailed`, `responseStreamConnectionFailed`, `responseStreamDisconnected`, `responseTooManyFailedAttempts` with absent/null HTTP status, 408 or 5xx. Other HTTP statuses are excluded. |
+| Claude Code | Root `assistant.error`, terminal `result.api_error_status` (installed 2.1.312 schema and result serialization) | `overloaded`, `server_error`; without an assistant error classification, HTTP 408 or 5xx. An explicit other assistant error classification takes precedence. `rate_limit` also covers usage exhaustion and policy refusals, so it is excluded, as is HTTP 429 alone. The internal `apiErrorIsTransient` field is not serialized to SDK assistant frames. |
+| Qoder | Number or string `Result.error_code` (installed 1.1.76 result normalization; [official error codes](https://docs.qoder.com/zh/cli/sdk/errors)) | 10408 (timeout), 10500 (model service), 10605 (queued). 500 is also the CLI's fallback for unrecognized failures, so it is excluded. |
+| OpenCode | Terminal RPC error `data.errorName` (installed 2.0.28 ACP error conversion and provider error mapping) | `provider.rate-limit`, `provider.transport`, `provider.timeout`, `provider.internal`. |
+
+Other engines, including other ACP implementations, do not emit this flag. Classifications for authentication, quota, billing, configuration, unknown errors and missing models are outside these allowlists and omit it.
 
 Text and reasoning events optionally carry `messageId`, `blockIndex`, `channel`,
 `parentCallId`, and `boundary: start / end`. These identify source messages and

@@ -237,3 +237,23 @@ test('OpenCode slash lines expand from command files before reaching the channel
     assert.deepEqual(prompt, ['Reply TOKEN.\n\nextra words', 'Reply SKILL.', '/^\\d+/ matches digits'])
   })
 })
+
+test('opencode only marks confirmed structured transient failures retryable', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('opencode', { bin, cwd, onEvent: event => events.push(event) })
+  try {
+    for (const [failure, retryable] of [ ...['provider.rate-limit', 'provider.transport', 'provider.timeout', 'provider.internal'].map(kind => [kind, true]),
+  ...['provider.auth', 'provider.quota', 'provider.no-route', 'provider.invalid-request', 'provider.unknown', 'future', 'aborted'].map(kind => [kind, false]) ]) {
+      events.length = 0
+      await driver.sendTurn('FAILURE ' + JSON.stringify(failure))
+      const ended = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(ended.retryable, retryable ? true : undefined, JSON.stringify(failure))
+    }
+    events.length = 0
+    await driver.sendTurn('WAIT')
+    await driver.interruptTurn()
+    const ended = await until(() => events.find(event => event.type === 'turn/end'))
+    assert.equal(ended.reason, 'interrupted')
+    assert.equal(ended.retryable, undefined)
+  } finally { driver.dispose() }
+}))

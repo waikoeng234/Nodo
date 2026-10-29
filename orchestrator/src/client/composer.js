@@ -253,7 +253,7 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
     if (id === 'upload') return act(onUpload)
     if (id === 'reference') return act(onReference)
     if (id === 'goal') return act(onGoal)
-    if (id === 'plan') return act(() => onModelChange({ permission: (profile.permission || 'workspace') === 'plan' ? '' : 'plan' }))
+    if (id === 'plan') return act(() => onModelChange({ permission: profile.permission === 'plan' ? 'workspace' : 'plan' }))
     if (id === 'compact') return act(onCompact)
     if (typeof id === 'string' && id.startsWith('cmd:')) {
       close()
@@ -263,6 +263,7 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
   }
   const row = addRow
   const engine = (catalog ?? []).find(item => item.id === profile.engine)
+  const modes = engine?.capabilities?.permissionModes ?? []
   const commands = scan?.commands ?? []
   // The draft keeps typing while the menu is up, so the text after the trigger
   // narrows the command rows (compact among them); with nothing scanned the
@@ -291,7 +292,10 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
     { id: onUpload ? 'upload' : 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !onUpload && (!workspace || !onInsert) },
     ...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []),
     ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
-    ...(engine?.capabilities?.permissionModes?.includes('plan') ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
+    // Only a plan↔workspace pair is a safe toggle: without workspace the row
+    // could not leave plan, and stepping up to full must go through the risk
+    // confirmation on the role card.
+    ...(modes.includes('plan') && modes.includes('workspace') ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
     { type: 'label', id: 'cmd-title', text: '指令' },
     ...commandSection,
   ] : [{ type: 'label', id: 'cmd-title', text: '指令' }, ...commandSection]
@@ -316,8 +320,12 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
 // (dsh-client-ui-permission-presets): the kit's permission glyphs and trigger
 // metrics, the same menu, and the same risk confirmation gating the top tier.
 // Tiers map per engine at session open; only the declared tiers are offered.
-const PERMISSION_LABELS = { '': 'Agent 默认权限', plan: '仅可查看', workspace: '工作区内修改', full: '完全权限' }
-const PERMISSION_GLYPHS = { plan: PermissionIconReadOnlyRegular, workspace: PermissionIconWorkspaceWriteRegular, full: PermissionIconFullAccessRegular }
+export const PERMISSION_LABELS = { plan: '仅可查看', workspace: '工作区内修改', full: '完全权限' }
+export const PERMISSION_GLYPHS = { plan: PermissionIconReadOnlyRegular, workspace: PermissionIconWorkspaceWriteRegular, full: PermissionIconFullAccessRegular }
+export const permissionForEngine = (engine, current) => {
+  const modes = engine?.capabilities?.permissionModes ?? []
+  return modes.includes(current) ? current : modes.includes('workspace') ? 'workspace' : modes[0]
+}
 const FULL_ACCESS_CONFIRM = {
   title: '确认启用完全权限？',
   description: '启用完全权限后，智能体将减少确认步骤，并且可以直接执行更多操作，包括敏感操作、文件修改或外部命令。仅建议在你信任当前任务时使用。',
@@ -326,15 +334,41 @@ const FULL_ACCESS_CONFIRM = {
   closeLabel: '关闭',
   confirmLabel: '启用完全权限',
 }
+export function usePermissionChange(disabled) {
+  const [confirming, setConfirming] = useState(null)
+  const [acknowledged, setAcknowledged] = useState(false)
+  const apply = (mode, onChange) => { setConfirming(null); setAcknowledged(false); onChange(mode) }
+  const pick = (mode, current, onChange) => {
+    if (disabled || !mode || mode === current) return
+    if (mode === 'full') { setAcknowledged(false); setConfirming({ onChange }); return }
+    apply(mode, onChange)
+  }
+  return { pick, confirmation: confirming !== null && h(RiskConfirmation, {
+    open: true, ...FULL_ACCESS_CONFIRM, acknowledged, disabled,
+    onAcknowledgedChange: setAcknowledged,
+    onCancel: () => { setConfirming(null); setAcknowledged(false) },
+    onConfirm: () => apply('full', confirming.onChange),
+  }) }
+}
+
+/** @param {{ modes?: string[], value?: string, disabled?: boolean, onChange: (mode: string) => void, className?: string, label?: string }} props */
+export function PermissionSelect({ modes = [], value, disabled = false, onChange, className = '', label = '权限' }) {
+  return h('span', { className: `nodo-permission-select ${className}` },
+      PERMISSION_GLYPHS[value] && h('span', { className: 'nodo-perm-icon', 'aria-hidden': true }, h(PERMISSION_GLYPHS[value])),
+      h('select', { className: 'nodo-dialog-input nodo-dialog-select', 'aria-label': label,
+        value: value ?? '', disabled: disabled || !modes.length, onChange: event => onChange(event.target.value) },
+      !modes.length && h('option', { value: '', disabled: true }, '无可用权限档位'),
+      ...modes.map(mode => h('option', { key: mode, value: mode }, PERMISSION_LABELS[mode] ?? mode))))
+}
+
 export function PermissionMenu({ profile, disabled, onChange }) {
   const [open, setOpen] = useState(false)
   const [modes, setModes] = useState(null)
-  const [confirming, setConfirming] = useState(null)
-  const [acknowledged, setAcknowledged] = useState(false)
   const loaded = useRef(null)
-  const current = profile.permission || (profile.engine === 'dsh' ? '' : 'workspace')
+  const current = profile.permission
+  const { pick, confirmation } = usePermissionChange(disabled)
   const openMenu = () => {
-    if (open || confirming !== null) return setOpen(false)
+    if ((open && loaded.current === profile.engine) || confirmation) return setOpen(false)
     setOpen(true)
     // The tiers are one engine's declaration; a role moved to another engine
     // re-reads them instead of offering tiers it never declared.
@@ -343,36 +377,24 @@ export function PermissionMenu({ profile, disabled, onChange }) {
     setModes(null)
     void call('engine-catalog').then(items => {
       const offered = items.find(item => item.id === profile.engine)?.capabilities?.permissionModes
-      setModes(Array.isArray(offered) ? offered : ['workspace'])
-    }).catch(() => setModes(['workspace']))
+      setModes(Array.isArray(offered) ? offered : [])
+    }).catch(() => { loaded.current = null; setModes([]) })
   }
-  const apply = mode => { setOpen(false); setConfirming(null); setAcknowledged(false); onChange({ permission: mode === 'workspace' && profile.engine !== 'dsh' ? '' : mode }) }
-  const pick = mode => {
-    setOpen(false)
-    if (mode === current) return
-    // The native control gates the top tier behind the same risk acknowledgment.
-    if (mode === 'full') { setAcknowledged(false); setConfirming('full'); return }
-    apply(mode)
-  }
-  const offered = profile.engine === 'dsh' && modes?.length === 0 ? [''] : modes ?? (current ? [current] : [])
+  const offered = (loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])
+  const label = offered.length ? PERMISSION_LABELS[current] ?? current : '无可用权限档位'
   const items = offered.map(mode => ({ id: mode, label: PERMISSION_LABELS[mode] ?? mode,
     ...(PERMISSION_GLYPHS[mode] ? { icon: h(PERMISSION_GLYPHS[mode]) } : {}) }))
   return h(Fragment, null,
     h(Menu, {
       open, onClose: () => setOpen(false), portal: true, side: 'top', align: 'start', autoFocus: true, className: 'nodo-perm',
-      selectedId: current, items, onSelect: pick,
-      anchor: h('button', { type: 'button', className: 'nodo-perm-trigger', disabled,
-        'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-label': `访问模式，当前：${PERMISSION_LABELS[current] ?? current}`, onClick: openMenu },
+      selectedId: current, items, onSelect: mode => { setOpen(false); pick(mode, current, permission => onChange({ permission })) },
+      anchor: h('button', { type: 'button', className: 'nodo-perm-trigger', disabled: disabled || (loaded.current === profile.engine && modes?.length === 0),
+        'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-label': `访问模式，当前：${label}`, onClick: openMenu },
       PERMISSION_GLYPHS[current] && h('span', { className: 'nodo-perm-icon', 'aria-hidden': true }, h(PERMISSION_GLYPHS[current])),
-      h('span', { className: 'nodo-perm-label' }, PERMISSION_LABELS[current] ?? current),
+      h('span', { className: 'nodo-perm-label' }, label),
       h('span', { className: `nodo-perm-chevron${open ? ' nodo-perm-chevron-open' : ''}`, 'aria-hidden': true }, h(IconChevronDownOutlineRegular))),
     }),
-    confirming !== null && h(RiskConfirmation, {
-      open: true, ...FULL_ACCESS_CONFIRM, acknowledged, disabled,
-      onAcknowledgedChange: setAcknowledged,
-      onCancel: () => { setConfirming(null); setAcknowledged(false) },
-      onConfirm: () => apply('full'),
-    }))
+    confirmation)
 }
 
 // Responsibilities use the same identity injection as the role text.

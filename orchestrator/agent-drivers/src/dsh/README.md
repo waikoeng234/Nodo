@@ -104,7 +104,8 @@ carries the last committed assistant message with text as `text`. Standalone ACP
 forwards thought chunks when the Agent publishes them. Some DSH
 versions emit committed messages rather than token-by-token deltas.
 The prompt request has no fixed 15-second handshake timeout; the host's activity
-watchdog and cancel/dispose own its lifetime. ACP reports token limits and other
+watchdog only warns during silence. The Agent's result or explicit cancel/dispose
+ends the turn. ACP reports token limits and other
 incomplete stop reasons as errors, preserving any partial reply.
 
 Permission option IDs remain opaque. Allow selects `allow_once`; deny selects

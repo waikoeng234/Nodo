@@ -226,7 +226,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
         controls.clear();
         connection?.dispose();
     };
-    const end = (reason, error, usage, text) => {
+    const end = (reason, error, usage, text, retryable = false) => {
         if (!running)
             return;
         const turn = running;
@@ -241,7 +241,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
         closeRequests();
         if (turn.changes)
             emit(turn.changes.snapshot(turn.id));
-        emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) });
+        emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) });
     };
     const control = (request) => new Promise((resolve, reject) => {
         const request_id = `orch-${++controlSeq}`;
@@ -392,7 +392,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
                 contextUsed: turn.contextUsed || occupied,
                 contextSize: contextWindow,
             }));
-            end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined);
+            end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, [10408, 10500, 10605].includes(Number(frame.error_code)));
         }
         // Frame types outside the declared union count by category only; the raw
         // type name and payload never reach a log or storage.

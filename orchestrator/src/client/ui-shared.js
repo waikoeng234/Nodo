@@ -189,8 +189,8 @@ export const ComposerGlyph = (running) => h('svg', { width: 16, height: 16, view
 
 export const workLabel = work => work?.seen ? ''
   : ({ 'waiting-approval': '等待审批', 'waiting-question': '等待回答', completed: '已完成', stopped: '已停止', blocked: '未完成', error: '执行失败', unavailable: '状态不可用' })[work?.status]
-  ?? (work?.active ? '运行中' : '')
-export const workDot = work => work?.status?.startsWith('waiting-') || work?.status === 'blocked' ? 'warning'
+  ?? (work?.suspect ? '疑似卡住' : work?.active ? '运行中' : '')
+export const workDot = work => work?.suspect || work?.status?.startsWith('waiting-') || work?.status === 'blocked' ? 'warning'
   : work?.active ? 'ongoing' : work?.status === 'completed' ? 'done' : work?.status === 'error' ? 'error' : 'idle'
 export const runningOf = (profile, work) => {
   const states = (profile.sessions ?? []).map(session => work?.[session.id]).filter(Boolean)

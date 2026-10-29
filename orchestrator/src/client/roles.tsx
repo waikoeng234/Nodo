@@ -6,6 +6,7 @@ import {
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 import { Field, RoleEditor } from './profile-dialogs.js'
+import { PermissionSelect, permissionForEngine, usePermissionChange } from './composer.js'
 import { modelChoices, thinkingAfterModelChange, thinkingOptions } from './model-options.js'
 import type { ModelChoice } from './model-options.js'
 import { engineDisplayName } from './engine-logos.js'
@@ -16,9 +17,9 @@ import ROLE_PRESETS from '../../core/shared/role-presets.json'
 export interface RoleTaskType { id?: string; name: string; when?: string }
 interface RoleCard {
   id: string; name: string; identity?: string; instructions?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean; fallback?: boolean; hard?: Record<string, string>
-  taskTypes?: string[]; avatarTemplate?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
+  taskTypes?: string[]; avatarTemplate?: string; permission?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
 }
-interface EngineChoice { id: string; label?: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
+interface EngineChoice { id: string; label?: string; capabilities?: { permissionModes?: string[] }; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
 interface RolePreset { name: string; role: string; instructions: string }
 interface RolesView {
   profiles: RoleCard[]
@@ -182,11 +183,14 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   const [newName, setNewName] = useState('')
   const [newIdentity, setNewIdentity] = useState('')
   const [newEngine, setNewEngine] = useState('')
+  const [newPermission, setNewPermission] = useState<string | undefined>(undefined)
   const [engines, setEngines] = useState<EngineChoice[] | null>(null)
   const [takesOpen, setTakesOpen] = useState<string | null>(null)
   // Task types a click just set on a row, shown until the saved view returns.
   const [pendingTypes, setPendingTypes] = useState<Record<string, string[]>>({})
   const [pendingHard, setPendingHard] = useState<Record<string, Record<string, string> | null>>({})
+  const [pendingPermission, setPendingPermission] = useState<Record<string, string>>({})
+  const { pick: choosePermission, confirmation: permissionConfirmation } = usePermissionChange(readOnly || busy)
   const [deleting, setDeleting] = useState<RoleCard | null>(null)
   const dirtyRef = useRef(false)
   const typedRef = useRef(false)
@@ -220,7 +224,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       try { await call('profile-order', { ids }) } catch { await refresh(true); throw new Error('角色列表已变化，请重试') }
     })
   }
-  const run = (action: () => void) => { setAdding(null); setNewName(''); setNewIdentity(''); setTakesOpen(null); setError(''); action() }
+  const run = (action: () => void) => { setAdding(null); setNewName(''); setNewIdentity(''); setNewPermission(undefined); setTakesOpen(null); setError(''); action() }
   const switchTo = (action: () => void) => { if (dirtyRef.current || typedRef.current) setConfirm({ action: () => run(action) }); else run(action) }
   const showOverview = () => { setTypeOpen(false); setRoleId(null) }
   const openRole = (id: string) => { setTypeOpen(false); setRoleId(id) }
@@ -274,6 +278,8 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   }
   const newAvatar = AVATAR_TEMPLATES[roles.length % AVATAR_TEMPLATES.length].id
   const newEngineAvailable = creationEngines(engines ?? []).some(item => item.id === newEngine)
+  const newEngineInfo = engines?.find(item => item.id === newEngine)
+  const newPermissionValue = permissionForEngine(newEngineInfo, newPermission)
   const createRole = (event: { preventDefault: () => void }) => {
     event.preventDefault()
     const name = newName.trim()
@@ -282,14 +288,14 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     const preset = createKind === 'lead' ? ROLE_PRESETS.find(item => item.name === 'leader')
       : [...ROLE_PRESETS.filter(item => item.name !== 'leader'), ...(view.prefs?.rolePresets ?? [])].find(item => item.name === identity)
     void perform(async () => {
-      await call('profile-create', { name, engine: newEngine, avatarTemplate: newAvatar, identity,
+      await call('profile-create', { name, engine: newEngine, permission: newPermissionValue, avatarTemplate: newAvatar, identity,
         ...(createKind === 'lead' ? { lead: true } : {}),
         ...(preset ? { role: preset.role, instructions: preset.instructions } : {}),
       })
-      setAdding(null); setNewName(''); setNewIdentity('')
+      setAdding(null); setNewName(''); setNewIdentity(''); setNewPermission(undefined)
     })
   }
-  const cancelAdding = () => { setAdding(null); setNewName(''); setNewIdentity('') }
+  const cancelAdding = () => { setAdding(null); setNewName(''); setNewIdentity(''); setNewPermission(undefined) }
   // A row's task types save on every click; a refusal falls back to the saved card.
   const toggleType = async (role: RoleCard, id: string) => {
     const held = role.taskTypes ?? []
@@ -307,6 +313,19 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     catch (failure) { setError((failure as Error).message) }
     finally { setPendingHard(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
   }
+  const updatePermission = async (role: RoleCard, permission: string) => {
+    setPendingPermission(current => ({ ...current, [role.id]: permission }))
+    setError('')
+    try { await call('profile-update', { id: role.id, changes: { permission } }); await refresh(true) }
+    catch (failure) { setError((failure as Error).message) }
+    finally { setPendingPermission(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== role.id))) }
+  }
+  const permissionCell = (role: RoleCard, locked: boolean) => (
+    <PermissionSelect modes={engines?.find(item => item.id === role.engine)?.capabilities?.permissionModes}
+      value={pendingPermission[role.id] ?? role.permission} className="nodo-roles-permission" label={`权限 ${role.name}`}
+      disabled={locked || Object.hasOwn(pendingPermission, role.id)}
+      onChange={(permission: string) => choosePermission(permission, role.permission, (next: string) => void updatePermission(role, next))} />
+  )
 
   const identityCell = (role: RoleCard) => <span className="nodo-tag nodo-roles-identity" title={role.identity} data-empty={!role.identity ? '' : undefined}>{role.identity || (role.instructions ? '自定义' : '—')}</span>
   const createForm = (className: string, order?: number) => (
@@ -323,10 +342,12 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
           disabled={readOnly || busy} onChange={event => setNewIdentity(event.target.value)} />
       )}
       <select className="nodo-dialog-input nodo-dialog-select" aria-label="Agent" value={newEngine} disabled={readOnly || busy || !engines?.length}
-        onChange={event => setNewEngine(event.target.value)}>
+        onChange={event => { setNewEngine(event.target.value); setNewPermission(undefined) }}>
         {!engines?.length && <option value="">正在加载 Agent…</option>}
         {creationEngines(engines ?? []).map(item => <option key={item.id} value={item.id}>{engineDisplayName(item)}</option>)}
       </select>
+      <PermissionSelect modes={newEngineInfo?.capabilities?.permissionModes} value={newPermissionValue}
+        disabled={readOnly || busy} onChange={(permission: string) => choosePermission(permission, newPermissionValue, setNewPermission)} />
       <span className="nodo-roles-new-actions">
         {(createKind === 'lead' ? leads.length > 0 : executors.length > 0) && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={cancelAdding}>取消</Button>}
         <Button type="submit" variant="primary" size="sm" disabled={readOnly || busy || !newName.trim() || !newEngineAvailable}>创建</Button>
@@ -436,6 +457,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
           <span>{engineName(role)}</span>
           <span className="nodo-roles-sub">{role.model || '默认模型'}</span>
         </span>
+        {permissionCell(role, locked)}
         {takesCell(role, locked)}
         <span className="nodo-roles-hard">{role.hard !== undefined ? '可接' : ''}</span>
         {roleActions(role, held, locked)}
@@ -462,7 +484,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
             onClick={() => switchTo(() => startAdding('lead'))}><IconPlusOutlineRegular size={14} />添加主控</button>}
         </div>
         <div className="nodo-roles-table">
-          <div className="nodo-roles-lead nodo-roles-row-head" aria-hidden><span>角色</span><span>身份</span><span>Agent</span><span /></div>
+          <div className="nodo-roles-lead nodo-roles-row-head" aria-hidden><span>角色</span><span>身份</span><span>Agent</span><span>权限</span><span /></div>
           {leads.map(lead => (
             <div key={lead.id} className="nodo-roles-lead">
               <span className="nodo-roles-who-cell">
@@ -477,6 +499,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
                 <span>{engineName(lead)}</span>
                 <span className="nodo-roles-sub">{lead.model || '默认模型'}</span>
               </span>
+              {permissionCell(lead, readOnly || busy || roleStateOf(lead, view).active === true)}
               {roleActions(lead, busy || roleStateOf(lead, view).active === true, readOnly || busy || roleStateOf(lead, view).active === true)}
             </div>
           ))}
@@ -500,7 +523,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
             </div>
             <div className="nodo-roles-table">
               <div className="nodo-roles-row nodo-roles-row-head" aria-hidden>
-                <span>顺序</span><span>角色</span><span>身份</span><span>Agent</span><span>承接任务</span><span>难题</span><span />
+                <span>顺序</span><span>角色</span><span>身份</span><span>Agent</span><span>权限</span><span>承接任务</span><span>难题</span><span />
               </div>
               {executors.map(executorRow)}
               {createKind === 'executor' && createForm('nodo-roles-row nodo-roles-new', executors.length + 1)}
@@ -559,6 +582,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
           {error && <p className="nodo-error-line" role="alert">{error}</p>}
         </div>
       </div>
+      {permissionConfirmation}
       {confirm && <Modal open title="放弃未保存的修改？" onClose={() => setConfirm(null)} closeLabel="关闭" className="nodo-dialog" footer={[
         <Button key="keep" variant="outline" onClick={() => setConfirm(null)}>继续编辑</Button>,
         <Button key="drop" variant="primary" onClick={() => { const { action } = confirm; setConfirm(null); action() }}>放弃修改</Button>,
@@ -600,7 +624,7 @@ export const ROLES_CSS = `
 .nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
 .nodo-role-types-label{flex:1;min-width:0}
 .nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
-.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px;container-type:inline-size}
+.nodo-roles-overview{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px;display:flex;flex-direction:column;gap:20px;container-type:inline-size}
 .nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .nodo-roles-head h1{display:flex;align-items:baseline;gap:8px;margin:0;font-size:18px;font-weight:600;line-height:26px}
 .nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
@@ -613,7 +637,7 @@ export const ROLES_CSS = `
 .nodo-roles-empty h2{margin:0;font-size:18px;font-weight:600;line-height:26px;text-wrap:balance}
 .nodo-roles-empty p{max-width:420px;margin:0 0 12px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-roles-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:min(600px,100%);padding:8px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1);text-align:left}
-.nodo-roles-create>select{flex:0 1 160px}
+.nodo-roles-create>select,.nodo-roles-create>.nodo-permission-select{flex:0 1 160px}
 .nodo-roles-create>.nodo-role-identity{flex:0 1 100px;min-width:0}
 .nodo-roles-new-who{display:flex;align-items:center;gap:8px;flex:1 1 220px;min-width:0}
 .nodo-roles-new-who>.nodo-dialog-input{flex:1;min-width:0}
@@ -624,7 +648,8 @@ export const ROLES_CSS = `
 .nodo-roles-table,.nodo-types-table{display:flex;flex-direction:column;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px)}
 .nodo-roles-row,.nodo-roles-lead{display:grid;grid-template-columns:var(--nodo-roles-columns);align-items:center;gap:12px;min-height:56px;padding:6px 12px}
 .nodo-roles-lead>:first-child{grid-column:1/3}
-.nodo-roles-lead>:last-child{grid-column:5/-1;justify-self:end}
+.nodo-roles-lead>:last-child{grid-column:6/-1;justify-self:end}
+.nodo-roles-permission>.nodo-dialog-select{border-color:transparent;background-color:transparent;font-size:12px;text-overflow:ellipsis}
 .nodo-roles-row+.nodo-roles-row,.nodo-roles-lead+.nodo-roles-lead,.nodo-type-row+.nodo-type-row{border-top:1px solid var(--dsw-alias-border-l2)}
 .nodo-roles-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-roles-row[data-dragging]{opacity:.4}
@@ -654,7 +679,7 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-actions>.nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-roles-actions>.nodo-roles-delete:hover:not(:disabled){color:var(--dsw-alias-state-error-primary)}
 .nodo-roles-new{border-radius:0 0 calc(var(--nodo-role-radius) + 7px) calc(var(--nodo-role-radius) + 7px);background:var(--dsw-alias-bg-layer-1)}
-.nodo-roles-new>.nodo-roles-new-actions{grid-column:5/-1}
+.nodo-roles-new>.nodo-roles-new-actions{grid-column:6/-1}
 .nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 12px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
 .nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-roles-gap-note{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:22px}
@@ -692,7 +717,8 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-types-bar{position:sticky;bottom:24px;align-self:center;display:flex;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-base);box-shadow:var(--dsw-shadow-lv2)}
 @media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
 @container (width<640px){
-.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-lead>:last-child{grid-column:5/-1}
 .nodo-roles-row:not(.nodo-roles-new)>:nth-child(3),.nodo-roles-lead:not(.nodo-roles-new)>:nth-child(2){display:none}
 .nodo-roles-new{display:flex;flex-wrap:wrap;align-items:center}
 .nodo-roles-new>*{flex:1 1 140px;min-width:0}
@@ -701,7 +727,8 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-new>.nodo-roles-new-actions{flex:none;margin-left:auto}
 }
 @container (width<480px){
-.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-table{--nodo-roles-columns:44px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.3fr) 40px 64px}
+.nodo-roles-lead>:last-child{grid-column:4/-1}
 .nodo-roles-row:not(.nodo-roles-new)>:nth-child(4),.nodo-roles-lead:not(.nodo-roles-new)>:nth-child(3){display:none}
 }
 `

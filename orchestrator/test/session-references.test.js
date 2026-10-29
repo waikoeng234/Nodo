@@ -103,6 +103,12 @@ test('legacy transcript replies offer only completed turns and prefer the engine
   assert.deepEqual(transcriptReplies(lines).map(item => item.text), ['Saved before reasons', 'Final'])
 })
 
+test('completion reply ids stay selectable after transcript indices change', () => {
+  const reply = { who: 'agent', kind: 'text', timeline: true, reply: true, reason: 'done', at: 2, text: 'Exact completed round', replyId: 'stable-reply-id' }
+  assert.equal(transcriptReplies([{ who: 'user', text: 'Earlier input' }, reply])[0].id, 'stable-reply-id')
+  assert.equal(transcriptReplies([reply])[0].id, 'stable-reply-id')
+})
+
 test('interrupted legacy turns are not offered and deleting a recipient role preserves its snapshots', async () => withHost(async host => {
   const workspace = await host.api('workspace-create', { name: 'Reference cleanup', cwd: host.home })
   const source = await host.api('profile-create', { name: 'Cleanup source', engine: 'echo', workspace: workspace.id,

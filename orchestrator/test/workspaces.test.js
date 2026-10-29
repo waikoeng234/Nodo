@@ -232,6 +232,43 @@ test('workspace-file follows links only inside the workspace and redacts saved k
   })
 })
 
+test('workspace targets browse and preview without a role, retain redaction and reject escapes', async () => {
+  await withHost(async ({ api, post, home, runtime }) => {
+    const root = join(home, 'welcome-files'), outside = join(home, 'outside.txt')
+    mkdirSync(root)
+    writeFileSync(outside, 'outside')
+    writeFileSync(join(root, 'note.md'), 'key fake-welcome-value-01')
+    symlinkSync(outside, join(root, 'escape.txt'))
+    symlinkSync(home, join(root, 'escape-dir'))
+    const workspace = await api('workspace-create', { name: 'Welcome files', cwd: root })
+    const alias = join(home, 'welcome-alias')
+    symlinkSync(root, alias)
+    const linked = await api('workspace-create', { name: 'Linked welcome', cwd: alias })
+    await api('secret-set', { name: 'WELCOME_KEY', value: 'fake-welcome-value-01' })
+    const rt = await runtime, readOnly = rt.readOnly
+    rt.readOnly = () => 'read-only'
+    assert.deepEqual((await api('workspace-dir', { workspace: workspace.id, path: '', cwd: home })).entries,
+      [{ name: 'note.md', kind: 'file' }])
+    for (const path of ['note.md', join(root, 'note.md')]) {
+      assert.equal((await api('workspace-file', { workspace: workspace.id, path })).text, 'key [secret:WELCOME_KEY]')
+    }
+    assert.equal((await api('workspace-file', { workspace: linked.id, path: join(realpathSync(root), 'note.md') })).text, 'key [secret:WELCOME_KEY]')
+    assert.deepEqual((await api('workspace-dir', { workspace: linked.id, path: realpathSync(root) })).entries, [{ name: 'note.md', kind: 'file' }])
+    for (const path of ['../welcome-files/note.md', outside, join(root, 'escape.txt')]) {
+      assert.equal((await post('workspace-file', { workspace: linked.id, path })).error.code, 'orch/invalid')
+    }
+    for (const [endpoint, paths] of [
+      ['workspace-dir', ['..', home, 'escape-dir']], ['workspace-file', ['../outside.txt', outside, 'escape.txt']],
+    ]) {
+      for (const path of paths) assert.equal((await post(endpoint, { workspace: workspace.id, path })).error.code, 'orch/invalid')
+      assert.equal((await post(endpoint, { workspace: 'missing', path: '' })).error.code, 'orch/not-found')
+    }
+    rt.readOnly = readOnly
+    await api('workspace-delete', { id: workspace.id })
+    assert.equal((await post('workspace-dir', { workspace: workspace.id, path: '' })).error.code, 'orch/not-found')
+  })
+})
+
 test('workspace-dir lists one sorted level including dotfiles and node_modules, confines links and truncates at 1000', async () => {
   await withHost(async ({ api, post, home }) => {
     const root = join(home, 'browse')

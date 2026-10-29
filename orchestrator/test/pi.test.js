@@ -4,6 +4,7 @@ import { copyFileSync, chmodSync, mkdtempSync, readFileSync, rmSync } from 'node
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createDriver, checkEngine, scanEngine, scanEngineCommands, validateEngineOptions } from '../agent-drivers/dist/index.js'
+import { piArgs } from '../agent-drivers/dist/pi/native.js'
 import { until, withHost } from './helpers/host.js'
 
 const withFixture = async (run) => {
@@ -51,6 +52,32 @@ test('pi adapter streams real deltas and resumes the exact RPC session id', asyn
     assert.equal(first.instructions, 'Role rules')
     assert.equal(first.sessionId, undefined)
     assert.equal(second.sessionId, 'fixture-pi-session', 'the persisted session id reopens the same store entry')
+  })
+})
+
+test('pi plan tier launches a read-only allowlist with MCP cut; full keeps the plain args', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const run = async permission => {
+      const events = []
+      const driver = createDriver('pi', { bin, cwd, ...(permission ? { permission } : {}), onEvent: event => events.push(event) })
+      try {
+        await driver.sendTurn('Hello')
+        await until(() => events.find(event => event.type === 'turn/end'))
+      } finally { driver.dispose() }
+    }
+    await run('plan')
+    await run('full')
+    await run(undefined)
+    const [plan, full, blank] = spawns(cwd)
+    const flag = (spawn, name) => { const at = spawn.indexOf(name); return at === -1 ? undefined : spawn[at + 1] }
+    assert.equal(flag(plan.spawn, '--tools'), 'read,grep,find,ls', 'the allowlist is exactly the read-only built-ins: no bash, powershell, write or edit')
+    assert.equal(plan.spawn.includes('--no-mcp'), true, 'the allowlist alone keeps MCP tools, so MCP support is cut outright')
+    assert.equal(plan.spawn.includes('--exclude-tools'), false)
+    assert.equal(full.spawn.includes('--tools'), false)
+    assert.equal(full.spawn.includes('--no-mcp'), false)
+    assert.deepEqual([full.mode, full.approve], ['rpc', 'no-approve'])
+    assert.equal(flag(blank.spawn, '--tools'), 'read,grep,find,ls', 'a missing tier launches plan')
+    assert.equal(blank.spawn.includes('--no-mcp'), true)
   })
 })
 
@@ -193,6 +220,40 @@ test('pi extension dialogs surface as question cards and answer back through the
   })
 })
 
+test('pi session tier changes re-arm the launch flags and keep the session', async () => {
+  await withFixture(async ({ bin, cwd }) => withHost(async ({ api }) => {
+    const workspace = await api('workspace-create', { name: 'Fixture', cwd })
+    const profile = await api('profile-create', { name: 'Fixture', engine: 'pi', workspace: workspace.id, engineOptions: { bin } })
+    const turn = async () => {
+      await api('send', { profile: profile.id, text: 'Hello' })
+      await until(async () => !(await api('state')).work[profile.id]?.active)
+    }
+    const session = async () => (await api('state')).profiles.find(item => item.id === profile.id).sessions[0].id
+    await turn()
+    await api('session-update', { profile: profile.id, session: await session(), changes: { permission: 'full' } })
+    await turn()
+    await api('session-update', { profile: profile.id, session: await session(), changes: { permission: 'plan' } })
+    await turn()
+    const flag = (spawn, name) => { const at = spawn.indexOf(name); return at === -1 ? undefined : spawn[at + 1] }
+    const entries = spawns(cwd)
+    assert.ok(entries.some(entry => entry.sessionId === undefined && flag(entry.spawn, '--tools') === 'read,grep,find,ls'),
+      'the first turn launches plan')
+    assert.ok(entries.some(entry => entry.sessionId === 'fixture-pi-session' && entry.spawn.includes('--tools') === false),
+      'the full tier re-arms without the allowlist, the session id carries over')
+    assert.ok(entries.some(entry => entry.sessionId === 'fixture-pi-session' && flag(entry.spawn, '--tools') === 'read,grep,find,ls'),
+      'back to plan, the allowlist returns on the same session')
+  }))
+})
+
+test('pi treats a workspace tier or a missing tier as plan', () => {
+  for (const permission of ['workspace', undefined]) {
+    const args = piArgs({ permission })
+    assert.equal(args.includes('--no-mcp'), true)
+    assert.equal(args[args.indexOf('--tools') + 1], 'read,grep,find,ls')
+  }
+  assert.deepEqual(piArgs({ permission: 'full' }), ['--mode', 'rpc', '--no-approve'])
+})
+
 test('pi identity rides its own version probe and reports outside verified scope as unverified', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []
@@ -229,6 +290,9 @@ test('pi environment check uses the RPC handshake; catalog and commands read the
     const commands = await scanEngineCommands('pi', { engineOptions: { bin }, cwd })
     assert.equal(commands.source, 'pi get_commands')
     assert.deepEqual(commands.commands.map(command => command.id), ['review', 'skill:demo'])
+    assert.ok(spawns(cwd).length > 0)
+    assert.ok(spawns(cwd).every(entry => entry.spawn.includes('--no-mcp') === false && entry.spawn.includes('--tools') === false),
+      'state-only probes launch unrestricted so the MCP tables stay observable')
     assert.throws(() => validateEngineOptions('pi', { bin: 'pi --flag' }), /absolute path or a command/)
     assert.throws(() => validateEngineOptions('pi', { args: ['--yolo'] }), /Unsupported/)
     process.env.PI_FIXTURE_FAIL_STATE = '1'

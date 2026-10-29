@@ -3,8 +3,9 @@
 // Records split on LF only — U+2028/U+2029 are valid inside JSON strings, so the
 // engine's own docs forbid line readers like readline.
 import { spawn } from 'node:child_process'
+import type { PermissionMode } from '../spi.js'
 
-export type PiArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string }
+export type PiArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode }
 export type PiConnectOptions<Frame = unknown> = {
   executable: string; args?: string[]; cwd?: string; env?: NodeJS.ProcessEnv
   onFrame?: (record: Frame) => void; onClose?: (error: Error) => void
@@ -14,9 +15,15 @@ export type PiConnection = { write(record: unknown): void; running: Promise<void
 // RPC mode cannot show the project-trust prompt, and the host never silently
 // trusts a workspace's .pi resources: project settings and extensions stay off.
 // AGENTS.md/CLAUDE.md context files load regardless of this flag.
-export function piArgs({ model, thinking, instructions, driverSessionId }: PiArgsOptions = {}) {
+//
+// pi has no native tier channel, so plan is enforced at launch: a read-only
+// tool allowlist. The allowlist alone keeps MCP tools registered (pi only
+// filters them when an entry starts with mcp__), so MCP support is cut
+// outright — no servers connect. Absent or unknown permission reads as plan.
+export function piArgs({ model, thinking, instructions, driverSessionId, permission }: PiArgsOptions = {}) {
   return [
     '--mode', 'rpc', '--no-approve',
+    ...(permission === 'full' ? [] : ['--no-mcp', '--tools', 'read,grep,find,ls']),
     ...(model ? ['--model', model] : []),
     ...(thinking ? ['--thinking', thinking] : []),
     ...(instructions ? ['--append-system-prompt', instructions] : []),

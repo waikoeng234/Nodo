@@ -8,11 +8,7 @@ export function WorkflowTaskComposer({ node, view, disabled, onChange, onBusy })
   const uploading = useRef(false)
   const profile = view.profiles.find(item => !item.deletedAt && item.id === node.profileId)
   const workspace = wfWorkspace(view, profile, wfCurrentSession(profile))
-  // The card's model and thinking seed a node's session; the tier still carries
-  // over from the role's last conversation that chose one.
-  const held = profile && { permission: profile.sessions.slice().reverse().find(session =>
-    !(session.draftedAt && !session.briefSent) && session.permission !== undefined)?.permission ?? profile.permission }
-  const composerProfile = profile && { ...profile, ...held, ...node.choices }
+  const composerProfile = profile && { ...profile, ...node.choices }
   const refs = node.images ?? []
   useEffect(() => {
     let live = true

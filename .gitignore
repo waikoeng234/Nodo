@@ -15,6 +15,7 @@ node_modules/
 # Nodo 运行数据、附件与工作树
 .nodo/
 .qoder/
+.impeccable/
 
 # 测试夹具与探针产物
 *-requests.jsonl

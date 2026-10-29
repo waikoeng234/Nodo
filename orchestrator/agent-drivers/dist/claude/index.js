@@ -231,7 +231,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             emit({ type: 'request/closed', id });
         requests.clear();
     };
-    const end = (reason, error, usage, text) => {
+    const end = (reason, error, usage, text, retryable = false) => {
         if (!running)
             return;
         const turn = running;
@@ -242,7 +242,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         closeRequests();
         if (turn.changes)
             emit(turn.changes.snapshot(turn.id));
-        emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}) });
+        emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) });
     };
     const control = (request) => new Promise((resolve, reject) => {
         const request_id = `orch-${++controlSeq}`;
@@ -438,6 +438,8 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             return;
         }
         if (frame.type === 'assistant') {
+            if (!frame.parent_tool_use_id)
+                turn.errorKind = frame.error;
             const used = claudePromptTokens(frame.message?.usage);
             if (used !== undefined)
                 turn.contextUsed = used;
@@ -505,7 +507,9 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
                 turn.sawText = false;
                 return;
             }
-            end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined);
+            const retryable = turn.errorKind !== undefined ? ['overloaded', 'server_error'].includes(turn.errorKind)
+                : typeof frame.api_error_status === 'number' && (frame.api_error_status === 408 || frame.api_error_status >= 500 && frame.api_error_status < 600);
+            end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, retryable);
         }
     };
     const ask = (frame) => {

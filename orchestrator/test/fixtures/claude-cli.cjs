@@ -80,6 +80,12 @@ const receive = line => {
     return setTimeout(() => say('Steered ' + text, { user_message_uuids: [frame.uuid], queued_turn_count: 0 }), 50)
   }
   turn++
+  if (text.startsWith('FAILURE ')) {
+    const failure = JSON.parse(text.slice(8))
+    if (failure.kind) send({ type: 'assistant', error: failure.kind, ...(failure.apiError ? { api_error: failure.apiError } : {}), message: { id: 'error-' + turn, content: [] }, session_id: session })
+    send({ type: 'result', subtype: 'error_during_execution', is_error: true, api_error_status: failure.status, session_id: session })
+    return
+  }
   if (text.startsWith('HANDOFF ')) {
     const [, tag, outcome] = text.split(' ')
     return setTimeout(() => {

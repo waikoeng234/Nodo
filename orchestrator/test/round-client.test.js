@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
 
 const plain = value => JSON.parse(JSON.stringify(value))
-const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(nodes) : !('type' in node) ? []
+const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(nodes) : !('type' in node) || !('props' in node) ? []
   : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
 const text = node => nodes(node).flatMap(item => item.children ?? []).filter(child => typeof child === 'string').join('|')
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -45,6 +45,22 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   assert.deepEqual(plain(roundLines(unmarked)).filter(line => line.kind !== 'speaker'), plain(unmarked))
 })
 
+test('a supplemental report clears interrupted and unconfirmed round status', async () => {
+  const { roundLines, RoundMember, host } = await loadClient('round.js')
+  const lines = [
+    { delegation: { session: 'executor', profile: 'worker', type: 'feature' } },
+    { delegation: { session: 'executor', ended: 'interrupted', unconfirmed: true } },
+    { origin: { kind: 'report', session: 'executor' }, references: [{ messages: [{ text: 'Recovered successfully' }] }] },
+  ]
+  const step = roundLines(lines).find(line => line.kind === 'member').step
+  assert.equal(step.ended, undefined)
+  assert.equal(step.unconfirmed, undefined)
+  assert.equal(step.report, 'Recovered successfully')
+  host.reset()
+  const shown = nodes(RoundMember({ step, round: { profiles: [{ id: 'worker', name: 'Worker' }], taskTypes: [], work: {} } }))
+  assert.doesNotMatch(text(shown), /已中断|结果未确认/)
+})
+
 test('an executor message shows its role, tags and state, expands the rest of its report and opens its session', async () => {
   const { RoundMember, MessageTime, host } = await loadClient(['round.js', 'feed.js'])
   const opened = []
@@ -77,9 +93,27 @@ test('an executor message shows its role, tags and state, expands the rest of it
   assert.equal(head(view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done' })), 'Tester|测试|已结束|查看会话')
   const stopped = []
   round.onStop = async step => { stopped.push(step.session) }
-  const stop = view({ session: 'e2', profile: 'tester', type: 'test' }).find(node => node.props['aria-label'] === '停止 Tester')
+  round.work.e2.suspect = true
+  const suspect = view({ session: 'e2', profile: 'tester', type: 'test' })
+  const status = suspect.find(node => node.props['data-state'] === 'live')
+  assert.equal(text(status), '疑似卡住 · |5s', 'suspicion keeps the elapsed task duration visible')
+  assert.equal(status.children[0].props.state, 'warning')
+  round.work.e2.seen = true
+  assert.equal(text(view({ session: 'e2', profile: 'tester', type: 'test' }).find(node => node.props['data-state'] === 'live')), '5s', 'an empty label has no leading separator')
+  delete round.work.e2.seen
+  const stop = suspect.find(node => node.props['aria-label'] === '停止 Tester')
+  assert.equal(stop.props.disabled, false, 'a suspected turn remains stoppable')
   stop.props.onClick()
   assert.deepEqual(stopped, ['e2'], 'a live member stops on its own')
+  await tick()
+  round.work.e2.retryWaiting = true
+  const waiting = view({ session: 'e2', profile: 'tester', type: 'test' })
+  assert.equal(text(waiting.find(node => node.props['data-state'] === 'live')), '等待自动继续 · |5s')
+  const cancel = waiting.find(node => node.props['aria-label'] === '停止 Tester')
+  assert.equal(cancel.props.disabled, false)
+  cancel.props.onClick()
+  await tick()
+  assert.deepEqual(stopped, ['e2', 'e2'], 'a waiting member cancels on its own')
   assert.equal(view({ ...done }).find(node => node.props['aria-label'] === '停止 Coder'), undefined, 'a reported member has nothing to stop')
   delete round.onStop
   assert.equal(head(view({ session: 'e4', profile: 'tester', type: 'test', hard: false, reused: false })), 'Tester|测试|未回报|查看会话')
@@ -119,6 +153,54 @@ test('a live executor message shows that executor\'s latest five tool calls of t
   const rows = tools().children
   assert.deepEqual(rows.map(row => row.props.summary), ['c3', 'c4', 'c5', 'c6', 'c7'])
   assert.deepEqual(rows.map(row => row.props.running), [false, false, false, false, true])
+})
+
+test('automatic continuation tools stay in their delegation window', async () => {
+  const tool = (callId, at) => ({ who: 'agent', kind: 'tool', name: 'Bash', callId, phase: 'end', brief: callId, at })
+  const lines = [
+    { who: 'user', at: 1 }, tool('Original work', 3),
+    { who: 'user', origin: { kind: 'retry' }, at: 5 }, tool('Continued work', 6),
+    { who: 'user', at: 10 }, tool('Reused task', 11),
+    { who: 'user', origin: { kind: 'retry' }, at: 12 }, tool('Continued reused task', 13),
+    { who: 'user', at: 20 }, tool('Later task', 21),
+  ]
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => lines })
+  const step = { session: 'e1', profile: 'coder', type: 'feature', at: 2 }
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: true } }, onOpen() {} }
+  const tools = () => {
+    host.reset()
+    const member = nodes(RoundMember({ step, round })).find(item => item.props.step === step && item.type !== RoundMember)
+    return member.type(member.props)
+  }
+  tools()
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(tools().children.map(row => row.props.summary), ['Original work', 'Continued work'])
+  step.at = 13
+  assert.deepEqual(tools().children.map(row => row.props.summary), ['Reused task', 'Continued reused task'])
+})
+
+test('executor tool records remain visible after interruption and stay within their delegation', async () => {
+  const lines = [
+    { who: 'user', at: 1 }, { who: 'agent', kind: 'tool', name: 'Bash', callId: 'old', phase: 'end', brief: 'Saved progress', at: 3 },
+    { who: 'user', at: 10 }, { who: 'agent', kind: 'tool', name: 'Bash', callId: 'new', phase: 'end', brief: 'Revised task', at: 11 },
+  ]
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => lines })
+  const step = { session: 'e1', profile: 'coder', type: 'feature', at: 2, ended: 'interrupted' }
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: false } }, onOpen() {} }
+  const tools = () => {
+    host.reset()
+    const member = nodes(RoundMember({ step, round })).find(item => item.props.step === step && item.type !== RoundMember)
+    assert.ok(member, 'stopping a task must retain its tool history')
+    return member.type(member.props)
+  }
+  tools()
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(tools().children.map(row => row.props.summary), ['Saved progress'])
+  step.unconfirmed = true
+  host.reset()
+  assert.ok(text(RoundMember({ step, round })).includes('结果未确认'))
 })
 
 test('the round feed draws the lead\'s speaker rows and executor messages, and the reply foot keeps the only lead time', async () => {

@@ -9,7 +9,7 @@ async function mount(start = 0, reduce = false) {
   const hooks = [], pending = [], timers = new Map(), listeners = new Set()
   let cursor = 0, now = start, serial = 0
   const media = { matches: reduce, addEventListener: (_, run) => listeners.add(run), removeEventListener: (_, run) => listeners.delete(run) }
-  const { RunningLine } = await loadClient('running.js', {
+  const { RunningLine, StateDot } = await loadClient(['running.js', 'ui-shared.js'], {
     stubs: { 'avatar.tsx': { RoleAvatar: 'RoleAvatar' } },
     createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(child => child !== false) }),
     react: {
@@ -32,9 +32,10 @@ async function mount(start = 0, reduce = false) {
     },
   })
   return {
-    render(since, engine) {
+    StateDot,
+    render(since, engine, work) {
       cursor = 0
-      const tree = RunningLine({ since, engine })
+      const tree = RunningLine({ since, engine, work })
       pending.splice(0).forEach(run => run())
       return tree
     },
@@ -47,6 +48,25 @@ async function mount(start = 0, reduce = false) {
 
 const all = tree => typeof tree === 'object' && tree !== null ? [tree, ...tree.children.flatMap(all)] : []
 const elapsedLabel = tree => all(tree).find(node => node.props['aria-label']?.startsWith('用时 '))?.props['aria-label']
+
+test('a suspected turn uses the shared warning state while preserving and advancing its elapsed clock', async () => {
+  const view = await mount(120000)
+  const work = { active: true, suspect: true }
+  const statusLabel = tree => all(tree).find(node => node.props.className === 'nodo-running-label').props['aria-label']
+  let tree = view.render(0, undefined, work)
+  assert.equal(statusLabel(tree), '疑似卡住')
+  assert.equal(all(tree).find(node => node.type === view.StateDot).props.state, 'warning')
+  assert.equal(all(tree).some(node => node.props.className === 'nodo-running-dots'), false)
+  assert.equal(elapsedLabel(tree), '用时 2m 0s')
+  view.tick(121000)
+  tree = view.render(0, undefined, work)
+  assert.equal(elapsedLabel(tree), '用时 2m 1s')
+  tree = view.render(0, undefined, { ...work, suspect: false })
+  assert.equal(statusLabel(tree), '正在思考')
+  assert.equal(all(tree).some(node => node.type === view.StateDot), false)
+  assert.equal(elapsedLabel(tree), '用时 2m 1s', 'activity recovery does not restart the clock')
+  view.dispose()
+})
 
 test('engine silence uses the last received event clock and clears when new activity arrives', async () => {
   const view = await mount(1000)

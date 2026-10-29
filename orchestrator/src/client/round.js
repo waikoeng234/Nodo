@@ -42,7 +42,11 @@ export function roundLines(lines) {
     }
     const step = steps.get(mark?.session ?? line.origin?.session)
     if (mark?.ended && step) { Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {}); continue }
-    if (line.origin?.kind === 'report' && step) Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
+    if (line.origin?.kind === 'report' && step) {
+      delete step.ended
+      delete step.unconfirmed
+      Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
+    }
     if (line.origin) continue
     const text = line.who === 'agent' && line.kind === 'text' ? stripNodo(line.text) : null
     if (text === '') continue
@@ -61,17 +65,20 @@ const reportParts = text => {
 }
 const roleOf = (round, id) => round.profiles.find(role => role.id === id) ?? { id, name: id }
 
-// The executor's latest tool calls of its current turn; older ones scroll out.
+// A reused session has several tasks; keep each delegation's tools in its own row.
 function RoundTools({ step, work }) {
   const [lines, setLines] = useState([])
   useEffect(() => {
     let live = true
     void call('transcript', { profile: step.profile, session: step.session }).then(next => { if (live) setLines(next) }).catch(() => {})
     return () => { live = false }
-  }, [step.session, work?.active === true ? work : null])
-  const rows = transcriptRows(lines.slice(lines.findLastIndex(line => line.who === 'user') + 1)).filter(row => row.item.kind === 'tool').slice(-5)
+  }, [step.session, step.at, work?.active === true ? work : null])
+  const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
+  const start = lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
+  const end = lines.findIndex((line, index) => index >= start && boundary(line))
+  const rows = transcriptRows(lines.slice(start, end < 0 ? undefined : end)).filter(row => row.item.kind === 'tool').slice(-5)
   return rows.length > 0 && h('div', { className: 'nodo-round-tools' },
-    rows.map(row => toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work, timeline: true })))
+    rows.map(row => toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work: step.ended ? undefined : work, timeline: true })))
 }
 
 export function RoundSpeaker({ role, running }) {
@@ -91,6 +98,7 @@ export function RoundMember({ step, round }) {
   const role = roleOf(round, step.profile)
   const work = round.work?.[step.session]
   const live = !step.report && !step.ended && work?.active === true
+  const label = work?.retryWaiting ? '等待自动继续' : work?.suspect ? workLabel(work) : ''
   const [open, setOpen] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -109,8 +117,8 @@ export function RoundMember({ step, round }) {
         h('span', { className: 'nodo-round-role' }, role.name),
         tag(round.taskTypes?.find(item => item.id === step.type)?.name ?? step.type),
         step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
-        live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: 'ongoing', size: 7 }), runDuration(now - (work.since ?? now)))
-          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.ended === 'interrupted' ? '已中断' : '已结束')
+        live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: workDot(work), size: 7 }), label ? `${label} · ` : null, runDuration(now - (work.since ?? now)))
+          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.unconfirmed ? '结果未确认' : step.ended === 'interrupted' ? '已中断' : '已结束')
             : step.report ? h(MessageTime, { at: step.at }) : h('span', { className: 'nodo-round-status' }, '未回报'),
         live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
           onClick: () => { setStopping(true); void round.onStop(step).finally(() => setStopping(false)) } },
@@ -121,8 +129,8 @@ export function RoundMember({ step, round }) {
         ? h('button', { type: 'button', className: 'nodo-round-summary', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
           h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
         : h('p', { className: 'nodo-round-summary' }, summary)
-        : live ? h(RoundTools, { step, work })
-          : step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
+        : h(RoundTools, { step, work }),
+      !step.report && step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
       open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))))
 }
 

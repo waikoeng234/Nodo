@@ -78,6 +78,10 @@ const receive = line => {
   if (!initialized) { initialized = true; init() }
   const text = frame.message?.content?.find(block => block.type === 'text')?.text ?? ''
   log({ user: text })
+  if (text.startsWith('FAILURE ')) {
+    send({ type: 'result', subtype: 'error_during_execution', is_error: true, error_code: JSON.parse(text.slice(8)), session_id: session })
+    return
+  }
   lastText = text
   turn++
   if (lateInterrupt) { lateInterrupt(); lateInterrupt = null }

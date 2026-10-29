@@ -6,9 +6,15 @@ import { spawn } from 'node:child_process';
 // RPC mode cannot show the project-trust prompt, and the host never silently
 // trusts a workspace's .pi resources: project settings and extensions stay off.
 // AGENTS.md/CLAUDE.md context files load regardless of this flag.
-export function piArgs({ model, thinking, instructions, driverSessionId } = {}) {
+//
+// pi has no native tier channel, so plan is enforced at launch: a read-only
+// tool allowlist. The allowlist alone keeps MCP tools registered (pi only
+// filters them when an entry starts with mcp__), so MCP support is cut
+// outright — no servers connect. Absent or unknown permission reads as plan.
+export function piArgs({ model, thinking, instructions, driverSessionId, permission } = {}) {
     return [
         '--mode', 'rpc', '--no-approve',
+        ...(permission === 'full' ? [] : ['--no-mcp', '--tools', 'read,grep,find,ls']),
         ...(model ? ['--model', model] : []),
         ...(thinking ? ['--thinking', thinking] : []),
         ...(instructions ? ['--append-system-prompt', instructions] : []),

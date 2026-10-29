@@ -426,3 +426,23 @@ test('Qoder cards settle through the host approval pipeline', async () => {
     assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[profile.id].driverSessionId, 'fixture-qoder-session')
   }))
 })
+
+test('qoder only marks structured transient failures retryable', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('qoder', { bin, cwd, onEvent: event => events.push(event) })
+  try {
+    for (const [failure, retryable] of [ [500, false], ...[10408, 10500, 10605].flatMap(code => [[code, true], [String(code), true]]),
+  ...[105, 106, 110, 122, 406, 430, 99999, '500', '105', 'unknown'].map(code => [code, false]) ]) {
+      events.length = 0
+      await driver.sendTurn('FAILURE ' + JSON.stringify(failure))
+      const ended = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(ended.retryable, retryable ? true : undefined, JSON.stringify(failure))
+    }
+    events.length = 0
+    await driver.sendTurn('WAIT')
+    await driver.interruptTurn()
+    const ended = await until(() => events.find(event => event.type === 'turn/end'))
+    assert.equal(ended.reason, 'interrupted')
+    assert.equal(ended.retryable, undefined)
+  } finally { driver.dispose() }
+}))

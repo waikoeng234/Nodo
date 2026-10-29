@@ -96,6 +96,12 @@ const receive = line => {
     }
     send({ id, result: { turn: { id: turn, status: 'inProgress' } } })
     note('turn/started', { turn: { id: turn, status: 'inProgress' } })
+    if (text.startsWith('FAILURE ')) {
+      const failure = JSON.parse(text.slice(8))
+      note('turn/completed', { turn: { id: turn, status: failure.status ?? 'failed', error: { message: 'Fixture failure', codexErrorInfo: failure.info } } })
+      turn = null
+      return
+    }
     if (text.includes('FOREIGN_START')) note('turn/started', { turn: { id: 'foreign-' + next, status: 'inProgress' } })
     if (text.includes('UNSUPPORTED_ASK')) send({ id: 9000 + next, method: 'item/permissions/requestApproval', params: { threadId: thread, turnId: turn, itemId: 'x' } })
     if (text.startsWith('HANDOFF ')) {

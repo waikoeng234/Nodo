@@ -685,24 +685,25 @@ test('a session can be renamed and pinned, and an empty name is refused', async 
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
-// The card seeds model and thinking for every new conversation; only the
-// permission tier carries over from the conversation before it.
-test('a new conversation starts from the role card and carries the previous tier', async () => {
+// The card seeds model, thinking and permission for every new conversation.
+test('a new conversation takes the role permission instead of the previous session tier', async () => {
   const home = mkdtempSync(join(tmpdir(), 'orch-session-memory-'))
   const host = boot(home)
   try {
     const workspace = await host.api('workspace-create', { name: 'Memory', cwd: join(home, 'memory') })
-    const role = await host.api('profile-create', { name: 'Rememberer', engine: 'echo', workspace: workspace.id, model: 'm1', thinking: 'high' })
+    const role = await host.api('profile-create', { name: 'Rememberer', engine: 'echo', workspace: workspace.id, model: 'm1', thinking: 'high', permission: 'plan' })
     const first = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
     assert.deepEqual({ model: first.model, thinking: first.thinking }, { model: 'm1', thinking: 'high' },
       'the card seeds the role\'s first conversation')
     const picked = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true,
       choices: { model: 'm2', thinking: 'low', permission: 'workspace' } })
     assert.equal(picked.permission, 'workspace')
+    assert.equal(first.permission, 'plan')
+    await host.api('session-update', { profile: role.id, session: picked.id, changes: { permission: 'full' } })
     const second = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
     assert.equal(second.model, 'm1', 'the previous conversation\'s own pick stays with that conversation')
     assert.equal(second.thinking, 'high')
-    assert.equal(second.permission, 'workspace', 'the tier still carries over')
+    assert.equal(second.permission, 'plan', 'temporary session choices never replace the role permission')
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
@@ -789,13 +790,14 @@ test('running conversation settings leave the current driver intact and apply on
     assert.deepEqual(choices(second), { model: 'm2', thinking: 'high', permission: 'full' })
     assert.equal(first.disposed, true)
     assert.equal(second.options.driverSessionId, 'settings-thread', 'retuning resumes the same engine conversation')
-    await host.api('session-update', { profile: role.id, session: session.id, changes: { permission: '' } })
+    await assert.rejects(host.api('session-update', { profile: role.id, session: session.id, changes: { permission: '' } }), { code: 'orch/invalid' })
+    await host.api('session-update', { profile: role.id, session: session.id, changes: { permission: 'workspace' } })
     assert.equal(second.running, true)
     assert.equal(second.disposed, false)
     second.complete()
     await until(() => !rt.workView()[session.id].active)
     const third = await send()
-    assert.deepEqual(choices(third), { model: 'm2', thinking: 'high', permission: 'workspace' }, 'clearing the tier uses the engine default instead of the role tier')
+    assert.deepEqual(choices(third), { model: 'm2', thinking: 'high', permission: 'workspace' }, 'an explicit session tier overrides the role tier')
     third.complete()
     await until(() => !rt.workView()[session.id].active)
     const saved = (await host.api('state')).profiles.find(item => item.id === role.id)
@@ -822,7 +824,7 @@ test('first-send choices belong to the fresh session and leave the role defaults
     assert.equal(after.model, before.model)
     assert.equal(after.thinking, before.thinking)
     assert.equal(after.permission, before.permission)
-    for (const choices of [null, { model: 'bad\nmodel' }, { thinking: 'bad level' }, { permission: 'invented' }, { engine: 'other' }]) {
+    for (const choices of [null, { model: 'bad\nmodel' }, { thinking: 'bad level' }, { permission: '' }, { permission: null }, { permission: 'invented' }, { engine: 'other' }]) {
       const refused = await host.post('session-create', { profile: role.id, workspace: workspace.id, lazy: true, choices })
       assert.equal(refused.ok, false)
       assert.equal(refused.error.code, 'orch/invalid')
