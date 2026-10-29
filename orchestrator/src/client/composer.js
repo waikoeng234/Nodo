@@ -1,7 +1,7 @@
 import {
   h, Fragment, useState, useEffect, useRef, call, GOAL_FORM, Menu, Tooltip, ImageLightbox, RiskConfirmation, Button, Modal, ComposerGlyph,
   IconPlusOutlineRegular, IconPaperclipOutlineRegular, IconGoalOutlineRegular, IconPlanOutlineRegular, IconCompactOutlineRegular,
-  IconUsersOutlineRegular, IconChevronDownOutlineRegular,
+  IconLinkOutlineRegular, IconChevronDownOutlineRegular,
   PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, PermissionIconFullAccessRegular,
 } from './ui-shared.js'
 import { ModelPicker } from './feed.js'
@@ -129,7 +129,7 @@ export function Composer({ profile, workspace, value, images, running, stoppable
   // and the wrapper leaves the textarea and buttons to the pointer.
   const fileMenu = h(Menu, {
     open: fileOpen, onClose: () => setDismissed(mention?.at ?? null), className: 'nodo-file-anchor', listClassName: 'nodo-add',
-    items: [...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []), ...(files === null ? [{ type: 'label', id: 'hint', text: '正在搜索…' }]
+    items: [...(onReference ? [{ id: 'reference', icon: h(IconLinkOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []), ...(files === null ? [{ type: 'label', id: 'hint', text: '正在搜索…' }]
       : files.length ? files.map(file => ({ id: `file:${file}`, icon: h(IconPaperclipOutlineRegular), label: addRow(file.split('/').pop(), '', file) }))
         : [{ type: 'label', id: 'hint', text: '没有匹配的文件' }])],
     onSelect: id => {
@@ -290,7 +290,7 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
     // host's own add menu works; without one it types the '@' that opens the
     // workspace file card.
     { id: onUpload ? 'upload' : 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !onUpload && (!workspace || !onInsert) },
-    ...(onReference ? [{ id: 'reference', icon: h(IconUsersOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []),
+    ...(onReference ? [{ id: 'reference', icon: h(IconLinkOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []),
     ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
     // Only a plan↔workspace pair is a safe toggle: without workspace the row
     // could not leave plan, and stepping up to full must go through the risk

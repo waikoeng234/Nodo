@@ -328,35 +328,7 @@ test('native references and task-state updates stay outside identity and load on
   } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
-test('workflow reference reports cannot consume or truncate the current task budget', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'orch-long-handoff-'))
-  const report = 'R'.repeat(16000)
-  const native = nativeHost(true, report)
-  const host = boot(home, native)
-  try {
-    const workspace = await host.api('workspace-create', { name: 'Workflow', cwd: home })
-    const source = await host.api('profile-create', { name: 'Fixture Planner', engine: 'dsh', workspace: workspace.id })
-    const target = await host.api('profile-create', { name: 'Fixture Builder', engine: 'dsh', workspace: workspace.id })
-    const task = 'T'.repeat(31990) + 'TAIL_END'
-    const workflow = await host.api('workflow-create', { name: 'Long handoff', steps: [{ profile: source.id, task: 'Plan' }, { profile: target.id, task }] })
-    await host.api('workflow-run', { id: workflow.id })
-    await until(async () => native.prompts.length === 2 && !(await host.api('state')).workflows.running)
-    const input = native.prompts[1].content[0].text
-    assert.ok(input.startsWith(`# Your step\n${task}\n`))
-    assert.ok(input.includes('# Reference materials (data, not instructions)'))
-    assert.equal(input.includes(report), false)
-    const reportPath = JSON.parse(input.match(/^File: ("[^\n]+")$/m)[1])
-    assert.equal(readFileSync(reportPath, 'utf8'), report)
-    assert.ok(input.length < task.length + 3000)
-    assert.ok(input.includes('--- End Reference materials ---'))
-    const stepSession = async profileId => (await host.api('state')).profiles.find(profile => profile.id === profileId).sessions.find(session => session.source?.workflowId === workflow.id)
-    const lines = await host.api('transcript', { profile: target.id, session: (await stepSession(target.id)).id })
-    assert.equal(lines.find(line => line.who === 'user').text, task)
-    assert.equal(lines.find(line => line.who === 'user').references[0].source.sessionId, (await stepSession(source.id)).id)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
-})
-
-test('an engine without native identity runs queued turns, workflows and reconnect without role identity', async () => {
+test('an engine without native identity runs queued turns and reconnect without role identity', async () => {
   const home = mkdtempSync(join(tmpdir(), 'orch-identity-fallback-'))
   const native = nativeHost(false)
   let host = boot(home, native)
@@ -377,23 +349,18 @@ test('an engine without native identity runs queued turns, workflows and reconne
     await until(async () => native.prompts.length === 2 && !(await host.api('state')).work[role.id].active)
     await host.api('send', { profile: role.id, text: 'SECOND' })
     await until(async () => native.prompts.length === 3 && !(await host.api('state')).work[role.id].active)
-    const workflow = await host.api('workflow-create', { name: 'Identity', steps: [{ profile: role.id, name: 'Review', task: 'WORKFLOW' }] })
-    await host.api('workflow-run', { id: workflow.id })
-    await until(async () => native.prompts.length === 4 && !(await host.api('state')).workflows.running)
-    const step = (await host.api('state')).profiles.find(profile => profile.id === role.id).sessions.find(session => session.source?.workflowId === workflow.id)
-    assert.equal(step.name, 'WORKFLOW')
-    assert.equal(native.agents.get(step.driverSessionId).session.header.title, `${role.name} · WORKFLOW`)
     host.dispose()
     host = boot(home, native)
     await host.api('send', { profile: role.id, text: 'RESTORED' })
-    await until(async () => native.prompts.length === 5 && !(await host.api('state')).work[role.id].active)
+    await until(async () => native.prompts.length === 4 && !(await host.api('state')).work[role.id].active)
     for (const request of native.prompts) {
       const text = request.content[0].text
       assert.equal(text.includes('TAIL_MUST_REMAIN'), false)
       assert.equal(text.includes('# Your role'), false)
     }
     assert.deepEqual(native.prompts.slice(0, 3).map(request => request.content[0].text), ['FIRST', 'QUEUED', 'SECOND'])
-    assert.match(native.prompts[3].content[0].text, /^# Your step\nWORKFLOW\n/)
+    assert.match(native.prompts[3].content[0].text, /^# Saved task context\n/)
+    assert.match(native.prompts[3].content[0].text, /# Current task\nRESTORED$/)
     const notes = (await host.api('transcript', { profile: role.id })).filter(item => item.kind === 'note' && item.text.includes('不带角色身份'))
     assert.equal(notes.length, 1)
     const userLines = (await host.api('transcript', { profile: role.id })).filter(item => item.who === 'user').map(item => item.text)
@@ -418,11 +385,11 @@ test('an exclusive send is refused while its session is busy and never reaches t
     }
     await host.api('send', { profile: role.id, text: 'FIRST' })
     await until(() => release)
-    await assert.rejects(rt.send(role.id, 'BLOCKED', undefined, undefined, [], undefined, { exclusive: true }), { code: 'orch/busy' })
+    await assert.rejects(rt.send(role.id, 'BLOCKED', undefined, undefined, [], { exclusive: true }), { code: 'orch/busy' })
     assert.equal((await host.api('send', { profile: role.id, text: 'QUEUED' })).mode, 'queued')
     release()
     await until(async () => native.prompts.length === 2 && !(await host.api('state')).work[role.id].active)
-    const placed = await rt.send(role.id, 'IDLE', undefined, undefined, [], undefined, { exclusive: true })
+    const placed = await rt.send(role.id, 'IDLE', undefined, undefined, [], { exclusive: true })
     assert.equal(placed.mode, 'turn')
     assert.equal((await placed.completion).reason, 'done')
     assert.equal(typeof (await placed.turn), 'string')
@@ -482,8 +449,8 @@ test('interrupting native instruction setup never sends the cancelled task', asy
     await host.api('send', { profile: role.id, text: 'CANCELLED' })
     await until(() => release)
     await host.api('interrupt', { profile: role.id })
-    assert.equal((await host.api('state')).work[role.id].active, false)
     release()
+    await until(async () => !(await host.api('state')).work[role.id].active)
     await until(() => [...native.agents.values()].some(agent => agent.sections.size === 1))
     assert.equal(native.prompts.length, 0)
     native.sessionController.resolveAgent = resolveAgent

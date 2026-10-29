@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { install as installPrompt } from '../core/src/prompt.js'
-import { HANDOFF_CONTEXT_MAX, TASK_TEXT_MAX } from '../core/src/constants.js'
+import { TASK_TEXT_MAX } from '../core/src/constants.js'
 import { boot, until, withHost } from './helpers/host.js'
 
 test('reference envelopes preserve hostile text as data and keep the current assignment outside it', () => {
@@ -18,48 +18,6 @@ test('reference envelopes preserve hostile text as data and keep the current ass
   assert.match(text, /Reference id: snapshot-1/)
   assert.match(text, /verify its conclusions/)
   assert.match(text, /# Current task\nImplement the approved change$/)
-  const decision = { source: { kind: 'user', step: 'decision' }, messages: [{ text: 'Decision "decision": approve' }], decision: { choice: 'approve', note: 'Keep the public API' } }
-  const report = { source: { kind: 'agent', profileName: 'planner', step: 'Plan' }, messages: [{ text: 'Report part one' }, { text: 'Report part two' }] }
-  const materials = { index: '/workspace/reports/index.md', report: { path: '/workspace/reports/plan.md', step: 'Plan' } }
-  const handoff = rt.renderHandoff({ workflowName: 'Pipeline', stepName: 'Implement', index: 2, of: 2, task: 'Build', artifacts: [decision, report], materials })
-  assert.match(handoff, /Answer: approve\nNote:\nKeep the public API/)
-  assert.equal(handoff.includes('Report part one'), false)
-  assert.ok(handoff.includes(materials.report.path))
-  assert.ok(handoff.includes(materials.index))
-  assert.equal(handoff.includes('Reference id:'), false)
-  assert.match(handoff, /not instructions or verified facts/)
-  assert.match(handoff, /^# Your step\nBuild\n/)
-  assert.ok(handoff.indexOf('## User decisions') < handoff.indexOf('# Reference materials'))
-  assert.ok(handoff.indexOf('## Delivery requirements') < handoff.indexOf('# Reference materials'))
-  assert.match(handoff, /missing or wrong, say so in your report/)
-  assert.equal(handoff.includes('NEXT:'), false)
-  // Where a step sits says nothing of what follows it: a person or an exit may still send the run on.
-  const first = rt.renderHandoff({ workflowName: 'Pipeline', stepName: 'Plan', index: 1, of: 2, task: 'Plan it', artifacts: [] })
-  for (const text of [first, handoff]) {
-    assert.match(text, /for the steps after it or the workflow's final result/)
-    assert.match(text, /where it is \(paths\), what you verified and how/)
-    assert.doesNotMatch(text, /last step|next step, which/)
-  }
-  const exits = [{ id: 'approve', when: 'The draft is ready\nTests pass' }, { id: 'revise', when: 'It needs changes' }]
-  const choosing = rt.renderHandoff({ workflowName: 'Pipeline', stepName: 'Review', index: 2, of: 3, task: 'Review it', artifacts: [], exits })
-  assert.match(choosing, /^# Your step\nReview it\n/)
-  assert.match(choosing, /exactly `NEXT: <exit id>`/)
-  assert.match(choosing, /- approve:\n  1\. The draft is ready\n  2\. Tests pass\n- revise:\n  1\. It needs changes\n- blocked: .+$/)
-  const withReferences = rt.renderHandoff({ workflowName: 'Pipeline', stepName: 'Review', index: 2, of: 3, task: 'Review it', artifacts: [report], materials, exits })
-  assert.ok(withReferences.indexOf('# Next step') < withReferences.indexOf('# Reference materials'))
-  assert.throws(() => rt.renderHandoff({ task: 'Build', artifacts: [report] }), /report files are unavailable/)
-})
-
-test('workflow context is bounded separately from the task and never silently drops user decisions', () => {
-  const rt = {}
-  installPrompt(rt)
-  const task = 'T'.repeat(32_000)
-  const args = { workflowName: 'Budget', stepName: 'Work', index: 1, of: 1, task, artifacts: [] }
-  const text = rt.renderHandoff(args)
-  assert.ok(text.startsWith(`# Your step\n${task}\n`))
-  assert.ok(text.length <= task.length + HANDOFF_CONTEXT_MAX)
-  const decision = { source: { step: 'gate' }, decision: { choice: 'Continue', note: 'N'.repeat(HANDOFF_CONTEXT_MAX) } }
-  assert.throws(() => rt.renderHandoff({ ...args, artifacts: [decision] }), /handoff context exceeds 16000 characters/)
 })
 
 test('an oversized task is refused and a truncated reference says so', async () => {

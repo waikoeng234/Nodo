@@ -8,10 +8,9 @@ import { RunningLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
 import { roundIndex, RoundMenu, RoundFaces } from './round.js'
-import { ApprovalCard, needsPerson } from './run-cards.js'
+import { ApprovalCard } from './run-cards.js'
 import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
-import { wfSubscribeSidebar, wfSidebarSnapshot } from './workflow.js'
 import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
 
 // Unsent drafts outlive the page: text is kept in localStorage across reloads,
@@ -475,7 +474,6 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         onEditRole: item => openRolesPage({ profileId: item.id }),
         onSettings: () => edit({ kind: 'settings' }),
         onRoles: () => layoutService?.selectPanel('nodo-roles'),
-        onWorkflows: () => rolesGuard(() => layoutService?.selectPanel('nodo-workflow')), runsWaiting: (view.runs ?? []).some(needsPerson),
         onSessions: () => rolesGuard(() => nativeSpace.showLegacy()),
         onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
         onNewWorkspace: () => edit({ kind: 'workspace', id: 'new', workspace: null }),
@@ -538,7 +536,6 @@ export function NodoEntry() {
 }
 
 export function NodoSidebar({ collapsed }) {
-  const workflowNavigation = useSyncExternalStore(wfSubscribeSidebar, wfSidebarSnapshot)
   const rolesNavigation = useSyncExternalStore(rolesSubscribeSidebar, rolesSidebarSnapshot)
   const label = collapsed ? '展开侧边栏' : '收起侧边栏'
   return h('div', { className: 'nodo-space' },
@@ -547,5 +544,5 @@ export function NodoSidebar({ collapsed }) {
         children: h(Button, { variant: 'ghost', onClick: () => layoutService.toggleSidebar(),
           icon: h(IconPanelLeftOutlineRegular, { size: 16 }), 'aria-label': label }) })),
     h('div', { className: 'nodo-space-content', style: collapsed ? { display: 'none' } : undefined },
-      h(NodoPage, { sidebarOnly: true, railNavigation: workflowNavigation ?? rolesNavigation })))
+      h(NodoPage, { sidebarOnly: true, railNavigation: rolesNavigation })))
 }

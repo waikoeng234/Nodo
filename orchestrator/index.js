@@ -2,7 +2,7 @@
 // directory each) come first; a profile = one role card bound to one engine (a
 // coding CLI) configured under a workspace, and the profile's conversation is
 // driven by that CLI through the agent-drivers package, not by dsh's own model.
-// Transcripts, workspaces, profiles and workflows live in one JSON file under
+// Transcripts, workspaces, and profiles live in one JSON file under
 // DSH_HOME so they survive restarts; one dsh host writes it at a time (store.js).
 import { homedir } from 'node:os'
 import { join } from 'node:path'

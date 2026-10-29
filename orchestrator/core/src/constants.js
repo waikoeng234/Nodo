@@ -6,7 +6,6 @@ export const NAME_MAX = 40
 export const ROLE_MAX = 80
 export const INSTRUCTIONS_MAX = 8000
 export const TASK_TEXT_MAX = 32_000
-export const HANDOFF_CONTEXT_MAX = 16_000
 // The smallest per-image limit among the engines (Claude's API) bounds what is accepted.
 export const IMAGE_BYTES_MAX = 5 * 1024 * 1024
 export const IMAGES_MAX = 8
@@ -25,9 +24,7 @@ export const TURN_IDLE_TIMEOUT_MS = 120_000
 export const RETRY_IDLE_TIMEOUT_MS = 600_000
 // An engine process with no work for this long is stopped; the next turn resumes its session.
 export const DRIVER_IDLE_RELEASE_MS = 120_000
-// Workflow run defaults, fixed into each run's snapshot when it starts.
-export const RUN_LIMITS = { cancelConfirmMs: 15_000, backMax: 2, eventsMax: 1000 }
-// The most times one back edge of a workflow may be declared to be taken.
-export const RUN_BACK_MAX = 5
+// Time allowed for an engine to confirm cancellation.
+export const RUN_LIMITS = { cancelConfirmMs: 15_000 }
 // Shown when the engine did not confirm a steered message in time.
 export const UNCONFIRMED_STEER = '[Nodo] Agent 未在时限内确认插入的消息：它可能已并入本轮，也可能没有送达。若本轮回复没有涉及它，请重新发送。'

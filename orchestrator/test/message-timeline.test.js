@@ -110,7 +110,7 @@ test('unidentified chunks use known lifecycle boundaries without being assigned 
   assert.equal(stream.text(), 'known\nunknown\nnext\nafter tool')
 })
 
-test('child messages retain parent attribution and cannot become the parent reply or workflow report', async () => {
+test('child messages retain parent attribution and cannot become the parent reply', async () => {
   const h = harness()
   try {
     h.emit({ type: 'turn/start' })

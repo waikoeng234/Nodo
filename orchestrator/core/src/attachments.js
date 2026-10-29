@@ -5,9 +5,11 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, sep } from 'node:path'
 import { IMAGE_BYTES_MAX, IMAGES_MAX, FILE_BYTES_MAX, FILES_MAX } from './constants.js'
-import { ignoreFolder } from './workflow-materials.js'
 import { materializeResources, projectContent } from './resources.js'
 import { readImageFile } from './image-files.js'
+
+const ignoreFolder = folder => writeFile(join(folder, '.gitignore'), '*\n', { flag: 'wx' })
+  .catch(error => { if (error.code !== 'EEXIST') throw error })
 
 const EXTENSIONS = new Map([['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/webp', 'webp'], ['image/gif', 'gif']])
 const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
@@ -78,7 +80,7 @@ export function install(rt) {
       await mkdir(next, { recursive: true })
       base = await realpath(next)
       const path = relative(root, base)
-      if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) throw invalid('Workflow attachment directory must stay inside its workspace')
+      if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) throw invalid('Attachment directory must stay inside its workspace')
       if (segment === '.nodo') await ignoreFolder(base)
     }
     const folder = await mkdtemp(join(base, 'task-'))

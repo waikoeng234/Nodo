@@ -11,7 +11,6 @@ import { NativeRunningDock } from './running.js'
 import { CSS } from './styles.js'
 import { SCROLLBAR_CSS, installScrollbars } from './scrollbars.ts'
 import { NodoSidebar, NodoEntry, PanelIcon, NativeWelcome } from './page.js'
-import { WorkflowEntry, WORKFLOW_CSS } from './workflow.js'
 import { RolesEntry, ROLES_CSS } from './roles.tsx'
 
 export const inject = ['slots', 'uiWorkspace', 'uiSession', 'sessions', 'layout', 'modelDirectories', 'remote', 'remote.session', 'commandUi', 'inputTriggers', 'conversation']
@@ -36,7 +35,7 @@ export function apply(ctx) {
   ctx.effect(() => () => completionTracker.dispose(), 'nodo: completion read state')
   ctx.effect(() => {
     const style = document.createElement('style')
-    style.textContent = CSS + REFERENCE_CSS + WORKFLOW_CSS + ROLES_CSS + SCROLLBAR_CSS
+    style.textContent = CSS + REFERENCE_CSS + ROLES_CSS + SCROLLBAR_CSS
     document.head.appendChild(style)
     return () => style.remove()
   }, 'nodo: page styles')
@@ -58,7 +57,6 @@ export function apply(ctx) {
   ctx.slots.inject('conversation.chat.node', installHistory)
   ctx.slots.inject('main', () => {
     const stops = [ctx.slots.register({ name: 'main', key: PANEL_ID }, NodoEntry),
-      ctx.slots.register({ name: 'main', key: 'nodo-workflow' }, WorkflowEntry),
       ctx.slots.register({ name: 'main', key: 'nodo-roles' }, RolesEntry)]
     return () => { for (const stop of stops) stop() }
   })

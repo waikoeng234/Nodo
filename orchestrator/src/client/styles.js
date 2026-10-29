@@ -14,40 +14,6 @@ const TERMINAL_CSS = terminalCss.replace(/#000\b/gi, 'var(--dsw-alias-bg-base)')
 export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
-.nodo-runs-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:8px 12px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
-.nodo-runs-row:hover,.nodo-runs-row[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-runs-row strong{font-size:13px;font-weight:500;overflow-wrap:anywhere}
-.nodo-runs-meta{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.nodo-run{display:flex;flex-direction:column;gap:12px;flex:1;min-width:0;min-height:0;overflow:auto;padding:0 6px;overflow-wrap:anywhere}
-.nodo-run-task{display:flex;flex-direction:column;gap:6px;padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
-.nodo-run-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.nodo-run-attempt{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.nodo-run-output{margin:0;font-size:12px;line-height:1.5;white-space:pre-wrap;color:var(--dsw-alias-label-secondary)}
-.nodo-run-input{display:grid;gap:2px}
-.nodo-run-input>.nodo-run-output{max-height:160px;overflow:auto;color:var(--dsw-alias-label-primary)}
-.nodo-run-result{display:grid;gap:2px}
-.nodo-run-result>.nodo-run-output{color:var(--dsw-alias-label-primary)}
-.nodo-run-steps{display:flex;flex-direction:column;margin:0 -8px;padding:0;list-style:none}
-.nodo-run-steps>li{position:relative}
-.nodo-run-steps>li:not(:last-child)::after{content:'';position:absolute;left:19px;top:calc(50% + 14px);height:calc(100% - 28px);width:1px;background:var(--dsw-alias-border-l2);pointer-events:none}
-.nodo-run-step{--nodo-step-tone:var(--dsw-alias-label-tertiary);display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
-.nodo-run-step:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-run-step[data-state=done]{--nodo-step-tone:var(--dsw-alias-state-success-primary)}
-.nodo-run-step[data-state=ongoing]{--nodo-step-tone:var(--dsw-alias-state-business-primary)}
-.nodo-run-step[data-state=warning]{--nodo-step-tone:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 8%,transparent)}
-.nodo-run-step[data-state=error]{--nodo-step-tone:var(--dsw-alias-state-error-primary)}
-.nodo-run-step-mark{display:inline-flex;align-items:center;justify-content:center;flex:none;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--nodo-step-tone);background:color-mix(in srgb,var(--nodo-step-tone) 14%,transparent)}
-.nodo-run-step-copy{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
-.nodo-run-step-copy>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nodo-run-step-copy>strong{font-size:13px;font-weight:500;line-height:20px}
-.nodo-run-step-copy>small{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
-.nodo-run-step-state{flex:none;font-size:12px;color:var(--nodo-step-tone)}
-.nodo-run-step[data-state=warning] :is(.nodo-run-step-mark,.nodo-run-step-state){color:${WARN_INK}}
-.nodo-run-actions{display:flex;gap:8px;justify-content:flex-end}
-.nodo-run-presets{display:flex;flex-wrap:wrap;gap:4px;margin-top:-2px}
-.nodo-run-exits{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;line-height:20px}
-.nodo-run-exits>label{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow-wrap:anywhere;cursor:pointer}
-.nodo-run-exits input{margin:0;accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}
 .nodo-space-chrome{box-sizing:border-box;height:max(36px,var(--dsh-frame-top-clearance,0px));flex:none;display:flex;justify-content:flex-end;align-items:flex-start;padding:10px 12px 0;-webkit-app-region:drag}
 .nodo-space-chrome>*{display:flex;align-items:center;min-height:30px}
@@ -100,7 +66,6 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 .nodo-rail-switch button{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .nodo-rail-switch button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-rail-switch button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);cursor:default}
-.nodo-rail-badge{position:absolute;top:5px;right:5px;display:inline-flex}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
 .nodo-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));row-gap:8px;flex:none;margin-top:4px}
 .nodo-roster-cell{position:relative;display:flex;min-width:0}
@@ -226,7 +191,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-right-directory{flex:1;overflow:auto;padding:8px}
 .nodo-right-file{display:flex;align-items:center;gap:6px;width:100%;min-height:30px;padding:4px 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .nodo-right-file>svg,.nodo-right-file-icon{flex:none;color:var(--dsw-alias-label-tertiary)}
-.nodo-right-file-icon{display:flex;margin-left:18px}
+.nodo-right-file-icon{display:flex;width:14px;margin-left:18px}
 .nodo-right-file>span:last-child,.nodo-right-preview-head>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-right-status{margin:0;padding:8px;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .nodo-right-preview-head{display:flex;align-items:center;gap:6px;padding:6px 8px;flex:none;border-bottom:.5px solid var(--dsw-alias-border-l3)}
@@ -275,6 +240,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-round-tools{display:flex;flex-direction:column;gap:2px;min-width:0}
 .nodo-round-tools>:first-child:nth-last-child(5){opacity:.4}
 .nodo-round-tools>:nth-child(2):nth-last-child(4){opacity:.7}
+.nodo-round-text{max-height:88px;overflow:hidden}
 .nodo-round-chip{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;height:24px;padding:0 8px 0 6px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px}
 .nodo-round-menu-item{display:flex;align-items:center;gap:8px;min-width:0}
 .nodo-ok{color:var(--dsw-alias-state-success-primary)}.nodo-bad{color:var(--dsw-alias-state-error-primary)}
@@ -377,7 +343,6 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-question-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px}
 .nodo-question-label{font-size:14px;font-weight:500;line-height:24px}
 .nodo-question-description{color:var(--dsw-alias-label-tertiary);font-size:14px;font-weight:400;line-height:24px}
-.nodo-question-report{display:flex;flex-direction:column;gap:4px;flex-shrink:0;max-height:180px;margin:12px 12px 0;padding:8px 12px;overflow-y:auto;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-overlay)}
 .nodo-question-answer{box-sizing:border-box;min-height:64px;max-height:144px;margin:8px 12px 0;padding:8px 12px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:24px;resize:none;outline:none;overflow-y:auto}
 .nodo-question-answer:focus{border-color:var(--dsw-alias-state-business-primary)}
 .nodo-question-answer::placeholder{color:var(--dsw-alias-label-caption)}

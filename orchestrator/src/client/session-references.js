@@ -1,4 +1,4 @@
-import { h, Fragment, useState, useEffect, useSyncExternalStore, call, MARKDOWN_LABELS, IconUsersOutlineRegular, Modal, Button, Input, MarkdownText } from './ui-shared.js'
+import { h, Fragment, useState, useEffect, useSyncExternalStore, call, MARKDOWN_LABELS, IconLinkOutlineRegular, Modal, Button, Input, MarkdownText } from './ui-shared.js'
 
 export const referenceHistory = references => h('details', { className: 'nodo-reference-history' },
   h('summary', null, `查看本条消息的引用（${references.length}）`),
@@ -18,7 +18,7 @@ export function createSessionReferences(ctx, space) {
   if (ctx.commandUi && ctx.inputTriggers && ctx.conversation) ctx.effect(() => {
     const stops = [
       ctx.commandUi.register({ name: source, label: () => '引用会话', description: () => '选择其他角色的一条完整回复作为参考',
-        icon: IconUsersOutlineRegular, available: enabled, ui: { kind: 'action', run: session => open(session.sessionId) } }),
+        icon: IconLinkOutlineRegular, available: enabled, ui: { kind: 'action', run: session => open(session.sessionId) } }),
       ctx.inputTriggers.registerSource({ name: source, trigger: '@', candidates: async () => [], onPick: () => undefined,
         codec: {
           clipboardText: ref => `[引用会话](nodo-reference:${JSON.parse(ref).id})`,

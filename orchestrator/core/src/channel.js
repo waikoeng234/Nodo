@@ -24,30 +24,16 @@ export function install(rt) {
     workspaces: rt.workspacesView(),
     profiles: rt.profilesView(),
     secrets: rt.secretsView(),
-    workflows: rt.workflowsView(),
     taskTypes: rt.taskTypes(),
     prefs: state.prefs,
     readOnly: rt.readOnly() ?? null,
   })
   // Sent with every state answer, current or not: work, cards and counters move
-  // between revisions. Unfinished runs come as summaries; a reading window has no
-  // fresh copy of their files, so it gets none.
+  // between revisions.
   const live = async () => ({
     work: rt.workView(),
     approvals: rt.approvalsView(),
     stats: rt.statsView(),
-    runs: rt.readOnly() !== undefined ? [] : (await rt.listRuns().catch(() => [])).filter(run => !['done', 'failed', 'cancelled', 'unreadable'].includes(run.status)),
-  })
-
-  // A run outlives the request: the answer comes once it is saved and moving, and
-  // a failure after that is only logged.
-  const begin = start => new Promise((resolve, reject) => {
-    let begun = false
-    const started = (run) => { begun = true; resolve(run.id) }
-    start(started).then(started, (error) => {
-      if (begun) rt.warn('nodo: workflow run stopped: %s', error?.message ?? error)
-      else reject(error)
-    })
   })
 
   // Endpoints a read-only host still serves. Cards are answered from this host's
@@ -185,7 +171,7 @@ export function install(rt) {
         const images = profile.lead && cwd ? await rt.materializeImages(rt.admitImages(body.images), cwd) : []
         const files = body.files?.length || images.length ? { refs: body.files?.length ? rt.cleanFileRefs(body.files) : undefined,
           paths: [...await rt.materializeFiles(body.files, cwd), ...images] } : undefined
-        const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references, undefined,
+        const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references,
           { files, userInput: true, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
         if (profile.lead) void rt.followLead(profile.id, session.id, placed, files?.paths)
         else void rt.followLeadReport(session.id, placed, placed.leadFlight)
@@ -223,33 +209,12 @@ export function install(rt) {
         return rt.compactDriver(session.id)
       }
       case 'approval-answer':
-        await rt.answerApproval(body.id, { decision: body.decision, value: body.value, exit: body.exit })
+        await rt.answerApproval(body.id, { decision: body.decision, value: body.value })
         return true
       case 'secret-set':
         return rt.secretSet(body)
       case 'secret-delete':
         return rt.secretDelete(body)
-      case 'workflow-create':
-        await rt.load()
-        return rt.defineWorkflow(body)
-      case 'workflow-update':
-        return rt.updateWorkflow(body)
-      case 'workflow-delete':
-        return rt.deleteWorkflow(body.id)
-      case 'workflow-run':
-        await rt.load()
-        if (rt.state.workflows[String(body.id ?? '')] === undefined) throw failure('No such workflow', 'orch/not-found')
-        return { started: true, runId: await begin(started => rt.runWorkflow(body.id, { started, title: body.title })) }
-      case 'run-list':
-        return rt.listRuns()
-      case 'run-get':
-        return rt.getRun(body.id)
-      case 'run-cancel':
-        await rt.cancelRun(body.id, { reason: body.reason })
-        return rt.getRun(body.id)
-      case 'run-reconcile':
-        await begin(started => rt.reconcileRun(body.id, { action: body.action, text: body.text, reason: body.reason, started }))
-        return rt.getRun(body.id)
       default:
         throw failure(`Unknown endpoint ${endpoint}`, 'orch/not-found')
     }

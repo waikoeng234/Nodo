@@ -1,4 +1,4 @@
-import { h, Fragment, useEffect, useMemo, useState, Button, IconCodeOutlineRegular, IconBrowseOutlineRegular, IconChevronLeftOutlineRegular } from './ui-shared.js'
+import { h, Fragment, useEffect, useMemo, useState, Button, IconRightUpOutlineRegular, IconChevronLeftOutlineRegular } from './ui-shared.js'
 import type { ReactNode } from './ui-shared.js'
 import { Counts } from './file-changes-summary.tsx'
 import { CodeDiff } from './code-diff.tsx'
@@ -32,14 +32,13 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
   const row = (entry: typeof files[number], detail = false) => {
     const path = relativeFile(entry.file.path, body.cwd), slash = path.lastIndexOf('/') + 1
     const content = <>
-      <IconCodeOutlineRegular size={16} />
       <span className="nodo-changes-path" title={path}><span dir="ltr"><span className="nodo-changes-directory">{path.slice(0, slash)}</span><strong>{path.slice(slash)}</strong></span></span>
       <Counts value={entry.counts} />
     </>
     return <div key={entry.file.path} className="nodo-changes-row">
       {detail ? <div className="nodo-changes-row-title">{content}</div>
         : <button type="button" className="nodo-changes-row-title" aria-label={`查看 ${path} 的变更`} onClick={() => setSelected(entry.file.path)}>{content}</button>}
-      <Button variant="ghost" aria-label={`打开文件 ${path}`} onClick={() => openFile(entry.file.path)} icon={<IconBrowseOutlineRegular size={16} />} />
+      <Button variant="ghost" aria-label={`打开文件 ${path}`} onClick={() => openFile(entry.file.path)} icon={<IconRightUpOutlineRegular size={16} />} />
     </div>
   }
   return <div className="nodo-right-changes" aria-busy={busy}>

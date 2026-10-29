@@ -32,8 +32,8 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   ]
   const shown = plain(roundLines(lines))
   assert.deepEqual(shown.map(line => ['speaker', 'delegate', 'member', 'usage'].includes(line.kind) ? line.kind : line.text), [
-    'Fix the login', 'speaker', 'Plan', 'Delegating', 'delegate', 'member', 'speaker', 'boom', 'delegate', 'member',
-    'speaker', '执行未完成：gone', '进度如何？', 'speaker', 'Resuming the tester.', 'usage', 'delegate', 'member'])
+    'Fix the login', 'speaker', 'Plan', 'Delegating', 'delegate', 'member', 'speaker', 'boom', '执行未完成：gone', 'delegate', 'member',
+    '进度如何？', 'speaker', 'Resuming the tester.', 'usage', 'delegate', 'member'])
   assert.deepEqual(shown.filter(line => line.kind === 'member').map(line => line.step), [
     { ...coder, at: 9, report: '## Fixed the refresh race\nDetails' },
     { ...tester, at: 12, ended: 'interrupted', unconfirmed: true },
@@ -43,6 +43,67 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   assert.deepEqual(shown.filter(line => line.who === 'user').map(line => line.text), ['Fix the login', '进度如何？'], 'only the user\'s own messages start turns')
   const unmarked = lines.filter(line => !line.delegation && !line.origin && !line.text?.includes('```nodo'))
   assert.deepEqual(plain(roundLines(unmarked)).filter(line => line.kind !== 'speaker'), plain(unmarked))
+})
+
+test('a running executor message parks at the bottom and the lead\'s turn stays one speaker segment', async () => {
+  const { roundLines } = await loadClient('round.js')
+  const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false }
+  const tester = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
+  const turn = [
+    { who: 'user', kind: 'text', text: 'Ship it', at: 1 },
+    { who: 'agent', kind: 'text', text: 'Delegating now', at: 2 },
+    { who: 'system', kind: 'note', text: '已派给 Coder', delegation: coder, at: 3 },
+    { who: 'agent', kind: 'text', text: 'Meanwhile, here is the plan', at: 4, reply: true },
+  ]
+  const shape = shown => shown.map(line => ['speaker', 'delegate', 'member'].includes(line.kind) ? line.kind : line.text)
+  assert.deepEqual(shape(plain(roundLines(turn))), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member'],
+    'the chip closes the lead\'s turn above the parked executor')
+  const reported = plain(roundLines([...turn,
+    { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 9,
+      references: [{ messages: [{ text: 'Done' }] }] }]))
+  assert.deepEqual(shape(reported), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member'],
+    'a report keeps the two-segment shape and the member lands below the chip at its marker')
+  const followup = plain(roundLines([...turn,
+    { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 9,
+      references: [{ messages: [{ text: 'Done' }] }] },
+    { who: 'agent', kind: 'text', text: 'Great, shipping next', at: 10 },
+    { who: 'system', kind: 'note', text: '已派给 Tester', delegation: tester, at: 11 }]))
+  assert.deepEqual(shape(followup),
+    ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member', 'speaker', 'Great, shipping next', 'delegate', 'member'],
+    'the lead\'s next turn opens below the reported member while the second executor keeps the bottom')
+  const ended = plain(roundLines([...turn,
+    { who: 'system', kind: 'note', text: '执行未完成', delegation: { session: 'e1', ended: 'interrupted', unconfirmed: true } },
+    { who: 'agent', kind: 'text', text: 'Wrapping up anyway', at: 8 }]))
+  assert.deepEqual(shape(ended), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'Wrapping up anyway', 'delegate', 'member'],
+    'an ended member waits for the turn to close and lands below its chip')
+  assert.equal(ended.find(line => line.kind === 'member').step.ended, 'interrupted')
+})
+
+test('members sharing an insertion point keep their dispatch or report order', async () => {
+  const { roundLines } = await loadClient('round.js')
+  const mark = (session, profile) => ({ session, profile, type: 'bug-fix', hard: false, reused: false })
+  const running = plain(roundLines([
+    { who: 'user', kind: 'text', text: 'go', at: 1 },
+    { who: 'agent', kind: 'text', text: 'a', at: 2 },
+    { who: 'system', kind: 'note', text: '已派给 Coder', delegation: mark('e1', 'coder'), at: 3 },
+    { who: 'system', kind: 'note', text: '已派给 Tester', delegation: mark('e2', 'tester'), at: 4 },
+    { who: 'agent', kind: 'text', text: 'done', at: 5 },
+  ]))
+  assert.deepEqual(running.map(line => ['speaker', 'delegate', 'member'].includes(line.kind) ? line.kind : line.text),
+    ['go', 'speaker', 'a', 'done', 'delegate', 'delegate', 'member', 'member'], 'both chips close the lead segment above the parked executors')
+  assert.deepEqual(running.filter(line => line.kind === 'member').map(line => line.step.session), ['e1', 'e2'],
+    'the bottom executors follow the dispatch order')
+  const reported = plain(roundLines([
+    { who: 'user', kind: 'text', text: 'go', at: 1 },
+    { who: 'system', kind: 'note', text: '已派给 Coder', delegation: mark('e1', 'coder'), at: 2 },
+    { who: 'system', kind: 'note', text: '已派给 Tester', delegation: mark('e2', 'tester'), at: 3 },
+    { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 4,
+      references: [{ messages: [{ text: 'One' }] }] },
+    { who: 'user', kind: 'text', text: 'Report from Tester', origin: { kind: 'report', session: 'e2' }, at: 5,
+      references: [{ messages: [{ text: 'Two' }] }] },
+  ]))
+  assert.deepEqual(reported.filter(line => line.kind === 'member').map(line => line.step.session), ['e1', 'e2'],
+    'reported executors stack in report order at the same spot')
 })
 
 test('a supplemental report clears interrupted and unconfirmed round status', async () => {
@@ -124,6 +185,7 @@ test('a delegation chip names its executor, and the faces stack lists every role
   const round = { profiles: [{ id: 'coder', name: 'Coder' }] }
   assert.equal(text(RoundChip({ step: { profile: 'coder', reused: false }, round })), '派给 Coder')
   assert.equal(text(RoundChip({ step: { profile: 'coder', reused: true }, round })), '继续派给 Coder')
+  assert.equal(nodes(RoundChip({ step: { profile: 'coder' }, round })).some(node => node.type === 'svg'), false, 'delegation needs no redundant arrow')
   assert.equal(nodes(RoundChip({ step: { profile: 'coder' }, round })).find(node => node.props.size === 16).props.profile.name, 'Coder')
   const faces = RoundFaces({ roles: [{ id: 'lead', name: 'Lead' }, { id: 'coder', name: 'Coder' }] })
   assert.equal(faces.props['aria-label'], 'Lead、Coder')
@@ -133,12 +195,17 @@ test('a delegation chip names its executor, and the faces stack lists every role
   assert.equal(text(speaker), 'Lead')
 })
 
-test('a live executor message shows that executor\'s latest five tool calls of the current turn', async () => {
+test('a live executor message shows its turn\'s latest five entries — text, thinking and tools — with the streaming reply as the newest', async () => {
   const calls = []
   const tool = (id, phase) => ({ who: 'agent', kind: 'tool', name: 'Bash', phase, callId: id, brief: id })
-  const lines = [{ who: 'user', kind: 'text', text: 'Earlier' }, tool('c0', 'start'), tool('c0', 'end'), { who: 'user', kind: 'text', text: 'Task' },
-    ...['c1', 'c2', 'c3', 'c4', 'c5', 'c6'].flatMap(id => [tool(id, 'start'), tool(id, 'end')]), tool('c7', 'start')]
-  const { RoundMember, host } = await loadClient('round.js', { call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return lines } })
+  const lines = [{ who: 'user', kind: 'text', text: 'Task' }, tool('c0', 'start'), tool('c0', 'end'),
+    { who: 'agent', kind: 'text', text: 'Reading the module first', at: 1 },
+    { who: 'agent', kind: 'thinking', text: 'Plan the fix', at: 2 },
+    tool('c1', 'start'), tool('c1', 'end'),
+    { who: 'user', kind: 'text', text: '上一轮因临时故障中断。请检查已完成的工作，从中断处继续完成原任务。', origin: { kind: 'retry' } },
+    { who: 'agent', kind: 'text', text: 'Now editing', at: 3 },
+    tool('c7', 'start')]
+  const { RoundMember, ProcessRow, host } = await loadClient(['round.js', 'feed.js'], { call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return lines } })
   const round = { profiles: [{ id: 'tester', name: 'Tester' }], taskTypes: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const tools = () => {
@@ -150,9 +217,19 @@ test('a live executor message shows that executor\'s latest five tool calls of t
   host.effects.at(-1)()
   for (let at = 0; at < 5; at += 1) await tick()
   assert.deepEqual(plain(calls), [{ endpoint: 'transcript', payload: { profile: 'tester', session: 'e2' } }])
+  round.work.e2.buffer = 'Writing the patch now'
   const rows = tools().children
-  assert.deepEqual(rows.map(row => row.props.summary), ['c3', 'c4', 'c5', 'c6', 'c7'])
-  assert.deepEqual(rows.map(row => row.props.running), [false, false, false, false, true])
+  assert.equal(rows.length, 6, 'six committed entries keep only the latest five, plus the streaming reply')
+  assert.equal(nodes(tools()).some(node => typeof node.props.text === 'string' && node.props.text.includes('临时故障')), false,
+    'the automatic continuation note never shows as the executor\'s words')
+  assert.deepEqual(rows.map(row => row.type === ProcessRow ? row.props.kind : 'text'), ['text', 'thinking', 'tool', 'text', 'tool', 'text'])
+  assert.equal(rows[1].props.summary, 'Plan the fix')
+  assert.equal(rows[2].props.summary, 'c1')
+  assert.equal(rows[4].props.running, true, 'a running tool call stays live')
+  assert.equal(rows[0].children[0].props.text, 'Reading the module first')
+  assert.equal(rows[0].children[0].props.streaming, undefined)
+  assert.equal(rows[5].children[0].props.text, 'Writing the patch now', 'the executor\'s streaming text is the newest entry')
+  assert.equal(rows[5].children[0].props.streaming, true)
 })
 
 test('automatic continuation tools stay in their delegation window', async () => {
@@ -216,10 +293,17 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
   const tree = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: true, since: 7, buffer: 'Next step' }, round }))
   assert.equal(tree.find(node => node.props.className === 'nodo-feed-inner').props['data-round'], '')
   assert.deepEqual(tree.filter(node => node.type === RoundSpeaker).map(node => [node.props.role, node.props.running]),
-    [[profile, false], [profile, true]], 'the streaming reply after an executor opens under a live speaker row')
+    [[profile, true]], 'the streaming reply continues the lead\'s segment, whose speaker shows the run')
   assert.equal(tree.filter(node => node.type === RoundChip).length, 1)
   assert.equal(tree.find(node => node.type === RoundMember).props.step.session, 'e1')
   assert.equal(tree.find(node => node.props.className === 'nodo-reply').children[0].props.text, 'On it')
+  const reply = tree.filter(node => node.props.className === 'nodo-reply').at(-1)
+  assert.ok(tree.indexOf(reply) < tree.indexOf(tree.find(node => node.type === RoundChip)),
+    'the delegation chip follows the streaming lead reply')
+  assert.ok(tree.indexOf(tree.find(node => node.type === RoundChip)) < tree.indexOf(tree.find(node => node.type === RoundMember)),
+    'the chip sits between the streaming turn and the parked executor')
+  assert.ok(tree.indexOf(reply) < tree.indexOf(tree.find(node => node.type === RoundMember)),
+    'the streaming lead reply renders above the parked executor')
   const idle = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: false }, round }))
   assert.equal(idle.filter(node => node.type === MessageTime).length, 2, 'the user bubble and the finished lead reply carry the only times')
   assert.equal(idle.find(node => node.type === RoundSpeaker).props.running, false)
@@ -383,6 +467,7 @@ test('a lead session opens as its round: chat feed, faces, session menu and roun
   find(loaded.RoundMenu).onRaw()
   assert.notEqual(find(loaded.Feed).round, undefined)
   const items = nodes(loaded.RoundMenu({ ...find(loaded.RoundMenu) })).find(node => node.type === 'Menu').props.items
+  assert.equal(items.find(item => item.id === 'raw').icon.type, 'IconBrowseOutlineRegular', 'the full record represents viewing the transcript')
   assert.deepEqual(plain(items.map(item => item.id)), ['raw', 'e1', 'e2'])
   assert.equal(text(items[1].label), 'Coder|First|运行中')
   assert.equal(text(items[2].label), 'Coder|Second')

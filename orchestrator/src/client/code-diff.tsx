@@ -1,4 +1,4 @@
-import { h, useEffect, useMemo, useState, useSyncExternalStore, CodeBlock, DiffBlock, diffTotals, writeClipboard, IconCodeOutlineRegular, rightPanelService } from './ui-shared.js'
+import { h, useEffect, useMemo, useState, useSyncExternalStore, CodeBlock, DiffBlock, diffTotals, writeClipboard, IconCompareSplitOutlineRegular, rightPanelService } from './ui-shared.js'
 import { parsedPatch, patchCounts } from './file-diffs.ts'
 import { structuredPatch, diffWordsWithSpace } from 'diff'
 import type { Change, StructuredPatch } from 'diff'
@@ -43,7 +43,7 @@ export function CodeDiff({ filename, previewable = true, diff, patch, cycle = 0,
   return (
     <div className="nodo-code-diff" data-slot="code-diff">
       <div className="nodo-code-diff-header">
-        <span className="nodo-code-diff-icon" aria-hidden><IconCodeOutlineRegular size={14} /></span>
+        <span className="nodo-code-diff-icon" aria-hidden><IconCompareSplitOutlineRegular size={14} /></span>
         {target && previewable ? <button type="button" className="nodo-code-diff-filename" title={filename} aria-label={`预览文件 ${filename}${fragment ? ' · 替换片段' : ''}`}
           onClick={() => rightPanelService?.openFile(filename)}>{filename}{fragment ? ' · 替换片段' : ''}</button>
           : <span className="nodo-code-diff-filename" title={filename}>{filename}{fragment ? ' · 替换片段' : ''}</span>}

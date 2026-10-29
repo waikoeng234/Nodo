@@ -236,10 +236,10 @@ test('conversation selection restores its records without creating a new draft',
     { engine: 'opencode', transcript: [{ who: 'system', kind: 'note', text: 'closed' }], legacy: true },
     { engine: 'dsh', transcript: [{ who: 'user', text: 'Task' }], legacy: false },
     { engine: 'qoder', transcript: [{ who: 'user', text: 'Task' }], legacy: true },
-    { engine: 'qoder', hosted: true, transcript: [{ who: 'user', text: 'Workflow step' }], legacy: true },
+    { engine: 'qoder', hosted: true, transcript: [{ who: 'user', text: 'Task' }], legacy: true },
     { engine: 'zcode', fresh: true, transcript: [], legacy: true },
     { engine: 'zcode', restore: true, transcript: [], legacy: true },
-    { engine: 'zcode', hosted: true, transcript: [{ who: 'user', text: 'Workflow step' }], legacy: true },
+    { engine: 'zcode', hosted: true, transcript: [{ who: 'user', text: 'Task' }], legacy: true },
     { engine: 'codex', draft: true, transcript: [{ who: 'user', text: 'Old task' }], legacy: true },
     { engine: 'codex', draft: true, transcript: [], legacy: true },
   ]) {
@@ -584,7 +584,7 @@ test('engine cards save defaults and check saved values in the current project',
     },
     primitives: {
       Modal: 'Modal', Button: 'Button', Field: 'Field', StateDot: 'StateDot',
-      IconChevronDownOutlineRegular: 'Icon', IconRefreshOutlineRegular: 'Icon', IconCheckOutlineRegular: 'Icon',
+      IconChevronDownOutlineRegular: 'Icon', IconCheckOutlineRegular: 'Icon',
     },
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
@@ -616,6 +616,7 @@ test('engine cards save defaults and check saved values in the current project',
   assert.equal(requests.at(-1).payload.engineOptions.bin, '/edited/codex')
   workspace = view.workspaces[1]
   assert.ok(find('strong', '未检查'), 'a different workspace has no inherited result')
+  assert.equal(find('Button', '重新检查').props.icon.type, 'IconRefreshOutlineRegular')
   await find('Button', '重新检查').props.onClick(); await tick()
   const checks = requests.filter(item => item.endpoint === 'engine-check').slice(-2)
   assert.deepEqual(checks.map(item => item.payload.engine), ['codex', 'dsh'])
@@ -908,6 +909,14 @@ test('every host UI kit member the page uses is destructured from the kit', () =
   }
 })
 
+test('tool variants distinguish writing, editing, subtasks and generic calls', async () => {
+  const { TOOL_VARIANTS } = await loadClient('ui-shared.js')
+  for (const [kind, icon] of Object.entries({ write: 'IconContextInjectionOutlineRegular', edit: 'IconEditOutlineRegular',
+    code: 'IconInspectOutlineRegular', task: 'IconAgentPresetOutlineRegular', generic: 'IconPluginPinwheelOutlineRegular' })) {
+    assert.equal(TOOL_VARIANTS[kind].icon, icon)
+  }
+})
+
 // The role dialog loads with the real avatar module; each caller brings its own
 // hook fakes and call handler.
 const loadRoleEditor = async ({ react, call }) => loadClient(['profile-dialogs.js', 'avatar.tsx'], { react, call })
@@ -989,6 +998,24 @@ test('the header avatar opens the template grid and submits the selected templat
 // The rail loads with its real ui-shared helpers; kit members stand in as their
 // own names and hooks come from the caller's fakes.
 const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
+
+test('rail omits redundant status icons and distinguishes unarchive from the archive filter', async () => {
+  const { SessionRow, workspacePicker } = await loadRail()
+  const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
+  const changes = []
+  const row = nodes(SessionRow({ role: { name: 'Coder' }, session: { name: 'History', archivedAt: 1 },
+    onArchive: value => changes.push(value) }))
+  const status = row.find(node => node.props.className === 'nodo-row-archived')
+  assert.deepEqual(status.children, ['已归档'])
+  const action = row.find(node => node.props['aria-label'] === '取消归档会话“History”')
+  assert.equal(action.children[0].type, 'IconUnarchiveOutlineRegular')
+  action.props.onClick({ stopPropagation() {} })
+  assert.deepEqual(changes, [false])
+  const picker = workspacePicker({ workspaces: [{ id: 'p', name: 'Project' }], none: '无项目' })
+  assert.equal(picker.props.items[0].icon, undefined)
+  assert.equal(picker.props.items[1].icon.type, 'IconFolderOpenOutlineRegular')
+  assert.equal(nodes(picker.props.anchor).some(node => node.type === 'IconUsersOutlineRegular'), false)
+})
 
 test('the global archive lists only archived sessions with a deleted role or project and keeps their names', async () => {
   const loaded = await loadRail()
@@ -1197,7 +1224,8 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   toggle(render()).props.onClick()
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'folding again hides the tail')
   const views = tree.find(node => node.props?.className === 'nodo-rail-switch')
-  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['工作流', false], ['角色', false]], 'the dock switch replaces the logo and the workflow entry')
+  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['角色', false]], 'the dock switch shows sessions and roles')
+  assert.equal(views.children[0].children[0].children[0].type, 'IconFlatListOutlineRegular', 'session navigation represents a list')
   const search = () => tree.find(node => node.type === 'Input')
   const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'archived:only'))
   assert.equal(search(), undefined, 'search waits behind the project row action')
@@ -2222,7 +2250,7 @@ test('the permission control copies the native select, glyphs and full-tier conf
 // test exercises the real number words, not copies of them.
 const statsUi = async () => {
   const { SessionStats, TurnUsage, StatsDialog } = await loadClient('feed.js', {
-    primitives: { IconRefreshOutlineRegular: 'Refresh', IconDatabaseOutlineRegular: 'Database', IconGaugeOutlineRegular: 'Gauge' },
+    primitives: { IconGaugeOutlineRegular: 'Gauge' },
   })
   return { SessionStats, TurnUsage, StatsDialog }
 }
@@ -2239,14 +2267,16 @@ test('the statistics line shows the host chat groups and hides what the session 
   const full = groups({ ...emptyStats(), turns: 2, steps: 134, decodeMs: 2000, decodeTokens: 132,
     inputTokens: 1000, cacheReadTokens: 900000, outputTokens: 5000, contextUsed: 1400, contextSize: 10000 })
   assert.equal(full.props.className, 'nodo-stats-pill', 'the line itself is the pill button')
-  const text = full.children.map(node => node.children[1].children.join(''))
+  const text = full.children.map(node => node.children.at(-1).children.join(''))
   assert.deepEqual(text, ['2 轮 134 步 · 66 tok/s', '906K tok · 缓存命中 99.9%', '14%'],
     'rounds and decode speed, the compact token total with the cache share, then the context window')
   full.props.onClick()
   assert.deepEqual([...opened], [true], 'the line opens the dialog')
 
   const partial = groups({ ...emptyStats(), turns: 1, inputTokens: 100, outputTokens: 50 })
-  assert.deepEqual(partial.children.map(node => node.children[1].children.join('')), ['1 轮 0 步', '150 tok'],
+  assert.deepEqual(full.children.map(node => node.children.filter(child => child.type !== 'span').map(child => child.type)), [[], [], ['Gauge']],
+    'only context occupancy needs a statistics icon')
+  assert.deepEqual(partial.children.map(node => node.children.at(-1).children.join('')), ['1 轮 0 步', '150 tok'],
     'a session without timing or a window shows only what it has')
   assert.equal(groups({ ...emptyStats() }), null, 'a session with nothing to report draws no line at all')
   assert.equal(groups(undefined), null)
@@ -2298,149 +2328,20 @@ test('the reference dialog keeps its frame still and scrolls the reply pane', ()
   assert.match(preview, /min-height:0/, 'a flex item needs min-height:0 before it can scroll on its own')
 })
 
-test('the run view lists each step and offers only what the run allows a person to do', async () => {
-  const { RunDetail, RunningLine } = await loadClient(['run-cards.js', 'running.js'])
-  const nodes = tree => tree && typeof tree === 'object' ? [tree, ...tree.children.flatMap(nodes)] : []
-  const text = tree => nodes(tree).flatMap(node => node.children.filter(child => typeof child === 'string')).join('')
-  const button = (tree, label) => nodes(tree).find(node => node.type === 'Button' && node.children.includes(label))
-  const acts = [], opened = []
-  const render = (run, draft = { reason: '', text: '' }, extra = {}) => RunDetail({ run, draft, busy: false, readOnly: false,
-    canOpen: attempt => attempt.sessionId === 'live', onDraft() {}, onAct: (...args) => acts.push(args), onOpenSession: attempt => opened.push(attempt.sessionId), ...extra })
-  const stuck = { id: 'r', workflowName: 'Brief', status: 'needs_reconcile', reason: 'end_unconfirmed', createdAt: 1, settle: 't2', tasks: [
-    { id: 't1', name: 'research', kind: 'agent', status: 'done', reason: 'accepted: read it', provenance: 'human', output: 'Notes', more: true, attempts: [] },
-    { id: 't2', name: 'write', kind: 'agent', status: 'needs_reconcile', reason: 'end_unconfirmed', attempts: [
-      { id: 'a1', n: 1, phase: 'ended', profileName: 'Writer', sessionId: 'live', end: { reason: 'error', unconfirmed: true } }] }] }
-
-  const empty = render(stuck)
-  assert.match(text(empty), /待核对 · 结束未确认/)
-  assert.match(text(empty), /已完成 · 已接受：read it/)
-  assert.match(text(empty), /第 1 次 · Writer · 出错（未确认）/)
-  assert.match(text(empty), /Notes…/, 'a cut output says so')
-  assert.ok(nodes(empty).some(node => node.props?.className === 'nodo-tag' && node.children.includes('人工产出')))
-  for (const label of ['重试', '接受产出', '放弃运行']) assert.equal(button(empty, label).props.disabled, true, `${label} needs a reason first`)
-  assert.equal(button(empty, '取消运行'), undefined, 'a run waiting to be reconciled is given up, not plainly cancelled')
-  const opens = nodes(empty).filter(node => node.type === 'Button' && node.children.includes('打开会话'))
-  assert.equal(opens.length, 2, 'the attempt row and the reconcile form both open the step conversation')
-  opens[1].props.onClick()
-  assert.deepEqual(opened, ['live'])
-
-  assert.match(text(empty), /多出口步骤的产出最后一行须写 NEXT: <出口>/, 'an unknown node names the rule')
-  assert.doesNotMatch(text(render(stuck, undefined, { exitHint: [] })), /NEXT/)
-  assert.doesNotMatch(text(render(stuck, undefined, { exitHint: [{ id: 'done', label: '完成' }] })), /NEXT/)
-  const exits = [{ id: 'approve', label: '通过' }, { id: 'revise', label: '不通过' }]
-  const choosing = render(stuck, { reason: 'checked', text: 'Copy' }, { exitHint: exits })
-  assert.deepEqual(nodes(choosing).filter(node => node.props?.type === 'radio').map(node => node.props.checked), [false, false], 'a multi-exit step offers its exits instead of the NEXT syntax')
-  assert.match(text(choosing), /通过不通过/)
-  assert.doesNotMatch(text(choosing), /NEXT/)
-  assert.equal(button(choosing, '接受产出').props.disabled, true, 'accepting a multi-exit step needs an exit')
-
-  const notSent = reason => ({ ...stuck, status: 'waiting_human', reason,
-    tasks: [stuck.tasks[0], { ...stuck.tasks[1], status: 'waiting_human', reason }] })
-  const budget = render(notSent('not sent: Workflow handoff context exceeds 16000 characters; shorten user decisions or step settings'))
-  assert.match(text(budget), /当前步骤尚未发送/)
-  assert.match(text(budget), /重试不会改变本次运行的流程快照/)
-  assert.match(text(budget), /补充并接受人工产出（由你承担这一步的核验）/)
-  assert.match(text(budget), /取消运行.*重新启动/)
-  assert.equal(button(budget, '接受产出').props.disabled, true, 'budget guidance does not bypass the required output and reason')
-  for (const reason of ['not sent: engine failed', 'not sent: Workflow report files are unavailable', 'ended error']) {
-    assert.doesNotMatch(text(render(notSent(reason))), /重试不会改变本次运行的流程快照/, reason)
-  }
-
-  const reasoned = render(stuck, { reason: ' checked ', text: '' })
-  assert.equal(button(reasoned, '重试').props.disabled, false)
-  assert.equal(button(reasoned, '接受产出').props.disabled, true, 'accepting needs the output too')
-  button(reasoned, '重试').props.onClick()
-  button(reasoned, '放弃运行').props.onClick()
-  button(render(stuck, { reason: 'checked', text: 'Copy' }), '接受产出').props.onClick()
-  assert.deepEqual(JSON.parse(JSON.stringify(acts)), [['run-reconcile', { action: 'retry', reason: 'checked' }], ['run-cancel', { reason: 'checked' }],
-    ['run-reconcile', { action: 'accept', text: 'Copy', reason: 'checked' }]])
-  acts.length = 0
-  button(render(stuck, { reason: 'checked', text: 'Copy\nNEXT: approve', exit: 'revise' }, { exitHint: exits }), '接受产出').props.onClick()
-  assert.deepEqual(JSON.parse(JSON.stringify(acts)), [['run-reconcile', { action: 'accept', text: 'Copy\nNEXT: revise', reason: 'checked' }]], 'the picked exit replaces a typed NEXT line')
-
-  const asking = { ...stuck, status: 'running', reason: undefined, tasks: [{ id: 't3', name: 'gate', kind: 'human', status: 'active', card: 'run:r:q:1', attempts: [] }] }
-  const shown = render(asking)
-  assert.equal(nodes(shown).some(node => node.type === 'ApprovalCard'), false, 'open questions are answered from the canvas dock')
-  assert.match(text(shown), /等待回答/)
-  assert.equal(nodes(shown).some(node => node.props['aria-label'] === '人工核对'), false)
-  assert.equal(button(shown, '取消运行').props.disabled, false)
-  const working = { ...stuck, status: 'running', reason: undefined, settle: undefined, tasks: [{ id: 't4', name: 'write', kind: 'agent', status: 'active',
-    attempts: [{ id: 'a2', n: 1, phase: 'running', profileName: 'Writer', sessionId: 'live' }] }] }
-  const engine = { phase: 'tool', tool: 'Bash' }
-  const line = nodes(render(working, undefined, { work: { live: { active: true, since: 5, engine } } })).find(node => node.type === RunningLine)
-  assert.deepEqual([line?.props.since, line?.props.engine], [5, engine], 'the step in progress shows what its engine is doing')
-  assert.equal(nodes(render(working)).some(node => node.type === 'RunningLine'), false)
-  assert.equal(nodes(render(stuck, undefined, { work: { live: { active: true } } })).some(node => node.type === 'RunningLine'), false, 'an ended attempt is not shown running')
-  const ending = render({ ...stuck, reason: 'host_restarted', settle: 'e', tasks: [{ id: 'e', name: 'end', kind: 'end', status: 'needs_reconcile', reason: 'host_restarted', attempts: [] }] },
-    { reason: 'checked', text: '' })
-  assert.match(text(ending), /“结束”停在这里/)
-  assert.equal(button(ending, '重试').props.disabled, false, 'a start or end task a person must settle can be retried')
-  assert.equal(button(ending, '放弃运行').props.disabled, false)
-  assert.equal(button(ending, '接受产出'), undefined, 'a task without an output is not accepted')
-  assert.equal(nodes(ending).some(node => node.type === 'Field' && node.children.includes('接受的产出')), false)
-  const cancelling = render(asking, undefined, { busy: 'run-cancel' })
-  assert.equal(button(cancelling, '正在取消…').props.disabled, true)
-  assert.match(text(cancelling), /正在等 Agent 确认停止/)
-  const finished = render({ ...stuck, status: 'done', reason: undefined, tasks: [] })
-  assert.equal(nodes(finished).some(node => node.type === 'Button'), false, 'an ended run offers nothing')
-  const picked = []
-  const overview = render(stuck, undefined, { onPick: id => picked.push(id) })
-  assert.doesNotMatch(text(overview), /Notes|第 1 次/, 'the overview lists steps without their detail')
-  const rows = nodes(overview).filter(node => node.props.className === 'nodo-run-step')
-  assert.deepEqual(rows.map(row => [row.props['data-state'], text(row)]), [['done', 'research执行节点 · 已接受：read it已完成'], ['warning', 'writeWriter · 结束未确认待核对']])
-  rows[0].props.onClick()
-  assert.deepEqual(picked, ['t1'])
-  const waiting = nodes(render({ ...asking, settle: undefined }, undefined, { onPick() {} })).find(node => node.props.className === 'nodo-run-step')
-  assert.deepEqual([waiting.props['data-state'], text(waiting)], ['warning', 'gate人工节点等待回答'])
-  const single = render({ ...asking, settle: undefined }, undefined, { step: true })
-  assert.doesNotMatch(text(single), /Brief/, 'a single step leaves out the run header')
-  assert.equal(button(single, '取消运行'), undefined, 'run actions stay in the overview')
-  assert.match(text(render({ id: 'x', status: 'unreadable' })), /无法读取/)
-})
-
-test('the rail opens the workflow page and marks runs a person must look at', () => {
-  assert.match(clientSource('page.js'), /onWorkflows: \(\) => rolesGuard\(\(\) => layoutService\?\.selectPanel\('nodo-workflow'\)\), runsWaiting: \(view\.runs \?\? \[\]\)\.some\(needsPerson\)/)
-  assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-workflow' \}, WorkflowEntry\)/)
-  assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-roles' \}, RolesEntry\)/)
-  assert.match(clientSource('ui-shared.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats, runs: answer\.runs/, 'an unchanged state answer still carries the run summaries')
-})
-
-test('the original Nodo rail hosts workflow navigation under its header switch', async () => {
-  const { Rail, setHostServices, NodoLogo } = await loadRail({ useState: initial => [initial, () => {}] })
-  setHostServices({ layoutService: { selectPanel() {} } })
-  const navigation = { type: 'navigation', props: {}, children: ['工作流列表'] }
-  const calls = []
-  const tree = Rail({ view: { profiles: [], workspaces: [] }, navigation: { view: 'workflow', content: navigation }, onBack: () => calls.push('back'), onSessions: () => calls.push('sessions'), onWorkflows: () => calls.push('workflows'), onRoles: () => calls.push('roles') })
-  const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
-  assert.equal(tree.props['aria-label'], '工作流导航')
-  assert.ok(nodes(tree).includes(navigation))
-  assert.equal(nodes(tree).some(node => node.type === NodoLogo), false, 'the header carries no logo')
-  const [sessions, workflows, roles] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
-  assert.deepEqual([sessions.props['aria-pressed'], workflows.props['aria-pressed'], roles.props['aria-pressed']], [false, true, false])
-  assert.equal(workflows.props.onClick, undefined, 'the current view is not a link to itself')
-  sessions.props.onClick()
-  roles.props.onClick()
-  assert.equal(nodes(tree).some(node => node.props.className === 'nodo-roster'), false)
-  assert.equal(nodes(tree).some(node => node.props.className === 'nodo-rail-search'), false)
-  assert.equal(nodes(tree).some(node => node.props.className === 'nodo-workflow-entry'), false, 'the workflow page needs no entry to itself')
-  const back = nodes(tree).find(node => node.type === 'Tooltip' && node.props.label === '返回普通空间').children[0]
-  assert.equal(back.props.disabled, false)
-  back.props.onClick()
-  assert.deepEqual(calls, ['sessions', 'roles', 'back'])
-})
-
 test('the rail marks the roles view pressed and shows its published body', async () => {
+  assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-roles' \}, RolesEntry\)/)
+  assert.match(clientSource('ui-shared.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats/)
   const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
   const content = { type: 'nav', props: {}, children: ['角色列表'] }
   const calls = []
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   const render = navigation => Rail({ view: { profiles: [], workspaces: [] }, navigation,
-    onSessions: () => calls.push('sessions'), onWorkflows: () => calls.push('workflows'), onRoles: () => calls.push('roles') })
+    onSessions: () => calls.push('sessions'), onRoles: () => calls.push('roles') })
   const tree = render({ view: 'roles', content })
   assert.equal(tree.props['aria-label'], '角色导航')
   assert.ok(nodes(tree).includes(content))
-  const [sessions, workflows, roles] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
-  assert.deepEqual([sessions.props['aria-pressed'], workflows.props['aria-pressed'], roles.props['aria-pressed']], [false, false, true])
+  const [sessions, roles] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
+  assert.deepEqual([sessions.props['aria-pressed'], roles.props['aria-pressed']], [false, true])
   assert.equal(roles.props.onClick, undefined, 'the current view is not a link to itself')
   sessions.props.onClick()
   assert.deepEqual(calls, ['sessions'])
@@ -3201,7 +3102,7 @@ test('roster buttons open the roles page with the role selected or a new draft',
   const view = { profiles: [
     { id: 'lead', name: '主控', engine: 'echo', lead: true, activeSessionId: 's', sessions: [{ id: 's', name: '会话', workspaceRef: 'p' }] },
     { id: 'coder', name: 'Coder', engine: 'echo', activeSessionId: 'c', sessions: [{ id: 'c', name: '编码', workspaceRef: 'p' }] },
-  ], workspaces: [{ id: 'p', name: '项目' }], work: {}, stats: {}, prefs: { onboardedAt: 1 }, runs: [] }
+  ], workspaces: [{ id: 'p', name: '项目' }], work: {}, stats: {}, prefs: { onboardedAt: 1 } }
   const loaded = await loadClient(['page.js', 'roles.tsx', 'session-rail.tsx'], {
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),

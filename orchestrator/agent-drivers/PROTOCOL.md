@@ -44,7 +44,7 @@ Events use the factory callback. Optional fields remain absent when the source c
 | `request/opened` | `id`, `kind: permission / question`; optional tool, reason, options and detail. |
 | `request/closed` | `id`; request already settled by the source. |
 
-Complete text may be emitted without deltas. Final snapshots must not duplicate streamed content. `turn/end.text`, when available, is the final assistant message used for workflow handoff, distinct from accumulated text.
+Complete text may be emitted without deltas. Final snapshots must not duplicate streamed content. `turn/end.text`, when available, is the final assistant message, distinct from accumulated text.
 
 `retryable` is emitted only for the structured transient classifications listed below, never cancellation. Other errors omit it; error text is not classified.
 

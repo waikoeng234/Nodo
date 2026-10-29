@@ -14,7 +14,6 @@ const CAPABILITIES = {
   stream: ['coverage', 'tool-stream', 'stream-records', 'stream-records-client', 'file-changes', 'stats', 'native-running', 'native-status'],
   attachments: ['attachments'],
   commands: ['engines'],
-  handoff: ['workflows', 'workflow-materials'],
 }
 const SHARED = { acp: ['acp'] }
 

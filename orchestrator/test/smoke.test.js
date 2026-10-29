@@ -1,6 +1,6 @@
 // Smoke: the whole loop on a mock dsh host with the echo engine — plugin load,
 // spawn probe, profile CRUD, dispatch (turn, steer-queue, interrupt), the
-// approval card, secret redaction, and a workflow with a decision step. No dsh,
+// approval card and secret redaction. No dsh,
 // no coding CLI needed.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -136,43 +136,6 @@ test('secrets: values never appear in transcripts', async () => {
       (await api('transcript', { profile: profile.id })).find(entry => entry.who === 'user'))
     assert.match(line.text, /\[secret:GITHUB_TOKEN\]/)
     assert.doesNotMatch(line.text, /ghp_supersecret123/)
-  })
-})
-
-test('workflow: work step → decision card → work step', async () => {
-  await withPlugin(async ({ api, home }) => {
-    const workspace = await api('workspace-create', { name: 'Main', cwd: join(home, 'ws') })
-    const coder = await api('profile-create', { name: 'Writer', engine: 'echo', workspace: workspace.id })
-    const reviewer = await api('profile-create', { name: 'Reader', engine: 'echo', workspace: workspace.id })
-    const workflow = await api('workflow-create', {
-      name: 'pipeline',
-      steps: [
-        { profile: 'Writer', name: 'draft', task: 'write the draft' },
-        { decide: true, name: 'gate', question: 'ship it?' },
-        { profile: reviewer.id, name: 'release', task: 'release what was written' },
-      ],
-    })
-    assert.equal(workflow.steps.length, 3)
-    await api('workflow-run', { id: workflow.id })
-    // Step 1 runs (its echo engine may open a permission card that stays), then
-    // the run pauses on the decision card.
-    const stepSession = async (profileId, nodeId) => (await api('state')).profiles.find(profile => profile.id === profileId).sessions.find(session => session.source?.workflowId === workflow.id && session.source.nodeId === nodeId)
-    const card = await until(async () => (await api('state', { since: -1 })).approvals.find(entry => entry.kind === 'question'))
-    assert.equal(card.kind, 'question')
-    const draft = await stepSession(coder.id, 's1')
-    await until(async () => (await api('state', { since: -1 })).work[draft.id]?.active === false ? true : undefined)
-    await api('approval-answer', { id: card.id, decision: 'answer', exit: 'continue' })
-    // The decision feeds step 3: its transcript gains the Reader's turn.
-    const release = await until(() => stepSession(reviewer.id, 's3'))
-    await until(async () => (await api('transcript', { profile: reviewer.id, session: release.id })).some(entry => entry.who === 'user'))
-    const readerLines = await api('transcript', { profile: reviewer.id, session: release.id })
-    assert.deepEqual(await api('transcript', { profile: reviewer.id }), [])
-    const input = readerLines.find(entry => entry.who === 'user')
-    const references = input.references
-    assert.equal(references[0].source.profileId, coder.id)
-    assert.equal(references[0].source.sessionId, draft.id)
-    assert.deepEqual(references[1], { source: { kind: 'user', step: 'gate' }, messages: [{ text: 'Decision "gate": 继续' }], decision: { question: 'ship it?', choice: '继续' } })
-    assert.equal(input.text, 'release what was written')
   })
 })
 

@@ -11,7 +11,6 @@ test('new engine route includes the driver and all capability tests', () => {
   assert.ok(plan.tests.includes('test/zcode.test.js'))
   assert.ok(plan.tests.includes('test/zcode-instructions.test.js'))
   assert.ok(plan.tests.includes('test/attachments.test.js'))
-  assert.ok(plan.tests.includes('test/workflows.test.js'))
   assert.deepEqual(plan.engines, ['zcode'])
 })
 
@@ -21,7 +20,6 @@ test('capability route scopes tests and includes the selected shared protocol', 
   assert.ok(plan.tests.includes('test/acp.test.js'))
   assert.ok(plan.tests.includes('test/model-seat.test.js'))
   assert.ok(!plan.tests.includes('test/attachments.test.js'))
-  assert.ok(!plan.tests.includes('test/workflows.test.js'))
 })
 
 test('changing the ACP core selects every registered consumer', () => {

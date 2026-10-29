@@ -62,7 +62,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const chooseRole = id => { updateSelection(current => ({ ...current, profile: id, choices: {} })); setError('') }
     const composerProfile = profile && { ...profile, ...choices }
     const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
-    // The picker's files split the way the workflow composer's do: images ride
+    // Images ride
     // the draft inline, documents become stored references that only turn into
     // workspace paths — the one address every engine can read — when sent.
     const attach = async picked => {

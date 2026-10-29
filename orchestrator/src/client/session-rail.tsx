@@ -2,12 +2,12 @@ import type { ReactNode } from './ui-shared.js'
 import {
   h, Fragment, useState, Menu, Tooltip, Button, Input, StateDot, workLabel, workDot, runningOf,
   sessionTime, workspaceIdOf, roleStateOf, ARCHIVED_VIEWS, SESSION_FOLD, layoutService,
-  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconBranchOutlineRegular, IconChevronDownOutlineRegular,
+  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconUnarchiveOutlineRegular, IconBranchOutlineRegular, IconChevronDownOutlineRegular,
   IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
   IconFlatListOutlineRegular, IconFolderOpenOutlineRegular,
   IconNewChatOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSparkleRegular,
-  IconTrashOutlineRegular, IconUsersOutlineRegular, IconWorkspaceTreeOutlineRegular,
+  IconTrashOutlineRegular, IconUsersOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 import { roundIndex } from './round.js'
@@ -16,7 +16,7 @@ export interface RailSession { id: string; name: string; createdAt?: number; sou
 export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; lead?: boolean; sessions: RailSession[] }
 export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
 export interface RailView { profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
-export type RailNavigation = { view: 'workflow' | 'roles'; content: ReactNode }
+export type RailNavigation = { view: 'roles'; content: ReactNode }
 type Archived = keyof typeof ARCHIVED_VIEWS
 
 interface SessionRowProps {
@@ -39,7 +39,7 @@ export function SessionRow({ role, session, current, work, busy, readOnly, conte
         onClick={onSelect} title={`${role.name} · ${session.name}`}>
         <span className="nodo-row-title">{context ? `${context} · ${session.name}` : session.name}</span>
         <span className="nodo-row-meta">{archived
-          ? <span className="nodo-row-archived"><IconArchiveOutlineRegular size={12} />已归档</span>
+          ? <span className="nodo-row-archived">已归档</span>
           : status
             ? <span className="nodo-row-running" title={status}><StateDot state={workDot(work)} size={12} />{status}</span>
             : <Fragment>{pinned && <IconPinFillRegular size={12} />}{sessionTime(session.updatedAt)}</Fragment>}</span>
@@ -48,7 +48,7 @@ export function SessionRow({ role, session, current, work, busy, readOnly, conte
         <button type="button" className="nodo-row-action" disabled={busy || running}
           aria-label={archived ? `取消归档会话“${session.name}”` : `归档会话“${session.name}”`} title={archived ? '取消归档' : '归档会话'}
           onClick={event => { event.stopPropagation(); onArchive(!archived) }}>
-          {archived ? <IconArchiveOffOutlineRegular /> : <IconArchiveOutlineRegular />}
+          {archived ? <IconUnarchiveOutlineRegular /> : <IconArchiveOutlineRegular />}
         </button>
         <Menu open={open} onClose={() => setOpen(false)} portal closeOnPointerLeave
           items={[
@@ -70,15 +70,15 @@ interface PickerOptions {
   none?: string; button?: boolean; label?: string; disabled?: boolean
 }
 
-// The project picker of the rail, also used by the workflow canvas. `none` adds a
+// The project picker of the rail. `none` adds a
 // first item for no workspace; `button` draws the anchor as a small outline button.
 export const workspacePicker = ({ workspaces, workspace, running = new Set(), open, setOpen, onSelect, none, button = false, label = '选择项目', disabled }: PickerOptions) => {
   const ordered = [...workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   const othersRunning = ordered.some(item => item.id !== workspace?.id && running.has(item.id))
   const name = workspace?.name ?? none
-  const Glyph = workspace ? workspace.worktree ? IconBranchOutlineRegular : IconFolderOpenOutlineRegular : IconUsersOutlineRegular
+  const Glyph = workspace ? workspace.worktree ? IconBranchOutlineRegular : IconFolderOpenOutlineRegular : null
   const anchor = <Fragment>
-    <span className="nodo-folder"><Glyph size={16} /></span>
+    {Glyph && <span className="nodo-folder"><Glyph size={16} /></span>}
     <span className="nodo-row-title">{name}</span>
     {othersRunning && <span className="nodo-project-state" title="其他项目或分支有正在运行的任务"><StateDot state="ongoing" size={12} /></span>}
     <span className="nodo-chevron" data-open={open ? '' : undefined}><IconChevronDownOutlineRegular size={14} /></span>
@@ -88,11 +88,11 @@ export const workspacePicker = ({ workspaces, workspace, running = new Set(), op
     onClick: (event: { stopPropagation(): void }) => { event.stopPropagation(); setOpen(value => !value) } }
   return (
     <Menu open={open} onClose={() => setOpen(() => false)} portal selectedId={workspace?.id ?? ''} align="start" className="nodo-picker"
-      items={[...(none ? [{ id: '', label: none, icon: <IconUsersOutlineRegular /> }] : []), ...ordered.map(item => ({ id: item.id,
+      items={[...(none ? [{ id: '', label: none }] : []), ...ordered.map(item => ({ id: item.id,
         label: running.has(item.id)
           ? <span className="nodo-menu-label">{item.name}<span className="nodo-menu-dot" title="有正在运行的任务"><StateDot state="ongoing" size={8} /></span></span>
           : item.name,
-        icon: item.worktree ? <IconBranchOutlineRegular /> : <IconWorkspaceTreeOutlineRegular /> }))]}
+        icon: item.worktree ? <IconBranchOutlineRegular /> : <IconFolderOpenOutlineRegular /> }))]}
       onSelect={(id: string) => { setOpen(() => false); onSelect(id) }}
       anchor={button ? <Button variant="outline" size="sm" className="nodo-project-pick" {...props}>{anchor}</Button>
         : <button type="button" className="nodo-project-select" {...props}>{anchor}</button>} />
@@ -102,16 +102,16 @@ export const workspacePicker = ({ workspaces, workspace, running = new Set(), op
 interface RailProps {
   view: RailView; profile?: RailRole | null; workspace?: RailWorkspace | null; sessionId?: string
   editing?: { kind?: string; profile?: RailRole | null } | null; draft?: { profile?: string; workspace?: string } | null; drafting?: boolean
-  readOnly?: boolean; busy?: boolean; runsWaiting?: boolean; navigation?: RailNavigation | null
+  readOnly?: boolean; busy?: boolean; navigation?: RailNavigation | null
   onResumeDraft: () => void; onSelect: (id: string) => void
   onSelectSession: (role: RailRole, id: string, project?: RailWorkspace) => void; onArchiveSession: (role: RailRole, id: string, archived: boolean) => void
   onRenameSession: (role: RailRole, session: RailSession) => void; onPinSession: (role: RailRole, id: string, pinned: boolean) => void
   onNewSession: (profileId?: string, project?: RailWorkspace) => void; onNewWorktree: (project: RailWorkspace) => void; onNewRole: () => void; onEditRole: (role: RailRole) => void
-  onSettings: () => void; onSessions: () => void; onWorkflows: () => void; onRoles: () => void; onBack: () => void
+  onSettings: () => void; onSessions: () => void; onRoles: () => void; onBack: () => void
   onNewWorkspace: () => void; onRenameWorkspace: (workspace: RailWorkspace) => void; onDeleteWorkspace: (workspace: RailWorkspace) => void
 }
 
-export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onWorkflows, onRoles, runsWaiting, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
+export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
   const [queries, setQueries] = useState<Record<string, string>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [archives, setArchives] = useState<Record<string, Archived>>({})
@@ -285,16 +285,11 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     </Tooltip>
   )
   return (
-    <aside className="nodo-rail" aria-label={navigation?.view === 'workflow' ? '工作流导航' : navigation?.view === 'roles' ? '角色导航' : '角色与项目会话'}>
+    <aside className="nodo-rail" aria-label={navigation?.view === 'roles' ? '角色导航' : '角色与项目会话'}>
       <div className="nodo-rail-dock">
         <div className="nodo-rail-switch" role="group" aria-label="视图">
           <Tooltip label="会话" side="right" delayMs={500}>
             <button type="button" aria-label="会话" aria-pressed={!navigation} onClick={navigation ? onSessions : undefined}><IconFlatListOutlineRegular size={18} /></button>
-          </Tooltip>
-          <Tooltip label="工作流" side="right" delayMs={500}>
-            <button type="button" aria-label={runsWaiting ? '工作流（有待处理）' : '工作流'} aria-pressed={navigation?.view === 'workflow'}
-              onClick={navigation?.view === 'workflow' ? undefined : onWorkflows}><IconWorkspaceTreeOutlineRegular size={18} />
-              {runsWaiting && <span className="nodo-rail-badge"><StateDot state="warning" size={8} /></span>}</button>
           </Tooltip>
           <Tooltip label="角色" side="right" delayMs={500}>
             <button type="button" aria-label="角色" aria-pressed={navigation?.view === 'roles'}
@@ -331,7 +326,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
               </div>}
             </div>
             {!!archivedSessions.length && <div className="nodo-tree-node">
-              <div className="nodo-project">{toggle(':archived', !!opened[':archived'], IconArchiveOutlineRegular, '已移除', undefined, [])}</div>
+              <div className="nodo-project">{toggle(':archived', !!opened[':archived'], null, '已移除', undefined, [])}</div>
               {opened[':archived'] && <div className="nodo-tree-children">
                 {archivedSessions.map(({ role, session, workspaceId }) => <SessionRow key={session.id} role={role} session={session} busy={busy} readOnly
                   current={rowOf(role, session).current && !editing && !drafting}

@@ -17,10 +17,13 @@ import {
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
-  IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
+  IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
   IconSparkleRegular, IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
-  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconDatabaseOutlineRegular, IconGaugeOutlineRegular,
-  IconBranchOutlineRegular,
+  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconGaugeOutlineRegular,
+  IconBranchOutlineRegular, IconCompareSplitOutlineRegular, IconFolderCloseRegular, IconRightUpOutlineRegular,
+  IconContextInjectionOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
+  IconAgentPresetOutlineRegular, IconUserOutlineRegular, IconPlayOutlineRegular, IconCheckCircleOutlineRegular,
+  IconInspectOutlineRegular, IconUnarchiveOutlineRegular, IconChecklistOutlineRegular,
   IconWorkspaceTreeOutlineRegular, PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
   IconDataOutlineRegular, IconGlobeOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -34,10 +37,13 @@ export {
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
-  IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSlidersTwoOutlineRegular,
+  IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
   IconSparkleRegular, IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
-  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconDatabaseOutlineRegular, IconGaugeOutlineRegular,
-  IconBranchOutlineRegular,
+  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconGaugeOutlineRegular,
+  IconBranchOutlineRegular, IconCompareSplitOutlineRegular, IconFolderCloseRegular, IconRightUpOutlineRegular,
+  IconContextInjectionOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
+  IconAgentPresetOutlineRegular, IconUserOutlineRegular, IconPlayOutlineRegular, IconCheckCircleOutlineRegular,
+  IconInspectOutlineRegular, IconUnarchiveOutlineRegular, IconChecklistOutlineRegular,
   IconWorkspaceTreeOutlineRegular, PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
   IconDataOutlineRegular, IconGlobeOutlineRegular,
 }
@@ -112,7 +118,7 @@ export function useStateView() {
       if (!live.current || order < applied.current) return
       applied.current = order
       const next = answer.unchanged && snapshot.current !== null
-        ? { ...snapshot.current, work: answer.work, approvals: answer.approvals, stats: answer.stats, runs: answer.runs }
+        ? { ...snapshot.current, work: answer.work, approvals: answer.approvals, stats: answer.stats }
         : answer
       snapshot.current = next
       setView(next)
@@ -156,12 +162,12 @@ export const TOOL_VARIANTS = {
   search: { title: '搜索', icon: IconSearchOutlineRegular },
   read: { title: '读取', icon: IconBrowseOutlineRegular },
   bash: { title: '运行命令', icon: IconApiOutlineRegular },
-  write: { title: '写入', icon: IconEditOutlineRegular },
+  write: { title: '写入', icon: IconContextInjectionOutlineRegular },
   edit: { title: '编辑', icon: IconEditOutlineRegular },
-  code: { title: '代码', icon: IconCodeOutlineRegular },
+  code: { title: '代码', icon: IconInspectOutlineRegular },
   plan: { title: '计划', icon: IconPlanOutlineRegular },
-  task: { title: '子任务', icon: IconUsersOutlineRegular },
-  generic: { title: '工具调用', icon: IconSparkleRegular },
+  task: { title: '子任务', icon: IconAgentPresetOutlineRegular },
+  generic: { title: '工具调用', icon: IconPluginPinwheelOutlineRegular },
 }
 
 export function toolVariant(name) {

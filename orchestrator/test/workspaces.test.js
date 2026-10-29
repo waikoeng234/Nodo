@@ -54,7 +54,6 @@ test('deleting a workspace preserves drafts and archived sessions without moving
     const original = rt.state.profiles[elsewhere.id].sessions.find(item => item.id === third.id)
     original.driverSessionId = 'native-thread'
     original.workspaceId = 'native-workspace'
-    const unrelated = await rt.createRun({ workflowId: 'other', workflowName: 'Other', graph: { nodes: [], edges: [] }, input: { workspaceId: b.id } })
     assert.equal(await api('workspace-delete', { id: a.id }), true)
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.equal(saved.workspaces[a.id], undefined, 'the workspace record is actually deleted')
@@ -84,7 +83,6 @@ test('deleting a workspace preserves drafts and archived sessions without moving
     assert.equal((await api('workspace-file', { profile: elsewhere.id, session: third.id, path: 'note.md' })).text, 'Original directory')
     assert.equal((await post('session-create', { profile: elsewhere.id, workspace: a.id, lazy: true })).ok, false, 'a new conversation cannot use the deleted workspace')
     assert.equal((await post('workspace-delete', { id: a.id })).error.code, 'orch/not-found')
-    assert.equal((await rt.loadRun(unrelated.id)).status, 'running')
     assert.equal(existsSync(join(a.cwd, 'note.md')), true)
   })
 })
@@ -104,27 +102,6 @@ test('workspace deletion refuses running tasks without changing role bindings', 
     assert.ok(rt.state.profiles[role.id])
   })
 })
-
-for (const reference of ['pinned', 'session', 'role']) {
-  test(`workspace deletion waits for an unfinished workflow using its ${reference}`, async () => {
-    await withHost(async ({ api, post, home, runtime }) => {
-      const workspace = await api('workspace-create', { name: 'Flow', cwd: join(home, 'flow') })
-      const role = await api('profile-create', { name: 'Flow role', engine: 'echo' })
-      const session = await api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
-      const rt = await runtime
-      const run = await rt.createRun({ workflowId: 'fixture', workflowName: 'Fixture', graph: { nodes: [], edges: [] },
-        profiles: reference === 'role' ? { [role.id]: {} } : {}, input: reference === 'pinned' ? { workspaceId: workspace.id } : {} })
-      if (reference === 'session') await rt.commit(run.id, draft => { draft.attempts.first = { sessionId: session.id } })
-      assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
-      await rt.commit(run.id, draft => { draft.status = 'needs_reconcile' })
-      assert.equal((await post('workspace-delete', { id: workspace.id })).error.code, 'orch/busy')
-      await rt.commit(run.id, draft => { draft.status = 'cancelled' })
-      assert.equal(await api('workspace-delete', { id: workspace.id }), true)
-      assert.ok(rt.state.profiles[role.id])
-      assert.equal((await rt.loadRun(run.id)).status, 'cancelled')
-    })
-  })
-}
 
 test('editing a workspace cwd moves its roles and restarts their conversations', async () => {
   await withHost(async ({ api, home }) => {
@@ -166,7 +143,7 @@ test('v1 state migrates: shared cwds become one workspace, cwd-less profiles kee
       b: { id: 'b', name: 'Reviewer', role: '', engine: 'echo', cwd: shared, env: [], engineOptions: {}, instructions: '', createdAt: 1, updatedAt: 1 },
       c: { id: 'c', name: 'Solo', role: '', engine: 'echo', env: [], engineOptions: {}, instructions: '', createdAt: 1, updatedAt: 1 },
     },
-    transcripts: {}, workflows: {}, prefs: {}, probe: null, revision: 1,
+    transcripts: {}, prefs: {}, probe: null, revision: 1,
   }
   writeFileSync(join(home, 'state.json'), JSON.stringify(v1))
   const host = boot(home)

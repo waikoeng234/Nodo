@@ -1,4 +1,4 @@
-import { h, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, IconCodeOutlineRegular, IconChevronDownOutlineRegular, rightPanelService } from './ui-shared.js'
+import { h, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, IconCompareSplitOutlineRegular, IconChevronDownOutlineRegular, rightPanelService } from './ui-shared.js'
 import type { ReactNode } from './ui-shared.js'
 import { CodeDiff } from './code-diff.tsx'
 import { relativeFile, summarizeChanges } from './file-diffs.ts'
@@ -142,7 +142,7 @@ export function FileChangesSummary({ record, value, full, load, loadChanges = lo
   const selectedFile = files.find(({ file }) => file.path === selected)
   return <div className="nodo-changes-card" ref={box} data-nodo-changes-summary="">
     <div className="nodo-changes-header">
-      <span className="nodo-changes-icon" aria-hidden><IconCodeOutlineRegular size={22} /></span>
+      <span className="nodo-changes-icon" aria-hidden><IconCompareSplitOutlineRegular size={22} /></span>
       <div className="nodo-changes-heading">
         <div className="nodo-changes-title">{workspace ? '工作区变更' : '已编辑'} {count} 个文件
           <span className="nodo-changes-coverage" title={workspace

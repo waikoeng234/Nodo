@@ -9,7 +9,7 @@ import {
   h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, MarkdownText, StateDot,
   Button, Menu, Modal, ComposerGlyph,
   IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
-  IconDatabaseOutlineRegular, IconGaugeOutlineRegular, IconRefreshOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
+  IconGaugeOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
   billedTokens, cacheHitPercent, contextPercent, compactTokens, compactDuration, exactTokens, tokensPerSecond, turnTokens,
 } from './ui-shared.js'
 import { supportedStreamRecord, StreamRecordCard } from './stream-records.js'
@@ -344,12 +344,19 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
     } else if (replyEnds.has(index)) stamp = index
     else if (item.kind === 'usage' && usageAt === null) usageAt = index
   }
-  // In a round the lead's new words open under their own speaker row.
-  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === 'user' || lines.at(-1).kind === 'member')
+  // A running executor card parks at the feed's bottom; the lead's streaming
+  // turn stays above it, inside its own segment.
+  let tail = lines.length
+  while (tail > 0 && lines[tail - 1].kind === 'member' && !lines[tail - 1].step.report && !lines[tail - 1].step.ended) tail -= 1
+  const speakerDue = round && (tail === 0 || lines[tail - 1].who === 'user' || lines[tail - 1].kind === 'member')
   const lastSpeaker = lines.findLastIndex(item => item.kind === 'speaker')
   const rows = transcriptRows(lines).filter(row => row.item.kind !== 'changes'
     || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser))
-  const newest = rows.length - 1
+  const mainRows = rows.filter(row => row.index < tail)
+  const tailRows = rows.filter(row => row.index >= tail)
+  const chipRows = []
+  if (round) while (mainRows.at(-1)?.item.kind === 'delegate') chipRows.unshift(mainRows.pop())
+  const newest = mainRows.length - 1
   const line = (row, position, timeline = false) => {
     const { item, index } = row
     if (item.kind === 'plan') return h(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest })
@@ -415,14 +422,16 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
         feed.key === key && feed.error && h('p', { className: 'nodo-error-line', role: 'alert' }, feed.error),
         lines.length === 0 && !work?.active && h('p', { className: 'nodo-note nodo-feed-empty' },
           `还没有消息。给「${profile.name}」发一条任务，一条消息即一个任务。`),
-        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1
+        ...processBlocks(mainRows).map((block, index, all) => block.process && block.rows.length > 1
           ? h(ProcessGroup, { key: block.rows[0].row.index, rows: block.rows.map(({ row }) => row.item), depths: block.rows.map(({ row }) => row.depth),
             running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true)) },
             block.rows.map(({ row, position }) => line(row, position, true)))
           : line(block.rows[0].row, block.rows[0].position)),
         speakerDue && work?.active && work.timeline !== true && stripNodo(work.buffer) !== '' && h(RoundSpeaker, { role: profile, running: true }),
         work?.active && work.timeline !== true && work.buffer != null && work.buffer !== '' && h('div', { className: 'nodo-reply', 'data-flow': 'response' },
-          h(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })))),
+          h(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })),
+        ...chipRows.map(row => line(row, row.index)),
+        ...tailRows.map(row => line(row, row.index)))),
     h(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
     !following && h('button', { type: 'button', className: 'nodo-tobottom', 'aria-label': '回到底部', title: '回到底部', onClick: () => setFollowing(true) },
       h(IconChevronDownOutlineRegular)))
@@ -651,17 +660,17 @@ export function SessionStats({ stats, onOpen }) {
   const hit = cacheHitPercent(stats)
   const context = contextPercent(stats)
   const group = (key, icon, values) => h('span', { key, className: 'nodo-stats-group' },
-    h(icon, { size: 14 }),
+    icon && h(icon, { size: 14 }),
     h('span', null, values.filter(value => value !== '').join(' · ')))
   const groups = []
   if (stats.turns > 0 || stats.decodeMs > 0) {
-    groups.push(group('counts', IconRefreshOutlineRegular, [
+    groups.push(group('counts', null, [
       stats.turns > 0 ? `${stats.turns} 轮 ${stats.steps} 步` : '',
       stats.decodeMs > 0 && stats.decodeTokens > 0 ? `${tokensPerSecond(stats.decodeTokens, stats.decodeMs)} tok/s` : '',
     ]))
   }
   if (total > 0) {
-    groups.push(group('tokens', IconDatabaseOutlineRegular, [
+    groups.push(group('tokens', null, [
       `${compactTokens(total)} tok`,
       hit === '' ? '' : `缓存命中 ${hit}%`,
     ]))

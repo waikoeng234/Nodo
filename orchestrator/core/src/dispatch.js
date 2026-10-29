@@ -467,6 +467,11 @@ export function install(rt) {
       }
       // The turn may have been interrupted while the engine was still spawning.
       if (!st.starting || st.seq !== seq) return settle(st, seq, { reason: 'interrupted' })
+      if (st.cancelTimer !== null || st.finishing) {
+        st.cancelledStart = st.turnId === null
+        driverSink(profileId, { type: 'turn/end', reason: 'interrupted' })
+        return
+      }
       let sent = false
       try {
         const { session } = rt.conversationOf(profileId)
@@ -500,8 +505,7 @@ export function install(rt) {
   // One message to one profile. Returns how it was placed ('turn' | 'steered' |
   // 'indeterminate' | 'queued'), a completion that settles when this message's turn ends, and a
   // `turn` promise for the engine's turn id. `exclusive` refuses a busy session
-  // instead of steering or queueing: a workflow task must not absorb a message
-  // meant for another step.
+  // instead of steering or queueing so separate assignments cannot mix.
   const occupied = (profileId, st) => st.starting || st.active || st.finishing || rt.isCompacting(profileId)
   const steer = async (profileId, st, item) => {
     const { profile, session } = rt.conversationOf(profileId)
@@ -523,7 +527,7 @@ export function install(rt) {
     } else settle(st, item.seq, st.ended?.seq === host ? st.ended.outcome : { reason: 'done' })
     return outcome
   }
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], handoff, { exclusive = false, files, brief, queue = false, origin, cancelled, userInput = false } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], { exclusive = false, files, brief, queue = false, origin, cancelled, userInput = false } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
     rt.assertSessionWritable?.(profile, session)
     // createProfile and updateProfile keep new leads compliant; this catches
@@ -539,15 +543,13 @@ export function install(rt) {
     const text = String(rawText ?? '').trim()
     if (text.length > TASK_TEXT_MAX) throw Object.assign(new Error(`Task exceeds ${TASK_TEXT_MAX} characters`), { code: 'orch/invalid' })
     const images = rt.admitImages(rawImages)
-    if (text === '' && images.length === 0 && !handoff?.files?.length && !files?.paths?.length) throw Object.assign(new Error('Nothing to send'), { code: 'orch/invalid' })
+    if (text === '' && images.length === 0 && !files?.paths?.length) throw Object.assign(new Error('Nothing to send'), { code: 'orch/invalid' })
     if (!Array.isArray(references) || references.length > 4) throw Object.assign(new Error('Choose at most four reference sessions'), { code: 'orch/invalid' })
     const sources = []
     for (const ref of references) sources.push(ref?.id
       ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
-    if (handoff) sources.push(...rt.redactDeepSecrets(handoff.artifacts))
-    const input = (brief ? `${brief}\n\n` : '') + (handoff ? rt.renderHandoff({ ...handoff, task: text, artifacts: sources })
-      : [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n'))
+    const input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
     if (!session.briefSent) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {

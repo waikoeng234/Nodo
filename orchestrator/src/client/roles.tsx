@@ -1,7 +1,7 @@
 import type { ReactNode } from './ui-shared.js'
 import {
   h, Fragment, useState, useEffect, useRef, useSyncExternalStore, useStateView, call,
-  Modal, Button, roleStateOf, WARN_INK, layoutService, IconChevronRightOutlineRegular, IconDataOutlineRegular, IconEditOutlineRegular,
+  Modal, Button, roleStateOf, WARN_INK, layoutService, IconChevronRightOutlineRegular, IconChecklistOutlineRegular, IconEditOutlineRegular,
   IconPlusOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
@@ -30,8 +30,7 @@ interface RolesView {
   readOnly?: string | null
 }
 
-// The rail content the roles page publishes while its panel is active, the way
-// the workflow page publishes its own navigation.
+// The rail content the roles page publishes while its panel is active.
 let sidebarContent: { view: 'roles'; content: ReactNode } | null = null
 const sidebarListeners = new Set<() => void>()
 export const rolesSidebarSnapshot = () => sidebarContent
@@ -563,7 +562,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
         <IconUsersOutlineRegular size={16} /><span className="nodo-role-types-label">全部角色</span><span className="nodo-role-types-count">{roles.length}</span>
       </button>
       <button type="button" className="nodo-role-types" aria-pressed={typeOpen} onClick={() => switchTo(() => setTypeOpen(true))}>
-        <IconDataOutlineRegular size={16} /><span className="nodo-role-types-label">任务类型</span><span className="nodo-role-types-count">{types.length}</span>
+        <IconChecklistOutlineRegular size={16} /><span className="nodo-role-types-label">任务类型</span><span className="nodo-role-types-count">{types.length}</span>
       </button>
     </div>
   )

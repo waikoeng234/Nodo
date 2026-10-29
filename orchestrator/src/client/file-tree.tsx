@@ -1,4 +1,4 @@
-import { h, Fragment, IconChevronDownOutlineRegular, IconCodeOutlineRegular, IconFolderOpenOutlineRegular } from './ui-shared.js'
+import { h, Fragment, IconChevronDownOutlineRegular, IconFolderOpenOutlineRegular } from './ui-shared.js'
 import type { ComponentProps, ReactNode } from 'react'
 
 export interface FileTreeNode {
@@ -44,7 +44,7 @@ export function FileTree({ nodes, visibleCount = nodes.length, totalAdditions, t
     {nodes.slice(0, Math.max(0, visibleCount)).map(node => {
       const content = <span className="nodo-file-tree-row" style={{ paddingInlineStart: `${4 + node.depth * 14}px` }}>
         {node.kind === 'folder' ? <><IconChevronDownOutlineRegular size={12} /><IconFolderOpenOutlineRegular size={14} /></>
-          : <span className="nodo-file-tree-icon"><IconCodeOutlineRegular size={14} /></span>}
+          : <span className="nodo-file-tree-icon" aria-hidden />}
         <span className="nodo-file-tree-name" title={node.path}>{node.name}</span>
         {node.kind === 'file' && <span className="nodo-file-tree-counts">
           {!!node.additions && <span className="nodo-file-tree-added">+{node.additions.toLocaleString()}</span>}
@@ -65,7 +65,7 @@ export const FILE_TREE_CSS = `
 .nodo-file-tree-row{display:flex;align-items:center;gap:8px;min-width:0;min-height:30px;padding-block:5px;padding-inline-end:4px;border-radius:var(--dsw-radius-md);color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
 .nodo-file-tree-row>svg{flex:none;color:var(--dsw-alias-label-tertiary)}
 .nodo-file-tree-entry[data-kind=folder]>.nodo-file-tree-row{color:var(--dsw-alias-label-secondary)}
-.nodo-file-tree-icon{display:flex;flex:none;margin-inline-start:12px;color:var(--dsw-alias-label-tertiary)}
+.nodo-file-tree-icon{display:flex;flex:none;width:14px;margin-inline-start:12px;color:var(--dsw-alias-label-tertiary)}
 .nodo-file-tree-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-file-tree-counts{display:inline-flex;flex:none;gap:6px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .nodo-file-tree-added{color:var(--dsw-alias-state-success-primary)}

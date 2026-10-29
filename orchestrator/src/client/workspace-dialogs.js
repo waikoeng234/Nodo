@@ -326,8 +326,8 @@ export function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '删除项目',
     description: workspace.worktree
-      ? `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色、工作树目录和分支会保留；相关任务和工作流需先结束。`
-      : `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色和目录文件会保留；相关任务和工作流需先结束。`,
+      ? `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色、工作树目录和分支会保留；相关任务需先结束。`
+      : `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色和目录文件会保留；相关任务需先结束。`,
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, { key: 'delete', variant: 'outline', className: 'nodo-dialog-danger', disabled: busy, onClick: () => void remove() }, '删除项目'),

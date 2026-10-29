@@ -1,8 +1,8 @@
 import {
   h, Fragment, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore, call,
   Button, CodeBlock, MarkdownText, ImageLightbox, MARKDOWN_LABELS,
-  IconPanelLeftOutlineRegular, IconFolderOpenOutlineRegular, IconCodeOutlineRegular, IconCloseOutlineRegular, IconPlusOutlineRegular,
-  IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconGlobeOutlineRegular, IconBranchOutlineRegular,
+  IconPanelLeftOutlineRegular, IconFolderOpenOutlineRegular, IconFolderCloseRegular, IconApiOutlineRegular, IconCloseOutlineRegular, IconPlusOutlineRegular,
+  IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconGlobeOutlineRegular, IconCompareSplitOutlineRegular,
 } from './ui-shared.js'
 import { ChangesView } from './changes-panel.tsx'
 import type { ChangesSource } from './changes-panel.tsx'
@@ -221,7 +221,7 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
         {state.tabs.map((tab, index) => <div key={tabId(tab)} className="nodo-right-tab" data-active={state.active === tabId(tab) || undefined}>
           <button type="button" role="tab" id={`nodo-right-tab-${tabId(tab)}`} aria-controls={`nodo-right-pane-${tabId(tab)}`}
             aria-selected={state.active === tabId(tab)} tabIndex={state.active === tabId(tab) ? 0 : -1} onClick={() => panel.selectTab(tabId(tab))}>
-            {tab.kind === 'files' ? <IconFolderOpenOutlineRegular size={14} /> : tab.kind === 'changes' ? <IconBranchOutlineRegular size={14} /> : tab.kind === 'browser' ? <IconGlobeOutlineRegular size={14} /> : <IconCodeOutlineRegular size={14} />}{titles[index]}
+            {tab.kind === 'files' ? <IconFolderOpenOutlineRegular size={14} /> : tab.kind === 'changes' ? <IconCompareSplitOutlineRegular size={14} /> : tab.kind === 'browser' ? <IconGlobeOutlineRegular size={14} /> : <IconApiOutlineRegular size={14} />}{titles[index]}
           </button>
           <Button variant="ghost" className="nodo-right-tab-close" aria-label={`关闭${titles[index]}`}
             onClick={() => void panel.closeTab(tabId(tab))} icon={<IconCloseOutlineRegular size={14} />} />
@@ -245,7 +245,7 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
             <IconFolderOpenOutlineRegular size={20} /><span><strong>项目文件</strong>{target.cwd && <small title={target.cwd}>{target.cwd}</small>}</span>
           </button>
           {state.available && <button type="button" className="nodo-right-card" disabled={state.creating} onClick={create}>
-            <IconCodeOutlineRegular size={20} /><span><strong>新建终端</strong>{target.cwd && <small title={target.cwd}>{target.cwd}</small>}</span>
+            <IconApiOutlineRegular size={20} /><span><strong>新建终端</strong>{target.cwd && <small title={target.cwd}>{target.cwd}</small>}</span>
           </button>}
           <button type="button" className="nodo-right-card" onClick={() => panel.newBrowser()}>
             <IconGlobeOutlineRegular size={20} /><span><strong>浏览器</strong></span>
@@ -291,8 +291,8 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
           <button type="button" className="nodo-right-file" style={{ paddingInlineStart: 8 + depth * 14 }}
             aria-expanded={isDir ? !!expanded[child] : undefined} title={child}
             onClick={() => isDir ? setExpanded(current => ({ ...current, [child]: !current[child] })) : setSelected(child)}>
-            {isDir ? <>{expanded[child] ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}<IconFolderOpenOutlineRegular size={14} /></>
-              : <span className="nodo-right-file-icon"><IconCodeOutlineRegular size={14} /></span>}
+            {isDir ? <>{expanded[child] ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}{expanded[child] ? <IconFolderOpenOutlineRegular size={14} /> : <IconFolderCloseRegular size={14} />}</>
+              : <span className="nodo-right-file-icon" aria-hidden />}
             <span>{entry.name}</span>
           </button>
           {isDir && expanded[child] && branch(child, depth + 1)}

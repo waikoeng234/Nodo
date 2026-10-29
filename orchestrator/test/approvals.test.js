@@ -44,12 +44,3 @@ test('cancelling a question whose engine is gone settles without an unhandled re
     assert.deepEqual(rt.approvalsView(), [])
   } finally { process.off('unhandledRejection', record) }
 })
-
-test('workflow questions retain their existing exit and note payload without using the engine reply path', async () => {
-  const requests = []
-  const { rt } = harness(() => { throw new Error('workflow decisions must not answer an engine request') })
-  rt.answerRunRequest = async (id, value) => { requests.push({ id, value }); return true }
-  rt.holdQuestion({ id: 'gate', name: 'Review', question: 'Continue?', detail: { exits: [] } })
-  await rt.answerApproval('gate', { decision: 'answer', exit: 'continue', value: 'keep this note' })
-  assert.deepEqual(requests, [{ id: 'gate', value: { exit: 'continue', text: 'keep this note' } }])
-})

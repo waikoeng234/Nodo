@@ -332,7 +332,7 @@ test('a silent startup only warns unless its driver leaves liveness to the host'
       const { rt, lines, cleanup } = harness()
       const session = { id: 'profile', name: 'Step', briefSent: true }
       const driver = { watchdog, instructionMode: 'native', hasSession: () => true, openSession: async () => {}, sendTurn: async () => {} }
-      Object.assign(rt, { conversation: () => ({ session }), conversationOf: () => ({ session }), admitImages: () => [], renderTask: text => text,
+      Object.assign(rt, { conversation: () => ({ profile: {}, session }), conversationOf: () => ({ profile: {}, session }), admitImages: () => [], renderTask: text => text,
         saveImages: async () => [], prepareConversation: async () => session, ensureDriver: async () => driver, statsRound() {},
         state: { profiles: {} }, sessionsOf: () => [] })
       let interrupted = 0
@@ -360,7 +360,7 @@ const turnHarness = sendTurn => {
   const h = harness()
   const session = { id: 'profile', name: 'Step', briefSent: true }
   const driver = { instructionMode: 'native', hasSession: () => true, openSession: async () => {}, sendTurn }
-  Object.assign(h.rt, { conversation: () => ({ session }), conversationOf: () => ({ session }), admitImages: () => [], renderTask: text => text,
+  Object.assign(h.rt, { conversation: () => ({ profile: {}, session }), conversationOf: () => ({ profile: {}, session }), admitImages: () => [], renderTask: text => text,
     saveImages: async () => [], prepareConversation: async () => session, ensureDriver: async () => driver, statsRound() {}, statsOutput() {},
     state: { profiles: {} }, sessionsOf: () => [] })
   return { ...h, driver }
@@ -394,7 +394,7 @@ test('a late turn start after a startup warning binds and completes the waiting 
     assert.equal(rt.workView().profile.suspect, true)
     assert.equal(outcome, undefined)
     assert.equal(turn, undefined)
-    await assert.rejects(rt.send('profile', 'OTHER', undefined, [], [], undefined, { exclusive: true }), { code: 'orch/busy' })
+    await assert.rejects(rt.send('profile', 'OTHER', undefined, [], [], { exclusive: true }), { code: 'orch/busy' })
     rt.driverSink('profile', { type: 'turn/start', turnId: 'late' })
     assert.equal(await first.turn, 'late')
     assert.equal(rt.workView().profile.suspect, false)
@@ -439,7 +439,7 @@ for (const starting of [false, true]) test(`an explicit stop settles an unrespon
     await tick()
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
     assert.equal(rt.workView().profile.suspect, true)
-    const queued = await rt.send('profile', 'QUEUED', undefined, [], [], undefined, { queue: true })
+    const queued = await rt.send('profile', 'QUEUED', undefined, [], [], { queue: true })
     await rt.interrupt('profile')
     assert.equal((await queued.completion).reason, 'interrupted')
     mock.timers.tick(RUN_LIMITS.cancelConfirmMs - 1)
@@ -461,7 +461,7 @@ for (const starting of [false, true]) test(`an explicit stop settles an unrespon
       rt.driverSink('profile', { type: 'turn/end', turnId: 'T1', reason: 'done', text: 'stale' })
     }
     if (!starting) { late(); await tick(); assert.equal(lines.length, count) }
-    const next = await rt.send('profile', 'NEXT', undefined, [], [], undefined, { exclusive: true })
+    const next = await rt.send('profile', 'NEXT', undefined, [], [], { exclusive: true })
     await tick()
     late()
     await tick()
@@ -472,6 +472,39 @@ for (const starting of [false, true]) test(`an explicit stop settles an unrespon
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T2', reason: 'done' })
     assert.equal((await next.completion).reason, 'done')
   } finally { cleanup(); mock.timers.reset() }
+})
+
+for (const cancellation of ['deadline', 'driver confirmation']) test(`a cancelled startup never sends while ${cancellation} waits for persistence`, async () => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  let open, releaseSave, saving = false, sends = 0, ends = 0
+  const saved = new Promise(resolve => { releaseSave = resolve })
+  const { rt, driver, cleanup } = turnHarness(() => { sends++ })
+  driver.openSession = () => new Promise(resolve => { open = resolve })
+  rt.save = () => { saving = true; return saved }
+  rt.statsEnd = () => { ends++ }
+  rt.interruptDriver = async () => {
+    if (cancellation === 'driver confirmation') rt.driverSink('profile', { type: 'turn/end', reason: 'interrupted' })
+  }
+  try {
+    const placed = await rt.send('profile', 'CANCELLED')
+    await tick()
+    assert.equal(typeof open, 'function')
+    await rt.interrupt('profile')
+    if (cancellation === 'deadline') mock.timers.tick(RUN_LIMITS.cancelConfirmMs)
+    await tick()
+    assert.equal(saving, true)
+    assert.equal(rt.workView().profile.active, true)
+    open()
+    await tick()
+    assert.equal(sends, 0, 'initialization must not send while cancellation is being saved')
+    releaseSave()
+    const outcome = await placed.completion
+    assert.equal(outcome.reason, 'interrupted')
+    assert.equal(outcome.unconfirmed, cancellation === 'deadline' ? true : undefined)
+    assert.equal(await placed.turn, null)
+    assert.equal(rt.workView().profile.active, false)
+    assert.equal(ends, 1)
+  } finally { releaseSave(); cleanup(); mock.timers.reset() }
 })
 
 test('a cancelled startup ignores late starts and keeps the next sequence bound to its own turn', async () => {
@@ -495,7 +528,7 @@ test('a cancelled startup ignores late starts and keeps the next sequence bound 
     await tick()
     assert.equal(rt.workView().profile.active, false)
     assert.equal(lines.length, count, 'a late start cannot revive the cancelled startup or its reply')
-    const next = await rt.send('profile', 'NEXT', undefined, [], [], undefined, { exclusive: true })
+    const next = await rt.send('profile', 'NEXT', undefined, [], [], { exclusive: true })
     assert.equal(await next.turn, 'T2')
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T2', reason: 'done', text: 'New reply' })
     assert.equal((await next.completion).text, 'New reply')
@@ -631,11 +664,11 @@ test('an idle warning keeps completion, queued messages and exclusive occupancy 
   let ends = 0
   rt.statsEnd = () => { ends++ }
   try {
-    const first = await rt.send('profile', 'TASK', undefined, [], [], undefined, { exclusive: true })
+    const first = await rt.send('profile', 'TASK', undefined, [], [], { exclusive: true })
     let outcome, queuedOutcome
     first.completion.then(value => { outcome = value })
     await tick()
-    const queued = await rt.send('profile', 'NEXT', undefined, [], [], undefined, { queue: true })
+    const queued = await rt.send('profile', 'NEXT', undefined, [], [], { queue: true })
     queued.completion.then(value => { queuedOutcome = value })
     assert.equal(queued.mode, 'queued')
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
@@ -649,7 +682,7 @@ test('an idle warning keeps completion, queued messages and exclusive occupancy 
     assert.equal(rt.workView().profile.queued, 1)
     assert.equal(rt.workView().profile.pending.length, 1)
     assert.deepEqual(sent, ['TASK'])
-    await assert.rejects(rt.send('profile', 'EXCLUSIVE', undefined, [], [], undefined, { exclusive: true }), { code: 'orch/busy' })
+    await assert.rejects(rt.send('profile', 'EXCLUSIVE', undefined, [], [], { exclusive: true }), { code: 'orch/busy' })
     const warnings = () => lines.filter(line => line.who === 'system' && line.kind === 'note' && line.text.includes('疑似卡住'))
     assert.equal(warnings().length, 1)
     assert.match(warnings()[0].text, /120 秒.*仍在等待.*手动停止/)

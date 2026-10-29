@@ -137,7 +137,7 @@ export function install(rt) {
         return
       }
       if (busy(session.id) || rt.awaitingAnswer?.(session.id) || rt.isCompacting?.(session.id)) return
-      const placed = await rt.send(lead.id, item.text, session.id, [], item.referenceId ? [{ id: item.referenceId }] : [], undefined,
+      const placed = await rt.send(lead.id, item.text, session.id, [], item.referenceId ? [{ id: item.referenceId }] : [],
         { exclusive: true, brief: leadBrief(lead, session), origin: { kind: 'report', session: item.session, reportId: item.id } })
       await finishReport(session, item)
       return placed
@@ -312,7 +312,7 @@ When finished, report what you changed (paths), what you verified, and what is l
         flight.cancel = null
         if (!resume || flight.stopping) break
         try {
-          const continued = await rt.send(target.id, header + '上一轮因临时故障中断。请检查已完成的工作，从中断处继续完成原任务。', session.id, [], [], undefined,
+          const continued = await rt.send(target.id, header + '上一轮因临时故障中断。请检查已完成的工作，从中断处继续完成原任务。', session.id, [], [],
             { exclusive: true, cancelled: () => flight.stopping, origin: { kind: 'retry' } })
           result = await completedWork(flight, continued)
         } catch (cause) {
@@ -401,7 +401,7 @@ When finished, report what you changed (paths), what you verified, and what is l
       previousDispatch = session.source.dispatch
       flight = begin(state, session, { type: found.id, hard, by: picked.by, task: task.trim().split(/\r?\n/, 1)[0] })
       flight.tracking = true
-      const sent = await rt.send(target.id, header + task, session.id, [], [], undefined, { exclusive: true, files: { paths: attached } })
+      const sent = await rt.send(target.id, header + task, session.id, [], [], { exclusive: true, files: { paths: attached } })
       accepted = true
       session = rt.conversationOf(session.id)?.session ?? session
       delete session.source.pendingReport

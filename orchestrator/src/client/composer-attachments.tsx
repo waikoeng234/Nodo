@@ -1,4 +1,4 @@
-import { h, IconArchiveOutlineRegular, IconBrowseOutlineRegular, IconCheckOutlineRegular, IconPaperclipOutlineRegular } from './ui-shared.js'
+import { h, IconArchiveOutlineRegular, IconCheckOutlineRegular, IconPaperclipOutlineRegular } from './ui-shared.js'
 import type { ComponentProps } from 'react'
 
 export interface ComposerAttachment {
@@ -9,7 +9,7 @@ export interface ComposerAttachment {
   kind?: 'image' | 'text' | 'archive'
 }
 
-const ICONS = { image: IconBrowseOutlineRegular, text: IconPaperclipOutlineRegular, archive: IconArchiveOutlineRegular }
+const ICONS = { image: IconPaperclipOutlineRegular, text: IconPaperclipOutlineRegular, archive: IconArchiveOutlineRegular }
 
 export function composerAttachment(file: { name?: string; mediaType?: string; size?: number }, image = false): ComposerAttachment {
   const name = file.name || (image ? '图片' : '文件')

@@ -1,9 +1,10 @@
 import {
   h, useState, useEffect, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
-  IconBrowseOutlineRegular, IconChevronDownOutlineRegular, IconFlatListOutlineRegular,
+  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconBrowseOutlineRegular, IconThinkOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
-import { transcriptRows, toolRow, MessageTime } from './feed.js'
+import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
+import { StreamingText } from './streaming-text.tsx'
 import { runDuration } from './running.js'
 
 const NODO_BLOCK = /^```nodo[ \t]*\r?\n[\s\S]*?(?:^```[ \t]*$|(?![\s\S]))/gm
@@ -26,35 +27,59 @@ export function roundIndex(view) {
 }
 
 // The lead's transcript as a chat room: each delegation becomes a chip under
-// the lead's message and the executor's own message after it, filled in by the
-// later ended or report marker; the lead's next words get a fresh speaker row.
+// the lead's message and one executor message that parks at the feed's bottom
+// while it runs and lands at its ended or report marker once one arrives, never
+// splitting the lead's turn; a speaker row opens wherever user text or an
+// executor message precedes the lead's next words.
 export function roundLines(lines) {
-  const out = [], steps = new Map()
-  let due = true
+  const out = [], members = [], chips = []
+  const steps = new Map()
+  let at = 0
+  const land = (member, slot) => { member.slot = slot; member.seq = ++at }
   for (const line of lines) {
+    if (line.who === 'user') {
+      out.push(...chips.splice(0))
+      for (const member of members) if (member.hold) { land(member, out.length); member.hold = false }
+    }
     const mark = line.delegation
     if (mark && !mark.ended) {
       const step = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at }
-      steps.set(mark.session, step)
-      out.push({ who: 'system', kind: 'delegate', step }, { who: 'system', kind: 'member', step })
-      due = true
+      const member = { step }
+      steps.set(mark.session, member)
+      members.push(member)
+      chips.push({ who: 'system', kind: 'delegate', step })
       continue
     }
-    const step = steps.get(mark?.session ?? line.origin?.session)
-    if (mark?.ended && step) { Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {}); continue }
-    if (line.origin?.kind === 'report' && step) {
+    const member = steps.get(mark?.session ?? line.origin?.session)
+    const step = member?.step
+    if (mark?.ended && member) {
+      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {})
+      member.hold = true
+      continue
+    }
+    if (line.origin?.kind === 'report' && member) {
       delete step.ended
       delete step.unconfirmed
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
+      land(member, out.length)
+      member.hold = false
     }
     if (line.origin) continue
     const text = line.who === 'agent' && line.kind === 'text' ? stripNodo(line.text) : null
     if (text === '') continue
-    if (line.who === 'user') due = true
-    else if (due && line.kind !== 'usage') { out.push({ who: 'system', kind: 'speaker' }); due = false }
     out.push(text === null ? line : { ...line, text })
   }
-  return out
+  out.push(...chips.splice(0))
+  for (const member of members) if (!member.step.report && (member.hold || !member.step.ended)) land(member, out.length)
+  for (const { step, slot } of [...members].sort((a, b) => b.slot - a.slot || b.seq - a.seq)) out.splice(slot, 0, { who: 'system', kind: 'member', step })
+  const shown = []
+  let due = true
+  for (const line of out) {
+    if (line.who === 'user' || line.kind === 'member') due = true
+    else if (due && line.kind !== 'usage' && line.kind !== 'delegate') { shown.push({ who: 'system', kind: 'speaker' }); due = false }
+    shown.push(line)
+  }
+  return shown
 }
 
 const plainLine = line => line.replace(/^\s*(?:[#>*-]+\s*)+/, '').replaceAll('**', '').trim()
@@ -65,7 +90,8 @@ const reportParts = text => {
 }
 const roleOf = (round, id) => round.profiles.find(role => role.id === id) ?? { id, name: id }
 
-// A reused session has several tasks; keep each delegation's tools in its own row.
+// A reused session has several tasks; keep each delegation's recent output in
+// its own row, the live reply as the newest entry.
 function RoundTools({ step, work }) {
   const [lines, setLines] = useState([])
   useEffect(() => {
@@ -76,9 +102,18 @@ function RoundTools({ step, work }) {
   const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
   const start = lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
   const end = lines.findIndex((line, index) => index >= start && boundary(line))
-  const rows = transcriptRows(lines.slice(start, end < 0 ? undefined : end)).filter(row => row.item.kind === 'tool').slice(-5)
-  return rows.length > 0 && h('div', { className: 'nodo-round-tools' },
-    rows.map(row => toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work: step.ended ? undefined : work, timeline: true })))
+  const rows = transcriptRows(lines.slice(start, end < 0 ? undefined : end))
+    .filter(row => row.item.who !== 'user' && ['text', 'thinking', 'tool'].includes(row.item.kind)).slice(-5)
+  const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? '').trim() !== '' ? work.buffer : null
+  return (rows.length > 0 || buffer !== null) && h('div', { className: 'nodo-round-tools' },
+    rows.map(row => row.item.kind === 'text'
+      ? h('div', { key: row.index, className: 'nodo-round-text' }, h(StreamingText, { text: row.item.text, labels: MARKDOWN_LABELS }))
+      : row.item.kind === 'thinking'
+        ? h(ProcessRow, { key: row.index, kind: 'thinking', variant: { icon: IconThinkOutlineRegular }, timeline: true, title: '思考',
+          summary: (row.item.text ?? '').split('\n')[0].replaceAll('**', '') || null, body: row.item.text ?? '' })
+        : toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work: step.ended ? undefined : work, timeline: true })),
+    buffer !== null && h('div', { key: 'live', className: 'nodo-round-text' },
+      h(StreamingText, { text: buffer, streaming: true, labels: MARKDOWN_LABELS })))
 }
 
 export function RoundSpeaker({ role, running }) {
@@ -89,8 +124,6 @@ export function RoundSpeaker({ role, running }) {
 export function RoundChip({ step, round }) {
   const role = roleOf(round, step.profile)
   return h('span', { className: 'nodo-round-chip' },
-    h('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
-      h('path', { d: 'M5 12h14M13 6l6 6-6 6' })),
     h(RoleAvatar, { profile: role, size: 16 }), `${step.reused ? '继续派给' : '派给'} ${role.name}`)
 }
 
@@ -124,7 +157,7 @@ export function RoundMember({ step, round }) {
           onClick: () => { setStopping(true); void round.onStop(step).finally(() => setStopping(false)) } },
           h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'currentColor', 'aria-hidden': true }, h('rect', { width: 10, height: 10, rx: 2 })), stopping ? '停止中…' : '停止'),
         h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
-          h(IconBrowseOutlineRegular, { size: 14 }), '查看会话')),
+          h(IconRightUpOutlineRegular, { size: 14 }), '查看会话')),
       step.report ? rest
         ? h('button', { type: 'button', className: 'nodo-round-summary', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
           h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
@@ -145,7 +178,7 @@ export function RoundMenu({ members, work, raw, onRaw, onOpen }) {
   const [open, setOpen] = useState(false)
   return h(Menu, {
     open, onClose: () => setOpen(false), portal: true, align: 'end', selectedId: raw ? 'raw' : undefined,
-    items: [{ id: 'raw', label: '完整记录', icon: h(IconFlatListOutlineRegular) },
+    items: [{ id: 'raw', label: '完整记录', icon: h(IconBrowseOutlineRegular) },
       ...members.map(({ role, session }) => {
         const status = workLabel(work?.[session.id])
         return { id: session.id, icon: h(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),

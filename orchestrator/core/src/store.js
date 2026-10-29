@@ -10,8 +10,8 @@ import { normalize } from './text.js'
 import { homeLock } from './home-lock.js'
 import { ensureFallback } from './profiles.js'
 
-const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'stats', 'workflows', 'engineCatalogs', 'prefs']
-const blank = () => ({ version: 2, workspaces: {}, profiles: {}, transcripts: {}, stats: {}, workflows: {}, engineCatalogs: {}, prefs: {}, probe: null, revision: 0 })
+const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'stats', 'engineCatalogs', 'prefs']
+const blank = () => ({ version: 2, workspaces: {}, profiles: {}, transcripts: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null, revision: 0 })
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
 export function install(rt) {
@@ -102,6 +102,7 @@ export function install(rt) {
   const adopt = (saved) => {
     for (const key of Object.keys(state)) delete state[key]
     Object.assign(state, blank(), saved)
+    delete state.workflows
     for (const key of SECTIONS) if (!isRecord(state[key])) state[key] = {}
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
@@ -147,7 +148,12 @@ export function install(rt) {
 
   const restore = async () => {
     await rt.driversReady()
-    adopt(await readSaved())
+    const saved = await readSaved()
+    adopt(saved)
+    if (readOnly() === undefined) {
+      await rm(join(home, 'runs'), { recursive: true, force: true })
+      if (saved && Object.hasOwn(saved, 'workflows')) await save()
+    }
     rt.recoverLeadDelegations?.()
   }
 
@@ -173,9 +179,7 @@ export function install(rt) {
       if (!wasWriter) warn('nodo: the other dsh has closed; this one now saves the Nodo data')
       warnedBlocked = false
       await restore()
-      // Runs the other dsh left unfinished are this one's to recover now.
-      rt.forgetRuns()
-      return rt.recoverRuns()
+      return
     }
     if (wasWriter) warn('nodo: %s', readOnly())
     // A writer turned reader drops what it could not save.
