@@ -13318,6 +13318,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   const roster = [...roles].sort((a, b2) => Number(b2.lead === true) - Number(a.lead === true));
   const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
+  const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
   const ordered = [...view.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
   const scopeOf = (item) => {
     const search = searching ? query.trim().toLocaleLowerCase() : "", archived = archives[item.id] ?? "hide";
@@ -13405,7 +13406,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       item.name,
       item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
       liveIn([item])
-    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id), item), busyNow || team && !roles.length), /* @__PURE__ */ (0, import_react.createElement)(
+    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(draftRole, item), busyNow || team && !roles.length), /* @__PURE__ */ (0, import_react.createElement)(
       import_dsh_client_ui_primitives.Menu,
       {
         open: menuOpen === item.id,
@@ -13493,8 +13494,8 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     setQuery("");
   };
   return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }), dock("Team", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 18 }), { "aria-pressed": team, onClick: team ? void 0 : onTeam }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
-    onClick: () => onNewSession(filterRole?.id ?? profile?.id),
-    disabled: busyNow || !workspace || !!navigation
+    onClick: () => onNewSession(draftRole),
+    disabled: busyNow || !workspace || navigation?.view === "roles" || team && !roles.length
   }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
     "aria-pressed": searching && !navigation,
     onClick: () => {

@@ -143,6 +143,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     && (role.deletedAt || !view.workspaces.some(item => item.id === workspaceId)))
     .sort((a, b) => (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0))
   const filterRole = roles.find(item => item.id === roleFilter) ?? null
+  const draftRole = filterRole?.id ?? (team ? roles.find(role => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id)
   type Entry = (typeof sessions)[number]
   const ordered = [...view.workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   const scopeOf = (item: RailWorkspace) => {
@@ -223,7 +224,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
             item.worktree ? `${item.worktree.branch} · ${item.cwd}` : item.cwd, liveIn([item]))}
           {archived !== 'hide' && <span className="nodo-tree-flag" title={ARCHIVED_VIEWS[archived]}><IconArchiveOutlineRegular size={14} /></span>}
           <span className="nodo-row-actions">
-            {action('新会话', `在“${item.name}”中新建会话`, <IconNewChatOutlineRegular />, () => onNewSession(filterRole?.id ?? (team ? roles.find(role => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id), item), busyNow || (team && !roles.length))}
+            {action('新会话', `在“${item.name}”中新建会话`, <IconNewChatOutlineRegular />, () => onNewSession(draftRole, item), busyNow || (team && !roles.length))}
             <Menu open={menuOpen === item.id} onClose={() => setMenuOpen(null)} portal closeOnPointerLeave selectedId={`archived:${archived}`}
               items={[
                 ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({ id: `archived:${id}`, label,
@@ -283,8 +284,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
       <div className="nodo-rail-dock">
         {dock('主页', <IconFlatListOutlineRegular size={18} />, { 'aria-pressed': !navigation, onClick: navigation ? onSessions : undefined })}
         {dock('Team', <IconSparkleRegular size={18} />, { 'aria-pressed': team, onClick: team ? undefined : onTeam })}
-        {dock('新建会话', <IconNewChatOutlineRegular size={18} />, { onClick: () => onNewSession(filterRole?.id ?? profile?.id),
-          disabled: busyNow || !workspace || !!navigation })}
+        {dock('新建会话', <IconNewChatOutlineRegular size={18} />, { onClick: () => onNewSession(draftRole),
+          disabled: busyNow || !workspace || navigation?.view === 'roles' || (team && !roles.length) })}
         {dock('搜索', <IconSearchOutlineRegular size={18} />, { 'aria-pressed': searching && !navigation,
           onClick: () => { if (navigation) { onSessions(); setSearching(true) } else if (searching) closeSearch(); else setSearching(true) } })}
         {dock('角色', <IconUsersOutlineRegular size={18} />, { 'aria-pressed': navigation?.view === 'roles',

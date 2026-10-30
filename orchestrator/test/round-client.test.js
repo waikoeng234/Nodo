@@ -599,9 +599,33 @@ test('Team rail lists only non-dsh lead sessions and aggregates member state and
   const dockButton = label => render().find(node => node.type === 'button' && node.props['aria-label'] === label)
   assert.deepEqual(['主页', 'Team', '新建会话', '搜索', '角色'].map(dockButton).map(node => node.props['aria-pressed']),
     [false, true, undefined, false, false], 'the dock marks Team pressed inside the team view')
+  assert.equal(dockButton('新建会话').props.disabled, false, 'the Team dock keeps the new-session button clickable')
+  dockButton('新建会话').props.onClick()
+  assert.deepEqual(created, ['lead', 'lead'], 'the dock drafts for the lead role like the project row does')
   dockButton('主页').props.onClick()
   dockButton('搜索').props.onClick()
   assert.deepEqual(switched, ['sessions', 'sessions'], 'leaving Team and searching from it both return to the sessions view')
   render().find(node => node.type === 'Input').props.onChange({ target: { value: 'refresh' } })
   assert.deepEqual(rows().map(row => row.session.id), ['l1'])
+})
+
+test('the dock new-session button locks only on the roles page or a Team without usable leads', async () => {
+  const { Rail, host } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+    primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
+  })
+  const workspace = { id: 'w', name: 'Project' }
+  const view = { workspaces: [workspace], work: {}, profiles: [
+    { id: 'lead', name: 'Lead', lead: true, engine: 'codex', sessions: [] },
+    { id: 'coder', name: 'Coder', sessions: [] },
+  ] }
+  const dock = navigation => {
+    host.reset()
+    return nodes(Rail({ view, workspace, navigation, onNewSession: () => {}, onSessions: () => {} }))
+      .find(node => node.type === 'button' && node.props['aria-label'] === '新建会话')
+  }
+  assert.equal(dock(null).props.disabled, false, 'the home dock stays clickable')
+  assert.equal(dock({ view: 'team' }).props.disabled, false, 'the Team dock stays clickable')
+  assert.equal(dock({ view: 'roles', content: null }).props.disabled, true, 'the roles page keeps the dock locked')
+  view.profiles[0].lead = false
+  assert.equal(dock({ view: 'team' }).props.disabled, true, 'a Team without usable lead roles keeps the dock locked')
 })
