@@ -21,7 +21,7 @@ export function install(rt) {
   const flightOf = id => [...states.values()].find(state => state.running?.session === id)?.running
   const delegationState = (profile, session) => {
     const dispatch = session.source.dispatch
-    const labels = { running: '执行中', done: '已完成', failed: '失败', 'interrupted-lead': '已中断（主控）', 'interrupted-user': '已中断（用户）', unconfirmed: '未确认' }
+    const labels = { queued: '待发送', cancelled: '已取消', running: '执行中', done: '已完成', failed: '失败', 'interrupted-lead': '已中断（主控）', 'interrupted-user': '已中断（用户）', unconfirmed: '未确认' }
     let status = labels[dispatch.status] ?? dispatch.status
     if (dispatch.status === 'running') {
       const live = rt.dispatchWork?.(session.id)
@@ -247,6 +247,10 @@ When finished, report what you changed (paths), what you verified, and what is l
     return result
   }
   const stop = async (state, flight, amend = false) => {
+    if (flight.dispatch) {
+      await cancelDispatch(state, flight)
+      return { reason: 'interrupted' }
+    }
     flight.stoppedBy = 'lead'
     flight.amending = amend
     flight.stopping = true
@@ -401,17 +405,28 @@ When finished, report what you changed (paths), what you verified, and what is l
       previousDispatch = session.source.dispatch
       flight = begin(state, session, { type: found.id, hard, by: picked.by, task: task.trim().split(/\r?\n/, 1)[0] })
       flight.tracking = true
-      const sent = await rt.send(target.id, header + task, session.id, [], [], { exclusive: true, files: { paths: attached } })
+      session.source.dispatch.status = 'queued'
+      flight.dispatch = async () => {
+        delete flight.dispatch
+        session.source.dispatch.status = 'running'
+        let sent
+        try {
+          await rt.save()
+          sent = await rt.send(target.id, header + task, session.id, [], [], { exclusive: true, files: { paths: attached } })
+        } catch (error) {
+          session = end(state, session, flight, { reason: 'error' })
+          return queueReport(lead.id, leadSession, session, { reason: rt.redactDeepSecrets(String(error.message ?? error)) })
+        }
+        return track(lead, leadSession, session, flight, sent, header)
+      }
       accepted = true
       session = rt.conversationOf(session.id)?.session ?? session
       delete session.source.pendingReport
       if (reused) session.source.continued = (session.source.continued ?? 0) + 1
       state.count = (state.count ?? 0) + 1
       await note(leadSession.id, `${reused ? '继续派给' : '已派给'} ${target.name} · ${session.name}（${found.name} · ${hard ? '难题' : '常规'}${picked.by === 'fallback' ? ' · 兜底' : ''}）`,
-        { delegation: { session: session.id, profile: target.id, type: found.id, hard, reused } })
-      const completion = track(lead, leadSession, session, flight, sent, header)
-      void completion.then(next => next ? rt.followLead(lead.id, leadSession.id, next) : flushLeadReports(leadSession.id))
-      return { receipt: { session: session.id, role: target.name, type: found.id, hard, by: picked.by, reused }, completion }
+        { delegation: { session: session.id, profile: target.id, type: found.id, hard, reused, deferred: true } })
+      return { receipt: { session: session.id, role: target.name, type: found.id, hard, by: picked.by, reused, message: '已受理，本轮结束后发送' } }
     } catch (error) {
       if (flight && accepted) {
         session = end(state, session, flight, { reason: 'error', unconfirmed: true })
@@ -478,12 +493,36 @@ When finished, report what you changed (paths), what you verified, and what is l
   }
   const followLead = async (profileId, sessionId, placed) => {
     try {
-      if (placed.mode === 'turn' || placed.mode === 'queued') await placed.completion
-    } catch (error) { rt.warn('nodo: lead follow failed (%s): %s', sessionId, error.message ?? error) }
+      if (placed.mode === 'turn' || placed.mode === 'queued') {
+        const result = await placed.completion
+        const state = stateOf(sessionId), flight = state.running
+        if (flight?.dispatch) {
+          if (result.reason === 'done' && !result.unconfirmed) {
+            void flight.dispatch().then(next => next ? rt.followLead(profileId, sessionId, next) : flushLeadReports(sessionId))
+          } else await cancelDispatch(state, flight)
+        }
+      }
+    } catch (error) {
+      const state = stateOf(sessionId)
+      if (state.running?.dispatch) await cancelDispatch(state, state.running)
+      rt.warn('nodo: lead follow failed (%s): %s', sessionId, error.message ?? error)
+    }
     finally { void flushLeadReports(sessionId) }
   }
+  const cancelDispatch = async (state, flight) => {
+    delete flight.dispatch
+    const session = end(state, rt.conversationOf(flight.session)?.session, flight, { reason: 'cancelled' })
+    if (session) {
+      session.source.dispatch.status = 'cancelled'
+      delete session.source.pendingReport
+      await note(session.source.leadSessionId, '', { delegation: { session: session.id, ended: 'cancelled' } })
+    }
+  }
   rt.ctx.effect(() => () => {
-    for (const { running } of states.values()) if (running?.waiting) running.cancel()
+    for (const state of states.values()) {
+      if (state.running?.dispatch) void cancelDispatch(state, state.running)
+      else if (state.running?.waiting) state.running.cancel()
+    }
   }, 'nodo: lead retry timers')
 
   Object.assign(rt, {
@@ -502,6 +541,9 @@ When finished, report what you changed (paths), what you verified, and what is l
     recoverLeadDelegations: () => {
       if (rt.readOnly?.()) return
       for (const profile of Object.values(rt.state.profiles)) for (const session of profile.sessions ?? []) {
+        if (session.source?.dispatch?.status === 'queued' && !flightOf(session.id)) {
+          void cancelDispatch(stateOf(session.source.leadSessionId), { session: session.id, settle() {} })
+        }
         if (session.source?.dispatch?.status === 'running' && !flightOf(session.id)) {
           Object.assign(session.source.dispatch, { status: 'unconfirmed', reason: 'restart', endedAt: Date.now() })
           session.source.pendingReport ??= { id: randomUUID() }

@@ -10,7 +10,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 
 test('roundLines turns the lead transcript into a chat of speaker rows, delegation chips and one message per executor', async () => {
   const { roundLines } = await loadClient('round.js')
-  const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: false }
+  const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: false, deferred: true }
   const tester = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const lines = [
     { who: 'user', kind: 'text', text: 'Fix the login', at: 1 },
@@ -32,7 +32,7 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   ]
   const shown = plain(roundLines(lines))
   assert.deepEqual(shown.map(line => ['speaker', 'delegate', 'member', 'usage'].includes(line.kind) ? line.kind : line.text), [
-    'Fix the login', 'speaker', 'Plan', 'Delegating', 'delegate', 'member', 'speaker', 'boom', '执行未完成：gone', 'delegate', 'member',
+    'Fix the login', 'speaker', 'Plan', 'Delegating', 'delegate', 'member', 'speaker', 'boom', 'delegate', 'member', 'speaker', '执行未完成：gone',
     '进度如何？', 'speaker', 'Resuming the tester.', 'usage', 'delegate', 'member'])
   assert.deepEqual(shown.filter(line => line.kind === 'member').map(line => line.step), [
     { ...coder, at: 9, report: '## Fixed the refresh race\nDetails' },
@@ -45,7 +45,7 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   assert.deepEqual(plain(roundLines(unmarked)).filter(line => line.kind !== 'speaker'), plain(unmarked))
 })
 
-test('a running executor message parks at the bottom and the lead\'s turn stays one speaker segment', async () => {
+test('accepted delegations keep chips in order and executors follow the completed lead turn', async () => {
   const { roundLines } = await loadClient('round.js')
   const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false }
   const tester = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
@@ -56,30 +56,30 @@ test('a running executor message parks at the bottom and the lead\'s turn stays 
     { who: 'agent', kind: 'text', text: 'Meanwhile, here is the plan', at: 4, reply: true },
   ]
   const shape = shown => shown.map(line => ['speaker', 'delegate', 'member'].includes(line.kind) ? line.kind : line.text)
-  assert.deepEqual(shape(plain(roundLines(turn))), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member'],
-    'the chip closes the lead\'s turn above the parked executor')
+  assert.deepEqual(shape(plain(roundLines(turn))), ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member'],
+    'the chip stays at acceptance and the executor follows the completed lead text')
   const reported = plain(roundLines([...turn,
     { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 9,
       references: [{ messages: [{ text: 'Done' }] }] }]))
-  assert.deepEqual(shape(reported), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member'],
-    'a report keeps the two-segment shape and the member lands below the chip at its marker')
+  assert.deepEqual(shape(reported), ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member'],
+    'a report updates the executor after the completed lead text')
   const followup = plain(roundLines([...turn,
     { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 9,
       references: [{ messages: [{ text: 'Done' }] }] },
     { who: 'agent', kind: 'text', text: 'Great, shipping next', at: 10 },
     { who: 'system', kind: 'note', text: '已派给 Tester', delegation: tester, at: 11 }]))
   assert.deepEqual(shape(followup),
-    ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member', 'speaker', 'Great, shipping next', 'delegate', 'member'],
+    ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member', 'speaker', 'Great, shipping next', 'delegate', 'member'],
     'the lead\'s next turn opens below the reported member while the second executor keeps the bottom')
   const ended = plain(roundLines([...turn,
     { who: 'system', kind: 'note', text: '执行未完成', delegation: { session: 'e1', ended: 'interrupted', unconfirmed: true } },
     { who: 'agent', kind: 'text', text: 'Wrapping up anyway', at: 8 }]))
-  assert.deepEqual(shape(ended), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'Wrapping up anyway', 'delegate', 'member'],
-    'an ended member waits for the turn to close and lands below its chip')
+  assert.deepEqual(shape(ended), ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member', 'speaker', 'Wrapping up anyway'],
+    'an ended member stays before the next lead words')
   assert.equal(ended.find(line => line.kind === 'member').step.ended, 'interrupted')
 })
 
-test('members sharing an insertion point keep their dispatch or report order', async () => {
+test('executor messages follow acceptance order', async () => {
   const { roundLines } = await loadClient('round.js')
   const mark = (session, profile) => ({ session, profile, type: 'bug-fix', hard: false, reused: false })
   const running = plain(roundLines([
@@ -90,7 +90,7 @@ test('members sharing an insertion point keep their dispatch or report order', a
     { who: 'agent', kind: 'text', text: 'done', at: 5 },
   ]))
   assert.deepEqual(running.map(line => ['speaker', 'delegate', 'member'].includes(line.kind) ? line.kind : line.text),
-    ['go', 'speaker', 'a', 'done', 'delegate', 'delegate', 'member', 'member'], 'both chips close the lead segment above the parked executors')
+    ['go', 'speaker', 'a', 'delegate', 'delegate', 'done', 'member', 'member'], 'chips retain their acceptance positions')
   assert.deepEqual(running.filter(line => line.kind === 'member').map(line => line.step.session), ['e1', 'e2'],
     'the bottom executors follow the dispatch order')
   const reported = plain(roundLines([
@@ -152,6 +152,7 @@ test('an executor message shows its role, tags and state, expands the rest of it
   assert.equal(head(ended), 'Tester|测试|已中断|查看会话')
   assert.equal(text(ended.find(node => node.props.className === 'nodo-round-quiet')), '没有回报主控，可查看会话了解进度。')
   assert.equal(head(view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done' })), 'Tester|测试|已结束|查看会话')
+  assert.equal(head(view({ session: 'e6', profile: 'tester', type: 'test', ended: 'cancelled' })), 'Tester|测试|已取消|查看会话')
   const stopped = []
   round.onStop = async step => { stopped.push(step.session) }
   round.work.e2.suspect = true
@@ -255,6 +256,11 @@ test('automatic continuation tools stay in their delegation window', async () =>
   assert.deepEqual(tools().children.map(row => row.props.summary), ['Original work', 'Continued work'])
   step.at = 13
   assert.deepEqual(tools().children.map(row => row.props.summary), ['Reused task', 'Continued reused task'])
+  step.deferred = true
+  step.at = 9
+  assert.deepEqual(tools().children.map(row => row.props.summary), ['Reused task', 'Continued reused task'])
+  step.at = 22
+  assert.equal(tools(), false, 'accepted work shows no output from the previous task before it is sent')
 })
 
 test('executor tool records remain visible after interruption and stay within their delegation', async () => {
@@ -295,16 +301,12 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
   assert.deepEqual(tree.filter(node => node.type === RoundSpeaker).map(node => [node.props.role, node.props.running]),
     [[profile, true]], 'the streaming reply continues the lead\'s segment, whose speaker shows the run')
   assert.equal(tree.filter(node => node.type === RoundChip).length, 1)
-  assert.equal(tree.find(node => node.type === RoundMember).props.step.session, 'e1')
+  assert.equal(tree.find(node => node.type === RoundMember), undefined, 'accepted work has no executor card during the lead turn')
   assert.equal(tree.find(node => node.props.className === 'nodo-reply').children[0].props.text, 'On it')
   const reply = tree.filter(node => node.props.className === 'nodo-reply').at(-1)
-  assert.ok(tree.indexOf(reply) < tree.indexOf(tree.find(node => node.type === RoundChip)),
-    'the delegation chip follows the streaming lead reply')
-  assert.ok(tree.indexOf(tree.find(node => node.type === RoundChip)) < tree.indexOf(tree.find(node => node.type === RoundMember)),
-    'the chip sits between the streaming turn and the parked executor')
-  assert.ok(tree.indexOf(reply) < tree.indexOf(tree.find(node => node.type === RoundMember)),
-    'the streaming lead reply renders above the parked executor')
+  assert.ok(tree.indexOf(tree.find(node => node.type === RoundChip)) < tree.indexOf(reply), 'acceptance stays before the remaining lead output')
   const idle = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: false }, round }))
+  assert.equal(idle.find(node => node.type === RoundMember).props.step.session, 'e1')
   assert.equal(idle.filter(node => node.type === MessageTime).length, 2, 'the user bubble and the finished lead reply carry the only times')
   assert.equal(idle.find(node => node.type === RoundSpeaker).props.running, false)
   const plainFeed = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: false } }))

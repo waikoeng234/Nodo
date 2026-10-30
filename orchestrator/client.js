@@ -12339,7 +12339,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
   (0, import_react.useEffect)(() => {
     setFollowing(true);
   }, [sentTick]);
-  const source = round ? roundLines(feed.lines) : feed.lines;
+  const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines;
   const shown = profile.lead === true ? source.filter((line2) => line2.kind !== "usage") : source;
   const turns = [];
   for (const [index, item] of shown.entries()) {
@@ -12387,16 +12387,10 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
     } else if (replyEnds.has(index)) stamp = index;
     else if (item.kind === "usage" && usageAt === null) usageAt = index;
   }
-  let tail = lines.length;
-  while (tail > 0 && lines[tail - 1].kind === "member" && !lines[tail - 1].step.report && !lines[tail - 1].step.ended) tail -= 1;
-  const speakerDue = round && (tail === 0 || lines[tail - 1].who === "user" || lines[tail - 1].kind === "member");
+  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === "user" || lines.at(-1).kind === "member");
   const lastSpeaker = lines.findLastIndex((item) => item.kind === "speaker");
   const rows = transcriptRows(lines).filter((row) => row.item.kind !== "changes" || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser));
-  const mainRows = rows.filter((row) => row.index < tail);
-  const tailRows = rows.filter((row) => row.index >= tail);
-  const chipRows = [];
-  if (round) while (mainRows.at(-1)?.item.kind === "delegate") chipRows.unshift(mainRows.pop());
-  const newest = mainRows.length - 1;
+  const newest = rows.length - 1;
   const line = (row, position, timeline = false) => {
     const { item, index } = row;
     if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
@@ -12506,7 +12500,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
           { className: "nodo-note nodo-feed-empty" },
           `\u8FD8\u6CA1\u6709\u6D88\u606F\u3002\u7ED9\u300C${profile.name}\u300D\u53D1\u4E00\u6761\u4EFB\u52A1\uFF0C\u4E00\u6761\u6D88\u606F\u5373\u4E00\u4E2A\u4EFB\u52A1\u3002`
         ),
-        ...processBlocks(mainRows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
+        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
           ProcessGroup,
           {
             key: block.rows[0].row.index,
@@ -12521,9 +12515,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
           "div",
           { className: "nodo-reply", "data-flow": "response" },
           (0, import_react.createElement)(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })
-        ),
-        ...chipRows.map((row) => line(row, row.index)),
-        ...tailRows.map((row) => line(row, row.index))
+        )
       )
     ),
     (0, import_react.createElement)(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
@@ -13013,53 +13005,39 @@ function roundIndex(view) {
   for (const list of members.values()) list.sort((a, b2) => (a.session.createdAt ?? 0) - (b2.session.createdAt ?? 0));
   return { lead, members };
 }
-function roundLines(lines) {
-  const out = [], members = [], chips = [];
+function roundLines(lines, leadRunning = false) {
+  const out = [], members = [];
   const steps = /* @__PURE__ */ new Map();
-  let at2 = 0;
-  const land = (member, slot) => {
-    member.slot = slot;
-    member.seq = ++at2;
-  };
+  const flush = () => out.push(...members.splice(0).map((step) => ({ who: "system", kind: "member", step })));
   for (const line of lines) {
-    if (line.who === "user") {
-      out.push(...chips.splice(0));
-      for (const member2 of members) if (member2.hold) {
-        land(member2, out.length);
-        member2.hold = false;
-      }
-    }
+    if (line.who === "user") flush();
     const mark = line.delegation;
     if (mark && !mark.ended) {
       const step2 = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at };
-      const member2 = { step: step2 };
-      steps.set(mark.session, member2);
-      members.push(member2);
-      chips.push({ who: "system", kind: "delegate", step: step2 });
+      if (mark.deferred) step2.deferred = true;
+      steps.set(mark.session, step2);
+      members.push(step2);
+      out.push({ who: "system", kind: "delegate", step: step2 });
       continue;
     }
-    const member = steps.get(mark?.session ?? line.origin?.session);
-    const step = member?.step;
-    if (mark?.ended && member) {
+    const step = steps.get(mark?.session ?? line.origin?.session);
+    if (mark?.ended && step) {
       Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {});
-      member.hold = true;
+      flush();
       continue;
     }
-    if (line.origin?.kind === "report" && member) {
+    if (line.origin?.kind === "report" && step) {
       delete step.ended;
       delete step.unconfirmed;
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
-      land(member, out.length);
-      member.hold = false;
+      flush();
     }
     if (line.origin) continue;
     const text = line.who === "agent" && line.kind === "text" ? stripNodo(line.text) : null;
     if (text === "") continue;
     out.push(text === null ? line : { ...line, text });
   }
-  out.push(...chips.splice(0));
-  for (const member of members) if (!member.step.report && (member.hold || !member.step.ended)) land(member, out.length);
-  for (const { step, slot } of [...members].sort((a, b2) => b2.slot - a.slot || b2.seq - a.seq)) out.splice(slot, 0, { who: "system", kind: "member", step });
+  if (!leadRunning) flush();
   const shown = [];
   let due = true;
   for (const line of out) {
@@ -13092,9 +13070,9 @@ function RoundTools({ step, work }) {
     };
   }, [step.session, step.at, work?.active === true ? work : null]);
   const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
-  const start = lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
+  const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
   const end = lines.findIndex((line, index) => index >= start && boundary(line));
-  const rows = transcriptRows(lines.slice(start, end < 0 ? void 0 : end)).filter((row) => row.item.who !== "user" && ["text", "thinking", "tool"].includes(row.item.kind)).slice(-5);
+  const rows = transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? void 0 : end)).filter((row) => row.item.who !== "user" && ["text", "thinking", "tool"].includes(row.item.kind)).slice(-5);
   const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? "").trim() !== "" ? work.buffer : null;
   return (rows.length > 0 || buffer !== null) && (0, import_react.createElement)(
     "div",
@@ -13162,7 +13140,7 @@ function RoundMember({ step, round }) {
         tag(round.taskTypes?.find((item) => item.id === step.type)?.name ?? step.type),
         step.hard && tag("\u96BE\u9898", "caution"),
         step.reused && tag("\u7EED\u7528", "accent"),
-        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
+        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.ended === "cancelled" ? "\u5DF2\u53D6\u6D88" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
         live && round.onStop && (0, import_react.createElement)(
           "button",
           {

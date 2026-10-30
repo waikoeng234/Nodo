@@ -57,6 +57,8 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt'])
     assert.equal(tools[0].annotations.readOnlyHint, true)
     assert.deepEqual(tools[1].inputSchema.required, ['type', 'hard', 'task'])
+    assert.match(tools[1].description, /本轮正常结束后发送/)
+    assert.match(tools[1].description, /停止或出错则取消/)
     assert.deepEqual(tools[2].inputSchema.required, ['session'])
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
     assert.match(board.content[0].text, /派活/)

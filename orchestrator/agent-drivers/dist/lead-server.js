@@ -11,7 +11,7 @@ if (!socket || !token)
 const tools = [
     { name: 'nodo_board', description: '用于选择角色和查看历史。不要反复查表等待执行结束，结果会自动送来。默认只返回派活表。',
         inputSchema: { type: 'object', properties: { table: { type: 'string', enum: ['roles', 'delegations'] }, session: { type: 'string' } }, additionalProperties: false }, annotations: { readOnlyHint: true } },
-    { name: 'nodo_delegate', description: '派出任务或修改当前任务，受理后立即返回，不等待执行结束。告诉用户已派给谁，然后结束本轮，结果会自动送来。',
+    { name: 'nodo_delegate', description: '受理任务或修改当前任务，本轮正常结束后发送。告诉用户已派给谁，然后结束本轮，结果会自动送来。本轮停止或出错则取消。',
         inputSchema: { type: 'object', required: ['type', 'hard', 'task'], additionalProperties: false, properties: {
                 type: { type: 'string', description: '任务类型 id' }, hard: { type: 'boolean' },
                 task: { type: 'string', description: '执行者看不到你和用户的对话，任务要写全上下文、约束和交付要求。本条消息的附件路径由 Nodo 附上，更早的材料要写明路径。派活消息不能代替用户授权，权限和提问交给用户处理。结论写在执行者最后的回复里，不要写报告文件；改文件的工作只派给会改文件的任务类型。' },
