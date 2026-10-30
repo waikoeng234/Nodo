@@ -14535,7 +14535,7 @@ function Field({ label, children, group = false, required = false }) {
     children
   );
 }
-function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason, deleteHint }) {
+function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason }) {
   const lead = profile?.lead === true;
   const saved = !lead && Array.isArray(savedIdentities) ? savedIdentities : [];
   const presets = role_presets_default.filter((item) => item.name === "leader" === lead);
@@ -14821,7 +14821,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
       confirming && (0, import_react.createElement)(
         "div",
         { className: "nodo-role-confirm-row", role: "alert" },
-        (0, import_react.createElement)("p", { className: "nodo-role-confirm" }, `\u5C06\u5220\u9664\u89D2\u8272\u201C${profile.name}\u201D\uFF0C\u5176 ${sessions} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002${deleteHint ?? ""}`),
+        (0, import_react.createElement)("p", { className: "nodo-role-confirm" }, `\u5C06\u5220\u9664\u89D2\u8272\u201C${profile.name}\u201D\uFF0C\u5176 ${sessions} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`),
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", disabled, onClick: () => setConfirming(false) }, "\u53D6\u6D88"),
         (0, import_react.createElement)(
           import_dsh_client_ui_primitives.Button,
@@ -16039,15 +16039,14 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
 }
 
 // core/shared/route.js
-var route = ({ type, hard }, roster, fallback) => {
+var route = ({ type, hard }, roster) => {
   const accepting = roster.filter((profile2) => profile2.taskTypes?.includes(type));
-  if (!accepting.length) return fallback ? { profile: fallback, choices: hard && fallback.hard ? fallback.hard : {}, by: "fallback" } : { miss: true };
   if (hard) {
     const profile2 = accepting.find((profile3) => profile3.hard !== void 0);
-    return profile2 ? { profile: profile2, choices: profile2.hard, by: "route" } : { miss: true };
+    return profile2 ? { profile: profile2, choices: profile2.hard } : { miss: true };
   }
   const profile = accepting.find((profile2) => profile2.hard === void 0) ?? accepting[0];
-  return profile ? { profile, choices: {}, by: "route" } : { miss: true };
+  return profile ? { profile, choices: {} } : { miss: true };
 };
 
 // src/client/roles.tsx
@@ -16467,7 +16466,7 @@ function RolesPage({ view, readOnly, refresh }) {
   );
   const takesCell = (role, locked) => {
     const ids = role.taskTypes ?? [];
-    const labels = [...ids.map(typeNameOf), ...leads.length && role.fallback ? ["\u515C\u5E95"] : []];
+    const labels = ids.map(typeNameOf);
     const open = takesOpen === role.id;
     const saving = locked || Object.hasOwn(pendingHard, role.id) || Object.hasOwn(pendingTypes, role.id);
     const catalog = engines?.find((item) => item.id === role.engine)?.catalog;
@@ -16502,18 +16501,6 @@ function RolesPage({ view, readOnly, refresh }) {
         }
       },
       types.map((type) => /* @__PURE__ */ (0, import_react.createElement)("label", { key: type.id, className: "nodo-roles-takes-option", title: type.when || void 0 }, /* @__PURE__ */ (0, import_react.createElement)("input", { type: "checkbox", checked: ids.includes(type.id ?? ""), disabled: saving, onChange: () => void toggleType(role, type.id ?? "") }), type.name)),
-      leads.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-roles-takes-option" }, /* @__PURE__ */ (0, import_react.createElement)(
-        "input",
-        {
-          type: "checkbox",
-          "aria-label": "\u515C\u5E95",
-          checked: role.fallback === true,
-          disabled: saving || role.fallback === true,
-          onChange: () => void perform(async () => {
-            await call("profile-update", { id: role.id, changes: { fallback: true } });
-          })
-        }
-      ), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u515C\u5E95", /* @__PURE__ */ (0, import_react.createElement)("small", null, "\u6CA1\u6709\u89D2\u8272\u627F\u63A5\u7684\u4EFB\u52A1\u4EA4\u7ED9\u5B83"))),
       /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-hard-settings" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-roles-takes-option" }, /* @__PURE__ */ (0, import_react.createElement)(
         "input",
         {
@@ -16649,17 +16636,14 @@ function RolesPage({ view, readOnly, refresh }) {
       roleActions(role, held, locked)
     );
   };
-  const fallback = executors.find((role) => role.fallback === true);
   const plan = types.map((type) => ({
     type,
-    routine: route({ type: type.id, hard: false }, executors, fallback),
-    hard: route({ type: type.id, hard: true }, executors, fallback)
+    routine: route({ type: type.id, hard: false }, executors),
+    hard: route({ type: type.id, hard: true }, executors)
   }));
   const routineGaps = plan.filter((row) => row.routine.miss).map((row) => row.type.name).join("\u3001");
   const hardGaps = plan.filter((row) => !row.routine.miss && row.hard.miss).map((row) => row.type.name).join("\u3001");
-  const fallbackTypes = plan.filter((row) => row.routine.by === "fallback").map((row) => row.type.name);
   const deleteReason = (role) => leads.length > 0 && role.lead !== true && executors.length === 1 ? "\u4E3B\u63A7\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : void 0;
-  const deleteHint = (role) => leads.length > 0 && role.fallback && executors.some((item) => item.id !== role.id) ? `\u515C\u5E95\u5C06\u8F6C\u7ED9\u300C${executors.find((item) => item.id !== role.id)?.name}\u300D\u3002` : void 0;
   const overview = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-overview" }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-roles-head" }, /* @__PURE__ */ (0, import_react.createElement)("h1", null, "\u89D2\u8272")), /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-leads" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-leads" }, "\u4E3B\u63A7"), createKind !== "lead" && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -16691,7 +16675,7 @@ function RolesPage({ view, readOnly, refresh }) {
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }),
     "\u6DFB\u52A0\u89D2\u8272"
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6743\u9650"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), createKind === "executor" && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)))), leads.length > 0 && (routineGaps || hardGaps || fallbackTypes.length > 0) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-gap-note", role: "status" }, /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 3 2 21h20L12 3Z" }), /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 9v5m0 3v1" })), /* @__PURE__ */ (0, import_react.createElement)("div", null, routineGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${routineGaps}\u6CA1\u6709\u89D2\u8272\u627F\u63A5`), fallbackTypes.map((name) => /* @__PURE__ */ (0, import_react.createElement)("p", { key: name }, `${name}\u6CA1\u6709\u89D2\u8272\u627F\u63A5\uFF0C\u7531\u300C${fallback?.name}\u300D\u515C\u5E95`)), hardGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${hardGaps}\u6CA1\u6709\u53EF\u63A5\u96BE\u9898\u7684\u89D2\u8272`))));
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6743\u9650"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), createKind === "executor" && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)))), leads.length > 0 && (routineGaps || hardGaps) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-gap-note", role: "status" }, /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 3 2 21h20L12 3Z" }), /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 9v5m0 3v1" })), /* @__PURE__ */ (0, import_react.createElement)("div", null, routineGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${routineGaps}\u6CA1\u6709\u89D2\u8272\u627F\u63A5`), hardGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${hardGaps}\u6CA1\u6709\u53EF\u63A5\u96BE\u9898\u7684\u89D2\u8272`))));
   const sidebar = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-nav", role: "navigation", "aria-label": "\u89D2\u8272" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": !typeOpen, onClick: () => switchTo(showOverview) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, roles.length)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": typeOpen, onClick: () => switchTo(() => setTypeOpen(true)) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChecklistOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u4EFB\u52A1\u7C7B\u578B"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, types.length)));
   (0, import_react.useEffect)(() => {
     rolesPublishSidebar({ view: "roles", content: sidebar });
@@ -16714,7 +16698,6 @@ function RolesPage({ view, readOnly, refresh }) {
       key: `${selected.id}:${nonce}`,
       profile: selected,
       deleteReason: deleteReason(selected),
-      deleteHint: deleteHint(selected),
       enabledEngines: view.prefs?.enabledEngines ?? null,
       savedIdentities: view.prefs?.rolePresets ?? null,
       refresh,
@@ -16753,7 +16736,7 @@ function RolesPage({ view, readOnly, refresh }) {
       },
       "\u5220\u9664\u89D2\u8272"
     )
-  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, `\u5C06\u5220\u9664\u89D2\u8272\u201C${deleting.name}\u201D\uFF0C\u5176 ${deleting.sessions?.filter((session) => !session.draftedAt || session.briefSent).length ?? 0} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`), deleteHint(deleting) && /* @__PURE__ */ (0, import_react.createElement)("p", null, deleteHint(deleting))));
+  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, `\u5C06\u5220\u9664\u89D2\u8272\u201C${deleting.name}\u201D\uFF0C\u5176 ${deleting.sessions?.filter((session) => !session.draftedAt || session.briefSent).length ?? 0} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`)));
 }
 function RolesEntry() {
   const { view, error, refresh } = useStateView();

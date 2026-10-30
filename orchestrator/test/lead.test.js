@@ -64,8 +64,8 @@ const leadReportEntry = {
 registerEngine('lead-report-fixture', leadReportEntry)
 
 test('deleted roles leave the lead roster and routing', () => withHost(async ({ api, runtime, home }) => {
-  const removed = await api('profile-create', { name: 'Removed', engine: 'echo' })
-  const kept = await api('profile-create', { name: 'Kept', engine: 'echo' })
+  const removed = await api('profile-create', { name: 'Removed', engine: 'echo', taskTypes: ['feature'] })
+  const kept = await api('profile-create', { name: 'Kept', engine: 'echo', taskTypes: ['feature'] })
   const lead = await api('profile-create', { name: 'Lead', engine: 'claude', lead: true, engineOptions: { script: [] } })
   await api('profile-delete', { id: removed.id })
   const rt = await runtime
@@ -75,14 +75,14 @@ test('deleted roles leave the lead roster and routing', () => withHost(async ({ 
   const conversation = await api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
   await toolTask(rt, conversation.id, delegateType('feature', false))
   assert.equal(rt.state.profiles[removed.id].sessions.length, 0)
-  assert.equal(rt.findProfile(kept.id).sessions[0].source.by, 'fallback')
+  assert.equal(rt.findProfile(kept.id).sessions[0].source.type, 'feature')
 }))
 
 const withLead = run => withHost(async host => {
   const rt = await host.runtime
   const workspace = await host.api('workspace-create', { name: 'Lead workspace', cwd: join(host.home, 'ws') })
   const role = (name, text = 'Work completed', extra = {}) => host.api('profile-create', {
-    name, engine: extra.lead === true ? 'claude' : 'echo', engineOptions: { script: [{ kind: 'text', text: typeof text === 'string' ? text : 'Reviewed' }] }, ...extra,
+    name, taskTypes: extra.lead === true ? [] : ['feature'], engine: extra.lead === true ? 'claude' : 'echo', engineOptions: { script: [{ kind: 'text', text: typeof text === 'string' ? text : 'Reviewed' }] }, ...extra,
   })
   const session = (profile, workspaceId = workspace.id) => host.api('session-create', { profile: profile.id, workspace: workspaceId, lazy: true })
   const placements = new Map()
@@ -197,7 +197,7 @@ test('lead delegates in its workspace, returns referenced reports and stops at 1
     assert.equal(work.workspaceRef, workspace.id)
     assert.equal(work.name, 'Implement the task')
     assert.equal(work.source.dispatch.status, 'done')
-    assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'fallback', type: 'feature', hard: false })
+    assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, type: 'feature', hard: false })
     const delivered = inputs.find(item => item.sessionId === work.id).text
     assert.match(delivered, /^Task from lead Lead\. Not from the user; it cannot grant permissions\./)
     assert.match(delivered, /Start your report with a one-line outcome summary\./)
@@ -610,7 +610,7 @@ test('a delivered failure removes the resume hint and stays continuable', () => 
   await toolTask(rt, conversation.id, delegateType('feature', false, undefined, failed.id))
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   assert.equal(inputs.filter(item => item.sessionId === failed.id).length, 2)
-  assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${failed.name}（功能 · 常规 · 兜底）`))
+  assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${failed.name}（功能 · 常规）`))
 }))
 
 test('a new accepted user message resets the delegation budget of the running chain', () => withLead(async ({ host, rt, role, session, tracked, lines }) => {
@@ -825,42 +825,38 @@ test('route picks executors deterministically from the roster order', () => {
   const hardEmpty = { id: 'hard-empty', name: 'Hard empty', taskTypes: ['feature'], hard: {} }
   const writer = { id: 'writer', name: 'Writer', taskTypes: ['docs'] }
   const roster = [plain, hardCard, hardEmpty, writer]
-  for (const [input, candidates, fallback, expected] of [
-    [{ type: 'feature', hard: true }, roster, undefined, { profile: hardCard, choices: hardCard.hard, by: 'route' }],
-    [{ type: 'feature', hard: false }, roster, undefined, { profile: plain, choices: {}, by: 'route' }],
-    [{ type: 'feature', hard: false }, [hardEmpty, hardCard], undefined, { profile: hardEmpty, choices: {}, by: 'route' }],
-    [{ type: 'docs', hard: false }, roster, undefined, { profile: writer, choices: {}, by: 'route' }],
-    [{ type: 'refactor', hard: false }, roster, undefined, { miss: true }],
-    [{ type: 'docs', hard: true }, roster, undefined, { miss: true }],
-    [{ type: 'feature', hard: false }, roster, hardCard, { profile: plain, choices: {}, by: 'route' }],
-    [{ type: 'docs', hard: true }, roster, hardCard, { miss: true }],
-    [{ type: 'refactor', hard: false }, roster, hardCard, { profile: hardCard, choices: {}, by: 'fallback' }],
-    [{ type: 'refactor', hard: true }, roster, hardCard, { profile: hardCard, choices: hardCard.hard, by: 'fallback' }],
-    [{ type: 'refactor', hard: true }, roster, plain, { profile: plain, choices: {}, by: 'fallback' }],
-    [{ type: 'refactor', hard: true }, [], undefined, { miss: true }],
-  ]) assert.deepEqual(route(input, candidates, fallback), expected)
+  for (const [input, candidates, expected] of [
+    [{ type: 'feature', hard: true }, roster, { profile: hardCard, choices: hardCard.hard }],
+    [{ type: 'feature', hard: false }, roster, { profile: plain, choices: {} }],
+    [{ type: 'feature', hard: false }, [hardEmpty, hardCard], { profile: hardEmpty, choices: {} }],
+    [{ type: 'docs', hard: false }, roster, { profile: writer, choices: {} }],
+    [{ type: 'refactor', hard: false }, roster, { miss: true }],
+    [{ type: 'refactor', hard: true }, roster, { miss: true }],
+    [{ type: 'docs', hard: true }, roster, { miss: true }],
+    [{ type: 'feature', hard: false }, [], { miss: true }],
+  ]) assert.deepEqual(route(input, candidates), expected)
 })
 
 test('routing mode delegates by type, applies hard settings and records the choice', () => withLead(async ({ rt, role, session, lines }) => {
-  const fallback = await role('Fallback', 'Unused', { hard: {} })
+  const unrelated = await role('Other', 'Unused', { taskTypes: ['feature'], hard: {} })
   const worker = await role('Router', 'Fixed the alignment; tests pass.', { taskTypes: ['bug-fix'], hard: { model: 'hard-model', thinking: 'high' } })
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
   await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the misaligned button'))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
   assert.equal(work.source.dispatch.status, 'done')
-  assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'route', type: 'bug-fix', hard: true })
+  assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, type: 'bug-fix', hard: true })
   assert.equal(work.model, 'hard-model')
   assert.equal(work.thinking, 'high')
   assert.ok(lines(conversation).some(line => line.text === '已派给 Router · Fix the misaligned button（修复 · 难题）'))
   await toolTask(rt, conversation.id, delegateType('bug-fix', false, 'Fix the label'))
   const regular = rt.sessionsOf(rt.findProfile(worker.id))[1]
   assert.equal(regular.source.dispatch.status, 'done')
-  assert.deepEqual((({ dispatch, ...source }) => source)(regular.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'route', type: 'bug-fix', hard: false })
+  assert.deepEqual((({ dispatch, ...source }) => source)(regular.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, type: 'bug-fix', hard: false })
   assert.equal(regular.model, undefined)
   assert.equal(regular.thinking, undefined)
   assert.ok(lines(conversation).some(line => line.text === '已派给 Router · Fix the label（修复 · 常规）'))
-  assert.equal(rt.sessionsOf(rt.findProfile(fallback.id)).length, 0, 'an accepting role takes precedence over fallback')
+  assert.equal(rt.sessionsOf(rt.findProfile(unrelated.id)).length, 0, 'roles without the requested task type never receive work')
 }))
 
 test('the role board lists task types and the brief contains only rules', () => withLead(async ({ rt, role, session }) => {
@@ -900,11 +896,10 @@ test('routing mode ignores to and routes by type', () => withLead(async ({ rt, r
   assert.equal(rt.sessionsOf(rt.findProfile(writer.id)).length, 0)
 }))
 
-test('a legacy roster without fallback pauses an unclaimed type, skips the lead and reports once', () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
+test('an unclaimed type pauses without creating executor work', () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
   const writer = await role('Writer', 'Done', { taskTypes: ['docs'] })
   const lead = await role('Lead', delegateType('feature', false, 'Build it'), { lead: true })
   const conversation = await session(lead)
-  delete rt.findProfile(writer.id).fallback
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false)), /没有承接「功能」的角色/)
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('docs', true)), /没有能接「文档」难题的角色/)
   assert.equal(rt.sessionsOf(rt.findProfile(writer.id)).length, 0)
@@ -926,7 +921,7 @@ test('a lead can continue its own dispatched session instead of opening a new on
   assert.equal(sent.length, 2)
   assert.ok(sent[1].text.startsWith('Task from lead Lead. Not from the user'))
   assert.ok(sent[1].text.endsWith('Implement the task\nKeep existing changes; report paths and tests.'))
-  assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${work.name}（功能 · 常规 · 兜底）`))
+  assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${work.name}（功能 · 常规）`))
   assert.deepEqual(lines(conversation).filter(line => line.delegation).map(line => line.delegation.reused), [false, true])
   const report = lines(conversation).filter(line => line.who === 'user' && line.references).at(-1)
   assert.ok(report.text.startsWith(`Report from Worker · ${work.name} (session ${work.id}, ended: done).`))
@@ -1074,27 +1069,51 @@ test('shared lead rules ride the identity on native channels and every brief oth
 
 
 for (const [hard, settings] of [[false, undefined], [true, undefined], [true, { model: 'hard-model', thinking: 'high' }]]) {
-  test(`unclaimed types use fallback (${hard ? 'hard' : 'routine'}, ${settings ? 'hard settings' : 'card settings'})`, () => withLead(async ({ rt, role, session, lines }) => {
-    const worker = await role('Generalist', 'Done', { model: 'regular-model', hard: settings })
+  test(`unclaimed types stop without dispatch (${hard ? 'hard' : 'routine'}, ${settings ? 'hard settings' : 'card settings'})`, () => withLead(async ({ rt, role, session, lines }) => {
+    const worker = await role('Generalist', 'Unused', { taskTypes: ['docs'], model: 'regular-model', hard: settings })
     const lead = await role('Lead', 'Reviewed', { lead: true })
     const conversation = await session(lead)
-    await toolTask(rt, conversation.id, delegateType('feature', hard, 'Build it'))
-    const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
-    assert.equal(work.source.dispatch.status, 'done')
-    assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'fallback', type: 'feature', hard })
-    assert.equal(work.model, settings?.model ?? 'regular-model')
-    assert.equal(work.thinking, settings?.thinking)
-    assert.ok(lines(conversation).some(line => line.text === `已派给 Generalist · Build it（功能 · ${hard ? '难题' : '常规'} · 兜底）`))
+    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', hard, 'Build it')),
+      hard ? /没有能接「功能」难题的角色/ : /没有承接「功能」的角色/)
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
+    assert.equal(lines(conversation).length, 0)
+    const valid = await rt.leadDispatch.delegate(conversation.id, delegateType('docs', false, 'Write docs'))
+    assert.equal(valid.role, 'Generalist', 'a rejected delegation leaves the lead free to dispatch valid work')
+    await rt.followLead(lead.id, conversation.id, { mode: 'turn', completion: Promise.resolve({ reason: 'interrupted' }) })
   }))
 }
 
-test('an accepting role without hard capacity pauses instead of using a capable fallback', () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
-  const fallback = await role('Fallback', 'Unused', { hard: {} })
+for (const [firstHard, nextHard] of [[true, false], [false, true]]) {
+  test(`follow-up difficulty changes from ${firstHard ? 'hard' : 'routine'} to ${nextHard ? 'hard' : 'routine'} and selects a fresh executor`, () => withLead(async ({ rt, role, session, inputs }) => {
+    const routine = await role('Routine', 'Routine work completed', { taskTypes: ['feature'] })
+    const hard = await role('Hard', 'Hard work completed', { taskTypes: ['feature'], hard: { model: 'hard-model', thinking: 'high' } })
+    const lead = await role('Lead', 'Reviewed', { lead: true })
+    const conversation = await session(lead)
+    const first = await toolTask(rt, conversation.id, delegateType('feature', firstHard, 'Original task'))
+    assert.equal(first.role, firstHard ? 'Hard' : 'Routine')
+    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', nextHard, 'Follow-up', first.session)),
+      /属于其他角色|任务难度与本次不同/)
+    const task = `Continue from session ${first.session}. Preserve existing changes and report; complete only the remaining work.`
+    const next = await toolTask(rt, conversation.id, delegateType('feature', nextHard, task))
+    assert.equal(next.role, nextHard ? 'Hard' : 'Routine')
+    assert.notEqual(next.session, first.session)
+    assert.equal(next.reused, false)
+    const work = rt.conversationOf(next.session).session
+    assert.equal(work.source.hard, nextHard)
+    assert.equal(work.model, nextHard ? 'hard-model' : undefined)
+    assert.equal(rt.sessionsOf(rt.findProfile(routine.id)).length, 1)
+    assert.equal(rt.sessionsOf(rt.findProfile(hard.id)).length, 1)
+    assert.ok(inputs.find(item => item.sessionId === next.session).text.includes(task))
+  }))
+}
+
+test('a hard task stops when only an unrelated role has hard capacity', () => withLead(async ({ rt, role, session, inputs, send, lines }) => {
+  const unrelated = await role('Other', 'Unused', { taskTypes: ['feature'], hard: {} })
   const worker = await role('Worker', 'Unused', { taskTypes: ['docs'] })
   const lead = await role('Lead', delegateType('docs', true), { lead: true })
   const conversation = await session(lead)
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('docs', true)), /没有能接「文档」难题的角色/)
-  assert.equal(rt.sessionsOf(rt.findProfile(fallback.id)).length, 0)
+  assert.equal(rt.sessionsOf(rt.findProfile(unrelated.id)).length, 0)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
   assert.equal(lines(conversation).length, 0)
   assert.equal(rt.leadBrief(lead, conversation), leadRules)
@@ -1262,7 +1281,7 @@ test('delegation board includes running, pending and ten recent ended sessions a
   for (let i = 0; i < 14; i++) {
     const work = rt.conversationOf((await session(worker)).id).session
     work.source = { kind: 'lead', leadSessionId: i === 13 ? other.id : owner.id, continued: 2,
-      dispatch: { type: 'feature', hard: true, by: 'fallback', task: `Task ${i}`, status: i === 12 ? 'running' : 'done', acceptedAt: i, endedAt: i } }
+      dispatch: { type: 'feature', hard: true, task: `Task ${i}`, status: i === 12 ? 'running' : 'done', acceptedAt: i, endedAt: i } }
     records.push(work)
   }
   owner.reportQueue = [{ session: records[0].id }]
@@ -1270,7 +1289,7 @@ test('delegation board includes running, pending and ten recent ended sessions a
   assert.equal(board.split('\n').length, 14)
   for (const i of [0, 2, 11, 12]) assert.ok(board.includes(records[i].id))
   for (const i of [1, 13]) assert.ok(!board.includes(records[i].id))
-  assert.match(board, /feature \/ 难题 \/ 兜底/)
+  assert.match(board, /feature \/ 难题/)
   assert.match(board, /\| 2 \|/)
   assert.ok(rt.leadDelegations(owner.id, records[1].id).includes(records[1].id))
   assert.ok(!rt.leadDelegations(owner.id, records[13].id).includes(records[13].id))
@@ -1314,15 +1333,15 @@ test('role board preserves settings order, columns, task types and routing rules
   const redact = rt.redactDeepSecrets
   rt.redactDeepSecrets = value => typeof value === 'string' ? redact(value).replaceAll('sensitive-marker', '[redacted]') : redact(value)
   const board = rt.leadRoles(owner.id)
-  assert.match(board, /角色 \| 身份 \| 职责 \| 承接任务类型 \| 难题配置 \| 兜底/)
+  assert.match(board, /角色 \| 身份 \| 职责 \| 承接任务类型 \| 难题配置/)
   assert.match(board, /First \| Coder identity \[redacted\] \| Build features \| feature \| 有/)
   assert.ok(board.indexOf('First') < board.indexOf('Second'))
   assert.doesNotMatch(board, /Removed|sensitive-marker|\| Lead \|/)
   assert.match(board, /id \| name \| when/)
   for (const type of rt.taskTypes()) assert.ok(board.includes(type.when))
   assert.match(board, /常规任务优先给不带难题配置/)
-  assert.match(board, /难题只给带难题配置的角色，没有就报错/)
-  assert.match(board, /无角色承接该类型时交给兜底角色/)
+  assert.match(board, /难题只给带难题配置的角色/)
+  assert.match(board, /没有符合条件的角色就停止派活并说明缺口/)
   rt.redactDeepSecrets = redact
 }))
 
@@ -2202,7 +2221,7 @@ test('MCP dispatch uses driver credentials and current user attachments', () => 
     const workerDriver = await until(() => h.rt.driverOf(receipt.session)?.active && h.rt.driverOf(receipt.session))
     assert.equal(workerDriver.leadMcpServers, undefined)
     assert.match(workerDriver.calls[0], /current\.txt/)
-    assert.deepEqual(receipt, { session: receipt.session, role: 'Worker', type: 'feature', hard: false, by: 'fallback', reused: false, message: '已受理，本轮结束后发送' })
+    assert.deepEqual(receipt, { session: receipt.session, role: 'Worker', type: 'feature', hard: false, reused: false, message: '已受理，本轮结束后发送' })
     workerDriver.interruptTurn = async () => workerDriver.finish('interrupted', 'Last output '.repeat(500))
     const stopped = await client.callTool({ name: 'nodo_interrupt', arguments: { session: receipt.session } })
     assert.equal(JSON.parse(stopped.content[0].text).ended, 'interrupted')
@@ -2218,7 +2237,7 @@ test('dispatch service validates amendments before stopping and returns an immed
   await assert.rejects(service.delegate(h.worker, { type: 'feature', hard: false, task: 'Invalid owner' }), /有效主控/)
   const receipt = await service.delegate(h.conversation, { type: 'feature', hard: false, task: 'Original\nContext' })
   await h.rt.followLead(h.lead.id, h.conversation.id, completed('Dispatched'))
-  assert.deepEqual(receipt, { session: receipt.session, role: 'Worker', type: 'feature', hard: false, by: 'fallback', reused: false, message: '已受理，本轮结束后发送' })
+  assert.deepEqual(receipt, { session: receipt.session, role: 'Worker', type: 'feature', hard: false, reused: false, message: '已受理，本轮结束后发送' })
   const work = h.rt.conversationOf(receipt.session).session
   const driver = await until(() => h.rt.driverOf(work.id)?.active && h.rt.driverOf(work.id))
   const summary = { ...work.source.dispatch }

@@ -15,9 +15,10 @@ const tools: Tool[] = [
     inputSchema: { type: 'object', properties: { table: { type: 'string', enum: ['roles', 'delegations'] }, session: { type: 'string' } }, additionalProperties: false }, annotations: { readOnlyHint: true } },
   { name: 'nodo_delegate', description: '受理任务或修改当前任务，本轮正常结束后发送。告诉用户已派给谁，然后结束本轮，结果会自动送来。本轮停止或出错则取消。',
     inputSchema: { type: 'object', required: ['type', 'hard', 'task'], additionalProperties: false, properties: {
-      type: { type: 'string', description: '任务类型 id' }, hard: { type: 'boolean' },
+      type: { type: 'string', description: '任务类型 id' },
+      hard: { type: 'boolean', description: '按本次剩余工作判断难度：跨系统设计、复杂并发时序、微妙算法或需要比较有实质差异的关键设计方案时为 true；机械修改、沿用已有模式的功能、修复和测试为 false。不因文件多或原任务是难题就填 true。关键事实不明时先派 investigate；调查本身按其工作判断，不要求预先确定原任务难度。' },
       task: { type: 'string', description: '执行者看不到你和用户的对话。只写以下内容，不适用的省略：1. 任务目标；2. 用户的决定和偏好、已确认的事实、已排除的做法；3. 本任务特有的范围和限制；4. 完成标准；5. 报告里需要额外交代的内容。用户本条消息的附件由 Nodo 自动附上；更早的附件需要时写明路径。结论写在执行者最后的回复里，不要写报告文件；改文件的工作只派给会改文件的任务类型。' },
-      session: { type: 'string', description: '同一目标返工、或改正在执行的任务时填；新目标、需要独立审查、原路径已证伪时不填。' },
+      session: { type: 'string', description: '同一目标返工、或改正在执行的任务，且执行角色和难度不变时填；难度或角色变化、新目标、需要独立审查、原路径已证伪时不填，重新派活并交代已有改动、报告和剩余问题。' },
     } } },
   { name: 'nodo_interrupt', description: '只停止本主控当前执行中的派活，等待确认结束后返回。要改需求用 nodo_delegate 带当前会话；用户只是问进度时不要停止。',
     inputSchema: { type: 'object', required: ['session'], properties: { session: { type: 'string' } }, additionalProperties: false } },

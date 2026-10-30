@@ -2640,52 +2640,30 @@ const rolesTree = node => node && typeof node === 'object'
 const rolesText = node => ['string', 'number'].includes(typeof node) ? String(node) : (node?.children ?? []).map(rolesText).join('')
 const tickAll = async () => { for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve)) }
 
-test('fallback controls and deletion safeguards appear only when a lead exists', async () => {
-  const states = [], pending = [], calls = []
+test('roles expose task types without fallback controls and retain last-executor safeguards', async () => {
+  const states = [], pending = []
   cursor = 0
   const view = { profiles: [
     { id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] },
-    { id: 'a', name: 'First', engine: 'echo', fallback: true, taskTypes: ['docs'], sessions: [] },
+    { id: 'a', name: 'First', engine: 'echo', taskTypes: ['docs'], sessions: [] },
     { id: 'b', name: 'Second', engine: 'echo', sessions: [] },
   ], taskTypes: [{ id: 'docs', name: '文档' }, { id: 'ops', name: '运维' }] }
-  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
-    calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
-    if (endpoint === 'engine-catalog') return []
-    if (endpoint === 'profile-update') {
-      view.profiles.forEach(role => { delete role.fallback })
-      view.profiles.find(role => role.id === payload.id).fallback = true
-    }
-    return {}
-  } })
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [] })
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
   const trigger = name => render().find(node => node.props?.['aria-label'] === `承接任务 ${name}`)
   const action = (verb, name) => render().find(node => node.props?.['aria-label'] === `${verb} ${name}`)
-  const box = () => render().find(node => node.type === 'input' && node.props['aria-label'] === '兜底')
-  assert.equal(rolesText(trigger('First')), '文档、兜底')
+  assert.equal(rolesText(trigger('First')), '文档')
   trigger('First').props.onClick()
-  assert.equal(box().props.checked, true)
-  assert.equal(box().props.disabled, true)
+  assert.equal(render().some(node => node.type === 'input' && node.props['aria-label'] === '兜底'), false)
   action('删除', 'First').props.onClick()
   const confirmation = () => render().find(node => node.type === 'Modal' && node.props.title === '删除角色“First”？')
-  assert.match(rolesText(confirmation()), /兜底将转给「Second」。/)
+  assert.doesNotMatch(rolesText(confirmation()), /兜底/)
   confirmation().props.onClose()
-  trigger('Second').props.onClick()
-  assert.equal(box().props.checked, false)
-  box().props.onChange(); await tickAll()
-  assert.deepEqual(calls.at(-1), { endpoint: 'profile-update', payload: { id: 'b', changes: { fallback: true } } })
-  assert.equal(rolesText(trigger('Second')), '兜底')
-  assert.equal(rolesText(trigger('First')), '文档')
-  action('编辑', 'Second').props.onClick()
-  assert.equal(render().find(node => node.type === loaded.RoleEditor).props.deleteHint, '兜底将转给「First」。')
-  render().find(node => node.props?.className === 'nodo-roles-crumbs').children[0].props.onClick()
   view.profiles = view.profiles.filter(role => role.id !== 'lead')
   assert.equal(rolesText(trigger('Second')), '选择承接任务')
-  trigger('Second').props.onClick()
-  assert.equal(box(), undefined)
-  assert.equal(render().some(node => rolesText(node).includes('兜底')), false)
   action('删除', 'Second').props.onClick()
-  assert.equal(render().some(node => node.type === 'p' && rolesText(node).includes('兜底将转给')), false)
+  assert.equal(action('删除', 'Second').props.disabled, false)
   render().find(node => node.type === 'Modal' && node.props.title === '删除角色“Second”？').props.onClose()
   view.profiles = [{ id: 'lead', name: 'Lead', lead: true, sessions: [] }, view.profiles[1]]
   const remove = action('删除', 'Second')
@@ -3159,7 +3137,7 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   const view = {
     profiles: [
       { id: 'lead', name: '决策者', engine: 'echo', lead: true, taskTypes: ['ops'], sessions: [] },
-      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], fallback: true, hard: {}, sessions: [] },
+      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], hard: {}, sessions: [] },
       { id: 'b', name: '编码', engine: 'echo', taskTypes: ['docs', 'review'], sessions: [] },
     ],
     workspaces: [], work: {},
@@ -3169,8 +3147,8 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
   const note = () => render().find(node => node.props?.className === 'nodo-roles-gap-note')
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维没有角色承接，由「资深」兜底', '测试没有角色承接，由「资深」兜底', '审查没有可接难题的角色'],
-    'unclaimed types use fallback; an accepting role without hard settings still leaves a hard gap')
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维、测试没有角色承接', '审查没有可接难题的角色'],
+    'unclaimed types and hard-only gaps remain visible without assigning another role')
   assert.equal(note().props.role, 'status')
   assert.equal(render().some(node => rolesText(node).includes('派活结果') || rolesText(node).includes('管理任务类型')), false)
   view.taskTypes = [view.taskTypes[1]]
@@ -3178,9 +3156,9 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   view.taskTypes = [{ id: 'docs', name: '文档' }]
   assert.equal(note(), undefined, 'no gaps, no status block')
   view.profiles = view.profiles.map(item => ({ ...item, taskTypes: [] }))
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['文档没有角色承接，由「资深」兜底'])
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['文档没有角色承接'])
   view.profiles = view.profiles.filter(item => !item.lead)
-  assert.equal(note(), undefined, 'without a lead no routing gaps or fallback hints are shown')
+  assert.equal(note(), undefined, 'without a lead no routing gaps are shown')
 })
 
 test('with no executors the overview offers the inline form and lists every lead', async () => {

@@ -37,7 +37,7 @@ const harness = (extra = {}) => {
     redactDeepSecrets: text => text.replaceAll('secret-value', '[redacted]'),
     leadDelegations: (id, session) => { calls.push(['delegations', id, session]); return '| 派活 | secret-value |' },
     leadRoles: id => { calls.push(['roles', id]); return '| 角色 |' },
-    leadDispatch: { delegate: async (id, args) => { calls.push(['delegate', id, args]); return { session: 'work', role: 'Worker', type: args.type, hard: args.hard, by: 'route', reused: false } },
+    leadDispatch: { delegate: async (id, args) => { calls.push(['delegate', id, args]); return { session: 'work', role: 'Worker', type: args.type, hard: args.hard, reused: false } },
       interrupt: async (id, session) => ({ session, ended: 'interrupted', lastOutput: 'secret-value' }) }, ...extra }
   install(rt)
   return { rt, home, owner, calls, dispose() { for (const fn of disposers) fn(); rmSync(home, { recursive: true, force: true }) } }
@@ -69,7 +69,7 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     assert.deepEqual(h.calls[2], ['delegations', 'lead', 'older'])
     const args = { type: 'feature', hard: false, task: 'Complete task' }
     const receipt = await client.callTool({ name: 'nodo_delegate', arguments: args })
-    assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, by: 'route', reused: false })
+    assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, reused: false })
     const stopped = await client.callTool({ name: 'nodo_interrupt', arguments: { session: 'work' } })
     assert.deepEqual(JSON.parse(stopped.content[0].text), { session: 'work', ended: 'interrupted', lastOutput: '[redacted]' })
     for (const request of [
