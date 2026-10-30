@@ -105,6 +105,17 @@ test('a new conversation displays the role tier and keeps explicit draft permiss
   assert.equal(h.calls.find(call => call.endpoint === 'session-create').choices.permission, 'plan')
 })
 
+test('Team new conversations and their role picker are limited to lead roles', async () => {
+  const h = await harness('codex', 'a', 'main')
+  for (const view of Object.values(h.views)) view.profiles[0].lead = true
+  h.loaded.setNavigation(current => ({ ...current, view: 'team' }))
+  h.sidebar().onNewSession('b', h.views.sidebar.workspaces[0])
+  assert.equal(h.space.getSnapshot().draft.profile, 'a')
+  assert.deepEqual(clone(h.composer().rolePicker.props.profiles.map(role => role.id)), ['a'])
+  h.loaded.setNavigation(current => ({ ...current, view: 'sessions' }))
+  assert.deepEqual(clone(h.composer().rolePicker.props.profiles.map(role => role.id)), ['a', 'b'])
+})
+
 for (const engine of ['codex', 'dsh']) for (const target of [
   { profile: 'a', workspace: 'main', label: 'the same role and project' },
   { profile: 'b', workspace: 'main', label: 'another recipient' },

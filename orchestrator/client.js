@@ -13200,35 +13200,30 @@ function RoundFaces({ roles }) {
     roles.map((role) => (0, import_react.createElement)(RoleAvatar, { key: role.id, profile: role, size: 20 }))
   );
 }
-function RoundMenu({ members, work, raw, onRaw, onOpen }) {
+function RoundMenu({ members, work, onOpen }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
     open,
     onClose: () => setOpen(false),
     portal: true,
     align: "end",
-    selectedId: raw ? "raw" : void 0,
-    items: [
-      { id: "raw", label: "\u5B8C\u6574\u8BB0\u5F55", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBrowseOutlineRegular) },
-      ...members.map(({ role, session }) => {
-        const status2 = workLabel(work?.[session.id]);
-        return {
-          id: session.id,
-          icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
-          label: (0, import_react.createElement)(
-            "span",
-            { className: "nodo-round-menu-item" },
-            (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
-            (0, import_react.createElement)("span", { className: "nodo-round-title" }, session.name),
-            status2 ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status2) : null
-          )
-        };
-      })
-    ],
+    items: members.map(({ role, session }) => {
+      const status2 = workLabel(work?.[session.id]);
+      return {
+        id: session.id,
+        icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
+        label: (0, import_react.createElement)(
+          "span",
+          { className: "nodo-round-menu-item" },
+          (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
+          (0, import_react.createElement)("span", { className: "nodo-round-title" }, session.name),
+          status2 ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status2) : null
+        )
+      };
+    }),
     onSelect: (id) => {
       setOpen(false);
-      if (id === "raw") onRaw();
-      else onOpen(id);
+      onOpen(id);
     },
     anchor: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
       variant: "ghost",
@@ -13311,7 +13306,7 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
     }
   )));
 }
-function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
+function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
   const [query, setQuery] = (0, import_react.useState)("");
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
   const [archives, setArchives] = (0, import_react.useState)({});
@@ -13321,13 +13316,15 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   const [expanded, setExpanded] = (0, import_react.useState)({});
   const [rolesOpen, setRolesOpen] = (0, import_react.useState)(false);
   const busyNow = readOnly || busy;
+  const team = navigation?.view === "team";
   const rounds = roundIndex(view);
   const sessions = view.profiles.flatMap((role) => role.sessions.map((session) => ({
     role,
     session,
     workspaceId: workspaceIdOf(view, role, session)
   })));
-  const groupOf = (role, session) => [{ role, session }, ...rounds.members.get(session.id) ?? []];
+  const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh";
+  const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
   const rowOf = (role, session) => {
     const group = groupOf(role, session);
     return group.length === 1 ? { session, work: view.work[session.id], current: session.id === sessionId } : {
@@ -13336,9 +13333,9 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       current: group.some((entry) => entry.session.id === sessionId)
     };
   };
-  const roles = view.profiles.filter((role) => !role.deletedAt);
+  const roles = view.profiles.filter((role) => !role.deletedAt && (!team || role.lead === true && role.engine !== "dsh"));
   const roster = [...roles].sort((a, b2) => Number(b2.lead === true) - Number(a.lead === true));
-  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && !rounds.lead.has(session.id) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
   const ordered = [...view.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
   const scopeOf = (item) => {
@@ -13347,9 +13344,9 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   };
   const entriesOf = (item) => {
     const { search, archived } = scopeOf(item);
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && !rounds.lead.has(session.id) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt) && (!search || [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, item.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search)))).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
+    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt) && (!search || [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, item.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search)))).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
   };
-  const draftIn = (item) => !!draft && draft.workspace === item.id && !scopeOf(item).search && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
+  const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && !scopeOf(item).search && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
   const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -13364,7 +13361,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     },
     icon
   ));
-  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && view.work[entry.session.id]?.active);
+  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view.work[entry.session.id]?.active);
   const toggle = (key, open, Glyph, title, tip, live) => {
     const waiting = live.some((entry) => workDot(view.work[entry.session.id]) === "warning");
     return /* @__PURE__ */ (0, import_react.createElement)(
@@ -13427,7 +13424,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       item.name,
       item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
       liveIn([item])
-    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
+    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id), item), busyNow || team && !roles.length), /* @__PURE__ */ (0, import_react.createElement)(
       import_dsh_client_ui_primitives.Menu,
       {
         open: menuOpen === item.id,
@@ -13514,7 +13511,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     setSearching(false);
     setQuery("");
   };
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }), dock("Team", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 18 }), { "aria-pressed": team, onClick: team ? void 0 : onTeam }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
     onClick: () => onNewSession(filterRole?.id ?? profile?.id),
     disabled: busyNow || !workspace || !!navigation
   }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
@@ -17002,14 +16999,19 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [compacting, setCompacting] = (0, import_react.useState)([]);
   const [sentTick, setSentTick] = (0, import_react.useState)(0);
   const [actionError, setActionError] = (0, import_react.useState)("");
-  const [rawRound, setRawRound] = (0, import_react.useState)(null);
-  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt).map((session2) => ({ role, session: session2 })))[0];
-  const profiles = view?.profiles.filter((item) => !item.deletedAt) ?? [];
+  const team = navigation.view === "team";
+  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || role.lead === true && (session2.engine ?? role.engine) !== "dsh")).map((session2) => ({ role, session: session2 })))[0];
+  const profiles = view?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
   const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
   const workspaces = view?.workspaces ?? [];
   const workspace = archived ? workspaces.find((item) => item.id === archived.session.workspaceRef) ?? null : workspaces.find((item) => item.id === navigation.workspace) ?? workspaces[0] ?? null;
   const navigationKey = `${workspace?.id}:${profile?.id}`;
-  const session = archived?.session ?? sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey]);
+  const session = archived?.session ?? sessionForWorkspace(
+    team && profile ? { ...profile, sessions: profile.sessions.filter((item) => (item.engine ?? profile.engine) !== "dsh") } : profile,
+    workspace,
+    workspaces,
+    navigation.sessions?.[navigationKey]
+  );
   const sessionId = session?.id;
   const draftKey = sessionId ?? `new:${navigationKey}`;
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
@@ -17019,7 +17021,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const conversationReadOnly = readOnly || archivedConversation;
   const work = sessionId ? view.work[sessionId] : null;
   const rounds = view ? roundIndex(view) : null;
-  const members = sessionId && rounds?.members.get(sessionId) || [];
+  const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
   (0, import_react.useLayoutEffect)(() => {
@@ -17027,7 +17029,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
-  const roundLive = [{ role: profile, session }, ...members].filter((item) => members.length && view.work[item.session?.id]?.active === true);
+  const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view?.work[item.session?.id]?.active === true);
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
   const viewedWork = view?.work[viewed?.id];
@@ -17173,7 +17175,11 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     await refresh(true);
     setSessionDialog(null);
   };
-  const startDraft = (roleId, project) => startConversation(roleId, pageEnv, project);
+  const startDraft = (roleId, project) => {
+    if (team) roleId = profiles.find((role) => role.id === roleId)?.id ?? profile?.id;
+    if (team && !roleId) return;
+    startConversation(roleId, pageEnv, project);
+  };
   const attach = async (files) => {
     try {
       const added = await Promise.all(files.map(readImage));
@@ -17241,7 +17247,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setActionError("");
     const current = trackSelection(true);
     try {
-      for (const [id, target] of members.length ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
+      for (const [id, target] of team ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
         await call("interrupt", { profile: id, session: target });
       }
       await refresh(true);
@@ -17279,8 +17285,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   };
   const openSession = (id) => {
     const role = view.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
-    if (role) void select(role, id);
+    if (role) {
+      setNavigation((current) => ({ ...current, view: "sessions" }));
+      void select(role, id, workspaces.find((item) => item.id === role.sessions.find((entry) => entry.id === id)?.workspaceRef));
+    }
   };
+  const showSessions = (view2) => rolesGuard(() => {
+    setNavigation((current) => ({ ...current, view: view2 }));
+    setEditing(null);
+    nativeSpace.showLegacy();
+  });
   const conversation = () => (0, import_react.createElement)(
     "div",
     { className: "nodo-conversation" },
@@ -17296,7 +17310,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           type: "button",
           className: "nodo-crumb nodo-crumb-link",
           title: leadEntry.session.name,
-          onClick: () => void select(leadEntry.role, leadEntry.session.id)
+          onClick: () => {
+            setNavigation((current) => ({ ...current, view: "team" }));
+            void select(leadEntry.role, leadEntry.session.id, workspaces.find((item) => item.id === leadEntry.session.workspaceRef));
+          }
         }, leadEntry.session.name),
         leadEntry && (0, import_react.createElement)("span", { className: "nodo-crumb-sep", "aria-hidden": true }, "\u203A"),
         (0, import_react.createElement)(
@@ -17308,24 +17325,18 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         (0, import_react.createElement)(
           "span",
           { className: "nodo-head-actions" },
-          members.length > 0 && (0, import_react.createElement)(RoundMenu, {
-            members,
-            work: view.work,
-            raw: rawRound === sessionId,
-            onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId),
-            onOpen: openSession
-          })
+          members.length > 0 && (0, import_react.createElement)(RoundMenu, { members, work: view.work, onOpen: openSession })
         )
       )
     ),
     (0, import_react.createElement)(Feed, {
-      key: sessionId,
+      key: `${team}:${sessionId}`,
       profile,
       session,
       revision: view.revision,
       work,
       sentTick,
-      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
+      round: team ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
     }),
     work?.active === true && (0, import_react.createElement)(
       "div",
@@ -17345,7 +17356,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       value: drafts[draftKey] ?? "",
       images: pastedImages[draftKey] ?? [],
       running: work?.active === true,
-      stoppable: members.length ? roundLive.length > 0 : void 0,
+      stoppable: team ? roundLive.length > 0 : void 0,
       stopLabel: roundLive.length > 1 ? `\u505C\u6B62\u5168\u90E8 ${roundLive.length} \u4E2A` : void 0,
       busy: sessionBusy,
       readOnly: readOnly || !workspace,
@@ -17361,7 +17372,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       onGoal: () => setGoalOpen(true),
       onCompact: () => void compactSession(),
       onModelChange: (changes) => void updateEngineChoice(changes),
-      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: view.profiles, profile })
+      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view.profiles, profile })
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -17393,6 +17404,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       "div",
       { className: "nodo-frame" },
       !contentOnly && view && (0, import_react.createElement)(Rail, {
+        key: team ? "team" : "sessions",
         view: railView,
         profile,
         workspace,
@@ -17403,7 +17415,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         onResumeDraft: () => nativeSpace.resumeDraft(),
         readOnly,
         busy,
-        navigation: railNavigation,
+        navigation: railNavigation ?? (team ? { view: "team" } : null),
         onSelect: (id) => {
           const role = view.profiles.find((item) => item.id === id);
           if (role && workspace) void select(role);
@@ -17426,7 +17438,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         onEditRole: (item) => openRolesPage({ profileId: item.id }),
         onSettings: () => edit({ kind: "settings" }),
         onRoles: () => layoutService?.selectPanel("nodo-roles"),
-        onSessions: () => rolesGuard(() => nativeSpace.showLegacy()),
+        onSessions: () => showSessions("sessions"),
+        onTeam: () => showSessions("team"),
         onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
         onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
         onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
@@ -18752,7 +18765,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const [error, setError] = (0, import_react.useState)("");
     const [notice, setNotice] = (0, import_react.useState)("");
     const pending = (0, import_react.useRef)(false), created = (0, import_react.useRef)(null), uploading = (0, import_react.useRef)(false);
-    const profiles = view?.profiles.filter((role) => !role.deletedAt) ?? [];
+    const profiles = view?.profiles.filter((role) => !role.deletedAt && (!draft || navigation.view !== "team" || role.lead === true && role.engine !== "dsh")) ?? [];
     const sourceRole = sourceSessionId && profiles.find((role) => role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId));
     const sourceSession = sourceRole?.sessions.find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId);
     const profile = profiles.find((role) => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : void 0)));
