@@ -317,7 +317,7 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
 test('the sessions rail keeps executor rows, state, highlight, role filter and search independent', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+  const { Rail, SessionRow, SearchDialog } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
     primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
     react: { useState: initial => {
       const slot = cursor++
@@ -357,14 +357,15 @@ test('the sessions rail keeps executor rows, state, highlight, role filter and s
   assert.deepEqual(rows().map(row => row.props.session.id), ['o1'])
   press('Other')
   render().find(node => node.type === 'button' && node.props['aria-label'] === '搜索').props.onClick()
-  render().find(node => node.type === 'Input').props.onChange({ target: { value: 'refresh' } })
-  assert.deepEqual(rows().map(row => row.props.session.id), ['e1'])
+  const finder = render().find(node => node.type === SearchDialog)
+  assert.deepEqual(finder.props.items.map(item => item.id), ['e1', 'own', 'orphan', 'o1', 'l1'], 'the finder lists every session newest first, executors included')
+  assert.equal(rows().length, 5, 'the open finder leaves the rail list alone')
 })
 
-test('the rail search opens and closes from the dock button and on Escape', async () => {
+test('the session finder opens from the dock button, closes itself and picks into the rail', async () => {
   const slots = []
   let cursor = 0
-  const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+  const { Rail, SearchDialog } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
     primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
     react: { useState: initial => {
       const slot = cursor++
@@ -375,22 +376,23 @@ test('the rail search opens and closes from the dock button and on Escape', asyn
   const view = { workspaces: [workspace], work: {}, profiles: [
     { id: 'coder', name: 'Coder', sessions: [{ id: 's1', name: 'Refresh race', workspaceRef: 'w', updatedAt: 1 }] },
   ] }
-  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 's1', onSelect() {}, onSelectSession() {} })) }
+  const selected = []
+  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 's1', onSelect() {}, onSelectSession: (role, id, project) => selected.push([role.id, id, project.id]) })) }
   const button = () => render().find(node => node.type === 'button' && node.props['aria-label'] === '搜索')
   const toggle = () => button().props.onClick()
-  const search = () => render().find(node => node.type === 'Input')
-  assert.equal(search(), undefined, 'search waits behind the dock button')
+  const finder = () => render().find(node => node.type === SearchDialog)
+  assert.equal(finder(), undefined, 'the finder waits behind the dock button')
   toggle()
-  assert.equal(search().props.placeholder, '搜索会话')
+  assert.deepEqual(finder().props.items.map(item => item.id), ['s1'])
   assert.equal(button().props['aria-pressed'], true)
-  search().props.onChange({ target: { value: 'refresh' } })
-  assert.equal(search().props.value, 'refresh')
   toggle()
-  assert.equal(search(), undefined, 'the dock button closes an open search')
+  assert.equal(finder(), undefined, 'the dock button closes an open finder')
   toggle()
-  assert.equal(search().props.value, '', 'reopening starts from a cleared query')
-  search().props.onKeyDown({ key: 'Escape' })
-  assert.equal(search(), undefined, 'Escape still closes the search')
+  finder().props.onClose()
+  assert.equal(finder(), undefined, 'the finder closes itself')
+  toggle()
+  finder().props.items[0].pick()
+  assert.deepEqual(selected, [['coder', 's1', 'w']], 'a result opens its session in its project')
 })
 
 test('the roster lists leads first with a lead ring and keeps the stored order in each group', async () => {
@@ -437,7 +439,7 @@ async function mount(viewName = 'team', restored) {
       readNavigation: () => navigation, subscribeNavigation() {}, setNavigation: update => { navigation = update(navigation) },
       nativeSpace: { subscribe() {}, getSnapshot: () => space, showLegacy() {} },
       readNativeSession: () => null, subscribeNativeSession() {}, completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
-      workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
+      workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing', workKind: () => 'run', WorkDot: 'WorkDot',
       call: async (endpoint, payload) => { calls.push({ endpoint, payload }) },
     },
     react: {
@@ -571,8 +573,8 @@ test('persisted navigation restores the selected home or Team conversation and a
   assert.equal(legacy.find(legacy.loaded.Feed).round, undefined)
 })
 
-test('Team rail lists only non-dsh lead sessions and aggregates member state and search', async () => {
-  const { Rail, SessionRow, host } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+test('Team rail lists only non-dsh lead sessions, aggregates member state and feeds the finder', async () => {
+  const { Rail, SessionRow, SearchDialog, host } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
     primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
   })
   const workspace = { id: 'w', name: 'Project' }
@@ -604,9 +606,11 @@ test('Team rail lists only non-dsh lead sessions and aggregates member state and
   assert.deepEqual(created, ['lead', 'lead'], 'the dock drafts for the lead role like the project row does')
   dockButton('主页').props.onClick()
   dockButton('搜索').props.onClick()
-  assert.deepEqual(switched, ['sessions', 'sessions'], 'leaving Team and searching from it both return to the sessions view')
-  render().find(node => node.type === 'Input').props.onChange({ target: { value: 'refresh' } })
-  assert.deepEqual(rows().map(row => row.session.id), ['l1'])
+  assert.deepEqual(switched, ['sessions'], 'only 主页 leaves Team; 搜索 opens the finder in place')
+  const finder = render().find(node => node.type === SearchDialog)
+  assert.deepEqual(finder.props.items.map(item => item.id), ['l1', 'l2'], 'the Team finder lists the same lead sessions as the rail')
+  assert.equal(finder.props.items[0].updatedAt, 5, 'a lead session carries its executors\' latest time')
+  assert.ok(finder.props.items[0].terms.includes('Refresh race'), 'a lead session is found by its executors')
 })
 
 test('the dock new-session button locks only on the roles page or a Team without usable leads', async () => {

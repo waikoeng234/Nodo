@@ -25,7 +25,7 @@ async function mount(pendingEndpoint = 'session-compact', engine = 'zcode', side
       completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       openNativeSession: engine === 'dsh' ? id => { opened.push(id); space = { ...space, legacy: false, drafting: false, nodoSession: id } } : null,
       runningOf: () => ({ active: false }),
-      workLabel: () => '', workDot: () => 'idle', sessionTime: () => '',
+      workLabel: () => '', workKind: () => 'stop', WorkDot: 'WorkDot', sessionTime: () => '',
       workspaceIdOf: (_view, role, session) => session.workspaceRef ?? role.workspaceId,
       roleStateOf: (role, view) => ({ active: role.sessions.some(session => view.work[session.id]?.active) }),
       sectionHead: (_title, action) => action,

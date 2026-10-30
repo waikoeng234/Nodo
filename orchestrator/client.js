@@ -9293,6 +9293,8 @@ var ComposerGlyph = (running) => (0, import_react.createElement)(
 );
 var workLabel = (work) => work?.seen ? "" : { "waiting-approval": "\u7B49\u5F85\u5BA1\u6279", "waiting-question": "\u7B49\u5F85\u56DE\u7B54", completed: "\u5DF2\u5B8C\u6210", stopped: "\u5DF2\u505C\u6B62", blocked: "\u672A\u5B8C\u6210", error: "\u6267\u884C\u5931\u8D25", unavailable: "\u72B6\u6001\u4E0D\u53EF\u7528" }[work?.status] ?? (work?.suspect ? "\u7591\u4F3C\u5361\u4F4F" : work?.active ? "\u8FD0\u884C\u4E2D" : "");
 var workDot = (work) => work?.suspect || work?.status?.startsWith("waiting-") || work?.status === "blocked" ? "warning" : work?.active ? "ongoing" : work?.status === "completed" ? "done" : work?.status === "error" ? "error" : "idle";
+var workKind = (work) => work?.suspect || work?.status?.startsWith("waiting-") || work?.status === "blocked" ? "wait" : work?.active ? "run" : { completed: "done", error: "err" }[work?.status] ?? "stop";
+var WorkDot = ({ kind }) => (0, import_react.createElement)("i", { className: "nodo-dot", "data-s": kind });
 var runningOf = (profile, work) => {
   const states = (profile.sessions ?? []).map((session) => work?.[session.id]).filter(Boolean);
   const active = states.filter((state) => state.active);
@@ -9487,6 +9489,73 @@ function createRoleSeat(ctx, space) {
     };
   });
   return { RoleSeat };
+}
+
+// src/client/search-dialog.tsx
+function SearchDialog({ items, onClose }) {
+  const [query, setQuery] = (0, import_react.useState)("");
+  const [active, setActive] = (0, import_react.useState)(0);
+  const list = (0, import_react.useRef)(null);
+  const needle = query.trim().toLocaleLowerCase();
+  const found = needle ? items.filter((item) => item.terms.some((term) => String(term ?? "").toLocaleLowerCase().includes(needle))) : items;
+  const current = Math.min(active, found.length - 1);
+  const pick = (item) => {
+    onClose();
+    item.pick();
+  };
+  (0, import_react.useEffect)(() => {
+    list.current?.children[current]?.scrollIntoView?.({ block: "nearest" });
+  }, [current]);
+  const onKeyDown = (event) => {
+    if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
+    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (step && found.length) {
+      event.preventDefault();
+      setActive((current + step + found.length) % found.length);
+    } else if (event.key === "Enter" && found[current]) {
+      event.preventDefault();
+      pick(found[current]);
+    }
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, onClose, closeLabel: "\u5173\u95ED", title: "\u641C\u7D22\u4F1A\u8BDD", headless: true, className: "nodo-search-dialog" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-search-box" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), /* @__PURE__ */ (0, import_react.createElement)(
+    "input",
+    {
+      type: "search",
+      "data-modal-autofocus": true,
+      value: query,
+      placeholder: "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
+      "aria-label": "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
+      onChange: (event) => {
+        setQuery(event.target.value);
+        setActive(0);
+      },
+      onKeyDown
+    }
+  ), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": "\u5173\u95ED\u641C\u7D22", onClick: onClose }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 16 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-search-list", role: "listbox", "aria-label": "\u4F1A\u8BDD", ref: list }, found.map((item, index) => {
+    const on2 = index === current;
+    const status2 = workLabel(item.work);
+    const Glyph = item.project.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular;
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        key: item.id,
+        type: "button",
+        role: "option",
+        className: "nodo-search-row",
+        "aria-selected": on2,
+        "data-active": on2 || void 0,
+        title: `${item.role.name} \xB7 ${item.name}`,
+        onMouseMove: () => {
+          if (!on2) setActive(index);
+        },
+        onClick: () => pick(item)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-avatar", "data-lead": item.role.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item.role, size: 20 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-name" }, item.name),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-project" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, item.project.name)),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-meta" }, on2 ? "\u21B5" : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(item.work) }), status2) : sessionTime(item.updatedAt))
+    );
+  }), !found.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, items.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD")));
 }
 
 // src/client/tool-call.tsx
@@ -13236,8 +13305,9 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
       onClick: onSelect,
       title: `${role.name} \xB7 ${session.name}`
     },
+    /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18 }),
     /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, context ? `${context} \xB7 ${session.name}` : session.name),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, "\u5DF2\u5F52\u6863") : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status2 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 12 }), status2) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, "\u5DF2\u5F52\u6863") : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status2 }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(work) }), status2) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
   ), !readOnly && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -13288,7 +13358,6 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
   )));
 }
 function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
-  const [query, setQuery] = (0, import_react.useState)("");
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
   const [archives, setArchives] = (0, import_react.useState)({});
   const [searching, setSearching] = (0, import_react.useState)(false);
@@ -13319,16 +13388,17 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
   const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
+  const draftProfile = roles.find((role) => role.id === draft?.profile);
   const ordered = [...view.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
   const scopeOf = (item) => {
-    const search = searching ? query.trim().toLocaleLowerCase() : "", archived = archives[item.id] ?? "hide";
-    return { search, archived, filtering: !!search || !!filterRole || archived === "only" };
+    const archived = archives[item.id] ?? "hide";
+    return { archived, filtering: !!filterRole || archived === "only" };
   };
   const entriesOf = (item) => {
-    const { search, archived } = scopeOf(item);
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt) && (!search || [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, item.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search)))).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
+    const { archived } = scopeOf(item);
+    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt)).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
   };
-  const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && !scopeOf(item).search && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
+  const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
   const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -13345,7 +13415,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   ));
   const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view.work[entry.session.id]?.active);
   const toggle = (key, open, Glyph, title, tip, live) => {
-    const waiting = live.some((entry) => workDot(view.work[entry.session.id]) === "warning");
+    const waiting = live.some((entry) => workKind(view.work[entry.session.id]) === "wait");
     return /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
@@ -13358,14 +13428,14 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 })),
       Glyph && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })),
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, title),
-      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: waiting ? "warning" : "ongoing", size: 12 }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
+      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: waiting ? "wait" : "run" }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
     );
   };
   const list = (item, entries, pending) => {
-    const { search, archived } = scopeOf(item);
-    const folded = !search && entries.length > SESSION_FOLD;
+    const { archived } = scopeOf(item);
+    const folded = entries.length > SESSION_FOLD;
     const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries;
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, draftProfile ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: draftProfile, size: 18 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
       const row = rowOf(role, session);
       return /* @__PURE__ */ (0, import_react.createElement)(
         SessionRow,
@@ -13391,14 +13461,14 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
         onClick: () => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))
       },
       expanded[item.id] ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
-    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, search || filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
+    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
   };
   const node = (item) => {
-    const { search, archived, filtering } = scopeOf(item);
+    const { archived, filtering } = scopeOf(item);
     const entries = entriesOf(item);
     const pending = draftIn(item);
     if (filtering && !entries.length && !pending && archived !== "only") return null;
-    const open = !!search || (opened[item.id] ?? (filtering || item.id === workspace?.id));
+    const open = opened[item.id] ?? (filtering || item.id === workspace?.id);
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
       item.id,
       open,
@@ -13473,7 +13543,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       },
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar", "data-lead": item.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 24 })),
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name),
-      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(state), size: 12 }), label)
+      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(state) }), label)
     ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
@@ -13489,21 +13559,27 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   };
   const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  const closeSearch = () => {
-    setSearching(false);
-    setQuery("");
-  };
+  const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
+    const project = view.workspaces.find((item) => item.id === workspaceId), row = rowOf(role, session);
+    return {
+      id: session.id,
+      role,
+      name: session.name,
+      project,
+      updatedAt: row.session.updatedAt,
+      work: row.work,
+      terms: [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, project.name],
+      pick: () => onSelectSession(role, session.id, project)
+    };
+  }).sort((a, b2) => (b2.updatedAt ?? 0) - (a.updatedAt ?? 0));
   return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }), dock("Team", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 18 }), { "aria-pressed": team, onClick: team ? void 0 : onTeam }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
     onClick: () => onNewSession(draftRole),
     disabled: busyNow || !workspace || navigation?.view === "roles" || team && !roles.length
   }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
-    "aria-pressed": searching && !navigation,
+    "aria-pressed": searching,
     onClick: () => {
-      if (navigation) {
-        onSessions();
-        setSearching(true);
-      } else if (searching) closeSearch();
-      else setSearching(true);
+      if (navigation?.view === "roles") onSessions();
+      setSearching((current) => !current);
     }
   }), dock("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 }), {
     "aria-pressed": navigation?.view === "roles",
@@ -13511,22 +13587,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
     onClick: onBack,
     disabled: typeof layoutService?.selectPanel !== "function"
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, searching && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-search" }, /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Input,
-    {
-      type: "search",
-      autoFocus: true,
-      value: query,
-      onChange: (event) => setQuery(event.target.value),
-      onKeyDown: (event) => {
-        if (event.key === "Escape") closeSearch();
-      },
-      placeholder: "\u641C\u7D22\u4F1A\u8BDD",
-      "aria-label": "\u641C\u7D22\u4F1A\u8BDD",
-      className: "nodo-search-input",
-      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
-    }
-  )), head("\u89D2\u8272", action("\u6DFB\u52A0\u89D2\u8272", "\u6DFB\u52A0\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, null), onNewRole, busyNow)), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD" }, shownRoles.map(rosterItem), roster.length > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, head("\u89D2\u8272", action("\u6DFB\u52A0\u89D2\u8272", "\u6DFB\u52A0\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, null), onNewRole, busyNow)), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD" }, shownRoles.map(rosterItem), roster.length > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -13553,7 +13614,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       onPin: () => {
       }
     }
-  )))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+  )))))), searching && /* @__PURE__ */ (0, import_react.createElement)(SearchDialog, { items: searchItems(), onClose: () => setSearching(false) }), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
 }
 
 // src/client/composer-attachments.tsx
@@ -19290,20 +19351,19 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
    and 16px row actions that only appear on hover. */
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
-.nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+.nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
 .nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
 .nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
 .nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
-.nodo-rail-search{display:flex;flex:none;padding:2px 0 8px}
 .nodo-rail-head{display:flex;align-items:center;justify-content:space-between;flex:none;height:28px;padding:0 2px 0 8px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500;line-height:18px}
 .nodo-roster{display:flex;flex-direction:column;gap:2px;flex:none;padding-bottom:12px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
-.nodo-roster-cell{display:flex;align-items:center;gap:2px;min-width:0}
+.nodo-roster-cell{display:flex;align-items:center;gap:2px;min-width:0;border-radius:var(--dsw-radius-md)}
 .nodo-roster-cell:hover .nodo-row-actions,.nodo-roster-cell:focus-within .nodo-row-actions{display:inline-flex}
 .nodo-roster-item{display:flex;align-items:center;gap:10px;flex:1;min-width:0;height:36px;padding:0 8px 0 6px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
-.nodo-roster-item:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-roster-item[aria-current=true]{background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-cell:hover{background:var(--nodo-rail-hover)}
+.nodo-roster-cell:has(>.nodo-roster-item[aria-current=true]){background:var(--dsw-specific-sidebar-nav-item-active)}
 .nodo-roster-avatar{display:inline-flex;flex:none}
 .nodo-roster-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
 .nodo-roster-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
@@ -19316,11 +19376,27 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 .nodo-panel-logo{display:inline-flex;align-items:center}
 button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo)){display:none}
 .nodo-rail-foot{flex:none;padding:8px 0}
-.nodo-search-input{width:100%;min-width:0}
+.nodo-search-dialog{display:flex;flex-direction:column;width:min(640px,100%);max-height:min(504px,100%);padding:0;overflow:hidden;--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
+.nodo-search-dialog *{box-sizing:border-box}
+.nodo-search-box{display:flex;align-items:center;gap:12px;flex:none;height:56px;padding:0 14px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}
+.nodo-search-box input{flex:1;min-width:0;height:100%;border:0;outline:0;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:15px}
+.nodo-search-box input::placeholder{color:var(--dsw-alias-label-tertiary)}
+.nodo-search-box input::-webkit-search-cancel-button{display:none}
+.nodo-search-list{display:flex;flex-direction:column;gap:2px;min-height:0;padding:8px;overflow-y:auto}
+.nodo-search-row{display:flex;align-items:center;gap:12px;flex:none;height:40px;padding:0 12px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.nodo-search-row[data-active]{background:var(--nodo-rail-hover)}
+.nodo-search-avatar{display:inline-flex;flex:none}
+.nodo-search-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
+.nodo-search-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-search-project,.nodo-search-meta{display:flex;align-items:center;gap:6px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-search-project{width:132px;min-width:0}
+.nodo-search-project>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-search-meta{justify-content:flex-end;width:64px}
+.nodo-search-row[data-active] .nodo-search-meta{color:var(--dsw-alias-label-primary)}
 .nodo-rail-empty{padding:8px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project,.nodo-row{display:flex;align-items:center;gap:6px;width:100%;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-project{height:34px;padding:0 4px}
-.nodo-project:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-project:hover{background:var(--nodo-rail-hover)}
 .nodo-project .nodo-row-actions{padding-right:2px}
 .nodo-project .nodo-chevron[data-open]{transform:rotate(90deg)}
 .nodo-picker{display:flex;flex:1;min-width:0}
@@ -19336,7 +19412,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
    hovered, its menu is open, or a button inside holds the keyboard. */
 .nodo-row-actions{display:none;flex:none;align-items:center;gap:2px}
 .nodo-project:hover .nodo-row-actions,.nodo-project:focus-within .nodo-row-actions,.nodo-project[data-menu=open] .nodo-row-actions{display:inline-flex}
-.nodo-project[data-menu=open]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-project[data-menu=open]{background:var(--nodo-rail-hover)}
 .nodo-row-action{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-row-action:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
@@ -19347,19 +19423,31 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-show-more:hover{color:var(--dsw-alias-label-primary)}
 .nodo-row{height:36px;padding:0 8px}
 .nodo-session-empty{padding:8px 12px 8px 32px}
-.nodo-session-item{display:flex;align-items:center;gap:2px;width:100%}
+.nodo-session-item{display:flex;align-items:center;gap:2px;width:100%;border-radius:var(--dsw-radius-md)}
 .nodo-session-item>.nodo-session{flex:1;min-width:0}
 .nodo-session-item:hover .nodo-row-actions,.nodo-session-item:focus-within .nodo-row-actions,.nodo-session-item[data-menu=open] .nodo-row-actions{display:inline-flex}
 .nodo-session[data-archived]{color:var(--dsw-alias-label-tertiary)}
 .nodo-row-archived{display:inline-flex;align-items:center;gap:4px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
-.nodo-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-row:hover{background:var(--nodo-rail-hover)}
 .nodo-row[aria-current=page]{background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-session-item:hover{background:var(--nodo-rail-hover)}
+.nodo-session-item:has(>.nodo-session[aria-current=page]){background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-session-item>.nodo-session{background:0 0}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
-.nodo-session{padding-left:32px}
+.nodo-session .nodo-avatar{flex:none}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project .nodo-row-meta{margin-left:0}
 .nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
+.nodo-dot{position:relative;display:inline-block;flex:none;width:7px;height:7px;border-radius:50%;background:var(--nodo-dot)}
+.nodo-dot[data-s=run]{--nodo-dot:var(--dsw-alias-state-success-primary)}
+.nodo-dot[data-s=wait]{--nodo-dot:var(--dsw-alias-state-warn-primary)}
+.nodo-dot[data-s=done]{--nodo-dot:var(--dsw-alias-state-business-primary)}
+.nodo-dot[data-s=err]{--nodo-dot:var(--dsw-alias-state-error-primary)}
+.nodo-dot[data-s=stop]{background:none;box-shadow:inset 0 0 0 1.5px var(--dsw-alias-label-tertiary)}
+.nodo-dot[data-s=run]::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--nodo-dot);animation:nodo-dot-pulse 2.2s ease-out infinite}
+@keyframes nodo-dot-pulse{0%{transform:scale(1);opacity:.55}80%,100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){.nodo-dot[data-s=run]::after{animation:none}}
 .nodo-icon-btn{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;transition:background-color .1s,color .1s}
 .nodo-icon-btn:focus-visible,.nodo-icon-btn[aria-pressed=true],.nodo-icon-btn.nodo-visible{opacity:1}
 .nodo-icon-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}

@@ -488,7 +488,7 @@ test('pending conversation selection cannot replace a newer draft or its opened 
 })
 
 test('sidebar status labels and role aggregation preserve concurrent native waits and final outcomes', async () => {
-  const { workLabel, runningOf, workDot } = await loadClient('ui-shared.js')
+  const { workLabel, runningOf, workDot, workKind } = await loadClient('ui-shared.js')
   const role = { sessions: [{ id: 'one' }, { id: 'two' }] }
   const work = { one: { active: false, status: 'completed', finishedAt: 99 }, two: { active: true, status: 'waiting-question' } }
   assert.equal(workLabel(runningOf(role, work)), '等待回答')
@@ -516,6 +516,8 @@ test('sidebar status labels and role aggregation preserve concurrent native wait
   work.two.suspect = false
   assert.equal(workLabel(runningOf(role, work)), '运行中')
   assert.equal(workDot(work.two), 'ongoing')
+  assert.deepEqual([work.two, { ...work.two, suspect: true }, { status: 'waiting-question' }, { status: 'blocked' }, { status: 'completed' }, { status: 'error' }, { status: 'stopped' }, {}].map(workKind),
+    ['run', 'wait', 'wait', 'wait', 'done', 'err', 'stop', 'stop'], 'each state maps to one marker kind')
   for (const [status, label] of [['waiting-approval', '等待审批'], ['waiting-question', '等待回答'], ['error', '执行失败'], ['completed', '已完成']]) {
     assert.equal(workLabel({ active: true, suspect: true, status }), label, 'explicit status takes precedence over suspicion')
   }
@@ -997,14 +999,15 @@ test('the header avatar opens the template grid and submits the selected templat
 
 // The rail loads with its real ui-shared helpers; kit members stand in as their
 // own names and hooks come from the caller's fakes.
-const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
+const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
 
 test('rail omits redundant status icons and distinguishes unarchive from the archive filter', async () => {
-  const { SessionRow, workspacePicker } = await loadRail()
+  const { SessionRow, RoleAvatar, workspacePicker } = await loadRail()
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   const changes = []
   const row = nodes(SessionRow({ role: { name: 'Coder' }, session: { name: 'History', archivedAt: 1 },
     onArchive: value => changes.push(value) }))
+  assert.equal(row.find(node => node.type === RoleAvatar).props.profile.name, 'Coder', 'a session row leads with its role avatar')
   const status = row.find(node => node.props.className === 'nodo-row-archived')
   assert.deepEqual(status.children, ['已归档'])
   const action = row.find(node => node.props['aria-label'] === '取消归档会话“History”')
@@ -1200,7 +1203,7 @@ test('the rail filters sessions by the role picked in the roster', async () => {
 test('the rail folds a long session list behind a show-more toggle', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
+  const { Rail, SessionRow, SearchDialog } = await loadRail({ useState: (initial) => {
     const slot = cursor++
     if (!(slot in slots)) slots[slot] = initial
     return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
@@ -1226,20 +1229,16 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   const dockButton = label => tree.find(node => node.type === 'button' && node.props['aria-label'] === label)
   assert.deepEqual(['主页', 'Team', '新建会话', '搜索', '角色'].map(label => dockButton(label).props['aria-pressed']), [true, false, undefined, false, false], 'the dock leads with home, Team, new session, search and roles')
   assert.equal(dockButton('主页').children[0].type, 'IconFlatListOutlineRegular', 'session navigation represents a list')
-  const search = () => tree.find(node => node.type === 'Input')
+  const finder = () => tree.find(node => node.type === SearchDialog)
   const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'archived:only'))
-  assert.equal(search(), undefined, 'search waits behind the dock button')
+  assert.equal(finder(), undefined, 'the finder waits behind the dock button')
   dockButton('搜索').props.onClick()
   tree = render()
-  assert.equal(search().props['aria-label'], '搜索会话')
-  search().props.onChange({ target: { value: '会话0' } })
+  assert.deepEqual(finder().props.items.map(item => item.id), view.profiles[0].sessions.map(session => session.id), 'the finder lists every session, newest first')
+  assert.equal(ids(tree).length, 10, 'the rail list keeps its fold behind the finder')
+  finder().props.onClose()
   tree = render()
-  assert.deepEqual(ids(tree), ['s0'], 'a search sees every match')
-  assert.equal(toggle(tree), undefined, 'a search never folds')
-  search().props.onKeyDown({ key: 'Escape' })
-  tree = render()
-  assert.equal(search(), undefined, 'Escape clears and closes the search')
-  assert.equal(ids(tree).length, 10)
+  assert.equal(finder(), undefined, 'closing the finder removes it')
   menu().props.onSelect('archived:only')
   tree = render()
   assert.equal(menu().props.selectedId, 'archived:only', 'the project menu marks its archived view')
@@ -1257,12 +1256,64 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'lifting the filter keeps the collapsed state')
 })
 
+test('the session finder lists sessions with project and time, filters by query and picks with the keyboard', async () => {
+  const slots = []
+  let cursor = 0
+  const { SearchDialog } = await loadRail({ useState: initial => {
+    const slot = cursor++
+    if (!(slot in slots)) slots[slot] = initial
+    return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  } }, { relativeTime: () => ({ unit: 'now', n: 0 }) })
+  const nodes = node => !node || typeof node !== 'object' ? []
+    : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
+  const picked = []
+  let closed = 0
+  const items = [
+    { id: 'a', role: { id: 'r', name: 'Coder', lead: true }, name: 'Fix login', project: { id: 'p', name: 'bot' }, updatedAt: 2,
+      terms: ['Coder', 'Fix login', 'bot'], pick: () => picked.push('a') },
+    { id: 'b', role: { id: 'q', name: 'Writer' }, name: 'Docs', project: { id: 'w', name: 'feat/x', worktree: { branch: 'feat/x' } }, work: { active: true }, updatedAt: 1,
+      terms: ['Writer', 'Docs', 'feat/x'], pick: () => picked.push('b') },
+  ]
+  const render = () => { cursor = 0; return nodes(SearchDialog({ items, onClose: () => closed++ })) }
+  const rows = () => render().filter(node => node.props?.role === 'option')
+  const input = () => render().find(node => node.type === 'input')
+  const key = (name, extra = {}) => input().props.onKeyDown({ key: name, preventDefault() {}, ...extra })
+  assert.deepEqual(rows().map(row => row.children[1].children[0]), ['Fix login', 'Docs'])
+  assert.equal(rows()[0].children[0].props['data-lead'], '', 'a lead keeps its ring')
+  assert.equal(rows()[1].children[0].props['data-lead'], undefined)
+  assert.equal(rows()[0].children[2].children[1].children[0], 'bot')
+  assert.equal(rows()[1].children[2].children[0].type, 'IconBranchOutlineRegular', 'a worktree shows the branch glyph')
+  assert.equal(rows()[0].children[3].children[0], '↵', 'the active row shows the open hint in place of the time')
+  assert.ok(nodes(rows()[1].children[3]).some(node => node.props?.className === 'nodo-row-running'), 'an idle row shows the run state while it runs')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [true, false])
+  key('ArrowDown')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [false, true])
+  key('ArrowDown')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [true, false], 'the selection wraps')
+  key('ArrowUp')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [false, true])
+  key('Enter', { nativeEvent: { isComposing: true } })
+  assert.deepEqual(picked, [], 'Enter while composing only confirms the input method')
+  key('Enter')
+  assert.deepEqual(picked, ['b'])
+  assert.equal(closed, 1, 'picking closes the finder')
+  input().props.onChange({ target: { value: 'DOCS' } })
+  assert.deepEqual(rows().map(row => row.children[1].children[0]), ['Docs'], 'the query matches names case-insensitively')
+  input().props.onChange({ target: { value: 'bot' } })
+  assert.deepEqual(rows().map(row => row.children[1].children[0]), ['Fix login'], 'the query also matches the project')
+  rows()[0].props.onClick()
+  assert.deepEqual(picked, ['b', 'a'])
+  input().props.onChange({ target: { value: 'zzz' } })
+  assert.equal(rows().length, 0)
+  assert.ok(render().some(node => node.props?.role === 'status' && node.children.includes('没有找到匹配的会话')))
+})
+
 // The unsent new-conversation draft lists as its own 新会话 row of its project,
 // above the sessions, so switching sessions cannot orphan the draft.
 test('the rail lists the pending draft as a 新会话 row that returns to it', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
+  const { Rail, SessionRow, RoleAvatar } = await loadRail({ useState: (initial) => {
     const slot = cursor++
     if (!(slot in slots)) slots[slot] = initial
     return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
@@ -1282,7 +1333,9 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   let tree = render({ id: 'd1', workspace: 'w', profile: 'fish' })
   const row = draftRow(tree)
   assert.ok(row, 'a draft of this project shows as its own row')
-  assert.deepEqual(row.children[0].children, ['新会话'])
+  assert.equal(row.children[0].type, RoleAvatar, 'the draft row leads with its role avatar')
+  assert.equal(row.children[0].props.profile.id, 'fish')
+  assert.deepEqual(row.children[1].children, ['新会话'])
   const order = tree.filter(node => node.props?.title === '新会话（草稿）' || node.type === SessionRow)
     .map(node => node.props.title === '新会话（草稿）' ? 'draft' : node.props.session.id)
   assert.deepEqual(order, ['draft', 'a'], 'the draft row sits above the sessions')
@@ -1326,9 +1379,9 @@ test('the project tree marks collapsed workspaces with running sessions', async 
   assert.deepEqual(top(tree).map(node => node.props.key), ['branch', 'main'])
   assert.deepEqual(top(tree).map(node => toggleOf(node).props['aria-expanded']), [false, true], 'only the current project opens')
   assert.equal(toggleOf(top(tree)[0]).children[1].children[0].type, 'IconBranchOutlineRegular')
-  assert.deepEqual(state(tree).children.map(child => child.props?.state ?? child), ['ongoing', '1 个运行中'])
+  assert.deepEqual(state(tree).children.map(child => child.props?.kind ?? child), ['run', '1 个运行中'])
   view.work.away = { active: true, status: 'waiting-approval' }
-  assert.deepEqual(state(render()).children.map(child => child.props?.state ?? child), ['warning', '待处理'])
+  assert.deepEqual(state(render()).children.map(child => child.props?.kind ?? child), ['wait', '待处理'])
   view.work.away.active = false
   assert.equal(state(render()), undefined, 'an all-idle tree carries no hint')
 })
@@ -3110,7 +3163,7 @@ test('roster buttons open the roles page with the role selected or a new draft',
       completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       subscribeNativeSession() {}, readNativeSession: () => null,
       workspaceIdOf: (view, role, session) => session.workspaceRef ?? role.workspaceId,
-      roleStateOf: () => ({ active: false }), workDot: () => 'idle', workLabel: () => '', sessionTime: () => '刚刚',
+      roleStateOf: () => ({ active: false }), workKind: () => 'stop', WorkDot: 'WorkDot', workLabel: () => '', sessionTime: () => '刚刚',
       ARCHIVED_VIEWS: { hide: '隐藏已归档', all: '全部对话（显示已归档）', only: '仅显示已归档' }, SESSION_FOLD: 10,
       layoutService: { selectPanel: key => panels.push(key) },
       call: async () => ({}),

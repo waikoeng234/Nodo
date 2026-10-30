@@ -256,7 +256,10 @@ Soft rounded rectangles throughout, on a 4/8/12/16/20/24/28px scale. Small contr
 
 ### Navigation
 - **Rail rows:** transparent with a 12px radius. Hover adds the Hover Veil; the selected row takes the sidebar nav active grey, with no outline or shadow. Names are 13px/500 with a 12px Pebble meta line; long names truncate with an ellipsis.
+- **Session rows:** each row leads with its role's 18px avatar, so a mixed list shows which role a session belongs to; the draft row follows the same layout.
 - **Roster:** a single column of 36px rows with a 24px avatar and a 13px name, folded after five roles. A lead's avatar gets a 1.5px ring in its role colour. The selected row follows the rail row states.
+- **Work status mark** (`WorkDot`): a 7px dot before a 12px Pebble label, used by session rows, the roster, the finder and the collapsed-project summary (which counts only running and waiting). Running is the success colour with a slow pulse (none under reduced motion), waiting is Caution Amber, done is Signal Blue, failed is the error colour, and stopped is a hollow Pebble ring. It replaces the host `StateDot` spinner in the rail.
+- **Session finder:** the dock's search opens a headless host `Modal`, 640px wide, shared by the home and Team rails. A 56px input row with a hairline below sits over an 8px-inset list of 40px rows: 20px role avatar, session name, project (folder or branch glyph) and time. The active row takes the sidebar nav active grey and swaps its time for ↵.
 
 ### Role Avatar (signature)
 A pastel blob with two upright pill eyes on a tile of its own colour. Idle it is still; it greets (a 0.45s wobble) on hover, hops on a 1.6s loop and blinks every 3.8s while its Agent runs. This is the brand's face. Reuse it wherever a role appears instead of initials or generic icons.

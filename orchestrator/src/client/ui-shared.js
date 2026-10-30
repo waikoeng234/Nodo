@@ -198,6 +198,9 @@ export const workLabel = work => work?.seen ? ''
   ?? (work?.suspect ? '疑似卡住' : work?.active ? '运行中' : '')
 export const workDot = work => work?.suspect || work?.status?.startsWith('waiting-') || work?.status === 'blocked' ? 'warning'
   : work?.active ? 'ongoing' : work?.status === 'completed' ? 'done' : work?.status === 'error' ? 'error' : 'idle'
+export const workKind = work => work?.suspect || work?.status?.startsWith('waiting-') || work?.status === 'blocked' ? 'wait'
+  : work?.active ? 'run' : ({ completed: 'done', error: 'err' })[work?.status] ?? 'stop'
+export const WorkDot = ({ kind }) => h('i', { className: 'nodo-dot', 'data-s': kind })
 export const runningOf = (profile, work) => {
   const states = (profile.sessions ?? []).map(session => work?.[session.id]).filter(Boolean)
   const active = states.filter(state => state.active)
