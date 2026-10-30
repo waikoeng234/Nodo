@@ -167,17 +167,18 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // the host chat's rule that submitted input supersedes reader position.
   const [sentTick, setSentTick] = useState(0)
   const [actionError, setActionError] = useState('')
-  // The lead session whose raw transcript replaces its round view.
-  const [rawRound, setRawRound] = useState(null)
-  const archived = view?.profiles.flatMap(role => role.sessions.filter(session => session.id === navigation.archivedSession && session.archivedAt)
+  const team = navigation.view === 'team'
+  const archived = view?.profiles.flatMap(role => role.sessions.filter(session => session.id === navigation.archivedSession && session.archivedAt
+    && (!team || (role.lead === true && (session.engine ?? role.engine) !== 'dsh')))
     .map(session => ({ role, session })))[0]
-  const profiles = view?.profiles.filter(item => !item.deletedAt) ?? []
+  const profiles = view?.profiles.filter(item => !item.deletedAt && (!team || (item.lead === true && item.engine !== 'dsh'))) ?? []
   const profile = archived?.role ?? profiles.find(item => item.id === navigation.profile) ?? profiles[0] ?? null
   const workspaces = view?.workspaces ?? []
   const workspace = archived ? workspaces.find(item => item.id === archived.session.workspaceRef) ?? null
     : workspaces.find(item => item.id === navigation.workspace) ?? workspaces[0] ?? null
   const navigationKey = `${workspace?.id}:${profile?.id}`
-  const session = archived?.session ?? sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey])
+  const session = archived?.session ?? sessionForWorkspace(team && profile ? { ...profile, sessions: profile.sessions.filter(item => (item.engine ?? profile.engine) !== 'dsh') } : profile,
+    workspace, workspaces, navigation.sessions?.[navigationKey])
   const sessionId = session?.id
   const draftKey = sessionId ?? `new:${navigationKey}`
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId)
@@ -187,7 +188,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const conversationReadOnly = readOnly || archivedConversation
   const work = sessionId ? view.work[sessionId] : null
   const rounds = view ? roundIndex(view) : null
-  const members = (sessionId && rounds?.members.get(sessionId)) || []
+  const members = (team && sessionId && rounds?.members.get(sessionId)) || []
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd
   useLayoutEffect(() => {
@@ -195,7 +196,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...(conversationReadOnly ? { readOnly: true } : {}) })
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...(readOnly ? { readOnly: true } : {}) })
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing])
-  const roundLive = [{ role: profile, session }, ...members].filter(item => members.length && view.work[item.session?.id]?.active === true)
+  const roundLive = [{ role: profile, session }, ...members].filter(item => team && view?.work[item.session?.id]?.active === true)
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
   const composerProfile = profile && session
@@ -314,7 +315,11 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     await refresh(true)
     setSessionDialog(null)
   }
-  const startDraft = (roleId, project) => startConversation(roleId, pageEnv, project)
+  const startDraft = (roleId, project) => {
+    if (team) roleId = profiles.find(role => role.id === roleId)?.id ?? profile?.id
+    if (team && !roleId) return
+    startConversation(roleId, pageEnv, project)
+  }
   const attach = async (files) => {    try {
       const added = await Promise.all(files.map(readImage))
       setPastedImages(current => ({ ...current, [draftKey]: [...(current[draftKey] ?? []), ...added] }))
@@ -374,7 +379,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     setActionError('')
     const current = trackSelection(true)
     try {
-      for (const [id, target] of members.length ? roundLive.map(item => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
+      for (const [id, target] of team ? roundLive.map(item => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
         await call('interrupt', { profile: id, session: target })
       }
       await refresh(true)
@@ -401,24 +406,34 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
 
   const openSession = id => {
     const role = view.profiles.find(item => item.sessions.some(entry => entry.id === id))
-    if (role) void select(role, id)
+    if (role) {
+      setNavigation(current => ({ ...current, view: 'sessions' }))
+      void select(role, id, workspaces.find(item => item.id === role.sessions.find(entry => entry.id === id)?.workspaceRef))
+    }
   }
+  const showSessions = view => rolesGuard(() => {
+    setNavigation(current => ({ ...current, view }))
+    setEditing(null)
+    nativeSpace.showLegacy()
+  })
   const conversation = () => h('div', { className: 'nodo-conversation' },
     // The host conversation header: the session's own name in the window-chrome
     // row and one hairline closing the block.
     h('header', { className: 'nodo-head' },
       h('div', { className: 'nodo-title-row' },
         leadEntry && h('button', { type: 'button', className: 'nodo-crumb nodo-crumb-link', title: leadEntry.session.name,
-          onClick: () => void select(leadEntry.role, leadEntry.session.id) }, leadEntry.session.name),
+          onClick: () => {
+            setNavigation(current => ({ ...current, view: 'team' }))
+            void select(leadEntry.role, leadEntry.session.id, workspaces.find(item => item.id === leadEntry.session.workspaceRef))
+          } }, leadEntry.session.name),
         leadEntry && h('span', { className: 'nodo-crumb-sep', 'aria-hidden': true }, '›'),
         h('span', { className: 'nodo-crumb', title: session?.name ?? workspace?.name ?? profile.name },
           session?.name ?? workspace?.name ?? profile.name),
         members.length > 0 && h(RoundFaces, { roles: [...new Map([profile, ...members.map(item => item.role)].map(role => [role.id, role])).values()] }),
         h('span', { className: 'nodo-head-actions' },
-          members.length > 0 && h(RoundMenu, { members, work: view.work, raw: rawRound === sessionId,
-            onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId), onOpen: openSession })))),
-    h(Feed, { key: sessionId, profile, session, revision: view.revision, work, sentTick,
-      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
+          members.length > 0 && h(RoundMenu, { members, work: view.work, onOpen: openSession })))),
+    h(Feed, { key: `${team}:${sessionId}`, profile, session, revision: view.revision, work, sentTick,
+      round: team ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since, work })),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
@@ -426,7 +441,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       from: members.find(item => item.session.id === card.profileId) })),
     !archivedConversation && h(Composer, {
       profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,
-      stoppable: members.length ? roundLive.length > 0 : undefined, stopLabel: roundLive.length > 1 ? `停止全部 ${roundLive.length} 个` : undefined, busy: sessionBusy, readOnly: readOnly || !workspace,
+      stoppable: team ? roundLive.length > 0 : undefined, stopLabel: roundLive.length > 1 ? `停止全部 ${roundLive.length} 个` : undefined, busy: sessionBusy, readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
@@ -434,7 +449,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       onInsert: insertDraft,
       onGoal: () => setGoalOpen(true), onCompact: () => void compactSession(),
       onModelChange: changes => void updateEngineChoice(changes),
-      rolePicker: h(RolePicker, { profiles: view.profiles, profile }),
+      rolePicker: h(RolePicker, { profiles: team ? profiles : view.profiles, profile }),
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -458,7 +473,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     error && h('p', { className: 'nodo-error-line', role: 'alert' }, error),
     h('div', { className: 'nodo-frame' },
       !contentOnly && view && h(Rail, {
-        view: railView, profile, workspace, sessionId, editing, draft: space.draft, drafting: space.drafting, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, navigation: railNavigation,
+        key: team ? 'team' : 'sessions',
+        view: railView, profile, workspace, sessionId, editing, draft: space.draft, drafting: space.drafting, onResumeDraft: () => nativeSpace.resumeDraft(), readOnly, busy, navigation: railNavigation ?? (team ? { view: 'team' } : null),
         onSelect: id => {
           const role = view.profiles.find(item => item.id === id)
           if (role && workspace) void select(role)
@@ -474,7 +490,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         onEditRole: item => openRolesPage({ profileId: item.id }),
         onSettings: () => edit({ kind: 'settings' }),
         onRoles: () => layoutService?.selectPanel('nodo-roles'),
-        onSessions: () => rolesGuard(() => nativeSpace.showLegacy()),
+        onSessions: () => showSessions('sessions'),
+        onTeam: () => showSessions('team'),
         onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
         onNewWorkspace: () => edit({ kind: 'workspace', id: 'new', workspace: null }),
         onRenameWorkspace: workspace => setWorkspaceDialog({ kind: 'rename', workspace }),

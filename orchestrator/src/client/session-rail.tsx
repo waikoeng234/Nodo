@@ -16,7 +16,7 @@ export interface RailSession { id: string; name: string; createdAt?: number; sou
 export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; lead?: boolean; sessions: RailSession[] }
 export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
 export interface RailView { profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
-export type RailNavigation = { view: 'roles'; content: ReactNode }
+export type RailNavigation = { view: 'roles'; content: ReactNode } | { view: 'team'; content?: never }
 type Archived = keyof typeof ARCHIVED_VIEWS
 
 interface SessionRowProps {
@@ -107,11 +107,11 @@ interface RailProps {
   onSelectSession: (role: RailRole, id: string, project?: RailWorkspace) => void; onArchiveSession: (role: RailRole, id: string, archived: boolean) => void
   onRenameSession: (role: RailRole, session: RailSession) => void; onPinSession: (role: RailRole, id: string, pinned: boolean) => void
   onNewSession: (profileId?: string, project?: RailWorkspace) => void; onNewWorktree: (project: RailWorkspace) => void; onNewRole: () => void; onEditRole: (role: RailRole) => void
-  onSettings: () => void; onSessions: () => void; onRoles: () => void; onBack: () => void
+  onSettings: () => void; onSessions: () => void; onTeam: () => void; onRoles: () => void; onBack: () => void
   onNewWorkspace: () => void; onRenameWorkspace: (workspace: RailWorkspace) => void; onDeleteWorkspace: (workspace: RailWorkspace) => void
 }
 
-export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
+export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
   const [queries, setQueries] = useState<Record<string, string>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [archives, setArchives] = useState<Record<string, Archived>>({})
@@ -120,12 +120,12 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const [opened, setOpened] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const busyNow = readOnly || busy
+  const team = navigation?.view === 'team'
   const rounds = roundIndex(view)
   const sessions = view.profiles.flatMap(role => role.sessions.map(session => ({ role, session,
     workspaceId: workspaceIdOf(view, role, session) })))
-  // A lead session's row stands for its whole round: the executor sessions it
-  // dispatched share its state, time, highlight, filter and search.
-  const groupOf = (role: RailRole, session: RailSession): { role: RailRole; session: RailSession }[] => [{ role, session }, ...rounds.members.get(session.id) ?? []]
+  const visibleSession = (role: RailRole, session: RailSession) => !team || (role.lead === true && (session.engine ?? role.engine) !== 'dsh')
+  const groupOf = (role: RailRole, session: RailSession): { role: RailRole; session: RailSession }[] => [{ role, session }, ...(team ? rounds.members.get(session.id) ?? [] : [])]
   const rowOf = (role: RailRole, session: RailSession) => {
     const group = groupOf(role, session)
     return group.length === 1 ? { session, work: view.work[session.id], current: session.id === sessionId } : {
@@ -133,10 +133,10 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
       work: runningOf({ sessions: group.map(entry => entry.session) }, view.work),
       current: group.some(entry => entry.session.id === sessionId) }
   }
-  const roles = view.profiles.filter(role => !role.deletedAt)
+  const roles = view.profiles.filter(role => !role.deletedAt && (!team || (role.lead === true && role.engine !== 'dsh')))
   // The roster lists leads before executors; the stable sort keeps stored order.
   const roster = [...roles].sort((a, b) => Number(b.lead === true) - Number(a.lead === true))
-  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && !rounds.lead.has(session.id)
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session)
     && (!session.draftedAt || session.briefSent)
     && (role.deletedAt || !view.workspaces.some(item => item.id === workspaceId)))
     .sort((a, b) => (b.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0))
@@ -149,7 +149,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   }
   const entriesOf = (item: RailWorkspace) => {
     const { search, archived } = scopeOf(item)
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && !rounds.lead.has(session.id)
+    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session)
       && (!filterRole || groupOf(role, session).some(entry => entry.role === filterRole))
       && (archived === 'all' || (archived === 'only') === !!session.archivedAt)
       && (!search || [...groupOf(role, session).flatMap(entry => [entry.role.name, entry.session.name]), session.engine, item.name]
@@ -160,7 +160,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   // The unsent new-conversation draft is a rail row of its own project, so the
   // draft stays reachable after switching sessions; hidden under search and
   // filters that exclude it.
-  const draftIn = (item: RailWorkspace) => !!draft && draft.workspace === item.id && !scopeOf(item).search
+  const draftIn = (item: RailWorkspace) => !!draft && (!team || roles.some(role => role.id === draft.profile)) && draft.workspace === item.id && !scopeOf(item).search
     && scopeOf(item).archived !== 'only' && (!filterRole || filterRole.id === draft.profile)
   const action = (tip: string, label: string, icon: ReactNode, onClick: () => void, disabled?: boolean) => (
     <Tooltip label={tip} side="bottom" align="end" delayMs={500}>
@@ -168,7 +168,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         onClick={event => { event.stopPropagation(); onClick() }}>{icon}</button>
     </Tooltip>
   )
-  const liveIn = (items: RailWorkspace[]) => sessions.filter(entry => items.some(other => other.id === entry.workspaceId) && view.work[entry.session.id]?.active)
+  const liveIn = (items: RailWorkspace[]) => sessions.filter(entry => items.some(other => other.id === entry.workspaceId)
+    && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view.work[entry.session.id]?.active)
   const toggle = (key: string, open: boolean, Glyph: typeof IconBranchOutlineRegular | null, title: string, tip: string | undefined, live: Entry[]) => {
     const waiting = live.some(entry => workDot(view.work[entry.session.id]) === 'warning')
     return (
@@ -225,7 +226,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
               if (searchOpen) { setQueries(current => ({ ...current, [item.id]: '' })); setSearching(null) }
               else { setSearching(item.id); setOpened(current => ({ ...current, [item.id]: true })) }
             })}
-            {action('新会话', `在“${item.name}”中新建会话`, <IconNewChatOutlineRegular />, () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow)}
+            {action('新会话', `在“${item.name}”中新建会话`, <IconNewChatOutlineRegular />, () => onNewSession(filterRole?.id ?? (team ? roles.find(role => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id), item), busyNow || (team && !roles.length))}
             <Menu open={menuOpen === item.id} onClose={() => setMenuOpen(null)} portal closeOnPointerLeave selectedId={`archived:${archived}`}
               items={[
                 ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({ id: `archived:${id}`, label,
@@ -290,6 +291,10 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         <div className="nodo-rail-switch" role="group" aria-label="视图">
           <Tooltip label="会话" side="right" delayMs={500}>
             <button type="button" aria-label="会话" aria-pressed={!navigation} onClick={navigation ? onSessions : undefined}><IconFlatListOutlineRegular size={18} /></button>
+          </Tooltip>
+          <Tooltip label="Team" side="right" delayMs={500}>
+            <button type="button" aria-label="Team" aria-pressed={team}
+              onClick={team ? undefined : onTeam}><IconSparkleRegular size={18} /></button>
           </Tooltip>
           <Tooltip label="角色" side="right" delayMs={500}>
             <button type="button" aria-label="角色" aria-pressed={navigation?.view === 'roles'}

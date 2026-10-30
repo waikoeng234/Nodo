@@ -32,7 +32,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const [error, setError] = useState('')
     const [notice, setNotice] = useState('')
     const pending = useRef(false), created = useRef(null), uploading = useRef(false)
-    const profiles = view?.profiles.filter(role => !role.deletedAt) ?? []
+    const profiles = view?.profiles.filter(role => !role.deletedAt && (!draft || navigation.view !== 'team' || (role.lead === true && role.engine !== 'dsh'))) ?? []
     const sourceRole = sourceSessionId && profiles.find(role => role.sessions.some(session =>
       (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId))
     const sourceSession = sourceRole?.sessions.find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === sourceSessionId)

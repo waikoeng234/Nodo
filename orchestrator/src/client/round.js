@@ -1,6 +1,6 @@
 import {
   h, useState, useEffect, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
-  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconBrowseOutlineRegular, IconThinkOutlineRegular,
+  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
@@ -172,25 +172,21 @@ export function RoundFaces({ roles }) {
     roles.map(role => h(RoleAvatar, { key: role.id, profile: role, size: 20 })))
 }
 
-// The header's session list: the lead's raw transcript first, then every
-// executor session of the round in the order it was opened.
-export function RoundMenu({ members, work, raw, onRaw, onOpen }) {
+export function RoundMenu({ members, work, onOpen }) {
   const [open, setOpen] = useState(false)
   return h(Menu, {
-    open, onClose: () => setOpen(false), portal: true, align: 'end', selectedId: raw ? 'raw' : undefined,
-    items: [{ id: 'raw', label: '完整记录', icon: h(IconBrowseOutlineRegular) },
-      ...members.map(({ role, session }) => {
+    open, onClose: () => setOpen(false), portal: true, align: 'end',
+    items: members.map(({ role, session }) => {
         const status = workLabel(work?.[session.id])
         return { id: session.id, icon: h(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
           label: h('span', { className: 'nodo-round-menu-item' },
             h('span', { className: 'nodo-round-role' }, role.name),
             h('span', { className: 'nodo-round-title' }, session.name),
             status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[session.id]), size: 8 }), status) : null) }
-      })],
+      }),
     onSelect: id => {
       setOpen(false)
-      if (id === 'raw') onRaw()
-      else onOpen(id)
+      onOpen(id)
     },
     anchor: h(Button, { variant: 'ghost', size: 'sm', 'aria-haspopup': 'menu', 'aria-expanded': open,
       onClick: () => setOpen(value => !value) }, '查看会话', h(IconChevronDownOutlineRegular, { size: 14 })),
