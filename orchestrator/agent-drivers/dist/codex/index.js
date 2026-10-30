@@ -8,6 +8,7 @@ import { collector, listDirs } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { connectCodex, ensureCodexWorkspace } from './native.js';
 import { createFileChanges } from '../file-changes.js';
+import { LEAD_TOOLS } from '../lead-mcp.js';
 export const codexInfo = {
     id: 'codex', label: 'Codex CLI', command: 'codex', requiresCwd: true,
     description: 'Uses the local Codex CLI and its existing login and settings.',
@@ -163,7 +164,7 @@ export async function scanCodex({ engineOptions = {} } = {}) {
 // text, and older sessions carry failed attempts that teach the wrong habit.
 // Only the blocking request_user_input reaches this client as a card.
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.';
-export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions } = {}) {
+export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -459,6 +460,10 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             // The autonomy tier rides the thread params: the sandbox bounds what the
             // engine may touch at all, `never` approval is what makes the top tier full.
             const extras = {
+                ...(leadMcpServers?.length ? { config: Object.fromEntries(leadMcpServers.map(({ name, command, args, env }) => [`mcp_servers.${name}`, {
+                            command, args, env: Object.fromEntries(env.map(({ name, value }) => [name, value])),
+                            enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(tool => [tool, { approval_mode: 'approve' }])),
+                        }])) } : {}),
                 ...(permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access', approvalPolicy: 'never' }
                     : permission === 'workspace' ? { sandbox: 'workspace-write' } : {}),
                 ...(instructions ? { developerInstructions: `${instructions}\n\n${QUESTION_ROUTING}` } : {}),

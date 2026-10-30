@@ -37,7 +37,7 @@ const init = () => send({ type: 'system', subtype: 'init', session_id: session, 
 let initialized = !process.env.CLAUDE_FIXTURE_DELAY_INIT
 if (process.env.CLAUDE_FIXTURE_NOISE) send({ type: 'future_frame', session_id: session })
 if (initialized) init()
-log({ spawn: process.argv.slice(1), instructions: arg('--append-system-prompt'), effort: arg('--effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume'), mcpConfig: arg('--mcp-config'), allowedTools: list('--allowedTools'), leadSocketEnv: process.env.NODO_LEAD_SOCKET, leadTokenEnv: process.env.NODO_LEAD_TOKEN })
+log({ spawn: process.argv.slice(1), instructions: arg('--append-system-prompt'), effort: arg('--effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume'), mcpConfig: arg('--mcp-config'), allowedTools: list('--allowedTools'), leadSocketEnv: process.env.NODO_LEAD_SOCKET, leadTokenEnv: process.env.NODO_LEAD_TOKEN, leadTokenFileEnv: process.env.NODO_LEAD_TOKEN_FILE })
 let pending = null // can_use_tool awaiting the host decision
 const receive = line => {
   const frame = JSON.parse(line)

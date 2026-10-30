@@ -3,15 +3,13 @@
 // side writes user frames, control_requests and control_responses.
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { LEAD_TOOLS } from '../lead-mcp.js';
 // The flags every driver session needs: streaming both ways, partial chunks,
 // replayed user frames (they carry tool results), and prompts routed to us over
 // the control channel (--permission-prompt-tool=stdio is the value the Agent SDK
 // itself passes; the space-separated spelling does not arm the dispatcher).
-// The lead tools by exact name: only these skip the CLI's approval flow, and
-// nothing else is loosened.
-const LEAD_TOOLS = ['nodo_board', 'nodo_delegate', 'nodo_interrupt'];
-// NODO_LEAD_* values (socket, token) ride the CLI process environment for the
-// MCP child to inherit — never argv or the config JSON.
+// The CLI environment passes socket and token file paths to the MCP child.
+// The token value stays out of the environment, argv and config JSON.
 export function leadMcpEnv(servers) {
     return Object.fromEntries((servers ?? []).flatMap(({ env }) => env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])));
 }

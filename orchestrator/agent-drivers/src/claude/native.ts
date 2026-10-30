@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import type { PermissionMode } from '../spi.js'
 import type { RoleMcpServer } from '../role-mcp.js'
+import { LEAD_TOOLS } from '../lead-mcp.js'
 
 export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; leadMcpServers?: RoleMcpServer[] }
 export type ClaudeConnectOptions<Frame = unknown, Request = unknown> = {
@@ -17,12 +18,9 @@ export type ClaudeConnection = { write(frame: unknown): void; running: Promise<v
 // replayed user frames (they carry tool results), and prompts routed to us over
 // the control channel (--permission-prompt-tool=stdio is the value the Agent SDK
 // itself passes; the space-separated spelling does not arm the dispatcher).
-// The lead tools by exact name: only these skip the CLI's approval flow, and
-// nothing else is loosened.
-const LEAD_TOOLS = ['nodo_board', 'nodo_delegate', 'nodo_interrupt']
 
-// NODO_LEAD_* values (socket, token) ride the CLI process environment for the
-// MCP child to inherit — never argv or the config JSON.
+// The CLI environment passes socket and token file paths to the MCP child.
+// The token value stays out of the environment, argv and config JSON.
 export function leadMcpEnv(servers?: RoleMcpServer[]) {
   return Object.fromEntries((servers ?? []).flatMap(({ env }) => env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])))
 }

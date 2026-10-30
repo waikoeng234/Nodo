@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, statSync, existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, statSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { connect, createServer } from 'node:net'
@@ -19,7 +19,8 @@ const rpc = (spec, request, fragmented = false) => new Promise((resolve, reject)
   client.setEncoding('utf8')
   let buffer = ''
   client.on('connect', () => {
-    const bytes = Buffer.from(JSON.stringify({ token: env.NODO_LEAD_TOKEN, ...request }) + '\n')
+    const token = env.NODO_LEAD_TOKEN ?? (existsSync(env.NODO_LEAD_TOKEN_FILE) ? readFileSync(env.NODO_LEAD_TOKEN_FILE, 'utf8') : '')
+    const bytes = Buffer.from(JSON.stringify({ token, ...request }) + '\n')
     if (!fragmented) return client.write(bytes)
     const split = bytes.indexOf(Buffer.from('修')) + 2
     client.write(bytes.subarray(0, split))
@@ -43,15 +44,63 @@ const harness = (extra = {}) => {
   return { rt, home, owner, calls, dispose() { for (const fn of disposers) fn(); rmSync(home, { recursive: true, force: true }) } }
 }
 
+test('failed token file writes revoke the new token and preserve the old binding', async () => {
+  const issued = [], h = harness({ retireValue: token => issued.push(token) })
+  try {
+    const binding = await h.rt.issueLeadMcp('lead'), spec = binding.servers[0]
+    const path = spec.env.find(({ name }) => name === 'NODO_LEAD_TOKEN_FILE').value
+    const old = readFileSync(path, 'utf8')
+    rmSync(path)
+    mkdirSync(path)
+    await assert.rejects(h.rt.issueLeadMcp('lead'), { code: 'EISDIR' })
+    assert.equal(issued.length, 2)
+    rmSync(path, { recursive: true })
+    writeFileSync(path, old, { mode: 0o600 })
+    assert.equal((await rpc(spec, { name: 'nodo_board', token: issued[1] })).isError, true)
+    assert.equal((await rpc(spec, { name: 'nodo_board', token: old })).isError, undefined)
+    binding.revoke()
+    assert.equal(existsSync(path), false)
+    assert.equal((await rpc(spec, { name: 'nodo_board', token: old })).isError, true)
+  } finally { h.dispose() }
+})
+
+test('lead token files rotate at a fixed private path and running MCP reads each call', async () => {
+  const h = harness(), client = new Client({ name: 'rotation-test', version: '1' })
+  try {
+    const first = await h.rt.issueLeadMcp('lead'), spec = first.servers[0]
+    const env = Object.fromEntries(spec.env.map(({ name, value }) => [name, value]))
+    const path = env.NODO_LEAD_TOKEN_FILE, old = readFileSync(path, 'utf8')
+    assert.equal(env.NODO_LEAD_TOKEN, undefined)
+    assert.equal(statSync(path).mode & 0o777, 0o600)
+    writeFileSync(path, ` \n${old}\t\n`)
+    await client.connect(new StdioClientTransport({ command: spec.command, args: spec.args, env, stderr: 'pipe' }))
+    assert.equal((await client.callTool({ name: 'nodo_board' })).isError, undefined)
+    const second = await h.rt.issueLeadMcp('lead')
+    assert.deepEqual(second.servers, first.servers)
+    assert.notEqual(readFileSync(path, 'utf8'), old)
+    assert.equal((await rpc(spec, { name: 'nodo_board', token: old })).isError, true)
+    first.revoke()
+    assert.equal(existsSync(path), true)
+    assert.equal((await client.callTool({ name: 'nodo_board' })).isError, undefined)
+    second.revoke()
+    assert.equal(existsSync(path), false)
+    assert.equal((await client.callTool({ name: 'nodo_board' })).isError, true)
+    await h.rt.issueLeadMcp('lead')
+    h.dispose()
+    assert.equal(existsSync(path), false)
+  } finally { await client.close(); h.dispose() }
+})
+
 test('lead MCP authenticates, forwards three tools and returns sanitized MCP errors', async () => {
   const h = harness(), client = new Client({ name: 'test', version: '1' })
   try {
     assert.equal(await h.rt.issueLeadMcp('worker'), undefined)
     const binding = await h.rt.issueLeadMcp('lead'), spec = binding.servers[0]
     const env = Object.fromEntries(spec.env.map(({ name, value }) => [name, value]))
+    const token = readFileSync(env.NODO_LEAD_TOKEN_FILE, 'utf8')
     assert.equal(spec.name, 'nodo_lead')
     assert.equal(env.ELECTRON_RUN_AS_NODE, '1')
-    assert.equal(spec.args.join('').includes(env.NODO_LEAD_TOKEN), false)
+    assert.equal(JSON.stringify(spec).includes(token), false)
     await client.connect(new StdioClientTransport({ command: spec.command, args: spec.args, env, stderr: 'pipe' }))
     const { tools } = await client.listTools()
     assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt'])
@@ -78,8 +127,8 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     ]) assert.equal((await rpc(spec, request)).isError, true)
     h.rt.leadDispatch.delegate = async () => { throw new Error('预算已用尽') }
     assert.match((await client.callTool({ name: 'nodo_delegate', arguments: args })).content[0].text, /预算/)
-    h.rt.leadRoles = () => env.NODO_LEAD_TOKEN
-    assert.equal(JSON.stringify(await client.callTool({ name: 'nodo_board', arguments: { table: 'roles' } })).includes(env.NODO_LEAD_TOKEN), false)
+    h.rt.leadRoles = () => token
+    assert.equal(JSON.stringify(await client.callTool({ name: 'nodo_board', arguments: { table: 'roles' } })).includes(token), false)
     h.owner.profile.lead = false
     assert.equal((await rpc(spec, { name: 'nodo_board' })).isError, true)
     h.owner.profile.lead = true
@@ -193,7 +242,7 @@ test('issued lead tokens enter the host redactor and stay redacted after revoke'
     installSecrets(h.rt)
     await h.rt.issueLeadMcp('worker')
     const binding = await h.rt.issueLeadMcp('lead')
-    const token = binding.servers[0].env.find(({ name }) => name === 'NODO_LEAD_TOKEN').value
+    const token = readFileSync(binding.servers[0].env.find(({ name }) => name === 'NODO_LEAD_TOKEN_FILE').value, 'utf8')
     assert.match(h.rt.redactDeepSecrets(`$ env\nNODO_LEAD_TOKEN=${token}`), /\[secret:NODO_LEAD_TOKEN\]/)
     assert.equal(h.rt.redactDeepSecrets(`NODO_LEAD_TOKEN=${token}`).includes(token), false)
     binding.revoke()

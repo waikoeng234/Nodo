@@ -2858,12 +2858,12 @@ test('a lead row opened before the catalog answers lands on a whitelisted engine
   const field = label => rolesTree(form()).find(node => node.props?.['aria-label'] === label)
   render()
   render().find(node => node.type === 'button' && node.children.includes('添加主控')).props.onClick()
-  resolveCatalog([{ id: 'claude', catalog: { models: [] } }, { id: 'echo', catalog: { models: [] } }])
+  resolveCatalog([{ id: 'echo', catalog: { models: [] } }, { id: 'codex', catalog: { models: [] } }])
   await tickAll()
-  assert.equal(field('Agent').props.value, 'claude', 'the backfill skips engines outside the lead whitelist')
+  assert.equal(field('Agent').props.value, 'codex', 'the backfill skips engines outside the lead whitelist')
   field('名字').props.onChange({ target: { value: 'Leader' } })
   form().props.onSubmit({ preventDefault() {} }); await tickAll()
-  assert.equal(calls.find(item => item.endpoint === 'profile-create').payload.engine, 'claude')
+  assert.equal(calls.find(item => item.endpoint === 'profile-create').payload.engine, 'codex')
 })
 
 test('executor creation matches exact built-in and saved identity names without applying leader', async () => {

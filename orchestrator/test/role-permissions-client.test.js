@@ -118,7 +118,7 @@ test('both create rows submit chosen permissions and reset them for another engi
     assert.equal(calls.some(call => call.endpoint === 'profile-create'), false)
     const agent = () => nodes(form()).find(node => node.props['aria-label'] === 'Agent')
     if (lead) {
-      assert.deepEqual(agent().children.filter(option => option.props?.value).map(option => option.props.value), ['claude'],
+      assert.deepEqual(agent().children.filter(option => option.props?.value).map(option => option.props.value), ['claude', 'codex'],
         'the lead row only offers whitelisted engines')
       assert.deepEqual([...permission().props.modes], ['workspace', 'full'], 'the lead row offers no plan tier')
     } else {

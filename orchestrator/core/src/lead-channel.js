@@ -1,11 +1,11 @@
 import { createServer } from 'node:net'
-import { randomBytes } from 'node:crypto'
-import { mkdirSync, mkdtempSync, chmodSync, rmSync } from 'node:fs'
+import { randomBytes, createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, chmodSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { leadMcp } from '../../agent-drivers/dist/lead-mcp.js'
 
 export function install(rt) {
-  const tokens = new Map(), clients = new Set()
+  const tokens = new Map(), credentials = new Map(), clients = new Set()
   let server, directory, socket, starting, closed = false
   const caller = token => {
     if (closed) throw new Error('Nodo 主控通道已关闭')
@@ -93,11 +93,22 @@ export function install(rt) {
     // so the host redactor learns it for the token's whole life, revoke included.
     rt.retireValue?.(token, 'NODO_LEAD_TOKEN')
     try { caller(token) } catch (error) { tokens.delete(token); throw error }
-    return { servers: leadMcp(socket, token), revoke: () => tokens.delete(token) }
+    const tokenFile = join(directory, createHash('sha256').update(id).digest('hex') + '.token')
+    try { writeFileSync(tokenFile, token, { mode: 0o600 }) } catch (error) { tokens.delete(token); throw error }
+    const previous = credentials.get(id)
+    if (previous) tokens.delete(previous)
+    credentials.set(id, token)
+    return { servers: leadMcp(socket, '', tokenFile), revoke: () => {
+      tokens.delete(token)
+      if (credentials.get(id) !== token) return
+      credentials.delete(id)
+      rmSync(tokenFile, { force: true })
+    } }
   }
   rt.ctx.effect(() => () => {
     closed = true
     tokens.clear()
+    credentials.clear()
     for (const client of clients) client.destroy()
     server?.close()
     if (directory) rmSync(directory, { recursive: true, force: true })

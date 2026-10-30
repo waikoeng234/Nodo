@@ -185,11 +185,14 @@ test('leads require an executor and cannot remove or promote the last one before
 
 test('lead roles are limited to whitelisted engines and never the plan tier', () => withHost(async ({ api }) => {
   const worker = await api('profile-create', { name: 'Worker', engine: 'echo' })
-  await assert.rejects(api('profile-create', { name: 'Lead', engine: 'echo', lead: true }), { code: 'orch/invalid', message: '引擎 echo 暂不支持主控，主控请选择 claude' })
+  await assert.rejects(api('profile-create', { name: 'Lead', engine: 'echo', lead: true }), { code: 'orch/invalid', message: '引擎 echo 暂不支持主控，主控请选择 claude、codex' })
   await assert.rejects(api('profile-create', { name: 'Lead', engine: 'claude', lead: true, permission: 'plan' }), { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
+  const codex = await api('profile-create', { name: 'Codex Lead', engine: 'codex', lead: true })
+  assert.equal(codex.lead, true)
+  await assert.rejects(api('profile-update', { id: codex.id, changes: { permission: 'plan' } }), { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
   const lead = await api('profile-create', { name: 'Lead', engine: 'claude', lead: true })
   await api('profile-create', { name: 'Helper', engine: 'echo' })
-  await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true } }), { code: 'orch/invalid', message: '引擎 echo 暂不支持主控；引擎创建后不能更换，请新建 claude 的主控角色' })
+  await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true } }), { code: 'orch/invalid', message: '引擎 echo 暂不支持主控；引擎创建后不能更换，请新建 claude、codex 的主控角色' })
   await assert.rejects(api('profile-update', { id: lead.id, changes: { permission: 'plan' } }), { code: 'orch/invalid', message: '主控不能使用计划模式权限，请改选其他权限' })
   // A whitelisted executor already on the plan tier cannot become the lead either.
   const planner = await api('profile-create', { name: 'Planner', engine: 'claude', permission: 'plan' })

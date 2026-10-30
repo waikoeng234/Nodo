@@ -16001,7 +16001,7 @@ var route = ({ type, hard }, roster, fallback) => {
 };
 
 // core/shared/lead.js
-var LEAD_ENGINES = ["claude"];
+var LEAD_ENGINES = ["claude", "codex"];
 
 // src/client/roles.tsx
 var sidebarContent = null;

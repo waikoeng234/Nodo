@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/dist/index.js'
 import { claudeArgs } from '../agent-drivers/dist/claude/native.js'
+import { leadMcp, LEAD_TOOLS } from '../agent-drivers/dist/lead-mcp.js'
 import { withHost, boot, until } from './helpers/host.js'
 
 const withFixture = async (run) => {
@@ -14,6 +15,80 @@ const withFixture = async (run) => {
   chmodSync(bin, 0o755)
   try { await run({ bin, cwd: dir }) } finally { rmSync(dir, { recursive: true, force: true }) }
 }
+
+test('Codex lead mounts are thread scoped on start and resume in every permission tier', async () => {
+  for (const permission of ['plan', 'workspace', 'full']) await withFixture(async ({ bin, cwd }) => {
+    const token = 'fixture-file-only-credential'
+    const tokenFile = join(cwd, 'lead.token')
+    writeFileSync(tokenFile, token, { mode: 0o600 })
+    const leadMcpServers = leadMcp(join(cwd, 'lead.sock'), '', tokenFile)
+    leadMcpServers[0].name = 'custom_lead'
+    const expected = { 'mcp_servers.custom_lead': {
+      command: leadMcpServers[0].command, args: leadMcpServers[0].args,
+      env: Object.fromEntries(leadMcpServers[0].env.map(({ name, value }) => [name, value])),
+      enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])),
+    } }
+    for (const driverSessionId of [undefined, 'fixture-thread']) {
+      const events = []
+      const driver = createDriver('codex', { bin, cwd, permission, driverSessionId, leadMcpServers,
+        instructions: 'Lead rules', env: { CODEX_FIXTURE_REJECT_INSTRUCTIONS: 'unsupported' }, onEvent: event => events.push(event) })
+      try {
+        await driver.sendTurn('LEAD_TASK')
+        await until(() => events.some(event => event.type === 'turn/end'))
+      } finally { driver.dispose() }
+    }
+    const raw = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8')
+    assert.equal(raw.includes(token), false)
+    const threads = raw.trim().split('\n').map(JSON.parse).filter(item => item.method.startsWith('thread/'))
+    assert.deepEqual(threads.map(item => item.method), ['thread/start', 'thread/start', 'thread/resume', 'thread/resume'])
+    for (const { params } of threads) {
+      assert.deepEqual(params.config, expected)
+      assert.equal(params.sandbox, { plan: 'read-only', workspace: 'workspace-write', full: 'danger-full-access' }[permission])
+      assert.equal(params.approvalPolicy, permission === 'full' ? 'never' : undefined)
+    }
+  })
+})
+
+test('Codex refuses unsupported thread config without dropping the lead mount', async () => {
+  for (const driverSessionId of [undefined, 'fixture-thread']) await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, driverSessionId, instructions: 'Lead rules',
+      leadMcpServers: leadMcp('/fixture/socket', '', '/fixture/token'), env: { CODEX_FIXTURE_REJECT_CONFIG: '1' } })
+    try {
+      await assert.rejects(driver.openSession(), /unknown field `config`/)
+      const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+      assert.equal(requests.length, 1)
+      assert.ok(requests[0].params.config)
+    } finally { driver.dispose() }
+  })
+})
+
+test('Nodo Codex leads receive only token file paths and workers receive no thread config', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const host = boot(join(cwd, 'plugin'))
+    try {
+      const workspace = await host.api('workspace-create', { name: 'Lead', cwd })
+      const worker = await host.api('profile-create', { name: 'Worker', engine: 'codex', workspace: workspace.id, engineOptions: { bin } })
+      const lead = await host.api('profile-create', { name: 'Lead', engine: 'codex', lead: true, workspace: workspace.id, engineOptions: { bin } })
+      const tokens = []
+      for (const role of [lead, worker]) {
+        await host.api('send', { profile: role.id, text: 'TASK' })
+        await until(async () => !(await host.api('state')).work[role.id].active)
+        const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+        const thread = requests.filter(item => item.method === 'thread/start').at(-1)
+        if (role.lead) {
+          const env = thread.params.config['mcp_servers.nodo_lead'].env
+          assert.equal(env.NODO_LEAD_TOKEN, undefined)
+          tokens.push(readFileSync(env.NODO_LEAD_TOKEN_FILE, 'utf8'))
+        } else assert.equal(Object.hasOwn(thread.params, 'config'), false)
+      }
+      const raw = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8')
+      for (const token of tokens) {
+        assert.equal(raw.includes(token), false)
+        assert.equal(JSON.stringify(await host.api('transcript', { profile: lead.id })).includes(token), false)
+      }
+    } finally { host.dispose() }
+  })
+})
 
 test('Codex source messages and interleaved results survive the host transcript and a saved-session reload', async () => {
   await withFixture(async ({ bin, cwd }) => {
@@ -86,6 +161,8 @@ test('Codex installs identity on start and resume while every task stays free of
       const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
       const start = requests.find(item => item.method === 'thread/start')
       const resume = requests.find(item => item.method === 'thread/resume')
+      assert.equal(Object.hasOwn(start.params, 'config'), false)
+      assert.equal(Object.hasOwn(resume.params, 'config'), false)
       assert.match(start.params.developerInstructions, /You are Fixture Reviewer/)
       assert.match(start.params.developerInstructions, /TAIL_NATIVE_RULE/)
       assert.ok(!start.params.developerInstructions.includes('# The task'))

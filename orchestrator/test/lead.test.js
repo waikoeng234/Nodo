@@ -2647,7 +2647,7 @@ test('a lead token that reaches recorded tool output is redacted', () => withLea
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
   const binding = await rt.issueLeadMcp(conversation.id)
-  const token = binding.servers[0].env.find(({ name }) => name === 'NODO_LEAD_TOKEN').value
+  const token = readFileSync(binding.servers[0].env.find(({ name }) => name === 'NODO_LEAD_TOKEN_FILE').value, 'utf8')
   assert.match(rt.redactSecrets(`NODO_LEAD_TOKEN=${token}`), /\[secret:NODO_LEAD_TOKEN\]/)
   rt.driverSink(conversation.id, { type: 'tool', name: 'bash', phase: 'end', outputText: `$ env\nNODO_LEAD_TOKEN=${token}` })
   const line = rt.transcriptOf(conversation.id).find(item => item.kind === 'tool' && item.name === 'bash')

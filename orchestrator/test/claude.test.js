@@ -176,11 +176,13 @@ test('Claude permission tiers reach the spawned CLI args', async () => {
   })
 })
 
-test('Claude mounts the lead MCP on start and resume with exact allowedTools and an env-only token', async () => {
+for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start and resume with exact allowedTools and an env-only ${useFile ? 'token file path' : 'token'}`, async () => {
   await withFixture(async ({ bin, cwd }) => {
     const socket = join(cwd, 'lead.sock')
+    const tokenFile = join(cwd, 'lead.token')
     const leadMcpServers = [{ name: 'nodo_lead', command: process.execPath, args: [join(cwd, 'lead-server.js')],
-      env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }, { name: 'NODO_LEAD_SOCKET', value: socket }, { name: 'NODO_LEAD_TOKEN', value: 'lead-token-secret' }] }]
+      env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }, { name: 'NODO_LEAD_SOCKET', value: socket },
+        { name: useFile ? 'NODO_LEAD_TOKEN_FILE' : 'NODO_LEAD_TOKEN', value: useFile ? tokenFile : 'lead-token-secret' }] }]
     let events = []
     let driver = createDriver('claude', { bin, cwd, leadMcpServers, onEvent: event => events.push(event) })
     try {
@@ -206,10 +208,12 @@ test('Claude mounts the lead MCP on start and resume with exact allowedTools and
         'only env without channel secrets enters the config')
       assert.equal(JSON.stringify(config).includes('lead-token-secret'), false)
       assert.equal(JSON.stringify(config).includes(socket), false)
+      assert.equal(JSON.stringify(config).includes(tokenFile), false)
       assert.deepEqual(spawn.allowedTools, ['mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_delegate', 'mcp__nodo_lead__nodo_interrupt'],
         'exactly the three lead tools skip approval, nothing injectable')
       assert.equal(spawn.leadSocketEnv, socket)
-      assert.equal(spawn.leadTokenEnv, 'lead-token-secret', 'the token reaches the CLI process env for the MCP child to inherit')
+      assert.equal(spawn.leadTokenEnv, useFile ? undefined : 'lead-token-secret')
+      assert.equal(spawn.leadTokenFileEnv, useFile ? tokenFile : undefined)
     }
     events = []
     const plain = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
@@ -221,6 +225,7 @@ test('Claude mounts the lead MCP on start and resume with exact allowedTools and
     assert.equal(executor.mcpConfig, undefined)
     assert.equal(executor.allowedTools, undefined)
     assert.equal(executor.leadTokenEnv, undefined)
+    assert.equal(executor.leadTokenFileEnv, undefined)
     assert.equal(executor.leadSocketEnv, undefined)
     assert.equal(executor.spawn.includes('--mcp-config'), false)
   })

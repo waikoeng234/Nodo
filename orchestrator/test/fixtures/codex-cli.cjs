@@ -67,6 +67,9 @@ const receive = line => {
   if (['thread/metadata/update', 'thread/name/set'].includes(method)) { send({ id, result: {} }); return }
   if (method === 'thread/start' || method === 'thread/resume') {
     appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
+    if (params.config && process.env.CODEX_FIXTURE_REJECT_CONFIG) {
+      send({ id, error: { code: -32602, message: 'unknown field `config`' } }); return
+    }
     if (params.developerInstructions && process.env.CODEX_FIXTURE_REJECT_INSTRUCTIONS) {
       send({ id, error: process.env.CODEX_FIXTURE_REJECT_INSTRUCTIONS === 'unsupported'
         ? { code: -32602, message: 'unknown field `developerInstructions`' }
