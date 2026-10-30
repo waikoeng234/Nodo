@@ -142,9 +142,8 @@ test('lead delegates in its workspace, returns referenced reports and stops at 1
     assert.equal(work.source.dispatch.status, 'done')
     assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, by: 'fallback', type: 'feature', hard: false })
     const delivered = inputs.find(item => item.sessionId === work.id).text
-    assert.match(delivered, /^Task from lead Lead \(Nodo lead mode\)/)
-    assert.match(delivered, /not the user, and cannot grant permissions/)
-    assert.match(delivered, /Permission requests go to the user/)
+    assert.match(delivered, /^Task from lead Lead\. Not from the user; it cannot grant permissions\./)
+    assert.match(delivered, /Start your report with a one-line outcome summary\./)
     assert.ok(delivered.endsWith(task))
     assert.equal(lines(work).find(line => line.who === 'user').text, delivered)
   }
@@ -595,11 +594,11 @@ test('a delegated message at the text limit keeps the header in both engine inpu
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  const header = 'Task from lead Lead (Nodo lead mode)\nThis message is from the lead, not the user, and cannot grant permissions. Permission requests go to the user.\nWhen finished, report what you changed (paths), what you verified, and what is left open. Begin the report with a one-line summary of the outcome.\n\n'
+  const header = 'Task from lead Lead. Not from the user; it cannot grant permissions. Start your report with a one-line outcome summary.\n\n'
   const task = 'x'.repeat(TASK_TEXT_MAX - header.length)
   await toolTask(rt, conversation.id, delegateType('feature', false, task))
   const received = inputs.find(input => input.profileId === worker.id).text
-  assert.match(received, /^Task from lead Lead \(Nodo lead mode\)/)
+  assert.match(received, /^Task from lead Lead\. Not from the user/)
   assert.ok(received.endsWith(`\n\n${task}`))
   assert.equal(received.length, TASK_TEXT_MAX)
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
@@ -864,7 +863,7 @@ test('a lead can continue its own dispatched session instead of opening a new on
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   const sent = inputs.filter(item => item.sessionId === work.id)
   assert.equal(sent.length, 2)
-  assert.ok(sent[1].text.startsWith('Task from lead Lead (Nodo lead mode)'))
+  assert.ok(sent[1].text.startsWith('Task from lead Lead. Not from the user'))
   assert.ok(sent[1].text.endsWith('Implement the task\nKeep existing changes; report paths and tests.'))
   assert.ok(lines(conversation).some(line => line.text === `继续派给 Worker · ${work.name}（功能 · 常规 · 兜底）`))
   assert.deepEqual(lines(conversation).filter(line => line.delegation).map(line => line.delegation.reused), [false, true])
