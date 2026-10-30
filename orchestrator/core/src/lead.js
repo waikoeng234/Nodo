@@ -1,6 +1,7 @@
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RUN_LIMITS } from './constants.js'
 import { clip } from './text.js'
 import { route } from '../shared/route.js'
+import { leadModeOf } from '../shared/lead.js'
 import { randomUUID } from 'node:crypto'
 
 export { route }
@@ -42,7 +43,7 @@ export function install(rt) {
     .map(row => `| ${row.map(value => String(value ?? '').replaceAll('|', '\\|').replace(/[\r\n]+/g, ' ')).join(' | ')} |`).join('\n'))
   const leadSnapshot = id => {
     const owner = rt.conversationOf(id)
-    if (!owner?.profile.lead) return ''
+    if (!owner || !leadModeOf(owner.profile, owner.session)) return ''
     const records = delegationsOf(id).sort((a, b) => b.session.source.dispatch.acceptedAt - a.session.source.dispatch.acceptedAt)
     const current = records.find(item => item.session.source.dispatch.status === 'running') ?? records[0]
     const pending = owner.session.reportQueue?.length ?? 0
@@ -59,9 +60,9 @@ export function install(rt) {
     return table(['会话', '角色', '任务', '类型 / 难度 / 兜底', '状态', '已续用'], selected.map(({ profile, session }) => delegationState(profile, session)))
   }
   const leadRoles = id => {
-    const profile = rt.conversationOf(id)?.profile
-    if (profile?.lead !== true) throw invalid('调用方必须是有效主控会话')
-    return [table(['角色', '身份', '职责', '承接任务类型', '难题配置', '兜底'], rosterOf(profile).map(item =>
+    const found = rt.conversationOf(id)
+    if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
+    return [table(['角色', '身份', '职责', '承接任务类型', '难题配置', '兜底'], rosterOf(found.profile).map(item =>
       [item.name, item.identity, item.role, (item.taskTypes ?? []).join(', '), item.hard !== undefined ? '有' : '无', item.fallback ? '是' : '否'])),
     table(['id', 'name', 'when'], rt.taskTypes().map(item => [item.id, item.name, item.when])),
     '路由规则：有角色承接该类型时，常规任务优先给不带难题配置的角色，否则取排在前面的；难题只给带难题配置的角色，没有就报错。无角色承接该类型时交给兜底角色；难题优先用兜底的难题配置。'].join('\n\n')
@@ -75,7 +76,7 @@ export function install(rt) {
     flight.cancel?.()
     return waiting
   }
-  const leadBrief = (profile, session) => session?.instructionMode === 'native' ? '' : leadRules
+  const leadBrief = (profile, session) => !leadModeOf(profile, session) || session?.instructionMode === 'native' ? '' : leadRules
   const note = async (id, text, extra) => {
     rt.appendLine(id, rt.redactDeepSecrets({ who: 'system', kind: 'note', text, ...extra }))
     await rt.save()
@@ -204,7 +205,7 @@ export function install(rt) {
 `)
   const ownerOf = value => {
     const found = rt.conversationOf(typeof value === 'string' ? value : value?.id)
-    if (!found || found.profile.lead !== true) throw invalid('调用方必须是有效主控会话')
+    if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
     rt.assertSessionWritable(found.profile, found.session)
     return found
   }

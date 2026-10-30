@@ -1,6 +1,7 @@
 // POST /api/nodo: one endpoint name and payload per request, answered as
 // { ok: true, value } or { ok: false, error }. `state` returns only the live parts
 // while the client's revision is current.
+import { leadModeOf } from '../shared/lead.js'
 
 const failure = (message, code) => Object.assign(new Error(message), { code })
 const invalid = message => failure(message, 'orch/invalid')
@@ -149,7 +150,8 @@ export function install(rt) {
       case 'task-types-update':
         return rt.updateTaskTypes(body.types)
       case 'session-create':
-        return rt.createSession(resolveProfileRef(body.profile).id, body.name, body.workspace, body.lazy === true, body.draft === true, body.choices)
+        return rt.createSession(resolveProfileRef(body.profile).id, body.name, body.workspace, body.lazy === true, body.draft === true, body.choices, undefined,
+          { team: body.team !== false })
       case 'session-open':
         return rt.openNativeSession(body)
       case 'session-select':
@@ -168,12 +170,13 @@ export function install(rt) {
         const { session } = rt.conversation(profile.id, body.session)
         rt.assertSessionWritable(profile, session)
         const cwd = session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd
-        const images = profile.lead && cwd ? await rt.materializeImages(rt.admitImages(body.images), cwd) : []
+        const leadMode = leadModeOf(profile, session)
+        const images = leadMode && cwd ? await rt.materializeImages(rt.admitImages(body.images), cwd) : []
         const files = body.files?.length || images.length ? { refs: body.files?.length ? rt.cleanFileRefs(body.files) : undefined,
           paths: [...await rt.materializeFiles(body.files, cwd), ...images] } : undefined
         const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references,
-          { files, userInput: true, queue: body.mode === 'queue', ...(profile.lead ? { brief: rt.leadBrief(profile, session) } : {}) })
-        if (profile.lead) void rt.followLead(profile.id, session.id, placed, files?.paths)
+          { files, userInput: true, queue: body.mode === 'queue', ...(leadMode ? { brief: rt.leadBrief(profile, session) } : {}) })
+        if (leadMode) void rt.followLead(profile.id, session.id, placed, files?.paths)
         else void rt.followLeadReport(session.id, placed, placed.leadFlight)
         void rt.flushLeadReports(session.id)
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }

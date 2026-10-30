@@ -60,7 +60,11 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
       return next
     })
     const chooseRole = id => { updateSelection(current => ({ ...current, profile: id, choices: {} })); setError('') }
-    const composerProfile = profile && { ...profile, ...choices }
+    // The draft has no session yet; the composer gates plan by the mode the
+    // conversation would be created in — Team drafts lead, everything else chats.
+    const composerProfile = profile && profile.lead === true
+      ? { ...profile, ...choices, leadMode: !!draft && navigation.view === 'team' }
+      : profile && { ...profile, ...choices }
     const clearDraft = () => { changeText(''); changeImages([]); setSelection(current => ({ ...current, references: [], files: [] })); saveOptions(key, null); if (draft) space.endDraft(draft.id) }
     // Images ride
     // the draft inline, documents become stored references that only turn into
@@ -88,9 +92,10 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
       if (!workspace) { setError('请先添加或选择项目。'); return }
       pending.current = true; setBusy(true); setError('')
       try {
-        const signature = JSON.stringify([profile.id, workspace.id, choices])
+        const team = !!draft && navigation.view === 'team'
+        const signature = JSON.stringify([profile.id, workspace.id, choices, team])
         if (created.current?.signature !== signature) {
-          const session = await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true, choices })
+          const session = await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true, choices, team })
           created.current = { signature, session }
         }
         if (!active()) return

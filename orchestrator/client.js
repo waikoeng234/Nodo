@@ -12079,6 +12079,10 @@ var TOOL_TIMELINE_CSS = `
 @media(prefers-reduced-motion:reduce){.nodo-tool-timeline-chevron,.nodo-tool-timeline-panel{transition:none}.nodo-tool-timeline-step,.nodo-tool-timeline-step[data-active=true]>.nodo-tool-timeline-icon{animation:none}.nodo-tool-timeline[data-streaming=true] .nodo-tool-timeline-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `;
 
+// core/shared/lead.js
+var LEAD_ENGINES = ["claude"];
+var leadModeOf = (profile, session) => profile?.lead === true && session?.leadMode !== false;
+
 // src/client/feed.js
 var FOLLOW_PX = 25;
 var brief = (text) => (text ?? "").slice(0, 400);
@@ -12409,7 +12413,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
     setFollowing(true);
   }, [sentTick]);
   const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines;
-  const shown = profile.lead === true ? source.filter((line2) => line2.kind !== "usage") : source;
+  const shown = leadModeOf(profile, session) ? source.filter((line2) => line2.kind !== "usage") : source;
   const turns = [];
   for (const [index, item] of shown.entries()) {
     if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
@@ -13373,7 +13377,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     session,
     workspaceId: workspaceIdOf(view, role, session)
   })));
-  const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh";
+  const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh" && session.leadMode !== false;
   const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
   const rowOf = (role, session) => {
     const group = groupOf(role, session);
@@ -14048,8 +14052,9 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     ...onGoal ? [{ id: "goal", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular), label: row("\u804C\u8D23", "goal", "\u8BBE\u7F6E\u6216\u67E5\u770B\u89D2\u8272\u804C\u8D23") }] : [],
     // Only a plan↔workspace pair is a safe toggle: without workspace the row
     // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card. Leads never run in plan mode.
-    ...modes.includes("plan") && modes.includes("workspace") && profile.lead !== true ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
+    // confirmation on the role card. Lead-mode sessions never run in plan; a
+    // lead's 1:1 chat may.
+    ...modes.includes("plan") && modes.includes("workspace") && !leadModeOf(profile, profile) ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
     { type: "label", id: "cmd-title", text: "\u6307\u4EE4" },
     ...commandSection
   ] : [{ type: "label", id: "cmd-title", text: "\u6307\u4EE4" }, ...commandSection];
@@ -14162,7 +14167,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
       setModes([]);
     });
   };
-  const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])).filter((mode) => profile.lead !== true || mode !== "plan");
+  const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])).filter((mode) => !leadModeOf(profile, profile) || mode !== "plan");
   const label = offered.length ? PERMISSION_LABELS[current] ?? current : "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D";
   const items = offered.map((mode) => ({
     id: mode,
@@ -16045,9 +16050,6 @@ var route = ({ type, hard }, roster, fallback) => {
   return profile ? { profile, choices: {}, by: "route" } : { miss: true };
 };
 
-// core/shared/lead.js
-var LEAD_ENGINES = ["claude"];
-
 // src/client/roles.tsx
 var sidebarContent = null;
 var sidebarListeners = /* @__PURE__ */ new Set();
@@ -17043,14 +17045,15 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [sentTick, setSentTick] = (0, import_react.useState)(0);
   const [actionError, setActionError] = (0, import_react.useState)("");
   const team = navigation.view === "team";
-  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || role.lead === true && (session2.engine ?? role.engine) !== "dsh")).map((session2) => ({ role, session: session2 })))[0];
+  const leadSession = (role, session2) => role.lead === true && (session2.engine ?? role.engine) !== "dsh" && session2.leadMode !== false;
+  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || leadSession(role, session2))).map((session2) => ({ role, session: session2 })))[0];
   const profiles = view?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
   const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
   const workspaces = view?.workspaces ?? [];
   const workspace = archived ? workspaces.find((item) => item.id === archived.session.workspaceRef) ?? null : workspaces.find((item) => item.id === navigation.workspace) ?? workspaces[0] ?? null;
   const navigationKey = `${workspace?.id}:${profile?.id}`;
   const session = archived?.session ?? sessionForWorkspace(
-    team && profile ? { ...profile, sessions: profile.sessions.filter((item) => (item.engine ?? profile.engine) !== "dsh") } : profile,
+    team && profile ? { ...profile, sessions: profile.sessions.filter((item) => leadSession(profile, item)) } : profile,
     workspace,
     workspaces,
     navigation.sessions?.[navigationKey]
@@ -17073,7 +17076,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
   const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view?.work[item.session?.id]?.active === true);
-  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
+  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
   const viewedWork = view?.work[viewed?.id];
   (0, import_react.useEffect)(() => {
@@ -17160,6 +17163,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           profile: profile.id,
           workspace: created.workspace.id,
           lazy: true,
+          team,
           ...created.sessionName === "" ? {} : { name: created.sessionName }
         });
         sessionId2 = saved.id;
@@ -17245,7 +17249,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     const current = trackSelection();
     const relevant = trackSelection(true);
     try {
-      const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true })).id;
+      const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }));
       await call("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
       if (current()) setSentTick((tick) => tick + 1);
@@ -17423,7 +17427,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     (0, import_react.createElement)(
       "div",
       { className: "nodo-stats" },
-      (0, import_react.createElement)(SessionStats, { stats: profile.lead === true ? void 0 : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
+      (0, import_react.createElement)(SessionStats, { stats: leadModeOf(profile, session) ? void 0 : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
     )
   );
   const page = () => {
@@ -17525,7 +17529,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       },
       onCancel: () => setGoalOpen(false)
     }),
-    statsOpen && profile.lead !== true && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
+    statsOpen && !leadModeOf(profile, session) && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
       key: `stats:${sessionId}`,
       stats: view.stats[sessionId],
       onClose: () => setStatsOpen(false)
@@ -18840,7 +18844,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       updateSelection((current) => ({ ...current, profile: id, choices: {} }));
       setError("");
     };
-    const composerProfile = profile && { ...profile, ...choices };
+    const composerProfile = profile && profile.lead === true ? { ...profile, ...choices, leadMode: !!draft && navigation.view === "team" } : profile && { ...profile, ...choices };
     const clearDraft = () => {
       changeText("");
       changeImages([]);
@@ -18885,9 +18889,10 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       setBusy(true);
       setError("");
       try {
-        const signature = JSON.stringify([profile.id, workspace.id, choices]);
+        const team = !!draft && navigation.view === "team";
+        const signature = JSON.stringify([profile.id, workspace.id, choices, team]);
         if (created.current?.signature !== signature) {
-          const session2 = await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices });
+          const session2 = await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices, team });
           created.current = { signature, session: session2 };
         }
         if (!active()) return;

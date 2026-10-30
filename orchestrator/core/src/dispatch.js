@@ -6,7 +6,7 @@
 // work twice.
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TIMEOUT_MS, RUN_LIMITS, UNCONFIRMED_STEER } from './constants.js'
 import { clip } from './text.js'
-import { LEAD_ENGINES } from '../shared/lead.js'
+import { LEAD_ENGINES, leadModeOf } from '../shared/lead.js'
 import { projectContent } from './resources.js'
 import { changesTool, normalizeProgress, planObservation, previewRecord } from './stream-records.js'
 import { createMessageStream } from './message-stream.js'
@@ -533,7 +533,8 @@ export function install(rt) {
     // createProfile and updateProfile keep new leads compliant; this catches
     // cards saved before the rules, which never migrate in place. The dedicated
     // code lets result delivery tell the executor why its report cannot land.
-    if (profile.lead === true) {
+    // A 1:1 chat session runs like any executor: no lead engine or plan rules.
+    if (leadModeOf(profile, session)) {
       if (!LEAD_ENGINES.includes(profile.engine)) throw Object.assign(new Error(`主控「${profile.name}」的引擎 ${profile.engine} 暂不支持主控，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`), { code: 'orch/lead-invalid' })
       if ((session.permission ?? profile.permission) === 'plan') throw Object.assign(new Error(`主控「${profile.name}」是计划模式权限，请改成其他权限后再发送`), { code: 'orch/lead-invalid' })
     }
@@ -566,8 +567,9 @@ export function install(rt) {
     const st = stateOf(profileId)
     const leadFlight = userInput ? rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
-    if (userInput && profile.lead) rt.resetLeadBudget?.(session.id)
-    const onInput = userInput && profile.lead ? () => rt.leadInputStarted?.(session.id, files?.paths) : undefined
+    const leadMode = leadModeOf(profile, session)
+    if (userInput && leadMode) rt.resetLeadBudget?.(session.id)
+    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, files?.paths) : undefined
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))

@@ -1932,6 +1932,78 @@ test('the composer add menu offers the native sections and inserts text picks in
 
 })
 
+test('a lead card\'s 1:1 chat gets the plan tier while its Team sessions keep it hidden', async () => {
+  const states = [], refs = [], effects = []
+  let cursor = 0
+  const { AddMenu, PermissionMenu } = await loadClient('composer.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef(initial) { const at = cursor++; return refs[at] ??= { current: initial } },
+      useEffect(effect) { effects.push(effect) },
+    },
+    async call(endpoint) {
+      if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { permissionModes: ['plan', 'workspace', 'full'] } }]
+      if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [] }
+      return {}
+    },
+  })
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const chat = { engine: 'claude', permission: 'workspace', lead: true, leadMode: false }
+  const team = { engine: 'claude', permission: 'workspace', lead: true }
+  const menu = profile => { cursor = 0; return AddMenu({ profile, workspace: { id: 'w1', name: 'one' }, disabled: false, trigger: null,
+    onInsert() {}, onModelChange() {} }) }
+  const opened = async profile => { menu(profile).props.anchor.props.onClick(); await tick(); await tick(); return menu(profile) }
+  assert.equal((await opened(chat)).props.items.some(item => item.id === 'plan'), true, 'the add menu offers plan to a lead 1:1 chat')
+  assert.equal((await opened(team)).props.items.some(item => item.id === 'plan'), false, 'a Team lead session keeps plan out of the add menu')
+  states.length = 0; refs.length = 0
+  const perm = profile => { cursor = 0; return PermissionMenu({ profile, disabled: false, onChange() {} }) }
+  const tiers = async profile => { perm(profile).children[0].props.anchor.props.onClick(); await tick(); await tick(); return perm(profile).children[0].props.items.map(item => item.id) }
+  assert.deepEqual(await tiers(chat), ['plan', 'workspace', 'full'], 'the permission menu offers every tier to a lead 1:1 chat')
+  assert.deepEqual(await tiers(team), ['workspace', 'full'], 'a Team lead session keeps plan out of the permission menu')
+})
+
+test('a lead card\'s 1:1 chat keeps usage rows while Team sessions hide them', async () => {
+  const states = [], effects = []
+  let cursor = 0
+  const lines = [
+    { who: 'user', kind: 'text', text: 'hi', at: 1 },
+    { who: 'system', kind: 'usage', usage: { inputTokens: 3, outputTokens: 4 }, at: 2 },
+  ]
+  const { Feed, TurnUsage } = await loadClient('feed.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: null }),
+      useEffect(effect) { effects.push(effect) },
+    },
+    uiShared: {
+      call: async () => lines, MARKDOWN_LABELS: {}, TOOL_VARIANTS: {}, toolVariant: () => 'run', ComposerGlyph: () => 'send',
+      billedTokens: stats => stats.inputTokens + stats.outputTokens, cacheHitPercent: () => null, contextPercent: () => null,
+      compactTokens: value => String(value), compactDuration: () => '', exactTokens: value => String(value),
+      tokensPerSecond: () => '', turnTokens: usage => (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+    },
+  })
+  const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all), ...Object.values(tree.props ?? {}).flatMap(all)] : []
+  const render = (profile, session) => { cursor = 0; return all(Feed({ profile, session, revision: 1, work: null, sentTick: 0 })) }
+  const open = async (profile, session) => {
+    render(profile, session)
+    for (const effect of effects.splice(0)) effect()
+    await new Promise(resolve => setImmediate(resolve))
+    return render(profile, session)
+  }
+  const lead = { id: 'lead', engine: 'claude', lead: true }
+  assert.equal((await open(lead, { id: 'chat', leadMode: false })).some(node => node.type === TurnUsage), true, 'a 1:1 chat session shows its usage rows')
+  states.length = 0
+  assert.equal((await open(lead, { id: 'team' })).some(node => node.type === TurnUsage), false, 'a Team lead session keeps usage hidden')
+})
+
 test('the new composer offers references through @ without a recipient and enables reference-only messages', async () => {
   const edits = [], opened = [], removed = []
   const { Composer, AddMenu } = await loadClient('composer.js', {

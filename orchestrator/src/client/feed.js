@@ -18,6 +18,7 @@ import { referenceHistory } from './session-references.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
 import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
+import { leadModeOf } from '../../core/shared/lead.js'
 
 const FOLLOW_PX = 25
 
@@ -308,9 +309,9 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
     sample()
   }, [feed, following])
   useEffect(() => { setFollowing(true) }, [sentTick])
-  // A lead conversation hides token usage: the figures cover only its own session.
+  // A lead-mode conversation hides token usage: the figures cover only its own session.
   const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines
-  const shown = profile.lead === true ? source.filter(line => line.kind !== 'usage') : source
+  const shown = leadModeOf(profile, session) ? source.filter(line => line.kind !== 'usage') : source
   // One turn starts at each user line; the rail prefers its final parent reply.
   const turns = []
   for (const [index, item] of shown.entries()) {

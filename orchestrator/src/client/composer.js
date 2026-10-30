@@ -6,6 +6,7 @@ import {
 } from './ui-shared.js'
 import { ModelPicker } from './feed.js'
 import { ComposerAttachments, ComposerAttachmentChip, composerAttachment } from './composer-attachments.tsx'
+import { leadModeOf } from '../../core/shared/lead.js'
 
 // The composer is the host's InputBar: one card on the composer surface with the
 // text surface on top and the control row below it, Enter sending, Shift+Enter
@@ -294,8 +295,9 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
     ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
     // Only a plan↔workspace pair is a safe toggle: without workspace the row
     // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card. Leads never run in plan mode.
-    ...(modes.includes('plan') && modes.includes('workspace') && profile.lead !== true ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
+    // confirmation on the role card. Lead-mode sessions never run in plan; a
+    // lead's 1:1 chat may.
+    ...(modes.includes('plan') && modes.includes('workspace') && !leadModeOf(profile, profile) ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
     { type: 'label', id: 'cmd-title', text: '指令' },
     ...commandSection,
   ] : [{ type: 'label', id: 'cmd-title', text: '指令' }, ...commandSection]
@@ -385,7 +387,7 @@ export function PermissionMenu({ profile, disabled, onChange }) {
     }).catch(() => { loaded.current = null; setModes([]) })
   }
   const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : []))
-    .filter(mode => profile.lead !== true || mode !== 'plan')
+    .filter(mode => !leadModeOf(profile, profile) || mode !== 'plan')
   const label = offered.length ? PERMISSION_LABELS[current] ?? current : '无可用权限档位'
   const items = offered.map(mode => ({ id: mode, label: PERMISSION_LABELS[mode] ?? mode,
     ...(PERMISSION_GLYPHS[mode] ? { icon: h(PERMISSION_GLYPHS[mode]) } : {}) }))

@@ -116,6 +116,38 @@ test('Team new conversations and their role picker are limited to lead roles', a
   assert.deepEqual(clone(h.composer().rolePicker.props.profiles.map(role => role.id)), ['a', 'b'])
 })
 
+test('a lead draft composes in the mode its conversation will be created in', async () => {
+  const h = await harness('codex', 'a', 'main')
+  for (const view of Object.values(h.views)) view.profiles[0].lead = true
+  h.loaded.setNavigation(current => ({ ...current, view: 'team' }))
+  assert.equal(h.composer().profile.leadMode, true, 'a Team draft composes in lead mode')
+  h.loaded.setNavigation(current => ({ ...current, view: 'sessions' }))
+  assert.equal(h.composer().profile.leadMode, false, 'a session-view draft composes as a plain chat')
+})
+
+for (const [view, team] of [['team', true], ['sessions', false]]) test(`a new lead conversation from the ${view === 'team' ? 'Team view' : 'session view'} is created ${team ? 'in lead mode' : 'as a plain chat'}`, async () => {
+  const h = await harness('codex', 'a', 'main')
+  for (const value of Object.values(h.views)) value.profiles[0].lead = true
+  h.loaded.setNavigation(current => ({ ...current, view }))
+  h.composer().onChange('new task')
+  await h.composer().onSend()
+  assert.equal(h.calls.find(call => call.endpoint === 'session-create').team, team)
+})
+
+for (const [view, team] of [['team', true], ['sessions', false]]) test(`the conversation page creates ${team ? 'Team-mode' : 'chat'} lead sessions when the ${view === 'team' ? 'Team view' : 'session view'} has no session yet`, async () => {
+  const h = await harness('codex', 'a', 'main')
+  h.space.showLegacy()
+  h.views.page = clone(h.server)
+  h.views.page.profiles[0].lead = true
+  for (const role of h.views.page.profiles) role.sessions = []
+  h.loaded.setNavigation({ profile: 'a', workspace: 'main', view, sessions: {} })
+  const composer = () => h.page().find(node => node.type === h.loaded.Composer).props
+  composer().onChange('task')
+  composer().onSend()
+  await tick()
+  assert.equal(h.calls.find(call => call.endpoint === 'session-create').team, team)
+})
+
 for (const engine of ['codex', 'dsh']) for (const target of [
   { profile: 'a', workspace: 'main', label: 'the same role and project' },
   { profile: 'b', workspace: 'main', label: 'another recipient' },

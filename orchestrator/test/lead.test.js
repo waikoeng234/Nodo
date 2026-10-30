@@ -2726,3 +2726,42 @@ test('a lead token that reaches recorded tool output is redacted', () => withLea
   assert.equal(line.output.includes(token), false)
   assert.match(line.output, /\[secret:NODO_LEAD_TOKEN\]/)
 }))
+
+test('a lead card chats 1:1 from the session view while Team sessions keep lead mode', () => withLead(async ({ host, rt, workspace, role, inputs, send }) => {
+  await role('Worker', 'Done')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const chat = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true, team: false })
+  assert.equal(chat.leadMode, false)
+  assert.equal(await rt.issueLeadMcp(chat.id), undefined, 'a chat session never mounts nodo_lead')
+  assert.equal(rt.leadBrief(rt.findProfile(lead.id), chat), '')
+  assert.ok(!rt.renderIdentity(await rt.prepareConversation(chat.id)).includes('# Nodo lead rules'), 'a chat session runs without lead rules in its identity')
+  await assert.rejects(rt.leadDispatch.delegate(chat.id, delegateType('feature', false)), /主控会话/)
+  await send(lead, chat, 'Just chatting')
+  await until(() => inputs.some(item => item.sessionId === chat.id))
+  assert.equal(inputs.find(item => item.sessionId === chat.id).text, 'Just chatting', 'no lead brief rides a chat turn')
+  assert.equal((await host.api('session-update', { profile: lead.id, session: chat.id, changes: { permission: 'plan' } })).permission, 'plan', 'a chat session may use the plan tier')
+  const team = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true, team: true })
+  assert.equal(team.leadMode, true)
+  assert.equal((await rt.issueLeadMcp(team.id)).servers[0].name, 'nodo_lead')
+  assert.ok(rt.renderIdentity(await rt.prepareConversation(team.id)).includes('# Nodo lead rules'))
+  await assert.rejects(host.api('session-update', { profile: lead.id, session: team.id, changes: { permission: 'plan' } }), /主控不能使用计划模式权限/)
+  delete rt.conversationOf(team.id).session.leadMode
+  assert.equal((await rt.issueLeadMcp(team.id)).servers[0].name, 'nodo_lead', 'a session saved before the flag keeps lead mode')
+}))
+
+test('a 1:1 chat lead session skips the per-turn lead machinery and the roles table', () => withLead(async ({ host, rt, workspace, role }) => {
+  await role('Worker', 'Done')
+  const lead = await role('Lead', 'Answered', { lead: true })
+  const chat = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true, team: false })
+  const team = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true, team: true })
+  const budget = [], started = []
+  const reset = rt.resetLeadBudget, input = rt.leadInputStarted
+  rt.resetLeadBudget = id => { budget.push(id); return reset(id) }
+  rt.leadInputStarted = (id, files) => { started.push(id); return input(id, files) }
+  await host.api('send', { profile: lead.id, session: chat.id, text: 'chat hello' })
+  await host.api('send', { profile: lead.id, session: team.id, text: 'team hello' })
+  assert.deepEqual(budget, [team.id], 'only the Team session resets the delegation budget')
+  assert.deepEqual(started, [team.id], 'only the Team session registers lead input')
+  assert.throws(() => rt.leadRoles(chat.id), /主控会话/)
+  assert.match(rt.leadRoles(team.id), /\| 角色 \|/)
+}))

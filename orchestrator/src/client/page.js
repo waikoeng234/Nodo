@@ -12,6 +12,7 @@ import { ApprovalCard } from './run-cards.js'
 import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
 import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
+import { leadModeOf } from '../../core/shared/lead.js'
 
 // Unsent drafts outlive the page: text is kept in localStorage across reloads,
 // pasted images (too large for storage) in memory across remounts.
@@ -168,8 +169,9 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const [sentTick, setSentTick] = useState(0)
   const [actionError, setActionError] = useState('')
   const team = navigation.view === 'team'
+  const leadSession = (role, session) => role.lead === true && (session.engine ?? role.engine) !== 'dsh' && session.leadMode !== false
   const archived = view?.profiles.flatMap(role => role.sessions.filter(session => session.id === navigation.archivedSession && session.archivedAt
-    && (!team || (role.lead === true && (session.engine ?? role.engine) !== 'dsh')))
+    && (!team || leadSession(role, session)))
     .map(session => ({ role, session })))[0]
   const profiles = view?.profiles.filter(item => !item.deletedAt && (!team || (item.lead === true && item.engine !== 'dsh'))) ?? []
   const profile = archived?.role ?? profiles.find(item => item.id === navigation.profile) ?? profiles[0] ?? null
@@ -177,7 +179,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const workspace = archived ? workspaces.find(item => item.id === archived.session.workspaceRef) ?? null
     : workspaces.find(item => item.id === navigation.workspace) ?? workspaces[0] ?? null
   const navigationKey = `${workspace?.id}:${profile?.id}`
-  const session = archived?.session ?? sessionForWorkspace(team && profile ? { ...profile, sessions: profile.sessions.filter(item => (item.engine ?? profile.engine) !== 'dsh') } : profile,
+  const session = archived?.session ?? sessionForWorkspace(team && profile ? { ...profile, sessions: profile.sessions.filter(item => leadSession(profile, item)) } : profile,
     workspace, workspaces, navigation.sessions?.[navigationKey])
   const sessionId = session?.id
   const draftKey = sessionId ?? `new:${navigationKey}`
@@ -199,9 +201,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const roundLive = [{ role: profile, session }, ...members].filter(item => team && view?.work[item.session?.id]?.active === true)
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
+  // leadMode rides along so the composer gates plan by the session's mode — the
+  // mode a not-yet-created lead conversation would get: Team leads, the session
+  // view chats.
   const composerProfile = profile && session
-    ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission }
-    : profile
+    ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode }
+    : profile?.lead === true ? { ...profile, leadMode: team } : profile
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
     ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
@@ -270,7 +275,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         if (created.sessionName !== '') await call('session-update', { profile: profile.id, session: sessionId, changes: { name: created.sessionName } })
         openNativeSession(opened.sessionId)
       } else {
-        const saved = await call('session-create', { profile: profile.id, workspace: created.workspace.id, lazy: true,
+        const saved = await call('session-create', { profile: profile.id, workspace: created.workspace.id, lazy: true, team,
           ...(created.sessionName === '' ? {} : { name: created.sessionName }) })
         sessionId = saved.id
         if (sidebarOnly) nativeSpace.showLegacy()
@@ -341,7 +346,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     const current = trackSelection()
     const relevant = trackSelection(true)
     try {
-      const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })).id
+      const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true, team })).id
       const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) }))
       await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue' })
       if (current()) setSentTick(tick => tick + 1)
@@ -455,7 +460,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     // session, inside the dock the composer keeps: the dock holds its height
     // before the session has any figure, so the input card never moves.
     h('div', { className: 'nodo-stats' },
-      h(SessionStats, { stats: profile.lead === true ? undefined : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })))
+      h(SessionStats, { stats: leadModeOf(profile, session) ? undefined : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })))
 
   const page = () => {
     if (profile && (workspace || session)) return conversation()
@@ -520,7 +525,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       onSaved: value => { setGoalOpen(false); void updateEngineChoice({ goal: value }) },
       onCancel: () => setGoalOpen(false),
     }),
-    statsOpen && profile.lead !== true && view !== undefined && (view.stats ?? {})[sessionId] !== undefined && h(StatsDialog, {
+    statsOpen && !leadModeOf(profile, session) && view !== undefined && (view.stats ?? {})[sessionId] !== undefined && h(StatsDialog, {
       key: `stats:${sessionId}`, stats: view.stats[sessionId], onClose: () => setStatsOpen(false),
     }),
     editing?.kind === 'workspace' && h(WorkspaceDialog, {

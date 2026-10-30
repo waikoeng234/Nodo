@@ -202,3 +202,17 @@ test('issued lead tokens enter the host redactor and stay redacted after revoke'
     assert.equal(h.rt.redactDeepSecrets(`NODO_LEAD_TOKEN=${token}`).includes(token), false, 'a revoked token stays redacted')
   } finally { h.dispose() }
 })
+
+test('a 1:1 chat session of a lead card neither mounts the channel nor accepts its credentials', async () => {
+  const h = harness()
+  try {
+    h.owner.session.leadMode = false
+    assert.equal(await h.rt.issueLeadMcp('lead'), undefined)
+    h.owner.session.leadMode = true
+    const { servers: [spec] } = await h.rt.issueLeadMcp('lead')
+    h.owner.session.leadMode = false
+    assert.equal((await rpc(spec, { name: 'nodo_board' })).isError, true, 'a token issued for lead mode dies with the chat downgrade')
+    delete h.owner.session.leadMode
+    assert.ok(await h.rt.issueLeadMcp('lead'), 'a session saved before the flag keeps lead mode')
+  } finally { h.dispose() }
+})

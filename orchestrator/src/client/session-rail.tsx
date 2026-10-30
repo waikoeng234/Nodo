@@ -13,7 +13,7 @@ import { RoleAvatar } from './avatar.tsx'
 import { SearchDialog } from './search-dialog.tsx'
 import { roundIndex } from './round.js'
 
-export interface RailSession { id: string; name: string; createdAt?: number; source?: { kind?: string; leadSessionId?: string }; archivedAt?: number; draftedAt?: number; briefSent?: boolean; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; workspaceName?: string; profileName?: string; cwd?: string }
+export interface RailSession { id: string; name: string; createdAt?: number; source?: { kind?: string; leadSessionId?: string }; leadMode?: boolean; archivedAt?: number; draftedAt?: number; briefSent?: boolean; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; workspaceName?: string; profileName?: string; cwd?: string }
 export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; lead?: boolean; sessions: RailSession[] }
 export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
 export interface RailView { profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
@@ -127,7 +127,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const rounds = roundIndex(view)
   const sessions = view.profiles.flatMap(role => role.sessions.map(session => ({ role, session,
     workspaceId: workspaceIdOf(view, role, session) })))
-  const visibleSession = (role: RailRole, session: RailSession) => !team || (role.lead === true && (session.engine ?? role.engine) !== 'dsh')
+  const visibleSession = (role: RailRole, session: RailSession) => !team || (role.lead === true && (session.engine ?? role.engine) !== 'dsh' && session.leadMode !== false)
   const groupOf = (role: RailRole, session: RailSession): { role: RailRole; session: RailSession }[] => [{ role, session }, ...(team ? rounds.members.get(session.id) ?? [] : [])]
   const rowOf = (role: RailRole, session: RailSession) => {
     const group = groupOf(role, session)

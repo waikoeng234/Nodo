@@ -278,6 +278,33 @@ test('opening a bound running native conversation uses its existing window immed
   assert.deepEqual(h.opened, ['native-b'])
 })
 
+test('the Team rail lists only Team-mode lead sessions; the session rail keeps every session', async () => {
+  const h = await mount()
+  h.role.lead = true
+  h.role.activeSessionId = 'team'
+  h.role.sessions = [
+    { id: 'team', name: 'team', workspaceRef: 'workspace', engine: 'zcode', leadMode: true },
+    { id: 'chat', name: 'chat', workspaceRef: 'workspace', engine: 'zcode', leadMode: false },
+    { id: 'legacy', name: 'legacy', workspaceRef: 'workspace', engine: 'zcode' },
+  ]
+  const titles = navigation => h.railTree({ ...h.rail(), navigation })
+    .filter(node => node.type === h.loaded.SessionRow)
+    .map(node => `${node.props.role.name} · ${node.props.session.name}`).sort()
+  assert.deepEqual(titles({ view: 'team' }), ['Role · legacy', 'Role · team'], 'Team lists lead sessions saved before the flag and marks chat sessions out')
+  assert.deepEqual(titles(null), ['Role · chat', 'Role · legacy', 'Role · team'], 'the session rail keeps chat and Team sessions side by side')
+})
+
+test('the statistics line follows the session mode of a lead card', async () => {
+  const h = await mount()
+  h.role.lead = true
+  h.view.stats = { a: { turns: 1, steps: 2, inputTokens: 100, outputTokens: 50 } }
+  const stats = () => h.render().find(node => node.type === h.loaded.SessionStats).props.stats
+  h.role.sessions[0].leadMode = false
+  assert.deepEqual(stats(), h.view.stats.a, 'a 1:1 chat session shows its statistics line')
+  delete h.role.sessions[0].leadMode
+  assert.equal(stats(), undefined, 'a Team lead session — flagless sessions included — keeps the line hidden')
+})
+
 test('a failed selection write does not hide the running conversation', async () => {
   const h = await mount('session-select', 'zcode', true)
   h.view.work.b = { active: true }

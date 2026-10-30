@@ -222,7 +222,7 @@ export function install(rt) {
       // so only a session that has not sent its first message yet adopts the full
       // card.
       const retuned = respawn ? respawnKeys.every(key => key === 'model' || key === 'thinking') : true
-      if (!active || respawnKeys.includes('workspaceId') || (!retuned && active.briefSent)) await rt.restartConversations(profile)
+      if (!active || respawnKeys.includes('workspaceId') || (!retuned && active.briefSent)) await rt.restartConversations(profile, undefined, active?.leadMode !== false)
       else if (retuned) {
         if (!active.briefSent) Object.assign(active, { model: profile.model, thinking: profile.thinking })
         // The autonomy tier is per-turn: a tier change re-arms the driver and
@@ -261,8 +261,8 @@ export function install(rt) {
   // Engine conversations cannot follow a role card across a changed engine,
   // workspace, keys or instructions: they start over. Existing messages stay;
   // model and thinking follow the conversation instead.
-  const restartConversations = async (profile, workspaceRef) => {
-    if (rt.sessionsOf(profile).length) await rt.createSession(profile.id, undefined, workspaceRef ?? profile.workspaceId, true)
+  const restartConversations = async (profile, workspaceRef, team = true) => {
+    if (rt.sessionsOf(profile).length) await rt.createSession(profile.id, undefined, workspaceRef ?? profile.workspaceId, true, false, {}, undefined, { team })
   }
 
   const deleteProfile = async (id) => {
