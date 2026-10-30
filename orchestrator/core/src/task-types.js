@@ -13,7 +13,8 @@ export function install(rt) {
   const { state } = rt
 
   const taskTypes = () => Array.isArray(state.prefs.taskTypes)
-    ? state.prefs.taskTypes : defaultTaskTypes.map(item => ({ ...item }))
+    ? state.prefs.taskTypes.map(item => item.splitDifficulty === undefined ? { ...item, splitDifficulty: false } : item)
+    : defaultTaskTypes.map(item => ({ ...item }))
 
   const findTaskType = ref => {
     if (ref === undefined || ref === null) return undefined
@@ -32,6 +33,7 @@ export function install(rt) {
       if (name === '' || name.length > TASK_TYPE_NAME_MAX) throw invalid(`A task type name must be 1 to ${TASK_TYPE_NAME_MAX} characters`)
       if (names.has(normalize(name))) throw invalid(`Task type name "${name}" is duplicated`)
       if (typeof item.when !== 'string' || item.when.length > TASK_TYPE_WHEN_MAX) throw invalid(`A task type "when" must be a string of at most ${TASK_TYPE_WHEN_MAX} characters`)
+      if (item.splitDifficulty !== undefined && typeof item.splitDifficulty !== 'boolean') throw invalid('A task type "splitDifficulty" must be a boolean')
       let { id } = item
       if (id === undefined) id = randomUUID()
       else {
@@ -40,7 +42,7 @@ export function install(rt) {
       }
       ids.add(id)
       names.add(normalize(name))
-      return { id, name, when: item.when }
+      return { id, name, when: item.when, splitDifficulty: item.splitDifficulty === true }
     })
     state.prefs.taskTypes = types
     const known = new Set(types.map(item => item.id))

@@ -819,21 +819,25 @@ test('an empty legacy role board still lists task types and brief precedes tasks
   assert.equal(rt.leadBrief(lead, conversation), leadRules)
 }))
 
-test('route picks executors deterministically from the roster order', () => {
+test('route picks executors from the roster order by the type switch and difficulty', () => {
   const plain = { id: 'plain', name: 'Plain', taskTypes: ['feature'] }
   const hardCard = { id: 'hard-card', name: 'Hard card', taskTypes: ['feature'], hard: { model: 'm1', thinking: 'high' } }
   const hardEmpty = { id: 'hard-empty', name: 'Hard empty', taskTypes: ['feature'], hard: {} }
   const writer = { id: 'writer', name: 'Writer', taskTypes: ['docs'] }
   const roster = [plain, hardCard, hardEmpty, writer]
   for (const [input, candidates, expected] of [
-    [{ type: 'feature', hard: true }, roster, { profile: hardCard, choices: hardCard.hard }],
+    [{ type: 'feature', hard: false, splitDifficulty: false }, roster, { profile: plain, choices: {} }],
+    [{ type: 'feature', hard: true, splitDifficulty: false }, roster, { profile: plain, choices: {} }],
     [{ type: 'feature', hard: false }, roster, { profile: plain, choices: {} }],
-    [{ type: 'feature', hard: false }, [hardEmpty, hardCard], { profile: hardEmpty, choices: {} }],
-    [{ type: 'docs', hard: false }, roster, { profile: writer, choices: {} }],
+    [{ type: 'feature', hard: true, splitDifficulty: true }, roster, { profile: hardCard, choices: hardCard.hard }],
+    [{ type: 'feature', hard: true, splitDifficulty: true }, [hardEmpty, hardCard], { profile: hardEmpty, choices: {} }],
+    [{ type: 'feature', hard: false, splitDifficulty: true }, roster, { profile: plain, choices: {} }],
+    [{ type: 'feature', hard: false, splitDifficulty: true }, [hardEmpty, hardCard], { profile: hardEmpty, choices: {} }],
+    [{ type: 'docs', hard: false, splitDifficulty: true }, roster, { profile: writer, choices: {} }],
+    [{ type: 'docs', hard: true, splitDifficulty: true }, roster, { miss: true }],
     [{ type: 'refactor', hard: false }, roster, { miss: true }],
     [{ type: 'refactor', hard: true }, roster, { miss: true }],
-    [{ type: 'docs', hard: true }, roster, { miss: true }],
-    [{ type: 'feature', hard: false }, [], { miss: true }],
+    [{ type: 'feature', hard: false, splitDifficulty: true }, [], { miss: true }],
   ]) assert.deepEqual(route(input, candidates), expected)
 })
 
@@ -842,6 +846,7 @@ test('routing mode delegates by type, applies hard settings and records the choi
   const worker = await role('Router', 'Fixed the alignment; tests pass.', { taskTypes: ['bug-fix'], hard: { model: 'hard-model', thinking: 'high' } })
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
+  await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'bug-fix' ? { ...item, splitDifficulty: true } : item))
   await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the misaligned button'))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
   assert.equal(work.source.dispatch.status, 'done')
@@ -856,6 +861,12 @@ test('routing mode delegates by type, applies hard settings and records the choi
   assert.equal(regular.model, undefined)
   assert.equal(regular.thinking, undefined)
   assert.ok(lines(conversation).some(line => line.text === '已派给 Router · Fix the label（修复 · 常规）'))
+  await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'bug-fix' ? { ...item, splitDifficulty: false } : item))
+  await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the spacing'))
+  const merged = rt.sessionsOf(rt.findProfile(worker.id))[2]
+  assert.equal(merged.source.hard, true)
+  assert.equal(merged.model, undefined, 'a split-off type delegates hard work on the base settings')
+  assert.equal(merged.thinking, undefined)
   assert.equal(rt.sessionsOf(rt.findProfile(unrelated.id)).length, 0, 'roles without the requested task type never receive work')
 }))
 
@@ -901,6 +912,8 @@ test('an unclaimed type pauses without creating executor work', () => withLead(a
   const lead = await role('Lead', delegateType('feature', false, 'Build it'), { lead: true })
   const conversation = await session(lead)
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false)), /没有承接「功能」的角色/)
+  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', true)), /没有承接「功能」的角色/)
+  await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'docs' ? { ...item, splitDifficulty: true } : item))
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('docs', true)), /没有能接「文档」难题的角色/)
   assert.equal(rt.sessionsOf(rt.findProfile(writer.id)).length, 0)
   assert.equal(lines(conversation).length, 0)
@@ -932,10 +945,13 @@ test('routing mode continues a session when the type and difficulty match', () =
   const worker = await role('Router', 'Fixed the header; tests pass.', { taskTypes: ['bug-fix'], hard: { model: 'hard-model', thinking: 'high' } })
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
+  await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'bug-fix' ? { ...item, splitDifficulty: true } : item))
   await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the header'))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  assert.equal(work.model, 'hard-model')
   await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the footer', work.id))
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  assert.equal(work.model, 'hard-model', 'a continued session keeps the model it was opened with')
   assert.ok(lines(conversation).some(line => line.text === '继续派给 Router · Fix the header（修复 · 难题）'))
 }))
 
@@ -1006,6 +1022,24 @@ test('routing mode refuses continuation when the difficulty differs', () => with
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
 }))
 
+for (const split of [true, false]) {
+  test(`a difficulty change on the same role opens a new session with the current settings (split ${split ? 'on' : 'off'})`, () => withLead(async ({ rt, role, session }) => {
+    const worker = await role('Dual', 'Done', { taskTypes: ['feature'], hard: { model: 'hard-model', thinking: 'high' } })
+    const lead = await role('Lead', 'Reviewed', { lead: true })
+    const conversation = await session(lead)
+    await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'feature' ? { ...item, splitDifficulty: split } : item))
+    const hard = await toolTask(rt, conversation.id, delegateType('feature', true, 'Deep rework'))
+    assert.equal(rt.conversationOf(hard.session).session.model, split ? 'hard-model' : undefined)
+    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Follow-up', hard.session)), /该执行会话的任务难度与本次不同/)
+    const routine = await toolTask(rt, conversation.id, delegateType('feature', false, 'Follow-up'))
+    assert.notEqual(routine.session, hard.session)
+    assert.equal(routine.reused, false)
+    assert.equal(rt.conversationOf(routine.session).session.model, undefined)
+    assert.equal(rt.conversationOf(routine.session).session.source.hard, false)
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+  }))
+}
+
 test('a session can be continued at most twice', () => withLead(async ({ rt, role, session, inputs, lines }) => {
   const worker = await role('Worker', 'Done')
   const lead = await role('Lead', 'Reviewed', { lead: true })
@@ -1073,8 +1107,7 @@ for (const [hard, settings] of [[false, undefined], [true, undefined], [true, { 
     const worker = await role('Generalist', 'Unused', { taskTypes: ['docs'], model: 'regular-model', hard: settings })
     const lead = await role('Lead', 'Reviewed', { lead: true })
     const conversation = await session(lead)
-    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', hard, 'Build it')),
-      hard ? /没有能接「功能」难题的角色/ : /没有承接「功能」的角色/)
+    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', hard, 'Build it')), /没有承接「功能」的角色/)
     assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
     assert.equal(lines(conversation).length, 0)
     const valid = await rt.leadDispatch.delegate(conversation.id, delegateType('docs', false, 'Write docs'))
@@ -1089,6 +1122,7 @@ for (const [firstHard, nextHard] of [[true, false], [false, true]]) {
     const hard = await role('Hard', 'Hard work completed', { taskTypes: ['feature'], hard: { model: 'hard-model', thinking: 'high' } })
     const lead = await role('Lead', 'Reviewed', { lead: true })
     const conversation = await session(lead)
+    await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'feature' ? { ...item, splitDifficulty: true } : item))
     const first = await toolTask(rt, conversation.id, delegateType('feature', firstHard, 'Original task'))
     assert.equal(first.role, firstHard ? 'Hard' : 'Routine')
     await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', nextHard, 'Follow-up', first.session)),
@@ -1112,6 +1146,7 @@ test('a hard task stops when only an unrelated role has hard capacity', () => wi
   const worker = await role('Worker', 'Unused', { taskTypes: ['docs'] })
   const lead = await role('Lead', delegateType('docs', true), { lead: true })
   const conversation = await session(lead)
+  await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'docs' ? { ...item, splitDifficulty: true } : item))
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('docs', true)), /没有能接「文档」难题的角色/)
   assert.equal(rt.sessionsOf(rt.findProfile(unrelated.id)).length, 0)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
@@ -1337,11 +1372,17 @@ test('role board preserves settings order, columns, task types and routing rules
   assert.match(board, /First \| Coder identity \[redacted\] \| Build features \| feature \| 有/)
   assert.ok(board.indexOf('First') < board.indexOf('Second'))
   assert.doesNotMatch(board, /Removed|sensitive-marker|\| Lead \|/)
-  assert.match(board, /id \| name \| when/)
-  for (const type of rt.taskTypes()) assert.ok(board.includes(type.when))
+  assert.match(board, /id \| name \| when \| splitDifficulty/)
+  assert.match(board, /feature \| 功能 \| [^|]* \| 关/)
+  await rt.updateTaskTypes(rt.taskTypes().map(item => item.id === 'review' ? { ...item, splitDifficulty: true } : item))
+  const updated = rt.leadRoles(owner.id)
+  assert.match(updated, /review \| 审查 \| [^|]* \| 开/)
+  for (const type of rt.taskTypes()) assert.ok(updated.includes(type.when))
   assert.match(board, /常规任务优先给不带难题配置/)
   assert.match(board, /难题只给带难题配置的角色/)
   assert.match(board, /没有符合条件的角色就停止派活并说明缺口/)
+  assert.match(board, /未开启难度分流的类型无论难度都派给第一个承接角色/)
+  assert.match(board, /开关或角色配置变更只影响之后的派活/)
   rt.redactDeepSecrets = redact
 }))
 

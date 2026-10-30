@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { loadClient } from './helpers/client-module.js'
+import { route } from '../core/shared/route.js'
 import { fileURLToPath } from 'node:url'
 import { Script, createContext } from 'node:vm'
 
@@ -2541,7 +2542,7 @@ test('the task type page keeps ids on saved rows, omits them on new rows, confir
       { id: 'b', name: 'Reviewer', taskTypes: ['docs', 'review'], sessions: [] },
     ],
     workspaces: [], work: {},
-    taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '代码评审' }, { id: 'ops', name: '运维', when: '' }],
+    taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '代码评审', splitDifficulty: true }, { id: 'ops', name: '运维', when: '' }],
   }
   const { TaskTypesEditor, RoleAvatar } = await loadRolesPage({
     react: rolesReact(states, pending),
@@ -2602,7 +2603,8 @@ test('the task type page keeps ids on saved rows, omits them on new rows, confir
   confirmRow().children.find(node => node.children.includes('删除')).props.onClick()
   button('保存').props.onClick()
   await tick(); await tick()
-  assert.deepEqual(calls.at(-1).payload.types, [{ id: 'review', name: '审查', when: '代码评审' }, { id: 'ops', name: '运维', when: '' }])
+  assert.deepEqual(calls.at(-1).payload.types, [{ id: 'review', name: '审查', when: '代码评审', splitDifficulty: true }, { id: 'ops', name: '运维', when: '', splitDifficulty: false }],
+    'every submitted row carries its split-difficulty switch value')
 
   // The page learns about unsaved catalog edits, and a saved draft adopts the
   // ids core issued so it stops looking dirty instead of re-issuing them.
@@ -2632,6 +2634,57 @@ test('the task type page keeps ids on saved rows, omits them on new rows, confir
   const capped = { ...view, taskTypes: Array.from({ length: 20 }, (_, index) => ({ id: `t${index}`, name: `类型${index}`, when: '' })) }
   const capTree = all(TaskTypesEditor({ view: capped, disabled: false, onDone: async () => {} }))
   assert.equal(capTree.find(node => node.type === 'Button' && node.children.includes('添加类型')).props.disabled, true, 'twenty types fill the catalog')
+})
+
+test('the split-difficulty switch defaults off, rides every save and survives edits, discards and failures', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const calls = []
+  let refuse = false, pause = false, release
+  const view = { profiles: [], workspaces: [], work: {},
+    taskTypes: [{ id: 'docs', name: '文档', when: '', splitDifficulty: true }, { id: 'review', name: '审查', when: '' }] }
+  const { TaskTypesEditor } = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
+    calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+    if (endpoint !== 'task-types-update') return {}
+    if (pause) await new Promise(resolve => { release = resolve })
+    if (refuse) throw new Error('task-types save refused')
+    return payload.types
+  } })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const render = (disabled = false) => { cursor = 0; return all(TaskTypesEditor({ view, disabled, onDone: async () => {} })) }
+  const split = name => render().find(node => node.props?.role === 'switch' && node.props['aria-label'] === `按难度分配 ${name}`)
+  const button = label => render().find(node => node.type === 'Button' && node.children.includes(label))
+
+  assert.equal(split('文档').props.checked, true, 'the saved switch state shows')
+  assert.equal(split('审查').props.checked, false)
+  assert.equal(render(true).find(node => node.props['aria-label'] === '按难度分配 文档').props.disabled, true, 'a read-only catalog locks the switch')
+  render().find(node => node.props['aria-label'] === '任务类型名称').props.onChange({ target: { value: '文档起草' } })
+  assert.equal(split('文档起草').props.checked, true, 'a name edit keeps the switch on its row')
+  split('审查').props.onChange({ target: { checked: true } })
+  pause = true
+  button('保存').props.onClick()
+  assert.deepEqual(calls.at(-1).payload.types, [
+    { id: 'docs', name: '文档起草', when: '', splitDifficulty: true },
+    { id: 'review', name: '审查', when: '', splitDifficulty: true },
+  ], 'every submitted row carries its current switch value')
+  assert.equal(split('审查').props.disabled, true, 'a save in flight locks the switch')
+  release(); await tick(); await tick()
+  pause = false
+  assert.equal(split('审查').props.disabled, false)
+  button('放弃').props.onClick()
+  assert.equal(split('文档').props.checked, true, '放弃 restores the saved switches')
+  assert.equal(split('审查').props.checked, false)
+  refuse = true
+  split('审查').props.onChange({ target: { checked: true } })
+  button('保存').props.onClick()
+  await tick(); await tick()
+  assert.equal(split('审查').props.checked, true, 'a failed save keeps the draft switch')
+  assert.ok(render().some(node => node.children.includes('task-types save refused')))
+  assert.ok(button('放弃'), 'the draft stays dirty after a failure')
+  button('添加类型').props.onClick()
+  const rows = () => render().filter(node => node.props?.className === 'nodo-type-row')
+  assert.equal(all(rows().at(-1)).find(node => node.props.role === 'switch').props.checked, false, 'a fresh row starts with the switch off')
 })
 
 // The overview tree reaches into Menu anchors and items through props.
@@ -3141,20 +3194,26 @@ test('the gap status uses core routing and separates routine gaps from hard-only
       { id: 'b', name: '编码', engine: 'echo', taskTypes: ['docs', 'review'], sessions: [] },
     ],
     workspaces: [], work: {},
-    taskTypes: [{ id: 'docs', name: '文档' }, { id: 'review', name: '审查' }, { id: 'ops', name: '运维' }, { id: 'test', name: '测试' }],
+    taskTypes: [{ id: 'docs', name: '文档', splitDifficulty: true }, { id: 'review', name: '审查', splitDifficulty: true }, { id: 'ops', name: '运维' }, { id: 'test', name: '测试' }],
   }
   const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [], globals: { document: { querySelector: () => null } } })
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
   const note = () => render().find(node => node.props?.className === 'nodo-roles-gap-note')
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维、测试没有角色承接', '审查没有可接难题的角色'],
+  const roster = () => view.profiles.filter(item => item.lead !== true)
+  assert.deepEqual(route({ type: 'review', hard: true, splitDifficulty: true }, roster()), { miss: true })
+  assert.equal(route({ type: 'review', hard: false, splitDifficulty: true }, roster()).profile?.id, 'b')
+  assert.deepEqual(route({ type: 'ops', hard: false, splitDifficulty: false }, roster()), { miss: true })
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维、测试没有角色承接', '审查没有能接难题的角色'],
     'unclaimed types and hard-only gaps remain visible without assigning another role')
   assert.equal(note().props.role, 'status')
   assert.equal(render().some(node => rolesText(node).includes('派活结果') || rolesText(node).includes('管理任务类型')), false)
   view.taskTypes = [view.taskTypes[1]]
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['审查没有可接难题的角色'])
-  view.taskTypes = [{ id: 'docs', name: '文档' }]
-  assert.equal(note(), undefined, 'no gaps, no status block')
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['审查没有能接难题的角色'])
+  view.taskTypes[0] = { ...view.taskTypes[0], splitDifficulty: false }
+  assert.equal(note(), undefined, 'a type that does not split difficulty never reports a hard gap')
+  view.taskTypes = [{ id: 'docs', name: '文档', splitDifficulty: true }]
+  assert.equal(note(), undefined, 'a split type with both tiers covered reports no gap')
   view.profiles = view.profiles.map(item => ({ ...item, taskTypes: [] }))
   assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['文档没有角色承接'])
   view.profiles = view.profiles.filter(item => !item.lead)

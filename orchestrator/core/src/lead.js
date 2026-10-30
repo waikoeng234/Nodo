@@ -64,8 +64,8 @@ export function install(rt) {
     if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
     return [table(['角色', '身份', '职责', '承接任务类型', '难题配置'], rosterOf(found.profile).map(item =>
       [item.name, item.identity, item.role, (item.taskTypes ?? []).join(', '), item.hard !== undefined ? '有' : '无'])),
-    table(['id', 'name', 'when'], rt.taskTypes().map(item => [item.id, item.name, item.when])),
-    '路由规则：只派给承接该类型的角色。常规任务优先给不带难题配置的角色，否则取排在前面的；难题只给带难题配置的角色。没有符合条件的角色就停止派活并说明缺口。后续工作按本次难度重新路由；难度或执行角色变化时新开会话，并交代已有改动、报告和剩余问题。'].join('\n\n')
+    table(['id', 'name', 'when', 'splitDifficulty'], rt.taskTypes().map(item => [item.id, item.name, item.when, item.splitDifficulty ? '开' : '关'])),
+    '路由规则：只派给承接该类型的角色。未开启难度分流的类型无论难度都派给第一个承接角色，使用基础设置；开启分流的类型，常规任务优先给不带难题配置的角色，否则取排在前面的，难题只给带难题配置的角色并使用其难题设置。没有符合条件的角色就停止派活并说明缺口。后续任务按类型开关重新路由；难度或执行角色变化时新开会话，并交代已有改动、报告和剩余问题。开关或角色配置变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
   }
   const cancelLeadRetry = (id, takeover = false) => {
     const flight = flightOf(id)
@@ -365,9 +365,9 @@ export function install(rt) {
     if (typeof command.task !== 'string' || !command.task.trim()) throw invalid('task 必须是非空字符串')
     const hard = command.hard, task = rt.redactDeepSecrets(command.task)
     if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
-    const roster = rosterOf(lead), picked = route({ type: found.id, hard }, roster)
+    const roster = rosterOf(lead), picked = route({ type: found.id, hard, splitDifficulty: found.splitDifficulty }, roster)
     if (picked.miss) {
-      throw invalid(`没有${hard ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
+      throw invalid(`没有${hard && found.splitDifficulty ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
     }
     let live
     if (command.session !== undefined) {
