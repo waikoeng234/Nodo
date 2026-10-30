@@ -354,7 +354,19 @@ export function usePermissionChange(disabled) {
 }
 
 /** @param {{ modes?: string[], value?: string, disabled?: boolean, onChange: (mode: string) => void, className?: string, label?: string }} props */
-export function PermissionSelect({ modes = [], value, disabled = false, onChange, className = '', label = '权限' }) {
+export function Segmented({ label, options, value, disabled = false, onChange }) {
+  return h('div', { className: 'nodo-seg', role: 'group', 'aria-label': label },
+    ...options.map(option => h('button', { key: option.value, type: 'button', disabled: disabled || option.disabled,
+      'aria-pressed': value === option.value, onClick: () => onChange(option.value) }, option.label)))
+}
+
+export function PermissionSelect({ modes = /** @type {string[]} */ ([]), value, disabled = false, onChange, className = '', label = '权限', segmented = false }) {
+  if (segmented) {
+    const lost = value !== undefined && value !== '' && !modes.includes(value)
+    return h(Segmented, { label, value, disabled: disabled || !modes.length, onChange,
+      options: [...(lost ? [{ value, label: PERMISSION_LABELS[value] ?? value, disabled: true }] : []),
+        ...modes.map(mode => ({ value: mode, label: PERMISSION_LABELS[mode] ?? mode }))] })
+  }
   return h('span', { className: `nodo-permission-select ${className}` },
       PERMISSION_GLYPHS[value] && h('span', { className: 'nodo-perm-icon', 'aria-hidden': true }, h(PERMISSION_GLYPHS[value])),
       h('select', { className: 'nodo-dialog-input nodo-dialog-select', 'aria-label': label,

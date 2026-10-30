@@ -6,7 +6,7 @@ import {
   IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
   IconFlatListOutlineRegular, IconFolderOpenOutlineRegular,
   IconNewChatOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconPlusOutlineRegular,
-  IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular, IconSparkleRegular,
+  IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
   IconTrashOutlineRegular, IconUsersOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
@@ -16,10 +16,12 @@ import { roundIndex } from './round.js'
 export interface RailSession { id: string; name: string; createdAt?: number; source?: { kind?: string; leadSessionId?: string }; leadMode?: boolean; archivedAt?: number; draftedAt?: number; briefSent?: boolean; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; workspaceName?: string; profileName?: string; cwd?: string }
 export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; lead?: boolean; sessions: RailSession[] }
 export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
-export interface RailView { profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
+export interface RailView { teams?: { id: string; name: string; lead: string | null }[]; profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
 export type RailNavigation = { view: 'roles'; content: ReactNode } | { view: 'team'; content?: never }
 type Archived = keyof typeof ARCHIVED_VIEWS
 const ROLE_FOLD = 5
+const ROSTER_HEIGHT_KEY = 'nodo.rosterHeight'
+const TREE_MIN = 120
 
 interface SessionRowProps {
   role: RailRole; session: RailSession; current: boolean; work?: { active?: boolean }; busy?: boolean; readOnly?: boolean; context?: string
@@ -39,7 +41,7 @@ export function SessionRow({ role, session, current, work, busy, readOnly, conte
       <button type="button" className="nodo-row nodo-session" disabled={busy} data-archived={archived ? '' : undefined}
         aria-current={current ? 'page' : undefined} aria-description={archived ? '已归档会话，只读查看' : undefined}
         onClick={onSelect} title={`${role.name} · ${session.name}`}>
-        <RoleAvatar profile={role} size={18} />
+        <RoleAvatar profile={role} size={20} />
         <span className="nodo-row-title">{context ? `${context} · ${session.name}` : session.name}</span>
         <span className="nodo-row-meta">{archived
           ? <span className="nodo-row-archived">已归档</span>
@@ -110,11 +112,12 @@ interface RailProps {
   onSelectSession: (role: RailRole, id: string, project?: RailWorkspace) => void; onArchiveSession: (role: RailRole, id: string, archived: boolean) => void
   onRenameSession: (role: RailRole, session: RailSession) => void; onPinSession: (role: RailRole, id: string, pinned: boolean) => void
   onNewSession: (profileId?: string, project?: RailWorkspace) => void; onNewWorktree: (project: RailWorkspace) => void; onNewRole: () => void; onEditRole: (role: RailRole) => void
+  onNewTeam: () => void; onEditTeam: (id: string) => void
   onSettings: () => void; onSessions: () => void; onTeam: () => void; onRoles: () => void; onBack: () => void
   onNewWorkspace: () => void; onRenameWorkspace: (workspace: RailWorkspace) => void; onDeleteWorkspace: (workspace: RailWorkspace) => void
 }
 
-export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
+export function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onNewTeam, onEditTeam, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }: RailProps) {
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const [archives, setArchives] = useState<Record<string, Archived>>({})
   const [searching, setSearching] = useState(false)
@@ -122,6 +125,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const [opened, setOpened] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [rolesOpen, setRolesOpen] = useState(false)
+  const [rosterHeight, setRosterHeight] = useState<number | null>(() => { try { return Number(localStorage.getItem(ROSTER_HEIGHT_KEY)) || null } catch { return null } })
   const busyNow = readOnly || busy
   const team = navigation?.view === 'team'
   const rounds = roundIndex(view)
@@ -137,8 +141,10 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
       current: group.some(entry => entry.session.id === sessionId) }
   }
   const roles = view.profiles.filter(role => !role.deletedAt && (!team || (role.lead === true && role.engine !== 'dsh')))
-  // The roster lists leads before executors; the stable sort keeps stored order.
-  const roster = [...roles].sort((a, b) => Number(b.lead === true) - Number(a.lead === true))
+  // Roles with a live or unread state come first, the most recently changed on top; the stable sort keeps leads before executors and stored order otherwise.
+  const stateAt = (role: RailRole) => { const state = roleStateOf(role, view, workspace); return state.active || state.status ? Math.max(state.since ?? 1, state.finishedAt ?? 0, state.lastAt ?? 0) : 0 }
+  const roster = [...roles].sort((a, b) => Number(b.lead === true) - Number(a.lead === true)).map(role => ({ role, at: stateAt(role) }))
+    .sort((a, b) => b.at - a.at).map(entry => entry.role)
   const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session)
     && (!session.draftedAt || session.briefSent)
     && (role.deletedAt || !view.workspaces.some(item => item.id === workspaceId)))
@@ -178,8 +184,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     return (
       <button type="button" className="nodo-project-select" aria-expanded={open} title={tip}
         onClick={() => setOpened(current => ({ ...current, [key]: !open }))}>
-        <span className="nodo-chevron" data-open={open ? '' : undefined}><IconChevronRightOutlineRegular size={12} /></span>
-        {Glyph && <span className="nodo-folder"><Glyph size={16} /></span>}
+        {Glyph && <span className="nodo-folder"><Glyph size={20} /></span>}
         <span className="nodo-row-title">{title}</span>
         {!open && live.length > 0 && <span className="nodo-tree-state">
           <WorkDot kind={waiting ? 'wait' : 'run'} />{waiting ? '待处理' : `${live.length} 个运行中`}</span>}
@@ -193,7 +198,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     return (
       <div className="nodo-tree-children">
         {pending && <button type="button" className="nodo-row nodo-session" aria-current={drafting ? 'page' : undefined} onClick={onResumeDraft} title="新会话（草稿）">
-          {draftProfile ? <RoleAvatar profile={draftProfile} size={18} /> : <span className="nodo-folder"><IconNewChatOutlineRegular size={16} /></span>}
+          {draftProfile ? <RoleAvatar profile={draftProfile} size={20} /> : <span className="nodo-folder"><IconNewChatOutlineRegular size={20} /></span>}
           <span className="nodo-row-title">新会话</span>
         </button>}
         {visible.map(({ role, session }) => {
@@ -221,7 +226,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         <div className="nodo-project" data-menu={menuOpen === item.id ? 'open' : undefined}>
           {toggle(item.id, open, item.worktree ? IconBranchOutlineRegular : IconFolderOpenOutlineRegular, item.name,
             item.worktree ? `${item.worktree.branch} · ${item.cwd}` : item.cwd, liveIn([item]))}
-          {archived !== 'hide' && <span className="nodo-tree-flag" title={ARCHIVED_VIEWS[archived]}><IconArchiveOutlineRegular size={14} /></span>}
+          {archived !== 'hide' && <span className="nodo-tree-flag" title={ARCHIVED_VIEWS[archived]}><IconArchiveOutlineRegular size={16} /></span>}
           <span className="nodo-row-actions">
             {action('新会话', `在“${item.name}”中新建会话`, <IconNewChatOutlineRegular />, () => onNewSession(draftRole, item), busyNow || (team && !roles.length))}
             <Menu open={menuOpen === item.id} onClose={() => setMenuOpen(null)} portal closeOnPointerLeave selectedId={`archived:${archived}`}
@@ -255,18 +260,20 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     const state = roleStateOf(item, view, workspace)
     const pressed = item.id === filterRole?.id
     const label = workLabel(state)
+    const group = team ? view.teams?.find(entry => entry.lead === item.id) : undefined
+    const name = team && group ? group.name || '未命名团队' : item.name
     return (
       <div key={item.id} className="nodo-roster-cell">
-        <button type="button" className="nodo-roster-item" aria-current={pressed || undefined} title={item.name}
-          aria-label={`${label ? `${item.name}，${label}` : item.name}${item.lead === true ? '，主控' : ''}`}
+        <button type="button" className="nodo-roster-item" aria-current={pressed || undefined} title={name}
+          aria-label={label ? `${name}，${label}` : name}
           onClick={() => { if (pressed) setRoleFilter(null); else { onSelect(item.id); setRoleFilter(item.id) } }}>
-          <span className="nodo-roster-avatar" data-lead={item.lead === true ? '' : undefined}><RoleAvatar profile={item} running={state.active} size={24} /></span>
-          <span className="nodo-roster-name">{item.name}</span>
+          <span className="nodo-roster-avatar"><RoleAvatar profile={item} running={state.active} size={20} /></span>
+          <span className="nodo-roster-name">{name}</span>
           {label && <span className="nodo-row-running"><WorkDot kind={workKind(state)} />{label}</span>}
         </button>
         <span className="nodo-row-actions">
-          <button type="button" className="nodo-row-action" aria-label={`配置角色 ${item.name}`} title="配置角色"
-            disabled={busyNow || state.active} onClick={() => onEditRole(item)}><IconEditOutlineRegular /></button>
+          <button type="button" className="nodo-row-action" aria-label={`${group ? '配置团队' : '配置角色'} ${name}`} title={group ? '配置团队' : '配置角色'}
+            disabled={busyNow || state.active} onClick={() => group ? onEditTeam(group.id) : onEditRole(item)}><IconEditOutlineRegular /></button>
         </span>
       </div>
     )
@@ -286,11 +293,35 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         pick: () => onSelectSession(role, session.id, project) }
     })
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+  const saveRosterHeight = (height: number | null) => {
+    setRosterHeight(height)
+    try { if (height) localStorage.setItem(ROSTER_HEIGHT_KEY, String(height)); else localStorage.removeItem(ROSTER_HEIGHT_KEY) } catch {}
+  }
+  const rosterLimit = (split: HTMLElement) => {
+    const roster = split.previousElementSibling as HTMLElement, list = roster.firstElementChild as HTMLElement
+    const rows = [...list.children].slice(0, 2).reduce((sum, row) => sum + (row as HTMLElement).offsetHeight + 2, 0)
+    const rest = roster.offsetHeight - list.clientHeight, room = split.parentElement!.getBoundingClientRect().bottom - roster.getBoundingClientRect().top - split.offsetHeight - TREE_MIN
+    const min = rest + rows, max = Math.max(min, Math.min(rest + list.scrollHeight, room))
+    return { start: roster.offsetHeight, clamp: (height: number) => Math.round(Math.min(Math.max(height, min), max)) }
+  }
+  const nudgeRoster = (split: HTMLElement, delta: number) => {
+    const { start, clamp } = rosterLimit(split)
+    saveRosterHeight(clamp(start + delta))
+  }
+  const resizeRoster = (event: { currentTarget: HTMLElement; clientY: number; button: number; preventDefault: () => void }) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const { start, clamp } = rosterLimit(event.currentTarget), from = event.clientY
+    let height = start
+    const move = (next: PointerEvent) => { height = clamp(start + next.clientY - from); setRosterHeight(height) }
+    const end = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); saveRosterHeight(height) }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+  }
   return (
     <aside className="nodo-rail" aria-label={navigation?.view === 'roles' ? '角色导航' : '角色与项目会话'}>
       <div className="nodo-rail-dock">
-        {dock('主页', <IconFlatListOutlineRegular size={18} />, { 'aria-pressed': !navigation, onClick: navigation ? onSessions : undefined })}
-        {dock('Team', <IconSparkleRegular size={18} />, { 'aria-pressed': team, onClick: team ? undefined : onTeam })}
+        {dock('主页', <IconFlatListOutlineRegular size={18} />, { 'aria-pressed': !navigation?.content, onClick: navigation?.content ? onSessions : undefined })}
         {dock('新建会话', <IconNewChatOutlineRegular size={18} />, { onClick: () => onNewSession(draftRole),
           disabled: busyNow || !workspace || navigation?.view === 'roles' || (team && !roles.length) })}
         {dock('搜索', <IconSearchOutlineRegular size={18} />, { 'aria-pressed': searching,
@@ -304,18 +335,29 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
       </div>
       <div className="nodo-rail-body">
         {navigation?.content ?? <Fragment>
-          {head('角色', action('添加角色', '添加角色', <IconPlusOutlineRegular />, onNewRole, busyNow))}
-          <div className="nodo-roster" role="group" aria-label="按角色查看会话">
-            {shownRoles.map(rosterItem)}
-            {roster.length > ROLE_FOLD && <button type="button" className="nodo-show-more" aria-expanded={rolesOpen}
-              onClick={() => setRolesOpen(current => !current)}>{rolesOpen ? '收起' : `显示另外 ${roster.length - ROLE_FOLD} 个`}</button>}
+          <div className="nodo-rail-tabs" role="tablist" aria-label="主页视图">
+            <button type="button" role="tab" aria-selected={!team} onClick={team ? onSessions : undefined}>角色</button>
+            <button type="button" role="tab" aria-selected={team} onClick={team ? undefined : onTeam}>团队</button>
           </div>
+          <div className="nodo-roster" role="group" aria-label="按角色查看会话" style={rosterHeight ? { maxHeight: rosterHeight } : undefined}>
+            <div className="nodo-roster-list">{shownRoles.map(rosterItem)}</div>
+            {roster.length > ROLE_FOLD && <button type="button" className="nodo-roster-more" aria-expanded={rolesOpen}
+              onClick={() => { if (!rolesOpen) saveRosterHeight(null); setRolesOpen(current => !current) }}>{rolesOpen ? '收起' : '显示更多'}</button>}
+            <div className="nodo-roster-cell">
+              <button type="button" className="nodo-roster-item nodo-roster-new" disabled={busyNow} onClick={team ? onNewTeam : onNewRole}>
+                <span className="nodo-roster-plus"><IconPlusOutlineRegular size={12} /></span><span className="nodo-roster-name">{team ? '新建团队' : '新建角色'}</span>
+              </button>
+            </div>
+          </div>
+          <div className="nodo-rail-split" role="separator" aria-orientation="horizontal" aria-label="调整角色区高度" tabIndex={0}
+            onPointerDown={resizeRoster} onDoubleClick={() => saveRosterHeight(null)}
+            onKeyDown={event => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); nudgeRoster(event.currentTarget, event.key === 'ArrowUp' ? -16 : 16) } }} />
           <nav className="nodo-tree" aria-label="项目">
             {head('项目区', action('添加项目', '添加项目', <IconProjectAddOutlineRegular />, onNewWorkspace, busyNow))}
             {tree}
             {!tree.length && <p className="nodo-rail-empty" role="status">{view.workspaces.length ? '没有找到匹配的会话' : '添加项目'}</p>}
             {!!archivedSessions.length && <div className="nodo-tree-node">
-              <div className="nodo-project">{toggle(':archived', !!opened[':archived'], null, '已移除', undefined, [])}</div>
+              <div className="nodo-project">{toggle(':archived', !!opened[':archived'], IconArchiveOutlineRegular, '已移除', undefined, [])}</div>
               {opened[':archived'] && <div className="nodo-tree-children">
                 {archivedSessions.map(({ role, session, workspaceId }) => <SessionRow key={session.id} role={role} session={session} busy={busy} readOnly
                   current={rowOf(role, session).current && !editing && !drafting}

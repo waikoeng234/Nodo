@@ -19,6 +19,8 @@ import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
 import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
 import { leadModeOf } from '../../core/shared/lead.js'
+import { modelName, modelLabel } from './model-options.js'
+export { modelName }
 
 const FOLLOW_PX = 25
 
@@ -517,7 +519,7 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
   const model = selectedModel?.id ?? profile.model ?? ''
   const levels = selectedModel?.thinking ?? []
   const thinking = profile.thinking || (levels.some(level => level.id === selectedModel?.defaultThinking) ? selectedModel.defaultThinking : '')
-  const modelText = selectedModel ? selectedModel.label ?? modelName(selectedModel.id) : modelName(model) || engine?.label || profile.engine
+  const modelText = selectedModel ? modelLabel(selectedModel) : modelName(model) || engine?.label || profile.engine
   const levelText = thinking ? levels.find(level => level.id === thinking)?.label ?? thinking : ''
   const close = () => { setOpen(false); setPane('root') }
   const openMenu = () => {
@@ -540,7 +542,7 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
   for (const item of models) providers.set(item.group ?? '', [...(providers.get(item.group ?? '') ?? []), item])
   const modelItems = [...providers].flatMap(([group, items]) => [
     ...(group === '' ? [] : [{ type: 'label', id: `group:${group}`, text: group }]),
-    ...items.map(item => ({ id: `model:${item.id}`, label: item.label ?? item.id })),
+    ...items.map(item => ({ id: `model:${item.id}`, label: modelLabel(item) })),
   ])
   // A model switch keeps the level only while the next model lists it; the
   // empty level reads the model's own default, as on the role card.
@@ -587,22 +589,6 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
     levelText !== '' && h('span', { className: 'nodo-model-effort' }, levelText),
     h('span', { className: 'nodo-chevron', 'data-open': open ? '' : undefined }, h(IconChevronDownOutlineRegular, { size: 14 }))),
   })
-}
-
-// A saved model is the route the engine is addressed by, not the name it is
-// called: ZCode routes read `providerId$modelId` and the DSH pair a JSON array.
-// A route the catalog cannot explain yet — an engine never scanned — still shows
-// the model's own name, the same wording a resolved catalog label carries.
-export function modelName(raw) {
-  const id = typeof raw === 'string' ? raw : ''
-  if (id.startsWith('[')) {
-    try {
-      const [, model] = JSON.parse(id)
-      if (typeof model === 'string' && model !== '') return model
-    } catch { /* not a JSON route pair; read it as a plain id */ }
-  }
-  const at = id.indexOf('$')
-  return at > 0 && at < id.length - 1 ? id.slice(at + 1) : id
 }
 
 // Transcript images load by id on mount, so the transcript holds only references.

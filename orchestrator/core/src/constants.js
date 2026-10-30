@@ -17,6 +17,8 @@ export const MAX_PROFILES = 24
 export const TASK_TYPES_MAX = 20
 export const TASK_TYPE_NAME_MAX = 20
 export const TASK_TYPE_WHEN_MAX = 200
+export const TEAMS_MAX = 12
+export const TEAM_NAME_MAX = 20
 // Silence limit before warning for a starting or active turn.
 export const TURN_IDLE_TIMEOUT_MS = 120_000
 // An engine-announced retry waits out its own backoff, so that stretch of

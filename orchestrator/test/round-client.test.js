@@ -395,7 +395,7 @@ test('the session finder opens from the dock button, closes itself and picks int
   assert.deepEqual(selected, [['coder', 's1', 'w']], 'a result opens its session in its project')
 })
 
-test('the roster lists leads first with a lead ring and keeps the stored order in each group', async () => {
+test('the roster puts roles with a state first by latest change, then leads, then the stored order', async () => {
   const slots = []
   let cursor = 0
   const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
@@ -405,19 +405,26 @@ test('the roster lists leads first with a lead ring and keeps the stored order i
       if (!(slot in slots)) slots[slot] = initial
       return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
     } } })
-  const view = { workspaces: [], work: { l1: { active: true } }, profiles: [
+  const view = { workspaces: [], work: { l1: { active: true, since: 10 }, o1: { active: true, since: 30 }, c1: { status: 'stopped', finishedAt: 20 } }, profiles: [
     { id: 'coder', name: 'Coder', sessions: [{ id: 'c1', name: 'Own work' }] },
     { id: 'alpha', name: 'Alpha', lead: true, sessions: [{ id: 'l1', name: 'Lead work' }] },
-    { id: 'other', name: 'Other', sessions: [] },
+    { id: 'other', name: 'Other', sessions: [{ id: 'o1', name: 'Other work' }] },
     { id: 'beta', name: 'Beta', lead: true, sessions: [] },
   ] }
   const render = () => { cursor = 0; return nodes(Rail({ view, onSelect() {}, onSelectSession() {} })) }
   const roster = () => render().filter(node => node.props.className === 'nodo-roster-item' && node.props.title)
-  const ring = item => nodes(item).some(node => node.props?.className === 'nodo-roster-avatar' && node.props['data-lead'] === '')
-  assert.deepEqual(roster().map(node => node.props.title), ['Alpha', 'Beta', 'Coder', 'Other'])
-  assert.deepEqual(roster().map(ring), [true, true, false, false])
-  assert.deepEqual(roster().map(node => node.props['aria-label']),
-    ['Alpha，运行中，主控', 'Beta，主控', 'Coder', 'Other'])
+  assert.deepEqual(roster().map(node => node.props.title), ['Other', 'Coder', 'Alpha', 'Beta'])
+  assert.equal(render().some(node => node.props?.['data-lead'] === ''), false)
+  const calls = []
+  view.teams = [{ id: 't1', name: '前端组', lead: 'alpha' }, { id: 't2', name: '', lead: 'beta' }]
+  cursor = 0
+  const teamTree = nodes(Rail({ view, navigation: { view: 'team' }, onSelect() {}, onSelectSession() {}, onNewTeam: () => calls.push('new'), onEditTeam: id => calls.push(id) }))
+  assert.deepEqual(teamTree.filter(node => node.props.className === 'nodo-roster-item' && node.props.title).map(node => node.props.title), ['前端组', '未命名团队'])
+  const add = teamTree.find(node => node.props.className === 'nodo-roster-item nodo-roster-new')
+  assert.deepEqual(nodes(add).filter(node => node.props?.className === 'nodo-roster-name').map(node => node.children[0]), ['新建团队'])
+  add.props.onClick()
+  teamTree.find(node => node.props['aria-label'] === '配置团队 前端组').props.onClick()
+  assert.deepEqual(calls, ['new', 't1'])
 })
 
 async function mount(viewName = 'team', restored) {
@@ -599,14 +606,17 @@ test('Team rail lists only non-dsh lead sessions, aggregates member state and fe
   render().find(node => node.props['aria-label'] === '在“Project”中新建会话').props.onClick({ stopPropagation() {} })
   assert.deepEqual(created, ['lead'])
   const dockButton = label => render().find(node => node.type === 'button' && node.props['aria-label'] === label)
-  assert.deepEqual(['主页', 'Team', '新建会话', '搜索', '角色'].map(dockButton).map(node => node.props['aria-pressed']),
-    [false, true, undefined, false, false], 'the dock marks Team pressed inside the team view')
+  assert.deepEqual(['主页', '新建会话', '搜索', '角色'].map(dockButton).map(node => node.props['aria-pressed']),
+    [true, undefined, false, false], 'the team view is a tab of 主页')
+  const tab = label => render().find(node => node.props?.role === 'tab' && node.children[0] === label)
+  assert.deepEqual([tab('角色').props['aria-selected'], tab('团队').props['aria-selected']], [false, true])
   assert.equal(dockButton('新建会话').props.disabled, false, 'the Team dock keeps the new-session button clickable')
   dockButton('新建会话').props.onClick()
   assert.deepEqual(created, ['lead', 'lead'], 'the dock drafts for the lead role like the project row does')
-  dockButton('主页').props.onClick()
+  assert.equal(dockButton('主页').props.onClick, undefined, '主页 keeps the current tab')
+  tab('角色').props.onClick()
   dockButton('搜索').props.onClick()
-  assert.deepEqual(switched, ['sessions'], 'only 主页 leaves Team; 搜索 opens the finder in place')
+  assert.deepEqual(switched, ['sessions'], 'only the 角色 tab leaves Team; 搜索 opens the finder in place')
   const finder = render().find(node => node.type === SearchDialog)
   assert.deepEqual(finder.props.items.map(item => item.id), ['l1', 'l2'], 'the Team finder lists the same lead sessions as the rail')
   assert.equal(finder.props.items[0].updatedAt, 5, 'a lead session carries its executors\' latest time')

@@ -113,7 +113,7 @@ test('the final chosen role wins over the sidebar default on the first send', as
   h.composer().rolePicker.props.onSelect('b')
   await h.send()
   assert.deepEqual(h.calls, [
-    { endpoint: 'session-create', profile: 'b', workspace: 'project', lazy: true, choices: {} },
+    { endpoint: 'session-create', profile: 'b', workspace: 'project', lazy: true, choices: {}, team: false },
     { endpoint: 'session-open', profile: 'b', session: 'session-1', workspace: 'project' },
   ])
   assert.deepEqual(h.prompts, [{ id: 'native-b', content: [{ type: 'text', text: '给 B 的消息' }], mode: 'queue' }])
@@ -150,7 +150,7 @@ test('DSH drafts preserve an explicit clear of inherited permissions on first se
   assert.equal(h.composer().profile.permission, '')
   h.composer().onChange('use engine defaults')
   await h.send()
-  assert.deepEqual(h.calls[0], { endpoint: 'session-create', profile: 'b', workspace: 'project', lazy: true, choices: { permission: '' } })
+  assert.deepEqual(h.calls[0], { endpoint: 'session-create', profile: 'b', workspace: 'project', lazy: true, choices: { permission: '' }, team: false })
 })
 
 test('a native blank entry supplies only a default recipient until send', async () => {

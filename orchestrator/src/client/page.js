@@ -493,6 +493,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         onNewWorktree: project => { if (!readOnly) setWorktreeOpen(project) },
         onNewRole: () => openRolesPage({ profileId: 'new' }),
         onEditRole: item => openRolesPage({ profileId: item.id }),
+        onNewTeam: () => openRolesPage({ team: 'new' }),
+        onEditTeam: id => openRolesPage({ team: id }),
         onSettings: () => edit({ kind: 'settings' }),
         onRoles: () => layoutService?.selectPanel('nodo-roles'),
         onSessions: () => showSessions('sessions'),

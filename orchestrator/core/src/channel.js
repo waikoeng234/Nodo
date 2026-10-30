@@ -26,6 +26,7 @@ export function install(rt) {
     profiles: rt.profilesView(),
     secrets: rt.secretsView(),
     taskTypes: rt.taskTypes(),
+    teams: rt.teams(),
     prefs: state.prefs,
     readOnly: rt.readOnly() ?? null,
   })
@@ -149,6 +150,8 @@ export function install(rt) {
         return rt.deleteRolePreset(body)
       case 'task-types-update':
         return rt.updateTaskTypes(body.types)
+      case 'teams-update':
+        return rt.updateTeams(body.teams)
       case 'session-create':
         return rt.createSession(resolveProfileRef(body.profile).id, body.name, body.workspace, body.lazy === true, body.draft === true, body.choices, undefined,
           { team: body.team !== false })

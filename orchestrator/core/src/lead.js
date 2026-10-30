@@ -18,7 +18,7 @@ export function install(rt) {
     if (!states.has(id)) states.set(id, { running: false })
     return states.get(id)
   }
-  const rosterOf = profile => Object.values(rt.state.profiles).filter(item => !item.deletedAt && item.id !== profile.id && item.lead !== true)
+  const rosterOf = profile => (rt.teamOf(profile.id)?.members ?? []).map(id => rt.state.profiles[id]).filter(item => item && !item.deletedAt)
   const flightOf = id => [...states.values()].find(state => state.running?.session === id)?.running
   const delegationState = (profile, session) => {
     const dispatch = session.source.dispatch
@@ -62,10 +62,18 @@ export function install(rt) {
   const leadRoles = id => {
     const found = rt.conversationOf(id)
     if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
-    return [table(['角色', '身份', '职责', '承接任务类型', '难题配置'], rosterOf(found.profile).map(item =>
-      [item.name, item.identity, item.role, (item.taskTypes ?? []).join(', '), item.hard !== undefined ? '有' : '无'])),
-    table(['id', 'name', 'when', 'splitDifficulty'], rt.taskTypes().map(item => [item.id, item.name, item.when, item.splitDifficulty ? '开' : '关'])),
-    '路由规则：只派给承接该类型的角色。未开启难度分流的类型无论难度都派给第一个承接角色，使用基础设置；开启分流的类型，常规任务优先给不带难题配置的角色，否则取排在前面的，难题只给带难题配置的角色并使用其难题设置。没有符合条件的角色就停止派活并说明缺口。后续任务按类型开关重新路由；难度或执行角色变化时新开会话，并交代已有改动、报告和剩余问题。开关或角色配置变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
+    const team = rt.teamOf(found.profile.id)
+    if (!team) throw invalid('该主控还没有团队，请先在角色页建立团队')
+    const nameOf = pick => pick?.profile ? rt.state.profiles[pick.profile]?.name ?? '' : ''
+    const settings = pick => [pick?.model, pick?.thinking].filter(Boolean).join(' / ')
+    return [table(['角色', '身份', '职责'], rosterOf(found.profile).map(item => [item.name, item.identity, item.role])),
+      table(['id', 'name', 'when', '常规任务', '难题'], rt.taskTypes().map(item => {
+        const entry = team.assign[item.id]
+        const split = entry?.hard !== undefined
+        return [item.id, item.name, item.when, [nameOf(entry?.normal), settings(entry?.normal)].filter(Boolean).join(' · ') || '无人承接',
+          split ? [nameOf(entry.hard), settings(entry.hard)].filter(Boolean).join(' · ') || '无人承接' : '同常规任务']
+      })),
+      '路由规则：每个任务类型在团队里有固定的承接角色；没有单独指定难题角色的类型，常规和难题都派给常规角色。没有承接角色就停止派活并说明缺口。后续任务按团队分配重新路由；难度或执行角色变化时新开会话，并交代已有改动、报告和剩余问题。分配变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
   }
   const cancelLeadRetry = (id, takeover = false) => {
     const flight = flightOf(id)
@@ -365,10 +373,12 @@ export function install(rt) {
     if (typeof command.task !== 'string' || !command.task.trim()) throw invalid('task 必须是非空字符串')
     const hard = command.hard, task = rt.redactDeepSecrets(command.task)
     if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
-    const roster = rosterOf(lead), picked = route({ type: found.id, hard, splitDifficulty: found.splitDifficulty }, roster)
-    if (picked.miss) {
-      throw invalid(`没有${hard && found.splitDifficulty ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
-    }
+    const team = rt.teamOf(lead.id)
+    if (!team) throw invalid('该主控还没有团队，请先在角色页建立团队')
+    const picked = route(team.assign, found.id, hard)
+    const holder = picked.profile ? rosterOf(lead).find(item => item.id === picked.profile) : undefined
+    if (!holder) throw invalid(`没有${hard && team.assign[found.id]?.hard ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
+    picked.profile = holder
     let live
     if (command.session !== undefined) {
       const deny = reason => { throw invalid(`${reason}，请去掉 session 字段新开会话，并在 task 里写完整上下文`) }
