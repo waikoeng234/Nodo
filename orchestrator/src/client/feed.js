@@ -168,7 +168,17 @@ export function transcriptRows(lines) {
     // A cleared plan leaves no row at all: its removal is the final state.
     if (item.kind === 'plan' && (item.removed === true
       || (( !Array.isArray(item.steps) || item.steps.length === 0) && !item.text))) continue
-    if (item.kind !== 'tool') { rows.push({ item, index, running: false, error: false }); continue }
+    if (item.kind !== 'tool') {
+      const last = rows.at(-1)
+      // One retry run reads as one row ticking in place: the newest
+      // announcement replaces the row, and an end keeps the last count.
+      if (item.kind === 'lifecycle' && item.event === 'retry'
+        && last?.item.kind === 'lifecycle' && last.item.event === 'retry'
+        && (last.item.turnId === undefined || item.turnId === undefined || last.item.turnId === item.turnId))
+        last.item = item.text === undefined ? { ...item, text: last.item.text } : item
+      else rows.push({ item, index, running: false, error: false })
+      continue
+    }
     if (item.phase === 'start') {
       open.set(callKey(item), rows.length)
       rows.push({ item, index, running: true, error: false })

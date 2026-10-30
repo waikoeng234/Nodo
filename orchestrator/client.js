@@ -12185,7 +12185,10 @@ function transcriptRows(lines) {
   for (const [index, item] of lines.entries()) {
     if (item.kind === "plan" && (item.removed === true || (!Array.isArray(item.steps) || item.steps.length === 0) && !item.text)) continue;
     if (item.kind !== "tool") {
-      rows.push({ item, index, running: false, error: false });
+      const last = rows.at(-1);
+      if (item.kind === "lifecycle" && item.event === "retry" && last?.item.kind === "lifecycle" && last.item.event === "retry" && (last.item.turnId === void 0 || item.turnId === void 0 || last.item.turnId === item.turnId))
+        last.item = item.text === void 0 ? { ...item, text: last.item.text } : item;
+      else rows.push({ item, index, running: false, error: false });
       continue;
     }
     if (item.phase === "start") {
