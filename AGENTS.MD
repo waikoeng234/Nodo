@@ -7,6 +7,8 @@ This document governs AI and automated development in the "Nodo" project. During
 - Use comments sparingly: explain only constraints the code itself cannot express, in plain language. Do not put design decisions, change history, or problem descriptions in comments.
 - Prefer mature, stable libraries for common functionality such as standard formats, protocols, parsing, compression, encryption, and dates. Do not implement these from scratch unless the user explicitly requests it or an existing project implementation must be retained.
 - Do not change unrelated files or perform incidental refactoring.
+- Do not write or edit `CHANGELOG.md` unless the user has explicitly authorized it for the current task.
+- When authorized to write `CHANGELOG.md`: group entries under `## YYYY-MM-DD` headings (newest first; today's entries go in today's section), then under `### 新增` / `### 变更` / `### 修复` / `### 移除`. One line per entry, user-visible changes only (no refactors, tests, or docs-only edits); prefix incompatible config, data-format, or public-interface changes with **不兼容**. Merge entries about the same feature or UI area into one line that states the final result.
 - When the documentation conflicts with existing code, you should follow the code and list all the conflicts at the end of your response.
 
 # UI requirements
