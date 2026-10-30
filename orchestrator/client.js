@@ -13241,6 +13241,7 @@ function RoundMenu({ members, work, raw, onRaw, onOpen }) {
 }
 
 // src/client/session-rail.tsx
+var ROLE_FOLD = 5;
 function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const archived = !!session.archivedAt;
@@ -13311,13 +13312,14 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
   )));
 }
 function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
-  const [queries, setQueries] = (0, import_react.useState)({});
+  const [query, setQuery] = (0, import_react.useState)("");
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
   const [archives, setArchives] = (0, import_react.useState)({});
-  const [searching, setSearching] = (0, import_react.useState)(null);
+  const [searching, setSearching] = (0, import_react.useState)(false);
   const [roleFilter, setRoleFilter] = (0, import_react.useState)(null);
   const [opened, setOpened] = (0, import_react.useState)({});
   const [expanded, setExpanded] = (0, import_react.useState)({});
+  const [rolesOpen, setRolesOpen] = (0, import_react.useState)(false);
   const busyNow = readOnly || busy;
   const rounds = roundIndex(view);
   const sessions = view.profiles.flatMap((role) => role.sessions.map((session) => ({
@@ -13340,7 +13342,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
   const ordered = [...view.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
   const scopeOf = (item) => {
-    const search = (queries[item.id] ?? "").trim().toLocaleLowerCase(), archived = archives[item.id] ?? "hide";
+    const search = searching ? query.trim().toLocaleLowerCase() : "", archived = archives[item.id] ?? "hide";
     return { search, archived, filtering: !!search || !!filterRole || archived === "only" };
   };
   const entriesOf = (item) => {
@@ -13416,9 +13418,8 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     const { search, archived, filtering } = scopeOf(item);
     const entries = entriesOf(item);
     const pending = draftIn(item);
-    const searchOpen = searching === item.id || !!queries[item.id];
-    if (filtering && !entries.length && !pending && !search && archived !== "only" && !searchOpen) return null;
-    const open = opened[item.id] ?? (filtering || searchOpen || item.id === workspace?.id);
+    if (filtering && !entries.length && !pending && archived !== "only") return null;
+    const open = !!search || (opened[item.id] ?? (filtering || item.id === workspace?.id));
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
       item.id,
       open,
@@ -13426,15 +13427,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       item.name,
       item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
       liveIn([item])
-    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u641C\u7D22\u4F1A\u8BDD", `\u641C\u7D22\u201C${item.name}\u201D\u7684\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, null), () => {
-      if (searchOpen) {
-        setQueries((current) => ({ ...current, [item.id]: "" }));
-        setSearching(null);
-      } else {
-        setSearching(item.id);
-        setOpened((current) => ({ ...current, [item.id]: true }));
-      }
-    }), action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
+    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
       import_dsh_client_ui_primitives.Menu,
       {
         open: menuOpen === item.id,
@@ -13475,34 +13468,10 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
           /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
         )
       }
-    ))), searchOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-search" }, /* @__PURE__ */ (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Input,
-      {
-        type: "search",
-        autoFocus: true,
-        value: queries[item.id] ?? "",
-        onChange: (event) => setQueries((current) => ({ ...current, [item.id]: event.target.value })),
-        onBlur: () => {
-          if (!(queries[item.id] ?? "").trim()) {
-            setQueries((current) => ({ ...current, [item.id]: "" }));
-            setSearching(null);
-          }
-        },
-        onKeyDown: (event) => {
-          if (event.key === "Escape") {
-            setQueries((current) => ({ ...current, [item.id]: "" }));
-            setSearching(null);
-          }
-        },
-        placeholder: "\u641C\u7D22\u4F1A\u8BDD",
-        "aria-label": `\u641C\u7D22\u201C${item.name}\u201D\u7684\u4F1A\u8BDD`,
-        className: "nodo-search-input",
-        icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
-      }
-    )), open && list(item, entries, pending));
+    ))), open && list(item, entries, pending));
   };
   const tree = ordered.map(node).filter(Boolean);
-  const projectsOpen = opened[":projects"] ?? true;
+  const shownRoles = rolesOpen ? roster : roster.filter((item, index) => index < ROLE_FOLD || item === filterRole);
   const rosterItem = (item) => {
     const state = roleStateOf(item, view, workspace);
     const pressed = item.id === filterRole?.id;
@@ -13523,35 +13492,71 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
           }
         }
       },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 28 }), item.lead === true && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-badge" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 8 })), ["warning", "ongoing"].includes(workDot(state)) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-dot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(state), size: 8 }))),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name)
-    ), /* @__PURE__ */ (0, import_react.createElement)(
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar", "data-lead": item.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 24 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name),
+      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(state), size: 12 }), label)
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
         type: "button",
-        className: "nodo-roster-edit",
+        className: "nodo-row-action",
         "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-        title: `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
+        title: "\u914D\u7F6E\u89D2\u8272",
         disabled: busyNow || state.active,
         onClick: () => onEditRole(item)
       },
-      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 12 })
-    ));
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null)
+    )));
   };
+  const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u89D2\u8272", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+  const closeSearch = () => {
+    setSearching(false);
+    setQuery("");
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
+    onClick: () => onNewSession(filterRole?.id ?? profile?.id),
+    disabled: busyNow || !workspace || !!navigation
+  }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
+    "aria-pressed": searching && !navigation,
+    onClick: () => {
+      if (navigation) {
+        onSessions();
+        setSearching(true);
+      } else if (searching) closeSearch();
+      else setSearching(true);
+    }
+  }), dock("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 }), {
+    "aria-pressed": navigation?.view === "roles",
+    onClick: navigation?.view === "roles" ? void 0 : onRoles
+  }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+    onClick: onBack,
+    disabled: typeof layoutService?.selectPanel !== "function"
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, searching && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-search" }, /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Input,
+    {
+      type: "search",
+      autoFocus: true,
+      value: query,
+      onChange: (event) => setQuery(event.target.value),
+      onKeyDown: (event) => {
+        if (event.key === "Escape") closeSearch();
+      },
+      placeholder: "\u641C\u7D22\u4F1A\u8BDD",
+      "aria-label": "\u641C\u7D22\u4F1A\u8BDD",
+      className: "nodo-search-input",
+      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
+    }
+  )), head("\u89D2\u8272", action("\u6DFB\u52A0\u89D2\u8272", "\u6DFB\u52A0\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, null), onNewRole, busyNow)), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD" }, shownRoles.map(rosterItem), roster.length > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
-      "aria-label": "\u89D2\u8272",
-      "aria-pressed": navigation?.view === "roles",
-      onClick: navigation?.view === "roles" ? void 0 : onRoles
+      className: "nodo-show-more",
+      "aria-expanded": rolesOpen,
+      onClick: () => setRolesOpen((current) => !current)
     },
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 })
-  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
-    onClick: onBack,
-    disabled: typeof layoutService?.selectPanel !== "function"
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-current": !filterRole || void 0, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), roster.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"))), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], null, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
+    rolesOpen ? "\u6536\u8D77" : `\u663E\u793A\u53E6\u5916 ${roster.length - ROLE_FOLD} \u4E2A`
+  )), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, head("\u9879\u76EE\u533A", action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow)), tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], null, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
     SessionRow,
     {
       key: session.id,
@@ -19291,32 +19296,23 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
 .nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
-.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
-.nodo-rail-dock .nodo-icon-btn,.nodo-rail-switch button{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
+.nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
-.nodo-rail-switch{display:flex;flex-direction:column;gap:4px}
-.nodo-rail-switch button{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer}
-.nodo-rail-switch button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-rail-switch button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);cursor:default}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
-.nodo-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));row-gap:8px;flex:none;margin-top:4px}
-.nodo-roster-cell{position:relative;display:flex;min-width:0}
-.nodo-roster-cell>.nodo-roster-item{flex:1}
-.nodo-roster-edit{position:absolute;top:22px;left:calc(50% + 4px);display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);box-shadow:0 0 0 1.5px var(--dsw-specific-sidebar-fill),0 1px 2px var(--dsw-alias-border-l2);cursor:pointer;opacity:0;pointer-events:none}
-.nodo-roster-cell:hover>.nodo-roster-edit,.nodo-roster-edit:focus-visible{opacity:1;pointer-events:auto}
-.nodo-roster-edit:hover:not(:disabled),.nodo-roster-edit[aria-pressed=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-edit:disabled{color:var(--dsw-alias-label-caption);cursor:default}
-.nodo-roster-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:2px 0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
-.nodo-roster-item:hover,.nodo-roster-item[aria-current=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:11px;background:var(--dsw-specific-sidebar-nav-item-active)}
-.nodo-roster-avatar:has(>.nodo-avatar){background:none}
-.nodo-roster-item[aria-current=true] .nodo-roster-avatar{box-shadow:0 0 0 1.5px var(--dsw-alias-state-business-primary)}
-.nodo-roster-add .nodo-roster-avatar{background:0 0;border:1px dashed var(--dsw-alias-border-l1)}
-.nodo-roster-dot{position:absolute;right:-1px;bottom:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
-.nodo-roster-badge{position:absolute;right:-1px;top:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
-.nodo-roster-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px}
-.nodo-tree-search{display:flex;padding:2px 0 4px}
-.nodo-tree-add{display:inline-flex;flex:none;padding-right:6px}
+.nodo-rail-search{display:flex;flex:none;padding:2px 0 8px}
+.nodo-rail-head{display:flex;align-items:center;justify-content:space-between;flex:none;height:28px;padding:0 2px 0 8px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500;line-height:18px}
+.nodo-roster{display:flex;flex-direction:column;gap:2px;flex:none;padding-bottom:12px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-roster-cell{display:flex;align-items:center;gap:2px;min-width:0}
+.nodo-roster-cell:hover .nodo-row-actions,.nodo-roster-cell:focus-within .nodo-row-actions{display:inline-flex}
+.nodo-roster-item{display:flex;align-items:center;gap:10px;flex:1;min-width:0;height:36px;padding:0 8px 0 6px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
+.nodo-roster-item:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-roster-item[aria-current=true]{background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar{display:inline-flex;flex:none}
+.nodo-roster-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
+.nodo-roster-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
+.nodo-roster .nodo-show-more{padding-left:8px}
 .nodo-tree-flag{display:inline-flex;flex:none;color:var(--dsw-alias-state-business-primary)}
 .nodo-tree{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;margin:12px calc(-1 * var(--nodo-rail-inset)) 0;padding:0 var(--nodo-rail-inset) 16px}
 .nodo-tree-node,.nodo-tree-children{display:flex;flex-direction:column;gap:2px}
@@ -19350,6 +19346,8 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-row-action:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
 .nodo-folder{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-deep-diving)}
+.nodo-project-select[aria-expanded=false]>.nodo-folder{color:var(--dsw-alias-label-tertiary)}
+.nodo-project-select[aria-expanded=true]>.nodo-folder{color:var(--dsw-alias-state-business-primary)}
 .nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 32px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
 .nodo-show-more:hover{color:var(--dsw-alias-label-primary)}
 .nodo-row{height:36px;padding:0 8px}
@@ -19360,7 +19358,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-session[data-archived]{color:var(--dsw-alias-label-tertiary)}
 .nodo-row-archived{display:inline-flex;align-items:center;gap:4px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
+.nodo-row[aria-current=page]{background:var(--dsw-specific-sidebar-nav-item-active)}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
 .nodo-session{padding-left:32px}

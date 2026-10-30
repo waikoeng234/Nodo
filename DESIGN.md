@@ -219,7 +219,7 @@ Flat by default. Depth comes from the tonal split between Mist (sidebar, code bl
 - **Panel** (`0 0 0 .5px hairline, 0 3px 8px rgba(0,0,0,.03), 0 0 16px rgba(0,0,0,.02)`): the composer and question cards.
 - **Soft** (`0 0 0 .5px hairline, 0 4px 16px rgba(0,0,0,.03), 0 0 24px rgba(0,0,0,.03)`): menus and popovers.
 - **Lift** (`0 4px 12px rgba(0,0,0,.02), 0 2px 8px rgba(0,0,0,.04)`): approval cards.
-- **Pressed tab** (`0 1px 2px hairline, 0 0 0 .5px hairline`): the selected segment in the rail switch.
+- **Pressed tab** (`0 1px 2px hairline, 0 0 0 .5px hairline`): the pressed dock button in the rail.
 
 ### Named Rules
 **The Only-What-Floats Rule.** A surface gets a shadow only if it sits above the content it relates to (composer, approval, menu, popover). Lists, rows and inline cards stay flat with a hairline.
@@ -236,7 +236,7 @@ Soft rounded rectangles throughout, on a 4/8/12/16/20/24/28px scale. Small contr
 ### Buttons
 - **Text buttons** come from the host `Button` primitive in three variants: `primary` (the one main action in a view), `outline` (most secondary actions) and `ghost` (low-emphasis actions in toolbars and menus). Do not restyle them locally.
 - **Icon button:** 28px square, 8px radius, transparent, Slate icon. Hover adds the Hover Veil and Ink colour over 0.1s. Row actions stay hidden until the row is hovered or focused.
-- **Rail switch:** 36px square, 12px radius. The pressed item gets a Paper fill with the pressed-tab shadow.
+- **Rail dock:** 36px square buttons, in the order 主页, 新建会话, 搜索, 角色. The pressed item gets a Paper fill with the pressed-tab shadow.
 
 ### Chips and Tags
 - **Tag** (`.nodo-tag`): the one small-label component, used for task types, difficulty, role kind, identity, recommended options, workflow exit targets, human-provided output and the read-only marker. It replaces the host `Tag`, whose amber text is unreadable and which does not survive outside dsh. It is 20px tall with a 6px radius, Hover Veil fill and 12px/400 Slate text, and long text truncates with an ellipsis. `data-tone="accent"` (Signal Blue) and `data-tone="caution"` (Caution Amber) tint the text and mix the same colour at 10% into the fill. Any other `data-tone` value applies the 10% mix to whatever `--nodo-tag-tone` the context sets, as workflow exits do. Context classes add only layout or font (for example the monospace identity cell), never their own shape or colour.
@@ -255,8 +255,8 @@ Soft rounded rectangles throughout, on a 4/8/12/16/20/24/28px scale. Small contr
 - **Focus:** a 2px Signal Blue outline with 1–2px offset on custom controls.
 
 ### Navigation
-- **Rail rows:** transparent with a 12px radius. Hover and active states share the Hover Veil. Names are 13px/500 with a 12px Pebble meta line; long names truncate with an ellipsis.
-- **Roster:** a grid of 34px avatars with 12px names. The selected avatar gets a 1.5px Signal Blue ring; running and unread badges sit in corner cut-outs ringed in sidebar Mist.
+- **Rail rows:** transparent with a 12px radius. Hover adds the Hover Veil; the selected row takes the sidebar nav active grey, with no outline or shadow. Names are 13px/500 with a 12px Pebble meta line; long names truncate with an ellipsis.
+- **Roster:** a single column of 36px rows with a 24px avatar and a 13px name, folded after five roles. A lead's avatar gets a 1.5px ring in its role colour. The selected row follows the rail row states.
 
 ### Role Avatar (signature)
 A pastel blob with two upright pill eyes on a tile of its own colour. Idle it is still; it greets (a 0.45s wobble) on hover, hops on a 1.6s loop and blinks every 3.8s while its Agent runs. This is the brand's face. Reuse it wherever a role appears instead of initials or generic icons.

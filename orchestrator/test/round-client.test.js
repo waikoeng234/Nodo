@@ -350,12 +350,12 @@ test('the rail folds executor sessions into their lead row for state, highlight,
   press('Other')
   assert.deepEqual(rows().map(row => row.props.session.id), ['o1'])
   press('Other')
-  render().find(node => node.props.className === 'nodo-row-action' && node.props['aria-label']?.startsWith('搜索')).props.onClick({ stopPropagation() {} })
+  render().find(node => node.type === 'button' && node.props['aria-label'] === '搜索').props.onClick()
   render().find(node => node.type === 'Input').props.onChange({ target: { value: 'refresh' } })
   assert.deepEqual(rows().map(row => row.props.session.id), ['l1'])
 })
 
-test('the rail search closes from its row action, on blur when empty and on Escape, and stays open on blur with a query', async () => {
+test('the rail search opens and closes from the dock button and on Escape', async () => {
   const slots = []
   let cursor = 0
   const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
@@ -370,26 +370,24 @@ test('the rail search closes from its row action, on blur when empty and on Esca
     { id: 'coder', name: 'Coder', sessions: [{ id: 's1', name: 'Refresh race', workspaceRef: 'w', updatedAt: 1 }] },
   ] }
   const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 's1', onSelect() {}, onSelectSession() {} })) }
-  const toggle = () => render().find(node => node.props.className === 'nodo-row-action' && node.props['aria-label'] === '搜索“Project”的会话').props.onClick({ stopPropagation() {} })
+  const button = () => render().find(node => node.type === 'button' && node.props['aria-label'] === '搜索')
+  const toggle = () => button().props.onClick()
   const search = () => render().find(node => node.type === 'Input')
-  assert.equal(search(), undefined, 'search waits behind the project row action')
+  assert.equal(search(), undefined, 'search waits behind the dock button')
   toggle()
   assert.equal(search().props.placeholder, '搜索会话')
+  assert.equal(button().props['aria-pressed'], true)
   search().props.onChange({ target: { value: 'refresh' } })
-  search().props.onBlur?.()
-  assert.equal(search().props.value, 'refresh', 'a non-empty query survives the blur')
+  assert.equal(search().props.value, 'refresh')
   toggle()
-  assert.equal(search(), undefined, 'the row action closes an open search')
+  assert.equal(search(), undefined, 'the dock button closes an open search')
   toggle()
   assert.equal(search().props.value, '', 'reopening starts from a cleared query')
-  search().props.onBlur?.()
-  assert.equal(search(), undefined, 'an empty query closes on blur')
-  toggle()
   search().props.onKeyDown({ key: 'Escape' })
   assert.equal(search(), undefined, 'Escape still closes the search')
 })
 
-test('the roster lists leads first with a badge and keeps the stored order in each group', async () => {
+test('the roster lists leads first with a lead ring and keeps the stored order in each group', async () => {
   const slots = []
   let cursor = 0
   const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
@@ -407,10 +405,9 @@ test('the roster lists leads first with a badge and keeps the stored order in ea
   ] }
   const render = () => { cursor = 0; return nodes(Rail({ view, onSelect() {}, onSelectSession() {} })) }
   const roster = () => render().filter(node => node.props.className === 'nodo-roster-item' && node.props.title)
-  const badge = item => nodes(item).find(node => node.props?.className === 'nodo-roster-badge')
+  const ring = item => nodes(item).some(node => node.props?.className === 'nodo-roster-avatar' && node.props['data-lead'] === '')
   assert.deepEqual(roster().map(node => node.props.title), ['Alpha', 'Beta', 'Coder', 'Other'])
-  assert.deepEqual(roster().map(node => !!badge(node)), [true, true, false, false])
-  assert.equal(badge(roster()[0]).children[0].type, 'IconSparkleRegular')
+  assert.deepEqual(roster().map(ring), [true, true, false, false])
   assert.deepEqual(roster().map(node => node.props['aria-label']),
     ['Alpha，运行中，主控', 'Beta，主控', 'Coder', 'Other'])
 })
