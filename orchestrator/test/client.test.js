@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { loadClient } from './helpers/client-module.js'
+import { route } from '../core/shared/route.js'
 import { fileURLToPath } from 'node:url'
 import { Script, createContext } from 'node:vm'
 
@@ -488,7 +489,7 @@ test('pending conversation selection cannot replace a newer draft or its opened 
 })
 
 test('sidebar status labels and role aggregation preserve concurrent native waits and final outcomes', async () => {
-  const { workLabel, runningOf, workDot } = await loadClient('ui-shared.js')
+  const { workLabel, runningOf, workDot, workKind } = await loadClient('ui-shared.js')
   const role = { sessions: [{ id: 'one' }, { id: 'two' }] }
   const work = { one: { active: false, status: 'completed', finishedAt: 99 }, two: { active: true, status: 'waiting-question' } }
   assert.equal(workLabel(runningOf(role, work)), '等待回答')
@@ -516,6 +517,8 @@ test('sidebar status labels and role aggregation preserve concurrent native wait
   work.two.suspect = false
   assert.equal(workLabel(runningOf(role, work)), '运行中')
   assert.equal(workDot(work.two), 'ongoing')
+  assert.deepEqual([work.two, { ...work.two, suspect: true }, { status: 'waiting-question' }, { status: 'blocked' }, { status: 'completed' }, { status: 'error' }, { status: 'stopped' }, {}].map(workKind),
+    ['run', 'wait', 'wait', 'wait', 'done', 'err', 'stop', 'stop'], 'each state maps to one marker kind')
   for (const [status, label] of [['waiting-approval', '等待审批'], ['waiting-question', '等待回答'], ['error', '执行失败'], ['completed', '已完成']]) {
     assert.equal(workLabel({ active: true, suspect: true, status }), label, 'explicit status takes precedence over suspicion')
   }
@@ -997,14 +1000,15 @@ test('the header avatar opens the template grid and submits the selected templat
 
 // The rail loads with its real ui-shared helpers; kit members stand in as their
 // own names and hooks come from the caller's fakes.
-const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
+const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
 
 test('rail omits redundant status icons and distinguishes unarchive from the archive filter', async () => {
-  const { SessionRow, workspacePicker } = await loadRail()
+  const { SessionRow, RoleAvatar, workspacePicker } = await loadRail()
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   const changes = []
   const row = nodes(SessionRow({ role: { name: 'Coder' }, session: { name: 'History', archivedAt: 1 },
     onArchive: value => changes.push(value) }))
+  assert.equal(row.find(node => node.type === RoleAvatar).props.profile.name, 'Coder', 'a session row leads with its role avatar')
   const status = row.find(node => node.props.className === 'nodo-row-archived')
   assert.deepEqual(status.children, ['已归档'])
   const action = row.find(node => node.props['aria-label'] === '取消归档会话“History”')
@@ -1140,8 +1144,8 @@ test('sidebar avatar follows any active session and returns to idle when work en
   assert.equal(avatar().props.running, true)
 })
 
-// A roster avatar narrows the session list to one role; pressing it again or
-// 全部 lifts the filter. Only the list changes, never the roster.
+// A roster row narrows the session list to one role; pressing it again lifts
+// the filter. Only the list changes, never the roster.
 test('the rail filters sessions by the role picked in the roster', async () => {
   const slots = []
   let cursor = 0
@@ -1164,10 +1168,10 @@ test('the rail filters sessions by the role picked in the roster', async () => {
   const name = node => node.children[1].children[0]
   const press = label => roster(render()).find(node => name(node) === label).props.onClick()
   const pressed = tree => roster(tree).filter(node => node.props['aria-current']).map(name)
-  const edit = (tree, label) => tree.find(node => node.props?.className === 'nodo-roster-edit' && node.props['aria-label'] === `配置角色 ${label}`)
+  const edit = (tree, label) => tree.find(node => node.props?.className === 'nodo-row-action' && node.props['aria-label'] === `配置角色 ${label}`)
   let tree = render()
-  assert.deepEqual(roster(tree).map(name), ['全部', '大肥鱼', '贼 coder'])
-  assert.deepEqual(pressed(tree), ['全部'])
+  assert.deepEqual(roster(tree).map(name), ['大肥鱼', '贼 coder'])
+  assert.deepEqual(pressed(tree), [])
   assert.deepEqual(rows(tree), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
   assert.ok(edit(tree, '大肥鱼') && edit(tree, '贼 coder'), 'every role carries its own config entry')
   edit(tree, '贼 coder').props.onClick()
@@ -1178,7 +1182,7 @@ test('the rail filters sessions by the role picked in the roster', async () => {
   assert.deepEqual(selected, ['coder'], 'pressing a role also selects it')
   assert.deepEqual(pressed(tree), ['贼 coder'])
   assert.deepEqual(rows(tree), ['贼 coder · 删除新会话'])
-  assert.deepEqual(roster(tree).map(name), ['全部', '大肥鱼', '贼 coder'], 'the roster stays complete')
+  assert.deepEqual(roster(tree).map(name), ['大肥鱼', '贼 coder'], 'the roster stays complete')
   assert.equal(tree.some(node => node.props?.className === 'nodo-roster-detail'), false, 'picking a role opens no detail bar')
   const fold = () => render().find(node => node.props?.className === 'nodo-project-select' && node.props.title === '/bot').props.onClick()
   fold()
@@ -1187,11 +1191,11 @@ test('the rail filters sessions by the role picked in the roster', async () => {
   assert.deepEqual(rows(render()), ['贼 coder · 删除新会话'])
   press('贼 coder')
   tree = render()
-  assert.deepEqual(pressed(tree), ['全部'], 'pressing the role again lifts its filter')
+  assert.deepEqual(pressed(tree), [], 'pressing the role again lifts its filter')
   assert.deepEqual(rows(tree), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
   press('大肥鱼')
   assert.deepEqual(rows(render()), ['大肥鱼 · 读当前任务'])
-  press('全部')
+  press('大肥鱼')
   assert.deepEqual(rows(render()), ['大肥鱼 · 读当前任务', '贼 coder · 删除新会话'])
 })
 
@@ -1200,7 +1204,7 @@ test('the rail filters sessions by the role picked in the roster', async () => {
 test('the rail folds a long session list behind a show-more toggle', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
+  const { Rail, SessionRow, SearchDialog } = await loadRail({ useState: (initial) => {
     const slot = cursor++
     if (!(slot in slots)) slots[slot] = initial
     return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
@@ -1223,23 +1227,19 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   assert.deepEqual(toggle(render()).children, ['收起'])
   toggle(render()).props.onClick()
   assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'folding again hides the tail')
-  const views = tree.find(node => node.props?.className === 'nodo-rail-switch')
-  assert.deepEqual(views.children.map(tip => [tip.children[0].props['aria-label'], tip.children[0].props['aria-pressed']]), [['会话', true], ['角色', false]], 'the dock switch shows sessions and roles')
-  assert.equal(views.children[0].children[0].children[0].type, 'IconFlatListOutlineRegular', 'session navigation represents a list')
-  const search = () => tree.find(node => node.type === 'Input')
+  const dockButton = label => tree.find(node => node.type === 'button' && node.props['aria-label'] === label)
+  assert.deepEqual(['主页', 'Team', '新建会话', '搜索', '角色'].map(label => dockButton(label).props['aria-pressed']), [true, false, undefined, false, false], 'the dock leads with home, Team, new session, search and roles')
+  assert.equal(dockButton('主页').children[0].type, 'IconFlatListOutlineRegular', 'session navigation represents a list')
+  const finder = () => tree.find(node => node.type === SearchDialog)
   const menu = () => tree.find(node => node.type === 'Menu' && node.props.items.some(item => item.id === 'archived:only'))
-  assert.equal(search(), undefined, 'search waits behind the project row action')
-  tree.find(node => node.props?.className === 'nodo-row-action' && node.props['aria-label'] === '搜索“bot”的会话').props.onClick({ stopPropagation() {} })
+  assert.equal(finder(), undefined, 'the finder waits behind the dock button')
+  dockButton('搜索').props.onClick()
   tree = render()
-  assert.equal(search().props['aria-label'], '搜索“bot”的会话')
-  search().props.onChange({ target: { value: '会话0' } })
+  assert.deepEqual(finder().props.items.map(item => item.id), view.profiles[0].sessions.map(session => session.id), 'the finder lists every session, newest first')
+  assert.equal(ids(tree).length, 10, 'the rail list keeps its fold behind the finder')
+  finder().props.onClose()
   tree = render()
-  assert.deepEqual(ids(tree), ['s0'], 'a search sees every match')
-  assert.equal(toggle(tree), undefined, 'a search never folds')
-  search().props.onKeyDown({ key: 'Escape' })
-  tree = render()
-  assert.equal(search(), undefined, 'Escape clears and closes the search')
-  assert.equal(ids(tree).length, 10)
+  assert.equal(finder(), undefined, 'closing the finder removes it')
   menu().props.onSelect('archived:only')
   tree = render()
   assert.equal(menu().props.selectedId, 'archived:only', 'the project menu marks its archived view')
@@ -1253,8 +1253,60 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
   tree = render()
   assert.deepEqual(ids(tree), Array.from({ length: 10 }, (_, index) => `s${index}`), 'a role filter keeps the fold')
   assert.equal(toggle(tree).children[0], '显示更多')
-  press('全部')
-  assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), '「全部」keeps the collapsed state')
+  press('Coder')
+  assert.deepEqual(ids(render()), Array.from({ length: 10 }, (_, index) => `s${index}`), 'lifting the filter keeps the collapsed state')
+})
+
+test('the session finder lists sessions with project and time, filters by query and picks with the keyboard', async () => {
+  const slots = []
+  let cursor = 0
+  const { SearchDialog } = await loadRail({ useState: initial => {
+    const slot = cursor++
+    if (!(slot in slots)) slots[slot] = initial
+    return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
+  } }, { relativeTime: () => ({ unit: 'now', n: 0 }) })
+  const nodes = node => !node || typeof node !== 'object' ? []
+    : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
+  const picked = []
+  let closed = 0
+  const items = [
+    { id: 'a', role: { id: 'r', name: 'Coder', lead: true }, name: 'Fix login', project: { id: 'p', name: 'bot' }, updatedAt: 2,
+      terms: ['Coder', 'Fix login', 'bot'], pick: () => picked.push('a') },
+    { id: 'b', role: { id: 'q', name: 'Writer' }, name: 'Docs', project: { id: 'w', name: 'feat/x', worktree: { branch: 'feat/x' } }, work: { active: true }, updatedAt: 1,
+      terms: ['Writer', 'Docs', 'feat/x'], pick: () => picked.push('b') },
+  ]
+  const render = () => { cursor = 0; return nodes(SearchDialog({ items, onClose: () => closed++ })) }
+  const rows = () => render().filter(node => node.props?.role === 'option')
+  const input = () => render().find(node => node.type === 'input')
+  const key = (name, extra = {}) => input().props.onKeyDown({ key: name, preventDefault() {}, ...extra })
+  assert.deepEqual(rows().map(row => row.children[1].children[0]), ['Fix login', 'Docs'])
+  assert.equal(rows()[0].children[0].props['data-lead'], '', 'a lead keeps its ring')
+  assert.equal(rows()[1].children[0].props['data-lead'], undefined)
+  assert.equal(rows()[0].children[2].children[1].children[0], 'bot')
+  assert.equal(rows()[1].children[2].children[0].type, 'IconBranchOutlineRegular', 'a worktree shows the branch glyph')
+  assert.equal(rows()[0].children[3].children[0], '↵', 'the active row shows the open hint in place of the time')
+  assert.ok(nodes(rows()[1].children[3]).some(node => node.props?.className === 'nodo-row-running'), 'an idle row shows the run state while it runs')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [true, false])
+  key('ArrowDown')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [false, true])
+  key('ArrowDown')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [true, false], 'the selection wraps')
+  key('ArrowUp')
+  assert.deepEqual(rows().map(row => row.props['aria-selected']), [false, true])
+  key('Enter', { nativeEvent: { isComposing: true } })
+  assert.deepEqual(picked, [], 'Enter while composing only confirms the input method')
+  key('Enter')
+  assert.deepEqual(picked, ['b'])
+  assert.equal(closed, 1, 'picking closes the finder')
+  input().props.onChange({ target: { value: 'DOCS' } })
+  assert.deepEqual(rows().map(row => row.children[1].children[0]), ['Docs'], 'the query matches names case-insensitively')
+  input().props.onChange({ target: { value: 'bot' } })
+  assert.deepEqual(rows().map(row => row.children[1].children[0]), ['Fix login'], 'the query also matches the project')
+  rows()[0].props.onClick()
+  assert.deepEqual(picked, ['b', 'a'])
+  input().props.onChange({ target: { value: 'zzz' } })
+  assert.equal(rows().length, 0)
+  assert.ok(render().some(node => node.props?.role === 'status' && node.children.includes('没有找到匹配的会话')))
 })
 
 // The unsent new-conversation draft lists as its own 新会话 row of its project,
@@ -1262,7 +1314,7 @@ test('the rail folds a long session list behind a show-more toggle', async () =>
 test('the rail lists the pending draft as a 新会话 row that returns to it', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow } = await loadRail({ useState: (initial) => {
+  const { Rail, SessionRow, RoleAvatar } = await loadRail({ useState: (initial) => {
     const slot = cursor++
     if (!(slot in slots)) slots[slot] = initial
     return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value }]
@@ -1282,7 +1334,9 @@ test('the rail lists the pending draft as a 新会话 row that returns to it', a
   let tree = render({ id: 'd1', workspace: 'w', profile: 'fish' })
   const row = draftRow(tree)
   assert.ok(row, 'a draft of this project shows as its own row')
-  assert.deepEqual(row.children[0].children, ['新会话'])
+  assert.equal(row.children[0].type, RoleAvatar, 'the draft row leads with its role avatar')
+  assert.equal(row.children[0].props.profile.id, 'fish')
+  assert.deepEqual(row.children[1].children, ['新会话'])
   const order = tree.filter(node => node.props?.title === '新会话（草稿）' || node.type === SessionRow)
     .map(node => node.props.title === '新会话（草稿）' ? 'draft' : node.props.session.id)
   assert.deepEqual(order, ['draft', 'a'], 'the draft row sits above the sessions')
@@ -1318,9 +1372,7 @@ test('the project tree marks collapsed workspaces with running sessions', async 
   const nodes = node => !node || typeof node !== 'object' ? []
     : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
   const render = () => nodes(Rail({ view, workspace: workspaces[0], onSelect: () => {} }))
-  const childNodes = node => node.children.find(child => child?.props?.className === 'nodo-tree-children').children
-    .filter(child => child?.props?.className === 'nodo-tree-node')
-  const top = tree => childNodes(tree.find(node => node.type === 'nav').children[0])
+  const top = tree => tree.find(node => node.type === 'nav').children.filter(child => child?.props?.className === 'nodo-tree-node')
   const toggleOf = node => node.children[0].children[0]
   const state = tree => tree.find(node => node.props?.className === 'nodo-tree-state')
   let tree = render()
@@ -1328,9 +1380,9 @@ test('the project tree marks collapsed workspaces with running sessions', async 
   assert.deepEqual(top(tree).map(node => node.props.key), ['branch', 'main'])
   assert.deepEqual(top(tree).map(node => toggleOf(node).props['aria-expanded']), [false, true], 'only the current project opens')
   assert.equal(toggleOf(top(tree)[0]).children[1].children[0].type, 'IconBranchOutlineRegular')
-  assert.deepEqual(state(tree).children.map(child => child.props?.state ?? child), ['ongoing', '1 个运行中'])
+  assert.deepEqual(state(tree).children.map(child => child.props?.kind ?? child), ['run', '1 个运行中'])
   view.work.away = { active: true, status: 'waiting-approval' }
-  assert.deepEqual(state(render()).children.map(child => child.props?.state ?? child), ['warning', '待处理'])
+  assert.deepEqual(state(render()).children.map(child => child.props?.kind ?? child), ['wait', '待处理'])
   view.work.away.active = false
   assert.equal(state(render()), undefined, 'an all-idle tree carries no hint')
 })
@@ -1346,8 +1398,8 @@ test('the project tree adds projects at its root and creates worktrees from the 
   let added = 0
   const tree = nodes(Rail({ view, workspace, onSelect: () => {}, onNewWorktree: () => { worktrees++ }, onNewWorkspace: () => { added++ }, busy: false, readOnly: false }))
   const projects = tree.find(node => node.type === 'nav').children[0]
-  assert.equal(projects.children[0].children[0].children[1].children[0], '项目', 'every project sits under one 项目 row')
-  nodes(projects.children[0]).find(node => node.type === 'button' && node.props['aria-label'] === '添加项目').props.onClick({ stopPropagation() {} })
+  assert.equal(projects.children[0].children[0], '项目区', 'every project sits under one 项目区 header')
+  nodes(projects).find(node => node.type === 'button' && node.props['aria-label'] === '添加项目').props.onClick({ stopPropagation() {} })
   assert.equal(added, 1)
   assert.equal(tree.some(node => node.type === 'button' && node.props?.['aria-label'] === '从“bot”创建工作树'), false, 'the row keeps no separate worktree button')
   const menu = tree.find(node => node.type === 'Menu' && node.props?.items?.some(item => item.id === 'worktree'))
@@ -1881,6 +1933,78 @@ test('the composer add menu offers the native sections and inserts text picks in
 
 })
 
+test('a lead card\'s 1:1 chat gets the plan tier while its Team sessions keep it hidden', async () => {
+  const states = [], refs = [], effects = []
+  let cursor = 0
+  const { AddMenu, PermissionMenu } = await loadClient('composer.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef(initial) { const at = cursor++; return refs[at] ??= { current: initial } },
+      useEffect(effect) { effects.push(effect) },
+    },
+    async call(endpoint) {
+      if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { permissionModes: ['plan', 'workspace', 'full'] } }]
+      if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [] }
+      return {}
+    },
+  })
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const chat = { engine: 'claude', permission: 'workspace', lead: true, leadMode: false }
+  const team = { engine: 'claude', permission: 'workspace', lead: true }
+  const menu = profile => { cursor = 0; return AddMenu({ profile, workspace: { id: 'w1', name: 'one' }, disabled: false, trigger: null,
+    onInsert() {}, onModelChange() {} }) }
+  const opened = async profile => { menu(profile).props.anchor.props.onClick(); await tick(); await tick(); return menu(profile) }
+  assert.equal((await opened(chat)).props.items.some(item => item.id === 'plan'), true, 'the add menu offers plan to a lead 1:1 chat')
+  assert.equal((await opened(team)).props.items.some(item => item.id === 'plan'), false, 'a Team lead session keeps plan out of the add menu')
+  states.length = 0; refs.length = 0
+  const perm = profile => { cursor = 0; return PermissionMenu({ profile, disabled: false, onChange() {} }) }
+  const tiers = async profile => { perm(profile).children[0].props.anchor.props.onClick(); await tick(); await tick(); return perm(profile).children[0].props.items.map(item => item.id) }
+  assert.deepEqual(await tiers(chat), ['plan', 'workspace', 'full'], 'the permission menu offers every tier to a lead 1:1 chat')
+  assert.deepEqual(await tiers(team), ['workspace', 'full'], 'a Team lead session keeps plan out of the permission menu')
+})
+
+test('a lead card\'s 1:1 chat keeps usage rows while Team sessions hide them', async () => {
+  const states = [], effects = []
+  let cursor = 0
+  const lines = [
+    { who: 'user', kind: 'text', text: 'hi', at: 1 },
+    { who: 'system', kind: 'usage', usage: { inputTokens: 3, outputTokens: 4 }, at: 2 },
+  ]
+  const { Feed, TurnUsage } = await loadClient('feed.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: null }),
+      useEffect(effect) { effects.push(effect) },
+    },
+    uiShared: {
+      call: async () => lines, MARKDOWN_LABELS: {}, TOOL_VARIANTS: {}, toolVariant: () => 'run', ComposerGlyph: () => 'send',
+      billedTokens: stats => stats.inputTokens + stats.outputTokens, cacheHitPercent: () => null, contextPercent: () => null,
+      compactTokens: value => String(value), compactDuration: () => '', exactTokens: value => String(value),
+      tokensPerSecond: () => '', turnTokens: usage => (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+    },
+  })
+  const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all), ...Object.values(tree.props ?? {}).flatMap(all)] : []
+  const render = (profile, session) => { cursor = 0; return all(Feed({ profile, session, revision: 1, work: null, sentTick: 0 })) }
+  const open = async (profile, session) => {
+    render(profile, session)
+    for (const effect of effects.splice(0)) effect()
+    await new Promise(resolve => setImmediate(resolve))
+    return render(profile, session)
+  }
+  const lead = { id: 'lead', engine: 'claude', lead: true }
+  assert.equal((await open(lead, { id: 'chat', leadMode: false })).some(node => node.type === TurnUsage), true, 'a 1:1 chat session shows its usage rows')
+  states.length = 0
+  assert.equal((await open(lead, { id: 'team' })).some(node => node.type === TurnUsage), false, 'a Team lead session keeps usage hidden')
+})
+
 test('the new composer offers references through @ without a recipient and enables reference-only messages', async () => {
   const edits = [], opened = [], removed = []
   const { Composer, AddMenu } = await loadClient('composer.js', {
@@ -2340,14 +2464,16 @@ test('the rail marks the roles view pressed and shows its published body', async
   const tree = render({ view: 'roles', content })
   assert.equal(tree.props['aria-label'], '角色导航')
   assert.ok(nodes(tree).includes(content))
-  const [sessions, roles] = nodes(tree).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
+  const dockButton = (tree, label) => nodes(tree).find(node => node.type === 'button' && node.props['aria-label'] === label)
+  const [sessions, team, roles] = ['主页', 'Team', '角色'].map(label => dockButton(tree, label))
+  assert.equal(team.props['aria-pressed'], false)
   assert.deepEqual([sessions.props['aria-pressed'], roles.props['aria-pressed']], [false, true])
   assert.equal(roles.props.onClick, undefined, 'the current view is not a link to itself')
   sessions.props.onClick()
   assert.deepEqual(calls, ['sessions'])
   const plain = render(null)
   assert.equal(plain.props['aria-label'], '角色与项目会话')
-  const [idle] = nodes(plain).find(node => node.props.className === 'nodo-rail-switch').children.map(tip => tip.children[0])
+  const idle = dockButton(plain, '主页')
   assert.equal(idle.props['aria-pressed'], true)
   assert.ok(nodes(plain).some(node => node.props.className === 'nodo-roster'), 'without a published view the roster returns')
 })
@@ -2416,7 +2542,7 @@ test('the task type page keeps ids on saved rows, omits them on new rows, confir
       { id: 'b', name: 'Reviewer', taskTypes: ['docs', 'review'], sessions: [] },
     ],
     workspaces: [], work: {},
-    taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '代码评审' }, { id: 'ops', name: '运维', when: '' }],
+    taskTypes: [{ id: 'docs', name: '文档', when: '' }, { id: 'review', name: '审查', when: '代码评审', splitDifficulty: true }, { id: 'ops', name: '运维', when: '' }],
   }
   const { TaskTypesEditor, RoleAvatar } = await loadRolesPage({
     react: rolesReact(states, pending),
@@ -2477,7 +2603,8 @@ test('the task type page keeps ids on saved rows, omits them on new rows, confir
   confirmRow().children.find(node => node.children.includes('删除')).props.onClick()
   button('保存').props.onClick()
   await tick(); await tick()
-  assert.deepEqual(calls.at(-1).payload.types, [{ id: 'review', name: '审查', when: '代码评审' }, { id: 'ops', name: '运维', when: '' }])
+  assert.deepEqual(calls.at(-1).payload.types, [{ id: 'review', name: '审查', when: '代码评审', splitDifficulty: true }, { id: 'ops', name: '运维', when: '', splitDifficulty: false }],
+    'every submitted row carries its split-difficulty switch value')
 
   // The page learns about unsaved catalog edits, and a saved draft adopts the
   // ids core issued so it stops looking dirty instead of re-issuing them.
@@ -2509,58 +2636,87 @@ test('the task type page keeps ids on saved rows, omits them on new rows, confir
   assert.equal(capTree.find(node => node.type === 'Button' && node.children.includes('添加类型')).props.disabled, true, 'twenty types fill the catalog')
 })
 
+test('the split-difficulty switch defaults off, rides every save and survives edits, discards and failures', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const calls = []
+  let refuse = false, pause = false, release
+  const view = { profiles: [], workspaces: [], work: {},
+    taskTypes: [{ id: 'docs', name: '文档', when: '', splitDifficulty: true }, { id: 'review', name: '审查', when: '' }] }
+  const { TaskTypesEditor } = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
+    calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+    if (endpoint !== 'task-types-update') return {}
+    if (pause) await new Promise(resolve => { release = resolve })
+    if (refuse) throw new Error('task-types save refused')
+    return payload.types
+  } })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const render = (disabled = false) => { cursor = 0; return all(TaskTypesEditor({ view, disabled, onDone: async () => {} })) }
+  const split = name => render().find(node => node.props?.role === 'switch' && node.props['aria-label'] === `按难度分配 ${name}`)
+  const button = label => render().find(node => node.type === 'Button' && node.children.includes(label))
+
+  assert.equal(split('文档').props.checked, true, 'the saved switch state shows')
+  assert.equal(split('审查').props.checked, false)
+  assert.equal(render(true).find(node => node.props['aria-label'] === '按难度分配 文档').props.disabled, true, 'a read-only catalog locks the switch')
+  render().find(node => node.props['aria-label'] === '任务类型名称').props.onChange({ target: { value: '文档起草' } })
+  assert.equal(split('文档起草').props.checked, true, 'a name edit keeps the switch on its row')
+  split('审查').props.onChange({ target: { checked: true } })
+  pause = true
+  button('保存').props.onClick()
+  assert.deepEqual(calls.at(-1).payload.types, [
+    { id: 'docs', name: '文档起草', when: '', splitDifficulty: true },
+    { id: 'review', name: '审查', when: '', splitDifficulty: true },
+  ], 'every submitted row carries its current switch value')
+  assert.equal(split('审查').props.disabled, true, 'a save in flight locks the switch')
+  release(); await tick(); await tick()
+  pause = false
+  assert.equal(split('审查').props.disabled, false)
+  button('放弃').props.onClick()
+  assert.equal(split('文档').props.checked, true, '放弃 restores the saved switches')
+  assert.equal(split('审查').props.checked, false)
+  refuse = true
+  split('审查').props.onChange({ target: { checked: true } })
+  button('保存').props.onClick()
+  await tick(); await tick()
+  assert.equal(split('审查').props.checked, true, 'a failed save keeps the draft switch')
+  assert.ok(render().some(node => node.children.includes('task-types save refused')))
+  assert.ok(button('放弃'), 'the draft stays dirty after a failure')
+  button('添加类型').props.onClick()
+  const rows = () => render().filter(node => node.props?.className === 'nodo-type-row')
+  assert.equal(all(rows().at(-1)).find(node => node.props.role === 'switch').props.checked, false, 'a fresh row starts with the switch off')
+})
+
 // The overview tree reaches into Menu anchors and items through props.
 const rolesTree = node => node && typeof node === 'object'
   ? [node, ...[...(node.children ?? []), ...Object.values(node.props ?? {})].flatMap(rolesTree)] : []
 const rolesText = node => ['string', 'number'].includes(typeof node) ? String(node) : (node?.children ?? []).map(rolesText).join('')
 const tickAll = async () => { for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve)) }
 
-test('fallback controls and deletion safeguards appear only when a lead exists', async () => {
-  const states = [], pending = [], calls = []
+test('roles expose task types without fallback controls and retain last-executor safeguards', async () => {
+  const states = [], pending = []
   cursor = 0
   const view = { profiles: [
     { id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] },
-    { id: 'a', name: 'First', engine: 'echo', fallback: true, taskTypes: ['docs'], sessions: [] },
+    { id: 'a', name: 'First', engine: 'echo', taskTypes: ['docs'], sessions: [] },
     { id: 'b', name: 'Second', engine: 'echo', sessions: [] },
   ], taskTypes: [{ id: 'docs', name: '文档' }, { id: 'ops', name: '运维' }] }
-  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async (endpoint, payload) => {
-    calls.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
-    if (endpoint === 'engine-catalog') return []
-    if (endpoint === 'profile-update') {
-      view.profiles.forEach(role => { delete role.fallback })
-      view.profiles.find(role => role.id === payload.id).fallback = true
-    }
-    return {}
-  } })
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [] })
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
   const trigger = name => render().find(node => node.props?.['aria-label'] === `承接任务 ${name}`)
   const action = (verb, name) => render().find(node => node.props?.['aria-label'] === `${verb} ${name}`)
-  const box = () => render().find(node => node.type === 'input' && node.props['aria-label'] === '兜底')
-  assert.equal(rolesText(trigger('First')), '文档、兜底')
+  assert.equal(rolesText(trigger('First')), '文档')
   trigger('First').props.onClick()
-  assert.equal(box().props.checked, true)
-  assert.equal(box().props.disabled, true)
+  assert.equal(render().some(node => node.type === 'input' && node.props['aria-label'] === '兜底'), false)
   action('删除', 'First').props.onClick()
   const confirmation = () => render().find(node => node.type === 'Modal' && node.props.title === '删除角色“First”？')
-  assert.match(rolesText(confirmation()), /兜底将转给「Second」。/)
+  assert.doesNotMatch(rolesText(confirmation()), /兜底/)
   confirmation().props.onClose()
-  trigger('Second').props.onClick()
-  assert.equal(box().props.checked, false)
-  box().props.onChange(); await tickAll()
-  assert.deepEqual(calls.at(-1), { endpoint: 'profile-update', payload: { id: 'b', changes: { fallback: true } } })
-  assert.equal(rolesText(trigger('Second')), '兜底')
-  assert.equal(rolesText(trigger('First')), '文档')
-  action('编辑', 'Second').props.onClick()
-  assert.equal(render().find(node => node.type === loaded.RoleEditor).props.deleteHint, '兜底将转给「First」。')
-  render().find(node => node.props?.className === 'nodo-roles-crumbs').children[0].props.onClick()
   view.profiles = view.profiles.filter(role => role.id !== 'lead')
   assert.equal(rolesText(trigger('Second')), '选择承接任务')
-  trigger('Second').props.onClick()
-  assert.equal(box(), undefined)
-  assert.equal(render().some(node => rolesText(node).includes('兜底')), false)
   action('删除', 'Second').props.onClick()
-  assert.equal(render().some(node => node.type === 'p' && rolesText(node).includes('兜底将转给')), false)
+  assert.equal(action('删除', 'Second').props.disabled, false)
   render().find(node => node.type === 'Modal' && node.props.title === '删除角色“Second”？').props.onClose()
   view.profiles = [{ id: 'lead', name: 'Lead', lead: true, sessions: [] }, view.profiles[1]]
   const remove = action('删除', 'Second')
@@ -3034,28 +3190,34 @@ test('the gap status uses core routing and separates routine gaps from hard-only
   const view = {
     profiles: [
       { id: 'lead', name: '决策者', engine: 'echo', lead: true, taskTypes: ['ops'], sessions: [] },
-      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], fallback: true, hard: {}, sessions: [] },
+      { id: 'a', name: '资深', engine: 'echo', taskTypes: ['docs'], hard: {}, sessions: [] },
       { id: 'b', name: '编码', engine: 'echo', taskTypes: ['docs', 'review'], sessions: [] },
     ],
     workspaces: [], work: {},
-    taskTypes: [{ id: 'docs', name: '文档' }, { id: 'review', name: '审查' }, { id: 'ops', name: '运维' }, { id: 'test', name: '测试' }],
+    taskTypes: [{ id: 'docs', name: '文档', splitDifficulty: true }, { id: 'review', name: '审查', splitDifficulty: true }, { id: 'ops', name: '运维' }, { id: 'test', name: '测试' }],
   }
   const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [], globals: { document: { querySelector: () => null } } })
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
   const note = () => render().find(node => node.props?.className === 'nodo-roles-gap-note')
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维没有角色承接，由「资深」兜底', '测试没有角色承接，由「资深」兜底', '审查没有可接难题的角色'],
-    'unclaimed types use fallback; an accepting role without hard settings still leaves a hard gap')
+  const roster = () => view.profiles.filter(item => item.lead !== true)
+  assert.deepEqual(route({ type: 'review', hard: true, splitDifficulty: true }, roster()), { miss: true })
+  assert.equal(route({ type: 'review', hard: false, splitDifficulty: true }, roster()).profile?.id, 'b')
+  assert.deepEqual(route({ type: 'ops', hard: false, splitDifficulty: false }, roster()), { miss: true })
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['运维、测试没有角色承接', '审查没有能接难题的角色'],
+    'unclaimed types and hard-only gaps remain visible without assigning another role')
   assert.equal(note().props.role, 'status')
   assert.equal(render().some(node => rolesText(node).includes('派活结果') || rolesText(node).includes('管理任务类型')), false)
   view.taskTypes = [view.taskTypes[1]]
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['审查没有可接难题的角色'])
-  view.taskTypes = [{ id: 'docs', name: '文档' }]
-  assert.equal(note(), undefined, 'no gaps, no status block')
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['审查没有能接难题的角色'])
+  view.taskTypes[0] = { ...view.taskTypes[0], splitDifficulty: false }
+  assert.equal(note(), undefined, 'a type that does not split difficulty never reports a hard gap')
+  view.taskTypes = [{ id: 'docs', name: '文档', splitDifficulty: true }]
+  assert.equal(note(), undefined, 'a split type with both tiers covered reports no gap')
   view.profiles = view.profiles.map(item => ({ ...item, taskTypes: [] }))
-  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['文档没有角色承接，由「资深」兜底'])
+  assert.deepEqual(rolesTree(note()).filter(node => node.type === 'p').map(rolesText), ['文档没有角色承接'])
   view.profiles = view.profiles.filter(item => !item.lead)
-  assert.equal(note(), undefined, 'without a lead no routing gaps or fallback hints are shown')
+  assert.equal(note(), undefined, 'without a lead no routing gaps are shown')
 })
 
 test('with no executors the overview offers the inline form and lists every lead', async () => {
@@ -3110,7 +3272,7 @@ test('roster buttons open the roles page with the role selected or a new draft',
       completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       subscribeNativeSession() {}, readNativeSession: () => null,
       workspaceIdOf: (view, role, session) => session.workspaceRef ?? role.workspaceId,
-      roleStateOf: () => ({ active: false }), workDot: () => 'idle', workLabel: () => '', sessionTime: () => '刚刚',
+      roleStateOf: () => ({ active: false }), workKind: () => 'stop', WorkDot: 'WorkDot', workLabel: () => '', sessionTime: () => '刚刚',
       ARCHIVED_VIEWS: { hide: '隐藏已归档', all: '全部对话（显示已归档）', only: '仅显示已归档' }, SESSION_FOLD: 10,
       layoutService: { selectPanel: key => panels.push(key) },
       call: async () => ({}),
@@ -3128,7 +3290,7 @@ test('roster buttons open the roles page with the role selected or a new draft',
   rail().find(node => node.props?.['aria-label'] === '配置角色 Coder').props.onClick()
   assert.deepEqual(panels, ['nodo-roles'])
   assert.equal(loaded.readRolesTarget().profileId, 'coder', 'the roster hands the role to the page')
-  rail().find(node => node.props?.['aria-label'] === '添加角色').props.onClick()
+  rail().find(node => node.props?.['aria-label'] === '添加角色').props.onClick({ stopPropagation() {} })
   assert.equal(loaded.readRolesTarget().profileId, 'new')
 })
 

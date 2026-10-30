@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { copyFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import defaultTaskTypes from '../core/shared/task-types.json' with { type: 'json' }
-import { withHost } from './helpers/host.js'
+import { boot, withHost } from './helpers/host.js'
 
 const refused = async (post, types) => {
   const result = await post('task-types-update', { types })
@@ -34,7 +36,7 @@ test('task-types-update validates the list, generates missing ids and prunes rol
     assert.match(await refused(post, [{ name: '', when: '' }]), /1 to 20/)
     assert.match(await refused(post, [{ name: 'No when', when: 3 }]), /"when" must be a string/)
     const list = await api('task-types-update', { types: [{ name: ' chore ', when: '' }, { id: 'docs', name: '文档', when: '编写或修改文档' }] })
-    assert.deepEqual(list, [{ id: list[0].id, name: 'chore', when: '' }, { id: 'docs', name: '文档', when: '编写或修改文档' }])
+    assert.deepEqual(list, [{ id: list[0].id, name: 'chore', when: '', splitDifficulty: false }, { id: 'docs', name: '文档', when: '编写或修改文档', splitDifficulty: false }])
     assert.match(list[0].id, /^[\w-]{1,40}$/)
     assert.notEqual(list[0].id, 'docs')
     assert.deepEqual(rt.taskTypes(), list)
@@ -45,6 +47,34 @@ test('task-types-update validates the list, generates missing ids and prunes rol
     await api('task-types-update', { types: [list[0]] })
     assert.equal(Object.hasOwn(rt.findProfile(profile.id), 'taskTypes'), false)
     await assert.rejects(api('profile-create', { name: 'Late', engine: 'echo', taskTypes: ['docs'] }), { code: 'orch/invalid' })
+  })
+})
+
+test('splitDifficulty defaults off, validates, persists and rides the view', async () => {
+  await withHost(async ({ api, post, runtime, home }) => {
+    const rt = await runtime
+    assert.ok(rt.taskTypes().every(item => item.splitDifficulty === false))
+    assert.ok((await api('state')).taskTypes.every(item => item.splitDifficulty === false))
+    for (const value of ['yes', 1, null]) assert.match(await refused(post, [{ name: 'Chore', when: '', splitDifficulty: value }]), /splitDifficulty/)
+    const saved = await api('task-types-update', { types: [{ name: 'Chore', when: '', splitDifficulty: true }] })
+    assert.equal(saved[0].splitDifficulty, true)
+    assert.equal(rt.taskTypes()[0].splitDifficulty, true)
+    const restart = join(home, 'reload')
+    mkdirSync(restart)
+    copyFileSync(join(home, 'state.json'), join(restart, 'state.json'))
+    const reloaded = boot(restart)
+    try {
+      const restored = await reloaded.runtime
+      await restored.load()
+      assert.equal(restored.taskTypes()[0].splitDifficulty, true, 'the switch survives a reload from disk')
+    } finally { reloaded.dispose() }
+    const { splitDifficulty, ...rest } = saved[0]
+    const reset = await api('task-types-update', { types: [{ ...rest, name: 'Renamed' }] })
+    assert.deepEqual(reset[0], { id: saved[0].id, name: 'Renamed', when: '', splitDifficulty: false })
+    const kept = await api('task-types-update', { types: [{ ...reset[0], splitDifficulty: true }] })
+    assert.equal(kept[0].splitDifficulty, true)
+    rt.state.prefs.taskTypes = [{ id: 'legacy', name: 'Legacy', when: '' }]
+    assert.deepEqual(rt.taskTypes(), [{ id: 'legacy', name: 'Legacy', when: '', splitDifficulty: false }], 'stored types without the field read as split off')
   })
 })
 

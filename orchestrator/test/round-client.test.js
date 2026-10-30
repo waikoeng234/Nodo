@@ -10,7 +10,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 
 test('roundLines turns the lead transcript into a chat of speaker rows, delegation chips and one message per executor', async () => {
   const { roundLines } = await loadClient('round.js')
-  const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: false }
+  const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: false, deferred: true }
   const tester = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const lines = [
     { who: 'user', kind: 'text', text: 'Fix the login', at: 1 },
@@ -32,7 +32,7 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   ]
   const shown = plain(roundLines(lines))
   assert.deepEqual(shown.map(line => ['speaker', 'delegate', 'member', 'usage'].includes(line.kind) ? line.kind : line.text), [
-    'Fix the login', 'speaker', 'Plan', 'Delegating', 'delegate', 'member', 'speaker', 'boom', '执行未完成：gone', 'delegate', 'member',
+    'Fix the login', 'speaker', 'Plan', 'Delegating', 'delegate', 'member', 'speaker', 'boom', 'delegate', 'member', 'speaker', '执行未完成：gone',
     '进度如何？', 'speaker', 'Resuming the tester.', 'usage', 'delegate', 'member'])
   assert.deepEqual(shown.filter(line => line.kind === 'member').map(line => line.step), [
     { ...coder, at: 9, report: '## Fixed the refresh race\nDetails' },
@@ -45,7 +45,7 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   assert.deepEqual(plain(roundLines(unmarked)).filter(line => line.kind !== 'speaker'), plain(unmarked))
 })
 
-test('a running executor message parks at the bottom and the lead\'s turn stays one speaker segment', async () => {
+test('accepted delegations keep chips in order and executors follow the completed lead turn', async () => {
   const { roundLines } = await loadClient('round.js')
   const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false }
   const tester = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
@@ -56,30 +56,30 @@ test('a running executor message parks at the bottom and the lead\'s turn stays 
     { who: 'agent', kind: 'text', text: 'Meanwhile, here is the plan', at: 4, reply: true },
   ]
   const shape = shown => shown.map(line => ['speaker', 'delegate', 'member'].includes(line.kind) ? line.kind : line.text)
-  assert.deepEqual(shape(plain(roundLines(turn))), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member'],
-    'the chip closes the lead\'s turn above the parked executor')
+  assert.deepEqual(shape(plain(roundLines(turn))), ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member'],
+    'the chip stays at acceptance and the executor follows the completed lead text')
   const reported = plain(roundLines([...turn,
     { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 9,
       references: [{ messages: [{ text: 'Done' }] }] }]))
-  assert.deepEqual(shape(reported), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member'],
-    'a report keeps the two-segment shape and the member lands below the chip at its marker')
+  assert.deepEqual(shape(reported), ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member'],
+    'a report updates the executor after the completed lead text')
   const followup = plain(roundLines([...turn,
     { who: 'user', kind: 'text', text: 'Report from Coder', origin: { kind: 'report', session: 'e1' }, at: 9,
       references: [{ messages: [{ text: 'Done' }] }] },
     { who: 'agent', kind: 'text', text: 'Great, shipping next', at: 10 },
     { who: 'system', kind: 'note', text: '已派给 Tester', delegation: tester, at: 11 }]))
   assert.deepEqual(shape(followup),
-    ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'delegate', 'member', 'speaker', 'Great, shipping next', 'delegate', 'member'],
+    ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member', 'speaker', 'Great, shipping next', 'delegate', 'member'],
     'the lead\'s next turn opens below the reported member while the second executor keeps the bottom')
   const ended = plain(roundLines([...turn,
     { who: 'system', kind: 'note', text: '执行未完成', delegation: { session: 'e1', ended: 'interrupted', unconfirmed: true } },
     { who: 'agent', kind: 'text', text: 'Wrapping up anyway', at: 8 }]))
-  assert.deepEqual(shape(ended), ['Ship it', 'speaker', 'Delegating now', 'Meanwhile, here is the plan', 'Wrapping up anyway', 'delegate', 'member'],
-    'an ended member waits for the turn to close and lands below its chip')
+  assert.deepEqual(shape(ended), ['Ship it', 'speaker', 'Delegating now', 'delegate', 'Meanwhile, here is the plan', 'member', 'speaker', 'Wrapping up anyway'],
+    'an ended member stays before the next lead words')
   assert.equal(ended.find(line => line.kind === 'member').step.ended, 'interrupted')
 })
 
-test('members sharing an insertion point keep their dispatch or report order', async () => {
+test('executor messages follow acceptance order', async () => {
   const { roundLines } = await loadClient('round.js')
   const mark = (session, profile) => ({ session, profile, type: 'bug-fix', hard: false, reused: false })
   const running = plain(roundLines([
@@ -90,7 +90,7 @@ test('members sharing an insertion point keep their dispatch or report order', a
     { who: 'agent', kind: 'text', text: 'done', at: 5 },
   ]))
   assert.deepEqual(running.map(line => ['speaker', 'delegate', 'member'].includes(line.kind) ? line.kind : line.text),
-    ['go', 'speaker', 'a', 'done', 'delegate', 'delegate', 'member', 'member'], 'both chips close the lead segment above the parked executors')
+    ['go', 'speaker', 'a', 'delegate', 'delegate', 'done', 'member', 'member'], 'chips retain their acceptance positions')
   assert.deepEqual(running.filter(line => line.kind === 'member').map(line => line.step.session), ['e1', 'e2'],
     'the bottom executors follow the dispatch order')
   const reported = plain(roundLines([
@@ -152,6 +152,7 @@ test('an executor message shows its role, tags and state, expands the rest of it
   assert.equal(head(ended), 'Tester|测试|已中断|查看会话')
   assert.equal(text(ended.find(node => node.props.className === 'nodo-round-quiet')), '没有回报主控，可查看会话了解进度。')
   assert.equal(head(view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done' })), 'Tester|测试|已结束|查看会话')
+  assert.equal(head(view({ session: 'e6', profile: 'tester', type: 'test', ended: 'cancelled' })), 'Tester|测试|已取消|查看会话')
   const stopped = []
   round.onStop = async step => { stopped.push(step.session) }
   round.work.e2.suspect = true
@@ -255,6 +256,11 @@ test('automatic continuation tools stay in their delegation window', async () =>
   assert.deepEqual(tools().children.map(row => row.props.summary), ['Original work', 'Continued work'])
   step.at = 13
   assert.deepEqual(tools().children.map(row => row.props.summary), ['Reused task', 'Continued reused task'])
+  step.deferred = true
+  step.at = 9
+  assert.deepEqual(tools().children.map(row => row.props.summary), ['Reused task', 'Continued reused task'])
+  step.at = 22
+  assert.equal(tools(), false, 'accepted work shows no output from the previous task before it is sent')
 })
 
 test('executor tool records remain visible after interruption and stay within their delegation', async () => {
@@ -295,16 +301,12 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
   assert.deepEqual(tree.filter(node => node.type === RoundSpeaker).map(node => [node.props.role, node.props.running]),
     [[profile, true]], 'the streaming reply continues the lead\'s segment, whose speaker shows the run')
   assert.equal(tree.filter(node => node.type === RoundChip).length, 1)
-  assert.equal(tree.find(node => node.type === RoundMember).props.step.session, 'e1')
+  assert.equal(tree.find(node => node.type === RoundMember), undefined, 'accepted work has no executor card during the lead turn')
   assert.equal(tree.find(node => node.props.className === 'nodo-reply').children[0].props.text, 'On it')
   const reply = tree.filter(node => node.props.className === 'nodo-reply').at(-1)
-  assert.ok(tree.indexOf(reply) < tree.indexOf(tree.find(node => node.type === RoundChip)),
-    'the delegation chip follows the streaming lead reply')
-  assert.ok(tree.indexOf(tree.find(node => node.type === RoundChip)) < tree.indexOf(tree.find(node => node.type === RoundMember)),
-    'the chip sits between the streaming turn and the parked executor')
-  assert.ok(tree.indexOf(reply) < tree.indexOf(tree.find(node => node.type === RoundMember)),
-    'the streaming lead reply renders above the parked executor')
+  assert.ok(tree.indexOf(tree.find(node => node.type === RoundChip)) < tree.indexOf(reply), 'acceptance stays before the remaining lead output')
   const idle = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: false }, round }))
+  assert.equal(idle.find(node => node.type === RoundMember).props.step.session, 'e1')
   assert.equal(idle.filter(node => node.type === MessageTime).length, 2, 'the user bubble and the finished lead reply carry the only times')
   assert.equal(idle.find(node => node.type === RoundSpeaker).props.running, false)
   const plainFeed = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: false } }))
@@ -312,10 +314,10 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
   assert.equal(plainFeed.filter(node => node.type === RoundSpeaker).length, 0)
 })
 
-test('the rail folds executor sessions into their lead row for state, highlight, role filter and search', async () => {
+test('the sessions rail keeps executor rows, state, highlight, role filter and search independent', async () => {
   const slots = []
   let cursor = 0
-  const { Rail, SessionRow } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+  const { Rail, SessionRow, SearchDialog } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
     primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
     react: { useState: initial => {
       const slot = cursor++
@@ -334,31 +336,36 @@ test('the rail folds executor sessions into their lead row for state, highlight,
   ] }
   const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 'e1', onSelect() {}, onSelectSession() {} })) }
   const rows = () => render().filter(node => node.type === SessionRow)
-  assert.deepEqual(rows().map(row => row.props.session.id), ['l1', 'own', 'orphan', 'o1'])
-  const lead = rows()[0].props
-  assert.equal(lead.work.active, true)
-  assert.equal(lead.session.updatedAt, 5)
-  assert.equal(lead.current, true, 'an open executor session highlights its lead row')
-  assert.deepEqual(rows().filter(row => row.props.current).map(row => row.props.session.id), ['l1'])
+  assert.deepEqual(rows().map(row => row.props.session.id), ['e1', 'own', 'orphan', 'o1', 'l1'])
+  const executor = rows()[0].props
+  assert.equal(executor.work.active, true)
+  assert.equal(executor.session.updatedAt, 5)
+  assert.equal(executor.current, true)
+  const lead = rows().find(row => row.props.session.id === 'l1').props
+  assert.equal(lead.work, undefined)
+  assert.equal(lead.session.updatedAt, 1)
+  assert.equal(lead.current, false)
+  assert.deepEqual(rows().filter(row => row.props.current).map(row => row.props.session.id), ['e1'])
   const press = name => render().find(node => node.props.className === 'nodo-roster-item' && node.props.title === name).props.onClick()
   press('Lead')
   assert.deepEqual(rows().map(row => row.props.session.id), ['l1'])
   press('Lead')
   press('Coder')
-  assert.deepEqual(rows().map(row => row.props.session.id), ['l1', 'own', 'orphan'])
+  assert.deepEqual(rows().map(row => row.props.session.id), ['e1', 'own', 'orphan'])
   press('Coder')
   press('Other')
   assert.deepEqual(rows().map(row => row.props.session.id), ['o1'])
   press('Other')
-  render().find(node => node.props.className === 'nodo-row-action' && node.props['aria-label']?.startsWith('搜索')).props.onClick({ stopPropagation() {} })
-  render().find(node => node.type === 'Input').props.onChange({ target: { value: 'refresh' } })
-  assert.deepEqual(rows().map(row => row.props.session.id), ['l1'])
+  render().find(node => node.type === 'button' && node.props['aria-label'] === '搜索').props.onClick()
+  const finder = render().find(node => node.type === SearchDialog)
+  assert.deepEqual(finder.props.items.map(item => item.id), ['e1', 'own', 'orphan', 'o1', 'l1'], 'the finder lists every session newest first, executors included')
+  assert.equal(rows().length, 5, 'the open finder leaves the rail list alone')
 })
 
-test('the rail search closes from its row action, on blur when empty and on Escape, and stays open on blur with a query', async () => {
+test('the session finder opens from the dock button, closes itself and picks into the rail', async () => {
   const slots = []
   let cursor = 0
-  const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+  const { Rail, SearchDialog } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
     primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
     react: { useState: initial => {
       const slot = cursor++
@@ -369,27 +376,26 @@ test('the rail search closes from its row action, on blur when empty and on Esca
   const view = { workspaces: [workspace], work: {}, profiles: [
     { id: 'coder', name: 'Coder', sessions: [{ id: 's1', name: 'Refresh race', workspaceRef: 'w', updatedAt: 1 }] },
   ] }
-  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 's1', onSelect() {}, onSelectSession() {} })) }
-  const toggle = () => render().find(node => node.props.className === 'nodo-row-action' && node.props['aria-label'] === '搜索“Project”的会话').props.onClick({ stopPropagation() {} })
-  const search = () => render().find(node => node.type === 'Input')
-  assert.equal(search(), undefined, 'search waits behind the project row action')
+  const selected = []
+  const render = () => { cursor = 0; return nodes(Rail({ view, workspace, sessionId: 's1', onSelect() {}, onSelectSession: (role, id, project) => selected.push([role.id, id, project.id]) })) }
+  const button = () => render().find(node => node.type === 'button' && node.props['aria-label'] === '搜索')
+  const toggle = () => button().props.onClick()
+  const finder = () => render().find(node => node.type === SearchDialog)
+  assert.equal(finder(), undefined, 'the finder waits behind the dock button')
   toggle()
-  assert.equal(search().props.placeholder, '搜索会话')
-  search().props.onChange({ target: { value: 'refresh' } })
-  search().props.onBlur?.()
-  assert.equal(search().props.value, 'refresh', 'a non-empty query survives the blur')
+  assert.deepEqual(finder().props.items.map(item => item.id), ['s1'])
+  assert.equal(button().props['aria-pressed'], true)
   toggle()
-  assert.equal(search(), undefined, 'the row action closes an open search')
+  assert.equal(finder(), undefined, 'the dock button closes an open finder')
   toggle()
-  assert.equal(search().props.value, '', 'reopening starts from a cleared query')
-  search().props.onBlur?.()
-  assert.equal(search(), undefined, 'an empty query closes on blur')
+  finder().props.onClose()
+  assert.equal(finder(), undefined, 'the finder closes itself')
   toggle()
-  search().props.onKeyDown({ key: 'Escape' })
-  assert.equal(search(), undefined, 'Escape still closes the search')
+  finder().props.items[0].pick()
+  assert.deepEqual(selected, [['coder', 's1', 'w']], 'a result opens its session in its project')
 })
 
-test('the roster lists leads first with a badge and keeps the stored order in each group', async () => {
+test('the roster lists leads first with a lead ring and keeps the stored order in each group', async () => {
   const slots = []
   let cursor = 0
   const { Rail } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
@@ -407,18 +413,17 @@ test('the roster lists leads first with a badge and keeps the stored order in ea
   ] }
   const render = () => { cursor = 0; return nodes(Rail({ view, onSelect() {}, onSelectSession() {} })) }
   const roster = () => render().filter(node => node.props.className === 'nodo-roster-item' && node.props.title)
-  const badge = item => nodes(item).find(node => node.props?.className === 'nodo-roster-badge')
+  const ring = item => nodes(item).some(node => node.props?.className === 'nodo-roster-avatar' && node.props['data-lead'] === '')
   assert.deepEqual(roster().map(node => node.props.title), ['Alpha', 'Beta', 'Coder', 'Other'])
-  assert.deepEqual(roster().map(node => !!badge(node)), [true, true, false, false])
-  assert.equal(badge(roster()[0]).children[0].type, 'IconSparkleRegular')
+  assert.deepEqual(roster().map(ring), [true, true, false, false])
   assert.deepEqual(roster().map(node => node.props['aria-label']),
     ['Alpha，运行中，主控', 'Beta，主控', 'Coder', 'Other'])
 })
 
-async function mount() {
+async function mount(viewName = 'team', restored) {
   const slots = [], calls = []
   let cursor = 0
-  let navigation = { profile: 'lead', workspace: 'w', sessions: { 'w:lead': 'l1' } }
+  let navigation = restored ?? { view: viewName, profile: 'lead', workspace: 'w', sessions: { 'w:lead': 'l1' } }
   const lead = { id: 'lead', name: 'Lead', lead: true, engine: 'codex', workspaceId: 'w', sessions: [{ id: 'l1', name: 'Fix login', workspaceRef: 'w' }] }
   const coder = { id: 'coder', name: 'Coder', engine: 'codex', workspaceId: 'w', sessions: [
     { id: 'e2', name: 'Second', workspaceRef: 'w', createdAt: 2, source: { kind: 'lead', leadSessionId: 'l1' } },
@@ -434,7 +439,7 @@ async function mount() {
       readNavigation: () => navigation, subscribeNavigation() {}, setNavigation: update => { navigation = update(navigation) },
       nativeSpace: { subscribe() {}, getSnapshot: () => space, showLegacy() {} },
       readNativeSession: () => null, subscribeNativeSession() {}, completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
-      workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
+      workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing', workKind: () => 'run', WorkDot: 'WorkDot',
       call: async (endpoint, payload) => { calls.push({ endpoint, payload }) },
     },
     react: {
@@ -446,10 +451,13 @@ async function mount() {
       useRef(initial) { const slot = cursor++; return slots[slot] ??= { current: initial } },
       useEffect() {},
     },
-    globals: { document: { visibilityState: 'visible', hasFocus: () => true }, localStorage: { getItem: () => null, setItem() {} } },
+    globals: { document: { visibilityState: 'visible', hasFocus: () => true }, localStorage: {
+      getItem: key => key === 'nodo.navigation' ? JSON.stringify(navigation) : null,
+      setItem: (key, value) => { if (key === 'nodo.navigation') navigation = JSON.parse(value) },
+    } },
   })
   const render = () => { cursor = 0; return nodes(loaded.NodoPage({ contentOnly: true })) }
-  return { loaded, view, calls, render, find: type => render().find(node => node.type === type)?.props }
+  return { loaded, view, calls, render, navigation: () => plain(navigation), find: type => render().find(node => node.type === type)?.props }
 }
 
 test('a lead session opens as its round: chat feed, faces, session menu and round approvals', async () => {
@@ -461,16 +469,11 @@ test('a lead session opens as its round: chat feed, faces, session menu and roun
   assert.deepEqual(plain(render().filter(node => node.type === loaded.ApprovalCard).map(node => node.props.card.id)), ['a1'])
   assert.equal(find(loaded.RunningLine), undefined, 'the running line belongs to the lead\'s own run')
   assert.deepEqual(plain(find(loaded.RoundFaces).roles.map(role => role.id)), ['lead', 'coder'])
-  menu.onRaw()
-  assert.equal(find(loaded.Feed).round, undefined, '完整记录 shows the raw lead transcript')
-  assert.equal(find(loaded.RoundMenu).raw, true)
-  find(loaded.RoundMenu).onRaw()
-  assert.notEqual(find(loaded.Feed).round, undefined)
+  assert.equal(menu.onRaw, undefined)
   const items = nodes(loaded.RoundMenu({ ...find(loaded.RoundMenu) })).find(node => node.type === 'Menu').props.items
-  assert.equal(items.find(item => item.id === 'raw').icon.type, 'IconBrowseOutlineRegular', 'the full record represents viewing the transcript')
-  assert.deepEqual(plain(items.map(item => item.id)), ['raw', 'e1', 'e2'])
-  assert.equal(text(items[1].label), 'Coder|First|运行中')
-  assert.equal(text(items[2].label), 'Coder|Second')
+  assert.deepEqual(plain(items.map(item => item.id)), ['e1', 'e2'])
+  assert.equal(text(items[0].label), 'Coder|First|运行中')
+  assert.equal(text(items[1].label), 'Coder|Second')
 })
 
 test('the round stop interrupts the running executor and a draft still sends to the lead', async () => {
@@ -495,18 +498,21 @@ test('the round stop interrupts the running executor and a draft still sends to 
 })
 
 test('an executor session opened from the round links back to its lead session', async () => {
-  const { loaded, calls, render, find } = await mount()
+  const { loaded, calls, render, find, navigation } = await mount()
   find(loaded.Feed).round.onOpen('e2')
   await tick()
   assert.deepEqual(plain(calls.at(-1)), { endpoint: 'session-select', payload: { profile: 'coder', session: 'e2' } })
   assert.equal(find(loaded.Feed).session.id, 'e2')
   assert.equal(find(loaded.Feed).round, undefined)
+  assert.equal(navigation().view, 'sessions')
   const back = render().find(node => node.props.className === 'nodo-crumb nodo-crumb-link')
   assert.equal(back.children[0], 'Fix login')
   back.props.onClick()
   await tick()
   assert.deepEqual(plain(calls.at(-1)), { endpoint: 'session-select', payload: { profile: 'lead', session: 'l1' } })
   assert.equal(find(loaded.Feed).session.id, 'l1')
+  assert.equal(navigation().view, 'team')
+  assert.ok(find(loaded.Feed).round)
 })
 
 test('a lead session draws no statistics and the dialog cannot follow onto it; an executor session keeps both', async () => {
@@ -521,4 +527,109 @@ test('a lead session draws no statistics and the dialog cannot follow onto it; a
   await tick()
   assert.equal(find(loaded.SessionStats).stats, undefined)
   assert.equal(find(loaded.StatsDialog), undefined, 'the dialog cannot open on a lead session')
+})
+
+test('home opens the lead raw transcript and stops only that session', async () => {
+  const { loaded, calls, find, view } = await mount('sessions')
+  view.work.l1 = { active: true }
+  assert.equal(find(loaded.Feed).round, undefined)
+  assert.equal(find(loaded.RoundMenu), undefined)
+  assert.equal(find(loaded.RoundFaces), undefined)
+  assert.equal(find(loaded.ApprovalCard), undefined, 'executor approvals belong in Team or the executor page')
+  assert.equal(find(loaded.Composer).stoppable, undefined)
+  find(loaded.Composer).onStop()
+  await tick()
+  assert.deepEqual(plain(calls.filter(call => call.endpoint === 'interrupt')), [{ endpoint: 'interrupt', payload: { profile: 'lead', session: 'l1' } }])
+})
+
+test('Team renders a round before dispatch and its menu opens members in home', async () => {
+  const { loaded, find, navigation } = await mount()
+  const menu = nodes(loaded.RoundMenu(find(loaded.RoundMenu))).find(node => node.type === 'Menu')
+  menu.props.onSelect('e1')
+  await tick()
+  assert.equal(navigation().view, 'sessions')
+  assert.equal(find(loaded.Feed).session.id, 'e1')
+  assert.equal(find(loaded.Feed).round, undefined)
+  const fresh = await mount()
+  fresh.view.profiles[1].sessions = []
+  assert.ok(fresh.find(fresh.loaded.Feed).round)
+  assert.equal(fresh.find(fresh.loaded.RoundMenu), undefined)
+})
+
+test('persisted navigation restores the selected home or Team conversation and accepts old navigation', async () => {
+  const team = await mount()
+  team.find(team.loaded.Feed).round.onOpen('e1')
+  await tick()
+  const home = await mount('sessions', team.navigation())
+  assert.equal(home.find(home.loaded.Feed).session.id, 'e1')
+  assert.equal(home.find(home.loaded.Feed).round, undefined)
+  home.render().find(node => node.props.className === 'nodo-crumb nodo-crumb-link').props.onClick()
+  await tick()
+  const restored = await mount('team', home.navigation())
+  assert.equal(restored.find(restored.loaded.Feed).session.id, 'l1')
+  assert.ok(restored.find(restored.loaded.Feed).round)
+  const legacy = await mount('sessions', { profile: 'lead', workspace: 'w', sessions: { 'w:lead': 'l1' } })
+  assert.equal(legacy.find(legacy.loaded.Feed).session.id, 'l1')
+  assert.equal(legacy.find(legacy.loaded.Feed).round, undefined)
+})
+
+test('Team rail lists only non-dsh lead sessions, aggregates member state and feeds the finder', async () => {
+  const { Rail, SessionRow, SearchDialog, host } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
+    primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
+  })
+  const workspace = { id: 'w', name: 'Project' }
+  const lead = { id: 'lead', name: 'Lead', lead: true, engine: 'codex', sessions: [
+    { id: 'l1', name: 'Task', workspaceRef: 'w', updatedAt: 1 },
+    { id: 'l2', name: 'New round', workspaceRef: 'w', updatedAt: 2 },
+    { id: 'old', name: 'Archived', workspaceRef: 'w', archivedAt: 1 },
+  ] }
+  const view = { workspaces: [workspace], work: { e1: { active: true, status: 'waiting-approval' } }, profiles: [lead,
+    { id: 'coder', name: 'Coder', sessions: [{ id: 'e1', name: 'Refresh race', workspaceRef: 'w', updatedAt: 5, source: { kind: 'lead', leadSessionId: 'l1' } }] },
+    { id: 'native', name: 'Native', lead: true, engine: 'dsh', sessions: [{ id: 'n1', workspaceRef: 'w', engine: 'dsh' }] },
+  ] }
+  const created = [], switched = []
+  const render = () => { host.reset(); return nodes(Rail({ view, workspace, sessionId: 'l1', navigation: { view: 'team' },
+    onNewSession: id => created.push(id), onSessions: () => switched.push('sessions') })) }
+  const rows = () => render().filter(node => node.type === SessionRow).map(node => node.props)
+  assert.deepEqual(rows().map(row => row.session.id), ['l1', 'l2'])
+  assert.equal(rows()[0].work.status, 'waiting-approval')
+  assert.equal(rows()[0].session.updatedAt, 5)
+  assert.equal(rows()[0].current, true)
+  assert.deepEqual(render().filter(node => node.props.className === 'nodo-roster-item' && node.props.title).map(node => node.props.title), ['Lead'])
+  render().find(node => node.props['aria-label'] === '在“Project”中新建会话').props.onClick({ stopPropagation() {} })
+  assert.deepEqual(created, ['lead'])
+  const dockButton = label => render().find(node => node.type === 'button' && node.props['aria-label'] === label)
+  assert.deepEqual(['主页', 'Team', '新建会话', '搜索', '角色'].map(dockButton).map(node => node.props['aria-pressed']),
+    [false, true, undefined, false, false], 'the dock marks Team pressed inside the team view')
+  assert.equal(dockButton('新建会话').props.disabled, false, 'the Team dock keeps the new-session button clickable')
+  dockButton('新建会话').props.onClick()
+  assert.deepEqual(created, ['lead', 'lead'], 'the dock drafts for the lead role like the project row does')
+  dockButton('主页').props.onClick()
+  dockButton('搜索').props.onClick()
+  assert.deepEqual(switched, ['sessions'], 'only 主页 leaves Team; 搜索 opens the finder in place')
+  const finder = render().find(node => node.type === SearchDialog)
+  assert.deepEqual(finder.props.items.map(item => item.id), ['l1', 'l2'], 'the Team finder lists the same lead sessions as the rail')
+  assert.equal(finder.props.items[0].updatedAt, 5, 'a lead session carries its executors\' latest time')
+  assert.ok(finder.props.items[0].terms.includes('Refresh race'), 'a lead session is found by its executors')
+})
+
+test('the dock new-session button locks only on the roles page or a Team without usable leads', async () => {
+  const { Rail, host } = await loadClient(['session-rail.tsx', 'avatar.tsx', 'ui-shared.js'], {
+    primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
+  })
+  const workspace = { id: 'w', name: 'Project' }
+  const view = { workspaces: [workspace], work: {}, profiles: [
+    { id: 'lead', name: 'Lead', lead: true, engine: 'codex', sessions: [] },
+    { id: 'coder', name: 'Coder', sessions: [] },
+  ] }
+  const dock = navigation => {
+    host.reset()
+    return nodes(Rail({ view, workspace, navigation, onNewSession: () => {}, onSessions: () => {} }))
+      .find(node => node.type === 'button' && node.props['aria-label'] === '新建会话')
+  }
+  assert.equal(dock(null).props.disabled, false, 'the home dock stays clickable')
+  assert.equal(dock({ view: 'team' }).props.disabled, false, 'the Team dock stays clickable')
+  assert.equal(dock({ view: 'roles', content: null }).props.disabled, true, 'the roles page keeps the dock locked')
+  view.profiles[0].lead = false
+  assert.equal(dock({ view: 'team' }).props.disabled, true, 'a Team without usable lead roles keeps the dock locked')
 })

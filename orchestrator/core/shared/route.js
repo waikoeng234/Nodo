@@ -1,13 +1,16 @@
 // The routing decision for one delegation, pure so it can be tested directly:
-// roster order decides among takers; unclaimed types go to the fallback card.
-export const route = ({ type, hard }, roster, fallback) => {
+// roster order decides among roles accepting the task's type; a type that
+// splits difficulty further narrows the choice by the hard flag.
+export const route = ({ type, hard, splitDifficulty }, roster) => {
   const accepting = roster.filter(profile => profile.taskTypes?.includes(type))
-  if (!accepting.length) return fallback
-    ? { profile: fallback, choices: hard && fallback.hard ? fallback.hard : {}, by: 'fallback' } : { miss: true }
+  if (!splitDifficulty) {
+    const profile = accepting[0]
+    return profile ? { profile, choices: {} } : { miss: true }
+  }
   if (hard) {
     const profile = accepting.find(profile => profile.hard !== undefined)
-    return profile ? { profile, choices: profile.hard, by: 'route' } : { miss: true }
+    return profile ? { profile, choices: profile.hard } : { miss: true }
   }
   const profile = accepting.find(profile => profile.hard === undefined) ?? accepting[0]
-  return profile ? { profile, choices: {}, by: 'route' } : { miss: true }
+  return profile ? { profile, choices: {} } : { miss: true }
 }

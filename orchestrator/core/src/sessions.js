@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { leadModeOf } from '../shared/lead.js'
 import { mkdir, realpath } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { cleanModel, cleanThinking } from './profiles.js'
@@ -69,7 +70,10 @@ export function install(rt) {
     return Object.fromEntries(Object.entries(choices).filter(([, value]) => value !== undefined).map(([key, value]) => [key,
       (key === 'model' ? cleanModel(value) : key === 'thinking' ? cleanThinking(value) : rt.cleanPermission(profile.engine, value)) ?? '']))
   }
-  const createSession = async (profileId, name, workspaceRef, lazy = false, draft = false, choices = {}, source, { activate = true } = {}) => {
+  // `team` marks a session opened from the Team view: only there does a lead
+  // card's conversation run in lead mode. An absent flag means lead mode,
+  // matching sessions saved before the flag existed.
+  const createSession = async (profileId, name, workspaceRef, lazy = false, draft = false, choices = {}, source, { activate = true, team } = {}) => {
     const profile = rt.state.profiles[profileId]
     if (!profile || profile.deletedAt) throw new Error('No such profile')
     choices = cleanSessionChoices(profile, choices)
@@ -90,10 +94,12 @@ export function install(rt) {
     const model = choices.model !== undefined ? cleanModel(choices.model) : inherited.model
     const thinking = choices.thinking !== undefined ? cleanThinking(choices.thinking) : inherited.thinking
     const permission = choices.permission !== undefined ? rt.cleanPermission(profile.engine, choices.permission) : inherited.permission
-    if (profile.lead === true && permission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+    const leadMode = profile.lead === true && team !== false
+    if (leadMode && permission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
     const session = { id: randomUUID(), name: String(name ?? (draft ? '新会话' : `Session ${profile.sessions.length + 1}`)).slice(0, 80), workspaceRef: workspace.id,
       engine: profile.engine, model, thinking,
       engineOptions: { ...profile.engineOptions }, briefSent: false, createdAt: Date.now(),
+      ...(profile.lead === true ? { leadMode } : {}),
       ...(source ? { source } : {}),
       ...(permission !== undefined ? { permission } : {}),
       ...(draft && name === undefined ? { draftedAt: Date.now() } : {}) }
@@ -150,7 +156,7 @@ export function install(rt) {
     assertSessionWritable(profile, session)
     const choices = cleanSessionChoices(profile, Object.fromEntries(['model', 'thinking', 'permission']
       .filter(key => changes[key] !== undefined).map(key => [key, changes[key]])))
-    if (profile.lead === true && (choices.permission ?? session.permission) === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+    if (leadModeOf(profile, session) && (choices.permission ?? session.permission) === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
     let taskState
     if (changes.taskState !== undefined) {
       if (rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the task before editing its saved context'), { code: 'orch/busy' })

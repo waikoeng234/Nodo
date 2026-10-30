@@ -58,33 +58,23 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
    and 16px row actions that only appear on hover. */
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
-.nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
-.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
-.nodo-rail-dock .nodo-icon-btn,.nodo-rail-switch button{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
+.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
+.nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
-.nodo-rail-switch{display:flex;flex-direction:column;gap:4px}
-.nodo-rail-switch button{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer}
-.nodo-rail-switch button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-rail-switch button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);cursor:default}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
-.nodo-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));row-gap:8px;flex:none;margin-top:4px}
-.nodo-roster-cell{position:relative;display:flex;min-width:0}
-.nodo-roster-cell>.nodo-roster-item{flex:1}
-.nodo-roster-edit{position:absolute;top:22px;left:calc(50% + 4px);display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);box-shadow:0 0 0 1.5px var(--dsw-specific-sidebar-fill),0 1px 2px var(--dsw-alias-border-l2);cursor:pointer;opacity:0;pointer-events:none}
-.nodo-roster-cell:hover>.nodo-roster-edit,.nodo-roster-edit:focus-visible{opacity:1;pointer-events:auto}
-.nodo-roster-edit:hover:not(:disabled),.nodo-roster-edit[aria-pressed=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-edit:disabled{color:var(--dsw-alias-label-caption);cursor:default}
-.nodo-roster-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:2px 0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
-.nodo-roster-item:hover,.nodo-roster-item[aria-current=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:11px;background:var(--dsw-specific-sidebar-nav-item-active)}
-.nodo-roster-avatar:has(>.nodo-avatar){background:none}
-.nodo-roster-item[aria-current=true] .nodo-roster-avatar{box-shadow:0 0 0 1.5px var(--dsw-alias-state-business-primary)}
-.nodo-roster-add .nodo-roster-avatar{background:0 0;border:1px dashed var(--dsw-alias-border-l1)}
-.nodo-roster-dot{position:absolute;right:-1px;bottom:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
-.nodo-roster-badge{position:absolute;right:-1px;top:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
-.nodo-roster-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px}
-.nodo-tree-search{display:flex;padding:2px 0 4px}
-.nodo-tree-add{display:inline-flex;flex:none;padding-right:6px}
+.nodo-rail-head{display:flex;align-items:center;justify-content:space-between;flex:none;height:28px;padding:0 2px 0 8px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500;line-height:18px}
+.nodo-roster{display:flex;flex-direction:column;gap:2px;flex:none;padding-bottom:12px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-roster-cell{display:flex;align-items:center;gap:2px;min-width:0;border-radius:var(--dsw-radius-md)}
+.nodo-roster-cell:hover .nodo-row-actions,.nodo-roster-cell:focus-within .nodo-row-actions{display:inline-flex}
+.nodo-roster-item{display:flex;align-items:center;gap:10px;flex:1;min-width:0;height:36px;padding:0 8px 0 6px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
+.nodo-roster-cell:hover{background:var(--nodo-rail-hover)}
+.nodo-roster-cell:has(>.nodo-roster-item[aria-current=true]){background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar{display:inline-flex;flex:none}
+.nodo-roster-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
+.nodo-roster-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
+.nodo-roster .nodo-show-more{padding-left:8px}
 .nodo-tree-flag{display:inline-flex;flex:none;color:var(--dsw-alias-state-business-primary)}
 .nodo-tree{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;margin:12px calc(-1 * var(--nodo-rail-inset)) 0;padding:0 var(--nodo-rail-inset) 16px}
 .nodo-tree-node,.nodo-tree-children{display:flex;flex-direction:column;gap:2px}
@@ -93,11 +83,27 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 .nodo-panel-logo{display:inline-flex;align-items:center}
 button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo)){display:none}
 .nodo-rail-foot{flex:none;padding:8px 0}
-.nodo-search-input{width:100%;min-width:0}
+.nodo-search-dialog{display:flex;flex-direction:column;width:min(640px,100%);max-height:min(504px,100%);padding:0;overflow:hidden;--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
+.nodo-search-dialog *{box-sizing:border-box}
+.nodo-search-box{display:flex;align-items:center;gap:12px;flex:none;height:56px;padding:0 14px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}
+.nodo-search-box input{flex:1;min-width:0;height:100%;border:0;outline:0;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:15px}
+.nodo-search-box input::placeholder{color:var(--dsw-alias-label-tertiary)}
+.nodo-search-box input::-webkit-search-cancel-button{display:none}
+.nodo-search-list{display:flex;flex-direction:column;gap:2px;min-height:0;padding:8px;overflow-y:auto}
+.nodo-search-row{display:flex;align-items:center;gap:12px;flex:none;height:40px;padding:0 12px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.nodo-search-row[data-active]{background:var(--nodo-rail-hover)}
+.nodo-search-avatar{display:inline-flex;flex:none}
+.nodo-search-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
+.nodo-search-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-search-project,.nodo-search-meta{display:flex;align-items:center;gap:6px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-search-project{width:132px;min-width:0}
+.nodo-search-project>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-search-meta{justify-content:flex-end;width:64px}
+.nodo-search-row[data-active] .nodo-search-meta{color:var(--dsw-alias-label-primary)}
 .nodo-rail-empty{padding:8px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project,.nodo-row{display:flex;align-items:center;gap:6px;width:100%;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-project{height:34px;padding:0 4px}
-.nodo-project:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-project:hover{background:var(--nodo-rail-hover)}
 .nodo-project .nodo-row-actions{padding-right:2px}
 .nodo-project .nodo-chevron[data-open]{transform:rotate(90deg)}
 .nodo-picker{display:flex;flex:1;min-width:0}
@@ -113,28 +119,42 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
    hovered, its menu is open, or a button inside holds the keyboard. */
 .nodo-row-actions{display:none;flex:none;align-items:center;gap:2px}
 .nodo-project:hover .nodo-row-actions,.nodo-project:focus-within .nodo-row-actions,.nodo-project[data-menu=open] .nodo-row-actions{display:inline-flex}
-.nodo-project[data-menu=open]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-project[data-menu=open]{background:var(--nodo-rail-hover)}
 .nodo-row-action{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-row-action:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
 .nodo-folder{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-deep-diving)}
+.nodo-project-select[aria-expanded=false]>.nodo-folder{color:var(--dsw-alias-label-tertiary)}
+.nodo-project-select[aria-expanded=true]>.nodo-folder{color:var(--dsw-alias-state-business-primary)}
 .nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 32px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
 .nodo-show-more:hover{color:var(--dsw-alias-label-primary)}
 .nodo-row{height:36px;padding:0 8px}
 .nodo-session-empty{padding:8px 12px 8px 32px}
-.nodo-session-item{display:flex;align-items:center;gap:2px;width:100%}
+.nodo-session-item{display:flex;align-items:center;gap:2px;width:100%;border-radius:var(--dsw-radius-md)}
 .nodo-session-item>.nodo-session{flex:1;min-width:0}
 .nodo-session-item:hover .nodo-row-actions,.nodo-session-item:focus-within .nodo-row-actions,.nodo-session-item[data-menu=open] .nodo-row-actions{display:inline-flex}
 .nodo-session[data-archived]{color:var(--dsw-alias-label-tertiary)}
 .nodo-row-archived{display:inline-flex;align-items:center;gap:4px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
-.nodo-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
+.nodo-row:hover{background:var(--nodo-rail-hover)}
+.nodo-row[aria-current=page]{background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-session-item:hover{background:var(--nodo-rail-hover)}
+.nodo-session-item:has(>.nodo-session[aria-current=page]){background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-session-item>.nodo-session{background:0 0}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
-.nodo-session{padding-left:32px}
+.nodo-session .nodo-avatar{flex:none}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project .nodo-row-meta{margin-left:0}
 .nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
+.nodo-dot{position:relative;display:inline-block;flex:none;width:7px;height:7px;border-radius:50%;background:var(--nodo-dot)}
+.nodo-dot[data-s=run]{--nodo-dot:var(--dsw-alias-state-success-primary)}
+.nodo-dot[data-s=wait]{--nodo-dot:var(--dsw-alias-state-warn-primary)}
+.nodo-dot[data-s=done]{--nodo-dot:var(--dsw-alias-state-business-primary)}
+.nodo-dot[data-s=err]{--nodo-dot:var(--dsw-alias-state-error-primary)}
+.nodo-dot[data-s=stop]{background:none;box-shadow:inset 0 0 0 1.5px var(--dsw-alias-label-tertiary)}
+.nodo-dot[data-s=run]::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--nodo-dot);animation:nodo-dot-pulse 2.2s ease-out infinite}
+@keyframes nodo-dot-pulse{0%{transform:scale(1);opacity:.55}80%,100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){.nodo-dot[data-s=run]::after{animation:none}}
 .nodo-icon-btn{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;transition:background-color .1s,color .1s}
 .nodo-icon-btn:focus-visible,.nodo-icon-btn[aria-pressed=true],.nodo-icon-btn.nodo-visible{opacity:1}
 .nodo-icon-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}

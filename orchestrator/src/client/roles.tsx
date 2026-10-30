@@ -15,9 +15,9 @@ import { LEAD_ENGINES } from '../../core/shared/lead.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 import ROLE_PRESETS from '../../core/shared/role-presets.json'
 
-export interface RoleTaskType { id?: string; name: string; when?: string }
+export interface RoleTaskType { id?: string; name: string; when?: string; splitDifficulty?: boolean }
 interface RoleCard {
-  id: string; name: string; identity?: string; instructions?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean; fallback?: boolean; hard?: Record<string, string>
+  id: string; name: string; identity?: string; instructions?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean; hard?: Record<string, string>
   taskTypes?: string[]; avatarTemplate?: string; permission?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
 }
 interface EngineChoice { id: string; label?: string; capabilities?: { permissionModes?: string[] }; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
@@ -108,9 +108,10 @@ export function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }: {
   const save = async () => {
     setBusy(true); setError('')
     try {
-      const saved = await call('task-types-update', { types: draft.map(row => row.id !== undefined
-        ? { id: row.id, name: row.name, when: row.when ?? '' }
-        : { name: row.name, when: row.when ?? '' }) })
+      const saved = await call('task-types-update', { types: draft.map(row => ({
+        name: row.name, when: row.when ?? '', splitDifficulty: row.splitDifficulty === true,
+        ...(row.id !== undefined ? { id: row.id } : {}),
+      })) })
       setDraft(saved.map((item: RoleTaskType) => ({ ...item })))
       await onDone()
     } catch (failure) { setError((failure as Error).message) }
@@ -123,11 +124,11 @@ export function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }: {
       <header className="nodo-roles-head">
         <h1 id="nodo-types-title">任务类型<span className="nodo-types-count">{`${draft.length} / ${TYPES_MAX}`}</span></h1>
         <Button variant="outline" disabled={locked || draft.length >= TYPES_MAX}
-          onClick={() => setDraft(rows => [...rows, { name: '', when: '' }])}>添加类型</Button>
+          onClick={() => setDraft(rows => [...rows, { name: '', when: '', splitDifficulty: false }])}>添加类型</Button>
       </header>
       <div className="nodo-types-table">
         <div className="nodo-type-row nodo-type-row-head" aria-hidden>
-          <span>名称</span><span>主控据此判断任务属于哪一类</span><span>承接角色</span><span />
+          <span>名称</span><span>主控据此判断任务属于哪一类</span><span>按难度分配</span><span>承接角色</span><span />
         </div>
         {draft.map((row, index) => {
           const owners = takers(row.id)
@@ -139,6 +140,10 @@ export function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }: {
                 <input className="nodo-type-input" value={row.when ?? ''} maxLength={200} placeholder="什么时候派这类任务" aria-label="任务类型说明" disabled={locked}
                   onChange={event => editRow(index, { when: event.target.value })} />
                 <span className="nodo-dialog-count" aria-hidden>{(row.when ?? '').length}/200</span>
+              </span>
+              <span className="nodo-type-split">
+                <input type="checkbox" role="switch" aria-label={`按难度分配 ${row.name}`} checked={row.splitDifficulty === true} disabled={locked}
+                  onChange={event => editRow(index, { splitDifficulty: event.target.checked })} />
               </span>
               <span className="nodo-type-takers" title={owners.map(item => item.name).join('、') || undefined}>
                 {owners.length ? owners.slice(0, 4).map(item => <RoleAvatar key={item.id} profile={item} size={22} />) : miss()}
@@ -370,7 +375,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   )
   const takesCell = (role: RoleCard, locked: boolean) => {
     const ids = role.taskTypes ?? []
-    const labels = [...ids.map(typeNameOf), ...(leads.length && role.fallback ? ['兜底'] : [])]
+    const labels = ids.map(typeNameOf)
     const open = takesOpen === role.id
     const saving = locked || Object.hasOwn(pendingHard, role.id) || Object.hasOwn(pendingTypes, role.id)
     const catalog = engines?.find(item => item.id === role.engine)?.catalog
@@ -396,16 +401,11 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
                 <input type="checkbox" checked={ids.includes(type.id ?? '')} disabled={saving} onChange={() => void toggleType(role, type.id ?? '')} />{type.name}
               </label>
             ))}
-            {leads.length > 0 && <label className="nodo-roles-takes-option">
-              <input type="checkbox" aria-label="兜底" checked={role.fallback === true} disabled={saving || role.fallback === true}
-                onChange={() => void perform(async () => { await call('profile-update', { id: role.id, changes: { fallback: true } }) })} />
-              <span>兜底<small>没有角色承接的任务交给它</small></span>
-            </label>}
             <div className="nodo-roles-hard-settings">
               <label className="nodo-roles-takes-option">
                 <input type="checkbox" role="switch" aria-label="可接难题" checked={hard !== undefined} disabled={saving}
                   onChange={event => void updateHard(role, event.target.checked ? {} : null)} />
-                <span>可接难题<small>主控判为难题时派给它，可另选模型和思考档位</small></span>
+                <span>可接难题<small>按难度分配的类型判为难题时派给它，可另选模型和思考档位</small></span>
               </label>
               {hard !== undefined && <Fragment>
                 <Field label="难题模型">
@@ -478,15 +478,12 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       </div>
     )
   }
-  const fallback = executors.find(role => role.fallback === true)
   const plan = types.map(type => ({ type,
-    routine: route({ type: type.id, hard: false }, executors, fallback), hard: route({ type: type.id, hard: true }, executors, fallback) }))
+    routine: route({ type: type.id, hard: false, splitDifficulty: type.splitDifficulty === true }, executors),
+    hard: route({ type: type.id, hard: true, splitDifficulty: type.splitDifficulty === true }, executors) }))
   const routineGaps = plan.filter(row => row.routine.miss).map(row => row.type.name).join('、')
   const hardGaps = plan.filter(row => !row.routine.miss && row.hard.miss).map(row => row.type.name).join('、')
-  const fallbackTypes = plan.filter(row => row.routine.by === 'fallback').map(row => row.type.name)
   const deleteReason = (role: RoleCard) => leads.length > 0 && role.lead !== true && executors.length === 1 ? '主控至少需要一个执行角色' : undefined
-  const deleteHint = (role: RoleCard) => leads.length > 0 && role.fallback && executors.some(item => item.id !== role.id)
-    ? `兜底将转给「${executors.find(item => item.id !== role.id)?.name}」。` : undefined
 
   const overview = (
     <div className="nodo-roles-overview">
@@ -545,13 +542,12 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
           </section>
         </Fragment>
       )}
-      {leads.length > 0 && (routineGaps || hardGaps || fallbackTypes.length > 0) && <div className="nodo-roles-gap-note" role="status">
+      {leads.length > 0 && (routineGaps || hardGaps) && <div className="nodo-roles-gap-note" role="status">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
             <path d="M12 3 2 21h20L12 3Z" /><path d="M12 9v5m0 3v1" />
           </svg>
           <div>{routineGaps && <p>{`${routineGaps}没有角色承接`}</p>}
-            {fallbackTypes.map(name => <p key={name}>{`${name}没有角色承接，由「${fallback?.name}」兜底`}</p>)}
-            {hardGaps && <p>{`${hardGaps}没有可接难题的角色`}</p>}</div>
+            {hardGaps && <p>{`${hardGaps}没有能接难题的角色`}</p>}</div>
         </div>}
     </div>
   )
@@ -585,7 +581,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
                     <span aria-current="page">{selected.name}</span>
                   </nav>
                   <RoleEditor key={`${selected.id}:${nonce}`} profile={selected}
-                    deleteReason={deleteReason(selected)} deleteHint={deleteHint(selected)}
+                    deleteReason={deleteReason(selected)}
                     enabledEngines={view.prefs?.enabledEngines ?? null} savedIdentities={view.prefs?.rolePresets ?? null}
                     refresh={refresh} readOnly={readOnly}
                     onSaved={savedRole} onCancel={() => { setNonce(value => value + 1); showOverview() }} onDeleted={deletedRole}
@@ -609,7 +605,6 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
           onClick={() => { const item = deleting; setDeleting(null); void perform(() => deletedRole(item)) }}>删除角色</Button>,
       ]}>
         <p>{`将删除角色“${deleting.name}”，其 ${deleting.sessions?.filter(session => !session.draftedAt || session.briefSent).length ?? 0} 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。`}</p>
-        {deleteHint(deleting) && <p>{deleteHint(deleting)}</p>}
       </Modal>}
     </section>
   )
@@ -709,7 +704,7 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-crumbs [aria-current]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}
 .nodo-types{display:flex;flex-direction:column;gap:16px}
 .nodo-types-count{color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
-.nodo-type-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr) 32px;align-items:center;gap:8px;min-height:40px;padding:2px 6px}
+.nodo-type-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) 84px minmax(0,1fr) 32px;align-items:center;gap:8px;min-height:40px;padding:2px 6px}
 .nodo-type-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-type-row-head>span{padding:0 9px}
 .nodo-type-input{width:100%;height:32px;padding:0 8px;border:1px solid transparent;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
@@ -720,6 +715,9 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-type-when>.nodo-type-input{padding-right:56px;color:var(--dsw-alias-label-secondary);font-size:13px}
 .nodo-type-when>.nodo-dialog-count{display:none;right:10px;bottom:6px}
 .nodo-type-when:focus-within>.nodo-dialog-count{display:block}
+.nodo-type-split{display:flex;justify-content:center}
+.nodo-type-split input{margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
+.nodo-type-split input:disabled{cursor:default}
 .nodo-type-takers{display:flex;align-items:center;min-width:0;padding-left:9px}
 .nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:2px}
 .nodo-type-more{margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}

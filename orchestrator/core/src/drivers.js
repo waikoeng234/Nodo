@@ -13,6 +13,7 @@
 import { join } from 'node:path'
 import { createIdentityFiles } from '../../agent-drivers/dist/identity-files.js'
 import { DRIVER_IDLE_RELEASE_MS } from './constants.js'
+import { leadModeOf } from '../shared/lead.js'
 
 const DRIVERS_SPECIFIER = '../../agent-drivers/dist/index.js'
 const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' })
@@ -47,9 +48,9 @@ export function install(rt) {
   const ensureDriver = async (profile) => {
     await driversReady()
     if (api === null) throw Object.assign(new Error(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`), { code: 'orch/no-drivers' })
-    const signature = JSON.stringify([signatureOf(profile), profile.lead === true])
+    const signature = JSON.stringify([signatureOf(profile), leadModeOf(profile, profile)])
     const existing = instances.get(profile.id)
-    if (existing !== undefined && existing.signature === signature && (profile.lead !== true || existing.revoke)) return armIdle(profile.id, existing).driver
+    if (existing !== undefined && existing.signature === signature && (!leadModeOf(profile, profile) || existing.revoke)) return armIdle(profile.id, existing).driver
     const leadMcp = await rt.issueLeadMcp?.(profile.id)
     if (existing !== undefined && existing.signature === signature && !leadMcp) return armIdle(profile.id, existing).driver
     if (existing !== undefined) releaseDriver(profile.id)

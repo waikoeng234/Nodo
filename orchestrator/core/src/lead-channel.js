@@ -3,6 +3,7 @@ import { randomBytes, createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, chmodSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { leadMcp } from '../../agent-drivers/dist/lead-mcp.js'
+import { leadModeOf } from '../shared/lead.js'
 
 export function install(rt) {
   const tokens = new Map(), credentials = new Map(), clients = new Set()
@@ -11,7 +12,7 @@ export function install(rt) {
     if (closed) throw new Error('Nodo 主控通道已关闭')
     if (rt.readOnly?.()) throw new Error('Nodo 当前只读')
     const id = tokens.get(token), found = id && rt.conversationOf(id)
-    if (!found || found.profile.lead !== true || found.profile.deletedAt || found.session.archivedAt) throw new Error('无效或已撤销的主控凭据')
+    if (!found || !leadModeOf(found.profile, found.session) || found.profile.deletedAt || found.session.archivedAt) throw new Error('无效或已撤销的主控凭据')
     rt.assertSessionWritable(found.profile, found.session)
     return id
   }
@@ -77,7 +78,7 @@ export function install(rt) {
   })()
   rt.issueLeadMcp = async id => {
     const found = rt.conversationOf(id)
-    if (found?.profile.lead !== true) return undefined
+    if (!leadModeOf(found?.profile, found?.session)) return undefined
     if (closed) throw new Error('Nodo 主控通道已关闭')
     try { await start() } catch (error) {
       if (closed) throw error

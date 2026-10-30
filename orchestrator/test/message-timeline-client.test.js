@@ -191,6 +191,40 @@ test('interleaved and concurrent tool results stay at their arrival positions, a
   assert.equal(foreign[0].running, true, 'a different turn cannot close this call')
 })
 
+test('a run of retry announcements folds into one row that ticks to the newest count and keeps it through the end state', async () => {
+  const { transcriptRows, Feed } = await loadClient('feed.js', {
+    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+  })
+  const retry = (phase, extra = {}) => ({ who: 'system', kind: 'lifecycle', event: 'retry', turnId: 't', phase, ...extra })
+  const start = (attempt, wait, extra = {}) => retry('start', { text: `第 ${attempt}/10 次，等待 ${wait} 秒`, ...extra })
+  // ZCode's engine retries share one identity, so the turn end closes the run once.
+  const zcode = transcriptRows([
+    start(1, 2), start(2, 3), start(5, 32),
+    retry('end', { cancelled: true }),
+  ])
+  assert.equal(zcode.length, 1)
+  assert.equal(zcode[0].item.text, '第 5/10 次，等待 32 秒')
+  assert.equal(zcode[0].item.cancelled, true)
+  // Claude and Qoder name each attempt, and the turn end closes every one.
+  const claude = transcriptRows([
+    start(1, 2, { entityId: 'retry-1' }), start(2, 3, { entityId: 'retry-2' }),
+    retry('end', { entityId: 'retry-1' }), retry('end', { entityId: 'retry-2' }),
+  ])
+  assert.equal(claude.length, 1)
+  assert.equal(claude[0].item.text, '第 2/10 次，等待 3 秒')
+  assert.equal(claude[0].item.phase, 'end')
+  assert.equal(transcriptRows([start(1, 2), { ...start(2, 3), turnId: 'u' }]).length, 2,
+    'retries of different turns stay their own rows')
+  const feed = { key: 'p:s', error: '', lines: JSON.parse(JSON.stringify([
+    start(1, 2), start(2, 3),
+    retry('end', { entityId: 'retry-1' }), retry('end', { entityId: 'retry-2' }),
+  ])) }
+  const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
+  const notes = nodes(tree).filter(node => node.props.className === 'nodo-note' && String(node.children[0]).startsWith('重试'))
+  assert.equal(notes.length, 1)
+  assert.deepEqual(notes[0].children, ['重试 · 已恢复', ' · 第 2/10 次，等待 3 秒'])
+})
+
 test('a message completed between polls animates when new, while loaded history stays static', async () => {
   const feed = { key: 'p:s', error: '', lines: [
     { who: 'agent', kind: 'text', timeline: true, at: 100, text: 'history', open: false },

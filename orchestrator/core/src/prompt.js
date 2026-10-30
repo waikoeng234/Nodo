@@ -1,5 +1,6 @@
 import { envName } from './secrets.js'
 import { leadRules } from './lead.js'
+import { leadModeOf } from '../shared/lead.js'
 
 // Prompt: the task brief — the one piece of intelligence the orchestrator does
 // not outsource to an engine. A brief tells the engine who it is, where it
@@ -19,7 +20,7 @@ export function install(rt) {
     profile.cwd ? `Your working directory: ${profile.cwd}. Work there; files you leave behind are how your work is handed on.` : '',
     keysLine(profile),
     profile.instructions ? `\n# Standing instructions\n${profile.instructions}` : '',
-    profile.lead ? `\n# Nodo lead rules\n${leadRules}` : '',
+    leadModeOf(profile, profile) ? `\n# Nodo lead rules\n${leadRules}` : '',
     '# How to work',
     '- You get one task per message. Do the work, then stop; your final message is the task report.',
     '- Match your response to the task. When you change files or execute work, report what you changed (paths), what you verified, and what is left open. No promises about work you did not do.',

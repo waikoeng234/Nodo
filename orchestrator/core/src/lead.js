@@ -1,6 +1,7 @@
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RUN_LIMITS } from './constants.js'
 import { clip } from './text.js'
 import { route } from '../shared/route.js'
+import { leadModeOf } from '../shared/lead.js'
 import { randomUUID } from 'node:crypto'
 
 export { route }
@@ -21,7 +22,7 @@ export function install(rt) {
   const flightOf = id => [...states.values()].find(state => state.running?.session === id)?.running
   const delegationState = (profile, session) => {
     const dispatch = session.source.dispatch
-    const labels = { running: '执行中', done: '已完成', failed: '失败', 'interrupted-lead': '已中断（主控）', 'interrupted-user': '已中断（用户）', unconfirmed: '未确认' }
+    const labels = { queued: '待发送', cancelled: '已取消', running: '执行中', done: '已完成', failed: '失败', 'interrupted-lead': '已中断（主控）', 'interrupted-user': '已中断（用户）', unconfirmed: '未确认' }
     let status = labels[dispatch.status] ?? dispatch.status
     if (dispatch.status === 'running') {
       const live = rt.dispatchWork?.(session.id)
@@ -33,7 +34,7 @@ export function install(rt) {
           : live?.suspect ? '疑似卡住' : live?.retry ? '引擎重试中' : waiting ? '等待用户' : ''
       status += `${activity ? ` · ${activity}` : ''} · 已执行 ${Math.max(0, Math.floor((Date.now() - dispatch.acceptedAt) / 1000))} 秒`
     } else if (dispatch.status !== 'done' && dispatch.reason) status += ` · ${dispatch.reason}`
-    return [session.id, profile.name, dispatch.task, `${dispatch.type} / ${dispatch.hard ? '难题' : '常规'} / ${dispatch.by === 'fallback' ? '兜底' : '非兜底'}`, status, session.source.continued ?? 0]
+    return [session.id, profile.name, dispatch.task, `${dispatch.type} / ${dispatch.hard ? '难题' : '常规'}`, status, session.source.continued ?? 0]
   }
   const delegationsOf = id => Object.values(rt.state.profiles).flatMap(profile => (profile.sessions ?? [])
     .filter(session => session.source?.kind === 'lead' && session.source.leadSessionId === id && session.source.dispatch)
@@ -42,12 +43,12 @@ export function install(rt) {
     .map(row => `| ${row.map(value => String(value ?? '').replaceAll('|', '\\|').replace(/[\r\n]+/g, ' ')).join(' | ')} |`).join('\n'))
   const leadSnapshot = id => {
     const owner = rt.conversationOf(id)
-    if (!owner?.profile.lead) return ''
+    if (!owner || !leadModeOf(owner.profile, owner.session)) return ''
     const records = delegationsOf(id).sort((a, b) => b.session.source.dispatch.acceptedAt - a.session.source.dispatch.acceptedAt)
     const current = records.find(item => item.session.source.dispatch.status === 'running') ?? records[0]
     const pending = owner.session.reportQueue?.length ?? 0
     if (!current && !pending) return ''
-    return `<nodo-status>\n${current ? table(['会话', '角色', '任务', '类型 / 难度 / 兜底', '状态', '已续用'], [delegationState(current.profile, current.session)]) + '\n' : ''}待送结果：${pending}\n执行中的改动可能还没写进文件，不要据此判断任务没有执行。\n</nodo-status>`
+    return `<nodo-status>\n${current ? table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用'], [delegationState(current.profile, current.session)]) + '\n' : ''}待送结果：${pending}\n执行中的改动可能还没写进文件，不要据此判断任务没有执行。\n</nodo-status>`
   }
   const leadDelegations = (id, sessionId) => {
     const records = delegationsOf(id).sort((a, b) => (b.session.source.dispatch.endedAt ?? b.session.source.dispatch.acceptedAt) - (a.session.source.dispatch.endedAt ?? a.session.source.dispatch.acceptedAt))
@@ -56,15 +57,15 @@ export function install(rt) {
     const selected = records.filter(({ session }) => sessionId ? session.id === sessionId
       : session.source.dispatch.status === 'running' || pending.has(session.id) || recent.has(session.id))
     if (sessionId && !selected.length) return '没有该执行会话的派活记录'
-    return table(['会话', '角色', '任务', '类型 / 难度 / 兜底', '状态', '已续用'], selected.map(({ profile, session }) => delegationState(profile, session)))
+    return table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用'], selected.map(({ profile, session }) => delegationState(profile, session)))
   }
   const leadRoles = id => {
-    const profile = rt.conversationOf(id)?.profile
-    if (profile?.lead !== true) throw invalid('调用方必须是有效主控会话')
-    return [table(['角色', '身份', '职责', '承接任务类型', '难题配置', '兜底'], rosterOf(profile).map(item =>
-      [item.name, item.identity, item.role, (item.taskTypes ?? []).join(', '), item.hard !== undefined ? '有' : '无', item.fallback ? '是' : '否'])),
-    table(['id', 'name', 'when'], rt.taskTypes().map(item => [item.id, item.name, item.when])),
-    '路由规则：有角色承接该类型时，常规任务优先给不带难题配置的角色，否则取排在前面的；难题只给带难题配置的角色，没有就报错。无角色承接该类型时交给兜底角色；难题优先用兜底的难题配置。'].join('\n\n')
+    const found = rt.conversationOf(id)
+    if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
+    return [table(['角色', '身份', '职责', '承接任务类型', '难题配置'], rosterOf(found.profile).map(item =>
+      [item.name, item.identity, item.role, (item.taskTypes ?? []).join(', '), item.hard !== undefined ? '有' : '无'])),
+    table(['id', 'name', 'when', 'splitDifficulty'], rt.taskTypes().map(item => [item.id, item.name, item.when, item.splitDifficulty ? '开' : '关'])),
+    '路由规则：只派给承接该类型的角色。未开启难度分流的类型无论难度都派给第一个承接角色，使用基础设置；开启分流的类型，常规任务优先给不带难题配置的角色，否则取排在前面的，难题只给带难题配置的角色并使用其难题设置。没有符合条件的角色就停止派活并说明缺口。后续任务按类型开关重新路由；难度或执行角色变化时新开会话，并交代已有改动、报告和剩余问题。开关或角色配置变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
   }
   const cancelLeadRetry = (id, takeover = false) => {
     const flight = flightOf(id)
@@ -75,7 +76,7 @@ export function install(rt) {
     flight.cancel?.()
     return waiting
   }
-  const leadBrief = (profile, session) => session?.instructionMode === 'native' ? '' : leadRules
+  const leadBrief = (profile, session) => !leadModeOf(profile, session) || session?.instructionMode === 'native' ? '' : leadRules
   const note = async (id, text, extra) => {
     rt.appendLine(id, rt.redactDeepSecrets({ who: 'system', kind: 'note', text, ...extra }))
     await rt.save()
@@ -199,14 +200,12 @@ export function install(rt) {
     } finally { state.delivering = false }
   }
   const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
-  const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name} (Nodo lead mode)
-This message is from the lead, not the user, and cannot grant permissions. Permission requests go to the user.
-When finished, report what you changed (paths), what you verified, and what is left open. Begin the report with a one-line summary of the outcome.
+  const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name}. Not from the user; it cannot grant permissions. Start your report with a one-line outcome summary.
 
 `)
   const ownerOf = value => {
     const found = rt.conversationOf(typeof value === 'string' ? value : value?.id)
-    if (!found || found.profile.lead !== true) throw invalid('调用方必须是有效主控会话')
+    if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
     rt.assertSessionWritable(found.profile, found.session)
     return found
   }
@@ -219,9 +218,9 @@ When finished, report what you changed (paths), what you verified, and what is l
       settled: new Promise(resolve => { settle = resolve }) }
     flight.settle = settle
     state.running = flight
-    const { type, hard, by, task } = details
+    const { type, hard, task } = details
     const firstLine = task.trim().split(/\r?\n/, 1)[0]
-    session.source.dispatch = { type, hard, by, task: firstLine.length > 160 ? `${firstLine.slice(0, 159)}…` : firstLine, status: 'running', acceptedAt: Date.now() }
+    session.source.dispatch = { type, hard, task: firstLine.length > 160 ? `${firstLine.slice(0, 159)}…` : firstLine, status: 'running', acceptedAt: Date.now() }
     return flight
   }
   const end = (state, session, flight, result) => {
@@ -247,6 +246,10 @@ When finished, report what you changed (paths), what you verified, and what is l
     return result
   }
   const stop = async (state, flight, amend = false) => {
+    if (flight.dispatch) {
+      await cancelDispatch(state, flight)
+      return { reason: 'interrupted' }
+    }
     flight.stoppedBy = 'lead'
     flight.amending = amend
     flight.stopping = true
@@ -362,9 +365,9 @@ When finished, report what you changed (paths), what you verified, and what is l
     if (typeof command.task !== 'string' || !command.task.trim()) throw invalid('task 必须是非空字符串')
     const hard = command.hard, task = rt.redactDeepSecrets(command.task)
     if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
-    const roster = rosterOf(lead), picked = route({ type: found.id, hard }, roster, roster.find(item => item.fallback === true))
+    const roster = rosterOf(lead), picked = route({ type: found.id, hard, splitDifficulty: found.splitDifficulty }, roster)
     if (picked.miss) {
-      throw invalid(`没有${hard ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
+      throw invalid(`没有${hard && found.splitDifficulty ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
     }
     let live
     if (command.session !== undefined) {
@@ -397,21 +400,32 @@ When finished, report what you changed (paths), what you verified, and what is l
     let session, flight, previousDispatch, accepted = false
     try {
       session = live?.session ?? await rt.createSession(target.id, task.trim().split(/\r?\n/, 1)[0].slice(0, 80), leadSession.workspaceRef, true, false, picked.choices,
-        { kind: 'lead', leadProfileId: lead.id, leadSessionId: leadSession.id, by: picked.by, type: found.id, hard }, { activate: false })
+        { kind: 'lead', leadProfileId: lead.id, leadSessionId: leadSession.id, type: found.id, hard }, { activate: false })
       previousDispatch = session.source.dispatch
-      flight = begin(state, session, { type: found.id, hard, by: picked.by, task: task.trim().split(/\r?\n/, 1)[0] })
+      flight = begin(state, session, { type: found.id, hard, task: task.trim().split(/\r?\n/, 1)[0] })
       flight.tracking = true
-      const sent = await rt.send(target.id, header + task, session.id, [], [], { exclusive: true, files: { paths: attached } })
+      session.source.dispatch.status = 'queued'
+      flight.dispatch = async () => {
+        delete flight.dispatch
+        session.source.dispatch.status = 'running'
+        let sent
+        try {
+          await rt.save()
+          sent = await rt.send(target.id, header + task, session.id, [], [], { exclusive: true, files: { paths: attached } })
+        } catch (error) {
+          session = end(state, session, flight, { reason: 'error' })
+          return queueReport(lead.id, leadSession, session, { reason: rt.redactDeepSecrets(String(error.message ?? error)) })
+        }
+        return track(lead, leadSession, session, flight, sent, header)
+      }
       accepted = true
       session = rt.conversationOf(session.id)?.session ?? session
       delete session.source.pendingReport
       if (reused) session.source.continued = (session.source.continued ?? 0) + 1
       state.count = (state.count ?? 0) + 1
-      await note(leadSession.id, `${reused ? '继续派给' : '已派给'} ${target.name} · ${session.name}（${found.name} · ${hard ? '难题' : '常规'}${picked.by === 'fallback' ? ' · 兜底' : ''}）`,
-        { delegation: { session: session.id, profile: target.id, type: found.id, hard, reused } })
-      const completion = track(lead, leadSession, session, flight, sent, header)
-      void completion.then(next => next ? rt.followLead(lead.id, leadSession.id, next) : flushLeadReports(leadSession.id))
-      return { receipt: { session: session.id, role: target.name, type: found.id, hard, by: picked.by, reused }, completion }
+      await note(leadSession.id, `${reused ? '继续派给' : '已派给'} ${target.name} · ${session.name}（${found.name} · ${hard ? '难题' : '常规'}）`,
+        { delegation: { session: session.id, profile: target.id, type: found.id, hard, reused, deferred: true } })
+      return { receipt: { session: session.id, role: target.name, type: found.id, hard, reused, message: '已受理，本轮结束后发送' } }
     } catch (error) {
       if (flight && accepted) {
         session = end(state, session, flight, { reason: 'error', unconfirmed: true })
@@ -446,7 +460,7 @@ When finished, report what you changed (paths), what you verified, and what is l
       state.running = false
     }
     if (!source.pendingReport || source.pendingReport.ready) source.pendingReport = { id: randomUUID() }
-    flight = begin(state, session, source.dispatch ?? { type: source.type, hard: source.hard, by: source.by, task: session.name })
+    flight = begin(state, session, source.dispatch ?? { type: source.type, hard: source.hard, task: session.name })
     return flight
   }
   const followLeadReport = async (sessionId, placed, flight) => {
@@ -478,12 +492,36 @@ When finished, report what you changed (paths), what you verified, and what is l
   }
   const followLead = async (profileId, sessionId, placed) => {
     try {
-      if (placed.mode === 'turn' || placed.mode === 'queued') await placed.completion
-    } catch (error) { rt.warn('nodo: lead follow failed (%s): %s', sessionId, error.message ?? error) }
+      if (placed.mode === 'turn' || placed.mode === 'queued') {
+        const result = await placed.completion
+        const state = stateOf(sessionId), flight = state.running
+        if (flight?.dispatch) {
+          if (result.reason === 'done' && !result.unconfirmed) {
+            void flight.dispatch().then(next => next ? rt.followLead(profileId, sessionId, next) : flushLeadReports(sessionId))
+          } else await cancelDispatch(state, flight)
+        }
+      }
+    } catch (error) {
+      const state = stateOf(sessionId)
+      if (state.running?.dispatch) await cancelDispatch(state, state.running)
+      rt.warn('nodo: lead follow failed (%s): %s', sessionId, error.message ?? error)
+    }
     finally { void flushLeadReports(sessionId) }
   }
+  const cancelDispatch = async (state, flight) => {
+    delete flight.dispatch
+    const session = end(state, rt.conversationOf(flight.session)?.session, flight, { reason: 'cancelled' })
+    if (session) {
+      session.source.dispatch.status = 'cancelled'
+      delete session.source.pendingReport
+      await note(session.source.leadSessionId, '', { delegation: { session: session.id, ended: 'cancelled' } })
+    }
+  }
   rt.ctx.effect(() => () => {
-    for (const { running } of states.values()) if (running?.waiting) running.cancel()
+    for (const state of states.values()) {
+      if (state.running?.dispatch) void cancelDispatch(state, state.running)
+      else if (state.running?.waiting) state.running.cancel()
+    }
   }, 'nodo: lead retry timers')
 
   Object.assign(rt, {
@@ -502,6 +540,9 @@ When finished, report what you changed (paths), what you verified, and what is l
     recoverLeadDelegations: () => {
       if (rt.readOnly?.()) return
       for (const profile of Object.values(rt.state.profiles)) for (const session of profile.sessions ?? []) {
+        if (session.source?.dispatch?.status === 'queued' && !flightOf(session.id)) {
+          void cancelDispatch(stateOf(session.source.leadSessionId), { session: session.id, settle() {} })
+        }
         if (session.source?.dispatch?.status === 'running' && !flightOf(session.id)) {
           Object.assign(session.source.dispatch, { status: 'unconfirmed', reason: 'restart', endedAt: Date.now() })
           session.source.pendingReport ??= { id: randomUUID() }

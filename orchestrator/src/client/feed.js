@@ -18,6 +18,7 @@ import { referenceHistory } from './session-references.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
 import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
+import { leadModeOf } from '../../core/shared/lead.js'
 
 const FOLLOW_PX = 25
 
@@ -168,7 +169,17 @@ export function transcriptRows(lines) {
     // A cleared plan leaves no row at all: its removal is the final state.
     if (item.kind === 'plan' && (item.removed === true
       || (( !Array.isArray(item.steps) || item.steps.length === 0) && !item.text))) continue
-    if (item.kind !== 'tool') { rows.push({ item, index, running: false, error: false }); continue }
+    if (item.kind !== 'tool') {
+      const last = rows.at(-1)
+      // One retry run reads as one row ticking in place: the newest
+      // announcement replaces the row, and an end keeps the last count.
+      if (item.kind === 'lifecycle' && item.event === 'retry'
+        && last?.item.kind === 'lifecycle' && last.item.event === 'retry'
+        && (last.item.turnId === undefined || item.turnId === undefined || last.item.turnId === item.turnId))
+        last.item = item.text === undefined ? { ...item, text: last.item.text } : item
+      else rows.push({ item, index, running: false, error: false })
+      continue
+    }
     if (item.phase === 'start') {
       open.set(callKey(item), rows.length)
       rows.push({ item, index, running: true, error: false })
@@ -298,9 +309,9 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
     sample()
   }, [feed, following])
   useEffect(() => { setFollowing(true) }, [sentTick])
-  // A lead conversation hides token usage: the figures cover only its own session.
-  const source = round ? roundLines(feed.lines) : feed.lines
-  const shown = profile.lead === true ? source.filter(line => line.kind !== 'usage') : source
+  // A lead-mode conversation hides token usage: the figures cover only its own session.
+  const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines
+  const shown = leadModeOf(profile, session) ? source.filter(line => line.kind !== 'usage') : source
   // One turn starts at each user line; the rail prefers its final parent reply.
   const turns = []
   for (const [index, item] of shown.entries()) {
@@ -344,19 +355,11 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
     } else if (replyEnds.has(index)) stamp = index
     else if (item.kind === 'usage' && usageAt === null) usageAt = index
   }
-  // A running executor card parks at the feed's bottom; the lead's streaming
-  // turn stays above it, inside its own segment.
-  let tail = lines.length
-  while (tail > 0 && lines[tail - 1].kind === 'member' && !lines[tail - 1].step.report && !lines[tail - 1].step.ended) tail -= 1
-  const speakerDue = round && (tail === 0 || lines[tail - 1].who === 'user' || lines[tail - 1].kind === 'member')
+  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === 'user' || lines.at(-1).kind === 'member')
   const lastSpeaker = lines.findLastIndex(item => item.kind === 'speaker')
   const rows = transcriptRows(lines).filter(row => row.item.kind !== 'changes'
     || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser))
-  const mainRows = rows.filter(row => row.index < tail)
-  const tailRows = rows.filter(row => row.index >= tail)
-  const chipRows = []
-  if (round) while (mainRows.at(-1)?.item.kind === 'delegate') chipRows.unshift(mainRows.pop())
-  const newest = mainRows.length - 1
+  const newest = rows.length - 1
   const line = (row, position, timeline = false) => {
     const { item, index } = row
     if (item.kind === 'plan') return h(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest })
@@ -422,16 +425,14 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
         feed.key === key && feed.error && h('p', { className: 'nodo-error-line', role: 'alert' }, feed.error),
         lines.length === 0 && !work?.active && h('p', { className: 'nodo-note nodo-feed-empty' },
           `还没有消息。给「${profile.name}」发一条任务，一条消息即一个任务。`),
-        ...processBlocks(mainRows).map((block, index, all) => block.process && block.rows.length > 1
+        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1
           ? h(ProcessGroup, { key: block.rows[0].row.index, rows: block.rows.map(({ row }) => row.item), depths: block.rows.map(({ row }) => row.depth),
             running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true)) },
             block.rows.map(({ row, position }) => line(row, position, true)))
           : line(block.rows[0].row, block.rows[0].position)),
         speakerDue && work?.active && work.timeline !== true && stripNodo(work.buffer) !== '' && h(RoundSpeaker, { role: profile, running: true }),
         work?.active && work.timeline !== true && work.buffer != null && work.buffer !== '' && h('div', { className: 'nodo-reply', 'data-flow': 'response' },
-          h(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })),
-        ...chipRows.map(row => line(row, row.index)),
-        ...tailRows.map(row => line(row, row.index)))),
+          h(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })))),
     h(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
     !following && h('button', { type: 'button', className: 'nodo-tobottom', 'aria-label': '回到底部', title: '回到底部', onClick: () => setFollowing(true) },
       h(IconChevronDownOutlineRegular)))

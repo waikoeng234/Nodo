@@ -48,21 +48,23 @@ change global or workspace MCP configuration. The Agent owns the service's
 process lifetime. Only an explicit unknown-field error for `mcpServers` retries
 without that field; other errors propagate with the original permissions intact.
 
-On the verified ZCode 0.16.9 and 0.17.0, the role service includes the complete
-identity in the get_role tool description. ZCode supplies this as a model tool
-schema on every primary request, including after compaction and process resume.
-This is `instructionTarget: 'tool-schema'`, not a system message. It does not
-require the model to call get_role first; the tool result is a separate recovery
-aid. MCP initialization instructions remain available to other clients but these
-CLI versions do not consume them.
+On ZCode 0.16.9 and 0.17.0 (see Verification below), the role service includes
+the complete identity in the get_role tool description. ZCode supplies this as a
+model tool schema on every primary request, including after compaction and
+process resume. This is `instructionTarget: 'tool-schema'`, not a system
+message. It does not require the model to call get_role first; the tool result
+is a separate recovery aid. MCP initialization instructions remain available to
+other clients but these CLI versions do not consume them.
 
 The service reads an immutable file, and records its content hash when the
 Agent requests tools/list. Each CLI connection gets a fresh receipt path;
-the adapter exposes `instructionMode: 'native'` only for a verified version
-with a matching discovered catalog. Unknown versions, unsupported MCP fields
-or missing catalog discovery run the session without role identity.
-Catalog discovery alone is not a general proof of system injection: the target
-and exact wire behavior are verified separately by the real CLI probe.
+the adapter exposes `instructionMode: 'native'` only for a pure `x.y.z` CLI
+version at or above 0.16.9 with a matching discovered catalog. Versions below
+that floor, version strings that are not plain numbers, unsupported MCP fields
+or missing catalog discovery run the session without role identity. Catalog
+discovery only proves that the CLI read the role tool catalog on that
+connection; it does not prove that every model request carries the identity
+description, which is what the real CLI probe checks.
 
 HOME, USERPROFILE, shell startup, user instructions, plugins, credentials and
 storage locations are unchanged. Because the protocol's mcpServers replaces
@@ -172,7 +174,11 @@ for the opt-in real CLI check. It is read-only and creates no session.
 Run `node scripts/check-zcode-identity.mjs /absolute/path/to/zcode.cjs` for the
 opt-in identity check. It runs the installed CLI with a temporary HOME, dummy
 provider settings and a local mock model, without real login data or remote
-model requests. It uses no runtime preload or source patch. On 2026-10-15,
+model requests. It uses no runtime preload or source patch. Native role
+identity accepts any pure `x.y.z` CLI version at or above 0.16.9; that floor is
+the oldest release this script confirmed, and newer versions are gated per
+connection by catalog discovery, so the script is an optional spot check before
+a release rather than a per-version requirement. On 2026-10-15,
 ZCode 0.16.9 passed actual-request checks for consecutive turns, manual
 compaction, automatic compaction between a tool call and continuation in one
 turn, cross-process resume and concurrent roles. Each primary request contained

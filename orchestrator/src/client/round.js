@@ -1,6 +1,6 @@
 import {
   h, useState, useEffect, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
-  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconBrowseOutlineRegular, IconThinkOutlineRegular,
+  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
@@ -26,52 +26,39 @@ export function roundIndex(view) {
   return { lead, members }
 }
 
-// The lead's transcript as a chat room: each delegation becomes a chip under
-// the lead's message and one executor message that parks at the feed's bottom
-// while it runs and lands at its ended or report marker once one arrives, never
-// splitting the lead's turn; a speaker row opens wherever user text or an
-// executor message precedes the lead's next words.
-export function roundLines(lines) {
-  const out = [], members = [], chips = []
+export function roundLines(lines, leadRunning = false) {
+  const out = [], members = []
   const steps = new Map()
-  let at = 0
-  const land = (member, slot) => { member.slot = slot; member.seq = ++at }
+  const flush = () => out.push(...members.splice(0).map(step => ({ who: 'system', kind: 'member', step })))
   for (const line of lines) {
-    if (line.who === 'user') {
-      out.push(...chips.splice(0))
-      for (const member of members) if (member.hold) { land(member, out.length); member.hold = false }
-    }
+    if (line.who === 'user') flush()
     const mark = line.delegation
     if (mark && !mark.ended) {
       const step = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at }
-      const member = { step }
-      steps.set(mark.session, member)
-      members.push(member)
-      chips.push({ who: 'system', kind: 'delegate', step })
+      if (mark.deferred) step.deferred = true
+      steps.set(mark.session, step)
+      members.push(step)
+      out.push({ who: 'system', kind: 'delegate', step })
       continue
     }
-    const member = steps.get(mark?.session ?? line.origin?.session)
-    const step = member?.step
-    if (mark?.ended && member) {
+    const step = steps.get(mark?.session ?? line.origin?.session)
+    if (mark?.ended && step) {
       Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {})
-      member.hold = true
+      flush()
       continue
     }
-    if (line.origin?.kind === 'report' && member) {
+    if (line.origin?.kind === 'report' && step) {
       delete step.ended
       delete step.unconfirmed
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
-      land(member, out.length)
-      member.hold = false
+      flush()
     }
     if (line.origin) continue
     const text = line.who === 'agent' && line.kind === 'text' ? stripNodo(line.text) : null
     if (text === '') continue
     out.push(text === null ? line : { ...line, text })
   }
-  out.push(...chips.splice(0))
-  for (const member of members) if (!member.step.report && (member.hold || !member.step.ended)) land(member, out.length)
-  for (const { step, slot } of [...members].sort((a, b) => b.slot - a.slot || b.seq - a.seq)) out.splice(slot, 0, { who: 'system', kind: 'member', step })
+  if (!leadRunning) flush()
   const shown = []
   let due = true
   for (const line of out) {
@@ -100,9 +87,10 @@ function RoundTools({ step, work }) {
     return () => { live = false }
   }, [step.session, step.at, work?.active === true ? work : null])
   const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
-  const start = lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
+  const start = step.deferred ? lines.findIndex(line => boundary(line) && line.at >= step.at) + 1
+    : lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
   const end = lines.findIndex((line, index) => index >= start && boundary(line))
-  const rows = transcriptRows(lines.slice(start, end < 0 ? undefined : end))
+  const rows = transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? undefined : end))
     .filter(row => row.item.who !== 'user' && ['text', 'thinking', 'tool'].includes(row.item.kind)).slice(-5)
   const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? '').trim() !== '' ? work.buffer : null
   return (rows.length > 0 || buffer !== null) && h('div', { className: 'nodo-round-tools' },
@@ -151,7 +139,7 @@ export function RoundMember({ step, round }) {
         tag(round.taskTypes?.find(item => item.id === step.type)?.name ?? step.type),
         step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
         live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: workDot(work), size: 7 }), label ? `${label} · ` : null, runDuration(now - (work.since ?? now)))
-          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.unconfirmed ? '结果未确认' : step.ended === 'interrupted' ? '已中断' : '已结束')
+          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.unconfirmed ? '结果未确认' : step.ended === 'cancelled' ? '已取消' : step.ended === 'interrupted' ? '已中断' : '已结束')
             : step.report ? h(MessageTime, { at: step.at }) : h('span', { className: 'nodo-round-status' }, '未回报'),
         live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
           onClick: () => { setStopping(true); void round.onStop(step).finally(() => setStopping(false)) } },
@@ -172,25 +160,21 @@ export function RoundFaces({ roles }) {
     roles.map(role => h(RoleAvatar, { key: role.id, profile: role, size: 20 })))
 }
 
-// The header's session list: the lead's raw transcript first, then every
-// executor session of the round in the order it was opened.
-export function RoundMenu({ members, work, raw, onRaw, onOpen }) {
+export function RoundMenu({ members, work, onOpen }) {
   const [open, setOpen] = useState(false)
   return h(Menu, {
-    open, onClose: () => setOpen(false), portal: true, align: 'end', selectedId: raw ? 'raw' : undefined,
-    items: [{ id: 'raw', label: '完整记录', icon: h(IconBrowseOutlineRegular) },
-      ...members.map(({ role, session }) => {
+    open, onClose: () => setOpen(false), portal: true, align: 'end',
+    items: members.map(({ role, session }) => {
         const status = workLabel(work?.[session.id])
         return { id: session.id, icon: h(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
           label: h('span', { className: 'nodo-round-menu-item' },
             h('span', { className: 'nodo-round-role' }, role.name),
             h('span', { className: 'nodo-round-title' }, session.name),
             status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[session.id]), size: 8 }), status) : null) }
-      })],
+      }),
     onSelect: id => {
       setOpen(false)
-      if (id === 'raw') onRaw()
-      else onOpen(id)
+      onOpen(id)
     },
     anchor: h(Button, { variant: 'ghost', size: 'sm', 'aria-haspopup': 'menu', 'aria-expanded': open,
       onClick: () => setOpen(value => !value) }, '查看会话', h(IconChevronDownOutlineRegular, { size: 14 })),

@@ -38,7 +38,7 @@ const harness = (extra = {}) => {
     redactDeepSecrets: text => text.replaceAll('secret-value', '[redacted]'),
     leadDelegations: (id, session) => { calls.push(['delegations', id, session]); return '| 派活 | secret-value |' },
     leadRoles: id => { calls.push(['roles', id]); return '| 角色 |' },
-    leadDispatch: { delegate: async (id, args) => { calls.push(['delegate', id, args]); return { session: 'work', role: 'Worker', type: args.type, hard: args.hard, by: 'route', reused: false } },
+    leadDispatch: { delegate: async (id, args) => { calls.push(['delegate', id, args]); return { session: 'work', role: 'Worker', type: args.type, hard: args.hard, reused: false } },
       interrupt: async (id, session) => ({ session, ended: 'interrupted', lastOutput: 'secret-value' }) }, ...extra }
   install(rt)
   return { rt, home, owner, calls, dispose() { for (const fn of disposers) fn(); rmSync(home, { recursive: true, force: true }) } }
@@ -106,6 +106,8 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt'])
     assert.equal(tools[0].annotations.readOnlyHint, true)
     assert.deepEqual(tools[1].inputSchema.required, ['type', 'hard', 'task'])
+    assert.match(tools[1].description, /本轮正常结束后发送/)
+    assert.match(tools[1].description, /停止或出错则取消/)
     assert.deepEqual(tools[2].inputSchema.required, ['session'])
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
     assert.match(board.content[0].text, /派活/)
@@ -116,7 +118,7 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     assert.deepEqual(h.calls[2], ['delegations', 'lead', 'older'])
     const args = { type: 'feature', hard: false, task: 'Complete task' }
     const receipt = await client.callTool({ name: 'nodo_delegate', arguments: args })
-    assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, by: 'route', reused: false })
+    assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, reused: false })
     const stopped = await client.callTool({ name: 'nodo_interrupt', arguments: { session: 'work' } })
     assert.deepEqual(JSON.parse(stopped.content[0].text), { session: 'work', ended: 'interrupted', lastOutput: '[redacted]' })
     for (const request of [
@@ -247,5 +249,19 @@ test('issued lead tokens enter the host redactor and stay redacted after revoke'
     assert.equal(h.rt.redactDeepSecrets(`NODO_LEAD_TOKEN=${token}`).includes(token), false)
     binding.revoke()
     assert.equal(h.rt.redactDeepSecrets(`NODO_LEAD_TOKEN=${token}`).includes(token), false, 'a revoked token stays redacted')
+  } finally { h.dispose() }
+})
+
+test('a 1:1 chat session of a lead card neither mounts the channel nor accepts its credentials', async () => {
+  const h = harness()
+  try {
+    h.owner.session.leadMode = false
+    assert.equal(await h.rt.issueLeadMcp('lead'), undefined)
+    h.owner.session.leadMode = true
+    const { servers: [spec] } = await h.rt.issueLeadMcp('lead')
+    h.owner.session.leadMode = false
+    assert.equal((await rpc(spec, { name: 'nodo_board' })).isError, true, 'a token issued for lead mode dies with the chat downgrade')
+    delete h.owner.session.leadMode
+    assert.ok(await h.rt.issueLeadMcp('lead'), 'a session saved before the flag keeps lead mode')
   } finally { h.dispose() }
 })

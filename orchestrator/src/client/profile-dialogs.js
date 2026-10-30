@@ -24,9 +24,9 @@ export function Field({ label, children, group = false, required = false }) {
  *   savedIdentities?: unknown[] | null, refresh?: ((force?: boolean) => Promise<void>) | null, readOnly?: boolean,
  *   onSaved: (saved: { id: string }) => Promise<void> | void, onCancel: () => void,
  *   onDeleted: (item: { id: string }) => Promise<void> | void, onDirtyChange?: ((dirty: boolean) => void) | null,
- *   deleteReason?: string, deleteHint?: string }} props
+ *   deleteReason?: string }} props
  */
-export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason, deleteHint }) {
+export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason }) {
   // Saved identities ride prefs, so the picker offers them to every later new
   // role and a deleted role card never takes its saved identity along.
   const lead = profile?.lead === true
@@ -204,7 +204,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
             disabled: disabled || loading || !engine || !draft.name.trim() || !dirty,
           }, busy ? '保存中…' : profile ? '保存' : '创建角色'))),
       confirming && h('div', { className: 'nodo-role-confirm-row', role: 'alert' },
-        h('p', { className: 'nodo-role-confirm' }, `将删除角色“${profile.name}”，其 ${sessions} 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。${deleteHint ?? ''}`),
+        h('p', { className: 'nodo-role-confirm' }, `将删除角色“${profile.name}”，其 ${sessions} 个会话会自动归档，可在「已移除」中查看。项目目录和文件会保留。`),
         h(Button, { type: 'button', variant: 'outline', disabled, onClick: () => setConfirming(false) }, '取消'),
         h(Button, { type: 'button', variant: 'outline', className: 'nodo-dialog-danger', disabled: disabled || !!deleteReason, title: deleteReason, onClick: () => void removeProfile() },
           busy ? '删除中…' : '删除角色')),

@@ -94,3 +94,25 @@ test('ZCode stays without native identity for unknown versions or missing discov
   identity.dispose()
   await assert.rejects(pending, /disposed/)
 }))
+
+test('ZCode verifies pure x.y.z versions from 0.16.9 upward by numeric segment comparison', () => fixture(async ({ options }) => {
+  for (const version of ['0.16.9', '0.17.0', '0.17.1', '0.20.0', '1.0.0', '0.100.0']) {
+    const identity = zcodeInstructions({ ...options, version })
+    try {
+      assert.equal(identity.reason, 'catalog-not-discovered')
+      writeFileSync(identity.readyFile, JSON.stringify({ version: identity.version }))
+      await identity.install(1000)
+      assert.equal(identity.mode, 'native')
+    } finally { identity.dispose() }
+  }
+  for (const version of ['0.16.8', '0.9.0', '', '0.17', '0.17.1-beta.1', 'zcode fixture']) {
+    const identity = zcodeInstructions({ ...options, version })
+    try {
+      assert.equal(identity.mode, 'none')
+      assert.equal(identity.reason, 'unverified-version')
+      writeFileSync(identity.readyFile, JSON.stringify({ version: identity.version }))
+      await identity.install(1000)
+      assert.equal(identity.mode, 'none', 'an unverified version ignores catalog discovery')
+    } finally { identity.dispose() }
+  }
+}))

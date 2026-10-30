@@ -16,8 +16,19 @@ type InstructionOptions = {
   cwd?: string; identityFiles?: IdentityFiles; identityOwner?: string
 }
 
-// CLI versions whose tool-schema identity delivery scripts/check-zcode-identity.mjs confirmed.
-const toolIdentityVersions = ['0.16.9', '0.17.0']
+// The floor is the oldest CLI version whose tool-schema identity delivery
+// scripts/check-zcode-identity.mjs confirmed; newer versions are proven by
+// each connection's catalog discovery instead of a per-version list.
+const minimumToolIdentityVersion = [0, 16, 9]
+
+function verifiedToolIdentity(version: string | undefined): boolean {
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) return false
+  const segments = version.split('.').map(Number)
+  for (const [index, segment] of segments.entries()) {
+    if (segment !== minimumToolIdentityVersion[index]) return segment > minimumToolIdentityVersion[index]
+  }
+  return true
+}
 
 export function zcodeInstructions({ instructions, env = {}, version, directory, identityFiles, identityOwner = 'session' }: InstructionOptions = {}): ZcodeIdentity {
   if (!instructions) return { env, mode: 'none', dispose() {} }
@@ -27,7 +38,7 @@ export function zcodeInstructions({ instructions, env = {}, version, directory, 
   try {
     const files = identityFiles ?? createIdentityFiles(join(root, 'identities'))
     const artifact = files.bind(identityOwner, instructions)
-    const toolIdentity = toolIdentityVersions.includes(version as string)
+    const toolIdentity = verifiedToolIdentity(version)
     return {
       env, ...artifact, toolIdentity,
       readyFile: join(root, 'catalog.json'), mode: 'none', reason: toolIdentity ? 'catalog-not-discovered' : 'unverified-version',

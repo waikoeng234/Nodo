@@ -9293,6 +9293,8 @@ var ComposerGlyph = (running) => (0, import_react.createElement)(
 );
 var workLabel = (work) => work?.seen ? "" : { "waiting-approval": "\u7B49\u5F85\u5BA1\u6279", "waiting-question": "\u7B49\u5F85\u56DE\u7B54", completed: "\u5DF2\u5B8C\u6210", stopped: "\u5DF2\u505C\u6B62", blocked: "\u672A\u5B8C\u6210", error: "\u6267\u884C\u5931\u8D25", unavailable: "\u72B6\u6001\u4E0D\u53EF\u7528" }[work?.status] ?? (work?.suspect ? "\u7591\u4F3C\u5361\u4F4F" : work?.active ? "\u8FD0\u884C\u4E2D" : "");
 var workDot = (work) => work?.suspect || work?.status?.startsWith("waiting-") || work?.status === "blocked" ? "warning" : work?.active ? "ongoing" : work?.status === "completed" ? "done" : work?.status === "error" ? "error" : "idle";
+var workKind = (work) => work?.suspect || work?.status?.startsWith("waiting-") || work?.status === "blocked" ? "wait" : work?.active ? "run" : { completed: "done", error: "err" }[work?.status] ?? "stop";
+var WorkDot = ({ kind }) => (0, import_react.createElement)("i", { className: "nodo-dot", "data-s": kind });
 var runningOf = (profile, work) => {
   const states = (profile.sessions ?? []).map((session) => work?.[session.id]).filter(Boolean);
   const active = states.filter((state) => state.active);
@@ -9487,6 +9489,73 @@ function createRoleSeat(ctx, space) {
     };
   });
   return { RoleSeat };
+}
+
+// src/client/search-dialog.tsx
+function SearchDialog({ items, onClose }) {
+  const [query, setQuery] = (0, import_react.useState)("");
+  const [active, setActive] = (0, import_react.useState)(0);
+  const list = (0, import_react.useRef)(null);
+  const needle = query.trim().toLocaleLowerCase();
+  const found = needle ? items.filter((item) => item.terms.some((term) => String(term ?? "").toLocaleLowerCase().includes(needle))) : items;
+  const current = Math.min(active, found.length - 1);
+  const pick = (item) => {
+    onClose();
+    item.pick();
+  };
+  (0, import_react.useEffect)(() => {
+    list.current?.children[current]?.scrollIntoView?.({ block: "nearest" });
+  }, [current]);
+  const onKeyDown = (event) => {
+    if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
+    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (step && found.length) {
+      event.preventDefault();
+      setActive((current + step + found.length) % found.length);
+    } else if (event.key === "Enter" && found[current]) {
+      event.preventDefault();
+      pick(found[current]);
+    }
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, onClose, closeLabel: "\u5173\u95ED", title: "\u641C\u7D22\u4F1A\u8BDD", headless: true, className: "nodo-search-dialog" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-search-box" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), /* @__PURE__ */ (0, import_react.createElement)(
+    "input",
+    {
+      type: "search",
+      "data-modal-autofocus": true,
+      value: query,
+      placeholder: "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
+      "aria-label": "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
+      onChange: (event) => {
+        setQuery(event.target.value);
+        setActive(0);
+      },
+      onKeyDown
+    }
+  ), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": "\u5173\u95ED\u641C\u7D22", onClick: onClose }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 16 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-search-list", role: "listbox", "aria-label": "\u4F1A\u8BDD", ref: list }, found.map((item, index) => {
+    const on2 = index === current;
+    const status2 = workLabel(item.work);
+    const Glyph = item.project.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular;
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        key: item.id,
+        type: "button",
+        role: "option",
+        className: "nodo-search-row",
+        "aria-selected": on2,
+        "data-active": on2 || void 0,
+        title: `${item.role.name} \xB7 ${item.name}`,
+        onMouseMove: () => {
+          if (!on2) setActive(index);
+        },
+        onClick: () => pick(item)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-avatar", "data-lead": item.role.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item.role, size: 20 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-name" }, item.name),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-project" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, item.project.name)),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-meta" }, on2 ? "\u21B5" : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(item.work) }), status2) : sessionTime(item.updatedAt))
+    );
+  }), !found.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, items.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD")));
 }
 
 // src/client/tool-call.tsx
@@ -12010,6 +12079,10 @@ var TOOL_TIMELINE_CSS = `
 @media(prefers-reduced-motion:reduce){.nodo-tool-timeline-chevron,.nodo-tool-timeline-panel{transition:none}.nodo-tool-timeline-step,.nodo-tool-timeline-step[data-active=true]>.nodo-tool-timeline-icon{animation:none}.nodo-tool-timeline[data-streaming=true] .nodo-tool-timeline-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `;
 
+// core/shared/lead.js
+var LEAD_ENGINES = ["claude", "codex"];
+var leadModeOf = (profile, session) => profile?.lead === true && session?.leadMode !== false;
+
 // src/client/feed.js
 var FOLLOW_PX = 25;
 var brief = (text) => (text ?? "").slice(0, 400);
@@ -12185,7 +12258,10 @@ function transcriptRows(lines) {
   for (const [index, item] of lines.entries()) {
     if (item.kind === "plan" && (item.removed === true || (!Array.isArray(item.steps) || item.steps.length === 0) && !item.text)) continue;
     if (item.kind !== "tool") {
-      rows.push({ item, index, running: false, error: false });
+      const last = rows.at(-1);
+      if (item.kind === "lifecycle" && item.event === "retry" && last?.item.kind === "lifecycle" && last.item.event === "retry" && (last.item.turnId === void 0 || item.turnId === void 0 || last.item.turnId === item.turnId))
+        last.item = item.text === void 0 ? { ...item, text: last.item.text } : item;
+      else rows.push({ item, index, running: false, error: false });
       continue;
     }
     if (item.phase === "start") {
@@ -12336,8 +12412,8 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
   (0, import_react.useEffect)(() => {
     setFollowing(true);
   }, [sentTick]);
-  const source = round ? roundLines(feed.lines) : feed.lines;
-  const shown = profile.lead === true ? source.filter((line2) => line2.kind !== "usage") : source;
+  const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines;
+  const shown = leadModeOf(profile, session) ? source.filter((line2) => line2.kind !== "usage") : source;
   const turns = [];
   for (const [index, item] of shown.entries()) {
     if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
@@ -12384,16 +12460,10 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
     } else if (replyEnds.has(index)) stamp = index;
     else if (item.kind === "usage" && usageAt === null) usageAt = index;
   }
-  let tail = lines.length;
-  while (tail > 0 && lines[tail - 1].kind === "member" && !lines[tail - 1].step.report && !lines[tail - 1].step.ended) tail -= 1;
-  const speakerDue = round && (tail === 0 || lines[tail - 1].who === "user" || lines[tail - 1].kind === "member");
+  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === "user" || lines.at(-1).kind === "member");
   const lastSpeaker = lines.findLastIndex((item) => item.kind === "speaker");
   const rows = transcriptRows(lines).filter((row) => row.item.kind !== "changes" || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser));
-  const mainRows = rows.filter((row) => row.index < tail);
-  const tailRows = rows.filter((row) => row.index >= tail);
-  const chipRows = [];
-  if (round) while (mainRows.at(-1)?.item.kind === "delegate") chipRows.unshift(mainRows.pop());
-  const newest = mainRows.length - 1;
+  const newest = rows.length - 1;
   const line = (row, position, timeline = false) => {
     const { item, index } = row;
     if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
@@ -12503,7 +12573,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
           { className: "nodo-note nodo-feed-empty" },
           `\u8FD8\u6CA1\u6709\u6D88\u606F\u3002\u7ED9\u300C${profile.name}\u300D\u53D1\u4E00\u6761\u4EFB\u52A1\uFF0C\u4E00\u6761\u6D88\u606F\u5373\u4E00\u4E2A\u4EFB\u52A1\u3002`
         ),
-        ...processBlocks(mainRows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
+        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
           ProcessGroup,
           {
             key: block.rows[0].row.index,
@@ -12518,9 +12588,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
           "div",
           { className: "nodo-reply", "data-flow": "response" },
           (0, import_react.createElement)(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })
-        ),
-        ...chipRows.map((row) => line(row, row.index)),
-        ...tailRows.map((row) => line(row, row.index))
+        )
       )
     ),
     (0, import_react.createElement)(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
@@ -13010,53 +13078,39 @@ function roundIndex(view) {
   for (const list of members.values()) list.sort((a, b2) => (a.session.createdAt ?? 0) - (b2.session.createdAt ?? 0));
   return { lead, members };
 }
-function roundLines(lines) {
-  const out = [], members = [], chips = [];
+function roundLines(lines, leadRunning = false) {
+  const out = [], members = [];
   const steps = /* @__PURE__ */ new Map();
-  let at2 = 0;
-  const land = (member, slot) => {
-    member.slot = slot;
-    member.seq = ++at2;
-  };
+  const flush = () => out.push(...members.splice(0).map((step) => ({ who: "system", kind: "member", step })));
   for (const line of lines) {
-    if (line.who === "user") {
-      out.push(...chips.splice(0));
-      for (const member2 of members) if (member2.hold) {
-        land(member2, out.length);
-        member2.hold = false;
-      }
-    }
+    if (line.who === "user") flush();
     const mark = line.delegation;
     if (mark && !mark.ended) {
       const step2 = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at };
-      const member2 = { step: step2 };
-      steps.set(mark.session, member2);
-      members.push(member2);
-      chips.push({ who: "system", kind: "delegate", step: step2 });
+      if (mark.deferred) step2.deferred = true;
+      steps.set(mark.session, step2);
+      members.push(step2);
+      out.push({ who: "system", kind: "delegate", step: step2 });
       continue;
     }
-    const member = steps.get(mark?.session ?? line.origin?.session);
-    const step = member?.step;
-    if (mark?.ended && member) {
+    const step = steps.get(mark?.session ?? line.origin?.session);
+    if (mark?.ended && step) {
       Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {});
-      member.hold = true;
+      flush();
       continue;
     }
-    if (line.origin?.kind === "report" && member) {
+    if (line.origin?.kind === "report" && step) {
       delete step.ended;
       delete step.unconfirmed;
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
-      land(member, out.length);
-      member.hold = false;
+      flush();
     }
     if (line.origin) continue;
     const text = line.who === "agent" && line.kind === "text" ? stripNodo(line.text) : null;
     if (text === "") continue;
     out.push(text === null ? line : { ...line, text });
   }
-  out.push(...chips.splice(0));
-  for (const member of members) if (!member.step.report && (member.hold || !member.step.ended)) land(member, out.length);
-  for (const { step, slot } of [...members].sort((a, b2) => b2.slot - a.slot || b2.seq - a.seq)) out.splice(slot, 0, { who: "system", kind: "member", step });
+  if (!leadRunning) flush();
   const shown = [];
   let due = true;
   for (const line of out) {
@@ -13089,9 +13143,9 @@ function RoundTools({ step, work }) {
     };
   }, [step.session, step.at, work?.active === true ? work : null]);
   const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
-  const start = lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
+  const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
   const end = lines.findIndex((line, index) => index >= start && boundary(line));
-  const rows = transcriptRows(lines.slice(start, end < 0 ? void 0 : end)).filter((row) => row.item.who !== "user" && ["text", "thinking", "tool"].includes(row.item.kind)).slice(-5);
+  const rows = transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? void 0 : end)).filter((row) => row.item.who !== "user" && ["text", "thinking", "tool"].includes(row.item.kind)).slice(-5);
   const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? "").trim() !== "" ? work.buffer : null;
   return (rows.length > 0 || buffer !== null) && (0, import_react.createElement)(
     "div",
@@ -13159,7 +13213,7 @@ function RoundMember({ step, round }) {
         tag(round.taskTypes?.find((item) => item.id === step.type)?.name ?? step.type),
         step.hard && tag("\u96BE\u9898", "caution"),
         step.reused && tag("\u7EED\u7528", "accent"),
-        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
+        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.ended === "cancelled" ? "\u5DF2\u53D6\u6D88" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
         live && round.onStop && (0, import_react.createElement)(
           "button",
           {
@@ -13200,35 +13254,30 @@ function RoundFaces({ roles }) {
     roles.map((role) => (0, import_react.createElement)(RoleAvatar, { key: role.id, profile: role, size: 20 }))
   );
 }
-function RoundMenu({ members, work, raw, onRaw, onOpen }) {
+function RoundMenu({ members, work, onOpen }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
     open,
     onClose: () => setOpen(false),
     portal: true,
     align: "end",
-    selectedId: raw ? "raw" : void 0,
-    items: [
-      { id: "raw", label: "\u5B8C\u6574\u8BB0\u5F55", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBrowseOutlineRegular) },
-      ...members.map(({ role, session }) => {
-        const status2 = workLabel(work?.[session.id]);
-        return {
-          id: session.id,
-          icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
-          label: (0, import_react.createElement)(
-            "span",
-            { className: "nodo-round-menu-item" },
-            (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
-            (0, import_react.createElement)("span", { className: "nodo-round-title" }, session.name),
-            status2 ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status2) : null
-          )
-        };
-      })
-    ],
+    items: members.map(({ role, session }) => {
+      const status2 = workLabel(work?.[session.id]);
+      return {
+        id: session.id,
+        icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
+        label: (0, import_react.createElement)(
+          "span",
+          { className: "nodo-round-menu-item" },
+          (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
+          (0, import_react.createElement)("span", { className: "nodo-round-title" }, session.name),
+          status2 ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status2) : null
+        )
+      };
+    }),
     onSelect: (id) => {
       setOpen(false);
-      if (id === "raw") onRaw();
-      else onOpen(id);
+      onOpen(id);
     },
     anchor: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
       variant: "ghost",
@@ -13241,6 +13290,7 @@ function RoundMenu({ members, work, raw, onRaw, onOpen }) {
 }
 
 // src/client/session-rail.tsx
+var ROLE_FOLD = 5;
 function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const archived = !!session.archivedAt;
@@ -13259,8 +13309,9 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
       onClick: onSelect,
       title: `${role.name} \xB7 ${session.name}`
     },
+    /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18 }),
     /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, context ? `${context} \xB7 ${session.name}` : session.name),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, "\u5DF2\u5F52\u6863") : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status2 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 12 }), status2) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, "\u5DF2\u5F52\u6863") : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status2 }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(work) }), status2) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
   ), !readOnly && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -13310,22 +13361,24 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
     }
   )));
 }
-function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
-  const [queries, setQueries] = (0, import_react.useState)({});
+function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
   const [archives, setArchives] = (0, import_react.useState)({});
-  const [searching, setSearching] = (0, import_react.useState)(null);
+  const [searching, setSearching] = (0, import_react.useState)(false);
   const [roleFilter, setRoleFilter] = (0, import_react.useState)(null);
   const [opened, setOpened] = (0, import_react.useState)({});
   const [expanded, setExpanded] = (0, import_react.useState)({});
+  const [rolesOpen, setRolesOpen] = (0, import_react.useState)(false);
   const busyNow = readOnly || busy;
+  const team = navigation?.view === "team";
   const rounds = roundIndex(view);
   const sessions = view.profiles.flatMap((role) => role.sessions.map((session) => ({
     role,
     session,
     workspaceId: workspaceIdOf(view, role, session)
   })));
-  const groupOf = (role, session) => [{ role, session }, ...rounds.members.get(session.id) ?? []];
+  const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh" && session.leadMode !== false;
+  const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
   const rowOf = (role, session) => {
     const group = groupOf(role, session);
     return group.length === 1 ? { session, work: view.work[session.id], current: session.id === sessionId } : {
@@ -13334,20 +13387,22 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       current: group.some((entry) => entry.session.id === sessionId)
     };
   };
-  const roles = view.profiles.filter((role) => !role.deletedAt);
+  const roles = view.profiles.filter((role) => !role.deletedAt && (!team || role.lead === true && role.engine !== "dsh"));
   const roster = [...roles].sort((a, b2) => Number(b2.lead === true) - Number(a.lead === true));
-  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && !rounds.lead.has(session.id) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
+  const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
+  const draftProfile = roles.find((role) => role.id === draft?.profile);
   const ordered = [...view.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
   const scopeOf = (item) => {
-    const search = (queries[item.id] ?? "").trim().toLocaleLowerCase(), archived = archives[item.id] ?? "hide";
-    return { search, archived, filtering: !!search || !!filterRole || archived === "only" };
+    const archived = archives[item.id] ?? "hide";
+    return { archived, filtering: !!filterRole || archived === "only" };
   };
   const entriesOf = (item) => {
-    const { search, archived } = scopeOf(item);
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && !rounds.lead.has(session.id) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt) && (!search || [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, item.name].some((value) => String(value ?? "").toLocaleLowerCase().includes(search)))).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
+    const { archived } = scopeOf(item);
+    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt)).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
   };
-  const draftIn = (item) => !!draft && draft.workspace === item.id && !scopeOf(item).search && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
+  const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
   const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -13362,9 +13417,9 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     },
     icon
   ));
-  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && view.work[entry.session.id]?.active);
+  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view.work[entry.session.id]?.active);
   const toggle = (key, open, Glyph, title, tip, live) => {
-    const waiting = live.some((entry) => workDot(view.work[entry.session.id]) === "warning");
+    const waiting = live.some((entry) => workKind(view.work[entry.session.id]) === "wait");
     return /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
@@ -13377,14 +13432,14 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 })),
       Glyph && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 16 })),
       /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, title),
-      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: waiting ? "warning" : "ongoing", size: 12 }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
+      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: waiting ? "wait" : "run" }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
     );
   };
   const list = (item, entries, pending) => {
-    const { search, archived } = scopeOf(item);
-    const folded = !search && entries.length > SESSION_FOLD;
+    const { archived } = scopeOf(item);
+    const folded = entries.length > SESSION_FOLD;
     const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries;
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, draftProfile ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: draftProfile, size: 18 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
       const row = rowOf(role, session);
       return /* @__PURE__ */ (0, import_react.createElement)(
         SessionRow,
@@ -13410,15 +13465,14 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
         onClick: () => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))
       },
       expanded[item.id] ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
-    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, search || filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
+    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
   };
   const node = (item) => {
-    const { search, archived, filtering } = scopeOf(item);
+    const { archived, filtering } = scopeOf(item);
     const entries = entriesOf(item);
     const pending = draftIn(item);
-    const searchOpen = searching === item.id || !!queries[item.id];
-    if (filtering && !entries.length && !pending && !search && archived !== "only" && !searchOpen) return null;
-    const open = opened[item.id] ?? (filtering || searchOpen || item.id === workspace?.id);
+    if (filtering && !entries.length && !pending && archived !== "only") return null;
+    const open = opened[item.id] ?? (filtering || item.id === workspace?.id);
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
       item.id,
       open,
@@ -13426,15 +13480,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       item.name,
       item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
       liveIn([item])
-    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u641C\u7D22\u4F1A\u8BDD", `\u641C\u7D22\u201C${item.name}\u201D\u7684\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, null), () => {
-      if (searchOpen) {
-        setQueries((current) => ({ ...current, [item.id]: "" }));
-        setSearching(null);
-      } else {
-        setSearching(item.id);
-        setOpened((current) => ({ ...current, [item.id]: true }));
-      }
-    }), action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(filterRole?.id ?? profile?.id, item), busyNow), /* @__PURE__ */ (0, import_react.createElement)(
+    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(draftRole, item), busyNow || team && !roles.length), /* @__PURE__ */ (0, import_react.createElement)(
       import_dsh_client_ui_primitives.Menu,
       {
         open: menuOpen === item.id,
@@ -13475,34 +13521,10 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
           /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
         )
       }
-    ))), searchOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-search" }, /* @__PURE__ */ (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Input,
-      {
-        type: "search",
-        autoFocus: true,
-        value: queries[item.id] ?? "",
-        onChange: (event) => setQueries((current) => ({ ...current, [item.id]: event.target.value })),
-        onBlur: () => {
-          if (!(queries[item.id] ?? "").trim()) {
-            setQueries((current) => ({ ...current, [item.id]: "" }));
-            setSearching(null);
-          }
-        },
-        onKeyDown: (event) => {
-          if (event.key === "Escape") {
-            setQueries((current) => ({ ...current, [item.id]: "" }));
-            setSearching(null);
-          }
-        },
-        placeholder: "\u641C\u7D22\u4F1A\u8BDD",
-        "aria-label": `\u641C\u7D22\u201C${item.name}\u201D\u7684\u4F1A\u8BDD`,
-        className: "nodo-search-input",
-        icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 16 })
-      }
-    )), open && list(item, entries, pending));
+    ))), open && list(item, entries, pending));
   };
   const tree = ordered.map(node).filter(Boolean);
-  const projectsOpen = opened[":projects"] ?? true;
+  const shownRoles = rolesOpen ? roster : roster.filter((item, index) => index < ROLE_FOLD || item === filterRole);
   const rosterItem = (item) => {
     const state = roleStateOf(item, view, workspace);
     const pressed = item.id === filterRole?.id;
@@ -13523,35 +13545,62 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
           }
         }
       },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 28 }), item.lead === true && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-badge" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 8 })), ["warning", "ongoing"].includes(workDot(state)) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-dot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(state), size: 8 }))),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name)
-    ), /* @__PURE__ */ (0, import_react.createElement)(
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar", "data-lead": item.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 24 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name),
+      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(state) }), label)
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
         type: "button",
-        className: "nodo-roster-edit",
+        className: "nodo-row-action",
         "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-        title: `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
+        title: "\u914D\u7F6E\u89D2\u8272",
         disabled: busyNow || state.active,
         onClick: () => onEditRole(item)
       },
-      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 12 })
-    ));
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null)
+    )));
   };
+  const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-switch", role: "group", "aria-label": "\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u4F1A\u8BDD", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", "aria-label": "\u4F1A\u8BDD", "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }))), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: "\u89D2\u8272", side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+  const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
+    const project = view.workspaces.find((item) => item.id === workspaceId), row = rowOf(role, session);
+    return {
+      id: session.id,
+      role,
+      name: session.name,
+      project,
+      updatedAt: row.session.updatedAt,
+      work: row.work,
+      terms: [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, project.name],
+      pick: () => onSelectSession(role, session.id, project)
+    };
+  }).sort((a, b2) => (b2.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation, onClick: navigation ? onSessions : void 0 }), dock("Team", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSparkleRegular, { size: 18 }), { "aria-pressed": team, onClick: team ? void 0 : onTeam }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
+    onClick: () => onNewSession(draftRole),
+    disabled: busyNow || !workspace || navigation?.view === "roles" || team && !roles.length
+  }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
+    "aria-pressed": searching,
+    onClick: () => {
+      if (navigation?.view === "roles") onSessions();
+      setSearching((current) => !current);
+    }
+  }), dock("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 }), {
+    "aria-pressed": navigation?.view === "roles",
+    onClick: navigation?.view === "roles" ? void 0 : onRoles
+  }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+    onClick: onBack,
+    disabled: typeof layoutService?.selectPanel !== "function"
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, head("\u89D2\u8272", action("\u6DFB\u52A0\u89D2\u8272", "\u6DFB\u52A0\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, null), onNewRole, busyNow)), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD" }, shownRoles.map(rosterItem), roster.length > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
-      "aria-label": "\u89D2\u8272",
-      "aria-pressed": navigation?.view === "roles",
-      onClick: navigation?.view === "roles" ? void 0 : onRoles
+      className: "nodo-show-more",
+      "aria-expanded": rolesOpen,
+      onClick: () => setRolesOpen((current) => !current)
     },
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 })
-  ))), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
-    onClick: onBack,
-    disabled: typeof layoutService?.selectPanel !== "function"
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item", "aria-current": !filterRole || void 0, onClick: () => setRoleFilter(null) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u5168\u90E8")), roster.map(rosterItem), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-add", "aria-label": "\u6DFB\u52A0\u89D2\u8272", disabled: busyNow, onClick: onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, "\u6DFB\u52A0"))), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":projects", projectsOpen, null, "\u9879\u76EE", void 0, liveIn(view.workspaces)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-add" }, action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow))), projectsOpen && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"))), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], null, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
+    rolesOpen ? "\u6536\u8D77" : `\u663E\u793A\u53E6\u5916 ${roster.length - ROLE_FOLD} \u4E2A`
+  )), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, head("\u9879\u76EE\u533A", action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow)), tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], null, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
     SessionRow,
     {
       key: session.id,
@@ -13569,7 +13618,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       onPin: () => {
       }
     }
-  )))))), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+  )))))), searching && /* @__PURE__ */ (0, import_react.createElement)(SearchDialog, { items: searchItems(), onClose: () => setSearching(false) }), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
 }
 
 // src/client/composer-attachments.tsx
@@ -14003,8 +14052,9 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     ...onGoal ? [{ id: "goal", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular), label: row("\u804C\u8D23", "goal", "\u8BBE\u7F6E\u6216\u67E5\u770B\u89D2\u8272\u804C\u8D23") }] : [],
     // Only a plan↔workspace pair is a safe toggle: without workspace the row
     // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card. Leads never run in plan mode.
-    ...modes.includes("plan") && modes.includes("workspace") && profile.lead !== true ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
+    // confirmation on the role card. Lead-mode sessions never run in plan; a
+    // lead's 1:1 chat may.
+    ...modes.includes("plan") && modes.includes("workspace") && !leadModeOf(profile, profile) ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
     { type: "label", id: "cmd-title", text: "\u6307\u4EE4" },
     ...commandSection
   ] : [{ type: "label", id: "cmd-title", text: "\u6307\u4EE4" }, ...commandSection];
@@ -14117,7 +14167,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
       setModes([]);
     });
   };
-  const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])).filter((mode) => profile.lead !== true || mode !== "plan");
+  const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])).filter((mode) => !leadModeOf(profile, profile) || mode !== "plan");
   const label = offered.length ? PERMISSION_LABELS[current] ?? current : "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D";
   const items = offered.map((mode) => ({
     id: mode,
@@ -14485,7 +14535,7 @@ function Field({ label, children, group = false, required = false }) {
     children
   );
 }
-function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason, deleteHint }) {
+function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, savedIdentities = null, refresh = null, readOnly = false, onSaved, onCancel, onDeleted, onDirtyChange, deleteReason }) {
   const lead = profile?.lead === true;
   const saved = !lead && Array.isArray(savedIdentities) ? savedIdentities : [];
   const presets = role_presets_default.filter((item) => item.name === "leader" === lead);
@@ -14771,7 +14821,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
       confirming && (0, import_react.createElement)(
         "div",
         { className: "nodo-role-confirm-row", role: "alert" },
-        (0, import_react.createElement)("p", { className: "nodo-role-confirm" }, `\u5C06\u5220\u9664\u89D2\u8272\u201C${profile.name}\u201D\uFF0C\u5176 ${sessions} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002${deleteHint ?? ""}`),
+        (0, import_react.createElement)("p", { className: "nodo-role-confirm" }, `\u5C06\u5220\u9664\u89D2\u8272\u201C${profile.name}\u201D\uFF0C\u5176 ${sessions} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`),
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { type: "button", variant: "outline", disabled, onClick: () => setConfirming(false) }, "\u53D6\u6D88"),
         (0, import_react.createElement)(
           import_dsh_client_ui_primitives.Button,
@@ -15989,19 +16039,19 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
 }
 
 // core/shared/route.js
-var route = ({ type, hard }, roster, fallback) => {
+var route = ({ type, hard, splitDifficulty }, roster) => {
   const accepting = roster.filter((profile2) => profile2.taskTypes?.includes(type));
-  if (!accepting.length) return fallback ? { profile: fallback, choices: hard && fallback.hard ? fallback.hard : {}, by: "fallback" } : { miss: true };
+  if (!splitDifficulty) {
+    const profile2 = accepting[0];
+    return profile2 ? { profile: profile2, choices: {} } : { miss: true };
+  }
   if (hard) {
     const profile2 = accepting.find((profile3) => profile3.hard !== void 0);
-    return profile2 ? { profile: profile2, choices: profile2.hard, by: "route" } : { miss: true };
+    return profile2 ? { profile: profile2, choices: profile2.hard } : { miss: true };
   }
   const profile = accepting.find((profile2) => profile2.hard === void 0) ?? accepting[0];
-  return profile ? { profile, choices: {}, by: "route" } : { miss: true };
+  return profile ? { profile, choices: {} } : { miss: true };
 };
-
-// core/shared/lead.js
-var LEAD_ENGINES = ["claude", "codex"];
 
 // src/client/roles.tsx
 var sidebarContent = null;
@@ -16070,7 +16120,12 @@ function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }) {
     setBusy(true);
     setError("");
     try {
-      const saved = await call("task-types-update", { types: draft.map((row) => row.id !== void 0 ? { id: row.id, name: row.name, when: row.when ?? "" } : { name: row.name, when: row.when ?? "" }) });
+      const saved = await call("task-types-update", { types: draft.map((row) => ({
+        name: row.name,
+        when: row.when ?? "",
+        splitDifficulty: row.splitDifficulty === true,
+        ...row.id !== void 0 ? { id: row.id } : {}
+      })) });
       setDraft(saved.map((item) => ({ ...item })));
       await onDone();
     } catch (failure) {
@@ -16088,10 +16143,10 @@ function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }) {
     {
       variant: "outline",
       disabled: locked || draft.length >= TYPES_MAX,
-      onClick: () => setDraft((rows) => [...rows, { name: "", when: "" }])
+      onClick: () => setDraft((rows) => [...rows, { name: "", when: "", splitDifficulty: false }])
     },
     "\u6DFB\u52A0\u7C7B\u578B"
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-types-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-type-row nodo-type-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u540D\u79F0"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u4E3B\u63A7\u636E\u6B64\u5224\u65AD\u4EFB\u52A1\u5C5E\u4E8E\u54EA\u4E00\u7C7B"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), draft.map((row, index) => {
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-types-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-type-row nodo-type-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u540D\u79F0"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u4E3B\u63A7\u636E\u6B64\u5224\u65AD\u4EFB\u52A1\u5C5E\u4E8E\u54EA\u4E00\u7C7B"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6309\u96BE\u5EA6\u5206\u914D"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), draft.map((row, index) => {
     const owners = takers(row.id);
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: row.id ?? `new:${index}`, className: "nodo-type-row" }, /* @__PURE__ */ (0, import_react.createElement)(
       "input",
@@ -16115,7 +16170,17 @@ function TaskTypesEditor({ view, disabled, onDone, onDirtyChange }) {
         disabled: locked,
         onChange: (event) => editRow(index, { when: event.target.value })
       }
-    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, (row.when ?? "").length, "/200")), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-takers", title: owners.map((item) => item.name).join("\u3001") || void 0 }, owners.length ? owners.slice(0, 4).map((item) => /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { key: item.id, profile: item, size: 22 })) : miss(), owners.length > 4 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-more" }, `+${owners.length - 4}`)), /* @__PURE__ */ (0, import_react.createElement)(
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-dialog-count", "aria-hidden": true }, (row.when ?? "").length, "/200")), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-split" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        type: "checkbox",
+        role: "switch",
+        "aria-label": `\u6309\u96BE\u5EA6\u5206\u914D ${row.name}`,
+        checked: row.splitDifficulty === true,
+        disabled: locked,
+        onChange: (event) => editRow(index, { splitDifficulty: event.target.checked })
+      }
+    )), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-takers", title: owners.map((item) => item.name).join("\u3001") || void 0 }, owners.length ? owners.slice(0, 4).map((item) => /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { key: item.id, profile: item, size: 22 })) : miss(), owners.length > 4 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-more" }, `+${owners.length - 4}`)), /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
         type: "button",
@@ -16420,7 +16485,7 @@ function RolesPage({ view, readOnly, refresh }) {
   );
   const takesCell = (role, locked) => {
     const ids = role.taskTypes ?? [];
-    const labels = [...ids.map(typeNameOf), ...leads.length && role.fallback ? ["\u515C\u5E95"] : []];
+    const labels = ids.map(typeNameOf);
     const open = takesOpen === role.id;
     const saving = locked || Object.hasOwn(pendingHard, role.id) || Object.hasOwn(pendingTypes, role.id);
     const catalog = engines?.find((item) => item.id === role.engine)?.catalog;
@@ -16455,18 +16520,6 @@ function RolesPage({ view, readOnly, refresh }) {
         }
       },
       types.map((type) => /* @__PURE__ */ (0, import_react.createElement)("label", { key: type.id, className: "nodo-roles-takes-option", title: type.when || void 0 }, /* @__PURE__ */ (0, import_react.createElement)("input", { type: "checkbox", checked: ids.includes(type.id ?? ""), disabled: saving, onChange: () => void toggleType(role, type.id ?? "") }), type.name)),
-      leads.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-roles-takes-option" }, /* @__PURE__ */ (0, import_react.createElement)(
-        "input",
-        {
-          type: "checkbox",
-          "aria-label": "\u515C\u5E95",
-          checked: role.fallback === true,
-          disabled: saving || role.fallback === true,
-          onChange: () => void perform(async () => {
-            await call("profile-update", { id: role.id, changes: { fallback: true } });
-          })
-        }
-      ), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u515C\u5E95", /* @__PURE__ */ (0, import_react.createElement)("small", null, "\u6CA1\u6709\u89D2\u8272\u627F\u63A5\u7684\u4EFB\u52A1\u4EA4\u7ED9\u5B83"))),
       /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-hard-settings" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-roles-takes-option" }, /* @__PURE__ */ (0, import_react.createElement)(
         "input",
         {
@@ -16477,7 +16530,7 @@ function RolesPage({ view, readOnly, refresh }) {
           disabled: saving,
           onChange: (event) => void updateHard(role, event.target.checked ? {} : null)
         }
-      ), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u53EF\u63A5\u96BE\u9898", /* @__PURE__ */ (0, import_react.createElement)("small", null, "\u4E3B\u63A7\u5224\u4E3A\u96BE\u9898\u65F6\u6D3E\u7ED9\u5B83\uFF0C\u53EF\u53E6\u9009\u6A21\u578B\u548C\u601D\u8003\u6863\u4F4D"))), hard !== void 0 && /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(Field, { label: "\u96BE\u9898\u6A21\u578B" }, /* @__PURE__ */ (0, import_react.createElement)(
+      ), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u53EF\u63A5\u96BE\u9898", /* @__PURE__ */ (0, import_react.createElement)("small", null, "\u6309\u96BE\u5EA6\u5206\u914D\u7684\u7C7B\u578B\u5224\u4E3A\u96BE\u9898\u65F6\u6D3E\u7ED9\u5B83\uFF0C\u53EF\u53E6\u9009\u6A21\u578B\u548C\u601D\u8003\u6863\u4F4D"))), hard !== void 0 && /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(Field, { label: "\u96BE\u9898\u6A21\u578B" }, /* @__PURE__ */ (0, import_react.createElement)(
         "select",
         {
           className: "nodo-dialog-input nodo-dialog-select",
@@ -16602,17 +16655,14 @@ function RolesPage({ view, readOnly, refresh }) {
       roleActions(role, held, locked)
     );
   };
-  const fallback = executors.find((role) => role.fallback === true);
   const plan = types.map((type) => ({
     type,
-    routine: route({ type: type.id, hard: false }, executors, fallback),
-    hard: route({ type: type.id, hard: true }, executors, fallback)
+    routine: route({ type: type.id, hard: false, splitDifficulty: type.splitDifficulty === true }, executors),
+    hard: route({ type: type.id, hard: true, splitDifficulty: type.splitDifficulty === true }, executors)
   }));
   const routineGaps = plan.filter((row) => row.routine.miss).map((row) => row.type.name).join("\u3001");
   const hardGaps = plan.filter((row) => !row.routine.miss && row.hard.miss).map((row) => row.type.name).join("\u3001");
-  const fallbackTypes = plan.filter((row) => row.routine.by === "fallback").map((row) => row.type.name);
   const deleteReason = (role) => leads.length > 0 && role.lead !== true && executors.length === 1 ? "\u4E3B\u63A7\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : void 0;
-  const deleteHint = (role) => leads.length > 0 && role.fallback && executors.some((item) => item.id !== role.id) ? `\u515C\u5E95\u5C06\u8F6C\u7ED9\u300C${executors.find((item) => item.id !== role.id)?.name}\u300D\u3002` : void 0;
   const overview = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-overview" }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-roles-head" }, /* @__PURE__ */ (0, import_react.createElement)("h1", null, "\u89D2\u8272")), /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-leads" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-leads" }, "\u4E3B\u63A7"), createKind !== "lead" && /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -16644,7 +16694,7 @@ function RolesPage({ view, readOnly, refresh }) {
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }),
     "\u6DFB\u52A0\u89D2\u8272"
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6743\u9650"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), createKind === "executor" && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)))), leads.length > 0 && (routineGaps || hardGaps || fallbackTypes.length > 0) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-gap-note", role: "status" }, /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 3 2 21h20L12 3Z" }), /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 9v5m0 3v1" })), /* @__PURE__ */ (0, import_react.createElement)("div", null, routineGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${routineGaps}\u6CA1\u6709\u89D2\u8272\u627F\u63A5`), fallbackTypes.map((name) => /* @__PURE__ */ (0, import_react.createElement)("p", { key: name }, `${name}\u6CA1\u6709\u89D2\u8272\u627F\u63A5\uFF0C\u7531\u300C${fallback?.name}\u300D\u515C\u5E95`)), hardGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${hardGaps}\u6CA1\u6709\u53EF\u63A5\u96BE\u9898\u7684\u89D2\u8272`))));
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-table" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-row nodo-roles-row-head", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u987A\u5E8F"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8EAB\u4EFD"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "Agent"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u6743\u9650"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u627F\u63A5\u4EFB\u52A1"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u96BE\u9898"), /* @__PURE__ */ (0, import_react.createElement)("span", null)), executors.map(executorRow), createKind === "executor" && createForm("nodo-roles-row nodo-roles-new", executors.length + 1)))), leads.length > 0 && (routineGaps || hardGaps) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-gap-note", role: "status" }, /* @__PURE__ */ (0, import_react.createElement)("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 3 2 21h20L12 3Z" }), /* @__PURE__ */ (0, import_react.createElement)("path", { d: "M12 9v5m0 3v1" })), /* @__PURE__ */ (0, import_react.createElement)("div", null, routineGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${routineGaps}\u6CA1\u6709\u89D2\u8272\u627F\u63A5`), hardGaps && /* @__PURE__ */ (0, import_react.createElement)("p", null, `${hardGaps}\u6CA1\u6709\u80FD\u63A5\u96BE\u9898\u7684\u89D2\u8272`))));
   const sidebar = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-nav", role: "navigation", "aria-label": "\u89D2\u8272" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": !typeOpen, onClick: () => switchTo(showOverview) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, roles.length)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": typeOpen, onClick: () => switchTo(() => setTypeOpen(true)) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChecklistOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u4EFB\u52A1\u7C7B\u578B"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, types.length)));
   (0, import_react.useEffect)(() => {
     rolesPublishSidebar({ view: "roles", content: sidebar });
@@ -16667,7 +16717,6 @@ function RolesPage({ view, readOnly, refresh }) {
       key: `${selected.id}:${nonce}`,
       profile: selected,
       deleteReason: deleteReason(selected),
-      deleteHint: deleteHint(selected),
       enabledEngines: view.prefs?.enabledEngines ?? null,
       savedIdentities: view.prefs?.rolePresets ?? null,
       refresh,
@@ -16706,7 +16755,7 @@ function RolesPage({ view, readOnly, refresh }) {
       },
       "\u5220\u9664\u89D2\u8272"
     )
-  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, `\u5C06\u5220\u9664\u89D2\u8272\u201C${deleting.name}\u201D\uFF0C\u5176 ${deleting.sessions?.filter((session) => !session.draftedAt || session.briefSent).length ?? 0} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`), deleteHint(deleting) && /* @__PURE__ */ (0, import_react.createElement)("p", null, deleteHint(deleting))));
+  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, `\u5C06\u5220\u9664\u89D2\u8272\u201C${deleting.name}\u201D\uFF0C\u5176 ${deleting.sessions?.filter((session) => !session.draftedAt || session.briefSent).length ?? 0} \u4E2A\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u9879\u76EE\u76EE\u5F55\u548C\u6587\u4EF6\u4F1A\u4FDD\u7559\u3002`)));
 }
 function RolesEntry() {
   const { view, error, refresh } = useStateView();
@@ -16801,7 +16850,7 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-roles-crumbs [aria-current]{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}
 .nodo-types{display:flex;flex-direction:column;gap:16px}
 .nodo-types-count{color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
-.nodo-type-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr) 32px;align-items:center;gap:8px;min-height:40px;padding:2px 6px}
+.nodo-type-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) 84px minmax(0,1fr) 32px;align-items:center;gap:8px;min-height:40px;padding:2px 6px}
 .nodo-type-row-head{min-height:32px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-type-row-head>span{padding:0 9px}
 .nodo-type-input{width:100%;height:32px;padding:0 8px;border:1px solid transparent;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
@@ -16812,6 +16861,9 @@ button.nodo-roles-who-cell:hover:not(:disabled) .nodo-roles-name{text-decoration
 .nodo-type-when>.nodo-type-input{padding-right:56px;color:var(--dsw-alias-label-secondary);font-size:13px}
 .nodo-type-when>.nodo-dialog-count{display:none;right:10px;bottom:6px}
 .nodo-type-when:focus-within>.nodo-dialog-count{display:block}
+.nodo-type-split{display:flex;justify-content:center}
+.nodo-type-split input{margin:0;accent-color:var(--dsw-alias-state-business-primary);cursor:pointer}
+.nodo-type-split input:disabled{cursor:default}
 .nodo-type-takers{display:flex;align-items:center;min-width:0;padding-left:9px}
 .nodo-type-takers>.nodo-avatar+.nodo-avatar{margin-left:2px}
 .nodo-type-more{margin-left:6px;color:var(--dsw-alias-label-tertiary);font-size:12px}
@@ -16997,14 +17049,20 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [compacting, setCompacting] = (0, import_react.useState)([]);
   const [sentTick, setSentTick] = (0, import_react.useState)(0);
   const [actionError, setActionError] = (0, import_react.useState)("");
-  const [rawRound, setRawRound] = (0, import_react.useState)(null);
-  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt).map((session2) => ({ role, session: session2 })))[0];
-  const profiles = view?.profiles.filter((item) => !item.deletedAt) ?? [];
+  const team = navigation.view === "team";
+  const leadSession = (role, session2) => role.lead === true && (session2.engine ?? role.engine) !== "dsh" && session2.leadMode !== false;
+  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || leadSession(role, session2))).map((session2) => ({ role, session: session2 })))[0];
+  const profiles = view?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
   const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
   const workspaces = view?.workspaces ?? [];
   const workspace = archived ? workspaces.find((item) => item.id === archived.session.workspaceRef) ?? null : workspaces.find((item) => item.id === navigation.workspace) ?? workspaces[0] ?? null;
   const navigationKey = `${workspace?.id}:${profile?.id}`;
-  const session = archived?.session ?? sessionForWorkspace(profile, workspace, workspaces, navigation.sessions?.[navigationKey]);
+  const session = archived?.session ?? sessionForWorkspace(
+    team && profile ? { ...profile, sessions: profile.sessions.filter((item) => leadSession(profile, item)) } : profile,
+    workspace,
+    workspaces,
+    navigation.sessions?.[navigationKey]
+  );
   const sessionId = session?.id;
   const draftKey = sessionId ?? `new:${navigationKey}`;
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
@@ -17014,7 +17072,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const conversationReadOnly = readOnly || archivedConversation;
   const work = sessionId ? view.work[sessionId] : null;
   const rounds = view ? roundIndex(view) : null;
-  const members = sessionId && rounds?.members.get(sessionId) || [];
+  const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
   (0, import_react.useLayoutEffect)(() => {
@@ -17022,8 +17080,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
-  const roundLive = [{ role: profile, session }, ...members].filter((item) => members.length && view.work[item.session?.id]?.active === true);
-  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission } : profile;
+  const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view?.work[item.session?.id]?.active === true);
+  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
   const viewedWork = view?.work[viewed?.id];
   (0, import_react.useEffect)(() => {
@@ -17110,6 +17168,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           profile: profile.id,
           workspace: created.workspace.id,
           lazy: true,
+          team,
           ...created.sessionName === "" ? {} : { name: created.sessionName }
         });
         sessionId2 = saved.id;
@@ -17168,7 +17227,11 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     await refresh(true);
     setSessionDialog(null);
   };
-  const startDraft = (roleId, project) => startConversation(roleId, pageEnv, project);
+  const startDraft = (roleId, project) => {
+    if (team) roleId = profiles.find((role) => role.id === roleId)?.id ?? profile?.id;
+    if (team && !roleId) return;
+    startConversation(roleId, pageEnv, project);
+  };
   const attach = async (files) => {
     try {
       const added = await Promise.all(files.map(readImage));
@@ -17191,7 +17254,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     const current = trackSelection();
     const relevant = trackSelection(true);
     try {
-      const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true })).id;
+      const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }));
       await call("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
       if (current()) setSentTick((tick) => tick + 1);
@@ -17236,7 +17299,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setActionError("");
     const current = trackSelection(true);
     try {
-      for (const [id, target] of members.length ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
+      for (const [id, target] of team ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
         await call("interrupt", { profile: id, session: target });
       }
       await refresh(true);
@@ -17274,8 +17337,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   };
   const openSession = (id) => {
     const role = view.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
-    if (role) void select(role, id);
+    if (role) {
+      setNavigation((current) => ({ ...current, view: "sessions" }));
+      void select(role, id, workspaces.find((item) => item.id === role.sessions.find((entry) => entry.id === id)?.workspaceRef));
+    }
   };
+  const showSessions = (view2) => rolesGuard(() => {
+    setNavigation((current) => ({ ...current, view: view2 }));
+    setEditing(null);
+    nativeSpace.showLegacy();
+  });
   const conversation = () => (0, import_react.createElement)(
     "div",
     { className: "nodo-conversation" },
@@ -17291,7 +17362,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           type: "button",
           className: "nodo-crumb nodo-crumb-link",
           title: leadEntry.session.name,
-          onClick: () => void select(leadEntry.role, leadEntry.session.id)
+          onClick: () => {
+            setNavigation((current) => ({ ...current, view: "team" }));
+            void select(leadEntry.role, leadEntry.session.id, workspaces.find((item) => item.id === leadEntry.session.workspaceRef));
+          }
         }, leadEntry.session.name),
         leadEntry && (0, import_react.createElement)("span", { className: "nodo-crumb-sep", "aria-hidden": true }, "\u203A"),
         (0, import_react.createElement)(
@@ -17303,24 +17377,18 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         (0, import_react.createElement)(
           "span",
           { className: "nodo-head-actions" },
-          members.length > 0 && (0, import_react.createElement)(RoundMenu, {
-            members,
-            work: view.work,
-            raw: rawRound === sessionId,
-            onRaw: () => setRawRound(rawRound === sessionId ? null : sessionId),
-            onOpen: openSession
-          })
+          members.length > 0 && (0, import_react.createElement)(RoundMenu, { members, work: view.work, onOpen: openSession })
         )
       )
     ),
     (0, import_react.createElement)(Feed, {
-      key: sessionId,
+      key: `${team}:${sessionId}`,
       profile,
       session,
       revision: view.revision,
       work,
       sentTick,
-      round: members.length && rawRound !== sessionId ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
+      round: team ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
     }),
     work?.active === true && (0, import_react.createElement)(
       "div",
@@ -17340,7 +17408,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       value: drafts[draftKey] ?? "",
       images: pastedImages[draftKey] ?? [],
       running: work?.active === true,
-      stoppable: members.length ? roundLive.length > 0 : void 0,
+      stoppable: team ? roundLive.length > 0 : void 0,
       stopLabel: roundLive.length > 1 ? `\u505C\u6B62\u5168\u90E8 ${roundLive.length} \u4E2A` : void 0,
       busy: sessionBusy,
       readOnly: readOnly || !workspace,
@@ -17356,7 +17424,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       onGoal: () => setGoalOpen(true),
       onCompact: () => void compactSession(),
       onModelChange: (changes) => void updateEngineChoice(changes),
-      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: view.profiles, profile })
+      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view.profiles, profile })
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -17364,7 +17432,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     (0, import_react.createElement)(
       "div",
       { className: "nodo-stats" },
-      (0, import_react.createElement)(SessionStats, { stats: profile.lead === true ? void 0 : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
+      (0, import_react.createElement)(SessionStats, { stats: leadModeOf(profile, session) ? void 0 : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
     )
   );
   const page = () => {
@@ -17388,6 +17456,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       "div",
       { className: "nodo-frame" },
       !contentOnly && view && (0, import_react.createElement)(Rail, {
+        key: team ? "team" : "sessions",
         view: railView,
         profile,
         workspace,
@@ -17398,7 +17467,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         onResumeDraft: () => nativeSpace.resumeDraft(),
         readOnly,
         busy,
-        navigation: railNavigation,
+        navigation: railNavigation ?? (team ? { view: "team" } : null),
         onSelect: (id) => {
           const role = view.profiles.find((item) => item.id === id);
           if (role && workspace) void select(role);
@@ -17421,7 +17490,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         onEditRole: (item) => openRolesPage({ profileId: item.id }),
         onSettings: () => edit({ kind: "settings" }),
         onRoles: () => layoutService?.selectPanel("nodo-roles"),
-        onSessions: () => rolesGuard(() => nativeSpace.showLegacy()),
+        onSessions: () => showSessions("sessions"),
+        onTeam: () => showSessions("team"),
         onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
         onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
         onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
@@ -17464,7 +17534,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       },
       onCancel: () => setGoalOpen(false)
     }),
-    statsOpen && profile.lead !== true && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
+    statsOpen && !leadModeOf(profile, session) && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
       key: `stats:${sessionId}`,
       stats: view.stats[sessionId],
       onClose: () => setStatsOpen(false)
@@ -18747,7 +18817,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const [error, setError] = (0, import_react.useState)("");
     const [notice, setNotice] = (0, import_react.useState)("");
     const pending = (0, import_react.useRef)(false), created = (0, import_react.useRef)(null), uploading = (0, import_react.useRef)(false);
-    const profiles = view?.profiles.filter((role) => !role.deletedAt) ?? [];
+    const profiles = view?.profiles.filter((role) => !role.deletedAt && (!draft || navigation.view !== "team" || role.lead === true && role.engine !== "dsh")) ?? [];
     const sourceRole = sourceSessionId && profiles.find((role) => role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId));
     const sourceSession = sourceRole?.sessions.find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId);
     const profile = profiles.find((role) => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : void 0)));
@@ -18779,7 +18849,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       updateSelection((current) => ({ ...current, profile: id, choices: {} }));
       setError("");
     };
-    const composerProfile = profile && { ...profile, ...choices };
+    const composerProfile = profile && profile.lead === true ? { ...profile, ...choices, leadMode: !!draft && navigation.view === "team" } : profile && { ...profile, ...choices };
     const clearDraft = () => {
       changeText("");
       changeImages([]);
@@ -18824,9 +18894,10 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       setBusy(true);
       setError("");
       try {
-        const signature = JSON.stringify([profile.id, workspace.id, choices]);
+        const team = !!draft && navigation.view === "team";
+        const signature = JSON.stringify([profile.id, workspace.id, choices, team]);
         if (created.current?.signature !== signature) {
-          const session2 = await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices });
+          const session2 = await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices, team });
           created.current = { signature, session: session2 };
         }
         if (!active()) return;
@@ -19290,33 +19361,23 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
    and 16px row actions that only appear on hover. */
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
-.nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
-.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
-.nodo-rail-dock .nodo-icon-btn,.nodo-rail-switch button{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
+.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
+.nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
+.nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
-.nodo-rail-switch{display:flex;flex-direction:column;gap:4px}
-.nodo-rail-switch button{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer}
-.nodo-rail-switch button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-rail-switch button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);cursor:default}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
-.nodo-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));row-gap:8px;flex:none;margin-top:4px}
-.nodo-roster-cell{position:relative;display:flex;min-width:0}
-.nodo-roster-cell>.nodo-roster-item{flex:1}
-.nodo-roster-edit{position:absolute;top:22px;left:calc(50% + 4px);display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);box-shadow:0 0 0 1.5px var(--dsw-specific-sidebar-fill),0 1px 2px var(--dsw-alias-border-l2);cursor:pointer;opacity:0;pointer-events:none}
-.nodo-roster-cell:hover>.nodo-roster-edit,.nodo-roster-edit:focus-visible{opacity:1;pointer-events:auto}
-.nodo-roster-edit:hover:not(:disabled),.nodo-roster-edit[aria-pressed=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-edit:disabled{color:var(--dsw-alias-label-caption);cursor:default}
-.nodo-roster-item{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:2px 0;border:0;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
-.nodo-roster-item:hover,.nodo-roster-item[aria-current=true]{color:var(--dsw-alias-label-primary)}
-.nodo-roster-avatar{position:relative;display:inline-flex;flex:none;align-items:center;justify-content:center;box-sizing:border-box;width:34px;height:34px;border-radius:11px;background:var(--dsw-specific-sidebar-nav-item-active)}
-.nodo-roster-avatar:has(>.nodo-avatar){background:none}
-.nodo-roster-item[aria-current=true] .nodo-roster-avatar{box-shadow:0 0 0 1.5px var(--dsw-alias-state-business-primary)}
-.nodo-roster-add .nodo-roster-avatar{background:0 0;border:1px dashed var(--dsw-alias-border-l1)}
-.nodo-roster-dot{position:absolute;right:-1px;bottom:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
-.nodo-roster-badge{position:absolute;right:-1px;top:-1px;display:inline-flex;padding:1px;border-radius:50%;background:var(--dsw-specific-sidebar-fill)}
-.nodo-roster-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:16px}
-.nodo-tree-search{display:flex;padding:2px 0 4px}
-.nodo-tree-add{display:inline-flex;flex:none;padding-right:6px}
+.nodo-rail-head{display:flex;align-items:center;justify-content:space-between;flex:none;height:28px;padding:0 2px 0 8px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500;line-height:18px}
+.nodo-roster{display:flex;flex-direction:column;gap:2px;flex:none;padding-bottom:12px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-roster-cell{display:flex;align-items:center;gap:2px;min-width:0;border-radius:var(--dsw-radius-md)}
+.nodo-roster-cell:hover .nodo-row-actions,.nodo-roster-cell:focus-within .nodo-row-actions{display:inline-flex}
+.nodo-roster-item{display:flex;align-items:center;gap:10px;flex:1;min-width:0;height:36px;padding:0 8px 0 6px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
+.nodo-roster-cell:hover{background:var(--nodo-rail-hover)}
+.nodo-roster-cell:has(>.nodo-roster-item[aria-current=true]){background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-roster-avatar{display:inline-flex;flex:none}
+.nodo-roster-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
+.nodo-roster-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
+.nodo-roster .nodo-show-more{padding-left:8px}
 .nodo-tree-flag{display:inline-flex;flex:none;color:var(--dsw-alias-state-business-primary)}
 .nodo-tree{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;margin:12px calc(-1 * var(--nodo-rail-inset)) 0;padding:0 var(--nodo-rail-inset) 16px}
 .nodo-tree-node,.nodo-tree-children{display:flex;flex-direction:column;gap:2px}
@@ -19325,11 +19386,27 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 .nodo-panel-logo{display:inline-flex;align-items:center}
 button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo)){display:none}
 .nodo-rail-foot{flex:none;padding:8px 0}
-.nodo-search-input{width:100%;min-width:0}
+.nodo-search-dialog{display:flex;flex-direction:column;width:min(640px,100%);max-height:min(504px,100%);padding:0;overflow:hidden;--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
+.nodo-search-dialog *{box-sizing:border-box}
+.nodo-search-box{display:flex;align-items:center;gap:12px;flex:none;height:56px;padding:0 14px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}
+.nodo-search-box input{flex:1;min-width:0;height:100%;border:0;outline:0;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:15px}
+.nodo-search-box input::placeholder{color:var(--dsw-alias-label-tertiary)}
+.nodo-search-box input::-webkit-search-cancel-button{display:none}
+.nodo-search-list{display:flex;flex-direction:column;gap:2px;min-height:0;padding:8px;overflow-y:auto}
+.nodo-search-row{display:flex;align-items:center;gap:12px;flex:none;height:40px;padding:0 12px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.nodo-search-row[data-active]{background:var(--nodo-rail-hover)}
+.nodo-search-avatar{display:inline-flex;flex:none}
+.nodo-search-avatar[data-lead]>.nodo-avatar{outline:1.5px solid color-mix(in srgb,currentColor 75%,var(--dsw-alias-label-primary));outline-offset:1.5px}
+.nodo-search-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-search-project,.nodo-search-meta{display:flex;align-items:center;gap:6px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-search-project{width:132px;min-width:0}
+.nodo-search-project>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-search-meta{justify-content:flex-end;width:64px}
+.nodo-search-row[data-active] .nodo-search-meta{color:var(--dsw-alias-label-primary)}
 .nodo-rail-empty{padding:8px 12px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project,.nodo-row{display:flex;align-items:center;gap:6px;width:100%;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .nodo-project{height:34px;padding:0 4px}
-.nodo-project:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-project:hover{background:var(--nodo-rail-hover)}
 .nodo-project .nodo-row-actions{padding-right:2px}
 .nodo-project .nodo-chevron[data-open]{transform:rotate(90deg)}
 .nodo-picker{display:flex;flex:1;min-width:0}
@@ -19345,28 +19422,42 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
    hovered, its menu is open, or a button inside holds the keyboard. */
 .nodo-row-actions{display:none;flex:none;align-items:center;gap:2px}
 .nodo-project:hover .nodo-row-actions,.nodo-project:focus-within .nodo-row-actions,.nodo-project[data-menu=open] .nodo-row-actions{display:inline-flex}
-.nodo-project[data-menu=open]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-project[data-menu=open]{background:var(--nodo-rail-hover)}
 .nodo-row-action{display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .nodo-row-action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-row-action:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
 .nodo-folder{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-deep-diving)}
+.nodo-project-select[aria-expanded=false]>.nodo-folder{color:var(--dsw-alias-label-tertiary)}
+.nodo-project-select[aria-expanded=true]>.nodo-folder{color:var(--dsw-alias-state-business-primary)}
 .nodo-show-more{margin:2px 0 0;padding:6px 12px 6px 32px;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:18px;text-align:left;cursor:pointer}
 .nodo-show-more:hover{color:var(--dsw-alias-label-primary)}
 .nodo-row{height:36px;padding:0 8px}
 .nodo-session-empty{padding:8px 12px 8px 32px}
-.nodo-session-item{display:flex;align-items:center;gap:2px;width:100%}
+.nodo-session-item{display:flex;align-items:center;gap:2px;width:100%;border-radius:var(--dsw-radius-md)}
 .nodo-session-item>.nodo-session{flex:1;min-width:0}
 .nodo-session-item:hover .nodo-row-actions,.nodo-session-item:focus-within .nodo-row-actions,.nodo-session-item[data-menu=open] .nodo-row-actions{display:inline-flex}
 .nodo-session[data-archived]{color:var(--dsw-alias-label-tertiary)}
 .nodo-row-archived{display:inline-flex;align-items:center;gap:4px;flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
-.nodo-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-row[aria-current=page]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
+.nodo-row:hover{background:var(--nodo-rail-hover)}
+.nodo-row[aria-current=page]{background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-session-item:hover{background:var(--nodo-rail-hover)}
+.nodo-session-item:has(>.nodo-session[aria-current=page]){background:var(--dsw-specific-sidebar-nav-item-active)}
+.nodo-session-item>.nodo-session{background:0 0}
 .nodo-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px}
 .nodo-session .nodo-row-title{flex:1}
-.nodo-session{padding-left:32px}
+.nodo-session .nodo-avatar{flex:none}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project .nodo-row-meta{margin-left:0}
 .nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
+.nodo-dot{position:relative;display:inline-block;flex:none;width:7px;height:7px;border-radius:50%;background:var(--nodo-dot)}
+.nodo-dot[data-s=run]{--nodo-dot:var(--dsw-alias-state-success-primary)}
+.nodo-dot[data-s=wait]{--nodo-dot:var(--dsw-alias-state-warn-primary)}
+.nodo-dot[data-s=done]{--nodo-dot:var(--dsw-alias-state-business-primary)}
+.nodo-dot[data-s=err]{--nodo-dot:var(--dsw-alias-state-error-primary)}
+.nodo-dot[data-s=stop]{background:none;box-shadow:inset 0 0 0 1.5px var(--dsw-alias-label-tertiary)}
+.nodo-dot[data-s=run]::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--nodo-dot);animation:nodo-dot-pulse 2.2s ease-out infinite}
+@keyframes nodo-dot-pulse{0%{transform:scale(1);opacity:.55}80%,100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){.nodo-dot[data-s=run]::after{animation:none}}
 .nodo-icon-btn{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;transition:background-color .1s,color .1s}
 .nodo-icon-btn:focus-visible,.nodo-icon-btn[aria-pressed=true],.nodo-icon-btn.nodo-visible{opacity:1}
 .nodo-icon-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
