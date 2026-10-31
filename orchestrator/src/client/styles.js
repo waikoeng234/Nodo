@@ -30,7 +30,7 @@ export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + T
    sidebar toggle stays where the host puts it: in the Windows titlebar ahead of
    the menu, and on macOS in the window-chrome seat that the host fills itself
    while the sidebar is collapsed. */
-html[data-platform=darwin]{--nodo-top-clearance:var(--dsh-frame-top-clearance,0px)}
+html[data-platform=darwin]{--nodo-top-clearance:var(--dsh-frame-top-clearance,0px);--nodo-card-top:var(--dsh-frame-top-clearance,0px)}
 .nodo-left-control{display:none}
 html:is([data-platform=darwin],[data-windows-titlebar]) .nodo-left-control{position:absolute;display:flex;pointer-events:auto;-webkit-app-region:no-drag}
 html:is([data-platform=darwin],[data-windows-titlebar]) .nodo-left-control button{width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm)}
@@ -48,31 +48,42 @@ html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-tabs{margin-top:-2px}
 html[data-windows-titlebar] .nodo-head{padding-top:4px}
 html[data-windows-titlebar] .nodo-right-head{padding-top:4px}
 html[data-windows-titlebar] .nodo-right-control{top:calc(var(--dsh-frame-chrome-top,0px) + 4px)}
-/* The macOS host only exposes its frame columns through these data attributes:
-   the centre column sits right before [data-rightbar-col]. Theme tokens resolve
-   below <html>, so the chrome variables live on the frame. */
-html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]){--nodo-frame-gap:8px;--nodo-chrome:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-specific-sidebar-fill));--nodo-card-radius:var(--dsw-radius-lg);--nodo-card-edge:.5px solid var(--dsw-alias-border-l3);background:var(--nodo-chrome)}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col]){position:relative;isolation:isolate;margin:0 var(--nodo-frame-gap) 8px 0;border-left:0;border-radius:0 0 var(--nodo-card-radius) 0;background:0 0}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{content:'';position:absolute;inset:var(--dsh-frame-top-clearance,0px) 0 0;box-sizing:border-box;border-radius:0 var(--nodo-card-radius) var(--nodo-card-radius) 0;pointer-events:none}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before{z-index:-1;background:var(--dsw-alias-bg-base)}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{z-index:1;border:var(--nodo-card-edge);border-left:0}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin-left:8px;border-radius:0 0 var(--nodo-card-radius) var(--nodo-card-radius)}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-radius:var(--nodo-card-radius)}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-left:var(--nodo-card-edge)}
-html[data-platform=darwin][data-nodo-space] [data-phase]:has(header[data-window-drag]){background:0 0}
-html[data-platform=darwin][data-nodo-space] header[data-window-drag]{border-bottom-color:transparent}
-html[data-platform=darwin][data-nodo-space] header[data-window-drag]:has([data-conversation-tabs]>:only-child){min-height:var(--dsh-frame-top-clearance,0px);padding-bottom:0}
-html[data-platform=darwin][data-nodo-space] [data-conversation-tabs]:has(>:only-child){display:none}
-html[data-platform=darwin][data-nodo-space] .nodo-page:not(.nodo-space-sidebar){background:0 0}
-html[data-platform=darwin][data-nodo-space] .nodo-head,html[data-platform=darwin][data-nodo-space] .nodo-right-head{border-bottom:0}
-html[data-platform=darwin][data-nodo-space] [data-rightbar-col]:has(.nodo-right-panel){background:transparent}
-html[data-platform=darwin][data-nodo-space] .nodo-right-panel{border:0;background:transparent}
-html[data-platform=darwin][data-nodo-space] .nodo-right-content{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview){border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-right-card,.nodo-right-image){border-radius:max(0px,calc(var(--nodo-card-radius) - 12px - .5px))}
-html[data-platform=darwin][data-nodo-space] .nodo-right-file{border-radius:max(0px,calc(var(--nodo-card-radius) - 8px - .5px))}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
-html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
+/* The desktop hosts only expose their frame columns through these data
+   attributes: the centre column sits right before [data-rightbar-col]. Theme
+   tokens resolve below <html>, so the chrome variables live on the frame. The
+   card starts below the macOS traffic-light band; the Windows columns already
+   sit below the titlebar. */
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(> [data-rightbar-col]){--nodo-frame-gap:8px;--nodo-chrome:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-specific-sidebar-fill));--nodo-card-radius:var(--dsw-radius-lg);--nodo-card-edge:.5px solid var(--dsw-alias-border-l3);background:var(--nodo-chrome)}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(+ [data-rightbar-col]){position:relative;isolation:isolate;margin:0 var(--nodo-frame-gap) 8px 0;border-left:0;border-radius:0 0 var(--nodo-card-radius) 0;background:0 0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(+ [data-rightbar-col])::before,html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(+ [data-rightbar-col])::after{content:'';position:absolute;inset:var(--nodo-card-top,0px) 0 0;box-sizing:border-box;border-radius:0 var(--nodo-card-radius) var(--nodo-card-radius) 0;pointer-events:none}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(+ [data-rightbar-col])::before{z-index:-1;background:var(--dsw-alias-bg-base)}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(+ [data-rightbar-col])::after{z-index:1;border:var(--nodo-card-edge);border-left:0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin-left:8px;border-radius:0 0 var(--nodo-card-radius) var(--nodo-card-radius)}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::before,html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-radius:var(--nodo-card-radius)}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-left:var(--nodo-card-edge)}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-phase]:has(header[data-window-drag]){background:0 0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] header[data-window-drag]{border-bottom-color:transparent}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] header[data-window-drag]:has([data-conversation-tabs]>:only-child){min-height:var(--nodo-card-top,0px);padding-bottom:0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-conversation-tabs]:has(>:only-child){display:none}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-page:not(.nodo-space-sidebar){background:0 0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-head,html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-right-head{border-bottom:0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] [data-rightbar-col]:has(.nodo-right-panel){background:transparent}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-right-panel{border:0;background:transparent}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-right-content{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview){border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :is(.nodo-right-card,.nodo-right-image){border-radius:max(0px,calc(var(--nodo-card-radius) - 12px - .5px))}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-right-file{border-radius:max(0px,calc(var(--nodo-card-radius) - 8px - .5px))}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
+html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
+/* The Windows host paints its titlebar strip in the sidebar fill; the space
+   chrome tint matches the left icon column. The right panel carries its header
+   inside the card. */
+html[data-windows-titlebar][data-nodo-space] :has(> [data-rightbar-col])::before{background:var(--nodo-chrome)}
+html[data-windows-titlebar][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{padding-top:6px}
+html[data-windows-titlebar][data-nodo-space] .nodo-right-panel{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
+html[data-windows-titlebar][data-nodo-space] .nodo-right-content{margin:0;border:0;border-radius:0;background:transparent}
+html[data-windows-titlebar][data-nodo-space] .nodo-right-head{padding-top:10px}
+html[data-windows-titlebar][data-nodo-space] .nodo-right-control{top:calc(var(--dsh-frame-chrome-top,0px) + 8px)}
 /* Only the page's own text nodes are reset; the host renderer keeps its own
    heading and paragraph rhythm inside .nodo-reply. */
 .nodo-page :is(.nodo-headline,.nodo-note,.nodo-error-line,.nodo-rail-empty,.nodo-feed-empty){margin:0}
