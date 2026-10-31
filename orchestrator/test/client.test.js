@@ -111,14 +111,14 @@ test('client registers matching sidebar/main seats after the shell declares them
 test('the conversation frame paints its border above the transcript and keeps its background below', async () => {
   const { CSS } = await loadClient('styles.js')
   const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
-  const column = 'html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])'
+  const column = 'html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :has(+ [data-rightbar-col])'
   const geometry = rule(`${column}::before,${column}::after`)
-  assert.match(geometry, /inset:var\(--dsh-frame-top-clearance,0px\) 0 0/, 'both layers start at the content frame edge')
+  assert.match(geometry, /inset:var\(--nodo-card-top,0px\) 0 0/, 'both layers start at the content frame edge')
   assert.match(geometry, /pointer-events:none/, 'the foreground stroke leaves controls clickable')
   assert.equal(rule(`${column}::before`), 'z-index:-1;background:var(--dsw-alias-bg-base)')
   assert.equal(rule(`${column}::after`), 'z-index:1;border:var(--nodo-card-edge);border-left:0')
   assert.match(rule('.nodo-head'), /min-height:var\(--nodo-top-clearance,0px\)/)
-  assert.equal(rule('html[data-platform=darwin]'), '--nodo-top-clearance:var(--dsh-frame-top-clearance,0px)', 'Windows columns already start below the titlebar')
+  assert.equal(rule('html[data-platform=darwin]'), '--nodo-top-clearance:var(--dsh-frame-top-clearance,0px);--nodo-card-top:var(--dsh-frame-top-clearance,0px)', 'Windows columns already start below the titlebar')
   assert.match(rule('.nodo-feedwrap'), /flex:1;min-height:0/, 'the feed retains the existing space below the header')
   assert.match(rule('.nodo-feed'), /overflow-y:auto/, 'the inner feed remains the scroll owner')
 })
