@@ -10,13 +10,13 @@ import { createNewConversation } from './new-conversation.js'
 import { NativeRunningDock } from './running.js'
 import { CSS } from './styles.js'
 import { SCROLLBAR_CSS, installScrollbars } from './scrollbars.ts'
-import { NodoSidebar, NodoEntry, PanelIcon, NativeWelcome } from './page.js'
+import { NodoSidebar, NodoSidebarControl, NodoEntry, PanelIcon, NativeWelcome } from './page.js'
 import { RolesEntry, ROLES_CSS } from './roles.tsx'
 
 export const inject = ['slots', 'uiWorkspace', 'uiSession', 'sessions', 'layout', 'modelDirectories', 'remote', 'remote.session', 'commandUi', 'inputTriggers', 'conversation']
 
 export function apply(ctx) {
-  const space = createNativeSpace(ctx, NodoSidebar)
+  const space = createNativeSpace(ctx, NodoSidebar, NodoSidebarControl)
   createModelSeat(ctx, space)
   createRoleSeat(ctx, space)
   const { ReferenceDock, ReferenceDialog, installHistory } = createSessionReferences(ctx, space)

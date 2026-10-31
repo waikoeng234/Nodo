@@ -559,14 +559,49 @@ export function NodoEntry() {
     : state.drafting && state.draft ? h(NewConversation, { key: state.draft.id, draft: state.draft }) : null
 }
 
+const sidebarFold = { collapsed: false, listeners: new Set() }
+const subscribeSidebarFold = listener => { sidebarFold.listeners.add(listener); return () => sidebarFold.listeners.delete(listener) }
+
+function SidebarToggle({ collapsed }) {
+  const label = collapsed ? '展开侧边栏' : '收起侧边栏'
+  return h(Tooltip, { label, side: 'bottom', delayMs: 500,
+    children: h(Button, { variant: 'ghost', onClick: () => layoutService.toggleSidebar(),
+      icon: h(IconPanelLeftOutlineRegular, { size: 16 }), 'aria-label': label }) })
+}
+
+export function NodoSidebarControl() {
+  const collapsed = useSyncExternalStore(subscribeSidebarFold, () => sidebarFold.collapsed)
+  return h('div', { className: 'nodo-left-control' }, h(SidebarToggle, { collapsed }))
+}
+
 export function NodoSidebar({ collapsed }) {
   const rolesNavigation = useSyncExternalStore(rolesSubscribeSidebar, rolesSidebarSnapshot)
-  const label = collapsed ? '展开侧边栏' : '收起侧边栏'
-  return h('div', { className: 'nodo-space' },
-    h('div', { className: 'nodo-space-chrome' },
-      h(Tooltip, { label, side: 'bottom', delayMs: 500,
-        children: h(Button, { variant: 'ghost', onClick: () => layoutService.toggleSidebar(),
-          icon: h(IconPanelLeftOutlineRegular, { size: 16 }), 'aria-label': label }) })),
+  const space = useRef(null)
+  const wasCollapsed = useRef(collapsed)
+  useLayoutEffect(() => {
+    sidebarFold.collapsed = !!collapsed
+    for (const listener of sidebarFold.listeners) listener()
+    const root = document.documentElement
+    const opening = wasCollapsed.current && !collapsed
+    wasCollapsed.current = collapsed
+    if (!opening || !root.matches('[data-platform=darwin]')) return
+    // The host drops its window-chrome clearance as soon as the sidebar starts
+    // opening; keep what the still-narrow column does not cover yet. Measuring
+    // before the next frame would flush the new column width ahead of the
+    // host's transition and skip the opening animation.
+    const chrome = root.hasAttribute('data-fullscreen') ? 84 : 160
+    let frames = 0
+    const follow = () => {
+      const rest = Math.max(0, chrome - (space.current?.getBoundingClientRect().width ?? chrome))
+      root.style.setProperty('--nodo-leading-clearance', `${rest}px`)
+      frame = rest > 0 && ++frames < 120 ? requestAnimationFrame(follow) : undefined
+    }
+    root.style.setProperty('--nodo-leading-clearance', `${chrome}px`)
+    let frame = requestAnimationFrame(follow)
+    return () => { if (frame) cancelAnimationFrame(frame); root.style.removeProperty('--nodo-leading-clearance') }
+  }, [collapsed])
+  return h('div', { className: 'nodo-space', ref: space },
+    h('div', { className: 'nodo-space-chrome' }, h(SidebarToggle, { collapsed })),
     h('div', { className: 'nodo-space-content', style: collapsed ? { display: 'none' } : undefined },
       h(NodoPage, { sidebarOnly: true, railNavigation: rolesNavigation })))
 }

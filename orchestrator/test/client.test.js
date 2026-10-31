@@ -76,7 +76,7 @@ test('client registers matching sidebar/main seats after the shell declares them
     },
   })
   assert.equal(registrations.length, 0, 'wait for the shell-owned slot declarations')
-  assert.deepEqual([...pending.keys()], ['sidebar', 'conversation.input.model', 'conversation.input.right', 'rightbar', 'shell.overlay', 'conversation.input.dock', 'conversation.chat.node', 'main', 'main.conversation', 'sidebar.panellist'])
+  assert.deepEqual([...pending.keys()], ['sidebar', 'shell.overlay', 'conversation.input.model', 'conversation.input.right', 'rightbar', 'conversation.input.dock', 'conversation.chat.node', 'main', 'main.conversation', 'sidebar.panellist'])
   for (const factory of pending.values()) disposers.push(factory())
   const page = registrations.find(row => row.options.name === 'main')
   const nav = registrations.find(row => row.options.name === 'sidebar.panellist')
@@ -117,7 +117,8 @@ test('the conversation frame paints its border above the transcript and keeps it
   assert.match(geometry, /pointer-events:none/, 'the foreground stroke leaves controls clickable')
   assert.equal(rule(`${column}::before`), 'z-index:-1;background:var(--dsw-alias-bg-base)')
   assert.equal(rule(`${column}::after`), 'z-index:1;border:var(--nodo-card-edge);border-left:0')
-  assert.match(rule('.nodo-head'), /min-height:var\(--dsh-frame-top-clearance,0px\)/)
+  assert.match(rule('.nodo-head'), /min-height:var\(--nodo-top-clearance,0px\)/)
+  assert.equal(rule('html[data-platform=darwin]'), '--nodo-top-clearance:var(--dsh-frame-top-clearance,0px)', 'Windows columns already start below the titlebar')
   assert.match(rule('.nodo-feedwrap'), /flex:1;min-height:0/, 'the feed retains the existing space below the header')
   assert.match(rule('.nodo-feed'), /overflow-y:auto/, 'the inner feed remains the scroll owner')
 })

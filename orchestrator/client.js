@@ -30,7 +30,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// node_modules/@xterm/xterm/lib/xterm.mjs
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/@xterm/xterm/lib/xterm.mjs
 var xterm_exports = {};
 __export(xterm_exports, {
   Terminal: () => Dl
@@ -764,7 +764,7 @@ function Tc(s15) {
 }
 var zs, Rl, Ll, M, S, Gs, mi, $s, _i, er, tr, ir, we, De, rt, q, js, Hn, Fn, F, rr, ge, Zs, xt, nr, H, sr, Js, Be, wt, nt, ae, Dt, ce, Qs, or, Re, lr, Wn, Bl, Un, bi, ar, Rt, cr, ro, so, At, lo, ao, oo, ur, zn, Wl, dt, hr, dr, Ee, D, ye, fe, kt, G, Ct, zl, mr, Gl, fo, $l, $, Mt, $n, po, br, Vn, gi, qn, Yn, Vl, Pt, ql, Yl, _r, v, jn, gr, Si, Eu, Tu, Ot, Ei, Bt, Ti, Sr, Iu, yu, vr, Nt, yr, xr, Ii, Zl, vo, go, Jl, Ql, ea, ta, Tr, Ir, bo, ia, $e, Ve, xe, So, ra, Xn, wr, Te, Zn, Dr, na, xu, Fe, st, sa, oa, Eo, la, wu, Du, Ru, Lu, ot, aa, yi, Jn, To, Io, yo, Qn, Rr, es, ua, ha, da, fa, ft, wo, Lr, qe, xi, Do, ma, ts, Ye, kr, ba, Ar, va, _e, Cr, Bh, be, Nh, Fh, Hh, Oo, Wh, Uh, No, Kh, zh, ss, os, wa, mt, Mr, Di, pt, Gh, Y, Da, ls, Wt, He, Q, Pr, lt, Uo, Or, cs, Ri, Br, Nr, Fr, Ca, Ut, Kt, Wr, Ur, Ma, Ko, zo, us, zr, hs, ds, Kr, zt, Gt, Gr, We, at, Li, bt, b, Ai, fs, $t, ue, he, de, J, ps, j, U, z, ve, $r, Vr, ct, Vt, Yr, ms, _s, Le, jr, jo, ki, Xr, Na, Yt, jt, Zr, bs, vs, Jr, gs, Qr, Xt, en, tn, Mi, Pi, Oi, Ss, Fa, Zo, Zt, Wa, Ua, Es, Bi, Ts, rn, Is, ys, Jt, nn, Qt, xs, on, Ds, Ya, ja, Xa, Za, Ja, ei, Hi, Wi, re, St, Ki, tl, il, Ui, Qa, ti, Rs, ln, ec, tc, ii, ic, zi, B, X, an, Ls, Ze, un, cn, ne, Je, cl, $i, hn, ks, Cs, ni, si, nc, dn, ul, hl, li, dl, Ps, fl, ai, Os, ac, se, fn, Ae, pn, Vi, uc, ci, qi, mn, pe, Yi, _n, ji, Xi, Fs, ke, hc, bn, dc, fc, mc, ut, _l, vl, gl, vn, Zi, _c, El, bc, gn, ui, Tl, Sn, gc, ee, En, Us, yl, Tn, Ks, Sc, In, xl, wl, Tt, hi, yn, xn, wn, Ji, Dn, Rn, Ln, Ic, Ue, Dl;
 var init_xterm = __esm({
-  "node_modules/@xterm/xterm/lib/xterm.mjs"() {
+  "../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/@xterm/xterm/lib/xterm.mjs"() {
     zs = Object.defineProperty;
     Rl = Object.getOwnPropertyDescriptor;
     Ll = (s15, t) => {
@@ -9124,14 +9124,14 @@ ${h3.join(`
   }
 });
 
-// node_modules/@xterm/addon-fit/lib/addon-fit.mjs
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/@xterm/addon-fit/lib/addon-fit.mjs
 var addon_fit_exports = {};
 __export(addon_fit_exports, {
   FitAddon: () => o
 });
 var h2, _, o;
 var init_addon_fit = __esm({
-  "node_modules/@xterm/addon-fit/lib/addon-fit.mjs"() {
+  "../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/@xterm/addon-fit/lib/addon-fit.mjs"() {
     h2 = 2;
     _ = 1;
     o = class {
@@ -9644,7 +9644,7 @@ var TOOL_CALL_CSS = `
 @media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `;
 
-// node_modules/diff/libesm/diff/base.js
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/diff/base.js
 var Diff = class {
   diff(oldStr, newStr, options = {}) {
     let callback;
@@ -9846,7 +9846,7 @@ var Diff = class {
   }
 };
 
-// node_modules/diff/libesm/util/string.js
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/util/string.js
 function longestCommonPrefix(str1, str2) {
   let i;
   for (i = 0; i < str1.length && i < str2.length; i++) {
@@ -9974,7 +9974,7 @@ function leadingAndTrailingWs(string, segmenter2) {
   return [head, tail];
 }
 
-// node_modules/diff/libesm/diff/word.js
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/diff/word.js
 var extendedWordChars = "a-zA-Z0-9_\\u{AD}\\u{C0}-\\u{D6}\\u{D8}-\\u{F6}\\u{F8}-\\u{2C6}\\u{2C8}-\\u{2D7}\\u{2DE}-\\u{2FF}\\u{1E00}-\\u{1EFF}";
 var tokenizeIncludingWhitespace = new RegExp(`[${extendedWordChars}]+|\\s+|[^${extendedWordChars}]`, "ug");
 var WordDiff = class extends Diff {
@@ -10111,7 +10111,7 @@ function diffWordsWithSpace(oldStr, newStr, options) {
   return wordsWithSpaceDiff.diff(oldStr, newStr, options);
 }
 
-// node_modules/diff/libesm/diff/line.js
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/diff/line.js
 var LineDiff = class extends Diff {
   constructor() {
     super(...arguments);
@@ -10159,7 +10159,7 @@ function tokenize(value, options) {
   return retLines;
 }
 
-// node_modules/diff/libesm/patch/parse.js
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/patch/parse.js
 function parsePatch(uniDiff) {
   const diffstr = uniDiff.split(/\n/), list = [];
   let i = 0;
@@ -10495,7 +10495,7 @@ function parsePatch(uniDiff) {
   return list;
 }
 
-// node_modules/diff/libesm/patch/create.js
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/diff/libesm/patch/create.js
 function needsQuoting(s15) {
   for (let i = 0; i < s15.length; i++) {
     if (s15[i] < " " || s15[i] > "~" || s15[i] === '"' || s15[i] === "\\") {
@@ -16821,7 +16821,7 @@ function RolesEntry() {
 }
 var ROLES_CSS = `
 .nodo-roles{overflow:hidden}
-.nodo-roles-chrome{flex:none;height:var(--dsh-frame-top-clearance,0px);-webkit-app-region:drag}
+.nodo-roles-chrome{flex:none;height:var(--nodo-top-clearance,0px);-webkit-app-region:drag}
 .nodo-roles-body{display:flex;flex:1;min-width:0;min-height:0;overflow:auto;padding:20px 32px 40px}
 .nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content;margin-inline:auto}
 .nodo-roles-main[data-screen=overview]{min-width:820px}
@@ -17543,27 +17543,58 @@ function NodoEntry() {
   }, []);
   return state.legacy ? (0, import_react.createElement)(NodoPage, { contentOnly: true }) : state.drafting && state.draft ? (0, import_react.createElement)(NewConversation, { key: state.draft.id, draft: state.draft }) : null;
 }
+var sidebarFold = { collapsed: false, listeners: /* @__PURE__ */ new Set() };
+var subscribeSidebarFold = (listener) => {
+  sidebarFold.listeners.add(listener);
+  return () => sidebarFold.listeners.delete(listener);
+};
+function SidebarToggle({ collapsed }) {
+  const label = collapsed ? "\u5C55\u5F00\u4FA7\u8FB9\u680F" : "\u6536\u8D77\u4FA7\u8FB9\u680F";
+  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
+    label,
+    side: "bottom",
+    delayMs: 500,
+    children: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+      variant: "ghost",
+      onClick: () => layoutService.toggleSidebar(),
+      icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16 }),
+      "aria-label": label
+    })
+  });
+}
+function NodoSidebarControl() {
+  const collapsed = (0, import_react.useSyncExternalStore)(subscribeSidebarFold, () => sidebarFold.collapsed);
+  return (0, import_react.createElement)("div", { className: "nodo-left-control" }, (0, import_react.createElement)(SidebarToggle, { collapsed }));
+}
 function NodoSidebar({ collapsed }) {
   const rolesNavigation = (0, import_react.useSyncExternalStore)(rolesSubscribeSidebar, rolesSidebarSnapshot);
-  const label = collapsed ? "\u5C55\u5F00\u4FA7\u8FB9\u680F" : "\u6536\u8D77\u4FA7\u8FB9\u680F";
+  const space = (0, import_react.useRef)(null);
+  const wasCollapsed = (0, import_react.useRef)(collapsed);
+  (0, import_react.useLayoutEffect)(() => {
+    sidebarFold.collapsed = !!collapsed;
+    for (const listener of sidebarFold.listeners) listener();
+    const root = document.documentElement;
+    const opening = wasCollapsed.current && !collapsed;
+    wasCollapsed.current = collapsed;
+    if (!opening || !root.matches("[data-platform=darwin]")) return;
+    const chrome = root.hasAttribute("data-fullscreen") ? 84 : 160;
+    let frames = 0;
+    const follow = () => {
+      const rest = Math.max(0, chrome - (space.current?.getBoundingClientRect().width ?? chrome));
+      root.style.setProperty("--nodo-leading-clearance", `${rest}px`);
+      frame = rest > 0 && ++frames < 120 ? requestAnimationFrame(follow) : void 0;
+    };
+    root.style.setProperty("--nodo-leading-clearance", `${chrome}px`);
+    let frame = requestAnimationFrame(follow);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      root.style.removeProperty("--nodo-leading-clearance");
+    };
+  }, [collapsed]);
   return (0, import_react.createElement)(
     "div",
-    { className: "nodo-space" },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-space-chrome" },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-        label,
-        side: "bottom",
-        delayMs: 500,
-        children: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-          variant: "ghost",
-          onClick: () => layoutService.toggleSidebar(),
-          icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16 }),
-          "aria-label": label
-        })
-      })
-    ),
+    { className: "nodo-space", ref: space },
+    (0, import_react.createElement)("div", { className: "nodo-space-chrome" }, (0, import_react.createElement)(SidebarToggle, { collapsed })),
     (0, import_react.createElement)(
       "div",
       { className: "nodo-space-content", style: collapsed ? { display: "none" } : void 0 },
@@ -17573,7 +17604,7 @@ function NodoSidebar({ collapsed }) {
 }
 
 // src/client/native-space.js
-function createNativeSpace(ctx, Sidebar) {
+function createNativeSpace(ctx, Sidebar, SidebarControl) {
   let saved;
   try {
     saved = JSON.parse(localStorage.getItem("nodo.space"));
@@ -17626,10 +17657,10 @@ function createNativeSpace(ctx, Sidebar) {
     resume();
     if (document.querySelector("[data-sidebar-collapsed]")) ctx.layout.toggleSidebar();
   };
-  ctx.slots.inject("sidebar", () => {
+  const seat = (slot, Component) => ctx.slots.inject(slot.name, () => {
     let unregister;
     const update = () => {
-      if (state.active && !unregister) unregister = ctx.slots.register({ name: "sidebar", priority: -100 }, Sidebar);
+      if (state.active && !unregister) unregister = ctx.slots.register(slot, Component);
       else if (!state.active && unregister) {
         unregister();
         unregister = null;
@@ -17642,6 +17673,8 @@ function createNativeSpace(ctx, Sidebar) {
       unregister?.();
     };
   });
+  seat({ name: "sidebar", priority: -100 }, Sidebar);
+  seat({ name: "shell.overlay", id: "nodo.sidebar-toggle" }, SidebarControl);
   ctx.effect(() => {
     let live = true;
     let selected = current();
@@ -18991,7 +19024,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
   return { NewConversation: NewConversation2 };
 }
 
-// node_modules/@xterm/xterm/css/xterm.css
+// ../../../../../../../../Users/bubble/Downloads/nodo/orchestrator/node_modules/@xterm/xterm/css/xterm.css
 var xterm_default = `/**
  * Copyright (c) 2014 The xterm.js authors. All rights reserved.
  * Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
@@ -19285,15 +19318,33 @@ var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}
-.nodo-space-chrome{box-sizing:border-box;height:max(36px,var(--dsh-frame-top-clearance,0px));flex:none;display:flex;justify-content:flex-end;align-items:flex-start;padding:10px 12px 0;-webkit-app-region:drag}
+.nodo-space-chrome{box-sizing:border-box;height:max(36px,var(--nodo-top-clearance,0px));flex:none;display:flex;justify-content:flex-end;align-items:flex-start;padding:10px 12px 0;-webkit-app-region:drag}
 .nodo-space-chrome>*{display:flex;align-items:center;min-height:30px}
 .nodo-space-chrome button{-webkit-app-region:no-drag}
-.nodo-space-content{display:flex;flex:1;min-height:0}
+.nodo-space-content{display:flex;flex:1;min-width:264px;min-height:0;animation:nodo-space-in var(--ds-transition-duration-slow,.3s) var(--ds-ease-in-out,ease) backwards}
+@keyframes nodo-space-in{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.nodo-space-content{animation:none}}
 .nodo-space-sidebar{flex:1;overflow:hidden;background:var(--dsw-specific-sidebar-fill)}
 .nodo-space-sidebar .nodo-frame{flex-direction:column}
 .nodo-space-sidebar .nodo-rail{width:100%;max-height:none;flex:1;border:0}
 .nodo-space-sidebar .nodo-rail-dock{padding-top:8px}
 .nodo-space-sidebar .nodo-rail-body{padding-top:12px}
+/* The Windows host already lays its columns out below the titlebar. The desktop
+   sidebar toggle stays where the host puts it: in the Windows titlebar ahead of
+   the menu, and on macOS in the window-chrome seat that the host fills itself
+   while the sidebar is collapsed. */
+html[data-platform=darwin]{--nodo-top-clearance:var(--dsh-frame-top-clearance,0px)}
+.nodo-left-control{display:none}
+html:is([data-platform=darwin],[data-windows-titlebar]) .nodo-left-control{position:absolute;display:flex;pointer-events:auto;-webkit-app-region:no-drag}
+html:is([data-platform=darwin],[data-windows-titlebar]) .nodo-left-control button{width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm)}
+html[data-platform=darwin] .nodo-left-control{top:11px;left:88px}
+html[data-platform=darwin][data-fullscreen] .nodo-left-control{left:12px}
+html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]):not([data-sidebar-collapsed]){--dsh-frame-leading-clearance:var(--nodo-leading-clearance,0px)}
+html[data-platform=darwin] [data-sidebar-collapsed] .nodo-left-control,html[data-platform=darwin] .nodo-space-chrome>*{display:none}
+html[data-windows-titlebar] .nodo-left-control{top:calc((var(--dsh-windows-titlebar-height) - 28px) / 2);left:12px}
+html[data-windows-titlebar][data-nodo-space]:has([data-sidebar-collapsed=true]){--dsh-windows-menu-start:48px}
+html[data-windows-titlebar] .nodo-space-chrome{display:none}
+html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-tabs{margin-top:-2px}
 /* The macOS host only exposes its frame columns through these data attributes:
    the centre column sits right before [data-rightbar-col]. Theme tokens resolve
    below <html>, so the chrome variables live on the frame. */
@@ -19329,11 +19380,11 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
 .nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
-.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
+.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--nodo-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
 .nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
 .nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
-.nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
+.nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--nodo-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
 .nodo-space-sidebar .nodo-rail-tabs{margin-top:-10px}
 .nodo-rail-tabs{display:grid;grid-template-columns:1fr 1fr;flex:none;margin:0 2px 8px;box-shadow:inset 0 -.5px 0 var(--dsw-alias-border-l2)}
 .nodo-rail-tabs>button{height:32px;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:14px;font-weight:500;cursor:pointer}
@@ -19446,7 +19497,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 /* Host conversation header geometry: 20px inline start, a 30px title row inside
    the window-chrome band, then a hairline. */
-.nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--dsh-frame-top-clearance,0px);padding:10px 50px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--nodo-top-clearance,0px);padding:10px 50px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
 .nodo-title-row{display:flex;align-items:center;gap:8px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
 .nodo-crumb{min-width:0;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
 .nodo-crumb-link{flex:none;max-width:40%;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
@@ -19461,13 +19512,16 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-right-toggle{flex:none;width:30px;height:30px;padding:0}
 .nodo-right-panel{box-sizing:border-box;position:absolute;top:0;bottom:0;right:0;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;border-left:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:13px;line-height:20px}
 .nodo-right-panel[hidden],.nodo-right-directory[hidden]{display:none}
+.nodo-right-panel{animation:nodo-right-in var(--ds-transition-duration-slow,.3s) var(--ds-ease-in-out,ease) backwards}
+@keyframes nodo-right-in{from{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){.nodo-right-panel{animation:none}}
 .nodo-right-pane[hidden]{display:none}
 .nodo-right-pane,.nodo-terminal{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;overflow:hidden}
 .nodo-terminal{padding:8px;border-radius:inherit}
 .nodo-terminal-screen{flex:1;min-height:0;min-width:0;overflow:hidden}
 .nodo-right-panel *{box-sizing:border-box}
 /* Both headers reserve 12px + 30px + 8px for the frame overlay control. */
-.nodo-right-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--dsh-frame-top-clearance,0px);padding:10px 50px 0 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-right-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--nodo-top-clearance,0px);padding:10px 50px 0 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
 .nodo-right-head button{-webkit-app-region:no-drag}
 .nodo-right-tabs{display:flex;align-items:center;gap:4px;min-height:30px;overflow-x:auto}
 .nodo-right-tabs>button{flex:none;width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary)}
@@ -19988,7 +20042,7 @@ function installScrollbars(document2) {
 // src/client/index.js
 var inject = ["slots", "uiWorkspace", "uiSession", "sessions", "layout", "modelDirectories", "remote", "remote.session", "commandUi", "inputTriggers", "conversation"];
 function apply(ctx) {
-  const space = createNativeSpace(ctx, NodoSidebar);
+  const space = createNativeSpace(ctx, NodoSidebar, NodoSidebarControl);
   createModelSeat(ctx, space);
   createRoleSeat(ctx, space);
   const { ReferenceDock, ReferenceDialog, installHistory } = createSessionReferences(ctx, space);

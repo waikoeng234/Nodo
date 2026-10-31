@@ -1,6 +1,6 @@
 import { heldImages } from './page.js'
 
-export function createNativeSpace(ctx, Sidebar) {
+export function createNativeSpace(ctx, Sidebar, SidebarControl) {
   let saved
   try { saved = JSON.parse(localStorage.getItem('nodo.space')) } catch {}
   let state = { active: false, legacy: saved?.legacy === true, nativeSession: saved?.nativeSession, nodoSession: saved?.nodoSession, draft: saved?.draft, drafting: saved?.drafting ?? !!saved?.draft }
@@ -41,16 +41,18 @@ export function createNativeSpace(ctx, Sidebar) {
     resume()
     if (document.querySelector('[data-sidebar-collapsed]')) ctx.layout.toggleSidebar()
   }
-  ctx.slots.inject('sidebar', () => {
+  const seat = (slot, Component) => ctx.slots.inject(slot.name, () => {
     let unregister
     const update = () => {
-      if (state.active && !unregister) unregister = ctx.slots.register({ name: 'sidebar', priority: -100 }, Sidebar)
+      if (state.active && !unregister) unregister = ctx.slots.register(slot, Component)
       else if (!state.active && unregister) { unregister(); unregister = null }
     }
     const stop = subscribe(update)
     update()
     return () => { stop(); unregister?.() }
   })
+  seat({ name: 'sidebar', priority: -100 }, Sidebar)
+  seat({ name: 'shell.overlay', id: 'nodo.sidebar-toggle' }, SidebarControl)
   ctx.effect(() => {
     let live = true
     let selected = current()

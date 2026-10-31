@@ -15,15 +15,33 @@ export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + T
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}
-.nodo-space-chrome{box-sizing:border-box;height:max(36px,var(--dsh-frame-top-clearance,0px));flex:none;display:flex;justify-content:flex-end;align-items:flex-start;padding:10px 12px 0;-webkit-app-region:drag}
+.nodo-space-chrome{box-sizing:border-box;height:max(36px,var(--nodo-top-clearance,0px));flex:none;display:flex;justify-content:flex-end;align-items:flex-start;padding:10px 12px 0;-webkit-app-region:drag}
 .nodo-space-chrome>*{display:flex;align-items:center;min-height:30px}
 .nodo-space-chrome button{-webkit-app-region:no-drag}
-.nodo-space-content{display:flex;flex:1;min-height:0}
+.nodo-space-content{display:flex;flex:1;min-width:264px;min-height:0;animation:nodo-space-in var(--ds-transition-duration-slow,.3s) var(--ds-ease-in-out,ease) backwards}
+@keyframes nodo-space-in{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.nodo-space-content{animation:none}}
 .nodo-space-sidebar{flex:1;overflow:hidden;background:var(--dsw-specific-sidebar-fill)}
 .nodo-space-sidebar .nodo-frame{flex-direction:column}
 .nodo-space-sidebar .nodo-rail{width:100%;max-height:none;flex:1;border:0}
 .nodo-space-sidebar .nodo-rail-dock{padding-top:8px}
 .nodo-space-sidebar .nodo-rail-body{padding-top:12px}
+/* The Windows host already lays its columns out below the titlebar. The desktop
+   sidebar toggle stays where the host puts it: in the Windows titlebar ahead of
+   the menu, and on macOS in the window-chrome seat that the host fills itself
+   while the sidebar is collapsed. */
+html[data-platform=darwin]{--nodo-top-clearance:var(--dsh-frame-top-clearance,0px)}
+.nodo-left-control{display:none}
+html:is([data-platform=darwin],[data-windows-titlebar]) .nodo-left-control{position:absolute;display:flex;pointer-events:auto;-webkit-app-region:no-drag}
+html:is([data-platform=darwin],[data-windows-titlebar]) .nodo-left-control button{width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm)}
+html[data-platform=darwin] .nodo-left-control{top:11px;left:88px}
+html[data-platform=darwin][data-fullscreen] .nodo-left-control{left:12px}
+html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]):not([data-sidebar-collapsed]){--dsh-frame-leading-clearance:var(--nodo-leading-clearance,0px)}
+html[data-platform=darwin] [data-sidebar-collapsed] .nodo-left-control,html[data-platform=darwin] .nodo-space-chrome>*{display:none}
+html[data-windows-titlebar] .nodo-left-control{top:calc((var(--dsh-windows-titlebar-height) - 28px) / 2);left:12px}
+html[data-windows-titlebar][data-nodo-space]:has([data-sidebar-collapsed=true]){--dsh-windows-menu-start:48px}
+html[data-windows-titlebar] .nodo-space-chrome{display:none}
+html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-tabs{margin-top:-2px}
 /* The macOS host only exposes its frame columns through these data attributes:
    the centre column sits right before [data-rightbar-col]. Theme tokens resolve
    below <html>, so the chrome variables live on the frame. */
@@ -59,11 +77,11 @@ html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{
 /* The host sidebar reserves a 52px top strip and pulls its brand row up 12px, so
    the rail keeps the same 40px of chrome above its own head. */
 .nodo-rail{display:flex;flex:none;width:312px;min-height:0;background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);--nodo-rail-hover:var(--dsw-specific-sidebar-nav-item-hover)}
-.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--dsh-frame-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
+.nodo-rail-dock{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:56px;box-sizing:border-box;padding:max(12px,calc(var(--nodo-top-clearance,0px) - 2px)) 0 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 3%,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--dsw-alias-border-l3)}
 .nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
 .nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
-.nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--dsh-frame-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
+.nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--nodo-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
 .nodo-space-sidebar .nodo-rail-tabs{margin-top:-10px}
 .nodo-rail-tabs{display:grid;grid-template-columns:1fr 1fr;flex:none;margin:0 2px 8px;box-shadow:inset 0 -.5px 0 var(--dsw-alias-border-l2)}
 .nodo-rail-tabs>button{height:32px;padding:0;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:14px;font-weight:500;cursor:pointer}
@@ -176,7 +194,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 /* Host conversation header geometry: 20px inline start, a 30px title row inside
    the window-chrome band, then a hairline. */
-.nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--dsh-frame-top-clearance,0px);padding:10px 50px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--nodo-top-clearance,0px);padding:10px 50px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
 .nodo-title-row{display:flex;align-items:center;gap:8px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
 .nodo-crumb{min-width:0;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
 .nodo-crumb-link{flex:none;max-width:40%;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
@@ -191,13 +209,16 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-right-toggle{flex:none;width:30px;height:30px;padding:0}
 .nodo-right-panel{box-sizing:border-box;position:absolute;top:0;bottom:0;right:0;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;border-left:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:13px;line-height:20px}
 .nodo-right-panel[hidden],.nodo-right-directory[hidden]{display:none}
+.nodo-right-panel{animation:nodo-right-in var(--ds-transition-duration-slow,.3s) var(--ds-ease-in-out,ease) backwards}
+@keyframes nodo-right-in{from{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){.nodo-right-panel{animation:none}}
 .nodo-right-pane[hidden]{display:none}
 .nodo-right-pane,.nodo-terminal{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;overflow:hidden}
 .nodo-terminal{padding:8px;border-radius:inherit}
 .nodo-terminal-screen{flex:1;min-height:0;min-width:0;overflow:hidden}
 .nodo-right-panel *{box-sizing:border-box}
 /* Both headers reserve 12px + 30px + 8px for the frame overlay control. */
-.nodo-right-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--dsh-frame-top-clearance,0px);padding:10px 50px 0 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-right-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--nodo-top-clearance,0px);padding:10px 50px 0 8px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
 .nodo-right-head button{-webkit-app-region:no-drag}
 .nodo-right-tabs{display:flex;align-items:center;gap:4px;min-height:30px;overflow-x:auto}
 .nodo-right-tabs>button{flex:none;width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary)}

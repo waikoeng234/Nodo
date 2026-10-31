@@ -220,7 +220,7 @@ export function RolesEntry() {
 
 export const ROLES_CSS = `
 .nodo-roles{overflow:hidden}
-.nodo-roles-chrome{flex:none;height:var(--dsh-frame-top-clearance,0px);-webkit-app-region:drag}
+.nodo-roles-chrome{flex:none;height:var(--nodo-top-clearance,0px);-webkit-app-region:drag}
 .nodo-roles-body{display:flex;flex:1;min-width:0;min-height:0;overflow:auto;padding:20px 32px 40px}
 .nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content;margin-inline:auto}
 .nodo-roles-main[data-screen=overview]{min-width:820px}

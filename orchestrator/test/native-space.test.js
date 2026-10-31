@@ -13,7 +13,8 @@ async function harness(saved, ready = true) {
   const effects = []
   const pending = []
   const panels = []
-  let factory, sequence = 0
+  const factories = []
+  let sequence = 0
   const ctx = {
     sessions: { list: { getSnapshot: () => ({ phase: ready ? 'ready' : 'pending', byId: Object.fromEntries([...known].map(id => [id, {}])) }),
       subscribe: listener => { catalogListeners.add(listener); return () => catalogListeners.delete(listener) } } },
@@ -21,7 +22,7 @@ async function harness(saved, ready = true) {
     uiSession: { adapter: { current: { getSnapshot: () => ({ key: selected }), subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener) } } } },
     uiWorkspace: { openSession(id) { assert.ok(ready, 'native navigation must wait for the host catalog'); known.add(id); selected = id; panels.push(null); for (const listener of listeners) listener() } },
     effect: run => effects.push(run()),
-    slots: { inject: (_name, run) => { factory = run }, register(options, component) {
+    slots: { inject: (_name, run) => factories.push(run), register(options, component) {
       const entry = { options, component, id: ++sequence }
       registrations.push(entry)
       return () => registrations.splice(registrations.indexOf(entry), 1)
@@ -32,14 +33,14 @@ async function harness(saved, ready = true) {
       localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
   })
   const Sidebar = () => null
-  const space = createNativeSpace(ctx, Sidebar)
-  const unmount = factory()
+  const space = createNativeSpace(ctx, Sidebar, () => null)
+  const unmounts = factories.map(run => run())
   pending.forEach(run => run())
   return { space, registrations, panels, storage, get selected() { return selected },
     notifyCurrent() { for (const listener of listeners) listener() },
     selectNative: ctx.uiWorkspace.openSession,
     loadCatalog() { ready = true; for (const listener of catalogListeners) listener() },
-    dispose() { unmount(); effects.forEach(dispose => dispose()) } }
+    dispose() { unmounts.forEach(unmount => unmount()); effects.forEach(dispose => dispose()) } }
 }
 
 test('Nodo replaces the whole sidebar and retains it across native role and session switches', async () => {
@@ -48,6 +49,7 @@ test('Nodo replaces the whole sidebar and retains it across native role and sess
   h.space.enter()
   const sidebar = h.registrations[0]
   assert.equal(sidebar.options.name, 'sidebar', 'the whole sidebar must be replaced, not its workspaces region')
+  assert.equal(h.registrations[1].options.id, 'nodo.sidebar-toggle', 'the sidebar toggle lives with the Nodo sidebar')
   assert.equal(h.panels.at(-1), null)
   for (const id of ['codex-session', 'dsh-session', 'codex-second-session']) {
     h.space.open(id)
@@ -244,7 +246,7 @@ test('reload restores Nodo mode and its last session through the public navigati
   const h = await harness({ active: true, nativeSession: 'ordinary-session', nodoSession: 'codex-session' })
   assert.equal(h.space.getSnapshot().active, true)
   assert.equal(h.selected, 'codex-session')
-  assert.equal(h.registrations.length, 1)
+  assert.equal(h.registrations.length, 2)
   h.space.leave()
   assert.equal(h.selected, 'ordinary-session')
   h.dispose()
