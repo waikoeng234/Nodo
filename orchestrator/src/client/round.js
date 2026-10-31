@@ -101,7 +101,7 @@ function RoundTools({ step, work }) {
   const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? '').trim() !== '' ? work.buffer : null
   return (rows.length > 0 || buffer !== null) && h('div', { className: 'nodo-round-tools' },
     rows.map(row => row.item.kind === 'text'
-      ? h('div', { key: row.index, className: 'nodo-round-text' }, h(StreamingText, { text: row.item.text, labels: MARKDOWN_LABELS }))
+      ? h('div', { key: row.index, className: 'nodo-round-text' }, h(StreamingText, { text: row.item.text, streaming: row.item.open === true && work?.active === true, labels: MARKDOWN_LABELS }))
       : row.item.kind === 'thinking'
         ? h(ProcessRow, { key: row.index, kind: 'thinking', variant: { icon: IconThinkOutlineRegular }, timeline: true, title: '思考',
           summary: (row.item.text ?? '').split('\n')[0].replaceAll('**', '') || null, body: row.item.text ?? '' })

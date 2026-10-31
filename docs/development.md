@@ -29,7 +29,7 @@ When installing a third-party plugin on the dsh plugin page, enter the local pat
 Run only the test files relevant to your change:
 
 ```sh
-node --test test/workflow-client.test.js
+node --test test/lead.test.js
 ```
 
 Run the full suite before submitting:

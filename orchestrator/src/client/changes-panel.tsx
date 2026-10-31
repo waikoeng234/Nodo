@@ -1,5 +1,6 @@
 import { h, Fragment, useEffect, useMemo, useState, Button, IconRightUpOutlineRegular, IconChevronLeftOutlineRegular } from './ui-shared.js'
 import type { ReactNode } from './ui-shared.js'
+import { FileIcon } from './file-icons.tsx'
 import { Counts } from './file-changes-summary.tsx'
 import { CodeDiff } from './code-diff.tsx'
 import { relativeFile, summarizeChanges } from './file-diffs.ts'
@@ -32,6 +33,7 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
   const row = (entry: typeof files[number], detail = false) => {
     const path = relativeFile(entry.file.path, body.cwd), slash = path.lastIndexOf('/') + 1
     const content = <>
+      <FileIcon name={path} size={14} />
       <span className="nodo-changes-path" title={path}><span dir="ltr"><span className="nodo-changes-directory">{path.slice(0, slash)}</span><strong>{path.slice(slash)}</strong></span></span>
       <Counts value={entry.counts} />
     </>
@@ -69,7 +71,7 @@ export const CHANGES_PANEL_CSS = `
 .nodo-changes-list>.nodo-changes-row:hover,.nodo-changes-list>.nodo-changes-row:focus-within{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-changes-row-title{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:36px;padding:4px 8px;border:0;border-radius:inherit;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left}
 button.nodo-changes-row-title{cursor:pointer}
-.nodo-changes-row-title>svg{flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-row-title>svg,.nodo-changes-row-title>img{flex:none;color:var(--dsw-alias-label-tertiary)}
 .nodo-changes-path{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;direction:rtl;text-align:left}
 .nodo-changes-directory{color:var(--dsw-alias-label-tertiary)}
 .nodo-changes-path strong{font-weight:600}

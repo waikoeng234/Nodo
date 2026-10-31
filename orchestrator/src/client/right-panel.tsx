@@ -6,16 +6,21 @@ import {
 } from './ui-shared.js'
 import { ChangesView } from './changes-panel.tsx'
 import type { ChangesSource } from './changes-panel.tsx'
+import { FileIcon } from './file-icons.tsx'
 import { BrowserView, browserTitle, normalizeBrowserAddress } from './browser.tsx'
 import { TerminalView, terminalRequest, terminalScope, measureTerminal, TerminalMissingError } from './terminal.tsx'
 import type { TerminalList, TerminalRecord, TerminalTarget } from './terminal.tsx'
 
 type Target = TerminalTarget & { cwd?: string; readOnly?: boolean }
+export type ImageAttachment = { id: string; mediaType: string; name?: string }
 type Tab = { kind: 'files' } | ({ kind: 'terminal' } & TerminalRecord) | { kind: 'browser'; id: string; url: string; title: string }
   | { kind: 'changes'; id: 'changes'; source: ChangesSource; path?: string; version: number }
+  | { kind: 'image'; id: string; scope: string; image: ImageAttachment }
 const terminalTab = ({ id, cols, rows, shell }: TerminalRecord): Tab =>
   ({ kind: 'terminal', id, ...(cols && rows ? { cols, rows } : {}), ...(shell ? { shell } : {}) })
 const tabId = (tab: Tab) => tab.kind === 'files' ? 'files' : tab.id
+// 图片标签属于会话：切换会话即关闭，即使项目（cwd）相同。
+const scopeKey = (target: Target) => target.workspace !== undefined ? `workspace:${target.workspace}` : `session:${target.profile}:${target.session}`
 type PanelState = { target: Target | null; expanded: boolean; tabs: Tab[]; active: string; selected: string; available: boolean; creating: boolean; error: string }
 export type RightPanelService = {
   subscribe: (listener: () => void) => () => void
@@ -25,6 +30,7 @@ export type RightPanelService = {
   openFiles: () => void
   openFile: (path: string) => void
   openChanges: (source: ChangesSource, path?: string) => void
+  openImage: (image: ImageAttachment) => void
   selectFile: (path: string) => void
   openHome: () => void
   newTerminal: (element: HTMLElement | null) => Promise<void>
@@ -61,11 +67,12 @@ export function createRightPanel(ctx: {
     bind(target) {
       const current = ++generation
       const previous = bound
+      const scope = scopeKey(target)
       let adopted = false
       const adopt = (cwd = target.cwd) => {
         const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd)
         bound = { ...target, cwd: normalized(cwd) }
-        const tabs = (same ? state.tabs : state.tabs.filter(tab => tab.kind === 'files')).filter(tab => !target.readOnly || tab.kind !== 'terminal')
+        const tabs = (same ? state.tabs.filter(tab => tab.kind !== 'image' || tab.scope === scope) : state.tabs.filter(tab => tab.kind === 'files')).filter(tab => !target.readOnly || tab.kind !== 'terminal')
         publish({ target: bound, tabs, selected: same ? state.selected : '', active: same && (state.active === '' || tabs.some(tab => tabId(tab) === state.active)) ? state.active : tabs[0] ? tabId(tabs[0]) : '', available: false, creating: false, ...(adopted ? {} : { error: '' }) })
         adopted = true
       }
@@ -103,6 +110,12 @@ export function createRightPanel(ctx: {
       if (!state.target) return
       const tab: Tab = { kind: 'changes', id: 'changes', source, path, version: ++changesSequence }
       publish({ tabs: state.tabs.some(tab => tab.kind === 'changes') ? state.tabs.map(current => current.kind === 'changes' ? tab : current) : [...state.tabs, tab], active: 'changes', expanded: true })
+    },
+    openImage(image) {
+      if (!state.target) return
+      const id = `image-${image.id}`
+      const tab: Tab = { kind: 'image', id, scope: scopeKey(state.target), image: { ...image } }
+      publish({ tabs: state.tabs.some(current => current.kind !== 'files' && current.id === id) ? state.tabs.map(current => current.kind === 'image' && current.id === id ? tab : current) : [...state.tabs, tab], active: id, expanded: true })
     },
     selectFile: selected => publish({ selected }),
     openHome: () => { if (state.active) publish({ active: '' }) },
@@ -201,8 +214,9 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
   if (!target) return null
   const counts = new Map<string, number>()
   const titles = state.tabs.map(tab => {
-    const title = tab.kind === 'files' ? '项目文件' : tab.kind === 'changes' ? '变更' : tab.kind === 'browser' ? tab.title : tab.shell || '终端'
-    const base = tab.kind === 'browser' && title.length > 28 ? `${title.slice(0, 27)}…` : title
+    const title = tab.kind === 'files' ? '项目文件' : tab.kind === 'changes' ? '变更' : tab.kind === 'image' ? tab.image.name ?? '图片'
+      : tab.kind === 'browser' ? tab.title : tab.shell || '终端'
+    const base = (tab.kind === 'browser' || tab.kind === 'image') && title.length > 28 ? `${title.slice(0, 27)}…` : title
     const nth = (counts.get(base) ?? 0) + 1
     counts.set(base, nth)
     return nth > 1 ? `${base} ${nth}` : base
@@ -221,7 +235,8 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
         {state.tabs.map((tab, index) => <div key={tabId(tab)} className="nodo-right-tab" data-active={state.active === tabId(tab) || undefined}>
           <button type="button" role="tab" id={`nodo-right-tab-${tabId(tab)}`} aria-controls={`nodo-right-pane-${tabId(tab)}`}
             aria-selected={state.active === tabId(tab)} tabIndex={state.active === tabId(tab) ? 0 : -1} onClick={() => panel.selectTab(tabId(tab))}>
-            {tab.kind === 'files' ? <IconFolderOpenOutlineRegular size={14} /> : tab.kind === 'changes' ? <IconCompareSplitOutlineRegular size={14} /> : tab.kind === 'browser' ? <IconGlobeOutlineRegular size={14} /> : <IconApiOutlineRegular size={14} />}{titles[index]}
+            {tab.kind === 'files' ? <IconFolderOpenOutlineRegular size={14} /> : tab.kind === 'changes' ? <IconCompareSplitOutlineRegular size={14} />
+              : tab.kind === 'browser' ? <IconGlobeOutlineRegular size={14} /> : tab.kind === 'image' ? <FileIcon name={tab.image.name ?? ''} size={14} /> : <IconApiOutlineRegular size={14} />}{titles[index]}
           </button>
           <Button variant="ghost" className="nodo-right-tab-close" aria-label={`关闭${titles[index]}`}
             onClick={() => void panel.closeTab(tabId(tab))} icon={<IconCloseOutlineRegular size={14} />} />
@@ -237,6 +252,7 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
           : tab.kind === 'changes' ? <ChangesView key={tab.version} source={tab.source} initialPath={tab.path} openFile={panel.openFile} />
           : tab.kind === 'browser' ? <BrowserView cwd={target.cwd} initialUrl={tab.url}
             onChange={(url, title) => panel.updateBrowser(tab.id, url, title)} onOpen={panel.newBrowser} />
+          : tab.kind === 'image' ? <ImageView key={tab.id} image={tab.image} />
           : <TerminalView id={tab.id} target={target} initialSize={tab.cols && tab.rows ? { cols: tab.cols, rows: tab.rows } : undefined}
             active={state.active === tab.id && state.expanded} onGone={() => panel.forgetTab(tab.id)} />}
       </div>)}
@@ -292,7 +308,7 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
             aria-expanded={isDir ? !!expanded[child] : undefined} title={child}
             onClick={() => isDir ? setExpanded(current => ({ ...current, [child]: !current[child] })) : setSelected(child)}>
             {isDir ? <>{expanded[child] ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}{expanded[child] ? <IconFolderOpenOutlineRegular size={14} /> : <IconFolderCloseRegular size={14} />}</>
-              : <span className="nodo-right-file-icon" aria-hidden />}
+              : <span className="nodo-right-file-icon"><FileIcon name={entry.name} size={14} /></span>}
             <span>{entry.name}</span>
           </button>
           {isDir && expanded[child] && branch(child, depth + 1)}
@@ -331,6 +347,7 @@ export function FilePreview({ target, path, onBack }: { target: Target; path: st
   return <div className="nodo-right-preview">
     <div className="nodo-right-preview-head">
       <Button variant="ghost" aria-label="返回文件树" onClick={onBack} icon={<IconChevronLeftOutlineRegular size={16} />} />
+      <FileIcon name={path} size={14} />
       <span title={path}>{path}</span>
       {markdown && <Button variant="ghost" aria-pressed={source} onClick={() => setSource(value => !value)}>{source ? '预览' : '源码'}</Button>}
     </div>
@@ -343,5 +360,29 @@ export function FilePreview({ target, path, onBack }: { target: Target; path: st
               : <CodeBlock code={content.text ?? ''} lang={LANGUAGES[extension] ?? 'text'} copyLabel="复制" copiedLabel="已复制" />}
     </div>
     {lightbox && !imageError && content?.image && <ImageLightbox src={content.image.dataUrl} alt={path} labels={{ dialog: '图片预览', close: '关闭预览' }} onClose={() => setLightbox(false)} />}
+  </div>
+}
+
+export function ImageView({ image }: { image: ImageAttachment }) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+  const [lightbox, setLightbox] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const alt = image.name || '图片'
+  useEffect(() => {
+    let live = true
+    setSrc(null); setError(false); setImageError(false)
+    call('attachment', { id: image.id, mediaType: image.mediaType }).then((value: { mediaType: string; data: string }) => {
+      if (live) setSrc(`data:${value.mediaType};base64,${value.data}`)
+    }).catch(() => { if (live) setError(true) })
+    return () => { live = false }
+  }, [image.id, image.mediaType])
+  return <div className="nodo-right-preview">
+    <div className="nodo-right-preview-body">
+      {error ? status('图片不可用') : !src ? status('加载中…')
+        : imageError ? status('无法显示') : <button type="button" className="nodo-right-image" aria-label="放大图片" onClick={() => setLightbox(true)}>
+          <img src={src} alt={alt} onError={() => setImageError(true)} /></button>}
+    </div>
+    {lightbox && !imageError && src && <ImageLightbox src={src} alt={alt} labels={{ dialog: '图片预览', close: '关闭预览' }} onClose={() => setLightbox(false)} />}
   </div>
 }

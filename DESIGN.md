@@ -56,7 +56,6 @@ rounded:
   md: "12px"
   lg: "16px"
   xl: "20px"
-  node: "24px"
   panel: "28px"
 spacing:
   xxs: "4px"
@@ -117,12 +116,6 @@ components:
     rounded: "{rounded.sm}"
     height: "24px"
     padding: "0 8px 0 6px"
-  workflow-node:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.node}"
-    padding: "16px"
-    width: "204px"
 ---
 
 # Design System: Nodo
@@ -152,23 +145,23 @@ Confirmed rejections: large blocks of colour or decorative gradients, and the "t
 A cool bluish-grey neutral world with one blue signal, four status hues, and six pastel crew colours that live only inside avatars.
 
 ### Primary
-- **Signal Blue** (#4176e6; #7aaaff in dark): selection rings, ongoing step marks, links, the composer caret, focus outlines, workflow "continue" edges and flags. It means "this one" or "running now".
+- **Signal Blue** (#4176e6; #7aaaff in dark): selection rings, links, the composer caret, focus outlines. It means "this one" or "running now".
 - **Signal Blue Wash** (#edf3fe): the user's own message bubble. It is the only place Signal Blue tints a large surface.
 - **Signal Blue Tint** (#e4edfd): active state of picker options and selected sidebar items.
 
 ### Neutral
 - **Ink** (#0f1115): primary text and icons on hover.
 - **Slate** (#61666b): secondary text, idle icon buttons, tag and chip text.
-- **Pebble** (#81858c): tertiary text, placeholders, captions, idle step marks.
-- **Paper** (#ffffff): the base reading surface, cards, composer and workflow nodes.
+- **Pebble** (#81858c): tertiary text, placeholders, captions.
+- **Paper** (#ffffff): the base reading surface, cards and composer.
 - **Mist** (#f9fafb): sidebar fill and code/IO block background; the left half of the tonal split.
 - **Haze** (#e9ecf2): overlays and pressed ghost fills.
 - **Hairline** (#0000001a) and **Hairline Strong** (#0000001f): dividers, card edges and panel borders, always 0.5px.
 - **Hover Veil** (#2631480f): the single hover and active fill for rows, icon buttons, tags and chips.
 
 ### Status
-- **Done Green** (#22c55e): finished steps and success marks.
-- **Caution Amber** (#f59e0b) with **Caution Amber Wash** (#fef5e7): approval cards, "hard" difficulty tags, warning steps, workflow rework edges.
+- **Done Green** (#22c55e): running and success marks.
+- **Caution Amber** (#f59e0b) with **Caution Amber Wash** (#fef5e7): approval cards, "hard" difficulty tags, waiting states and warnings.
 - **Fault Red** (#ec1313; #f25a5a in dark): errors and destructive actions.
 
 ### Crew (avatar only)
@@ -193,10 +186,10 @@ A cool bluish-grey neutral world with one blue signal, four status hues, and six
 ### Hierarchy
 - **Headline** (500, 26px, 32px): empty-state and welcome headlines only.
 - **Title** (600, 18px, 26px): page, dialog and empty-section titles.
-- **Prompt** (500, 15px, 24px): the question in approval and question cards; workflow node and inspector names use it at 600.
+- **Prompt** (500, 15px, 24px): the question in approval and question cards.
 - **Body** (400, 14px, 24px): transcripts and composer text. It follows the host content-size setting (`--dsh-content-font-size`).
 - **Item** (500, 13px, 20px): list row names, step names, section headings (600 for headings).
-- **Label** (400, 12px, 18px): meta lines, tags, chips, counters, timestamps. Numbers use `tabular-nums`. Nothing goes below 12px except the numeral inside a step mark.
+- **Label** (400, 12px, 18px): meta lines, tags, chips, counters, timestamps. Numbers use `tabular-nums`. Nothing goes below 12px except the numeral inside the team number badge.
 
 Weights stay at 400/500/600; headlines balance their wrap, prompts wrap `pretty`.
 
@@ -205,11 +198,10 @@ Weights stay at 400/500/600; headlines balance their wrap, prompts wrap `pretty`
 
 ## Layout
 
-- **Frame:** a left rail (56px dock plus a 312px body, 12px inline inset), a centre column, and an optional right panel. On macOS inside dsh the centre and right panel sit as cards inset 8px from the window chrome (`--nodo-frame-gap`), with a 16px card radius.
+- **Frame:** a left rail (56px dock plus a 312px body, 12px inline inset), a centre column, and an optional right panel. On macOS inside dsh and in the web view, the centre and right panel sit as cards inset 8px from the frame (`--nodo-frame-gap`), with a 16px card radius. The web view reserves a shared 48px top strip; desktop window controls remain owned by dsh.
 - **Reading column:** content and composer are capped at the host chat width (748px); the composer adds 16px either side. User bubbles take at most about 70% of that width.
 - **Rhythm:** 4/6/8/12/16/20/24px steps; 8px between controls, 12px inside rows and composer tool rows, 16px card padding, 20–24px around cards and dialog heads. The one exception is the 10px top padding of title bars (`.nodo-head`, `.nodo-right-head`, the space and drawer chrome), which keeps titles level with the host's title bar.
 - **Responsive:** the right panel and wide tables collapse through breakpoints at 1100, 820, 800, 720, 640, 520 and 420px. The composer's model picker compacts to an icon when space is short.
-- **Workflow canvas:** a free canvas on a 1px dotted grid (hairline dots), with fixed 204px-wide nodes.
 
 ## Elevation & Depth
 
@@ -226,7 +218,7 @@ Flat by default. Depth comes from the tonal split between Mist (sidebar, code bl
 
 ## Shapes
 
-Soft rounded rectangles throughout, on a 4/8/12/16/20/24/28px scale. Small controls use 8px, rows and avatars about 12px, cards 16px, bubbles and floating cards 20px, workflow nodes 24px, and the composer a 28px panel radius. Avatars are 28%-rounded tiles holding an irregular blob. Hairlines are 0.5px; dashed borders mean "add" or "rework".
+Soft rounded rectangles throughout, on a 4/8/12/16/20/28px scale. Small controls use 8px, rows and avatars about 12px, cards 16px, bubbles and floating cards 20px, and the composer a 28px panel radius. Avatars are 28%-rounded tiles holding an irregular blob. Hairlines are 0.5px; dashed borders mean "add".
 
 ### Named Rules
 **The Concentric Corner Rule.** A nested surface's radius equals its parent's radius minus the inset between them (and minus the 0.5px edge), as the right panel already does with `calc(var(--nodo-card-radius) - 12px - .5px)`. Never put a larger or equal radius inside a tighter one.
@@ -236,10 +228,10 @@ Soft rounded rectangles throughout, on a 4/8/12/16/20/24/28px scale. Small contr
 ### Buttons
 - **Text buttons** come from the host `Button` primitive in three variants: `primary` (the one main action in a view), `outline` (most secondary actions) and `ghost` (low-emphasis actions in toolbars and menus). Do not restyle them locally.
 - **Icon button:** 28px square, 8px radius, transparent, Slate icon. Hover adds the Hover Veil and Ink colour over 0.1s. Row actions stay hidden until the row is hovered or focused.
-- **Rail dock:** 36px square buttons, in the order 主页, 新建会话, 搜索, 角色. The pressed item gets a Paper fill with the pressed-tab shadow.
+- **Rail dock:** 36px square buttons, in the order 主页, 新建会话, 搜索, 角色, then 设置 and 返回普通空间 at the end. The pressed item gets a Paper fill with the pressed-tab shadow.
 
 ### Chips and Tags
-- **Tag** (`.nodo-tag`): the one small-label component, used for task types, difficulty, role kind, identity, recommended options, workflow exit targets, human-provided output and the read-only marker. It replaces the host `Tag`, whose amber text is unreadable and which does not survive outside dsh. It is 20px tall with a 6px radius, Hover Veil fill and 12px/400 Slate text, and long text truncates with an ellipsis. `data-tone="accent"` (Signal Blue) and `data-tone="caution"` (Caution Amber) tint the text and mix the same colour at 10% into the fill. Any other `data-tone` value applies the 10% mix to whatever `--nodo-tag-tone` the context sets, as workflow exits do. Context classes add only layout or font (for example the monospace identity cell), never their own shape or colour.
+- **Tag** (`.nodo-tag`): the one small-label component, used for the lead marker, task types, difficulty, recommended options and the read-only marker. It replaces the host `Tag`, whose amber text is unreadable and which does not survive outside dsh. It is 20px tall with a 6px radius, Hover Veil fill and 12px/400 Slate text, and long text truncates with an ellipsis. `data-tone="accent"` (Signal Blue) and `data-tone="caution"` (Caution Amber) tint the text and mix the same colour at 10% into the fill. Any other `data-tone` value applies the 10% mix to whatever `--nodo-tag-tone` the context sets. Context classes add only layout or font, never their own shape or colour.
 - **Chip:** 24px tall, 8px radius, leading avatar or icon. It is used for lead dispatches inside a round.
 
 ### Cards / Containers
@@ -256,19 +248,13 @@ Soft rounded rectangles throughout, on a 4/8/12/16/20/24/28px scale. Small contr
 
 ### Navigation
 - **Rail rows:** transparent with a 12px radius. Hover adds the Hover Veil; the selected row takes the sidebar nav active grey, with no outline or shadow. Names are 13px/500 with a 12px Pebble meta line; long names truncate with an ellipsis.
-- **Session rows:** each row leads with its role's 18px avatar, so a mixed list shows which role a session belongs to; the draft row follows the same layout.
-- **Roster:** a single column of 36px rows with a 24px avatar and a 13px name, folded after five roles. A lead's avatar gets a 1.5px ring in its role colour. The selected row follows the rail row states.
+- **Session rows:** each row leads with its role's 20px avatar, so a mixed list shows which role a session belongs to; the draft row follows the same layout.
+- **Roster:** a single column of 36px rows with a 20px avatar and a 13px name, folded after five roles. The selected row follows the rail row states.
 - **Work status mark** (`WorkDot`): a 7px dot before a 12px Pebble label, used by session rows, the roster, the finder and the collapsed-project summary (which counts only running and waiting). Running is the success colour with a slow pulse (none under reduced motion), waiting is Caution Amber, done is Signal Blue, failed is the error colour, and stopped is a hollow Pebble ring. It replaces the host `StateDot` spinner in the rail.
-- **Session finder:** the dock's search opens a headless host `Modal`, 640px wide, shared by the home and Team rails. A 56px input row with a hairline below sits over an 8px-inset list of 40px rows: 20px role avatar, session name, project (folder or branch glyph) and time. The active row takes the sidebar nav active grey and swaps its time for ↵.
+- **Session finder:** the dock's search opens a headless host `Modal`, 640px wide, shared by the 角色 and 团队 views. A 56px input row with a hairline below sits over an 8px-inset list of 40px rows: 20px role avatar, session name, project (folder or branch glyph) and time. The active row takes the sidebar nav active grey and swaps its time for ↵.
 
 ### Role Avatar (signature)
 A pastel blob with two upright pill eyes on a tile of its own colour. Idle it is still; it greets (a 0.45s wobble) on hover, hops on a 1.6s loop and blinks every 3.8s while its Agent runs. This is the brand's face. Reuse it wherever a role appears instead of initials or generic icons.
-
-### Workflow Node (signature)
-A 204×96px Paper card with a 24px radius and a 2px border tinted by node kind (Signal Blue for execution, Done Green for start/finish, Caution Amber for human checkpoints). Edges are solid Signal Blue for "continue" and 6/5-dashed amber for "rework".
-
-### Run Steps
-A vertical list whose 22px circular marks are tinted with the step's status at 14%, joined by a 1px hairline spine. Warning steps get an 8% amber wash on the whole row.
 
 ## Do's and Don'ts
 

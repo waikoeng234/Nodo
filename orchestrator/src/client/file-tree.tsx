@@ -1,5 +1,6 @@
 import { h, Fragment, IconChevronDownOutlineRegular, IconFolderOpenOutlineRegular } from './ui-shared.js'
 import type { ComponentProps, ReactNode } from 'react'
+import { FileIcon } from './file-icons.tsx'
 
 export interface FileTreeNode {
   path: string
@@ -44,7 +45,7 @@ export function FileTree({ nodes, visibleCount = nodes.length, totalAdditions, t
     {nodes.slice(0, Math.max(0, visibleCount)).map(node => {
       const content = <span className="nodo-file-tree-row" style={{ paddingInlineStart: `${4 + node.depth * 14}px` }}>
         {node.kind === 'folder' ? <><IconChevronDownOutlineRegular size={12} /><IconFolderOpenOutlineRegular size={14} /></>
-          : <span className="nodo-file-tree-icon" aria-hidden />}
+          : <span className="nodo-file-tree-icon"><FileIcon name={node.name} size={14} /></span>}
         <span className="nodo-file-tree-name" title={node.path}>{node.name}</span>
         {node.kind === 'file' && <span className="nodo-file-tree-counts">
           {!!node.additions && <span className="nodo-file-tree-added">+{node.additions.toLocaleString()}</span>}

@@ -40,7 +40,7 @@ export function patchCounts(patches: readonly StructuredPatch[]): DiffCounts {
 
 export const relativeFile = (path: string, root?: string) => root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 
-function editCounts(edit: FileEdit): DiffCounts | undefined {
+export function editCounts(edit: FileEdit): DiffCounts | undefined {
   if (typeof edit.oldText === 'string' && typeof edit.newText === 'string'
     || edit.operation === 'add' && edit.oldText === null && typeof edit.newText === 'string') {
     const changes = diffLines(edit.oldText ?? '', edit.newText!, { timeout: 40, maxEditLength: 10000 })
@@ -52,6 +52,14 @@ function editCounts(edit: FileEdit): DiffCounts | undefined {
   return patch ? patchCounts(patch) : undefined
 }
 
+// 同一文件的相邻编辑互为前后像时，按首尾一对求净变更。
+export function chainedEdits(edits: FileEdit[]): FileEdit[] {
+  return edits.length > 1 && edits.every((edit, index) => typeof edit.newText === 'string'
+    && (typeof edit.oldText === 'string' || edit.operation === 'add' && edit.oldText === null)
+    && (index === 0 || edit.oldText === edits[index - 1].newText))
+    ? [{ ...edits[0], newText: edits.at(-1)!.newText }] : edits
+}
+
 export function summarizeChanges(body: ChangesBody) {
   const turn = new Map((body.turnDiff ? parsedPatch(body.turnDiff) ?? [] : []).map(patch => {
     const path = patch.newFileName === '/dev/null' ? patch.oldFileName : patch.newFileName
@@ -60,13 +68,7 @@ export function summarizeChanges(body: ChangesBody) {
   const files = (body.files ?? []).map(file => {
     const patch = turn.get(relativeFile(file.path, body.cwd))
     if (patch) return { file, counts: patchCounts([patch]), patch: formatPatch(patch) }
-    let edits = file.edits
-    if (edits.length > 1 && edits.every((edit, index) => typeof edit.newText === 'string'
-      && (typeof edit.oldText === 'string' || edit.operation === 'add' && edit.oldText === null)
-      && (index === 0 || edit.oldText === edits[index - 1].newText))) {
-      edits = [{ ...edits[0], newText: edits.at(-1)!.newText }]
-    }
-    const counts = edits.map(editCounts)
+    const counts = chainedEdits(file.edits).map(editCounts)
     return { file, counts: counts.length > 0 && counts.every(Boolean)
       ? (counts as DiffCounts[]).reduce((sum, count) => ({ added: sum.added + count.added, removed: sum.removed + count.removed }), { added: 0, removed: 0 })
       : undefined, patch: undefined }

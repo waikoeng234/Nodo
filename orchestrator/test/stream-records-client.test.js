@@ -5,17 +5,19 @@ import { loadClient } from './helpers/client-module.js'
 const sample = () => ({ version: 1, kind: 'tool', mode: 'snapshot', runId: 'run', entityId: 'call', revision: 1,
   title: 'Fixture', status: 'error', body: { command: 'echo fixture', outputText: 'partial' }, capture: 'complete', truncated: true,
   details: { state: 'stored', ref: 'fixed-ref' } })
-const harness = async call => {
-  const { StreamRecordCard, FileChangesSummary, ChangedFile, ResourceList, ResourceItem, CodeDiff, host } = await loadClient(['stream-records.js', 'code-diff.tsx', 'file-changes-summary.tsx'], {
+const harness = async (call, uiShared) => {
+  const { StreamRecordCard, FileChangesSummary, ChangedFile, ResourceList, ResourceItem, CodeDiff, HoverPreview, ToolFileChip, HoverFilePreview, host } = await loadClient(['stream-records.js', 'code-diff.tsx', 'file-changes-summary.tsx', 'hover-preview.tsx'], {
     stubs: { 'feed.js': { TranscriptImage: 'TranscriptImage', ProcessRow: 'ProcessRow' } },
     primitives: {
       DisclosureRow: 'DisclosureRow', IconCodeOutlineRegular: 'Icon', TerminalBlock: 'TerminalBlock',
       DiffBlock: 'DiffBlock', CodeBlock: 'CodeBlock', Button: 'Button',
     },
-    call,
+    call, ...(uiShared ? { uiShared: { ...uiShared, call } } : {}), globals: { URL },
   })
-  return { context: { ChangedFile, ResourceList, ResourceItem, CodeDiff, FileChangesSummary }, state: host.cells, render: props => { host.reset(); return StreamRecordCard(props) },
-    renderChanges: props => { host.reset(); return FileChangesSummary(props) }, renderFile: props => { host.reset(); return ChangedFile(props) }, effects: host.effects }
+  return { context: { ChangedFile, ResourceList, ResourceItem, CodeDiff, FileChangesSummary, HoverPreview, ToolFileChip, HoverFilePreview },
+    state: host.cells, effects: host.effects, reset: () => host.reset(),
+    render: props => { host.reset(); return StreamRecordCard(props) },
+    renderChanges: props => { host.reset(); return FileChangesSummary(props) }, renderFile: props => { host.reset(); return ChangedFile(props) } }
 }
 const descendants = node => {
   if (!node || typeof node !== 'object') return []
@@ -195,13 +197,18 @@ test('saved images render through the attachment component while links, audio an
     { kind: 'file', state: 'reference', reason: 'no-reader', name: 'x.bin', bytes: 3 },
   ]
   assert.equal(view.context.ResourceList({ resources }).children.length, resources.length)
-  const tree = { children: resources.map(resource => view.context.ResourceItem({ resource })) }
+  const tree = { children: resources.map(resource => view.context.ResourceItem({ resource, cwd: '/workspace' })) }
   const images = descendants(tree).filter(node => node.type === 'TranscriptImage')
   assert.equal(images.length, 1)
   assert.equal(images[0].props.image.id, '11111111-1111-1111-1111-111111111111')
   const text = JSON.stringify(tree)
   assert.match(text, /图片超过保存上限/)
-  assert.match(text, /file:\/\/\/workspace\/notes.txt/)
+  const chips = descendants(tree).filter(node => node.type === view.context.ToolFileChip)
+  assert.equal(chips.length, 1, 'the workspace link reads as one file chip')
+  const chip = chips[0].type(chips[0].props)
+  assert.equal(descendants(chip).find(node => node.props?.className === 'nodo-tool-call-file-name').children[0], 'notes.txt')
+  assert.equal(descendants(chip).find(node => node.props?.className === 'nodo-tool-call-directory'), undefined,
+    'the display strips the workspace prefix, so no directory segment remains')
   assert.match(text, /不支持音频播放/)
   assert.match(text, /宿主未提供读取或预览通道/)
   assert.match(text, /嵌入文本资源/)
@@ -223,4 +230,52 @@ test('a pending image says it is saved at the end and a record without resources
   const tree = view.render({ record, request: { profile: 'p', session: 's' } })
   assert.doesNotMatch(JSON.stringify(tree), /data-nodo-resources/)
   assert.match(JSON.stringify(tree), /no resource fixture/)
+})
+
+test('workspace references read as chips that hover-preview with the request scope and open in the right panel', async () => {
+  const requests = [], opened = []
+  const view = await harness(async (endpoint, payload) => { requests.push([endpoint, payload.path]); return { text: 'file body\n' } },
+    { rightPanelService: { subscribe() {}, getSnapshot: () => ({ target: { profile: 'p', session: 's' } }), openFile: path => opened.push(path) } })
+  const scope = { profile: 'p', session: 's' }
+  const resource = { kind: 'link', state: 'reference', name: 'notes.md', uri: 'src/notes.md' }
+  const list = view.context.ResourceList({ resources: [resource], scope, cwd: '/ws' })
+  assert.deepEqual(JSON.parse(JSON.stringify(list.children[0].props)), { key: 0, resource, scope, cwd: '/ws' })
+  view.reset()
+  const tree = view.context.ResourceItem({ resource, scope, cwd: '/ws' })
+  const chip = descendants(tree).find(node => node.type === view.context.ToolFileChip)
+  const rendered = chip.type(chip.props)
+  assert.ok(descendants(rendered).some(node => node.type?.name === 'FileIcon'), 'the chip carries the file type icon')
+  const name = descendants(rendered).find(node => node.props?.className === 'nodo-tool-call-file-name')
+  assert.equal(name.children[0], 'notes.md')
+  assert.equal(name.props.role, 'link', 'a bound panel makes the filename clickable')
+  assert.equal(name.props['aria-haspopup'], 'dialog')
+  name.props.onClick({})
+  assert.deepEqual(opened, ['src/notes.md'])
+  chip.props.onShow({})
+  const item = () => { view.reset(); return view.context.ResourceItem({ resource, scope, cwd: '/ws' }) }
+  const hovered = item()
+  assert.equal(descendants(hovered).find(node => node.type === view.context.HoverPreview).props.label, 'src/notes.md 文件预览')
+  view.context.HoverFilePreview(descendants(descendants(hovered).find(node => node.type === view.context.HoverPreview))
+    .find(node => node.type === view.context.HoverFilePreview).props)
+  view.effects.splice(0).forEach(effect => effect())
+  await new Promise(resolve => setImmediate(resolve))
+  const reader = view.context.HoverFilePreview(descendants(descendants(item()).find(node => node.type === view.context.HoverPreview))
+    .find(node => node.type === view.context.HoverFilePreview).props)
+  assert.deepEqual(requests, [['workspace-file', 'src/notes.md']])
+  assert.equal(descendants(reader).find(node => node.type === 'CodeBlock').props.code, 'file body\n')
+})
+
+test('pending workspace images read as chips while remote and outside references keep their note lines', async () => {
+  const view = await harness()
+  const chipOf = tree => { const el = descendants(tree).find(node => node.type === view.context.ToolFileChip); return el ? el.type(el.props) : null }
+  const pending = chipOf(view.context.ResourceItem({ resource: { kind: 'image', state: 'pending', mimeType: 'image/png', uri: 'out/shot.png', bytes: 68 }, cwd: '/ws' }))
+  assert.equal(descendants(pending).find(node => node.props?.className === 'nodo-tool-call-file-name').children[0], 'shot.png')
+  assert.doesNotMatch(JSON.stringify(pending), /工具结束后保存并展示/)
+  const blob = chipOf(view.context.ResourceItem({ resource: { kind: 'file', state: 'reference', reason: 'no-reader', uri: 'src/data.bin', name: 'data.bin' }, cwd: '/ws' }))
+  assert.equal(descendants(blob).find(node => node.props?.className === 'nodo-tool-call-file-name').children[0], 'data.bin')
+  for (const uri of ['https://example.com/x.png', 'file:///tmp/outside.png', '~/.codex/generated/x.png']) {
+    const note = view.context.ResourceItem({ resource: { kind: 'image', state: 'pending', mimeType: 'image/png', uri } })
+    assert.match(JSON.stringify(note), /工具结束后保存并展示/)
+    assert.equal(descendants(note).find(node => node.type === view.context.ToolFileChip), undefined)
+  }
 })

@@ -160,7 +160,7 @@ test('directory grouping keeps same-named files linked to their own diffs and on
 })
 
 test('preview placement fits the viewport and leaves a gap from the hovered file', async () => {
-  const { diffPreviewPosition } = await loadClient('file-changes-summary.tsx')
+  const { diffPreviewPosition } = await loadClient('hover-preview.tsx')
   const row = { left: 200, top: 500, bottom: 540, width: 800 }
   const above = diffPreviewPosition(row, 1200, 900)
   assert.equal(above.bottom, '408px')
@@ -175,7 +175,7 @@ test('preview placement fits the viewport and leaves a gap from the hovered file
 })
 
 test('preview height stays below the conversation header and inside the available feed area', async () => {
-  const { diffPreviewPosition } = await loadClient('file-changes-summary.tsx')
+  const { diffPreviewPosition } = await loadClient('hover-preview.tsx')
   const bounds = { top: 300, bottom: 800 }
   const row = { left: 200, top: 500, bottom: 540, width: 800 }
   const above = diffPreviewPosition(row, 1200, 900, bounds)
@@ -389,4 +389,14 @@ test('hover and focus request the shared diff preview layout', async () => {
   assert.equal(find(tree, 'nodo-changes-preview').props.role, 'dialog')
   assert.equal(calls.at(-1)[2], false)
   assert.equal(calls.at(-1)[3], true)
+})
+
+test('previews center on the conversation column when the feed bounds are known', async () => {
+  const { diffPreviewPosition } = await loadClient('hover-preview.tsx')
+  const row = { left: 500, top: 400, bottom: 440, width: 748 }
+  const centered = diffPreviewPosition(row, 1800, 900, { left: 430, width: 940, top: 0, bottom: 900 })
+  assert.equal(centered.width, '748px')
+  assert.equal(centered.left, '526px', 'the popup centers on the feed column, not the hovered row')
+  const clamped = diffPreviewPosition(row, 800, 900, { left: 430, width: 940, top: 0, bottom: 900 })
+  assert.equal(clamped.left, '40px', 'narrow windows keep the popup inside the viewport')
 })

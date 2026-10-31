@@ -7,7 +7,7 @@
 // resumes it.
 import {
   h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, MarkdownText, StateDot,
-  Button, Menu, Modal, ComposerGlyph,
+  Button, Menu, Modal, ComposerGlyph, rightPanelService,
   IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
   IconGaugeOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
   billedTokens, cacheHitPercent, contextPercent, compactTokens, compactDuration, exactTokens, tokensPerSecond, turnTokens,
@@ -16,6 +16,9 @@ import { supportedStreamRecord, StreamRecordCard } from './stream-records.js'
 import { StreamingText } from './streaming-text.tsx'
 import { referenceHistory } from './session-references.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
+import { HoverPreview, HoverFilePreview, ToolFileChip, useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
+import { toolFileChange } from './tool-file.ts'
+import { CodeDiff } from './code-diff.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
 import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
 import { leadModeOf } from '../../core/shared/lead.js'
@@ -66,8 +69,9 @@ const completedLead = text => {
   }
 }
 
-export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status, timeline }) {
+export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status, timeline, file, scope }) {
   const [open, setOpen] = useState(false)
+  const hover = useHoverPreview()
   const text = typeof body === 'string' ? body.trim() : ''
   const expandable = text !== '' || Boolean(input) || Boolean(output) || Boolean(progress)
   const streaming = running === true
@@ -89,11 +93,25 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
     compact: timeline, kind,
     status: error ? 'error' : streaming ? 'running' : status ?? 'done', open, onOpenChange: setOpen,
   }
+  const chip = kind === 'tool' && file ? h(ToolFileChip, {
+    file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }) : null
+  const preview = kind === 'tool' && file ? h(HoverPreview, { preview: hover, className: 'nodo-hover-preview',
+      label: `${file.display} ${file.diffs.length > 0 ? '变更预览' : '文件预览'}`,
+      children: file.diffs.length > 0 ? file.diffs.map((change, index) => h(CodeDiff, {
+        key: index, filename: change.path, previewable: false, cycle: 0, preview: true,
+        ...(change.patch !== undefined ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }) }))
+        : h(HoverFilePreview, { preview: hover, scope, path: file.path }) }) : null
+  useHoverPreviewPlacement(hover)
+  // 只有成功或运行中的文件行收起输入输出；失败等状态保留原有展开能力。
+  const settledFile = kind === 'tool' && file && ['done', 'running', 'started'].includes(disclosure.status)
   return h(kind === 'thinking' && !timeline ? DisclosureRow : ToolCall, {
     ...disclosure,
+    ...(chip ? { queryNode: chip } : {}),
+    ...(settledFile ? { expandable: false, onOpenChange: () => {} } : {}),
+    ...(preview ? { after: preview } : {}),
     children: kind === 'thinking'
       ? h('div', { className: 'nodo-think-body' }, h(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact' }))
-      : h('div', { className: 'nodo-io-card' },
+      : settledFile ? null : h('div', { className: 'nodo-io-card' },
         ...(progressNote ? [h('p', { className: 'nodo-note' }, progressNote)] : []),
         ...(input || output ? [['输入', input], ['输出', output]] : [[streaming ? '输入' : '输出', body]])
           .filter(([, value]) => value).map(([label, value]) => h('div', { key: label, className: 'nodo-io-section' },
@@ -150,14 +168,17 @@ export function PlanRow({ plan, running, timeline }) {
 export function toolRow(row, { profile, session, work, timeline }) {
   const { item, index } = row
   if (supportedStreamRecord(item.presentation)) return h(StreamRecordCard, { key: index, record: item.presentation,
-    timeline, eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id } })
-  const variant = TOOL_VARIANTS[toolVariant(item.name)]
+    timeline, eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id }, cwd: session?.cwd })
+  const action = toolVariant(item.name)
+  const variant = TOOL_VARIANTS[action]
   const progress = progressText(item.progress)
   return h(ProcessRow, {
     key: index, kind: 'tool', variant, timeline, title: `${row.invocation ? '调用 · ' : row.result ? '结果 · ' : ''}${variant.title}`,
     summary: [item.brief ? item.brief.split('\n')[0] : null, progress].filter(Boolean).join(' · ') || null,
     body: item.brief ?? '',
     input: item.input, output: item.output, progress: item.progress,
+    file: ['read', 'write', 'edit'].includes(action) ? toolFileChange(item.input, session?.cwd) : null,
+    scope: { profile: profile.id, session: session.id },
     running: row.running && work?.active === true, error: row.error,
     status: row.invocation ? 'started' : row.running ? 'unknown' : 'done',
   })
@@ -365,7 +386,7 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
   const line = (row, position, timeline = false) => {
     const { item, index } = row
     if (item.kind === 'plan') return h(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest })
-    if (item.kind === 'changes') return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } })
+    if (item.kind === 'changes') return h(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id }, cwd: session.cwd })
     if (item.kind === 'tool') return toolRow(row, { profile, session, work, timeline })
     if (item.kind === 'thinking') {
       const text = item.text ?? ''
@@ -592,10 +613,15 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
 }
 
 // Transcript images load by id on mount, so the transcript holds only references.
+// With a bound right panel the click opens the image as a tab there; otherwise it
+// keeps the host lightbox. Hovering (or focusing) enlarges the loaded thumbnail
+// in the shared hover popover without re-requesting the attachment.
 export function TranscriptImage({ image }) {
   const [src, setSrc] = useState(null)
   const [error, setError] = useState(false)
   const [preview, setPreview] = useState(false)
+  const hover = useHoverPreview()
+  const panel = rightPanelService?.getSnapshot().target
   useEffect(() => {
     let live = true
     setSrc(null); setError(false); setPreview(false)
@@ -604,11 +630,25 @@ export function TranscriptImage({ image }) {
       .catch(() => { if (live) setError(true) })
     return () => { live = false }
   }, [image.id, image.mediaType])
+  useHoverPreviewPlacement(hover, 320)
   const alt = image.name || '图片'
+  const show = row => { if (src !== null) hover.show(src, row) }
+  const open = () => {
+    if (!panel) return false
+    rightPanelService.openImage({ id: image.id, mediaType: image.mediaType, name: image.name })
+    hover.hide()
+    return true
+  }
   return h(Fragment, null,
     error ? h('span', { className: 'nodo-note', role: 'status' }, `${alt}：图片不可用`)
-      : h('button', { type: 'button', className: 'nodo-image-preview', disabled: !src, 'aria-label': `预览 ${alt}`, onClick: () => setPreview(true) },
+      : h('button', { type: 'button', className: 'nodo-image-preview', disabled: !src, 'aria-label': `预览 ${alt}`, 'aria-haspopup': 'dialog',
+          onClick: () => { if (!open()) setPreview(true) },
+          onPointerEnter: event => { if (event.pointerType !== 'touch') show(event.currentTarget) },
+          onPointerLeave: hover.close,
+          onFocus: event => show(event.currentTarget), onBlur: hover.close },
         src ? h('img', { className: 'nodo-attachment', src, alt, onError: () => setError(true) }) : '正在加载图片…'),
+    hover.value !== null && h(HoverPreview, { preview: hover, className: 'nodo-hover-preview nodo-hover-picture', label: alt,
+      children: h('img', { src, alt }) }),
     preview && src && h(ImageLightbox, { src, alt, labels: { dialog: '图片预览', close: '关闭预览' }, onClose: () => setPreview(false) }))
 }
 

@@ -16,6 +16,11 @@ const read = path => readFileSync(join(PLUGIN, path), 'utf8')
 // Engine marks are inlined as SVG markup; monochrome ones use fill="currentColor".
 const engineSvgs = Object.fromEntries(readdirSync(join(PLUGIN, 'src/client/assets/engines')).sort()
   .filter(file => file.endsWith('.svg')).map(file => [file.slice(0, -4), read(`src/client/assets/engines/${file}`).trim()]))
+// File type marks (vendored material-icon-theme subset) are inlined as data URLs
+// so they render through <img> instead of markup injection.
+const fileIcons = Object.fromEntries(readdirSync(join(PLUGIN, 'src/client/assets/file-icons')).sort()
+  .filter(file => file.endsWith('.svg')).map(file => [file.slice(0, -4),
+    `data:image/svg+xml;base64,${Buffer.from(read(`src/client/assets/file-icons/${file}`)).toString('base64')}`]))
 const ENGINE_NAMES = Object.fromEntries(engineMetadata().map(entry => [entry.id, entry.name]))
 
 const virtualModule = (name, contents) => ({
@@ -42,6 +47,7 @@ const result = await build({
   plugins: [
     virtualModule('nodo:engine-logos', `export const ENGINE_LOGO_SVGS = ${JSON.stringify(engineSvgs)}`),
     virtualModule('nodo:engine-names', `export const ENGINE_NAMES = ${JSON.stringify(ENGINE_NAMES)}`),
+    virtualModule('nodo:file-icons', `export const FILE_ICON_URLS = ${JSON.stringify(fileIcons)}`),
   ],
 })
 const bundled = `// Built by scripts/build-client.mjs from src/client (npm run build); edits here are overwritten.

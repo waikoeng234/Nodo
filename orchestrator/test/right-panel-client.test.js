@@ -1241,6 +1241,74 @@ test('unmounted file previews ignore late answers', async () => {
   assert.doesNotMatch(JSON.stringify(render()), /stale answer/)
 })
 
+test('images open as tabs named by the attachment, dedupe per id and follow the session across binds', async () => {
+  const loaded = await loadClient('right-panel.tsx', { call: unavailable })
+  const panel = loaded.createRightPanel(host().ctx)
+  const image = { id: '11111111-1111-1111-1111-111111111111', mediaType: 'image/png', name: 'shot.png' }
+  panel.openImage(image)
+  assert.equal(panel.getSnapshot().tabs.length, 0, 'unbound panels cannot open images')
+  const leave = panel.bind(target); await tick()
+  panel.openFiles()
+  panel.openImage(image)
+  let state = panel.getSnapshot()
+  assert.equal(state.active, `image-${image.id}`)
+  assert.equal(state.expanded, true)
+  panel.openImage(image)
+  state = panel.getSnapshot()
+  assert.equal(state.tabs.filter(tab => tab.kind === 'image').length, 1, 'reopening activates the existing tab instead of duplicating')
+  const tree = loaded.RightPanel({ panel, width: 320 })
+  const tab = nodes(tree).find(node => node.props.id === `nodo-right-tab-image-${image.id}`)
+  assert.equal(tab.children.at(-1), 'shot.png')
+  assert.equal(tab.children[0].type(tab.children[0].props).type, 'img', 'the tab header carries the file type icon')
+  const pane = nodes(tree).find(node => node.props.id === `nodo-right-pane-image-${image.id}`)
+  assert.equal(pane.children[0].type, loaded.ImageView)
+  assert.equal(pane.children[0].props.image.id, image.id)
+  panel.openImage({ id: '22222222-2222-2222-2222-222222222222', mediaType: 'image/jpeg' })
+  const unnamed = nodes(loaded.RightPanel({ panel, width: 320 })).find(node => node.props.id === 'nodo-right-tab-image-22222222-2222-2222-2222-222222222222')
+  assert.equal(unnamed.children.at(-1), '图片')
+  // 切到同项目的另一会话：files 保留，图片标签随原会话关闭
+  leave(); panel.bind({ ...target, session: 'second' }); await tick()
+  assert.deepEqual(plain(panel.getSnapshot().tabs.map(tab => tab.kind)), ['files'])
+  panel.openImage(image)
+  panel.openChanges(changesSource())
+  panel.bind({ ...target, session: 'second', cwd: '/other', readOnly: true }); await tick()
+  assert.deepEqual(plain(panel.getSnapshot().tabs.map(tab => tab.kind)), ['files'], 'a cwd change discards image tabs as well')
+  panel.openImage(image)
+  await panel.closeTab(`image-${image.id}`)
+  assert.ok(!panel.getSnapshot().tabs.some(tab => tab.kind === 'image'))
+})
+
+async function imageView(value, failure = false) {
+  const hooks = renderer(), requests = []
+  const loaded = await loadClient('right-panel.tsx', { react: hooks.react, call: async (endpoint, payload) => {
+    requests.push({ endpoint, ...payload })
+    if (failure) throw new Error('Fixture failure')
+    return value
+  } })
+  const render = () => hooks.render(() => loaded.ImageView({ image: { id: '11111111-1111-1111-1111-111111111111', mediaType: 'image/png', name: 'shot.png' } }))
+  return { render, requests, dispose: hooks.dispose }
+}
+
+test('the image tab loads through the attachment route, opens the lightbox and shows short failures', async () => {
+  const p = await imageView({ mediaType: 'image/png', data: 'AA==' })
+  assert.match(JSON.stringify(p.render()), /加载中/)
+  await tick()
+  const tree = p.render()
+  assert.deepEqual(p.requests.map(item => [item.endpoint, item.id, item.mediaType]),
+    [['attachment', '11111111-1111-1111-1111-111111111111', 'image/png']])
+  assert.equal(nodes(tree).find(node => node.type === 'img').props.src, 'data:image/png;base64,AA==')
+  button(tree, '放大图片').props.onClick()
+  const lightbox = nodes(p.render()).find(node => node.type === 'ImageLightbox')
+  assert.equal(lightbox.props.alt, 'shot.png')
+  lightbox.props.onClose()
+  assert.equal(nodes(p.render()).some(node => node.type === 'ImageLightbox'), false)
+  p.dispose()
+  const failed = await imageView(null, true)
+  failed.render(); await tick()
+  assert.equal(nodes(failed.render()).find(node => node.props.role === 'status').children[0], '图片不可用')
+  failed.dispose()
+})
+
 test('the page binds the displayed main session and releases the rightbar for native session views', async () => {
   const hooks = renderer(), bindings = []
   const ownerHooks = renderer(), h = host()

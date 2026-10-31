@@ -14,10 +14,14 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 // The same virtual content the real build serves.
 const engineSvgs = Object.fromEntries(readdirSync(join(ROOT, 'src/client/assets/engines')).sort()
   .filter(file => file.endsWith('.svg')).map(file => [file.slice(0, -4), readFileSync(join(ROOT, 'src/client/assets/engines', file), 'utf8').trim()]))
+const fileIcons = Object.fromEntries(readdirSync(join(ROOT, 'src/client/assets/file-icons')).sort()
+  .filter(file => file.endsWith('.svg')).map(file => [file.slice(0, -4),
+    `data:image/svg+xml;base64,${Buffer.from(readFileSync(join(ROOT, 'src/client/assets/file-icons', file), 'utf8')).toString('base64')}`]))
 const ENGINE_NAMES = Object.fromEntries(engineMetadata().map(entry => [entry.id, entry.name]))
 const VIRTUALS = [
   ['nodo:engine-logos', `export const ENGINE_LOGO_SVGS = ${JSON.stringify(engineSvgs)}`],
   ['nodo:engine-names', `export const ENGINE_NAMES = ${JSON.stringify(ENGINE_NAMES)}`],
+  ['nodo:file-icons', `export const FILE_ICON_URLS = ${JSON.stringify(fileIcons)}`],
 ]
 
 // The fake host module table: React hooks keep a per-render cursor store the

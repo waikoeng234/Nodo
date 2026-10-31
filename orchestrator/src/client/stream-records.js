@@ -1,6 +1,8 @@
-import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock } from './ui-shared.js'
+import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock, toolVariant } from './ui-shared.js'
 import { TranscriptImage } from './feed.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
+import { HoverPreview, HoverFilePreview, ToolFileChip, useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
+import { toolFileChange, referenceFile } from './tool-file.ts'
 import { CodeDiff } from './code-diff.tsx'
 import { FileChangesSummary } from './file-changes-summary.tsx'
 
@@ -22,11 +24,22 @@ const RESOURCE_LABELS = { image: '图片', file: '文件', link: '资源引用',
 const RESOURCE_REASONS = { 'unsupported-type': '当前宿主不支持此内容类型', 'invalid-image': '图片来源数据无效，未保存', 'image-too-large': '图片超过保存上限，未保存',
   'storage-unavailable': '图片未能保存，仅保留来源信息', 'attachment-unavailable': '源附件不可读取', 'source-limit': '会话详情超过保存上限，图片未保存', 'no-reader': '宿主未提供读取或预览通道' }
 // A saved image loads through the same attachment route as pasted images; a
-// link is displayed but never fetched, and audio keeps no fake player.
-export function ResourceItem({ resource }) {
+// link is displayed but never fetched, and audio keeps no fake player. A
+// reference resolvable to a workspace file reads as a file chip with the
+// shared hover preview, and opens in the right panel on click.
+export function ResourceItem({ resource, scope, cwd }) {
+  const hover = useHoverPreview()
+  useHoverPreviewPlacement(hover)
   const label = RESOURCE_LABELS[resource.kind] ?? '资源'
   const meta = [resource.mimeType, Number.isFinite(resource.bytes) ? streamSize(resource.bytes) : null].filter(Boolean).join(' · ')
   const suffix = [resource.name, meta].filter(Boolean).join(' · ')
+  const file = resource.kind === 'audio' || resource.kind === 'text' || resource.state === 'stored' ? null : referenceFile(resource.uri, cwd)
+  if (file) {
+    return h('div', { 'data-nodo-resource': resource.kind },
+      h(ToolFileChip, { file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }),
+      h(HoverPreview, { preview: hover, className: 'nodo-hover-preview', label: `${file.display} 文件预览`,
+        children: h(HoverFilePreview, { preview: hover, scope, path: file.path }) }))
+  }
   if (resource.kind === 'image' && resource.state === 'stored' && resource.ref) {
     return h('div', { 'data-nodo-resource': 'image' },
       h(TranscriptImage, { image: { id: resource.ref.id, mediaType: resource.ref.mediaType, name: resource.name } }),
@@ -52,10 +65,10 @@ export function ResourceItem({ resource }) {
   return h('p', { 'data-nodo-resource': 'file', className: 'nodo-note' },
     `${label}${suffix ? ` · ${suffix}` : ''}：${RESOURCE_REASONS[resource.reason] ?? '仅保留引用。'}`)
 }
-export function ResourceList({ resources }) {
+export function ResourceList({ resources, scope, cwd }) {
   const items = Array.isArray(resources) ? resources.filter(resource => resource && typeof resource === 'object' && typeof resource.kind === 'string') : []
   if (items.length === 0) return null
-  return h('div', { 'data-nodo-resources': '' }, items.map((resource, index) => h(ResourceItem, { key: index, resource })))
+  return h('div', { 'data-nodo-resources': '' }, items.map((resource, index) => h(ResourceItem, { key: index, resource, scope, cwd })))
 }
 function streamProgress(progress) {
   if (!progress || typeof progress !== 'object') return null
@@ -91,7 +104,7 @@ export function ChangedFile({ file, load, loaded, available, root, cycle = 0, in
     children: view })
 }
 
-export function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
+export function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }) {
   const [open, setOpen] = useState(false)
   const [full, setFull] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -102,6 +115,8 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
     setFull(null); setError(''); setBusy(false)
     return () => { generation.current += 1 }
   }, [record.runId, record.entityId, record.revision, request.profile, request.session, request.target])
+  const hover = useHoverPreview()
+  useHoverPreviewPlacement(hover)
   const readDetails = async () => {
     const value = await call('stream-detail', { ...request, ref: record.details.ref })
     if (!supportedStreamRecord(value) || value.runId !== record.runId || value.entityId !== record.entityId || value.revision !== record.revision) throw new Error('工具详情版本不匹配。')
@@ -130,20 +145,33 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
   const terminal = typeof body.command === 'string'
   const diffs = Array.isArray(body.diffs) ? body.diffs.filter(diff => typeof diff.path === 'string' && typeof diff.newText === 'string'
     && (typeof diff.oldText === 'string' || diff.oldText === null && diff.created === true)) : []
+  const file = record.kind === 'tool' && !terminal && ['read', 'write', 'edit'].includes(toolVariant(record.title))
+    ? toolFileChange(body.input ?? body.inputText) : null
+  const chip = file ? h(ToolFileChip, { file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }) : null
+  const preview = file ? h(HoverPreview, { preview: hover, className: 'nodo-hover-preview',
+      label: `${file.display} ${file.diffs.length > 0 ? '变更预览' : '文件预览'}`,
+      children: file.diffs.length > 0 ? file.diffs.map((change, index) => h(CodeDiff, {
+        key: index, filename: change.path, previewable: false, cycle: 0, preview: true,
+        ...(change.patch !== undefined ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }) }))
+        : h(HoverFilePreview, { preview: hover, scope: request, path: file.path }) }) : null
+  // 只有成功或运行中的文件行收起详情；失败等状态保留状态行与输出。
+  const state = eventPhase === 'start' ? 'started' : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : 'unknown'
+  const settledFile = Boolean(file) && ['done', 'running', 'started'].includes(state)
   const disclosure = {
     label: `${eventPhase === 'start' ? '调用 · ' : eventPhase === 'end' ? '结果 · ' : ''}${record.title || '工具'}`,
     activeLabel: `正在调用 ${record.title || '工具'}`, query: toolCallQuery(body.command ?? body.input ?? body.inputText),
-    status: eventPhase === 'start' ? 'started' : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : 'unknown', onOpenChange: setOpen,
+    status: state, onOpenChange: setOpen,
   }
   return h('div', { 'data-nodo-stream-record': record.entityId, 'data-record-status': record.status },
     h(ToolCall, {
-      ...disclosure, open, compact: timeline,
-      children: h('div', { className: 'nodo-stream-content' },
+      ...disclosure, open, compact: timeline, ...(chip ? { queryNode: chip } : {}),
+      ...(settledFile ? { expandable: false, onOpenChange: () => {} } : {}),
+      children: settledFile ? null : h('div', { className: 'nodo-stream-content' },
         h('p', { className: 'nodo-note', 'data-error': failed ? '' : undefined }, status),
         progress && h('p', { className: 'nodo-note', 'data-nodo-progress': '' }, progress),
         notice && h('p', { className: 'nodo-note' }, notice),
         !full && record.truncated && h('p', { className: 'nodo-note' }, '当前显示摘要。'),
-        h(ResourceList, { resources: body.resources }),
+        h(ResourceList, { resources: body.resources, scope: request, cwd }),
         terminal ? h(TerminalBlock, { command: body.command, cwd: body.cwd, output: body.outputText,
           exitCode: body.exitCode, signal: body.signal, running: record.status === 'running', runStateDot: false, labels: STREAM_TERMINAL_LABELS })
           : h('div', { className: 'nodo-io-card' }, [['输入', body.inputText ?? (body.input !== undefined ? JSON.stringify(body.input, null, 2) : '')], ['输出', body.outputText]]
@@ -161,5 +189,6 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
         full && h('p', { className: 'nodo-note' }, '已加载保存的详情。'),
         !available && record.status !== 'running' && h('p', { className: 'nodo-note' }, STREAM_REASON[record.details?.reason] ?? '详情不可用。'),
         error && h('p', { role: 'alert', className: 'nodo-error-line' }, error)),
-    }))
+    }),
+    preview)
 }

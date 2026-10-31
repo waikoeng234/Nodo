@@ -1,20 +1,47 @@
 # Nodo plugin
 
-Nodo is a multi-Agent workbench plugin for DeepSeek Harness (dsh). It brings Agents such as Claude Code and Codex into one interface, with role assignments, project conversations.
+Nodo is a dsh plugin that puts several native coding Agents in one workbench: roles bound to an Agent CLI, teams with a lead, and project conversations with files, terminals and a browser. This directory is the plugin package the host loads.
 
-Create a lead under 主控 on the roles page to let it delegate tasks; a lead can be added only when at least one executor role exists, and it is created with the `leader` identity, which describes how it coordinates and accepts work. Claude Code and Codex can serve as leads, and a lead conversation in Team cannot use the 仅可查看 (plan) permission. Opened from the sessions view, the same lead is an ordinary 1:1 chat that never delegates and may use plan mode. Each task opens a conversation in the lead's workspace, and rework or re-review can instead continue the executor's previous session; the executor's report returns to the lead as a conversation reference. Files and images sent to a lead are copied under the project's `.nodo/workflow-inputs/` with their paths in the message, so the lead can pass them to an executor. A lead's Team session and the executor sessions it opened share one sidebar row, and its page merges delegations and reports round by round — one message makes one round — with 查看会话 to open each executor session; sessions on the dsh engine are not merged and stay as ordinary conversations. A lead leads one team, and a team's task types are its own: each type names the executor role, with its model and thinking level, for ordinary work and optionally for hard work. The lead delegates only by one of its team's task types and a difficulty, and the executor is the role assigned to that type; delegation stops with an error when the team has no task types or no role is assigned to the type and difficulty. Follow-up work is routed by its current difficulty; a change of difficulty or executor starts a new session with the existing changes and remaining work in its brief. Roles, teams and each team's task types are managed on the roles page; an executor role can belong to several teams, while a lead cannot also be a member and cannot lead more than one team. A new team starts with no task types. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry.
+## Package layout
 
-A lead manages delegation through Nodo's MCP tools: `nodo_board` reads the delegation and role tables, `nodo_delegate` dispatches a task or changes the current one, and `nodo_interrupt` stops only the running task dispatched by its own lead session. Nodo holds the lead's delegation slot until the executor's end is settled; if the executor does not confirm the stop within 15 seconds, Nodo settles the turn itself as an unconfirmed stop and frees the slot, so the lead can delegate again in its next reply. Late events from that turn are ignored, the lead's round shows 结果未确认, and reusing that session while it is still busy is refused. Interruption keeps file changes and session context; continuing work sends a new task to that session rather than resuming a suspended process. Progress questions do not automatically interrupt execution. Stopped tasks retain their recent tool records in the merged conversation.
+| Path | Contents |
+| --- | --- |
+| `index.js` | Plugin entry: resolves the data home, then installs the core modules and the dsh-only host modules |
+| `core/src/` | Host modules: store, workspaces, worktrees, roles, sessions, dispatch, approvals, teams, lead, and the HTTP channel |
+| `core/shared/` | Data and pure logic shared by host and client: routing, lead rules, role presets, task types, avatar templates |
+| `src/host/` | dsh-only modules: native session status, the `/api/nodo` route, and project terminals |
+| `src/client/` | Browser half: sidebar, roles and teams pages, conversations, lead round view, right sidebar, styles |
+| `client.js` | Generated browser entry; built from `src/client/`, never edited by hand |
+| `agent-drivers/` | Embedded Agent adapter package (TypeScript, compiled `dist/` committed) |
+| `scripts/`, `test/` | Build, check and verification scripts; automated tests with simulated Agent CLIs |
+| `cordis.patch.yml` | dsh bundle declaration |
 
-A turn that reports no engine activity for 120 seconds, or for longer while the Agent announces a retry, is marked 疑似卡住 in the sidebar's conversation status, the run status above the composer and a lead's round view, with a note in the conversation. Nodo only warns: it keeps waiting, the stop button stays available, and a late confirmed end settles and reports as usual.
+## Teams and leads
 
-When a delegated task ends with a structured transient error from Codex, Claude Code, Qoder or OpenCode, Nodo automatically continues in the same session, up to 5 times at fixed 30-second intervals. The round shows 等待自动继续 while waiting; stopping the executor, a lead interrupt or sending a message in that executor session cancels automatic continuation.
+Roles can join several teams. Each team has its own task types and at most one lead; each type names the role that takes it (delegation stops if none is set), optionally with its own model and thinking level, and can name a different role for hard tasks.
 
-If an unfinished executor session is manually continued in Nodo and finishes with a confirmed `done`, Nodo sends one supplemental report to the lead, waiting for the last queued turn when more messages are pending. Later ordinary chat does not report again, and continuing directly in a DSH native window does not trigger a report.
+Only Claude Code and Codex can lead. A lead leads one team and belongs to no member list. A new team starts with no task types, so add types on the task assignment page before delegating.
 
-This directory is the plugin package loaded by the host. It embeds the `agent-drivers` Agent adapter layer.
+Only a lead conversation started in the team view delegates. It uses Nodo's MCP service `nodo_lead`, which Nodo serves over a private socket with one token per session: `nodo_board` reads the role and delegation tables, `nodo_delegate` dispatches a task or replaces the current one, and `nodo_interrupt` stops only a task this lead session dispatched. A lead conversation opened as an ordinary 1:1 chat never delegates and may use plan mode.
 
-The right sidebar on Nodo's own conversation pages, legacy conversation shells before a session exists, and draft welcomes with a selected project browses the working directory, including worktrees, previews text, Markdown and images, opens multiple terminals when the host provides subprocess support, and opens HTTP(S) pages in a browser — through the desktop host's webview when available, otherwise an iframe. Legacy shells keep their existing content; NewConversation binds the Nodo sidebar only in NodoEntry's draft branch. Read-only conversation pages retain files, changes and the browser without terminal controls. Previewable filenames in diff headers open the current file in this sidebar; the turn-only diff heading stays noninteractive. On a bound page, 查看变更 in a file-changes card opens the turn's full file list in a single replaceable 变更 tab; clicking a file row opens its diff there, while hovering or focusing still previews it in a popup. The changes tab wraps long lines, shows numbered diffs with inline highlights and folded context, and offers current-file previews through its open buttons. Its open state and tabs survive switches within the same actual directory during the current page load; after a refresh terminals reconnect with their buffered output, while file, changes and browser tabs are gone. Terminals are shared by actual working directory and end when closed, when no live workspace or unarchived conversation references that directory, or when the plugin unloads. Native welcomes and Nodo sessions opened in the native conversation view keep dsh's native right sidebar.
+A delegation creates a conversation in the lead's workspace for the assigned role and task type. Only one runs at a time, the report must be delivered before the next starts, and a lead turn accepts at most 12. A follow-up can continue the same session, at most twice, while the difficulty and role still match; otherwise a new session gets the existing changes and remaining work in its brief.
+
+When the executor ends, its final reply becomes a conversation reference and the report reaches the lead as a message carrying that reference; a failed snapshot falls back to inline text. Delegations and reports appear round by round in the lead's page, each dispatch as a chip, with 查看会话 opening the executor conversation. On the dsh engine, sessions are not merged and stay as ordinary conversations.
+
+Failures stay visible instead of being guessed at:
+
+- A turn with no engine activity for 120 seconds, or longer while the Agent announces a retry, is marked 疑似卡住 in the sidebar, the run status and a lead's round view. Nodo keeps waiting and the stop button stays available.
+- A stop the engine does not confirm within 15 seconds is settled as an unconfirmed interruption, shown as 结果未确认, and frees the delegation slot.
+- Transient errors that Codex, Claude Code, Qoder or OpenCode classify as retryable continue in the same session up to five times, 30 seconds apart; stopping the executor, a lead interrupt or a message in that session cancels continuation.
+- If an unfinished executor session is continued manually in Nodo and finishes with a confirmed `done`, Nodo sends one supplemental report; later ordinary chat does not report again.
+
+## Right sidebar
+
+Nodo conversation pages, legacy conversation shells before a session exists, and draft welcomes with a selected project browse the working directory, including worktrees, preview text, Markdown and images, open several terminals when the host provides subprocess support, and open HTTP(S) pages in a browser — through the desktop host's webview when available, otherwise an iframe. Read-only pages keep files, changes and the browser without terminal controls.
+
+`查看变更` in a file-changes card opens the turn's file list in one replaceable 变更 tab, where each row opens its diff; hovering still previews it in a popup. Tabs survive switches within the same actual directory during the current page load; after a refresh terminals reconnect with their buffered output, while file, changes and browser tabs are gone. Terminals are shared by actual working directory and end when closed, when no live project or unarchived conversation references that directory, or when the plugin unloads. Native welcomes and Nodo sessions opened in the native conversation view keep dsh's native right sidebar.
+
+## Links
 
 - [Project home](../README.en.md): features, installation, and usage.
 - [Development guide](../docs/development.md): building, testing, adding Agents, and submitting PRs.

@@ -230,9 +230,31 @@ test('a live executor message shows its turn\'s latest five entries — text, th
   assert.equal(rows[2].props.summary, 'c1')
   assert.equal(rows[4].props.running, true, 'a running tool call stays live')
   assert.equal(rows[0].children[0].props.text, 'Reading the module first')
-  assert.equal(rows[0].children[0].props.streaming, undefined)
+  assert.equal(rows[0].children[0].props.streaming, false)
   assert.equal(rows[5].children[0].props.text, 'Writing the patch now', 'the executor\'s streaming text is the newest entry')
   assert.equal(rows[5].children[0].props.streaming, true)
+})
+
+test('an open executor transcript message streams until its message or turn settles', async () => {
+  const lines = [{ who: 'user', kind: 'text', text: 'Task' },
+    { who: 'agent', kind: 'text', text: 'Implementing the filter', open: true, timeline: true }]
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => lines })
+  const step = { session: 'e1', profile: 'coder', type: 'feature' }
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: true } }, onOpen() {} }
+  const render = () => {
+    host.reset()
+    const tools = nodes(RoundMember({ step, round })).find(node => node.props.step === step && node.type !== RoundMember)
+    return tools.type(tools.props)
+  }
+  render()
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  assert.equal(render().children[0].children[0].props.streaming, true)
+  lines[1].open = false
+  assert.equal(render().children[0].children[0].props.streaming, false)
+  lines[1].open = true
+  round.work.e1.active = false
+  assert.equal(render().children[0].children[0].props.streaming, false)
 })
 
 test('automatic continuation tools stay in their delegation window', async () => {

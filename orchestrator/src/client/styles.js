@@ -7,11 +7,38 @@ import { CODE_DIFF_CSS } from './code-diff.tsx'
 import { FILE_CHANGES_SUMMARY_CSS } from './file-changes-summary.tsx'
 import { CHANGES_PANEL_CSS } from './changes-panel.tsx'
 import { COMPOSER_ATTACHMENTS_CSS } from './composer-attachments.tsx'
+import { FILE_ICON_CSS } from './file-icons.tsx'
+import { HOVER_PREVIEW_CSS } from './hover-preview.tsx'
 import terminalCss from '@xterm/xterm/css/xterm.css'
 import { WARN_INK } from './ui-shared.js'
 const TERMINAL_CSS = terminalCss.replace(/#000\b/gi, 'var(--dsw-alias-bg-base)').replace(/#fff\b/gi, 'var(--dsw-alias-label-primary)').replaceAll('rgba(0,0,0,0)', 'transparent')
 
-export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + `
+const FRAME_CSS = `
+html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]){--nodo-frame-gap:8px;--nodo-chrome:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-specific-sidebar-fill));--nodo-card-radius:var(--dsw-radius-lg);--nodo-card-edge:.5px solid var(--dsw-alias-border-l3);background:var(--nodo-chrome)}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col]){position:relative;isolation:isolate;margin:0 var(--nodo-frame-gap) 8px 0;border-left:0;border-radius:0 0 var(--nodo-card-radius) 0;background:0 0}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{content:'';position:absolute;inset:var(--dsh-frame-top-clearance,0px) 0 0;box-sizing:border-box;border-radius:0 var(--nodo-card-radius) var(--nodo-card-radius) 0;pointer-events:none}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before{z-index:-1;background:var(--dsw-alias-bg-base)}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{z-index:1;border:var(--nodo-card-edge);border-left:0}
+html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin-left:8px;border-radius:0 0 var(--nodo-card-radius) var(--nodo-card-radius)}
+html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-radius:var(--nodo-card-radius)}
+html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-left:var(--nodo-card-edge)}
+html[data-platform=darwin][data-nodo-space] [data-phase]:has(header[data-window-drag]){background:0 0}
+html[data-platform=darwin][data-nodo-space] header[data-window-drag]{border-bottom-color:transparent}
+html[data-platform=darwin][data-nodo-space] header[data-window-drag]:has([data-conversation-tabs]>:only-child){min-height:var(--dsh-frame-top-clearance,0px);padding-bottom:0}
+html[data-platform=darwin][data-nodo-space] [data-conversation-tabs]:has(>:only-child){display:none}
+html[data-platform=darwin][data-nodo-space] .nodo-page:not(.nodo-space-sidebar){background:0 0}
+html[data-platform=darwin][data-nodo-space] .nodo-head,html[data-platform=darwin][data-nodo-space] .nodo-right-head{border-bottom:0}
+html[data-platform=darwin][data-nodo-space] [data-rightbar-col]:has(.nodo-right-panel){background:transparent}
+html[data-platform=darwin][data-nodo-space] .nodo-right-panel{border:0;background:transparent}
+html[data-platform=darwin][data-nodo-space] .nodo-right-content{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
+html[data-platform=darwin][data-nodo-space] :is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview){border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))}
+html[data-platform=darwin][data-nodo-space] :is(.nodo-right-card,.nodo-right-image){border-radius:max(0px,calc(var(--nodo-card-radius) - 12px - .5px))}
+html[data-platform=darwin][data-nodo-space] .nodo-right-file{border-radius:max(0px,calc(var(--nodo-card-radius) - 8px - .5px))}
+html[data-platform=darwin][data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
+html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
+`
+
+export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + FILE_ICON_CSS + HOVER_PREVIEW_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}
@@ -51,28 +78,12 @@ html[data-windows-titlebar] .nodo-right-control{top:calc(var(--dsh-frame-chrome-
 /* The macOS host only exposes its frame columns through these data attributes:
    the centre column sits right before [data-rightbar-col]. Theme tokens resolve
    below <html>, so the chrome variables live on the frame. */
-html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]){--nodo-frame-gap:8px;--nodo-chrome:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-specific-sidebar-fill));--nodo-card-radius:var(--dsw-radius-lg);--nodo-card-edge:.5px solid var(--dsw-alias-border-l3);background:var(--nodo-chrome)}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col]){position:relative;isolation:isolate;margin:0 var(--nodo-frame-gap) 8px 0;border-left:0;border-radius:0 0 var(--nodo-card-radius) 0;background:0 0}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{content:'';position:absolute;inset:var(--dsh-frame-top-clearance,0px) 0 0;box-sizing:border-box;border-radius:0 var(--nodo-card-radius) var(--nodo-card-radius) 0;pointer-events:none}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before{z-index:-1;background:var(--dsw-alias-bg-base)}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{z-index:1;border:var(--nodo-card-edge);border-left:0}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin-left:8px;border-radius:0 0 var(--nodo-card-radius) var(--nodo-card-radius)}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-radius:var(--nodo-card-radius)}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-left:var(--nodo-card-edge)}
-html[data-platform=darwin][data-nodo-space] [data-phase]:has(header[data-window-drag]){background:0 0}
-html[data-platform=darwin][data-nodo-space] header[data-window-drag]{border-bottom-color:transparent}
-html[data-platform=darwin][data-nodo-space] header[data-window-drag]:has([data-conversation-tabs]>:only-child){min-height:var(--dsh-frame-top-clearance,0px);padding-bottom:0}
-html[data-platform=darwin][data-nodo-space] [data-conversation-tabs]:has(>:only-child){display:none}
-html[data-platform=darwin][data-nodo-space] .nodo-page:not(.nodo-space-sidebar){background:0 0}
-html[data-platform=darwin][data-nodo-space] .nodo-head,html[data-platform=darwin][data-nodo-space] .nodo-right-head{border-bottom:0}
-html[data-platform=darwin][data-nodo-space] [data-rightbar-col]:has(.nodo-right-panel){background:transparent}
-html[data-platform=darwin][data-nodo-space] .nodo-right-panel{border:0;background:transparent}
-html[data-platform=darwin][data-nodo-space] .nodo-right-content{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview){border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-right-card,.nodo-right-image){border-radius:max(0px,calc(var(--nodo-card-radius) - 12px - .5px))}
-html[data-platform=darwin][data-nodo-space] .nodo-right-file{border-radius:max(0px,calc(var(--nodo-card-radius) - 8px - .5px))}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
-html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
+${FRAME_CSS}
+html[data-nodo-space]:not([data-platform]){--nodo-top-clearance:48px;--dsh-frame-top-clearance:48px;--dsh-frame-chrome-top:0px}
+html[data-nodo-space]:not([data-platform]) .nodo-left-control{position:absolute;display:flex;top:11px;left:12px;pointer-events:auto}
+html[data-nodo-space]:not([data-platform]) .nodo-left-control button{width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm)}
+html[data-nodo-space]:not([data-platform]) .nodo-space-chrome>*{display:none}
+${FRAME_CSS.replaceAll('html[data-platform=darwin][data-nodo-space]', 'html[data-nodo-space]:not([data-platform])')}
 /* Only the page's own text nodes are reset; the host renderer keeps its own
    heading and paragraph rhythm inside .nodo-reply. */
 .nodo-page :is(.nodo-headline,.nodo-note,.nodo-error-line,.nodo-rail-empty,.nodo-feed-empty){margin:0}

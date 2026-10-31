@@ -9582,7 +9582,7 @@ function toolCallQuery(input, fallback = "") {
   }
   return (typeof input === "string" && input.trim() ? input : fallback).trim().split(/\r?\n/, 1)[0].slice(0, 400);
 }
-function ToolCall({ label, activeLabel = label, query = "", status: status2 = "unknown", compact = false, kind = "tool", open, onOpenChange, children }) {
+function ToolCall({ label, activeLabel = label, query = "", queryNode, after, status: status2 = "unknown", compact = false, expandable = true, kind = "tool", open, onOpenChange, children }) {
   const id = `nodo-tool-${(0, import_react.useId)()}`;
   const [mounted, setMounted] = (0, import_react.useState)(open);
   (0, import_react.useEffect)(() => {
@@ -9602,17 +9602,16 @@ function ToolCall({ label, activeLabel = label, query = "", status: status2 = "u
     {
       type: "button",
       className: "nodo-tool-call-trigger",
-      "aria-expanded": open,
-      "aria-controls": id,
+      ...expandable ? { "aria-expanded": open, "aria-controls": id } : {},
       "aria-label": `${running ? activeLabel : label}${query ? ` ${query}` : ""}${statusLabel}`,
       onClick: () => onOpenChange(!open)
     },
-    !compact && chevron,
+    !compact && expandable && chevron,
     /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-label" }, running ? activeLabel : label),
-    query && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-query", title: query }, query),
+    queryNode !== void 0 ? queryNode : query !== "" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-query", title: query }, query),
     kind === "tool" && (!compact || !["done", "running", "started"].includes(status2)) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-status", "aria-hidden": true, title: STATUS_LABELS[status2] }, compact ? STATUS_LABELS[status2] : status2 === "done" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : running || status2 === "started" ? null : status2 === "interrupted" ? "\u2212" : status2 === "unknown" ? "?" : "!"),
-    compact && chevron
-  ), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-call-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-clip" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-content" }, (open || mounted) && children))));
+    compact && expandable && chevron
+  ), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-call-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-clip" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-content" }, (open || mounted) && children))), after);
 }
 var TOOL_CALL_CSS = `
 .nodo-tool-call{min-width:0}
@@ -9624,6 +9623,13 @@ var TOOL_CALL_CSS = `
 .nodo-tool-call-label{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-tool-call[data-state=running] .nodo-tool-call-label{color:transparent;background:linear-gradient(100deg,var(--dsw-alias-label-tertiary) 35%,var(--dsw-alias-label-primary) 50%,var(--dsw-alias-label-tertiary) 65%);background-size:250% 100%;background-clip:text;animation:nodo-tool-call-shimmer 1.8s linear infinite}
 .nodo-tool-call-query{flex:0 1 auto;min-width:0;max-width:55%;padding:0 6px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-markdown-code-block-small);line-height:20px;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call-file{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;max-width:55%}
+.nodo-tool-call-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call-file-name[role=link]{cursor:pointer}
+.nodo-tool-call-file-name[role=link]:hover{text-decoration:underline}
+.nodo-tool-call-file-name[role=link]:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px;border-radius:var(--dsw-radius-sm)}
+.nodo-tool-call-directory{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-call-file .nodo-changes-counts{font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px}
 .nodo-tool-call-status{display:flex;align-items:center;justify-content:center;flex:none;width:14px;height:20px;color:var(--dsw-alias-label-tertiary)}
 .nodo-tool-call[data-state=error] .nodo-tool-call-status,.nodo-tool-call[data-state=denied] .nodo-tool-call-status{color:var(--dsw-alias-state-error-primary)}
 .nodo-tool-call-panel{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows ${COLLAPSE_MS}ms ease,opacity ${COLLAPSE_MS}ms ease,visibility ${COLLAPSE_MS}ms}
@@ -9635,6 +9641,7 @@ var TOOL_CALL_CSS = `
 .nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:8px}
 .nodo-tool-call[data-compact=true] .nodo-tool-call-label{flex:none;max-width:40%}
 .nodo-tool-call[data-compact=true] .nodo-tool-call-query{max-width:min(65%,48ch);padding:2px 8px;border:0;border-radius:8px;line-height:22px;color:var(--dsw-alias-label-secondary)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-file{max-width:min(65%,52ch)}
 .nodo-tool-call[data-compact=true]:not([data-kind=tool]) .nodo-tool-call-query{max-width:min(65%,52ch);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:22px}
 .nodo-tool-call[data-compact=true] .nodo-tool-call-chevron{opacity:.35}
 .nodo-tool-call[data-compact=true]:hover .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true]:focus-within .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true][data-open=true] .nodo-tool-call-chevron{opacity:1}
@@ -9642,6 +9649,276 @@ var TOOL_CALL_CSS = `
 .nodo-tool-call[data-compact=true] .nodo-tool-call-content{margin:4px 0 8px;padding:4px 0 4px 12px;border-left:1px solid var(--dsw-alias-border-l1)}
 @keyframes nodo-tool-call-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
 @media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
+`;
+
+// nodo:file-icons:nodo:file-icons
+var FILE_ICON_URLS = { "c": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTE5LjU2MyAyMkE1LjU3IDUuNTcgMCAwIDEgMTQgMTYuNDM3di0yLjg3M0E1LjU3IDUuNTcgMCAwIDEgMTkuNTYzIDhIMjRWMmgtNC40MzdBMTEuNTYzIDExLjU2MyAwIDAgMCA4IDEzLjU2M3YyLjg3M0ExMS41NjQgMTEuNTY0IDAgMCAwIDE5LjU2MyAyOEgyNHYtNloiLz48L3N2Zz4=", "console": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmNzA0MyIgZD0iTTIgMmExIDEgMCAwIDAtMSAxdjEwYzAgLjU1NC40NDYgMSAxIDFoMTJjLjU1NCAwIDEtLjQ0NiAxLTFWM2ExIDEgMCAwIDAtMS0xem0wIDNoMTJ2OEgyem0xIDIgMiAyLTIgMiAxIDEgMy0zLTMtM3ptNSAzLjVWMTJoNXYtMS41eiIvPjwvc3ZnPg==", "cpp": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTI4IDE0di00aC0ydjRoLTZ2LTRoLTJ2NGgtNHYyaDR2NGgydi00aDZ2NGgydi00aDR2LTJ6Ii8+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTEzLjU2MyAyMkE1LjU3IDUuNTcgMCAwIDEgOCAxNi40Mzd2LTIuODczQTUuNTcgNS41NyAwIDAgMSAxMy41NjMgOEgxOFYyaC00LjQzN0ExMS41NjMgMTEuNTYzIDAgMCAwIDIgMTMuNTYzdjIuODczQTExLjU2NCAxMS41NjQgMCAwIDAgMTMuNTYzIDI4SDE4di02WiIvPjwvc3ZnPg==", "csharp": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTMwIDE0di0yaC0yVjhoLTJ2NGgtMlY4aC0ydjRoLTJ2MmgydjJoLTJ2MmgydjRoMnYtNGgydjRoMnYtNGgydi0yaC0ydi0yWm0tNCAyaC0ydi0yaDJabS0xMi40MzcgNkE1LjU3IDUuNTcgMCAwIDEgOCAxNi40Mzd2LTIuODczQTUuNTcgNS41NyAwIDAgMSAxMy41NjMgOEgxOFYyaC00LjQzN0ExMS41NjMgMTEuNTYzIDAgMCAwIDIgMTMuNTYzdjIuODczQTExLjU2NCAxMS41NjQgMCAwIDAgMTMuNTYzIDI4SDE4di02WiIvPjwvc3ZnPg==", "css": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzdlNTdjMiIgZD0iTTIwIDE4aC0ydi0yaC0ydjJjMCAuMTkzIDAgLjcwMyAxLjI1NCAxLjAzM0EzLjM0NSAzLjM0NSAwIDAgMSAyMCAyMmgydjJoMnYtMmMwLS4zODgtLjU2Mi0uODUxLTEuMjU0LTEuMDM0QzIwLjM1NiAyMC4zNCAyMCAxOC44NCAyMCAxOG0tMy4yNTQgMi45NjZDMTQuMzU2IDIwLjM0IDE0IDE4Ljg0IDE0IDE4aC0ydi0yaC0ydjhoMnYtMmg0djJoMnYtMmMwLS4zODgtLjU2Mi0uODUxLTEuMjU0LTEuMDM0Ii8+PHBhdGggZmlsbD0iIzdlNTdjMiIgZD0iTTI0IDRINHYyMGE0IDQgMCAwIDAgNCA0aDE2LjE2QTMuODQgMy44NCAwIDAgMCAyOCAyNC4xNlY4YTQgNCAwIDAgMC00LTRtMiAxNGgtMnYtMmgtMnYyYzAgLjE5MyAwIC43MDMgMS4yNTQgMS4wMzNBMy4zNDUgMy4zNDUgMCAwIDEgMjYgMjJ2MmEyIDIgMCAwIDEtMiAyaC0yYTIgMiAwIDAgMS0yLTIgMiAyIDAgMCAxLTIgMmgtMmEyIDIgMCAwIDEtMi0yIDIgMiAwIDAgMS0yIDJoLTJhMiAyIDAgMCAxLTItMnYtOGEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDIgMiAyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDIgMiAyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDIgMloiLz48L3N2Zz4=", "database": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmY2EyOCIgZD0iTTE2IDI0Yy01LjUyNSAwLTEwLS45LTEwLTJ2NGMwIDEuMSA0LjQ3NSAyIDEwIDJzMTAtLjkgMTAtMnYtNGMwIDEuMS00LjQ3NSAyLTEwIDJtMC04Yy01LjUyNSAwLTEwLS45LTEwLTJ2NGMwIDEuMSA0LjQ3NSAyIDEwIDJzMTAtLjkgMTAtMnYtNGMwIDEuMS00LjQ3NSAyLTEwIDJtMC0xMkMxMC40NzcgNCA2IDQuODk1IDYgNnY0YzAgMS4xIDQuNDc1IDIgMTAgMnMxMC0uOSAxMC0yVjZjMC0xLjEwNS00LjQ3Ny0yLTEwLTIiLz48L3N2Zz4=", "docker": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTIxLjgxIDEwLjI1Yy0uMDYtLjA0LS41Ni0uNDMtMS42NC0uNDMtLjI4IDAtLjU2LjAzLS44NC4wOC0uMjEtMS40LTEuMzgtMi4xMS0xLjQzLTIuMTRsLS4yOS0uMTctLjE4LjI3Yy0uMjQuMzYtLjQzLjc3LS41MSAxLjE5LS4yLjgtLjA4IDEuNTYuMzMgMi4yMS0uNDkuMjgtMS4yOS4zNS0xLjQ2LjM1SDIuNjJjLS4zNCAwLS42Mi4yOC0uNjIuNjMgMCAxLjE1LjE4IDIuMy41OCAzLjM4LjQ1IDEuMTkgMS4xMyAyLjA3IDIgMi42MS45OC42IDIuNTkuOTQgNC40Mi45NC43OSAwIDEuNjEtLjA3IDIuNDItLjIyIDEuMTItLjIgMi4yLS41OSAzLjE5LTEuMTZBOC4zIDguMyAwIDAgMCAxNi43OCAxNmMxLjA1LTEuMTcgMS42Ny0yLjUgMi4xMi0zLjY1aC4xOWMxLjE0IDAgMS44NS0uNDYgMi4yNC0uODUuMjYtLjI0LjQ1LS41My41OS0uODdsLjA4LS4yNHptLTE3Ljk2Ljk5aDEuNzZjLjA4IDAgLjE2LS4wNy4xNi0uMTZWOS41YzAtLjA4LS4wNy0uMTYtLjE2LS4xNkgzLjg1Yy0uMDkgMC0uMTYuMDctLjE2LjE2djEuNThjLjAxLjA5LjA3LjE2LjE2LjE2bTIuNDMgMGgxLjc2Yy4wOCAwIC4xNi0uMDcuMTYtLjE2VjkuNWMwLS4wOC0uMDctLjE2LS4xNi0uMTZINi4yOGMtLjA5IDAtLjE2LjA3LS4xNi4xNnYxLjU4Yy4wMS4wOS4wNy4xNi4xNi4xNm0yLjQ3IDBoMS43NWMuMSAwIC4xNy0uMDcuMTctLjE2VjkuNWMwLS4wOC0uMDYtLjE2LS4xNy0uMTZIOC43NWMtLjA4IDAtLjE1LjA3LS4xNS4xNnYxLjU4YzAgLjA5LjA2LjE2LjE1LjE2bTIuNDQgMGgxLjc3Yy4wOCAwIC4xNS0uMDcuMTUtLjE2VjkuNWMwLS4wOC0uMDYtLjE2LS4xNS0uMTZoLTEuNzdjLS4wOCAwLS4xNS4wNy0uMTUuMTZ2MS41OGMwIC4wOS4wNy4xNi4xNS4xNk02LjI4IDloMS43NmMuMDggMCAuMTYtLjA5LjE2LS4xOFY3LjI1YzAtLjA5LS4wNy0uMTYtLjE2LS4xNkg2LjI4Yy0uMDkgMC0uMTYuMDYtLjE2LjE2djEuNTdjLjAxLjA5LjA3LjE4LjE2LjE4bTIuNDcgMGgxLjc1Yy4xIDAgLjE3LS4wOS4xNy0uMThWNy4yNWMwLS4wOS0uMDYtLjE2LS4xNy0uMTZIOC43NWMtLjA4IDAtLjE1LjA2LS4xNS4xNnYxLjU3YzAgLjA5LjA2LjE4LjE1LjE4bTIuNDQgMGgxLjc3Yy4wOCAwIC4xNS0uMDkuMTUtLjE4VjcuMjVjMC0uMDktLjA3LS4xNi0uMTUtLjE2aC0xLjc3Yy0uMDggMC0uMTUuMDYtLjE1LjE2djEuNTdjMCAuMDkuMDcuMTguMTUuMThtMC0yLjI4aDEuNzdjLjA4IDAgLjE1LS4wNy4xNS0uMTZWNWMwLS4xLS4wNy0uMTctLjE1LS4xN2gtMS43N2MtLjA4IDAtLjE1LjA2LS4xNS4xN3YxLjU2YzAgLjA4LjA3LjE2LjE1LjE2bTIuNDYgNC41MmgxLjc2Yy4wOSAwIC4xNi0uMDcuMTYtLjE2VjkuNWMwLS4wOC0uMDctLjE2LS4xNi0uMTZoLTEuNzZjLS4wOCAwLS4xNS4wNy0uMTUuMTZ2MS41OGMwIC4wOS4wNy4xNi4xNS4xNiIvPjwvc3ZnPg==", "document": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIvPjxwYXRoIGZpbGw9IiM0MmE1ZjUiIGQ9Ik04IDE2aDh2Mkg4em0wLTRoOHYySDh6bTYtMTBINmMtMS4xIDAtMiAuOS0yIDJ2MTZjMCAxLjEuODkgMiAxLjk5IDJIMThjMS4xIDAgMi0uOSAyLTJWOHptNCAxOEg2VjRoN3Y1aDV6Ii8+PC9zdmc+", "git": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2U2NGExOSIgZD0iTTEzLjE3MiAyLjgyOCAxMS43OCA0LjIybDEuOTEgMS45MSAyIDJBMi45ODYgMi45ODYgMCAwIDEgMjAgMTAuODFhMy4yNSAzLjI1IDAgMCAxLS4zMSAxLjMxbDIuMDYgMmEyLjY4IDIuNjggMCAwIDEgMy4zNy41NyAyLjg2IDIuODYgMCAwIDEgLjg4IDIuMTE3IDMuMDIgMy4wMiAwIDAgMS0uODU2IDIuMTA5QTIuOSAyLjkgMCAwIDEgMjMgMTkuODFhMi45MyAyLjkzIDAgMCAxLTIuMTMtLjg3IDIuNjk0IDIuNjk0IDAgMCAxLS41Ni0zLjM4bC0yLTIuMDZhMyAzIDAgMCAxLS4zMS4xMlYyMGEzIDMgMCAwIDEgMS40NCAxLjA5IDIuOTIgMi45MiAwIDAgMSAuNTYgMS43MiAyLjg4IDIuODggMCAwIDEtLjg3OCAyLjEyOCAyLjk4IDIuOTggMCAwIDEtMi4wNDguODcxIDIuOTgxIDIuOTgxIDAgMCAxLTIuNTE0LTQuNzE5QTMgMyAwIDAgMSAxNiAyMHYtNi4zOGEyLjk2IDIuOTYgMCAwIDEtMS40NC0xLjA5IDIuOSAyLjkgMCAwIDEtLjU2LTEuNzIgMi45IDIuOSAwIDAgMSAuMzEtMS4zMWwtMy45LTMuOS03LjU3OSA3LjU3MmE0IDQgMCAwIDAtLjAwMSA1LjY1OGwxMC4zNDIgMTAuMzQyYTQgNCAwIDAgMCA1LjY1NiAwbDEwLjM0NC0xMC4zNDRhNCA0IDAgMCAwIDAtNS42NTZMMTguODI4IDIuODI4YTQgNCAwIDAgMC01LjY1NiAwIi8+PC9zdmc+", "go": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAwYWNjMSIgZD0iTTIgMTJoNHYySDJ6bS0yIDRoNnYySDB6bTQgNGgydjJINHptMTYuOTU0LTVIMTR2M2gzLjIzOWE0LjQyIDQuNDIgMCAwIDEtMy41MzEgMiAyLjY1IDIuNjUgMCAwIDEtMi4wNTMtLjg1OCAyLjg2IDIuODYgMCAwIDEtLjYyOC0yLjI4QTQuNTE1IDQuNTE1IDAgMCAxIDE1LjI5MiAxM2EyLjczIDIuNzMgMCAwIDEgMS43NDkuNTg0bDIuOTYyLTEuMTg1QTUuNiA1LjYgMCAwIDAgMTUuMjkyIDEwYTcuNTI2IDcuNTI2IDAgMCAwLTcuMjQzIDYuNSA1LjYxNCA1LjYxNCAwIDAgMCA1LjY1OSA2LjUgNy41MjYgNy41MjYgMCAwIDAgNy4yNDMtNi41IDYuNCA2LjQgMCAwIDAgLjAwMy0xLjUiLz48cGF0aCBmaWxsPSIjMDBhY2MxIiBkPSJNMjYuMjkyIDEwYTcuNTI2IDcuNTI2IDAgMCAwLTcuMjQzIDYuNSA1LjYxNCA1LjYxNCAwIDAgMCA1LjY1OSA2LjUgNy41MjYgNy41MjYgMCAwIDAgNy4yNDMtNi41IDUuNjE0IDUuNjE0IDAgMCAwLTUuNjU5LTYuNW0yLjY4MSA2LjEzN0E0LjUxNSA0LjUxNSAwIDAgMSAyNC43MDggMjBhMi42NSAyLjY1IDAgMCAxLTIuMDUzLS44NTggMi44NiAyLjg2IDAgMCAxLS42MjgtMi4yOEE0LjUxNSA0LjUxNSAwIDAgMSAyNi4yOTIgMTNhMi42NSAyLjY1IDAgMCAxIDIuMDUzLjg1OCAyLjg2IDIuODYgMCAwIDEgLjYyOCAyLjI4WiIvPjwvc3ZnPg==", "html": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2U2NTEwMCIgZD0ibTQgNCAyIDIyIDEwIDIgMTAtMiAyLTIyWm0xOS43MiA3SDExLjI4bC4yOSAzaDExLjg2bC0uODAyIDkuMzM1TDE1Ljk5IDI1bC02LjYzNS0xLjY0Nkw4LjkzIDE5aDMuMDJsLjE5IDIgMy44Ni43NyAzLjg0LS43Ny4yOS00SDguODRMOCA4aDE2WiIvPjwvc3ZnPg==", "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iIzI2YTY5YSIgZD0iTTguNSA2aDRsLTQtNHpNMy44NzUgMUg5LjVsNCA0djguNmMwIC43NzMtLjYxNiAxLjQtMS4zNzUgMS40aC04LjI1Yy0uNzYgMC0xLjM3NS0uNjI3LTEuMzc1LTEuNFYyLjRjMC0uNzc3LjYxMi0xLjQgMS4zNzUtMS40TTQgMTMuNmg4VjhsLTIuNjI1IDIuOEw4IDkuNHptMS4yNS03LjdjLS43NiAwLTEuMzc1LjYyNy0xLjM3NSAxLjRzLjYxNiAxLjQgMS4zNzUgMS40Yy43NiAwIDEuMzc1LS42MjcgMS4zNzUtMS40UzYuMDA5IDUuOSA1LjI1IDUuOSIvPjwvc3ZnPg==", "java": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2Y0NDMzNiIgZD0iTTQgMjZoMjR2Mkg0ek0yOCA0SDdhMSAxIDAgMCAwLTEgMXYxM2E0IDQgMCAwIDAgNCA0aDEwYTQgNCAwIDAgMCA0LTR2LTRoNGEyIDIgMCAwIDAgMi0yVjZhMiAyIDAgMCAwLTItMm0wIDhoLTRWNmg0WiIvPjwvc3ZnPg==", "javascript": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmY2EyOCIgZD0iTTIgMnYxMmgxMlYyem02IDZoMXY0YTEuMDAzIDEuMDAzIDAgMCAxLTEgMUg3YTEuMDAzIDEuMDAzIDAgMCAxLTEtMXYtMWgxdjFoMXptMyAwaDJ2MWgtMnYxaDFhMS4wMDMgMS4wMDMgMCAwIDEgMSAxdjFhMS4wMDMgMS4wMDMgMCAwIDEtMSAxaC0ydi0xaDJ2LTFoLTFhMS4wMDMgMS4wMDMgMCAwIDEtMS0xVjlhMS4wMDMgMS4wMDMgMCAwIDEgMS0xIi8+PC9zdmc+", "json": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgLTk2MCA5NjAgOTYwIj48cGF0aCBmaWxsPSIjZjlhODI1IiBkPSJNNTYwLTE2MHYtODBoMTIwcTE3IDAgMjguNS0xMS41VDcyMC0yODB2LTgwcTAtMzggMjItNjl0NTgtNDR2LTE0cS0zNi0xMy01OC00NHQtMjItNjl2LTgwcTAtMTctMTEuNS0yOC41VDY4MC03MjBINTYwdi04MGgxMjBxNTAgMCA4NSAzNXQzNSA4NXY4MHEwIDE3IDExLjUgMjguNVQ4NDAtNTYwaDQwdjE2MGgtNDBxLTE3IDAtMjguNSAxMS41VDgwMC0zNjB2ODBxMCA1MC0zNSA4NXQtODUgMzV6bS0yODAgMHEtNTAgMC04NS0zNXQtMzUtODV2LTgwcTAtMTctMTEuNS0yOC41VDEyMC00MDBIODB2LTE2MGg0MHExNyAwIDI4LjUtMTEuNVQxNjAtNjAwdi04MHEwLTUwIDM1LTg1dDg1LTM1aDEyMHY4MEgyODBxLTE3IDAtMjguNSAxMS41VDI0MC02ODB2ODBxMCAzOC0yMiA2OXQtNTggNDR2MTRxMzYgMTMgNTggNDR0MjIgNjl2ODBxMCAxNyAxMS41IDI4LjVUMjgwLTI0MGgxMjB2ODB6Ii8+PC9zdmc+", "kotlin": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9IjEuNzI1IiB4Mj0iMjIuMTg1IiB5MT0iMjIuNjciIHkyPSIxLjk4MiIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgxLjMwNiAxLjEyOSlzY2FsZSguODkzMjQpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjN2M0ZGZmIi8+PHN0b3Agb2Zmc2V0PSIuNSIgc3RvcC1jb2xvcj0iI2Q1MDBmOSIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2VmNTM1MCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGZpbGw9InVybCgjYSkiIGQ9Ik0yLjk3NSAyLjk3NnYxOC4wNDhoMTguMDV2LS4wM2wtNC40NzgtNC41MTEtNC40OC00LjUxNSA0LjQ4LTQuNTE1IDQuNDQzLTQuNDc3eiIvPjwvc3ZnPg==", "license": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmNTcyMiIgZD0iTTggMWE1LjUgNS41IDAgMCAwLTQgOS4yNlYxNWw0LTEuNSA0IDEuNXYtNC43NEE1LjQ5IDUuNDkgMCAwIDAgOCAxbTAgMS41YTQgNCAwIDEgMSAwIDggNCA0IDAgMCAxIDAtOG0wIDJhMiAyIDAgMSAwIDAgNCAyIDIgMCAwIDAgMC00Ii8+PC9zdmc+", "lock": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmZDU0ZiIgZD0iTTI1IDEyaC0zVjhhNiA2IDAgMCAwLTEyIDB2NEg3YTEgMSAwIDAgMC0xIDF2MTZhMSAxIDAgMCAwIDEgMWgxOGExIDEgMCAwIDAgMS0xVjEzYTEgMSAwIDAgMC0xLTFNMTQgOGEyIDIgMCAwIDEgNCAwdjRoLTRabTIgMTdhNCA0IDAgMSAxIDQtNCA0IDQgMCAwIDEtNCA0Ii8+PC9zdmc+", "log": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIvPjxwYXRoIGZpbGw9IiNhZmI0MmIiIGQ9Ik0xOSA1djloLTV2NUg1VjV6bTAtMkg1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDEwbDYtNlY1YzAtMS4xLS45LTItMi0ybS03IDExSDd2LTJoNXptNS00SDdWOGgxMHoiLz48L3N2Zz4=", "markdown": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzQyYTVmNSIgZD0ibTE0IDEwLTQgMy41TDYgMTBINHYxMmg0di02bDIgMiAyLTJ2Nmg0VjEwem0xMiA2di02aC00djZoLTRsNiA4IDYtOHoiLz48L3N2Zz4=", "npm": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2U1MzkzNSIgZD0iTTQgNHYyNGgyNFY0Wm0yMCAyMGgtNFYxMmgtNHYxMkg4VjhoMTZaIi8+PC9zdmc+", "pdf": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2VmNTM1MCIgZD0iTTEzIDloNS41TDEzIDMuNXpNNiAyaDhsNiA2djEyYTIgMiAwIDAgMS0yIDJINmEyIDIgMCAwIDEtMi0yVjRhMiAyIDAgMCAxIDItMm00LjkzIDEwLjQ0Yy40MS45LjkzIDEuNjQgMS41MyAyLjE1bC40MS4zMmMtLjg3LjE2LTIuMDcuNDQtMy4zNC45M2wtLjExLjA0LjUtMS4wNGMuNDUtLjg3Ljc4LTEuNjYgMS4wMS0yLjRtNi40OCAzLjgxYy4xOC0uMTguMjctLjQxLjI4LS42Ni4wMy0uMi0uMDItLjM5LS4xMi0uNTUtLjI5LS40Ny0xLjA0LS42OS0yLjI4LS42OWwtMS4yOS4wNy0uODctLjU4Yy0uNjMtLjUyLTEuMi0xLjQzLTEuNi0yLjU2bC4wNC0uMTRjLjMzLTEuMzMuNjQtMi45NC0uMDItMy42YS44NS44NSAwIDAgMC0uNjEtLjI0aC0uMjRjLS4zNyAwLS43LjM5LS43OS43Ny0uMzcgMS4zMy0uMTUgMi4wNi4yMiAzLjI3di4wMWMtLjI1Ljg4LS41NyAxLjktMS4wOCAyLjkzbC0uOTYgMS44LS44OS40OWMtMS4yLjc1LTEuNzcgMS41OS0xLjg4IDIuMTItLjA0LjE5LS4wMi4zNi4wNS41NGwuMDMuMDUuNDguMzEuNDQuMTFjLjgxIDAgMS43My0uOTUgMi45Ny0zLjA3bC4xOC0uMDdjMS4wMy0uMzMgMi4zMS0uNTYgNC4wMy0uNzUgMS4wMy41MSAyLjI0Ljc0IDMgLjc0LjQ0IDAgLjc0LS4xMS45MS0uM20tLjQxLS43MS4wOS4xMWMtLjAxLjEtLjA0LjExLS4wOS4xM2gtLjA0bC0uMTkuMDJjLS40NiAwLTEuMTctLjE5LTEuOS0uNTEuMDktLjEuMTMtLjEuMjMtLjEgMS40IDAgMS44LjI1IDEuOS4zNU03LjgzIDE3Yy0uNjUgMS4xOS0xLjI0IDEuODUtMS42OSAyIC4wNS0uMzguNS0xLjA0IDEuMjEtMS42OXptMy4wMi02LjkxYy0uMjMtLjktLjI0LTEuNjMtLjA3LTIuMDVsLjA3LS4xMi4xNS4wNWMuMTcuMjQuMTkuNTYuMDkgMS4xbC0uMDMuMTYtLjE2LjgyeiIvPjwvc3ZnPg==", "php": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzFlODhlNSIgZD0iTTEyIDE4LjA4Yy02LjYzIDAtMTItMi43Mi0xMi02LjA4czUuMzctNi4wOCAxMi02LjA4UzI0IDguNjQgMjQgMTJzLTUuMzcgNi4wOC0xMiA2LjA4bS01LjE5LTcuOTVjLjU0IDAgLjkxLjEgMS4wOS4zMS4xOC4yLjIyLjU2LjEzIDEuMDMtLjEuNTMtLjI5Ljg3LS41OCAxLjA5cS0uNDIuMzMtMS4yOS4zM2gtLjg3bC41My0yLjc2em0tMy41IDUuNTVoMS40NGwuMzQtMS43NWgxLjIzYy41NCAwIC45OC0uMDYgMS4zMy0uMTcuMzUtLjEyLjY3LS4zMS45Ni0uNTguMjQtLjIyLjQzLS40Ni41OC0uNzMuMTUtLjI2LjI2LS41Ni4zMS0uODguMTYtLjc4LjA1LTEuMzktLjMzLTEuODItLjM5LS40NC0uOTktLjY1LTEuODItLjY1SDQuNTl6bTcuMjUtOC4zMy0xLjI4IDYuNThoMS40MmwuNzQtMy43N2gxLjE0Yy4zNiAwIC42LjA2LjcxLjE4cy4xMy4zNC4wNy42NmwtLjU3IDIuOTNoMS40NWwuNTktMy4wN2MuMTMtLjYyLjAzLTEuMDctLjI3LTEuMzYtLjMtLjI3LS44NS0uNC0xLjY1LS40aC0xLjI3TDEyIDcuMzV6TTE4IDEwLjEzYy41NSAwIC45MS4xIDEuMDkuMzEuMTguMi4yMi41Ni4xMyAxLjAzLS4xLjUzLS4yOS44Ny0uNTcgMS4wOS0uMjkuMjItLjcyLjMzLTEuMy4zM2gtLjg1bC41LTIuNzZ6bS0zLjUgNS41NWgxLjQ0bC4zNC0xLjc1aDEuMjJjLjU1IDAgMS0uMDYgMS4zNS0uMTcuMzUtLjEyLjY1LS4zMS45NS0uNTguMjQtLjIyLjQ0LS40Ni41OC0uNzMuMTUtLjI2LjI2LS41Ni4zMi0uODguMTUtLjc4LjA0LTEuMzktLjM0LTEuODItLjM2LS40NC0uOTktLjY1LTEuODItLjY1aC0yLjc1eiIvPjwvc3ZnPg==", "python": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTkuODYgMkEyLjg2IDIuODYgMCAwIDAgNyA0Ljg2djEuNjhoNC4yOWMuMzkgMCAuNzEuNTcuNzEuOTZINC44NkEyLjg2IDIuODYgMCAwIDAgMiAxMC4zNnYzLjc4MWEyLjg2IDIuODYgMCAwIDAgMi44NiAyLjg2aDEuMTh2LTIuNjhhMi44NSAyLjg1IDAgMCAxIDIuODUtMi44Nmg1LjI1YzEuNTggMCAyLjg2LTEuMjcxIDIuODYtMi44NTFWNC44NkEyLjg2IDIuODYgMCAwIDAgMTQuMTQgMnptLS43MiAxLjYxYy40IDAgLjcyLjEyLjcyLjcxcy0uMzIuODkxLS43Mi44OTFjLS4zOSAwLS43MS0uMy0uNzEtLjg5cy4zMi0uNzExLjcxLS43MTEiLz48cGF0aCBmaWxsPSIjZmRkODM1IiBkPSJNMTcuOTU5IDd2Mi42OGEyLjg1IDIuODUgMCAwIDEtMi44NSAyLjg1OUg5Ljg2QTIuODUgMi44NSAwIDAgMCA3IDE1LjM4OXYzLjc1YTIuODYgMi44NiAwIDAgMCAyLjg2IDIuODZoNC4yOEEyLjg2IDIuODYgMCAwIDAgMTcgMTkuMTR2LTEuNjhoLTQuMjkxYy0uMzkgMC0uNzA5LS41Ny0uNzA5LS45Nmg3LjE0QTIuODYgMi44NiAwIDAgMCAyMiAxMy42NFY5Ljg2QTIuODYgMi44NiAwIDAgMCAxOS4xNCA3ek04LjMyIDExLjUxM2wtLjAwNC4wMDQuMDM4LS4wMDR6bTYuNTQgNy4yNzZjLjM5IDAgLjcxLjMuNzEuODlhLjcxLjcxIDAgMCAxLS43MS43MWMtLjQgMC0uNzItLjEyLS43Mi0uNzFzLjMyLS44OS43Mi0uODkiLz48L3N2Zz4=", "react": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAwYmNkNCIgZD0iTTE2IDEyYzcuNDQ0IDAgMTIgMi41OSAxMiA0cy00LjU1NiA0LTEyIDQtMTItMi41OS0xMi00IDQuNTU2LTQgMTItNG0wLTJjLTcuNzMyIDAtMTQgMi42ODYtMTQgNnM2LjI2OCA2IDE0IDYgMTQtMi42ODYgMTQtNi02LjI2OC02LTE0LTYiLz48cGF0aCBmaWxsPSIjMDBiY2Q0IiBkPSJNMTYgMTRhMiAyIDAgMSAwIDIgMiAyIDIgMCAwIDAtMi0yIi8+PHBhdGggZmlsbD0iIzAwYmNkNCIgZD0iTTEwLjQ1OCA1LjUwN2MyLjAxNyAwIDUuOTM3IDMuMTc3IDkuMDA2IDguNDkzIDMuNzIyIDYuNDQ3IDMuNzU3IDExLjY4NyAyLjUzNiAxMi4zOTJhLjkuOSAwIDAgMS0uNDU3LjFjLTIuMDE3IDAtNS45MzgtMy4xNzYtOS4wMDctOC40OTJDOC44MTQgMTEuNTUzIDguNzc5IDYuMzEzIDEwIDUuNjA4YS45LjkgMCAwIDEgLjQ1OC0uMW0tLjAwMS0yQTIuODcgMi44NyAwIDAgMCA5IDMuODc1QzYuMTMgNS41MzIgNi45MzggMTIuMzA0IDEwLjgwNCAxOWMzLjI4NCA1LjY5IDcuNzIgOS40OTMgMTAuNzQgOS40OTNBMi44NyAyLjg3IDAgMCAwIDIzIDI4LjEyNGMyLjg3LTEuNjU2IDIuMDYyLTguNDI4LTEuODA0LTE1LjEyNC0zLjI4NC01LjY5LTcuNzItOS40OTMtMTAuNzQtOS40OTNaIi8+PHBhdGggZmlsbD0iIzAwYmNkNCIgZD0iTTIxLjU0MyA1LjUwN2EuOS45IDAgMCAxIC40NTcuMWMxLjIyMS43MDYgMS4xODYgNS45NDYtMi41MzYgMTIuMzkzLTMuMDcgNS4zMTYtNi45OSA4LjQ5My05LjAwNyA4LjQ5M2EuOS45IDAgMCAxLS40NTctLjFDOC43NzkgMjUuNjg2IDguODE0IDIwLjQ0NiAxMi41MzYgMTRjMy4wNy01LjMxNiA2Ljk5LTguNDkzIDkuMDA3LTguNDkzbTAtMmMtMy4wMiAwLTcuNDU1IDMuODA0LTEwLjc0IDkuNDkzQzYuOTM5IDE5LjY5NiA2LjEzIDI2LjQ2OCA5IDI4LjEyNGEyLjg3IDIuODcgMCAwIDAgMS40NTcuMzY5YzMuMDIgMCA3LjQ1NS0zLjgwNCAxMC43NC05LjQ5M0MyNS4wNjEgMTIuMzA0IDI1Ljg3IDUuNTMyIDIzIDMuODc2YTIuODcgMi44NyAwIDAgMC0xLjQ1Ny0uMzY5Ii8+PC9zdmc+", "react_ts": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTE2IDEyYzcuNDQ0IDAgMTIgMi41OSAxMiA0cy00LjU1NiA0LTEyIDQtMTItMi41OS0xMi00IDQuNTU2LTQgMTItNG0wLTJjLTcuNzMyIDAtMTQgMi42ODYtMTQgNnM2LjI2OCA2IDE0IDYgMTQtMi42ODYgMTQtNi02LjI2OC02LTE0LTYiLz48cGF0aCBmaWxsPSIjMDI4OGQxIiBkPSJNMTYgMTRhMiAyIDAgMSAwIDIgMiAyIDIgMCAwIDAtMi0yIi8+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTEwLjQ1OCA1LjUwN2MyLjAxNyAwIDUuOTM3IDMuMTc3IDkuMDA2IDguNDkzIDMuNzIyIDYuNDQ3IDMuNzU3IDExLjY4NyAyLjUzNiAxMi4zOTJhLjkuOSAwIDAgMS0uNDU3LjFjLTIuMDE3IDAtNS45MzgtMy4xNzYtOS4wMDctOC40OTJDOC44MTQgMTEuNTUzIDguNzc5IDYuMzEzIDEwIDUuNjA4YS45LjkgMCAwIDEgLjQ1OC0uMW0tLjAwMS0yQTIuODcgMi44NyAwIDAgMCA5IDMuODc1QzYuMTMgNS41MzIgNi45MzggMTIuMzA0IDEwLjgwNCAxOWMzLjI4NCA1LjY5IDcuNzIgOS40OTMgMTAuNzQgOS40OTNBMi44NyAyLjg3IDAgMCAwIDIzIDI4LjEyNGMyLjg3LTEuNjU2IDIuMDYyLTguNDI4LTEuODA0LTE1LjEyNC0zLjI4NC01LjY5LTcuNzItOS40OTMtMTAuNzQtOS40OTNaIi8+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTIxLjU0MyA1LjUwN2EuOS45IDAgMCAxIC40NTcuMWMxLjIyMS43MDYgMS4xODYgNS45NDYtMi41MzYgMTIuMzkzLTMuMDcgNS4zMTYtNi45OSA4LjQ5My05LjAwNyA4LjQ5M2EuOS45IDAgMCAxLS40NTctLjFDOC43NzkgMjUuNjg2IDguODE0IDIwLjQ0NiAxMi41MzYgMTRjMy4wNy01LjMxNiA2Ljk5LTguNDkzIDkuMDA3LTguNDkzbTAtMmMtMy4wMiAwLTcuNDU1IDMuODA0LTEwLjc0IDkuNDkzQzYuOTM5IDE5LjY5NiA2LjEzIDI2LjQ2OCA5IDI4LjEyNGEyLjg3IDIuODcgMCAwIDAgMS40NTcuMzY5YzMuMDIgMCA3LjQ1NS0zLjgwNCAxMC43NC05LjQ5M0MyNS4wNjEgMTIuMzA0IDI1Ljg3IDUuNTMyIDIzIDMuODc2YTIuODcgMi44NyAwIDAgMC0xLjQ1Ny0uMzY5Ii8+PC9zdmc+", "readme": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIvPjxwYXRoIGZpbGw9IiM0MmE1ZjUiIGQ9Ik04IDFDNC4xMzYgMSAxIDQuMTM2IDEgOHMzLjEzNiA3IDcgNyA3LTMuMTM2IDctNy0zLjEzNi03LTctN20xIDExSDdWNy41aDJ6bTAtNkg3VjRoMnoiLz48L3N2Zz4=", "ruby": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2Y0NDMzNiIgZD0iTTE4LjA0MSAzLjE3N2MyLjI0LjM4MiAyLjg3OSAxLjkxOSAyLjg0MyAzLjUyN1Y2LjY3bC0xLjAxMyAxMy4yNjYtMTMuMTMyLjg5N2guMDA4Yy0xLjA5My0uMDQ0LTMuNTE4LS4xNTEtMy42MzQtMy41NDVsMS4yMTctMi4yMjIgMi40NjIgNS43NCAyLjA5Ny02Ljc3LS4wNDUuMDA5LjAxOC0uMDE4IDYuODUgMi4xODZMMTMuOTQ1IDkuM2w2LjUzLS40MDktNS4xNDQtNC4yMTIgMi43MS0xLjUxdi4wMDlNMy4xMTMgMTcuMjUydi4wMTd6TTYuOTE2IDYuODc0YzIuNjMtMi42MjIgNi4wMzMtNC4xNjggNy4zNC0yLjg0NCAxLjI5NyAxLjMwNi0uMDcyIDQuNTIzLTIuNzAyIDcuMTM1LTIuNjY2IDIuNjEzLTYuMDE1IDQuMjQ4LTcuMzIyIDIuOTMzLTEuMzA2LTEuMzI0LjAzNi00LjYxMiAyLjY3NS03LjIyNHoiLz48L3N2Zz4=", "rust": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmNzA0MyIgZD0ibTMwIDEyLTQtMlY2aC00bC0yLTQtNCAyLTQtMi0yIDRINnY0bC00IDIgMiA0LTIgNCA0IDJ2NGg0bDIgNCA0LTIgNCAyIDItNGg0di00bDQtMi0yLTRaTTYgMTZhOS45IDkuOSAwIDAgMSAuODQyLTRIMTB2OEg2Ljg0MkE5LjkgOS45IDAgMCAxIDYgMTZtMTAgMTBhOS45OCA5Ljk4IDAgMCAxLTcuOTc4LTRIMTZ2LTJoLTJ2LTJoNGMuODE5LjgxOS4yOTcgMi4zMDggMS4xNzkgMy4zN2ExLjg5IDEuODkgMCAwIDAgMS40Ni42M2gzLjM0QTkuOTggOS45OCAwIDAgMSAxNiAyNm0tMi0xMnYtMmg0YTEgMSAwIDAgMSAwIDJabTExLjE1OCA2SDI0YTIuMDA2IDIuMDA2IDAgMCAxLTItMiAyIDIgMCAwIDAtMi0yIDMgMyAwIDAgMCAzLTNxMC0uMDgtLjAwNC0uMTYxQTMuMTE1IDMuMTE1IDAgMCAwIDE5LjgzIDEwSDguMDIyYTkuOTg2IDkuOTg2IDAgMCAxIDE3LjEzNiAxMCIvPjwvc3ZnPg==", "sass": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2VjNDA3YSIgZD0iTTI3LjgzNyA1LjY3M2E0LjMzIDQuMzMgMCAwIDAtMi4yOTMtMi43MDFjLTIuMzYyLTEuMjYxLTYuMTEtMS4yOTgtOS41NDgtLjA5MmEyNi4zIDI2LjMgMCAwIDAtOC43NiA0Ljk2NmMtMi43NTIgMi41NDItMy40MzggNC45MjUtMy4xODkgNi4xOTQuNTIzIDIuNjY4IDMuMjc0IDQuNTM5IDUuNDg1IDYuMDQyLjQxOC4yODQuODIyLjU1OSAxLjE3NS44MTYtMS40MjkuNzYtNC4yNjEgMi40NDQtNS4wODggNC4yNDhhMy44OCAzLjg4IDAgMCAwLS4xMTggMy4zMzJBMi4zNyAyLjM3IDAgMCAwIDYuODY5IDI5LjhhNS42IDUuNiAwIDAgMCAxLjQ5LjIgNi4zNSA2LjM1IDAgMCAwIDUuMTktMi44NTYgNi43NCA2Ljc0IDAgMCAwIC44NjQtNS4zODIgNy4zIDcuMyAwIDAgMSAyLjA0NC0uMDMgMy45MiAzLjkyIDAgMCAxIDIuODE2IDEuMzExIDEuODIgMS44MiAwIDAgMSAuNDIzIDEuMjYyIDEuNTUgMS41NSAwIDAgMS0uNzcyIDEuMDVjLS4yMzQuMTQtLjU4Ni4zNTUtLjUwNC44MDMuMDM2LjE5NC4xOTguNjMzLjg5NC41MTJhMi45MyAyLjkzIDAgMCAwIDIuMTQ1LTIuNjUxIDQgNCAwIDAgMC0xLjE5Ny0yLjkwNCA1Ljk0IDUuOTQgMCAwIDAtNC4zOTYtMS42MjYgMTAuNiAxMC42IDAgMCAwLTIuNjcyLjMwNCAyMCAyMCAwIDAgMC0yLjIwMy0xLjg0NmMtMS43MTItMS4zLTMuMzMtMi41MjktMy4yMzUtNC4yNi4xMjUtMi4yNjMgMi40NjgtNC41MzIgNi45NjQtNi43NDQgNC4wMTYtMS45NzYgNy4yNTQtMi4wMzcgOC45NDQtMS40MzhhMiAyIDAgMCAxIDEuMjA0Ljg4MyAyLjc3IDIuNzcgMCAwIDEtLjM2IDIuNDcgOS43MSA5LjcxIDAgMCAxLTcuNDI1IDQuMzA0IDMuODYgMy44NiAwIDAgMS0zLjIzOC0uNzU3Yy0uMjc4LS4zMDItLjU5My0uNjQ1LTEuMDc0LS4zODNxLS41NjUuMzEtLjIyNSAxLjE4OWEzLjkgMy45IDAgMCAwIDIuNDA3IDEuOTIgMTEuNyAxMS43IDAgMCAwIDcuMTI4LS42NzFjMy41MjctMS4zNSA2LjY4MS01LjIwMiA1Ljc1Ni04Ljc4N00xMS44OTUgMjQuNDc1YTQgNCAwIDAgMS0uMTkyLjQ2OCA0LjUgNC41IDAgMCAxLS43NTMgMS4wODEgMi44MyAyLjgzIDAgMCAxLTIuNTMzIDEuMTA3Yy0uMDU2LS4wMzItLjA3OC0uMTQ2LS4wODUtLjE5M2EzLjI4IDMuMjggMCAwIDEgMS4wNzYtMi4yODQgMTEuMyAxMS4zIDAgMCAxIDIuNjQ0LTEuOTMzIDMuODUgMy44NSAwIDAgMS0uMTU3IDEuNzU0Ii8+PC9zdmc+", "svelte": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMzAwIj48cGF0aCBmaWxsPSIjZmY1NzIyIiBkPSJNMTc1Ljk0IDI0LjMyOGMtMTMuMDM3LjI1Mi0yNi4wMDkgMy44NzItMzcuNDcxIDExLjE3NEw3OS45MTIgNzIuODE4YTY3LjEzIDY3LjEzIDAgMCAwLTMwLjM1NSA0NC45MDYgNzAuOCA3MC44IDAgMCAwIDYuOTU5IDQ1LjQ0NSA2Ny4yIDY3LjIgMCAwIDAtMTAuMDM1IDI1LjEwMiA3MS41NCA3MS41NCAwIDAgMCAxMi4yMzYgNTQuMTU2YzIzLjM1MSAzMy40MSA2OS40NjggNDMuMzExIDEwMi44MSAyMi4wN2w1OC41NTktMzcuMTU4YTY3LjM2IDY3LjM2IDAgMCAwIDMwLjM1NS00NC45MDYgNzAuNzcgNzAuNzcgMCAwIDAtNi45ODItNDUuNDIyIDY3LjY1IDY3LjY1IDAgMCAwIDEwLjA1OS0yNS4xMDIgNzEuNjMgNzEuNjMgMCAwIDAtMTIuMjM2LTU0LjE1NnYtLjE4Yy0xNS4zMjQtMjEuOTI1LTQwLjQ1My0zMy43MjctNjUuMzQyLTMzLjI0NnptNS4xMzcgMjguNjhhNDYuNSA0Ni41IDAgMCAxIDM2LjA5IDE5Ljk2OSA0Mi45OCA0Mi45OCAwIDAgMSA3LjM2NSAzMi41NTcgNDUgNDUgMCAwIDEtMS4zOTMgNS40NTVsLTEuMTIzIDMuMzctMi45ODYtMi4yNDdhNzUuOSA3NS45IDAgMCAwLTIyLjkwMi0xMS40NWwtMi4yNDQtLjY1MS4yMDEtMi4yNDZhMTMuMTYgMTMuMTYgMCAwIDAtMi4zNzktOC43MTEgMTMuOTkgMTMuOTkgMCAwIDAtMTQuOTUzLTUuNDEyIDEyLjggMTIuOCAwIDAgMC0zLjU5NCAxLjU3MmwtNTguNTc4IDM3LjI1YTEyLjI0IDEyLjI0IDAgMCAwLTUuNTAyIDguMTUgMTMuMSAxMy4xIDAgMCAwIDIuMjQ2IDkuODM0IDE0LjAzIDE0LjAzIDAgMCAwIDE0LjkzIDUuNTY5IDEzLjUgMTMuNSAwIDAgMCAzLjU5NC0xLjU3M2wyMi40NTMtMTQuMjM0YTQxLjggNDEuOCAwIDAgMSAxMS44OTgtNS4yMzIgNDYuNDggNDYuNDggMCAwIDEgNDkuOTE0IDE4LjUwMiA0My4wMiA0My4wMiAwIDAgMSA3LjM2MyAzMi41NTcgNDAuNDIgNDAuNDIgMCAwIDEtMTguMjU0IDI3LjA3OGwtNTguNTggMzcuMzE2YTQzIDQzIDAgMCAxLTExLjg5OCA1LjIzQTQ2LjU0NSA0Ni41NDUgMCAwIDEgODIuODEgMjI3LjE0YTQyLjk4IDQyLjk4IDAgMCAxLTcuMzQxLTMyLjU1NyAzOCAzOCAwIDAgMSAxLjM5LTUuNDFsMS4xMDItMy4zNyAzLjAwOCAyLjI0NmE3NS45IDc1LjkgMCAwIDAgMjIuODM2IDExLjM2MWwyLjI0NC42NS0uMjAxIDIuMjQ3YTEzLjI1IDEzLjI1IDAgMCAwIDIuNDQ3IDguNjQ0IDE0LjAzIDE0LjAzIDAgMCAwIDE1LjA0MyA1LjU2OSAxMy4xIDEzLjEgMCAwIDAgMy41OTItMS41NzNsNTguNDY3LTM3LjMxNmExMi4xNyAxMi4xNyAwIDAgMCA1LjUwMi04LjE3MyAxMi45NiAxMi45NiAwIDAgMC0yLjI0Ni05LjgxMSAxNC4wMyAxNC4wMyAwIDAgMC0xNS4wNDMtNS41NjggMTIuOCAxMi44IDAgMCAwLTMuNTkyIDEuNTdsLTIyLjQ1MyAxNC4yNThhNDIuOSA0Mi45IDAgMCAxLTExLjg3NyA1LjIwOSA0Ni41MiA0Ni41MiAwIDAgMS00OS44NDYtMTguNSA0My4wMiA0My4wMiAwIDAgMS03LjI5Ny0zMi41NTdBNDAuNDIgNDAuNDIgMCAwIDEgOTYuNzk4IDk2Ljk4bDU4LjY0Ni0zNy4zMTZhNDIuOCA0Mi44IDAgMCAxIDExLjgxMS01LjIxIDQ2LjUgNDYuNSAwIDAgMSAxMy44MjItMS40NDR6Ii8+PC9zdmc+", "svg": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmYjMwMCIgZD0iTTI5LjE2OCAxNC4wM2EyLjcgMi43IDAgMCAwLTEuOTY4LS44MyAyLjUxIDIuNTEgMCAwIDAtMS45MjkuOGgtNC40NDNsMy4wNzgtMy4wNzhhMi44MzUgMi44MzUgMCAwIDAgMi44NTctMi44NDIgMi42IDIuNiAwIDAgMC0uODMxLTEuOTY5IDIuODIgMi44MiAwIDAgMC0yLjAxNC0uNzg4IDIuNjcgMi42NyAwIDAgMC0xLjk2OC43ODggMi4zNiAyLjM2IDAgMCAwLS44MTIgMS45MjJMMTggMTEuMTdWNi43MjZhMi41MSAyLjUxIDAgMCAwIC44LTEuOTI5IDIuNyAyLjcgMCAwIDAtLjgzMi0xLjk2OCAyLjc0NSAyLjc0NSAwIDAgMC0zLjkzNiAwIDIuNyAyLjcgMCAwIDAtLjgzMiAxLjk2OCAyLjUxIDIuNTEgMCAwIDAgLjggMS45M3Y0LjQ0M2wtMy4xMzgtMy4xMzhhMi4zNiAyLjM2IDAgMCAwLS44MTItMS45MjIgMi42NiAyLjY2IDAgMCAwLTEuOTY4LS43ODggMi44MyAyLjgzIDAgMCAwLTIuMDE0Ljc4OCAyLjYgMi42IDAgMCAwLS44MzEgMS45NjkgMi43NCAyLjc0IDAgMCAwIC44MzEgMi4wMTMgMi44IDIuOCAwIDAgMCAyLjAyNi44MjlsMy4wNzggMy4wNzhINi43MjlhMi41MSAyLjUxIDAgMCAwLTEuOTI5LS44IDIuNyAyLjcgMCAwIDAtMS45NjguODMxIDIuNzQ1IDIuNzQ1IDAgMCAwIDAgMy45MzcgMi43IDIuNyAwIDAgMCAxLjk2OC44MzIgMi41MSAyLjUxIDAgMCAwIDEuOTI5LS44aDQuNDQzbC0zLjA3OCAzLjA3N2EyLjgzNSAyLjgzNSAwIDAgMC0yLjg1NyAyLjg0MiAyLjYgMi42IDAgMCAwIC44MzEgMS45NjkgMi44MiAyLjgyIDAgMCAwIDIuMDE0Ljc4OCAyLjY3IDIuNjcgMCAwIDAgMS45NjgtLjc4OCAyLjM2IDIuMzYgMCAwIDAgLjgxMi0xLjkyMkwxNCAyMC44Mjd2NC40NDRhMi41MSAyLjUxIDAgMCAwLS44IDEuOTI5IDIuNzg0IDIuNzg0IDAgMCAwIDQuNzY4IDEuOTY4QTIuNyAyLjcgMCAwIDAgMTguOCAyNy4yYTIuNTEgMi41MSAwIDAgMC0uOC0xLjkyOXYtNC40NDRsMy4xMzggMy4xMzhhMi4zNiAyLjM2IDAgMCAwIC44MTIgMS45MjIgMi42NiAyLjY2IDAgMCAwIDEuOTY4Ljc4OCAyLjgzIDIuODMgMCAwIDAgMi4wMTQtLjc4OCAyLjYgMi42IDAgMCAwIC44MzEtMS45NjkgMi43NCAyLjc0IDAgMCAwLS44MzEtMi4wMTMgMi44IDIuOCAwIDAgMC0yLjAyNi0uODI5TDIwLjgyOCAxOGg0LjQ0M2EyLjUxIDIuNTEgMCAwIDAgMS45My44IDIuNzg0IDIuNzg0IDAgMCAwIDEuOTY3LTQuNzY5WiIvPjwvc3ZnPg==", "swift": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmNmU0MCIgZD0iTTE3LjA4NyAxOS43MjFjLTIuMzYgMS4zNi01LjU5IDEuNS04Ljg2LjFhMTMuOCAxMy44IDAgMCAxLTYuMjMtNS4zMmMuNjcuNTUgMS40NiAxIDIuMyAxLjQgMy4zNyAxLjU3IDYuNzMgMS40NiA5LjEgMC0zLjM3LTIuNTktNi4yNC01Ljk2LTguMzctOC43MS0uNDUtLjQ1LS43OC0xLjAxLTEuMTItMS41MSA4LjI4IDYuMDUgNy45MiA3LjU5IDIuNDEtMS4wMSA0Ljg5IDQuOTQgOS40MyA3Ljc0IDkuNDMgNy43NC4xNi4wOS4yNS4xNi4zNi4yMi4xLS4yNS4xOS0uNTEuMjYtLjc4Ljc5LTIuODUtLjExLTYuMTItMi4wOC04LjgxIDQuNTUgMi43NSA3LjI1IDcuOTEgNi4xMiAxMi4yNC0uMDMuMTEtLjA2LjIyLS4wNS4zOSAyLjI0IDIuODMgMS42NCA1Ljc4IDEuMzUgNS4yMi0xLjIxLTIuMzktMy40OC0xLjY1LTQuNjItMS4xNyIvPjwvc3ZnPg==", "toml": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2NmZDhkYyIgZD0iTTQgNlY0aDh2Mkg5djdIN1Y2eiIvPjxwYXRoIGZpbGw9IiNlZjUzNTAiIGQ9Ik00IDF2MUgydjEyaDJ2MUgxVjF6bTggMHYxaDJ2MTJoLTJ2MWgzVjF6Ii8+PC9zdmc+", "typescript": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbDpzcGFjZT0icHJlc2VydmUiIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTIgMnYxMmgxMlYyem00IDZoM3YxSDh2NEg3VjlINnptNSAwaDJ2MWgtMnYxaDFhMS4wMDMgMS4wMDMgMCAwIDEgMSAxdjFhMS4wMDMgMS4wMDMgMCAwIDEtMSAxaC0ydi0xaDJ2LTFoLTFhMS4wMDMgMS4wMDMgMCAwIDEtMS0xVjlhMS4wMDMgMS4wMDMgMCAwIDEgMS0xIi8+PC9zdmc+", "vue": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzQxYjg4MyIgZD0iTTEuNzkxIDMuODUxIDEyIDIxLjQ3MSAyMi4yMDkgMy45MzZWMy44NUgxOC4yNGwtNi4xOCAxMC42MTZMNS45MDYgMy44NTF6Ii8+PHBhdGggZmlsbD0iIzM1NDk1ZSIgZD0ibTUuOTA3IDMuODUxIDYuMTUyIDEwLjYxN0wxOC4yNCAzLjg1MWgtMy43MjNMMTIuMDg0IDguMDMgOS42NiAzLjg1eiIvPjwvc3ZnPg==", "xml": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzhiYzM0YSIgZD0iTTEzIDloNS41TDEzIDMuNXpNNiAyaDhsNiA2djEyYTIgMiAwIDAgMS0yIDJINmEyIDIgMCAwIDEtMi0yVjRjMC0xLjExLjg5LTIgMi0ybS4xMiAxMy41IDMuNzQgMy43NCAxLjQyLTEuNDEtMi4zMy0yLjMzIDIuMzMtMi4zMy0xLjQyLTEuNDF6bTExLjE2IDAtMy43NC0zLjc0LTEuNDIgMS40MSAyLjMzIDIuMzMtMi4zMyAyLjMzIDEuNDIgMS40MXoiLz48L3N2Zz4=", "yaml": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmNTI1MiIgZD0iTTEzIDloNS41TDEzIDMuNXpNNiAyaDhsNiA2djEyYzAgMS4xLS45IDItMiAySDZjLTEuMSAwLTItLjktMi0yVjRjMC0xLjEuOS0yIDItMm0xMiAxNnYtMkg5djJ6bS00LTR2LTJINnYyeiIvPjwvc3ZnPg==", "zip": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2FmYjQyYiIgZD0iTTE0IDE3aC0ydi0yaC0ydi0yaDJ2MmgybTAtNmgtMnYyaDJ2MmgtMnYtMmgtMlY5aDJWN2gtMlY1aDJ2MmgybTUtNEg1Yy0xLjExIDAtMiAuODktMiAydjE0YTIgMiAwIDAgMCAyIDJoMTRhMiAyIDAgMCAwIDItMlY1YTIgMiAwIDAgMC0yLTIiLz48L3N2Zz4=" };
+
+// src/client/file-icons.tsx
+var NAME_ICONS = {
+  "package.json": "npm",
+  dockerfile: "docker",
+  ".gitignore": "git",
+  ".gitattributes": "git",
+  ".env": "document"
+};
+var EXT_ICONS = {
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  jsx: "react",
+  ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  tsx: "react_ts",
+  json: "json",
+  md: "markdown",
+  css: "css",
+  sass: "sass",
+  scss: "sass",
+  html: "html",
+  htm: "html",
+  vue: "vue",
+  svelte: "svelte",
+  py: "python",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  kts: "kotlin",
+  swift: "swift",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  hpp: "cpp",
+  cs: "csharp",
+  rb: "ruby",
+  php: "php",
+  sh: "console",
+  bash: "console",
+  zsh: "console",
+  fish: "console",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  xml: "xml",
+  sql: "database",
+  lock: "lock",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  webp: "image",
+  bmp: "image",
+  ico: "image",
+  svg: "svg",
+  pdf: "pdf",
+  zip: "zip",
+  tar: "zip",
+  gz: "zip",
+  tgz: "zip",
+  bz2: "zip",
+  xz: "zip",
+  rar: "zip",
+  "7z": "zip",
+  txt: "document",
+  log: "log"
+};
+function fileIconKey(name) {
+  const base = name.split("/").at(-1)?.toLowerCase() ?? "";
+  if (base.startsWith("readme")) return "readme";
+  if (base.startsWith("license")) return "license";
+  if (NAME_ICONS[base]) return NAME_ICONS[base];
+  const dot = base.lastIndexOf(".");
+  return dot >= 0 ? EXT_ICONS[base.slice(dot + 1)] ?? null : null;
+}
+function FileIcon({ name, size = 14, fallback }) {
+  const url = FILE_ICON_URLS[fileIconKey(name) ?? ""];
+  if (!url) return fallback ?? (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPaperclipOutlineRegular, { size });
+  return (0, import_react.createElement)("img", { className: "nodo-file-art", src: url, width: size, height: size, alt: "", "aria-hidden": true });
+}
+var FILE_ICON_CSS = `
+.nodo-file-art{display:block;flex:none;object-fit:contain}
+`;
+
+// src/client/hover-preview.tsx
+function diffPreviewPosition(row, width, height, bounds = { top: 0, bottom: height }, least = 720) {
+  const previewWidth = Math.max(0, Math.min(Math.max(row.width, least), 1100, width - 24));
+  const above = Math.max(0, row.top - Math.max(12, bounds.top + 8) - 8);
+  const below = Math.max(0, Math.min(height - 12, bounds.bottom - 8) - row.bottom - 8);
+  const onTop = above >= 160 || above >= below;
+  const span = bounds.width ?? width;
+  const origin = bounds.width === void 0 ? 0 : bounds.left ?? 0;
+  return {
+    left: `${Math.max(12, Math.min(origin + (span - previewWidth) / 2, width - previewWidth - 12))}px`,
+    width: `${previewWidth}px`,
+    top: onTop ? "auto" : `${row.bottom + 8}px`,
+    bottom: onTop ? `${height - row.top + 8}px` : "auto",
+    maxHeight: `${Math.min(360, onTop ? above : below)}px`
+  };
+}
+function useHoverPreview() {
+  const [value, setValue] = (0, import_react.useState)(null);
+  const anchor = (0, import_react.useRef)(null);
+  const popup = (0, import_react.useRef)(null);
+  const timer = (0, import_react.useRef)(null);
+  const keep = () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const close = () => {
+    keep();
+    timer.current = setTimeout(() => {
+      if (!popup.current?.contains(document.activeElement)) setValue(null);
+    }, 180);
+  };
+  const hide = () => {
+    keep();
+    setValue(null);
+  };
+  const show = (next, row) => {
+    keep();
+    anchor.current = row;
+    setValue(next);
+  };
+  return { value, show, keep, close, hide, anchor, popup };
+}
+function useHoverPreviewPlacement(preview, least = 720) {
+  (0, import_react.useLayoutEffect)(() => {
+    const popup = preview.popup.current, row = preview.anchor.current;
+    if (preview.value === null || !popup || !row) return;
+    const place = () => Object.assign(popup.style, diffPreviewPosition(
+      row.getBoundingClientRect(),
+      window.innerWidth,
+      window.innerHeight,
+      row.closest(".nodo-feed")?.getBoundingClientRect(),
+      least
+    ));
+    popup.popover = "manual";
+    place();
+    popup.showPopover?.({ source: row });
+    const scroll = (event) => {
+      if (!popup.contains(event.target)) preview.hide();
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") preview.hide();
+    };
+    const outside = (event) => {
+      if (!popup.contains(event.target) && !row.contains(event.target)) preview.hide();
+    };
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", scroll, true);
+    document.addEventListener("keydown", escape);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      if (popup.hidePopover && popup.matches(":popover-open")) popup.hidePopover();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", scroll, true);
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [preview.value]);
+}
+function HoverPreview({ preview, className, id, label, children }) {
+  if (preview.value === null || preview.value === void 0) return null;
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      id,
+      ref: preview.popup,
+      className,
+      role: "dialog",
+      tabIndex: -1,
+      "aria-label": label,
+      onPointerEnter: preview.keep,
+      onPointerLeave: preview.close,
+      onFocusCapture: preview.keep,
+      onBlurCapture: (event) => {
+        if (!event.currentTarget.contains(event.relatedTarget) && !preview.anchor.current?.contains(event.relatedTarget)) preview.close();
+      }
+    },
+    children
+  );
+}
+function HoverFilePreview({ preview, scope, path }) {
+  const [content, setContent] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    setContent(null);
+    let live = true;
+    call("workspace-file", { ...scope, path }).then((value) => {
+      if (live) setContent(value);
+    }).catch(() => {
+      if (live) preview.hide();
+    });
+    return () => {
+      live = false;
+    };
+  }, [preview.value, path]);
+  (0, import_react.useEffect)(() => {
+    if (content !== null && (content.binary || content.missing)) preview.hide();
+  }, [content]);
+  if (content === null) return /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026");
+  if (content.image) return /* @__PURE__ */ (0, import_react.createElement)("img", { className: "nodo-hover-file-image", src: content.image.dataUrl, alt: path });
+  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: (content.text ?? "").split("\n", 101).join("\n"), lang: path.split(".").at(-1)?.toLowerCase() ?? "", wrap: true, showHeader: false });
+}
+function ToolFileChip({ file, onShow, onClose, onOpened }) {
+  const target = rightPanelService?.getSnapshot().target;
+  const open = () => {
+    if (!target) return false;
+    rightPanelService?.openFile(file.path);
+    onOpened();
+    return true;
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    "span",
+    {
+      className: "nodo-tool-call-file",
+      onPointerEnter: (event) => {
+        if (event.pointerType !== "touch") onShow(event.currentTarget);
+      },
+      onPointerLeave: onClose
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: file.name, size: 14 }),
+    /* @__PURE__ */ (0, import_react.createElement)(
+      "span",
+      {
+        className: "nodo-tool-call-file-name",
+        title: file.path,
+        role: target ? "link" : void 0,
+        tabIndex: target ? 0 : void 0,
+        "aria-haspopup": "dialog",
+        "aria-label": `\u6253\u5F00 ${file.display}`,
+        onClick: (event) => {
+          if (open() && event.stopPropagation) event.stopPropagation();
+        },
+        onKeyDown: (event) => {
+          if ((event.key === "Enter" || event.key === " ") && open() && event.preventDefault) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        },
+        onFocus: (event) => onShow(event.currentTarget),
+        onBlur: onClose
+      },
+      file.name
+    ),
+    file.directory !== "" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-directory" }, file.directory),
+    file.counts && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${file.counts.added} \u884C\uFF0C\u5220\u9664 ${file.counts.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", file.counts.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", file.counts.removed.toLocaleString()))
+  );
+}
+var HOVER_PREVIEW_CSS = `
+.nodo-hover-preview{inset:auto;margin:0;box-sizing:border-box;height:360px;padding:8px 12px;overflow:auto;overscroll-behavior:contain;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-panel);z-index:40}
+.nodo-hover-preview .nodo-code-diff{border-radius:var(--dsw-radius-md)}
+.nodo-hover-preview .nodo-code-diff:first-child{margin-top:0}
+.nodo-hover-preview .nodo-code-diff:last-child{margin-bottom:0}
+.nodo-hover-preview .nodo-code-diff-patch{max-height:none}
+.nodo-hover-preview::backdrop{background:transparent;pointer-events:none}
+.nodo-hover-preview .nodo-note{padding:4px 0}
+.nodo-hover-file-image{display:block;max-width:100%;margin:0 auto;border-radius:var(--dsw-radius-md)}
+.nodo-hover-preview.nodo-hover-picture{height:auto;padding:8px}
+.nodo-hover-picture>img{display:block;max-width:100%;max-height:336px;margin:0 auto;border-radius:var(--dsw-radius-md)}
 `;
 
 // node_modules/diff/libesm/diff/base.js
@@ -10763,6 +11040,9 @@ function editCounts(edit) {
   const patch = typeof edit.diffText === "string" ? parsedPatch(edit.diffText) : null;
   return patch ? patchCounts(patch) : void 0;
 }
+function chainedEdits(edits) {
+  return edits.length > 1 && edits.every((edit, index) => typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.operation === "add" && edit.oldText === null) && (index === 0 || edit.oldText === edits[index - 1].newText)) ? [{ ...edits[0], newText: edits.at(-1).newText }] : edits;
+}
 function summarizeChanges(body) {
   const turn = new Map((body.turnDiff ? parsedPatch(body.turnDiff) ?? [] : []).map((patch) => {
     const path = patch.newFileName === "/dev/null" ? patch.oldFileName : patch.newFileName;
@@ -10771,15 +11051,93 @@ function summarizeChanges(body) {
   const files = (body.files ?? []).map((file) => {
     const patch = turn.get(relativeFile(file.path, body.cwd));
     if (patch) return { file, counts: patchCounts([patch]), patch: formatPatch(patch) };
-    let edits = file.edits;
-    if (edits.length > 1 && edits.every((edit, index) => typeof edit.newText === "string" && (typeof edit.oldText === "string" || edit.operation === "add" && edit.oldText === null) && (index === 0 || edit.oldText === edits[index - 1].newText))) {
-      edits = [{ ...edits[0], newText: edits.at(-1).newText }];
-    }
-    const counts = edits.map(editCounts);
+    const counts = chainedEdits(file.edits).map(editCounts);
     return { file, counts: counts.length > 0 && counts.every(Boolean) ? counts.reduce((sum, count) => ({ added: sum.added + count.added, removed: sum.removed + count.removed }), { added: 0, removed: 0 }) : void 0, patch: void 0 };
   });
   const totals = files.length === body.fileCount && files.every((item) => item.counts) ? files.reduce((sum, item) => ({ added: sum.added + item.counts.added, removed: sum.removed + item.counts.removed }), { added: 0, removed: 0 }) : void 0;
   return { files, totals };
+}
+
+// src/client/tool-file.ts
+var PATH_KEYS = ["file_path", "filePath", "path"];
+var parseJson = (input) => {
+  if (typeof input === "string" && input.trimStart().startsWith("{")) {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return input;
+    }
+  }
+  return input;
+};
+var unwrap = (input) => {
+  let value = parseJson(input);
+  if (Array.isArray(value)) return { changes: value };
+  if (!value || typeof value !== "object") return null;
+  let record = value;
+  if (record.rawInput !== void 0) {
+    const raw = parseJson(record.rawInput);
+    if (Array.isArray(raw)) return { changes: raw };
+    if (!raw || typeof raw !== "object") return null;
+    record = raw;
+  }
+  return record;
+};
+var textField = (args, keys) => keys.map((key) => args[key]).find((value) => typeof value === "string" && value.trim() !== "");
+var editDiffs = (args, path) => {
+  const list = Array.isArray(args.edits) ? args.edits : [];
+  if (list.length > 0 && list.every((item) => item && typeof item === "object" && typeof item.oldText === "string" && typeof item.newText === "string"))
+    return list.map((item) => ({ path, oldText: item.oldText, newText: item.newText }));
+  const oldText = textField(args, ["oldText", "old_string"]);
+  const newText = textField(args, ["newText", "new_string"]);
+  return typeof oldText === "string" && typeof newText === "string" ? [{ path, oldText, newText }] : null;
+};
+var lastSegment = (path) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+function describe(path, diffs, cwd) {
+  const display = relativeFile(path, cwd);
+  const name = lastSegment(display);
+  const counts = diffs.length === 0 ? void 0 : chainedEdits(diffs.map((diff) => ({
+    operation: diff.oldText == null ? "add" : "update",
+    oldText: diff.oldText ?? null,
+    newText: diff.newText,
+    diffText: diff.patch
+  }))).reduce((sum, edit) => {
+    const count = editCounts(edit);
+    return sum && count ? { added: sum.added + count.added, removed: sum.removed + count.removed } : void 0;
+  }, { added: 0, removed: 0 });
+  return { path, display, name, directory: display.slice(0, display.length - name.length), counts, diffs };
+}
+function referenceFile(uri, cwd) {
+  if (typeof uri !== "string" || uri.trim() === "" || uri.startsWith("~")) return null;
+  let path = uri;
+  if (/^[a-z][\w+.-]*:/i.test(uri)) {
+    if (!/^file:/i.test(uri)) return null;
+    try {
+      path = decodeURIComponent(new URL(uri).pathname);
+    } catch {
+      return null;
+    }
+  } else if (uri.startsWith("//")) return null;
+  if (path.startsWith("/") && (cwd === void 0 || !(path === cwd || path.startsWith(`${cwd}/`)))) return null;
+  return path !== "/" && lastSegment(path) !== "" ? describe(path, [], cwd) : null;
+}
+function toolFileChange(input, cwd) {
+  const args = unwrap(input);
+  if (args === null) {
+    const bare = typeof input === "string" ? input.trim() : "";
+    return bare !== "" && !/\s/.test(bare) && !/[\\/]$/.test(bare) && !/["{}]/.test(bare) && (!bare.includes(":") || /^[a-zA-Z]:[\\/]/.test(bare)) && lastSegment(bare).includes(".") ? describe(bare, [], cwd) : null;
+  }
+  const patches = (Array.isArray(args.changes) ? args.changes : []).flatMap((change) => {
+    const item = change && typeof change === "object" ? change : null;
+    return item && typeof item.path === "string" && typeof item.diff === "string" ? [{ path: item.path, patch: item.diff }] : [];
+  });
+  if (patches.length > 0) return describe(patches[0].path, patches, cwd);
+  const path = textField(args, PATH_KEYS);
+  if (path === void 0) return null;
+  const edits = editDiffs(args, path);
+  if (edits !== null) return describe(path, edits, cwd);
+  const content = textField(args, ["content"]);
+  return describe(path, content === void 0 ? [] : [{ path, oldText: null, newText: content }], cwd);
 }
 
 // src/client/code-diff.tsx
@@ -10818,7 +11176,7 @@ function CodeDiff({ filename, previewable = true, diff, patch, cycle = 0, panel 
   ])), [parsed]);
   if (!diff && patch === void 0) return null;
   if (panel) return /* @__PURE__ */ (0, import_react.createElement)(PanelDiff, { key: `${filename}:${cycle}`, filename, diff, patch });
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompareSplitOutlineRegular, { size: 14 })), target && previewable ? /* @__PURE__ */ (0, import_react.createElement)(
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff", "data-slot": "code-diff" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-code-diff-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-code-diff-icon", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: filename, size: 14, fallback: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompareSplitOutlineRegular, { size: 14 }) })), target && previewable ? /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -11003,7 +11361,7 @@ function buildFileTree(files) {
 }
 function FileTree({ nodes, visibleCount = nodes.length, totalAdditions, totalDeletions, header, renderFile, className = "", ...props }) {
   return /* @__PURE__ */ (0, import_react.createElement)("div", { "data-slot": "file-tree", className: `nodo-file-tree ${className}`, ...props }, header ?? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-file-tree-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, nodes.filter((node) => node.kind === "file").length, " \u4E2A\u6587\u4EF6\u53D8\u66F4"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-counts" }, totalAdditions !== void 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-added" }, "+", totalAdditions.toLocaleString()), totalDeletions !== void 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-removed" }, "\u2212", totalDeletions.toLocaleString()))), nodes.slice(0, Math.max(0, visibleCount)).map((node) => {
-    const content = /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-row", style: { paddingInlineStart: `${4 + node.depth * 14}px` } }, node.kind === "folder" ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-icon", "aria-hidden": true }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-name", title: node.path }, node.name), node.kind === "file" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-counts" }, !!node.additions && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-added" }, "+", node.additions.toLocaleString()), !!node.deletions && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-removed" }, "\u2212", node.deletions.toLocaleString())));
+    const content = /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-row", style: { paddingInlineStart: `${4 + node.depth * 14}px` } }, node.kind === "folder" ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-icon" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: node.name, size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-name", title: node.path }, node.name), node.kind === "file" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-counts" }, !!node.additions && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-added" }, "+", node.additions.toLocaleString()), !!node.deletions && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-removed" }, "\u2212", node.deletions.toLocaleString())));
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: `${node.kind}:${node.path}`, "data-kind": node.kind, className: "nodo-file-tree-entry" }, node.kind === "file" && renderFile ? renderFile(node, content) : content);
   }));
 }
@@ -11028,28 +11386,13 @@ var panelTarget2 = () => rightPanelService?.getSnapshot().target ?? null;
 function Counts({ value }) {
   return value ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${value.added} \u884C\uFF0C\u5220\u9664 ${value.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", value.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", value.removed.toLocaleString())) : null;
 }
-function diffPreviewPosition(row, width, height, bounds = { top: 0, bottom: height }) {
-  const previewWidth = Math.max(0, Math.min(Math.max(row.width, 720), 1100, width - 24));
-  const above = Math.max(0, row.top - Math.max(12, bounds.top + 8) - 8);
-  const below = Math.max(0, Math.min(height - 12, bounds.bottom - 8) - row.bottom - 8);
-  const onTop = above >= 160 || above >= below;
-  return {
-    left: `${Math.max(12, Math.min(row.left, width - previewWidth - 12))}px`,
-    width: `${previewWidth}px`,
-    top: onTop ? "auto" : `${row.bottom + 8}px`,
-    bottom: onTop ? `${height - row.top + 8}px` : "auto",
-    maxHeight: `${Math.min(360, onTop ? above : below)}px`
-  };
-}
 function FileChangesSummary({ record, value, full, load, loadChanges = load, busy = false, available, error, renderFile }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
   const [open, setOpen] = (0, import_react.useState)(false);
-  const [selected, setSelected] = (0, import_react.useState)(null);
   const target = (0, import_react.useSyncExternalStore)(subscribePanel2, panelTarget2);
   const box = (0, import_react.useRef)(null);
-  const anchor = (0, import_react.useRef)(null);
-  const preview = (0, import_react.useRef)(null);
-  const closeTimer = (0, import_react.useRef)(null);
+  const hover = useHoverPreview();
+  const selected = hover.value;
   const detailsId = `nodo-changes-${(0, import_react.useId)()}`;
   const previewId = `${detailsId}-preview`;
   const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(value.body), [value.body]);
@@ -11063,21 +11406,11 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
   const count = record.body.fileCount;
   const workspace = record.body.scope === "workspace-snapshot";
   const canLoad = Boolean(available) && !full;
-  const keepPreview = () => {
-    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-    closeTimer.current = null;
-  };
-  const closePreview = () => {
-    keepPreview();
-    closeTimer.current = setTimeout(() => {
-      if (!preview.current?.contains(document.activeElement)) setSelected(null);
-    }, 180);
-  };
   (0, import_react.useEffect)(() => {
     setExpanded(false);
     setOpen(false);
-    setSelected(null);
-    return keepPreview;
+    hover.hide();
+    return hover.keep;
   }, [record.runId, record.entityId, record.revision]);
   (0, import_react.useEffect)(() => {
     if (!canLoad || !record.truncated || !count) return;
@@ -11098,48 +11431,13 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
       observer.disconnect();
     };
   }, [record.runId, record.entityId, record.revision, canLoad]);
-  (0, import_react.useLayoutEffect)(() => {
-    const popup = preview.current, row = anchor.current;
-    if (selected === null || !popup || !row) return;
-    const place = () => Object.assign(popup.style, diffPreviewPosition(
-      row.getBoundingClientRect(),
-      window.innerWidth,
-      window.innerHeight,
-      row.closest(".nodo-feed")?.getBoundingClientRect()
-    ));
-    popup.popover = "manual";
-    place();
-    popup.showPopover?.({ source: row });
-    const scroll = (event) => {
-      if (!popup.contains(event.target)) setSelected(null);
-    };
-    const escape = (event) => {
-      if (event.key === "Escape") setSelected(null);
-    };
-    const outside = (event) => {
-      if (!popup.contains(event.target) && !row.contains(event.target)) setSelected(null);
-    };
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", scroll, true);
-    document.addEventListener("keydown", escape);
-    document.addEventListener("pointerdown", outside);
-    return () => {
-      if (popup.hidePopover && popup.matches(":popover-open")) popup.hidePopover();
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", scroll, true);
-      document.removeEventListener("keydown", escape);
-      document.removeEventListener("pointerdown", outside);
-    };
-  }, [selected]);
+  useHoverPreviewPlacement(hover);
   const showFile = (path, row) => {
-    keepPreview();
-    anchor.current = row;
-    setSelected(path);
+    hover.show(path, row);
     if (canLoad && record.truncated && !busy) void load();
   };
   const showAll = async () => {
-    keepPreview();
-    setSelected(null);
+    hover.hide();
     if (target) {
       openChanges();
       return;
@@ -11164,7 +11462,7 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
   }, path);
   const more = async () => {
     if (!expanded && files.length < count && canLoad && !await load()) return;
-    if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) setSelected(null);
+    if (expanded && selected !== null && files.findIndex(({ file }) => file.path === selected) >= 3) hover.hide();
     setExpanded((current) => !current);
   };
   const selectedFile = files.find(({ file }) => file.path === selected);
@@ -11195,16 +11493,16 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
         onPointerEnter: (event) => {
           if (!open && event.pointerType !== "touch") showFile(file.path, event.currentTarget);
         },
-        onPointerLeave: closePreview,
+        onPointerLeave: hover.close,
         onFocus: (event) => {
           if (!open) showFile(file.path, event.currentTarget);
         },
         onBlur: (event) => {
-          if (!preview.current?.contains(event.relatedTarget)) closePreview();
+          if (!hover.popup.current?.contains(event.relatedTarget)) hover.close();
         },
         onClick: (event) => {
           if (target) {
-            closePreview();
+            hover.close();
             openChanges(file.path);
             return;
           }
@@ -11229,16 +11527,16 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
     "div",
     {
       id: previewId,
-      ref: preview,
+      ref: hover.popup,
       className: "nodo-changes-preview",
       role: "dialog",
       tabIndex: -1,
       "aria-label": `${relativeFile(selectedFile.file.path, value.body.cwd)} \u53D8\u66F4\u9884\u89C8`,
-      onPointerEnter: keepPreview,
-      onPointerLeave: closePreview,
-      onFocusCapture: keepPreview,
+      onPointerEnter: hover.keep,
+      onPointerLeave: hover.close,
+      onFocusCapture: hover.keep,
       onBlurCapture: (event) => {
-        if (!event.currentTarget.contains(event.relatedTarget) && !anchor.current?.contains(event.relatedTarget)) closePreview();
+        if (!event.currentTarget.contains(event.relatedTarget) && !hover.anchor.current?.contains(event.relatedTarget)) hover.close();
       }
     },
     busy && canLoad ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error) : renderFile(selectedFile.file, selectedFile.patch, false, true)
@@ -11315,10 +11613,26 @@ var RESOURCE_REASONS = {
   "source-limit": "\u4F1A\u8BDD\u8BE6\u60C5\u8D85\u8FC7\u4FDD\u5B58\u4E0A\u9650\uFF0C\u56FE\u7247\u672A\u4FDD\u5B58",
   "no-reader": "\u5BBF\u4E3B\u672A\u63D0\u4F9B\u8BFB\u53D6\u6216\u9884\u89C8\u901A\u9053"
 };
-function ResourceItem({ resource }) {
+function ResourceItem({ resource, scope, cwd }) {
+  const hover = useHoverPreview();
+  useHoverPreviewPlacement(hover);
   const label = RESOURCE_LABELS[resource.kind] ?? "\u8D44\u6E90";
   const meta = [resource.mimeType, Number.isFinite(resource.bytes) ? streamSize(resource.bytes) : null].filter(Boolean).join(" \xB7 ");
   const suffix = [resource.name, meta].filter(Boolean).join(" \xB7 ");
+  const file = resource.kind === "audio" || resource.kind === "text" || resource.state === "stored" ? null : referenceFile(resource.uri, cwd);
+  if (file) {
+    return (0, import_react.createElement)(
+      "div",
+      { "data-nodo-resource": resource.kind },
+      (0, import_react.createElement)(ToolFileChip, { file, onShow: (row) => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }),
+      (0, import_react.createElement)(HoverPreview, {
+        preview: hover,
+        className: "nodo-hover-preview",
+        label: `${file.display} \u6587\u4EF6\u9884\u89C8`,
+        children: (0, import_react.createElement)(HoverFilePreview, { preview: hover, scope, path: file.path })
+      })
+    );
+  }
   if (resource.kind === "image" && resource.state === "stored" && resource.ref) {
     return (0, import_react.createElement)(
       "div",
@@ -11362,10 +11676,10 @@ function ResourceItem({ resource }) {
     `${label}${suffix ? ` \xB7 ${suffix}` : ""}\uFF1A${RESOURCE_REASONS[resource.reason] ?? "\u4EC5\u4FDD\u7559\u5F15\u7528\u3002"}`
   );
 }
-function ResourceList({ resources }) {
+function ResourceList({ resources, scope, cwd }) {
   const items = Array.isArray(resources) ? resources.filter((resource) => resource && typeof resource === "object" && typeof resource.kind === "string") : [];
   if (items.length === 0) return null;
-  return (0, import_react.createElement)("div", { "data-nodo-resources": "" }, items.map((resource, index) => (0, import_react.createElement)(ResourceItem, { key: index, resource })));
+  return (0, import_react.createElement)("div", { "data-nodo-resources": "" }, items.map((resource, index) => (0, import_react.createElement)(ResourceItem, { key: index, resource, scope, cwd })));
 }
 function streamProgress(progress) {
   if (!progress || typeof progress !== "object") return null;
@@ -11412,7 +11726,7 @@ function ChangedFile({ file, load, loaded, available, root, cycle = 0, inline = 
     children: view
   });
 }
-function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
+function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [full, setFull] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -11427,6 +11741,8 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
       generation.current += 1;
     };
   }, [record.runId, record.entityId, record.revision, request.profile, request.session, request.target]);
+  const hover = useHoverPreview();
+  useHoverPreviewPlacement(hover);
   const readDetails = async () => {
     const value2 = await call("stream-detail", { ...request, ref: record.details.ref });
     if (!supportedStreamRecord(value2) || value2.runId !== record.runId || value2.entityId !== record.entityId || value2.revision !== record.revision) throw new Error("\u5DE5\u5177\u8BE6\u60C5\u7248\u672C\u4E0D\u5339\u914D\u3002");
@@ -11460,18 +11776,35 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
     busy,
     available,
     error,
-    renderFile: (file, patch, panel = false, preview = false) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, panel, preview, inline: true, root: body.cwd, cycle: record.revision })
+    renderFile: (file2, patch, panel = false, preview2 = false) => (0, import_react.createElement)(ChangedFile, { key: file2.path, file: file2, patch, panel, preview: preview2, inline: true, root: body.cwd, cycle: record.revision })
   });
   const status2 = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
   const notice = record.capture !== "complete" ? STREAM_REASON[record.reason] ?? "\u6765\u6E90\u5185\u5BB9\u4E0D\u5B8C\u6574" : null;
   const progress = record.status === "running" ? streamProgress(body.progress) : null;
   const terminal = typeof body.command === "string";
   const diffs = Array.isArray(body.diffs) ? body.diffs.filter((diff) => typeof diff.path === "string" && typeof diff.newText === "string" && (typeof diff.oldText === "string" || diff.oldText === null && diff.created === true)) : [];
+  const file = record.kind === "tool" && !terminal && ["read", "write", "edit"].includes(toolVariant(record.title)) ? toolFileChange(body.input ?? body.inputText) : null;
+  const chip = file ? (0, import_react.createElement)(ToolFileChip, { file, onShow: (row) => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }) : null;
+  const preview = file ? (0, import_react.createElement)(HoverPreview, {
+    preview: hover,
+    className: "nodo-hover-preview",
+    label: `${file.display} ${file.diffs.length > 0 ? "\u53D8\u66F4\u9884\u89C8" : "\u6587\u4EF6\u9884\u89C8"}`,
+    children: file.diffs.length > 0 ? file.diffs.map((change, index) => (0, import_react.createElement)(CodeDiff, {
+      key: index,
+      filename: change.path,
+      previewable: false,
+      cycle: 0,
+      preview: true,
+      ...change.patch !== void 0 ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }
+    })) : (0, import_react.createElement)(HoverFilePreview, { preview: hover, scope: request, path: file.path })
+  }) : null;
+  const state = eventPhase === "start" ? "started" : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : "unknown";
+  const settledFile = Boolean(file) && ["done", "running", "started"].includes(state);
   const disclosure = {
     label: `${eventPhase === "start" ? "\u8C03\u7528 \xB7 " : eventPhase === "end" ? "\u7ED3\u679C \xB7 " : ""}${record.title || "\u5DE5\u5177"}`,
     activeLabel: `\u6B63\u5728\u8C03\u7528 ${record.title || "\u5DE5\u5177"}`,
     query: toolCallQuery(body.command ?? body.input ?? body.inputText),
-    status: eventPhase === "start" ? "started" : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : "unknown",
+    status: state,
     onOpenChange: setOpen
   };
   return (0, import_react.createElement)(
@@ -11481,14 +11814,17 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
       ...disclosure,
       open,
       compact: timeline,
-      children: (0, import_react.createElement)(
+      ...chip ? { queryNode: chip } : {},
+      ...settledFile ? { expandable: false, onOpenChange: () => {
+      } } : {},
+      children: settledFile ? null : (0, import_react.createElement)(
         "div",
         { className: "nodo-stream-content" },
         (0, import_react.createElement)("p", { className: "nodo-note", "data-error": failed ? "" : void 0 }, status2),
         progress && (0, import_react.createElement)("p", { className: "nodo-note", "data-nodo-progress": "" }, progress),
         notice && (0, import_react.createElement)("p", { className: "nodo-note" }, notice),
         !full && record.truncated && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u5F53\u524D\u663E\u793A\u6458\u8981\u3002"),
-        (0, import_react.createElement)(ResourceList, { resources: body.resources }),
+        (0, import_react.createElement)(ResourceList, { resources: body.resources, scope: request, cwd }),
         terminal ? (0, import_react.createElement)(import_dsh_client_ui_primitives.TerminalBlock, {
           command: body.command,
           cwd: body.cwd,
@@ -11528,7 +11864,8 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false }) {
         !available && record.status !== "running" && (0, import_react.createElement)("p", { className: "nodo-note" }, STREAM_REASON[record.details?.reason] ?? "\u8BE6\u60C5\u4E0D\u53EF\u7528\u3002"),
         error && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, error)
       )
-    })
+    }),
+    preview
   );
 }
 
@@ -12144,8 +12481,9 @@ var completedLead = (text) => {
     start = next.index + next[0].length;
   }
 };
-function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status: status2, timeline }) {
+function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status: status2, timeline, file, scope }) {
   const [open, setOpen] = (0, import_react.useState)(false);
+  const hover = useHoverPreview();
   const text = typeof body === "string" ? body.trim() : "";
   const expandable = text !== "" || Boolean(input) || Boolean(output) || Boolean(progress);
   const streaming = running === true;
@@ -12176,9 +12514,34 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     open,
     onOpenChange: setOpen
   };
+  const chip = kind === "tool" && file ? (0, import_react.createElement)(ToolFileChip, {
+    file,
+    onShow: (row) => hover.show(file.path, row),
+    onClose: hover.close,
+    onOpened: hover.hide
+  }) : null;
+  const preview = kind === "tool" && file ? (0, import_react.createElement)(HoverPreview, {
+    preview: hover,
+    className: "nodo-hover-preview",
+    label: `${file.display} ${file.diffs.length > 0 ? "\u53D8\u66F4\u9884\u89C8" : "\u6587\u4EF6\u9884\u89C8"}`,
+    children: file.diffs.length > 0 ? file.diffs.map((change, index) => (0, import_react.createElement)(CodeDiff, {
+      key: index,
+      filename: change.path,
+      previewable: false,
+      cycle: 0,
+      preview: true,
+      ...change.patch !== void 0 ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }
+    })) : (0, import_react.createElement)(HoverFilePreview, { preview: hover, scope, path: file.path })
+  }) : null;
+  useHoverPreviewPlacement(hover);
+  const settledFile = kind === "tool" && file && ["done", "running", "started"].includes(disclosure.status);
   return (0, import_react.createElement)(kind === "thinking" && !timeline ? import_dsh_client_ui_primitives.DisclosureRow : ToolCall, {
     ...disclosure,
-    children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : (0, import_react.createElement)(
+    ...chip ? { queryNode: chip } : {},
+    ...settledFile ? { expandable: false, onOpenChange: () => {
+    } } : {},
+    ...preview ? { after: preview } : {},
+    children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : settledFile ? null : (0, import_react.createElement)(
       "div",
       { className: "nodo-io-card" },
       ...progressNote ? [(0, import_react.createElement)("p", { className: "nodo-note" }, progressNote)] : [],
@@ -12257,9 +12620,11 @@ function toolRow(row, { profile, session, work, timeline }) {
     record: item.presentation,
     timeline,
     eventPhase: row.invocation ? "start" : row.result ? "end" : void 0,
-    request: { profile: profile.id, session: session.id }
+    request: { profile: profile.id, session: session.id },
+    cwd: session?.cwd
   });
-  const variant = TOOL_VARIANTS[toolVariant(item.name)];
+  const action = toolVariant(item.name);
+  const variant = TOOL_VARIANTS[action];
   const progress = progressText(item.progress);
   return (0, import_react.createElement)(ProcessRow, {
     key: index,
@@ -12272,6 +12637,8 @@ function toolRow(row, { profile, session, work, timeline }) {
     input: item.input,
     output: item.output,
     progress: item.progress,
+    file: ["read", "write", "edit"].includes(action) ? toolFileChange(item.input, session?.cwd) : null,
+    scope: { profile: profile.id, session: session.id },
     running: row.running && work?.active === true,
     error: row.error,
     status: row.invocation ? "started" : row.running ? "unknown" : "done"
@@ -12493,7 +12860,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
   const line = (row, position, timeline = false) => {
     const { item, index } = row;
     if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
-    if (item.kind === "changes") return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id } });
+    if (item.kind === "changes") return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id }, cwd: session.cwd });
     if (item.kind === "tool") return toolRow(row, { profile, session, work, timeline });
     if (item.kind === "thinking") {
       const text = item.text ?? "";
@@ -12805,6 +13172,8 @@ function TranscriptImage({ image }) {
   const [src, setSrc] = (0, import_react.useState)(null);
   const [error, setError] = (0, import_react.useState)(false);
   const [preview, setPreview] = (0, import_react.useState)(false);
+  const hover = useHoverPreview();
+  const panel = rightPanelService?.getSnapshot().target;
   (0, import_react.useEffect)(() => {
     let live = true;
     setSrc(null);
@@ -12819,15 +13188,46 @@ function TranscriptImage({ image }) {
       live = false;
     };
   }, [image.id, image.mediaType]);
+  useHoverPreviewPlacement(hover, 320);
   const alt = image.name || "\u56FE\u7247";
+  const show = (row) => {
+    if (src !== null) hover.show(src, row);
+  };
+  const open = () => {
+    if (!panel) return false;
+    rightPanelService.openImage({ id: image.id, mediaType: image.mediaType, name: image.name });
+    hover.hide();
+    return true;
+  };
   return (0, import_react.createElement)(
     import_react.Fragment,
     null,
     error ? (0, import_react.createElement)("span", { className: "nodo-note", role: "status" }, `${alt}\uFF1A\u56FE\u7247\u4E0D\u53EF\u7528`) : (0, import_react.createElement)(
       "button",
-      { type: "button", className: "nodo-image-preview", disabled: !src, "aria-label": `\u9884\u89C8 ${alt}`, onClick: () => setPreview(true) },
+      {
+        type: "button",
+        className: "nodo-image-preview",
+        disabled: !src,
+        "aria-label": `\u9884\u89C8 ${alt}`,
+        "aria-haspopup": "dialog",
+        onClick: () => {
+          if (!open()) setPreview(true);
+        },
+        onPointerEnter: (event) => {
+          if (event.pointerType !== "touch") show(event.currentTarget);
+        },
+        onPointerLeave: hover.close,
+        onFocus: (event) => show(event.currentTarget),
+        onBlur: hover.close
+      },
       src ? (0, import_react.createElement)("img", { className: "nodo-attachment", src, alt, onError: () => setError(true) }) : "\u6B63\u5728\u52A0\u8F7D\u56FE\u7247\u2026"
     ),
+    hover.value !== null && (0, import_react.createElement)(HoverPreview, {
+      preview: hover,
+      className: "nodo-hover-preview nodo-hover-picture",
+      label: alt,
+      children: (0, import_react.createElement)("img", { src, alt })
+    }),
     preview && src && (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setPreview(false) })
   );
 }
@@ -13165,7 +13565,7 @@ function RoundTools({ step, work }) {
   return (rows.length > 0 || buffer !== null) && (0, import_react.createElement)(
     "div",
     { className: "nodo-round-tools" },
-    rows.map((row) => row.item.kind === "text" ? (0, import_react.createElement)("div", { key: row.index, className: "nodo-round-text" }, (0, import_react.createElement)(StreamingText, { text: row.item.text, labels: MARKDOWN_LABELS })) : row.item.kind === "thinking" ? (0, import_react.createElement)(ProcessRow, {
+    rows.map((row) => row.item.kind === "text" ? (0, import_react.createElement)("div", { key: row.index, className: "nodo-round-text" }, (0, import_react.createElement)(StreamingText, { text: row.item.text, streaming: row.item.open === true && work?.active === true, labels: MARKDOWN_LABELS })) : row.item.kind === "thinking" ? (0, import_react.createElement)(ProcessRow, {
       key: row.index,
       kind: "thinking",
       variant: { icon: import_dsh_client_ui_primitives.IconThinkOutlineRegular },
@@ -17858,7 +18258,7 @@ function ChangesView({ source, initialPath = "", openFile }) {
   const current = files.find(({ file }) => file.path === selected);
   const row = (entry, detail = false) => {
     const path = relativeFile(entry.file.path, body.cwd), slash = path.lastIndexOf("/") + 1;
-    const content = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: path }, /* @__PURE__ */ (0, import_react.createElement)("span", { dir: "ltr" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-directory" }, path.slice(0, slash)), /* @__PURE__ */ (0, import_react.createElement)("strong", null, path.slice(slash)))), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }));
+    const content = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: path }, /* @__PURE__ */ (0, import_react.createElement)("span", { dir: "ltr" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-directory" }, path.slice(0, slash)), /* @__PURE__ */ (0, import_react.createElement)("strong", null, path.slice(slash)))), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }));
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: entry.file.path, className: "nodo-changes-row" }, detail ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-row-title" }, content) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-changes-row-title", "aria-label": `\u67E5\u770B ${path} \u7684\u53D8\u66F4`, onClick: () => setSelected(entry.file.path) }, content), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${path}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) }));
   };
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, selected ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-detail-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u53D8\u66F4\u5217\u8868", onClick: () => setSelected(""), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), current && row(current, true)) : totals && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-total" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals }))), busy ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : selected ? current ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff", key: selected }, source.renderFile(current.file, current.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u6587\u4EF6\u53D8\u66F4\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-list" }, files.map((entry) => row(entry)), files.length < body.fileCount && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", body.fileCount, " \u4E2A\u6587\u4EF6"), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u65E0\u6587\u4EF6\u53D8\u66F4"))));
@@ -17873,7 +18273,7 @@ var CHANGES_PANEL_CSS = `
 .nodo-changes-list>.nodo-changes-row:hover,.nodo-changes-list>.nodo-changes-row:focus-within{background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-changes-row-title{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:36px;padding:4px 8px;border:0;border-radius:inherit;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left}
 button.nodo-changes-row-title{cursor:pointer}
-.nodo-changes-row-title>svg{flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-row-title>svg,.nodo-changes-row-title>img{flex:none;color:var(--dsw-alias-label-tertiary)}
 .nodo-changes-path{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;direction:rtl;text-align:left}
 .nodo-changes-directory{color:var(--dsw-alias-label-tertiary)}
 .nodo-changes-path strong{font-weight:600}
@@ -18298,6 +18698,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
 // src/client/right-panel.tsx
 var terminalTab = ({ id, cols, rows, shell }) => ({ kind: "terminal", id, ...cols && rows ? { cols, rows } : {}, ...shell ? { shell } : {} });
 var tabId = (tab) => tab.kind === "files" ? "files" : tab.id;
+var scopeKey = (target) => target.workspace !== void 0 ? `workspace:${target.workspace}` : `session:${target.profile}:${target.session}`;
 function createRightPanel(ctx) {
   let state = { target: null, expanded: false, tabs: [], active: "", selected: "", available: false, creating: false, error: "" };
   let generation = 0;
@@ -18323,11 +18724,12 @@ function createRightPanel(ctx) {
     bind(target) {
       const current = ++generation;
       const previous = bound;
+      const scope = scopeKey(target);
       let adopted = false;
       const adopt = (cwd = target.cwd) => {
         const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd);
         bound = { ...target, cwd: normalized(cwd) };
-        const tabs = (same ? state.tabs : state.tabs.filter((tab) => tab.kind === "files")).filter((tab) => !target.readOnly || tab.kind !== "terminal");
+        const tabs = (same ? state.tabs.filter((tab) => tab.kind !== "image" || tab.scope === scope) : state.tabs.filter((tab) => tab.kind === "files")).filter((tab) => !target.readOnly || tab.kind !== "terminal");
         publish({ target: bound, tabs, selected: same ? state.selected : "", active: same && (state.active === "" || tabs.some((tab) => tabId(tab) === state.active)) ? state.active : tabs[0] ? tabId(tabs[0]) : "", available: false, creating: false, ...adopted ? {} : { error: "" } });
         adopted = true;
       };
@@ -18383,6 +18785,12 @@ function createRightPanel(ctx) {
       if (!state.target) return;
       const tab = { kind: "changes", id: "changes", source, path, version: ++changesSequence };
       publish({ tabs: state.tabs.some((tab2) => tab2.kind === "changes") ? state.tabs.map((current) => current.kind === "changes" ? tab : current) : [...state.tabs, tab], active: "changes", expanded: true });
+    },
+    openImage(image) {
+      if (!state.target) return;
+      const id = `image-${image.id}`;
+      const tab = { kind: "image", id, scope: scopeKey(state.target), image: { ...image } };
+      publish({ tabs: state.tabs.some((current) => current.kind !== "files" && current.id === id) ? state.tabs.map((current) => current.kind === "image" && current.id === id ? tab : current) : [...state.tabs, tab], active: id, expanded: true });
     },
     selectFile: (selected) => publish({ selected }),
     openHome: () => {
@@ -18520,8 +18928,8 @@ function RightPanel({ panel, width }) {
   if (!target) return null;
   const counts = /* @__PURE__ */ new Map();
   const titles = state.tabs.map((tab) => {
-    const title = tab.kind === "files" ? "\u9879\u76EE\u6587\u4EF6" : tab.kind === "changes" ? "\u53D8\u66F4" : tab.kind === "browser" ? tab.title : tab.shell || "\u7EC8\u7AEF";
-    const base = tab.kind === "browser" && title.length > 28 ? `${title.slice(0, 27)}\u2026` : title;
+    const title = tab.kind === "files" ? "\u9879\u76EE\u6587\u4EF6" : tab.kind === "changes" ? "\u53D8\u66F4" : tab.kind === "image" ? tab.image.name ?? "\u56FE\u7247" : tab.kind === "browser" ? tab.title : tab.shell || "\u7EC8\u7AEF";
+    const base = (tab.kind === "browser" || tab.kind === "image") && title.length > 28 ? `${title.slice(0, 27)}\u2026` : title;
     const nth = (counts.get(base) ?? 0) + 1;
     counts.set(base, nth);
     return nth > 1 ? `${base} ${nth}` : base;
@@ -18545,7 +18953,7 @@ function RightPanel({ panel, width }) {
       tabIndex: state.active === tabId(tab) ? 0 : -1,
       onClick: () => panel.selectTab(tabId(tab))
     },
-    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompareSplitOutlineRegular, { size: 14 }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconApiOutlineRegular, { size: 14 }),
+    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompareSplitOutlineRegular, { size: 14 }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 14 }) : tab.kind === "image" ? /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: tab.image.name ?? "", size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconApiOutlineRegular, { size: 14 }),
     titles[index]
   ), /* @__PURE__ */ (0, import_react.createElement)(
     import_dsh_client_ui_primitives.Button,
@@ -18574,7 +18982,7 @@ function RightPanel({ panel, width }) {
         onChange: (url, title) => panel.updateBrowser(tab.id, url, title),
         onOpen: panel.newBrowser
       }
-    ) : /* @__PURE__ */ (0, import_react.createElement)(
+    ) : tab.kind === "image" ? /* @__PURE__ */ (0, import_react.createElement)(ImageView, { key: tab.id, image: tab.image }) : /* @__PURE__ */ (0, import_react.createElement)(
       TerminalView,
       {
         id: tab.id,
@@ -18628,7 +19036,7 @@ function WorkspaceFiles({ target, selected: selection, onSelect }) {
           title: child,
           onClick: () => isDir ? setExpanded((current) => ({ ...current, [child]: !current[child] })) : setSelected(child)
         },
-        isDir ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, expanded[child] ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }), expanded[child] ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-right-file-icon", "aria-hidden": true }),
+        isDir ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, expanded[child] ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }), expanded[child] ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-right-file-icon" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: entry.name, size: 14 })),
         /* @__PURE__ */ (0, import_react.createElement)("span", null, entry.name)
       ), isDir && expanded[child] && branch(child, depth + 1));
     }), directory.truncated && status("\u76EE\u5F55\u5DF2\u622A\u65AD"), directory.entries?.length === 0 && status("\u7A7A\u76EE\u5F55"));
@@ -18680,7 +19088,29 @@ function FilePreview({ target, path, onBack }) {
   }, [target, path]);
   const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
   const markdown = extension === "md" && typeof content?.text === "string";
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u6587\u4EF6\u6811", onClick: onBack, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)("span", { title: path }, path), markdown && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-pressed": source, onClick: () => setSource((value) => !value) }, source ? "\u9884\u89C8" : "\u6E90\u7801")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, content?.truncated && status("\u6587\u4EF6\u5DF2\u622A\u65AD"), error ? status("\u6587\u4EF6\u4E0D\u53EF\u7528") : !content ? status("\u52A0\u8F7D\u4E2D\u2026") : content.missing ? status("\u6587\u4EF6\u4E0D\u5B58\u5728") : content.binary ? status("\u4E8C\u8FDB\u5236\u6587\u4EF6") : content.image ? imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src: content.image.dataUrl, alt: path, onError: () => setImageError(true) })) : markdown && !source ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: content.text ?? "", labels: MARKDOWN_LABELS }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text ?? "", lang: LANGUAGES[extension] ?? "text", copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })), lightbox && !imageError && content?.image && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src: content.image.dataUrl, alt: path, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u6587\u4EF6\u6811", onClick: onBack, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { title: path }, path), markdown && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-pressed": source, onClick: () => setSource((value) => !value) }, source ? "\u9884\u89C8" : "\u6E90\u7801")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, content?.truncated && status("\u6587\u4EF6\u5DF2\u622A\u65AD"), error ? status("\u6587\u4EF6\u4E0D\u53EF\u7528") : !content ? status("\u52A0\u8F7D\u4E2D\u2026") : content.missing ? status("\u6587\u4EF6\u4E0D\u5B58\u5728") : content.binary ? status("\u4E8C\u8FDB\u5236\u6587\u4EF6") : content.image ? imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src: content.image.dataUrl, alt: path, onError: () => setImageError(true) })) : markdown && !source ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: content.text ?? "", labels: MARKDOWN_LABELS }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text ?? "", lang: LANGUAGES[extension] ?? "text", copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })), lightbox && !imageError && content?.image && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src: content.image.dataUrl, alt: path, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
+}
+function ImageView({ image }) {
+  const [src, setSrc] = (0, import_react.useState)(null);
+  const [error, setError] = (0, import_react.useState)(false);
+  const [lightbox, setLightbox] = (0, import_react.useState)(false);
+  const [imageError, setImageError] = (0, import_react.useState)(false);
+  const alt = image.name || "\u56FE\u7247";
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    setSrc(null);
+    setError(false);
+    setImageError(false);
+    call("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
+      if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
+    }).catch(() => {
+      if (live) setError(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [image.id, image.mediaType]);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, error ? status("\u56FE\u7247\u4E0D\u53EF\u7528") : !src ? status("\u52A0\u8F7D\u4E2D\u2026") : imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src, alt, onError: () => setImageError(true) }))), lightbox && !imageError && src && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
 }
 
 // src/client/native-welcome.js
@@ -19412,7 +19842,31 @@ var xterm_default = `/**
 
 // src/client/styles.js
 var TERMINAL_CSS = xterm_default.replace(/#000\b/gi, "var(--dsw-alias-bg-base)").replace(/#fff\b/gi, "var(--dsw-alias-label-primary)").replaceAll("rgba(0,0,0,0)", "transparent");
-var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + `
+var FRAME_CSS = `
+html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]){--nodo-frame-gap:8px;--nodo-chrome:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-specific-sidebar-fill));--nodo-card-radius:var(--dsw-radius-lg);--nodo-card-edge:.5px solid var(--dsw-alias-border-l3);background:var(--nodo-chrome)}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col]){position:relative;isolation:isolate;margin:0 var(--nodo-frame-gap) 8px 0;border-left:0;border-radius:0 0 var(--nodo-card-radius) 0;background:0 0}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{content:'';position:absolute;inset:var(--dsh-frame-top-clearance,0px) 0 0;box-sizing:border-box;border-radius:0 var(--nodo-card-radius) var(--nodo-card-radius) 0;pointer-events:none}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before{z-index:-1;background:var(--dsw-alias-bg-base)}
+html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{z-index:1;border:var(--nodo-card-edge);border-left:0}
+html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin-left:8px;border-radius:0 0 var(--nodo-card-radius) var(--nodo-card-radius)}
+html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-radius:var(--nodo-card-radius)}
+html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-left:var(--nodo-card-edge)}
+html[data-platform=darwin][data-nodo-space] [data-phase]:has(header[data-window-drag]){background:0 0}
+html[data-platform=darwin][data-nodo-space] header[data-window-drag]{border-bottom-color:transparent}
+html[data-platform=darwin][data-nodo-space] header[data-window-drag]:has([data-conversation-tabs]>:only-child){min-height:var(--dsh-frame-top-clearance,0px);padding-bottom:0}
+html[data-platform=darwin][data-nodo-space] [data-conversation-tabs]:has(>:only-child){display:none}
+html[data-platform=darwin][data-nodo-space] .nodo-page:not(.nodo-space-sidebar){background:0 0}
+html[data-platform=darwin][data-nodo-space] .nodo-head,html[data-platform=darwin][data-nodo-space] .nodo-right-head{border-bottom:0}
+html[data-platform=darwin][data-nodo-space] [data-rightbar-col]:has(.nodo-right-panel){background:transparent}
+html[data-platform=darwin][data-nodo-space] .nodo-right-panel{border:0;background:transparent}
+html[data-platform=darwin][data-nodo-space] .nodo-right-content{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
+html[data-platform=darwin][data-nodo-space] :is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview){border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))}
+html[data-platform=darwin][data-nodo-space] :is(.nodo-right-card,.nodo-right-image){border-radius:max(0px,calc(var(--nodo-card-radius) - 12px - .5px))}
+html[data-platform=darwin][data-nodo-space] .nodo-right-file{border-radius:max(0px,calc(var(--nodo-card-radius) - 8px - .5px))}
+html[data-platform=darwin][data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
+html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
+`;
+var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + FILE_ICON_CSS + HOVER_PREVIEW_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}
@@ -19452,28 +19906,12 @@ html[data-windows-titlebar] .nodo-right-control{top:calc(var(--dsh-frame-chrome-
 /* The macOS host only exposes its frame columns through these data attributes:
    the centre column sits right before [data-rightbar-col]. Theme tokens resolve
    below <html>, so the chrome variables live on the frame. */
-html[data-platform=darwin][data-nodo-space] :has(> [data-rightbar-col]){--nodo-frame-gap:8px;--nodo-chrome:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-specific-sidebar-fill));--nodo-card-radius:var(--dsw-radius-lg);--nodo-card-edge:.5px solid var(--dsw-alias-border-l3);background:var(--nodo-chrome)}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col]){position:relative;isolation:isolate;margin:0 var(--nodo-frame-gap) 8px 0;border-left:0;border-radius:0 0 var(--nodo-card-radius) 0;background:0 0}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{content:'';position:absolute;inset:var(--dsh-frame-top-clearance,0px) 0 0;box-sizing:border-box;border-radius:0 var(--nodo-card-radius) var(--nodo-card-radius) 0;pointer-events:none}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::before{z-index:-1;background:var(--dsw-alias-bg-base)}
-html[data-platform=darwin][data-nodo-space] :has(+ [data-rightbar-col])::after{z-index:1;border:var(--nodo-card-edge);border-left:0}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin-left:8px;border-radius:0 0 var(--nodo-card-radius) var(--nodo-card-radius)}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::before,html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-radius:var(--nodo-card-radius)}
-html[data-platform=darwin][data-nodo-space] [data-sidebar-collapsed]>:has(+ [data-rightbar-col])::after{border-left:var(--nodo-card-edge)}
-html[data-platform=darwin][data-nodo-space] [data-phase]:has(header[data-window-drag]){background:0 0}
-html[data-platform=darwin][data-nodo-space] header[data-window-drag]{border-bottom-color:transparent}
-html[data-platform=darwin][data-nodo-space] header[data-window-drag]:has([data-conversation-tabs]>:only-child){min-height:var(--dsh-frame-top-clearance,0px);padding-bottom:0}
-html[data-platform=darwin][data-nodo-space] [data-conversation-tabs]:has(>:only-child){display:none}
-html[data-platform=darwin][data-nodo-space] .nodo-page:not(.nodo-space-sidebar){background:0 0}
-html[data-platform=darwin][data-nodo-space] .nodo-head,html[data-platform=darwin][data-nodo-space] .nodo-right-head{border-bottom:0}
-html[data-platform=darwin][data-nodo-space] [data-rightbar-col]:has(.nodo-right-panel){background:transparent}
-html[data-platform=darwin][data-nodo-space] .nodo-right-panel{border:0;background:transparent}
-html[data-platform=darwin][data-nodo-space] .nodo-right-content{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview){border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-right-card,.nodo-right-image){border-radius:max(0px,calc(var(--nodo-card-radius) - 12px - .5px))}
-html[data-platform=darwin][data-nodo-space] .nodo-right-file{border-radius:max(0px,calc(var(--nodo-card-radius) - 8px - .5px))}
-html[data-platform=darwin][data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
-html[data-platform=darwin][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
+${FRAME_CSS}
+html[data-nodo-space]:not([data-platform]){--nodo-top-clearance:48px;--dsh-frame-top-clearance:48px;--dsh-frame-chrome-top:0px}
+html[data-nodo-space]:not([data-platform]) .nodo-left-control{position:absolute;display:flex;top:11px;left:12px;pointer-events:auto}
+html[data-nodo-space]:not([data-platform]) .nodo-left-control button{width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm)}
+html[data-nodo-space]:not([data-platform]) .nodo-space-chrome>*{display:none}
+${FRAME_CSS.replaceAll("html[data-platform=darwin][data-nodo-space]", "html[data-nodo-space]:not([data-platform])")}
 /* Only the page's own text nodes are reset; the host renderer keeps its own
    heading and paragraph rhythm inside .nodo-reply. */
 .nodo-page :is(.nodo-headline,.nodo-note,.nodo-error-line,.nodo-rail-empty,.nodo-feed-empty){margin:0}

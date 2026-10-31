@@ -2,28 +2,20 @@
 
 [简体中文](README.md) | English
 
-**Bring Agents such as Claude Code and Codex together as a team, with roles and collaboration in one workbench.**
+**Bring Codex, Claude Code and other Agents together as a team, with roles and collaboration in one workbench.**
 
-Nodo runs as a plugin in DeepSeek Harness (dsh).
-
-## Preview
-
-<p align="center">
-  <a href="docs/Image/conversations.png"><img src="docs/Image/conversations.png" alt="Nodo roles and conversations" width="24%"></a>
-  <a href="docs/Image/streaming.png"><img src="docs/Image/streaming.png" alt="Nodo conversation events" width="24%"></a>
-  <a href="docs/Image/workflow.png"><img src="docs/Image/workflow.png" alt="Nodo workflow canvas" width="24%"></a>
-  <a href="docs/Image/role.png"><img src="docs/Image/role.png" alt="Nodo role configuration" width="24%"></a>
-</p>
+Nodo is a plugin for DeepSeek Harness (dsh). Each Agent keeps its own login, models, and tools; you manage roles, delegation, and conversations in one window instead of copying results between terminals.
 
 ## What you can do with Nodo
 
-- **Use multiple Agents together**: access different Agents in one interface, each using its existing configuration and authentication.
-- **Assign roles**: define each role's summary and instructions, then assign work by task type.
-- **Delegate through a lead**: once at least one executor exists, optionally add a lead under 主控 on the roles page to assign tasks by type and difficulty in the current project and receive the reports; a lead is created with the `leader` identity. Claude Code and Codex can serve as leads, and a lead conversation in Team cannot use the 仅可查看 (plan mode) permission. In Team a lead session takes one row in the sidebar, and its page merges delegations and reports round by round — one message makes one round — with 查看会话 opening each executor session; sessions on the dsh engine are not merged and stay as ordinary conversations. Opened from the sessions view, the same lead is an ordinary 1:1 chat: it never delegates and may use plan mode. A task type can turn on 按难度分配: routine and hard tasks are then routed separately, with hard tasks going to roles that have a hard-task setup; with it off, the first role accepting the type takes every task. Delegation stops with an error when no executor qualifies. Follow-up work is routed by its current difficulty; a change of difficulty or executor starts a new session that carries the existing changes and remaining questions. Files and images sent to a lead are copied under the project's `.nodo/workflow-inputs/` with their paths in the message, so the lead can include them in a task and the executor can read them. If an unfinished executor session is manually continued in Nodo and finishes with a confirmed `done`, Nodo sends one supplemental report to the lead, waiting for the last queued turn when more messages are pending. Later ordinary chat does not report again, and continuing directly in a DSH native window does not trigger a report. Long silence only marks a turn as suspected stuck; it does not fail it. If a stop remains unconfirmed after 15 seconds, Nodo settles it as an unconfirmed interruption and frees the delegation slot. Delegated tasks with structured transient errors from Codex, Claude Code, Qoder or OpenCode automatically continue in the same session, up to 5 times at fixed 30-second intervals; stopping the executor, a lead interrupt or sending a message in the executor session cancels continuation.
-- **Manage projects and conversations**: organize role conversations by project and revisit their history. Create Git worktrees when changes need isolation. Deleting a role or project archives its conversations, which stay readable from the 已移除 entry in the sidebar.
-- **Use project tools**: the right sidebar on Nodo conversation pages (including the conversation shell before a session exists) and draft welcomes with a selected project browses project files (code, Markdown, images), reviews the turn's file changes from conversation cards, opens multiple terminals, and embeds a browser for local dev pages. Terminals are shared by actual working directory; archiving a conversation keeps them alive while a project or another conversation still references that directory. Read-only conversation pages retain files, changes and the browser.
-- **Build visual workflows**: arrange tasks and handoffs, with human checkpoints, conditional branches, and rework.
-- **Allocate cost by task**: assign complex work to more capable Agents and routine tasks to less expensive Agents.
+- **Use multiple Agents together**: access different Agents in one interface, each using its existing login and model configuration.
+- **Assign roles**: write a role summary and instructions, and the Agent works to them inside its own CLI.
+- **Teams**: a role can join several teams. Each team can have one 主控 (lead) and keeps its own task types.
+- **Task assignment**: per team, name the role that takes each task type, optionally with its own model and thinking level; hard tasks can go to a different role.
+- **Lead delegation**: the lead dispatches by task type and difficulty and receives the executor's report. Delegations and reports show round by round, with 查看会话 opening the executor conversation.
+- **Projects and conversations**: organize role conversations by project, create Git worktrees when changes need isolation, and keep archived conversations readable after a role or project is deleted.
+- **Project tools**: the right sidebar browses project files, shows the turn's file changes, opens terminals in the project directory, and embeds a browser for local pages.
+- **Allocate cost by task**: hard work goes to the stronger Agent, routine work to a cheaper role and model.
 
 ## Installation
 
@@ -59,10 +51,12 @@ To update, pull the latest code, rerun the commands above, and reload the plugin
 
 ## Quick start
 
-1. **Complete onboarding**: open Nodo, enable Agents, create a general-purpose role, then add a project to start chatting. For any Agent that is not detected automatically, enter its executable path in **Settings → Model providers and Agents**.
-2. **Add more projects**: keep adding local working directories from the sidebar's project list.
-3. **Add roles as needed**: to delegate work, add a lead on the roles page (requires at least one executor; the Agent must be Claude Code or Codex, and a lead conversation in Team cannot use 仅可查看 (plan mode)); it is created with the `leader` identity. An executor can use a preset identity such as `researcher`, `coder`, `tester`, `reviewer`, or `writer`, or fill in its own identity, role summary, and instructions. Choose its Agent and default model. A role's Agent cannot be changed after creation.
-4. **Run a workflow**: create a flow under **工作流** (Workflows) in the sidebar. Assign roles and tasks to execution nodes, and add human checkpoints as needed. After starting the workflow, inspect each step's status and report in the run records.
+1. **Complete onboarding**: open Nodo, enable Agents, create a general-purpose role, then add a project to start chatting. For any Agent that is not detected automatically, enter its executable path in 设置 → 模型提供方与 Agent (Settings → Model providers and Agents).
+2. **Add more projects**: keep adding local working directories in the sidebar's project area. To work in isolation, choose 创建工作树… (create a worktree) from a project's row menu.
+3. **Create roles**: on the 角色 (roles) page, create a role with a name, role summary, and instructions, then choose its Agent, model, thinking level, and permission. Preset templates such as `researcher`, `coder`, `tester`, `reviewer`, and `writer` can fill these in, or write your own. A role's Agent cannot be changed after creation.
+4. **Create a team and set its lead**: in 团队 (teams) on the same page, add a team, drag executor roles into the member column, and drag the role that should lead into 拖入主控 (drop a lead here). Only Claude Code and Codex can lead. A lead leads one team and is never a member of any team. A session acting as lead cannot use 仅可查看 (view-only, plan mode).
+5. **Assign tasks**: click 任务分配 (task assignment), add a task type with a name and a “when to dispatch this type” note, and choose the role that takes it. Turn on 困难任务单独指定 (assign hard tasks separately) when hard work should go to another role.
+6. **Start delegating**: in the sidebar's 团队 tab, start a conversation with the lead and state the goal and constraints. The lead dispatches according to the team's assignment and receives the results; a round shows its delegations and their reports together, and 查看会话 opens the executor conversation.
 
 ## Why choose Nodo
 
@@ -77,24 +71,24 @@ Model performance depends on both the model itself and the **Harness** running i
 | Integration level | Coordinates multiple native Agents | Uses multiple models or subagents inside one Harness |
 | Execution | Each Agent retains its supported native execution environment | Uses the current Harness's execution framework throughout |
 | Cross-vendor capabilities | Combines native Agents from different vendors | Combines models; connecting an API does not automatically bring the native Agent's capabilities |
-| Task collaboration | Assigns work, hands off results, and coordinates workflows across Agents | Relies primarily on the current Harness's routing and delegation capabilities |
-| Control | Manages multi-Agent conversations and cross-Agent flows in one window | Manages models or subagents within a single Agent environment |
+| Task collaboration | Splits work across Agents, with lead delegation and report handoff | Relies primarily on the current Harness's routing and delegation capabilities |
+| Control | Manages multi-Agent conversations and delegation in one window | Manages models or subagents within a single Agent environment |
 
 Nodo also works alongside Subagents: Agents in Nodo can still run their own [Subagents](https://code.claude.com/docs/en/sub-agents).
 
 ## How it works
 
-Consider a “plan → implement → review” workflow: `leader` plans with Claude Code, `coder` implements with Codex, and `reviewer` reviews with OpenCode.
+Consider a “plan → implement → review” collaboration: the lead `leader` plans and delegates with Claude Code, `coder` implements with Codex, and `reviewer` reviews with OpenCode.
 
 ```mermaid
 flowchart LR
-    U[You] --> N[Nodo workbench<br/>Roles · Conversations · Workflows]
-    N --> D[agent-drivers driver layer]
-    D --> A1[Codex]
-    D --> A2[Claude Code]
-    D --> A3[OpenCode]
-    A1 & A2 & A3 --> M[Their configured model services]
-    A1 & A2 & A3 --> P[(Project directory<br/>.nodo/ handoff reports)]
+    U[You] --> N[Nodo workbench<br/>Teams · Roles · Conversations]
+    N --> L[Lead conversation<br/>dispatches by task type and difficulty]
+    L --> D[agent-drivers driver layer]
+    N --> D
+    D --> A[Codex · Claude Code · OpenCode …]
+    A --> M[Their configured model services]
+    A --> P[(Project directory<br/>.nodo/)]
 ```
 
 Codex, Claude Code, Qoder, Pi, ZCode, OpenCode and CodeBuddy connect through their own drivers and display conversations in the Nodo Feed. DSH roles use the dsh native conversation view.
@@ -105,30 +99,39 @@ Nodo connects through each Agent's official public interfaces, such as Codex app
 
 ### Roles: how an Agent receives its identity
 
-The role summary and instructions you define for a role are injected through the Agent's own system-prompt channel, such as Claude Code's `--append-system-prompt` or Codex developer instructions. A few Agents receive them through identity files or MCP tools. They are injected once per conversation and kept out of your chat messages. The 身份 label shown on the roles page is an interface label for telling roles apart and applying templates; it is never injected.
+The role summary and instructions you define for a role are injected through the Agent's own system-prompt channel, such as Claude Code's `--append-system-prompt` or Codex developer instructions. A few Agents receive them through identity files or MCP tools. They are injected once per conversation and kept out of your chat messages. The saved 身份 records which template filled them; it is used for display and template matching only and is never injected.
 
 In this example, Codex follows the `coder` responsibilities from the first message, while OpenCode reviews as `reviewer`.
 
+### Teams and leads: how work is delegated
+
+- **Who leads**: drag a role into a team's lead column to make it that team's 主控. A role can be a member of several teams, but leads only one team. The lead dispatches through tools that Nodo provides, and may only use its own team's task types and difficulties.
+- **Where it delegates**: only a lead conversation started in the sidebar's 团队 tab delegates. A lead conversation started in the 角色 tab is an ordinary 1:1 chat that never delegates and may use plan mode.
+- **Who takes the task**: each task type in the team's assignment names its role. When a type also names a hard-task role, hard work goes there and the rest to the normal role; without it, the normal role takes every task. With no role assigned, the lead stops and reports the gap.
+- **One at a time**: a lead conversation runs one delegation at a time. The report returns to the lead before the next delegation starts.
+- **Reuse and restart**: follow-up work is routed by the team's current assignment. A change of difficulty or executor starts a new session that carries the existing changes and remaining questions; one executor session can be reused at most twice.
+- **When things go wrong**: long silence only marks a turn as suspected stuck, never a failure. If a stop remains unconfirmed after 15 seconds, Nodo settles it as an unconfirmed interruption and frees the delegation slot. Delegated tasks that hit a transient error classified by Codex, Claude Code, Qoder or OpenCode continue automatically in the same session, up to 5 times at 30-second intervals; stopping the executor, a lead interrupt or a message in that executor conversation cancels continuation.
+
 ### References: passing results between conversations
 
-Agents do not share conversation context. To let role B refer to role A's results, use the `/引用会话` (reference conversation) feature in role B's conversation, select a completed reply from role A, and send it with your message. It is marked as “reference material, not instructions” when sent to the Agent, so it does not change the current role's identity or permissions. This is also the basis for Agent handoffs in workflows.
+Agents do not share conversation context. To let role B refer to role A's results, use the 引用会话 (reference conversation) feature in role B's conversation, select a completed reply from role A, and send it with your message. It is marked as reference material, not instructions, so it does not change the current role's identity or permissions.
 
 In the example, you can reference `leader`'s plan in the `coder` conversation, then reference `coder`'s implementation in the `reviewer` conversation, moving the process forward manually.
 
 > Why this design: it removes repeated copying and pasting when working with multiple Agents.
 
-### Handoffs: passing results through a workflow
+### Report handoff: how executor results reach the lead
 
-In a workflow, each step's final reply is saved as a report under the project's `.nodo/workflow-runs/`. The next step receives only the latest report's path and an index, and reads them as needed. Reports are also marked as “reference material, not instructions.” A choice you make at a human checkpoint is passed to the next step as an instruction.
+When an executor conversation ends, its final reply is saved as a reference snapshot and the lead receives a report message carrying that reference; when a reference cannot be created, the reply is quoted inline instead. The report is marked as reference material, not instructions, and the lead is expected to check it against files and evidence.
 
-In the example, `reviewer` reads the implementation report. If the review requests rework, `coder` can read the review feedback before trying again.
+The executor's intermediate steps never enter the lead's context. Use 查看会话 to read the original transcript, and the lead can consult its own delegation table when it needs the picture.
 
-> Why this design: context does not keep growing with every step; each step's output stays on disk for later review; and it reduces the risk of one Agent's output being executed as instructions by the next.
+> Why this design: the lead's context keeps conclusions and references instead of growing with every step, and each output stays on disk for later review.
 
 ## Data and privacy
 
-- **Plugin data**: projects, roles, conversations, and workflow records are stored locally in `~/.dsh/orchestrator` (or the `orchestrator/` subdirectory of `DSH_HOME` when set). Do not upload this directory when reporting issues.
-- **Files written to your project**: when running workflows, Nodo creates a `.nodo/` directory in the project for step reports and attachment copies. It automatically writes a `.gitignore` inside, keeping these files out of the project's Git changes.
+- **Plugin data**: projects, roles, teams, conversations, reference snapshots, and credentials are stored locally in `~/.dsh/orchestrator` (or the `orchestrator/` subdirectory of `DSH_HOME` when set). Do not upload this directory when reporting issues.
+- **Files written to your project**: creating a Git worktree adds `.nodo/worktrees/` to the repository. Files and images sent to a lead are copied under the project's `.nodo/`, with their paths written into the message so the lead can pass them to an executor. Nodo writes a `.gitignore` inside `.nodo/`, keeping these files out of the project's Git changes.
 - **Credentials**: saved in local files readable only by the current user, with access scoped by role.
 - **Code and model services**: Nodo itself does not upload data, but each Agent sends tasks and code to its configured model service. Costs and data policies are governed by that service.
 
@@ -136,7 +139,8 @@ In the example, `reviewer` reads the implementation report. If the review reques
 
 - Models, thinking levels, images, attachments, input during running turns, and compaction differ across Agents. Nodo integrates only the capabilities each Agent actually provides.
 - Whether conversations can also be viewed in an Agent's own application depends on its integration method.
-- Workflows currently support sequential steps, branches, and bounded rework. Parallel execution is not supported.
+- Leads currently must be Claude Code or Codex. Conversations on the dsh engine are not merged into rounds in the team view and stay as ordinary conversations.
+- A lead can only delegate work configured as a task type with an assigned role in its team.
 - The right sidebar's terminals require terminal support from the host. Nodo conversations opened in the native conversation view keep dsh's own right sidebar.
 - The embedded browser opens HTTP(S) pages only. Outside the desktop app it uses an iframe, and some sites refuse to be framed; open those in an external browser.
 - Tool details, file changes, and run status shown in the interface are for reference. Actual files and Agent state are authoritative.
@@ -158,13 +162,13 @@ The host process may have a different `PATH` from your terminal. Enter the CLI's
 
 First verify login and model configuration in the Agent's own environment. Then return to Nodo, save settings, check the connection again, and scan local configuration.
 
-### Why has a workflow stopped at a step?
+### Why does the lead not delegate?
 
-Inspect the stop reason in the run details. Review the corresponding conversation and actual files, then choose to retry, accept the output, or cancel.
+Check in order: the team has a lead; executor roles have joined that team; the team has task types; each type names a role; hard tasks name a role when assigned separately. A lead can only dispatch its own team's task types, and it stops with an explanation when no role qualifies.
 
 ### Can I still read conversations after deleting a role or project?
 
-Yes. Those conversations are archived on deletion. Transcripts, statistics, references, and tool details are retained, and the conversations open read-only from the 已移除 entry in the sidebar: you cannot send, compact, or unarchive them. Manually archived conversations also open read-only; unarchive one to keep working in it. A deleted role also leaves the lead's roster and workflow node choices, and its name can be reused.
+Yes. Those conversations are archived on deletion. Transcripts, statistics, references, and tool details are retained, and the conversations open read-only from the 已移除 entry in the sidebar: you cannot send, compact, or unarchive them. Manually archived conversations also open read-only; unarchive one to keep working in it. A deleted role also leaves its teams, and a team it led loses its lead; its name can be reused.
 
 ### Why is the interface read-only?
 

@@ -18,3 +18,7 @@ declare module 'nodo:engine-logos' {
 declare module 'nodo:engine-names' {
   export const ENGINE_NAMES: Record<string, string>;
 }
+
+declare module 'nodo:file-icons' {
+  export const FILE_ICON_URLS: Record<string, string>;
+}
