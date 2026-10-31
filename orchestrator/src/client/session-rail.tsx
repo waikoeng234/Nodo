@@ -145,6 +145,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const stateAt = (role: RailRole) => { const state = roleStateOf(role, view, workspace); return state.active || state.status ? Math.max(state.since ?? 1, state.finishedAt ?? 0, state.lastAt ?? 0) : 0 }
   const roster = [...roles].sort((a, b) => Number(b.lead === true) - Number(a.lead === true)).map(role => ({ role, at: stateAt(role) }))
     .sort((a, b) => b.at - a.at).map(entry => entry.role)
+  // The team bar mirrors the roles page's team list row for row, teams without a lead included.
+  const teamRows = (view.teams ?? []).map(item => ({ team: item, lead: roles.find(role => role.id === item.lead) }))
   const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session)
     && (!session.draftedAt || session.briefSent)
     && (role.deletedAt || !view.workspaces.some(item => item.id === workspaceId)))
@@ -256,24 +258,48 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const tree = ordered.map(node).filter(Boolean)
   // Roles past the fold stay hidden until expanded, except the filtered one.
   const shownRoles = rolesOpen ? roster : roster.filter((item, index) => index < ROLE_FOLD || item === filterRole)
+  const shownTeams = rolesOpen ? teamRows : teamRows.filter((row, index) => index < ROLE_FOLD || row.lead?.id === filterRole?.id)
   const rosterItem = (item: RailRole) => {
     const state = roleStateOf(item, view, workspace)
     const pressed = item.id === filterRole?.id
     const label = workLabel(state)
-    const group = team ? view.teams?.find(entry => entry.lead === item.id) : undefined
-    const name = team && group ? group.name || '未命名团队' : item.name
     return (
       <div key={item.id} className="nodo-roster-cell">
-        <button type="button" className="nodo-roster-item" aria-current={pressed || undefined} title={name}
-          aria-label={label ? `${name}，${label}` : name}
+        <button type="button" className="nodo-roster-item" aria-current={pressed || undefined} title={item.name}
+          aria-label={label ? `${item.name}，${label}` : item.name}
           onClick={() => { if (pressed) setRoleFilter(null); else { onSelect(item.id); setRoleFilter(item.id) } }}>
           <span className="nodo-roster-avatar"><RoleAvatar profile={item} running={state.active} size={20} /></span>
+          <span className="nodo-roster-name">{item.name}</span>
+          {label && <span className="nodo-row-running"><WorkDot kind={workKind(state)} />{label}</span>}
+        </button>
+        <span className="nodo-row-actions">
+          <button type="button" className="nodo-row-action" aria-label={`配置角色 ${item.name}`} title="配置角色"
+            disabled={busyNow || state.active} onClick={() => onEditRole(item)}><IconEditOutlineRegular /></button>
+        </span>
+      </div>
+    )
+  }
+  // A team row leads with its lead role when it has one; a team without one
+  // opens its config instead of a session filter.
+  const teamItem = ({ team, lead }: { team: NonNullable<RailView['teams']>[number]; lead: RailRole | undefined }) => {
+    const state = lead ? roleStateOf(lead, view, workspace) : runningOf({}, view.work)
+    const pressed = lead !== undefined && lead.id === filterRole?.id
+    const label = workLabel(state)
+    const name = team.name || '未命名团队'
+    return (
+      <div key={team.id} className="nodo-roster-cell">
+        <button type="button" className="nodo-roster-item" aria-current={pressed || undefined} title={name}
+          aria-label={label ? `${name}，${label}` : name}
+          onClick={() => { if (!lead) return onEditTeam(team.id); if (pressed) setRoleFilter(null); else { onSelect(lead.id); setRoleFilter(lead.id) } }}>
+          <span className="nodo-roster-avatar">{lead
+            ? <RoleAvatar profile={lead} running={state.active} size={20} />
+            : <span className="nodo-roster-plus" />}</span>
           <span className="nodo-roster-name">{name}</span>
           {label && <span className="nodo-row-running"><WorkDot kind={workKind(state)} />{label}</span>}
         </button>
         <span className="nodo-row-actions">
-          <button type="button" className="nodo-row-action" aria-label={`${group ? '配置团队' : '配置角色'} ${name}`} title={group ? '配置团队' : '配置角色'}
-            disabled={busyNow || state.active} onClick={() => group ? onEditTeam(group.id) : onEditRole(item)}><IconEditOutlineRegular /></button>
+          <button type="button" className="nodo-row-action" aria-label={`配置团队 ${name}`} title="配置团队"
+            disabled={busyNow || state.active} onClick={() => onEditTeam(team.id)}><IconEditOutlineRegular /></button>
         </span>
       </div>
     )
@@ -340,8 +366,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
             <button type="button" role="tab" aria-selected={team} onClick={team ? undefined : onTeam}>团队</button>
           </div>
           <div className="nodo-roster" role="group" aria-label="按角色查看会话" style={rosterHeight ? { maxHeight: rosterHeight } : undefined}>
-            <div className="nodo-roster-list">{shownRoles.map(rosterItem)}</div>
-            {roster.length > ROLE_FOLD && <button type="button" className="nodo-roster-more" aria-expanded={rolesOpen}
+            <div className="nodo-roster-list">{team ? shownTeams.map(teamItem) : shownRoles.map(rosterItem)}</div>
+            {(team ? teamRows.length : roster.length) > ROLE_FOLD && <button type="button" className="nodo-roster-more" aria-expanded={rolesOpen}
               onClick={() => { if (!rolesOpen) saveRosterHeight(null); setRolesOpen(current => !current) }}>{rolesOpen ? '收起' : '显示更多'}</button>}
             <div className="nodo-roster-cell">
               <button type="button" className="nodo-roster-item nodo-roster-new" disabled={busyNow} onClick={team ? onNewTeam : onNewRole}>

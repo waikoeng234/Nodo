@@ -438,7 +438,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         h('span', { className: 'nodo-head-actions' },
           members.length > 0 && h(RoundMenu, { members, work: view.work, onOpen: openSession })))),
     h(Feed, { key: `${team}:${sessionId}`, profile, session, revision: view.revision, work, sentTick,
-      round: team ? { profiles: view.profiles, taskTypes: view.taskTypes, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
+      round: team ? { profiles: view.profiles, teams: view.teams, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since, work })),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId

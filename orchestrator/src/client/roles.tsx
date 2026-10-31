@@ -5,10 +5,9 @@ import {
 } from './ui-shared.js'
 import { RoleEditor } from './profile-dialogs.js'
 import { TeamsSection, AssignPage, TEAMS_CSS } from './teams.tsx'
-import type { Team, TeamType } from './teams.tsx'
+import type { Team } from './teams.tsx'
 import type { ModelChoice } from './model-options.js'
 
-export type RoleTaskType = TeamType
 interface RoleCard {
   id: string; name: string; identity?: string; instructions?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean
   avatarTemplate?: string; permission?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
@@ -18,7 +17,6 @@ interface RolePreset { name: string; role: string; instructions: string }
 interface RolesView {
   profiles: RoleCard[]
   work?: Record<string, { active?: boolean } | undefined>
-  taskTypes?: RoleTaskType[]
   teams?: Team[]
   prefs?: { enabledEngines?: string[] | null; rolePresets?: RolePreset[] | null } | null
   readOnly?: string | null
@@ -79,8 +77,9 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
   const [engines, setEngines] = useState<EngineChoice[] | null>(null)
   const dirtyRef = useRef(false)
   const roles = view.profiles.filter(role => !role.deletedAt)
-  const types = view.taskTypes ?? []
   const teams = view.teams ?? []
+  // The count in the nav mirrors the team the assignment page would open.
+  const types = (teams.find(item => item.id === teamId) ?? teams[0])?.types ?? []
   const executors = roles.filter(item => item.lead !== true)
   const creating = adding || !executors.length
   const perform = async (action: () => Promise<void>) => {
@@ -106,7 +105,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       showOverview()
       if (target.team !== 'new') return setTeamId(target.team!)
       const id = crypto.randomUUID()
-      saveTeams([...teams, { id, name: '', lead: null, members: [], assign: {} }])
+      saveTeams([...teams, { id, name: '', lead: null, members: [], types: [], assign: {} }])
       setTeamId(id)
     })
   }, [target])
@@ -141,9 +140,6 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     for (const role of changed) await call('profile-update', { id: role.id, changes: { lead: role.lead !== true } })
     await call('teams-update', { teams: next })
   })
-  const saveTypes = (next: TeamType[]) => perform(async () => {
-    await call('task-types-update', { types: next.map(({ id, name, when }) => ({ name, when: when ?? '', ...(id !== undefined ? { id } : {}) })) })
-  })
   const deleteReason = (role: RoleCard) => roles.some(item => item.lead === true) && role.lead !== true && executors.length === 1 ? '主控至少需要一个执行角色' : undefined
 
   const locked = readOnly || busy
@@ -174,8 +170,8 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
       <div className="nodo-roles-body">
         <div className="nodo-role-dialog nodo-roles-main" data-screen={assignOpen ? 'assign' : selected || creating ? 'role' : 'overview'}>
           {assignOpen
-            ? <AssignPage roles={roles} teams={teams} types={types} engines={engines ?? []} activeId={teamId} disabled={locked}
-              onActive={setTeamId} onBack={() => switchTo(showOverview)} save={saveTeams} saveTypes={saveTypes} />
+            ? <AssignPage roles={roles} teams={teams} engines={engines ?? []} activeId={teamId} disabled={locked}
+              onActive={setTeamId} onBack={() => switchTo(showOverview)} save={saveTeams} />
             : selected
               ? (
                 <RoleEditor key={`${selected.id}:${nonce}`} profile={selected}

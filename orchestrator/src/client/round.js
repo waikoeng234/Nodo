@@ -77,6 +77,12 @@ const reportParts = text => {
 }
 const roleOf = (round, id) => round.profiles.find(role => role.id === id) ?? { id, name: id }
 
+// A type name comes from the round lead's team first — the same id may carry
+// different names per team — then any team that knows it; an unknown id names
+// itself.
+const typeName = (round, id) => (round.teams?.find(team => team.lead === round.leadId)?.types ?? []).find(item => item.id === id)?.name
+  ?? (round.teams ?? []).flatMap(team => team.types ?? []).find(item => item.id === id)?.name ?? id
+
 // A reused session has several tasks; keep each delegation's recent output in
 // its own row, the live reply as the newest entry.
 function RoundTools({ step, work }) {
@@ -136,7 +142,7 @@ export function RoundMember({ step, round }) {
     h('div', { className: 'nodo-round-body' },
       h('div', { className: 'nodo-round-head' },
         h('span', { className: 'nodo-round-role' }, role.name),
-        tag(round.taskTypes?.find(item => item.id === step.type)?.name ?? step.type),
+        tag(typeName(round, step.type)),
         step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
         live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: workDot(work), size: 7 }), label ? `${label} · ` : null, runDuration(now - (work.since ?? now)))
           : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.unconfirmed ? '结果未确认' : step.ended === 'cancelled' ? '已取消' : step.ended === 'interrupted' ? '已中断' : '已结束')

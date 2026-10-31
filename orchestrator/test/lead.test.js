@@ -5,6 +5,7 @@ import { copyFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } fr
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RUN_LIMITS, TURN_IDLE_TIMEOUT_MS } from '../core/src/constants.js'
 import { leadRules, route } from '../core/src/lead.js'
 import { install as installLead } from '../core/src/lead.js'
+import defaultTaskTypes from '../core/shared/task-types.json' with { type: 'json' }
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { echoEntry, registerClaudeFixtureEngine } from './helpers/echo-driver.js'
 import { boot, until, withHost } from './helpers/host.js'
@@ -68,7 +69,7 @@ test('deleted roles leave the lead roster and routing', () => withHost(async ({ 
   const kept = await api('profile-create', { name: 'Kept', engine: 'echo' })
   const lead = await api('profile-create', { name: 'Lead', engine: 'claude', lead: true, engineOptions: { script: [] } })
   const rt = await runtime
-  await api('teams-update', { teams: [{ name: 'Team', lead: lead.id, members: [removed.id, kept.id], assign: { feature: { normal: { profile: removed.id } } } }] })
+  await api('teams-update', { teams: [{ name: 'Team', lead: lead.id, members: [removed.id, kept.id], types: [{ id: 'feature', name: '功能', when: '' }], assign: { feature: { normal: { profile: removed.id } } } }] })
   await api('profile-delete', { id: removed.id })
   assert.deepEqual(rt.teams()[0].members, [kept.id])
   assert.deepEqual(rt.teams()[0].assign.feature.normal, {})
@@ -86,14 +87,16 @@ const withLead = run => withHost(async host => {
   const rt = await host.runtime
   const workspace = await host.api('workspace-create', { name: 'Lead workspace', cwd: join(host.home, 'ws') })
   // Teams replace the per-role task settings: roles declare the old shape and
-  // sync() compiles it into the lead's team assignment table.
+  // sync() compiles it into the lead's team assignment table; every team keeps
+  // the built-in catalog as its own types.
+  const catalog = defaultTaskTypes.map(({ id, name, when }) => ({ id, name, when }))
   const legacy = new Map(), splits = new Set()
   const sync = async () => {
     const live = Object.values(rt.state.profiles).filter(profile => !profile.deletedAt)
     const roster = live.filter(profile => profile.lead !== true)
     await rt.updateTeams(live.filter(profile => profile.lead === true).map(lead => {
       const assign = {}
-      for (const type of rt.taskTypes()) {
+      for (const type of catalog) {
         const holders = roster.filter(item => legacy.get(item.id)?.taskTypes.includes(type.id))
         const hardOf = item => legacy.get(item.id).hard
         const normal = (splits.has(type.id) ? holders.find(item => hardOf(item) === undefined) : undefined) ?? holders[0]
@@ -102,7 +105,7 @@ const withLead = run => withHost(async host => {
         assign[type.id] = { ...(normal ? { normal: { profile: normal.id } } : {}),
           ...(splits.has(type.id) ? { hard: hard ? { profile: hard.id, ...hardOf(hard) } : {} } : {}) }
       }
-      return { id: lead.id, name: lead.name, lead: lead.id, members: roster.map(item => item.id), assign }
+      return { id: lead.id, name: lead.name, lead: lead.id, members: roster.map(item => item.id), types: catalog.map(type => ({ ...type })), assign }
     }))
   }
   const split = async (type, on) => { if (on) splits.add(type); else splits.delete(type); await sync() }
@@ -269,7 +272,8 @@ test('role boards refresh task types without changing identity, stored user text
   assert.equal(brief, leadRules)
   assert.ok(!brief.includes(worker.id) && !brief.includes(lead.id) && !brief.includes(other.id))
   await send(lead, conversation, 'First question')
-  await host.api('task-types-update', { types: [{ id: 'feature', name: 'Feature', when: 'Updated responsibility' }] })
+  await host.api('teams-update', { teams: rt.teams().map(team => team.lead === lead.id
+    ? { ...team, types: [{ id: 'feature', name: 'Feature', when: 'Updated responsibility' }] } : team) })
   await send(lead, conversation, 'Second question')
   assert.ok(inputs[0].text.endsWith('\n\nFirst question'))
   assert.match(rt.leadRoles(conversation.id), /Updated responsibility/)
@@ -926,6 +930,16 @@ for (const [name, command, expected] of [
   assert.equal(lines(conversation).length, 0)
 }))
 
+test('a team without task types refuses delegation and asks for types first', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  await rt.updateTeams([{ ...rt.teamOf(lead.id), types: [], assign: {} }])
+  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false)),
+    { code: 'orch/invalid', message: '该团队还没有任务类型，请先在任务分配页添加' })
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
+}))
+
 test('routing mode ignores to and routes by type', () => withLead(async ({ rt, role, session }) => {
   const router = await role('Router', 'Feature done', { taskTypes: ['feature'] })
   const writer = await role('Writer', 'Docs done', { taskTypes: ['docs'] })
@@ -1407,7 +1421,7 @@ test('role board preserves settings order, columns, task types and routing rules
   await split('review', true)
   const updated = rt.leadRoles(owner.id)
   assert.match(updated, /review \| 审查 \| [^|]* \| Second \| 无人承接/)
-  for (const type of rt.taskTypes()) assert.ok(updated.includes(type.when))
+  for (const type of rt.teamOf(lead.id).types) assert.ok(updated.includes(type.when))
   assert.match(board, /没有承接角色就停止派活并说明缺口/)
   assert.match(board, /没有单独指定难题角色的类型，常规和难题都派给常规角色/)
   assert.match(board, /分配变更只影响之后的派活/)

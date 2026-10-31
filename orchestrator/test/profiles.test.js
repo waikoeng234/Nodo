@@ -147,7 +147,6 @@ test('leads require an executor and cannot remove or promote the last one before
   assert.equal(archived, false)
   await assert.rejects(api('profile-update', { id: worker.id, changes: { lead: true, name: 'Refused' } }), { code: 'orch/invalid', message: '主控至少需要一个执行角色' })
   assert.equal(rt.findProfile(worker.id).name, 'Worker')
-  await assert.rejects(api('task-types-update', { types: [] }), { code: 'orch/invalid', message: '至少保留一个任务类型' })
   const second = await api('profile-create', { name: 'Second', engine: 'echo' })
   await api('profile-update', { id: worker.id, changes: { lead: true } })
   await api('profile-delete', { id: lead.id })

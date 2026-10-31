@@ -118,15 +118,17 @@ test('a supplemental report clears interrupted and unconfirmed round status', as
   assert.equal(step.unconfirmed, undefined)
   assert.equal(step.report, 'Recovered successfully')
   host.reset()
-  const shown = nodes(RoundMember({ step, round: { profiles: [{ id: 'worker', name: 'Worker' }], taskTypes: [], work: {} } }))
+  const shown = nodes(RoundMember({ step, round: { profiles: [{ id: 'worker', name: 'Worker' }], teams: [], work: {} } }))
   assert.doesNotMatch(text(shown), /已中断|结果未确认/)
 })
 
 test('an executor message shows its role, tags and state, expands the rest of its report and opens its session', async () => {
   const { RoundMember, MessageTime, host } = await loadClient(['round.js', 'feed.js'])
   const opened = []
-  const round = { profiles: [{ id: 'coder', name: 'Coder' }, { id: 'tester', name: 'Tester' }],
-    taskTypes: [{ id: 'bug-fix', name: '修复' }, { id: 'test', name: '测试' }],
+  // The lead's own team names its types first; an unknown id names itself.
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }, { id: 'tester', name: 'Tester' }], leadId: 'lead',
+    teams: [{ id: 't1', name: '', lead: 'lead', types: [{ id: 'bug-fix', name: '修复' }, { id: 'test', name: '测试' }] },
+      { id: 't2', name: '', lead: 'other', types: [{ id: 'bug-fix', name: '缺陷' }] }],
     work: { e2: { active: true, since: Date.now() - 5000 } }, onOpen: id => opened.push(id) }
   const view = step => { host.reset(); return nodes(RoundMember({ step, round })) }
   const done = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: true, at: 9, report: '## Fixed the refresh race\n- Changed auth.js' }
@@ -207,7 +209,7 @@ test('a live executor message shows its turn\'s latest five entries — text, th
     { who: 'agent', kind: 'text', text: 'Now editing', at: 3 },
     tool('c7', 'start')]
   const { RoundMember, ProcessRow, host } = await loadClient(['round.js', 'feed.js'], { call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return lines } })
-  const round = { profiles: [{ id: 'tester', name: 'Tester' }], taskTypes: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const tools = () => {
     host.reset()
@@ -295,7 +297,7 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
   const { Feed, RoundSpeaker, RoundChip, RoundMember, MessageTime } = await loadClient(['feed.js', 'round.js'], {
     react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
   const profile = { id: 'lead', name: 'Lead', lead: true }
-  const round = { profiles: [profile, { id: 'coder', name: 'Coder' }], taskTypes: [], work: {}, onOpen() {} }
+  const round = { profiles: [profile, { id: 'coder', name: 'Coder' }], teams: [], work: {}, onOpen() {} }
   const tree = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: true, since: 7, buffer: 'Next step' }, round }))
   assert.equal(tree.find(node => node.props.className === 'nodo-feed-inner').props['data-round'], '')
   assert.deepEqual(tree.filter(node => node.type === RoundSpeaker).map(node => [node.props.role, node.props.running]),
@@ -416,15 +418,18 @@ test('the roster puts roles with a state first by latest change, then leads, the
   assert.deepEqual(roster().map(node => node.props.title), ['Other', 'Coder', 'Alpha', 'Beta'])
   assert.equal(render().some(node => node.props?.['data-lead'] === ''), false)
   const calls = []
-  view.teams = [{ id: 't1', name: '前端组', lead: 'alpha' }, { id: 't2', name: '', lead: 'beta' }]
+  view.teams = [{ id: 't1', name: '前端组', lead: 'alpha' }, { id: 't2', name: '', lead: 'beta' }, { id: 't3', name: '空组', lead: null }]
   cursor = 0
   const teamTree = nodes(Rail({ view, navigation: { view: 'team' }, onSelect() {}, onSelectSession() {}, onNewTeam: () => calls.push('new'), onEditTeam: id => calls.push(id) }))
-  assert.deepEqual(teamTree.filter(node => node.props.className === 'nodo-roster-item' && node.props.title).map(node => node.props.title), ['前端组', '未命名团队'])
+  assert.deepEqual(teamTree.filter(node => node.props.className === 'nodo-roster-item' && node.props.title).map(node => node.props.title), ['前端组', '未命名团队', '空组'])
   const add = teamTree.find(node => node.props.className === 'nodo-roster-item nodo-roster-new')
   assert.deepEqual(nodes(add).filter(node => node.props?.className === 'nodo-roster-name').map(node => node.children[0]), ['新建团队'])
   add.props.onClick()
   teamTree.find(node => node.props['aria-label'] === '配置团队 前端组').props.onClick()
-  assert.deepEqual(calls, ['new', 't1'])
+  assert.equal(teamTree.find(node => node.props['aria-label'] === '配置团队 空组').props.disabled, false, 'a team without a lead is editable at once')
+  teamTree.find(node => node.props['aria-label'] === '配置团队 空组').props.onClick()
+  teamTree.find(node => node.props.className === 'nodo-roster-item' && node.props.title === '空组').props.onClick()
+  assert.deepEqual(calls, ['new', 't1', 't3', 't3'], 'a lead-less team row opens its config like its edit button')
 })
 
 async function mount(viewName = 'team', restored) {
@@ -438,7 +443,7 @@ async function mount(viewName = 'team', restored) {
   ] }
   const view = { profiles: [lead, coder], workspaces: [{ id: 'w', name: 'Project' }], work: { e1: { active: true, since: 100 } },
     stats: { l1: { turns: 2, steps: 4, inputTokens: 100, outputTokens: 50 }, e1: { turns: 1, steps: 2, inputTokens: 20, outputTokens: 10 } },
-    taskTypes: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
+    teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
   const space = { active: true, legacy: true }
   const loaded = await loadClient(['page.js', 'round.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
     uiShared: {
@@ -590,7 +595,7 @@ test('Team rail lists only non-dsh lead sessions, aggregates member state and fe
     { id: 'l2', name: 'New round', workspaceRef: 'w', updatedAt: 2 },
     { id: 'old', name: 'Archived', workspaceRef: 'w', archivedAt: 1 },
   ] }
-  const view = { workspaces: [workspace], work: { e1: { active: true, status: 'waiting-approval' } }, profiles: [lead,
+  const view = { workspaces: [workspace], work: { e1: { active: true, status: 'waiting-approval' } }, teams: [{ id: 't1', name: 'Lead', lead: 'lead' }], profiles: [lead,
     { id: 'coder', name: 'Coder', sessions: [{ id: 'e1', name: 'Refresh race', workspaceRef: 'w', updatedAt: 5, source: { kind: 'lead', leadSessionId: 'l1' } }] },
     { id: 'native', name: 'Native', lead: true, engine: 'dsh', sessions: [{ id: 'n1', workspaceRef: 'w', engine: 'dsh' }] },
   ] }

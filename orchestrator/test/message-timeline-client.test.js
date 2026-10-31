@@ -143,7 +143,7 @@ test('a lead conversation hides the usage captions but keeps the reply stamps', 
     react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
   })
   const render = (lead, round) => Feed({ profile: { id: 'p', lead: lead || undefined }, session: { id: 's' }, work: { active: false },
-    round: round ? { profiles: [], taskTypes: [], work: {}, onOpen: () => {} } : undefined })
+    round: round ? { profiles: [], teams: [], work: {}, onOpen: () => {} } : undefined })
   for (const round of [true, false]) {
     const tree = render(true, round)
     assert.equal(nodes(tree).filter(node => node.type === TurnUsage).length, 0, round ? 'merged view' : 'raw view')

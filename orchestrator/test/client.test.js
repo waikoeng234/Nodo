@@ -1566,6 +1566,14 @@ test('the composer menu cards take the native card geometry', () => {
   assert.match(source, /\.nodo-add-anchor\{position:static\}/, 'the host anchor wrapper must not become the containing block')
 })
 
+// Windows paints a native select popup with the OS light background while item
+// text keeps the page's label color, so a transparent select shows the dark
+// theme's white options on white: the options carry their own theme colors.
+test('the dialog select paints its native popup options in theme colors', () => {
+  assert.match(clientSource('styles.js'),
+    /\.nodo-dialog-select option\{background-color:var\(--dsw-alias-bg-base\);color:var\(--dsw-alias-label-primary\)\}/)
+})
+
 // The dialog owns the engine and the model pair that seeds new conversations: it
 // lists the engine's scanned models with the selected one's levels, and a save
 // writes both onto the card.
@@ -2565,7 +2573,7 @@ test('the last executor stays protected while a lead exists', async () => {
     { id: 'lead', name: 'Lead', engine: 'echo', lead: true, sessions: [] },
     { id: 'a', name: 'First', engine: 'echo', sessions: [] },
     { id: 'b', name: 'Second', engine: 'echo', sessions: [] },
-  ], taskTypes: [], teams: [] }
+  ], teams: [] }
   const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [] })
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
@@ -2611,7 +2619,7 @@ test('创建角色 opens the role editor on a blank role and leaves it through �
   const states = [], pending = []
   cursor = 0
   const view = { profiles: [{ id: 'lead', name: '决策者', engine: 'echo', lead: true, sessions: [] }, { id: 'a', name: 'Writer', engine: 'echo', sessions: [] }],
-    workspaces: [], work: {}, taskTypes: [], teams: [], prefs: {} }
+    workspaces: [], work: {}, teams: [], prefs: {} }
   const loaded = await loadRolesPage({ react: rolesReact(states, pending), call: async () => [], globals: { document: { querySelector: () => null } } })
   const render = () => { cursor = 0; const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
     pending.splice(0).forEach(effect => effect()); return tree }
@@ -2677,7 +2685,7 @@ test('switching roles with unsaved edits asks before discarding, and so does lea
       { id: 'a', name: 'Writer', engine: 'echo', sessions: [] },
       { id: 'b', name: 'Reviewer', engine: 'echo', sessions: [] },
     ],
-    workspaces: [], work: {}, taskTypes: [],
+    workspaces: [], work: {},
   }
   const loaded = await loadRolesPage({
     react: rolesReact(states, pending),
@@ -2764,7 +2772,7 @@ test('deleting a lead or executor drops session drafts from memory and storage',
     cursor = 0
     const view = {
       profiles: [{ id: 'a', name: 'Writer', engine: 'echo', lead, sessions: [{ id: 'sa' }, { id: 'draft-only', draftedAt: 1, briefSent: false }] }],
-      workspaces: [], work: {}, taskTypes: [], teams: [],
+      workspaces: [], work: {}, teams: [],
     }
     const loaded = await loadRolesPage({
       react: rolesReact(states, pending),
@@ -2790,7 +2798,7 @@ test('a read-only window keeps the overview locked and shows the role editor dis
   cursor = 0
   const view = {
     profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [] }],
-    workspaces: [], work: {}, taskTypes: [{ id: 'docs', name: '文档', when: '' }],
+    workspaces: [], work: {},
   }
   const loaded = await loadRolesPage({
     react: rolesReact(states, pending),
@@ -2818,7 +2826,7 @@ test('saving teams makes exactly the lead-column roles leads, demoting before pr
   cursor = 0
   const view = {
     profiles: [{ id: 'L', name: 'Lead', engine: 'echo', lead: true, sessions: [] }, { id: 'a', name: 'Writer', engine: 'echo', sessions: [] }, { id: 'b', name: 'Coder', engine: 'echo', sessions: [] }],
-    workspaces: [], work: {}, taskTypes: [], teams: [{ id: 't1', name: '', lead: 'L', members: ['a'], assign: {} }],
+    workspaces: [], work: {}, teams: [{ id: 't1', name: '', lead: 'L', members: ['a'], assign: {} }],
   }
   const loaded = await loadRolesPage({
     react: rolesReact(states, pending),
@@ -2840,7 +2848,7 @@ test('a roster jump is consumed once, so re-entering lands on the overview', asy
   cursor = 0
   const view = {
     profiles: [{ id: 'a', name: 'Writer', engine: 'echo', sessions: [] }],
-    workspaces: [], work: {}, taskTypes: [],
+    workspaces: [], work: {},
   }
   const loaded = await loadRolesPage({
     react: rolesReact(states, pending),
@@ -2860,7 +2868,7 @@ test('a roster jump is consumed once, so re-entering lands on the overview', asy
 test('a failed engine catalog stops after one request and shows the host error', async () => {
   const states = [], pending = [], requests = []
   cursor = 0
-  const view = { profiles: [], workspaces: [], work: {}, taskTypes: [] }
+  const view = { profiles: [], workspaces: [], work: {} }
   const loaded = await loadRolesPage({
     react: rolesReact(states, pending),
     call: async endpoint => { requests.push(endpoint); throw new Error('catalog is down') },
@@ -2883,8 +2891,8 @@ const teamRoles = [
   { id: 'B', name: '后端', engine: 'echo' },
 ]
 const teamList = () => [
-  { id: 't1', name: '研发', lead: 'L', members: ['A'], assign: { docs: { normal: { profile: 'A' } } } },
-  { id: 't2', name: '评审', lead: null, members: [], assign: {} },
+  { id: 't1', name: '研发', lead: 'L', members: ['A'], types: [{ id: 'docs', name: '文档', when: '' }], assign: { docs: { normal: { profile: 'A' } } } },
+  { id: 't2', name: '评审', lead: null, members: [], types: [], assign: {} },
 ]
 
 test('the teams section edits membership by drag and button and saves the whole list', async () => {
@@ -2906,6 +2914,8 @@ test('the teams section edits membership by drag and button and saves the whole 
   assert.equal(render().filter(node => node.props?.className === 'nodo-team-slot').map(rolesText).join(), '拖入角色')
 
   const dragFromGrid = name => { named(name).props.onDragStart({ dataTransfer: {} }) }
+  // The panel's copy of a card comes last in the tree, after the grid's.
+  const dragFromTeam = name => { render().filter(node => node.props?.className === 'nodo-team-card' && rolesText(node).includes(name)).at(-1).props.onDragStart({ dataTransfer: {} }) }
   const panel = () => render().find(node => node.props?.className === 'nodo-team-panel')
   dragFromGrid('后端')
   panel().props.onDrop({ preventDefault() {} })
@@ -2921,8 +2931,32 @@ test('the teams section edits membership by drag and button and saves the whole 
   teams = teamList()
   dragFromGrid('大总管')
   render().filter(node => node.props?.role === 'tab')[1].props.onDrop({ preventDefault() {} })
-  assert.deepEqual(saved.at(-1).map(team => [team.lead, team.members]), [[null, ['A']], [null, ['L']]], 'dropping a lead on another tab makes it a member there')
+  const leaving = () => render().find(node => node.type === 'Modal')
+  assert.equal(leaving().props.title, '将「大总管」加入「评审」的成员？', 'a leading role joins a team only after a confirm')
+  assert.equal(rolesText(leaving().children[0]), '「大总管」目前是「研发」的主控，不能同时是成员。继续会取消它的主控身份，「研发」将没有主控。')
+  leaving().props.footer.find(node => node.children.includes('取消')).props.onClick()
+  assert.equal(leaving(), undefined)
+  const savesBeforeJoin = saved.length
+  dragFromGrid('大总管')
+  render().filter(node => node.props?.role === 'tab')[1].props.onDrop({ preventDefault() {} })
+  render().find(node => node.type === 'Modal').props.footer.find(node => node.children.includes('取消主控并加入')).props.onClick()
+  assert.equal(saved.length, savesBeforeJoin + 1, 'cancelling joined nothing; confirming saves once')
+  assert.deepEqual(saved.at(-1).map(team => [team.lead, team.members]), [[null, ['A']], [null, ['L']]], 'confirming joins the team and leaves the old seat leadless')
   assert.equal(actives.at(-1), 't2')
+
+  active = 't1'
+  teams = teamList()
+  dragFromGrid('后端')
+  panel().props.onDrop({ preventDefault() {} })
+  dragFromTeam('后端')
+  render().filter(node => node.props?.role === 'tab')[1].props.onDrop({ preventDefault() {} })
+  assert.deepEqual(saved.at(-1).map(team => team.members), [['A', 'B'], ['B']], 'dragging a member to another team joins it and keeps the source membership')
+  assert.equal(rolesText(render().find(node => node.props?.title === '在 2 个团队中')), '2', 'the grid badge counts every team a role sits in')
+
+  dragFromTeam('前端')
+  const savedBefore = saved.length
+  render().find(node => node.props?.className === 'nodo-team-grid').props.onDrop({ preventDefault() {} })
+  assert.equal(saved.length, savedBefore, 'dragging back to the grid no longer removes the role')
 
   active = 't1'
   teams = teamList()
@@ -2932,17 +2966,163 @@ test('the teams section edits membership by drag and button and saves the whole 
 
   render().find(node => node.props?.['aria-label'] === '新增团队').props.onClick()
   assert.equal(saved.at(-1).length, 3)
-  assert.deepEqual({ ...saved.at(-1)[2], id: 'x' }, { id: 'x', name: '', lead: null, members: [], assign: {} })
+  assert.deepEqual({ ...saved.at(-1)[2], id: 'x' }, { id: 'x', name: '', lead: null, members: [], types: [], assign: {} }, 'a new team starts without task types')
   assert.equal(actives.at(-1), saved.at(-1)[2].id)
 
   active = 't1'; teams = teamList()
   render().find(node => node.props?.['aria-label'] === '团队名称').props.onBlur({ target: { value: '改名' } })
   assert.equal(saved.at(-1)[0].name, '改名')
+  assert.deepEqual(saved.at(-1)[0].types, teamList()[0].types, 'an edit carries the team\'s types through')
   render().find(node => node.props?.['aria-label'] === '删除团队').props.onClick()
   assert.deepEqual(saved.at(-1).map(team => team.id), ['t2'])
 
   assert.equal(render(true).find(node => node.props?.['aria-label'] === '新增团队').props.disabled, true)
   assert.equal(render(true).find(node => node.props?.className === 'nodo-team-card').props.draggable, false)
+})
+
+test('a member dragged into a lead seat asks once, then leaves every membership in the same save', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const { TeamsSection } = await loadRolesPage({ react: rolesReact(states, pending), globals: { crypto: globalThis.crypto } })
+  const roles = [
+    { id: 'L', name: '大总管', engine: 'echo', lead: true },
+    { id: 'A', name: '前端', engine: 'echo' },
+    { id: 'B', name: '后端', engine: 'echo' },
+  ]
+  let teams = [
+    { id: 't1', name: '研发', lead: 'L', members: ['A'], types: [{ id: 'docs', name: '文档', when: '' }], assign: { docs: { normal: { profile: 'A' } } } },
+    { id: 't2', name: '评审', lead: null, members: [], types: [], assign: {} },
+  ]
+  let active = 't2'
+  const saved = [], actives = []
+  const flat = node => node && typeof node === 'object' ? [node, ...[...(node.children ?? []), ...Object.values(node.props ?? {})].flatMap(flat)] : []
+  const text = node => ['string', 'number'].includes(typeof node) ? String(node) : (node?.children ?? []).map(text).join('')
+  const render = () => { cursor = 0; return flat(TeamsSection({ roles, teams, activeId: active, locked: false,
+    onActive: id => { active = id; actives.push(id) }, save: next => { saved.push(JSON.parse(JSON.stringify(next))); teams = next },
+    openRole() {}, onAssign() {}, createButton: 'create' })) }
+  const dragFromGrid = name => render().find(node => node.props?.className === 'nodo-team-card' && text(node).includes(name)).props.onDragStart({ dataTransfer: {} })
+  const modal = () => render().find(node => node.type === 'Modal')
+
+  dragFromGrid('前端')
+  render().find(node => node.props?.className === 'nodo-team-col' && node.props.onDrop).props.onDrop({ preventDefault() {} })
+  assert.equal(modal().props.title, '将「前端」设为「评审」的主控？')
+  assert.equal(text(modal().children[0]), '主控不能同时是其它团队的成员。继续会把「前端」从「研发」的成员中移除。')
+  assert.deepEqual([...modal().props.footer].map(node => [node.type, node.children[0], node.props.variant]),
+    [['Button', '取消', 'outline'], ['Button', '移除并设为主控', 'primary']])
+  modal().props.footer[0].props.onClick()
+  assert.equal(modal(), undefined, '取消 closes without saving')
+  assert.equal(saved.length, 0)
+
+  dragFromGrid('前端')
+  render().find(node => node.props?.className === 'nodo-team-col' && node.props.onDrop).props.onDrop({ preventDefault() {} })
+  modal().props.footer.find(node => node.children.includes('移除并设为主控')).props.onClick()
+  assert.deepEqual(saved.at(-1).map(team => [team.lead, team.members]), [['L', []], ['A', []]], 'confirming promotes and empties the old memberships')
+  assert.deepEqual(saved.at(-1)[0].assign.docs.normal, {}, 'assignments that pointed at the new lead are cleared')
+  assert.equal(actives.at(-1), 't2')
+  assert.equal(modal(), undefined, 'the dialog is gone after confirming')
+})
+
+test('lead seats without cross-team memberships set straight away, and a second lead seat only explains', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const { TeamsSection } = await loadRolesPage({ react: rolesReact(states, pending), globals: { crypto: globalThis.crypto } })
+  const roles = [
+    { id: 'A', name: '前端', engine: 'echo', lead: true },
+    { id: 'B', name: '后端', engine: 'echo' },
+  ]
+  const base = () => [
+    { id: 't1', name: '研发', lead: 'A', members: [], types: [], assign: {} },
+    { id: 't2', name: '评审', lead: null, members: [], types: [], assign: {} },
+  ]
+  let teams = base(), active = 't1'
+  const saved = [], actives = []
+  const flat = node => node && typeof node === 'object' ? [node, ...[...(node.children ?? []), ...Object.values(node.props ?? {})].flatMap(flat)] : []
+  const text = node => ['string', 'number'].includes(typeof node) ? String(node) : (node?.children ?? []).map(text).join('')
+  const render = () => { cursor = 0; return flat(TeamsSection({ roles, teams, activeId: active, locked: false,
+    onActive: id => { active = id; actives.push(id) }, save: next => { saved.push(JSON.parse(JSON.stringify(next))); teams = next },
+    openRole() {}, onAssign() {}, createButton: 'create' })) }
+  const dragFromGrid = name => render().find(node => node.props?.className === 'nodo-team-card' && text(node).includes(name)).props.onDragStart({ dataTransfer: {} })
+  const modal = () => render().find(node => node.type === 'Modal')
+  const leadColumn = () => render().find(node => node.props?.className === 'nodo-team-col' && node.props.onDrop)
+
+  // 后端 is a member of the target team only: the seat sets without a dialog.
+  teams = [base()[0], { ...base()[1], members: ['B'] }]
+  active = 't2'
+  dragFromGrid('后端')
+  leadColumn().props.onDrop({ preventDefault() {} })
+  assert.equal(modal(), undefined, 'a role that only the target team holds needs no confirm')
+  assert.deepEqual(saved.at(-1).map(team => [team.lead, team.members]), [['A', []], ['B', []]])
+
+  // 后端 sits in no team: straight to the seat as well.
+  teams = base()
+  saved.length = 0
+  active = 't2'
+  dragFromGrid('后端')
+  leadColumn().props.onDrop({ preventDefault() {} })
+  assert.equal(modal(), undefined)
+  assert.deepEqual(saved.at(-1).map(team => [team.lead, team.members]), [['A', []], ['B', []]])
+
+  // 前端 already leads 研发: the drop is refused with an explanation only.
+  teams = base()
+  saved.length = 0
+  active = 't2'
+  dragFromGrid('前端')
+  leadColumn().props.onDrop({ preventDefault() {} })
+  assert.equal(modal().props.title, '「前端」已是「研发」的主控')
+  assert.equal(text(modal().children[0]), '一个主控只能领导一个团队。如需在多个团队使用同一套设定，请复制该角色。')
+  assert.deepEqual([...modal().props.footer].map(node => [node.children[0], node.props.variant]), [['知道了', 'outline']])
+  modal().props.footer[0].props.onClick()
+  assert.equal(modal(), undefined)
+  assert.equal(saved.length, 0, 'the explanation saves nothing')
+})
+
+test('a confirmed join demotes the old lead in the same save, and cancelling sends nothing', async () => {
+  const states = [], pending = [], calls = []
+  cursor = 0
+  const view = {
+    profiles: [
+      { id: 'L', name: '决策者', engine: 'echo', sessions: [] },
+      { id: 'A', name: '前端', engine: 'echo', lead: true, sessions: [] },
+      { id: 'B', name: '后端', engine: 'echo', sessions: [] },
+    ],
+    workspaces: [], work: {}, teams: [
+      { id: 't1', name: '', lead: 'A', members: [], types: [], assign: {} },
+      { id: 't2', name: '', lead: null, members: [], types: [], assign: {} },
+    ], prefs: {},
+  }
+  const loaded = await loadRolesPage({
+    react: rolesReact(states, pending),
+    call: async (endpoint, body) => { calls.push([endpoint, body]); return endpoint === 'engine-catalog' ? [] : {} },
+    globals: { document: { querySelector: () => null } },
+  })
+  // The page element carries the section as a childless component; call it on
+  // after the page pass so its hooks land on their own cursor slots.
+  const render = () => { cursor = 0
+    const tree = rolesTree(loaded.RolesPage({ view, readOnly: false, refresh: async () => {} }))
+    const section = tree.find(node => node.type === loaded.TeamsSection)
+    const inner = rolesTree(loaded.TeamsSection(section.props))
+    pending.splice(0).forEach(effect => effect())
+    return inner }
+  const modal = () => render().find(node => node.type === 'Modal')
+  const posted = () => calls.filter(([endpoint]) => endpoint !== 'engine-catalog')
+
+  render().filter(node => node.props?.className === 'nodo-team-card' && rolesText(node).includes('前端'))[0].props.onDragStart({ dataTransfer: {} })
+  render().filter(node => node.props?.role === 'tab')[1].props.onDrop({ preventDefault() {} })
+  assert.equal(modal().props.title, '将「前端」加入「团队 2」的成员？', 'a nameless team shows as its tab number')
+  modal().props.footer.find(node => node.children.includes('取消')).props.onClick()
+  assert.deepEqual(posted(), [], '取消 sends no request at all')
+
+  render().filter(node => node.props?.className === 'nodo-team-card' && rolesText(node).includes('前端'))[0].props.onDragStart({ dataTransfer: {} })
+  render().filter(node => node.props?.role === 'tab')[1].props.onDrop({ preventDefault() {} })
+  modal().props.footer.find(node => node.children.includes('取消主控并加入')).props.onClick()
+  await tickAll()
+  assert.deepEqual(posted(), [
+    ['profile-update', { id: 'A', changes: { lead: false } }],
+    ['teams-update', { teams: [
+      { id: 't1', name: '', lead: null, members: [], types: [], assign: {} },
+      { id: 't2', name: '', lead: null, members: ['A'], types: [], assign: {} },
+    ] }],
+  ], 'the demotion rides ahead of the team list in one save')
 })
 
 test('the assignment page picks roles with model and thinking, splits hard tasks and edits types in place', async () => {
@@ -2953,13 +3133,13 @@ test('the assignment page picks roles with model and thinking, splits hard tasks
     { id: 'm1', label: 'M1', defaultThinking: 'low', thinking: [{ id: 'low', label: '低' }, { id: 'high', label: '高' }] },
     { id: 'm2', label: 'M2', thinking: [{ id: 'low', label: '低' }] },
   ] } }]
-  const savedTeams = [], savedTypes = []
-  let teams = [{ id: 't1', name: '研发', lead: 'L', members: ['A', 'B'], assign: { docs: { normal: { profile: 'A' } } } }]
-  let types = [{ id: 'docs', name: '文档', when: '写说明' }, { id: 'ops', name: '运维', when: '' }]
+  const savedTeams = []
+  let teams = [{ id: 't1', name: '研发', lead: 'L', members: ['A', 'B'], types: [{ id: 'docs', name: '文档', when: '写说明' }, { id: 'ops', name: '运维', when: '' }],
+    assign: { docs: { normal: { profile: 'A' } } } }]
   let disabled = false
-  const render = () => { cursor = 0; return rolesTree(loaded.AssignPage({ roles: teamRoles, teams, types, engines, activeId: 't1', disabled,
-    onActive() {}, onBack() {}, save: next => { savedTeams.push(JSON.parse(JSON.stringify(next))); teams = next },
-    saveTypes: async next => { savedTypes.push(JSON.parse(JSON.stringify(next))); types = next } })) }
+  const render = () => { cursor = 0; return rolesTree(loaded.AssignPage({ roles: teamRoles, teams, engines, activeId: 't1', disabled,
+    onActive() {}, onBack() {}, save: next => { savedTeams.push(JSON.parse(JSON.stringify(next))); teams = next } })) }
+  const types = () => teams[0].types
   const slots = { '文档': 100, '运维': 101, '文档 · 困难任务': 102 }
   const cell = label => {
     const element = render().find(node => node.type === loaded.PickCell && node.props.label === (label.includes('困难') ? label : `${label} · 普通和困难任务`))
@@ -2979,6 +3159,7 @@ test('the assignment page picks roles with model and thinking, splits hard tasks
   assert.deepEqual(options('文档').filter(node => node.props['aria-pressed']).map(rolesText), ['前端', 'M1', '低'], 'the role’s own model and the model default show as chosen')
   press('文档', '高')
   assert.deepEqual(savedTeams.at(-1)[0].assign.docs.normal, { profile: 'A', thinking: 'high' })
+  assert.deepEqual(savedTeams.at(-1)[0].types, types(), 'a pick edit carries the team\'s types through')
   press('文档', 'M2')
   assert.deepEqual(savedTeams.at(-1)[0].assign.docs.normal, { profile: 'A', model: 'm2' }, 'a thinking level the new model lacks is dropped')
   press('文档', '后端')
@@ -3011,16 +3192,17 @@ test('the assignment page picks roles with model and thinking, splits hard tasks
   assert.equal(add().props.disabled, false)
   form().props.onSubmit({ preventDefault() {} })
   await tickAll()
-  assert.deepEqual(savedTypes.at(-1), [...types.slice(0, 2), { name: '审查', when: '看改动' }].map(item => item), 'the new type carries no id so core issues one')
+  assert.deepEqual(savedTeams.at(-1)[0].types, [...types().slice(0, 2), { name: '审查', when: '看改动' }], 'the new type joins this team without an id so core issues one')
   assert.equal(form(), undefined, 'the form closes after adding')
 
   render().find(node => node.props?.['aria-label'] === '任务类型名称 文档').props.onBlur({ target: { value: ' 文档组 ' } })
-  assert.equal(savedTypes.at(-1)[0].name, '文档组')
+  assert.equal(savedTeams.at(-1)[0].types[0].name, '文档组')
   render().find(node => node.props?.['aria-label'] === '任务类型说明 运维').props.onBlur({ target: { value: '部署' } })
-  assert.equal(savedTypes.at(-1)[1].when, '部署')
+  assert.equal(savedTeams.at(-1)[0].types[1].when, '部署')
   cell('运维').find(node => node.props?.['aria-label'] === '删除 运维').props.onClick()
   cell('运维').find(node => node.props?.className === 'nodo-assign-confirm').props.onClick()
-  assert.deepEqual(savedTypes.at(-1).map(item => item.name), ['文档组', '审查'], '运维 leaves after the inline confirm')
+  assert.deepEqual(savedTeams.at(-1)[0].types.map(item => item.name), ['文档组', '审查'], '运维 leaves after the inline confirm')
+  assert.deepEqual(Object.keys(savedTeams.at(-1)[0].assign), ['docs'], 'the removed type takes its assignment along')
 
   disabled = true
   assert.equal(render().find(node => node.props?.className === 'nodo-roles-add').props.disabled, true)

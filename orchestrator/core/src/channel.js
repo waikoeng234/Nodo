@@ -25,7 +25,6 @@ export function install(rt) {
     workspaces: rt.workspacesView(),
     profiles: rt.profilesView(),
     secrets: rt.secretsView(),
-    taskTypes: rt.taskTypes(),
     teams: rt.teams(),
     prefs: state.prefs,
     readOnly: rt.readOnly() ?? null,
@@ -150,8 +149,6 @@ export function install(rt) {
         return rt.saveRolePreset(body)
       case 'role-preset-delete':
         return rt.deleteRolePreset(body)
-      case 'task-types-update':
-        return rt.updateTaskTypes(body.types)
       case 'teams-update':
         return rt.updateTeams(body.teams)
       case 'session-create':

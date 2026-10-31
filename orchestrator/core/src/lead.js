@@ -67,7 +67,7 @@ export function install(rt) {
     const nameOf = pick => pick?.profile ? rt.state.profiles[pick.profile]?.name ?? '' : ''
     const settings = pick => [pick?.model, pick?.thinking].filter(Boolean).join(' / ')
     return [table(['角色', '身份', '职责'], rosterOf(found.profile).map(item => [item.name, item.identity, item.role])),
-      table(['id', 'name', 'when', '常规任务', '难题'], rt.taskTypes().map(item => {
+      table(['id', 'name', 'when', '常规任务', '难题'], team.types.map(item => {
         const entry = team.assign[item.id]
         const split = entry?.hard !== undefined
         return [item.id, item.name, item.when, [nameOf(entry?.normal), settings(entry?.normal)].filter(Boolean).join(' · ') || '无人承接',
@@ -367,14 +367,15 @@ export function install(rt) {
     const state = stateOf(leadSession.id), header = headerOf(lead)
     const attached = state.attached ?? []
     if ((state.count ?? 0) >= 12) throw invalid('本轮已达到 12 次派活上限')
-    const found = rt.findTaskType(command?.type)
-    if (!found) throw invalid('type 必须是任务类型清单中的 id')
+    const team = rt.teamOf(lead.id)
+    if (!team) throw invalid('该主控还没有团队，请先在角色页建立团队')
+    if (!team.types.length) throw invalid('该团队还没有任务类型，请先在任务分配页添加')
+    const found = rt.findTeamType(team, command?.type)
+    if (!found) throw invalid('type 必须是本团队任务类型清单中的 id')
     if (typeof command.hard !== 'boolean') throw invalid('hard 必须是 true 或 false')
     if (typeof command.task !== 'string' || !command.task.trim()) throw invalid('task 必须是非空字符串')
     const hard = command.hard, task = rt.redactDeepSecrets(command.task)
     if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
-    const team = rt.teamOf(lead.id)
-    if (!team) throw invalid('该主控还没有团队，请先在角色页建立团队')
     const picked = route(team.assign, found.id, hard)
     const holder = picked.profile ? rosterOf(lead).find(item => item.id === picked.profile) : undefined
     if (!holder) throw invalid(`没有${hard && team.assign[found.id]?.hard ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)

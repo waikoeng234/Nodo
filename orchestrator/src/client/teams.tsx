@@ -1,4 +1,4 @@
-import { h, Fragment, useState, useEffect, WARN_INK, IconChevronRightOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular } from './ui-shared.js'
+import { h, Fragment, useState, useEffect, WARN_INK, Modal, Button, IconChevronRightOutlineRegular, IconPlusOutlineRegular, IconTrashOutlineRegular } from './ui-shared.js'
 import { RoleAvatar, avatarTemplateOf } from './avatar.tsx'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
 import { route } from '../../core/shared/route.js'
@@ -9,12 +9,18 @@ import type { ModelChoice } from './model-options.js'
 const fitText = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }
 
 export interface TeamPick { profile?: string; model?: string; thinking?: string }
-export interface Team { id: string; name: string; lead: string | null; members: string[]; assign: Record<string, { normal?: TeamPick; hard?: TeamPick }> }
+export interface Team { id: string; name: string; lead: string | null; members: string[]; types: TeamType[]; assign: Record<string, { normal?: TeamPick; hard?: TeamPick }> }
 export interface TeamRole { id: string; name: string; engine?: string; model?: string }
 export interface TeamType { id?: string; name: string; when?: string }
 export interface TeamEngine { id: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
 
 type DropEvent = { preventDefault: () => void; stopPropagation?: () => void }
+// Confirmations for drops that would break the one-role-one-place rules: a lead
+// taking the target team must leave every membership, and a lead joining a team
+// must give up leading. `leading` only explains why the drop is refused.
+type Pending = { kind: 'lead'; id: string; teamId: string; from: string[] }
+  | { kind: 'leading'; id: string; teamId: string }
+  | { kind: 'member'; id: string; teamId: string; from: string }
 
 const TEAM_NAME_MAX = 20
 const TYPES_MAX = 20
@@ -44,6 +50,7 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
 }) {
   const [drag, setDrag] = useState<{ id: string; from: string } | null>(null)
   const [over, setOver] = useState<string | null>(null)
+  const [pending, setPending] = useState<Pending | null>(null)
   const byId = (id: string) => roles.find(role => role.id === id)
   const current = teams.find(team => team.id === activeId) ?? teams[0]
   const edit = (id: string, change: (team: Team) => Team) => save(teams.map(team => team.id === id ? change(team) : team))
@@ -51,22 +58,70 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
     onDragOver: (event: DropEvent) => { if (drag && !locked) { event.preventDefault(); event.stopPropagation?.(); setOver(zone) } },
     onDragLeave: () => setOver(value => value === zone ? null : value),
   })
+  // The two saves a drop can commit. Leading the target team takes the role out
+  // of every membership (a lead sits in no members list); joining keeps every
+  // team but strips the role from the column of the team it led.
+  const setLead = (teamId: string, roleId: string) => {
+    save(teams.map(team => team.id === teamId ? { ...withoutRole(team, roleId), lead: roleId } : withoutRole(team, roleId)))
+    onActive(teamId)
+  }
+  const joinMember = (teamId: string, roleId: string) => {
+    save(teams.map(team => {
+      if (team.id !== teamId) return team.lead === roleId ? { ...team, lead: null } : team
+      return { ...team, lead: team.lead === roleId ? null : team.lead,
+        members: team.members.includes(roleId) ? team.members : [...team.members, roleId] }
+    }))
+    onActive(teamId)
+  }
   const drop = (zone: string) => (event: DropEvent) => {
     event.preventDefault(); event.stopPropagation?.()
     const moved = drag && byId(drag.id)
     setDrag(null); setOver(null)
-    if (!moved || !drag || zone === drag.from) return
-    const next = teams.map(team => team.id === drag.from.replace(/^lead:/, '') ? withoutRole(team, moved.id) : team)
-    if (zone === 'lib') return save(next)
+    // Cards join another team and keep their other memberships; the × removes a
+    // role from a team, and the grid no longer means removal. A lead stays lead
+    // of one team only, so dropping it anywhere else clears that column.
+    if (!moved || !drag || zone === drag.from || zone === 'lib') return
     const leadOf = zone.startsWith('lead:') ? zone.slice(5) : null
     const id = leadOf ?? zone
-    save(next.map(team => {
-      if (leadOf) return team.id === id ? { ...withoutRole(team, moved.id), lead: moved.id } : withoutRole(team, moved.id)
-      if (team.id !== id) return team.lead === moved.id ? { ...team, lead: null } : team
-      return team.members.includes(moved.id) ? team : { ...team, members: [...team.members, moved.id] }
-    }))
-    onActive(id)
+    if (leadOf) {
+      const leading = teams.find(team => team.lead === moved.id && team.id !== id)
+      if (leading) return setPending({ kind: 'leading', id: moved.id, teamId: leading.id })
+      const memberships = teams.filter(team => team.id !== id && team.members.includes(moved.id))
+      if (memberships.length) return setPending({ kind: 'lead', id: moved.id, teamId: id, from: memberships.map(team => team.id) })
+      return setLead(id, moved.id)
+    }
+    const leading = teams.find(team => team.lead === moved.id)
+    if (leading) return setPending({ kind: 'member', id: moved.id, teamId: id, from: leading.id })
+    joinMember(id, moved.id)
   }
+  const teamLabel = (teamId: string) => {
+    const team = teams.find(item => item.id === teamId)
+    return team ? team.name || `团队 ${teams.indexOf(team) + 1}` : ''
+  }
+  const dialog = pending && (() => {
+    const name = byId(pending.id)?.name ?? ''
+    if (pending.kind === 'leading') return {
+      title: `「${name}」已是「${teamLabel(pending.teamId)}」的主控`,
+      body: '一个主控只能领导一个团队。如需在多个团队使用同一套设定，请复制该角色。',
+      footer: [<Button key="ok" variant="outline" onClick={() => setPending(null)}>知道了</Button>],
+    }
+    if (pending.kind === 'lead') return {
+      title: `将「${name}」设为「${teamLabel(pending.teamId)}」的主控？`,
+      body: `主控不能同时是其它团队的成员。继续会把「${name}」从${pending.from.map(teamId => `「${teamLabel(teamId)}」`).join('')}的成员中移除。`,
+      footer: [
+        <Button key="cancel" variant="outline" onClick={() => setPending(null)}>取消</Button>,
+        <Button key="ok" variant="primary" onClick={() => { const next = pending; setPending(null); setLead(next.teamId, next.id) }}>移除并设为主控</Button>,
+      ],
+    }
+    return {
+      title: `将「${name}」加入「${teamLabel(pending.teamId)}」的成员？`,
+      body: `「${name}」目前是「${teamLabel(pending.from)}」的主控，不能同时是成员。继续会取消它的主控身份，「${teamLabel(pending.from)}」将没有主控。`,
+      footer: [
+        <Button key="cancel" variant="outline" onClick={() => setPending(null)}>取消</Button>,
+        <Button key="ok" variant="primary" onClick={() => { const next = pending; setPending(null); joinMember(next.teamId, next.id) }}>取消主控并加入</Button>,
+      ],
+    }
+  })()
   const card = (role: TeamRole, from: string, team?: Team) => (
     <div key={role.id} className="nodo-team-card" draggable={!locked} data-dragging={drag?.id === role.id ? '' : undefined}
       onDragStart={(event: { dataTransfer: DataTransfer }) => { setDrag({ id: role.id, from }); event.dataTransfer.effectAllowed = 'move' }}
@@ -117,7 +172,7 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
               </button>
             ))}
             <button type="button" className="nodo-team-card-act" aria-label="新增团队" title="新增团队" disabled={locked}
-              onClick={() => { const id = crypto.randomUUID(); save([...teams, { id, name: '', lead: null, members: [], assign: {} }]); onActive(id) }}><IconPlusOutlineRegular size={14} /></button>
+              onClick={() => { const id = crypto.randomUUID(); save([...teams, { id, name: '', lead: null, members: [], types: [], assign: {} }]); onActive(id) }}><IconPlusOutlineRegular size={14} /></button>
           </div>
           <button type="button" className="nodo-roles-add" onClick={onAssign}>任务分配</button>
         </div>
@@ -149,6 +204,9 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
           </div>
         )}
       </section>
+      {pending && dialog && <Modal open title={dialog.title} onClose={() => setPending(null)} closeLabel="关闭" className="nodo-dialog" footer={dialog.footer}>
+        <p>{dialog.body}</p>
+      </Modal>}
     </Fragment>
   )
 }
@@ -218,15 +276,16 @@ export function PickCell({ label, pick, team, roles, engines, optional, disabled
   )
 }
 
-export function AssignPage({ roles, teams, types, engines, activeId, disabled, onActive, onBack, save, saveTypes }: {
-  roles: TeamRole[]; teams: Team[]; types: TeamType[]; engines: TeamEngine[]; activeId: string | null; disabled: boolean
-  onActive: (id: string) => void; onBack: () => void; save: (next: Team[]) => void; saveTypes: (next: TeamType[]) => Promise<void>
+export function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBack, save }: {
+  roles: TeamRole[]; teams: Team[]; engines: TeamEngine[]; activeId: string | null; disabled: boolean
+  onActive: (id: string) => void; onBack: () => void; save: (next: Team[]) => void
 }) {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [when, setWhen] = useState('')
   const [removing, setRemoving] = useState<string | null>(null)
   const team = teams.find(item => item.id === activeId) ?? teams[0]
+  const types = team?.types ?? []
   const edit = (typeId: string, key: 'normal' | 'hard', pick: TeamPick | undefined) => save(teams.map(item => {
     if (item !== team) return item
     const entry = { ...item.assign[typeId] }
@@ -236,7 +295,13 @@ export function AssignPage({ roles, teams, types, engines, activeId, disabled, o
   const gaps = team ? types.reduce((sum, { id = '' }) => sum + ('miss' in route(team.assign, id, false) ? 1 : 0) + (team.assign[id]?.hard && 'miss' in route(team.assign, id, true) ? 1 : 0), 0) : 0
   const draftOk = name.trim() !== '' && !types.some(type => type.name === name.trim())
   const leadRole = roles.find(role => role.id === team?.lead)
-  const patchType = (index: number, changes: Partial<TeamType>) => void saveTypes(types.map((type, i) => i === index ? { ...type, ...changes } : type))
+  const patchTypes = (next: TeamType[]) => save(teams.map(item => item === team ? { ...item, types: next } : item))
+  const patchType = (index: number, changes: Partial<TeamType>) => patchTypes(types.map((type, i) => i === index ? { ...type, ...changes } : type))
+  // A removed type takes its assignments with it, or the whole-table save would
+  // still reference it.
+  const removeType = (type: TeamType) => save(teams.map(item => item === team ? { ...item,
+    types: item.types.filter(item2 => item2 !== type),
+    assign: Object.fromEntries(Object.entries(item.assign).filter(([id]) => id !== (type.id ?? ''))) } : item))
   const reset = () => { setAdding(false); setName(''); setWhen('') }
   return (
     <section className="nodo-assign" aria-label="任务分配">
@@ -274,7 +339,7 @@ export function AssignPage({ roles, teams, types, engines, activeId, disabled, o
                 <PickCell label={`${type.name}${entry.hard ? ' · 普通任务' : ' · 普通和困难任务'}`} pick={entry.normal} team={team} roles={roles} engines={engines}
                   optional={false} disabled={disabled} onChange={pick => edit(type.id ?? '', 'normal', pick ?? {})}
                   remove={removing === type.id
-                    ? <button type="button" className="nodo-assign-confirm" disabled={disabled} onClick={() => { setRemoving(null); void saveTypes(types.filter(item => item !== type)) }}>删除</button>
+                    ? <button type="button" className="nodo-assign-confirm" disabled={disabled} onClick={() => { setRemoving(null); removeType(type) }}>删除</button>
                     : <button type="button" className="nodo-assign-remove" aria-label={`删除 ${type.name}`} disabled={disabled} onClick={() => setRemoving(type.id ?? null)}>×</button>} />
                 {entry.hard
                   ? <PickCell label={`${type.name} · 困难任务`} pick={entry.hard} team={team} roles={roles} engines={engines} optional disabled={disabled} onChange={pick => edit(type.id ?? '', 'hard', pick ?? undefined)}
@@ -286,7 +351,7 @@ export function AssignPage({ roles, teams, types, engines, activeId, disabled, o
           })}
           <div className="nodo-assign-foot">
             {adding
-              ? <form className="nodo-assign-add" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); if (draftOk) void saveTypes([...types, { name: name.trim(), when: when.trim() }]).then(reset) }}
+              ? <form className="nodo-assign-add" onSubmit={(event: { preventDefault: () => void }) => { event.preventDefault(); if (draftOk) { patchTypes([...types, { name: name.trim(), when: when.trim() }]); reset() } }}
                 onKeyDown={(event: { key: string }) => { if (event.key === 'Escape') reset() }}>
                 <input className="nodo-assign-field nodo-assign-field-name" autoFocus placeholder="类型名称" aria-label="类型名称" maxLength={20} value={name} onChange={(event: { target: { value: string } }) => setName(event.target.value)} />
                 <span className="nodo-assign-field">
