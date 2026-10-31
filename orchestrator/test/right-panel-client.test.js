@@ -1019,9 +1019,9 @@ test('the panel anchors to the right edge independently of the animated track wi
   }
 })
 
-test('the macOS content card shares the conversation frame geometry and concentric inner radii', async () => {
+test('the desktop content card shares the conversation frame geometry and concentric inner radii', async () => {
   const { CSS } = await loadClient('styles.js')
-  const mac = 'html[data-platform=darwin][data-nodo-space] '
+  const mac = 'html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] '
   const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
   const frame = rule(`${mac}:has(> [data-rightbar-col])`)
   assert.match(frame, /--nodo-frame-gap:8px/)
@@ -1055,18 +1055,18 @@ test('the entry page centers its cards optically and keeps every card the same h
   assert.match(card, /min-height:75px/, 'a title-only card matches the 20px title + 2px gap + 20px subtitle + 32px padding + 1px borders height')
 })
 
-test('the macOS rightbar track stays transparent while its hidden panel leaves the host track closing', async () => {
+test('the desktop rightbar track stays transparent while its hidden panel leaves the host track closing', async () => {
   const { CSS } = await loadClient('styles.js')
-  const mac = 'html[data-platform=darwin][data-nodo-space] '
+  const mac = 'html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] '
   const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
   assert.equal(rule(`${mac}[data-rightbar-col]:has(.nodo-right-panel)`), 'background:transparent', 'the override remains active with the hidden panel during the track animation')
   assert.equal(rule(`${mac}.nodo-right-panel`), 'border:0;background:transparent')
   assert.match(rule(`${mac}.nodo-right-content`), /background:var\(--dsw-alias-bg-base\)/, 'only the rounded content card supplies a white surface')
 })
 
-test('the macOS rightbar stays separated from the conversation with rounded cards and the frame gap', async () => {
+test('the desktop rightbar stays separated from the conversation with rounded cards and the frame gap', async () => {
   const { CSS } = await loadClient('styles.js')
-  const mac = 'html[data-platform=darwin][data-nodo-space] '
+  const mac = 'html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] '
   const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
   assert.doesNotMatch(CSS, /:has\(\+ \[data-rightbar-col\] \.nodo-right-panel:not\(\[hidden\]\)\)/, 'opening the rightbar does not remove the gap or flatten either card')
   assert.match(rule(`${mac}.nodo-right-content`), /margin:0 var\(--nodo-frame-gap\) var\(--nodo-frame-gap\) 0;border:var\(--nodo-card-edge\);border-radius:var\(--nodo-card-radius\)/)
@@ -1078,6 +1078,18 @@ test('the macOS rightbar stays separated from the conversation with rounded card
   assert.equal(rule(`${collapsed}::before,${collapsed}::after`), 'border-radius:var(--nodo-card-radius)', 'collapsing the left sidebar preserves the outer left corners on both layers')
   assert.equal(rule(`${collapsed}::after`), 'border-left:var(--nodo-card-edge)')
   assert.equal(rule(`${mac}:is(.nodo-right-files,.nodo-right-directory,.nodo-right-preview)`), 'border-radius:max(0px,calc(var(--nodo-card-radius) - .5px))', 'inner areas follow all four rounded corners')
+})
+
+test('the Windows titlebar matches the space chrome and the right header sits inside the card', async () => {
+  const { CSS } = await loadClient('styles.js')
+  const win = 'html[data-windows-titlebar][data-nodo-space]'
+  const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
+  assert.equal(rule(`${win} :has(> [data-rightbar-col])::before`), 'background:var(--nodo-chrome)', 'the titlebar strip shares the chrome tint behind the icon column')
+  assert.match(rule(`${win} .nodo-space-sidebar .nodo-rail-body`), /padding-top:6px/)
+  assert.equal(rule(`${win} .nodo-right-panel`), 'margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)', 'the right card top stays level with the conversation card')
+  assert.equal(rule(`${win} .nodo-right-content`), 'margin:0;border:0;border-radius:0;background:transparent', 'the panel becomes the card so its header sits inside like the conversation title')
+  assert.match(rule(`${win} .nodo-right-head`), /padding-top:10px/, 'the header breathes inside the card')
+  assert.match(rule(`${win} .nodo-right-control`), /top:calc\(var\(--dsh-frame-chrome-top,0px\) \+ 8px\)/, 'the corner toggle lands inside the card')
 })
 
 test('directory tree lazily loads each expanded level, caches expansion, marks truncation and returns from preview', async () => {
