@@ -259,7 +259,7 @@ export function PickCell({ label, pick, team, roles, engines, optional, disabled
               <Fragment key={group}>
                 {group && <span className="nodo-pick-provider">{group}</span>}
                 <div className="nodo-pick-group">
-                  {items.map(item => <button key={item.id} type="button" className="nodo-pick-option" aria-pressed={item.id === model?.id}
+                  {items.map(item => <button key={item.id} type="button" className="nodo-pick-option" aria-pressed={item.id === pick?.model}
                     onClick={() => set({ model: item.id, thinking: item.thinking?.some(level => level.id === pick?.thinking) ? pick?.thinking : undefined })}>{modelLabel(item)}</button>)}
                 </div>
               </Fragment>
@@ -267,7 +267,7 @@ export function PickCell({ label, pick, team, roles, engines, optional, disabled
           </div>}
           {holder && levels.length > 0 && <span className="nodo-pick-label">思考强度</span>}
           {holder && levels.length > 0 && <div className="nodo-pick-group" role="group" aria-label="思考强度">
-            {levels.map(level => <button key={level.id} type="button" className="nodo-pick-option" aria-pressed={level.id === (pick?.thinking || model?.defaultThinking)}
+            {levels.map(level => <button key={level.id} type="button" className="nodo-pick-option" aria-pressed={level.id === pick?.thinking}
               onClick={() => set({ thinking: level.id })}>{level.label ?? level.id}</button>)}
           </div>}
         </div>

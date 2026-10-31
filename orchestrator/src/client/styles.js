@@ -547,6 +547,8 @@ button.nodo-round-summary{cursor:pointer}
    transparent select contributes none: without option colors of their own, the
    dark theme's white labels vanish on it. */
 .nodo-dialog-select option{background-color:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-dialog-select optgroup,.nodo-reference-scope option,.nodo-reference-preview option{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-dialog-select option:disabled,.nodo-reference-scope option:disabled,.nodo-reference-preview option:disabled{color:var(--dsw-alias-label-dimmed)}
 .nodo-dialog-textarea{height:auto;min-height:88px;padding:12px;resize:vertical}
 .nodo-dialog-hint{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .nodo-dialog-pick{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
