@@ -28,8 +28,7 @@ added.
 
 Evidence is split three ways: the CLI's own `--help`/initialize output proves the
 protocol, the repo fixtures prove adapter behavior, and real runs prove live
-behavior. Developer probes against the real 1.1.76 CLI are recorded in the memory
-branch file `.agent/handoffs/QODER-ENGINE.md`; they are not maintainer
+behavior. Developer probes against the real 1.1.76 CLI are not maintainer
 acceptance.
 
 | Check | Protocol source & version / implementation | Automated verification | Maintainer live results |

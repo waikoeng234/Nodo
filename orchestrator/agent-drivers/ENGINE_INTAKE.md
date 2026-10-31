@@ -1,6 +1,6 @@
 # Agent intake and capability extension
 
-This guide is for contributors adding Agent adapters or extending existing Agent capabilities. See [PROTOCOL.md](PROTOCOL.md) for driver interfaces and event definitions; [src/spi.js](src/spi.js) is authoritative for required primitives and optional methods.
+This guide is for contributors adding Agent adapters or extending existing Agent capabilities. See [PROTOCOL.md](PROTOCOL.md) for driver interfaces and event definitions; [src/spi.ts](src/spi.ts) is authoritative for required primitives and optional methods.
 
 Adapters use only public Agent protocols and capabilities. Declare unsupported features explicitly. Distinguish protocol documentation, automated tests, and real-environment verification when reporting the basis for support.
 

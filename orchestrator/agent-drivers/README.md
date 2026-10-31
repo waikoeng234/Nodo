@@ -1,6 +1,6 @@
 # agent-drivers
 
-One SPI, eight primitives, many coding-agent runtimes. Pure ESM JavaScript,
+One SPI, eight primitives, many coding-agent runtimes. TypeScript, compiled to ESM in `dist/`,
 Node ≥ 24.
 Codex shared connections use a host-provided `ws` library. Standalone consumers
 must provide it in their own dependency tree; DSH's working-directory and profile
