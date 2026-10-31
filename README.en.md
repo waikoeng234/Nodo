@@ -6,7 +6,9 @@
 
 Let Claude Code plan, Codex implement, and OpenCode review. You state the goal; they split the work, execute it, and report back.
 
-[![Nodo demo (click for the full video)](docs/nodo-demo.gif)](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)
+![Nodo demo](docs/nodo-demo.gif)
+
+[Watch the full video](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)
 
 ## The problem
 

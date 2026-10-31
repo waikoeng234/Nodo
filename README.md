@@ -6,7 +6,9 @@
 
 让 Claude Code 规划、Codex 实现、OpenCode 审查——你只说目标，剩下的由它们自己分工、执行、汇报。
 
-[![Nodo 演示（点击观看完整视频）](docs/nodo-demo.gif)](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)
+![Nodo 演示](docs/nodo-demo.gif)
+
+[观看完整视频](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)
 
 ## 它解决什么问题
 
