@@ -8,7 +8,7 @@
 
 ![Nodo 演示](docs/nodo-demo.gif)
 
-[观看完整视频](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)
+上图为演示片段，约 40 秒的完整版可以 [在线观看](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)。
 
 ## 它解决什么问题
 

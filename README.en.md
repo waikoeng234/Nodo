@@ -8,7 +8,7 @@ Let Claude Code plan, Codex implement, and OpenCode review. You state the goal; 
 
 ![Nodo demo](docs/nodo-demo.gif)
 
-[Watch the full video](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc)
+The clip above is a short loop; you can also [watch the full 40-second video](https://github.com/user-attachments/assets/d04214bd-0b18-405c-acf0-198c3e760bdc).
 
 ## The problem
 
