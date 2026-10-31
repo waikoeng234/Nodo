@@ -86,9 +86,11 @@ export function install(rt) {
         return rt.workspaceDir(body)
       case 'worktree-refs':
         return rt.worktreeRefs(body)
-      case 'engine-check':
+      case 'engine-check': {
         await rt.driversReady()
-        return rt.checkEngine(body)
+        const cwd = body.cwd ?? rt.workspacesView()[0]?.cwd ?? rt.home
+        return rt.checkEngine({ ...body, cwd })
+      }
       case 'engine-config-set':
         return rt.saveEngineConfig(body)
       case 'engine-enable-set':

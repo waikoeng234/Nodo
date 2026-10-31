@@ -2,15 +2,15 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js';
-import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector, listDirs } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, textToolChanges } from '../file-changes.js';
-import { connectZcode, findZcodeExecutable, parseZcodeModel } from './native.js';
+import { connectZcode, findZcodeExecutable, parseZcodeModel, zcodeCliVersion } from './native.js';
 import { roleMcp } from '../role-mcp.js';
 import { zcodeInstructions } from './instructions.js';
 import { zcodeMcpServers } from './mcp.js';
-export { findZcodeExecutable } from './native.js';
+export { findZcodeExecutable, launchZcode, zcodeCliVersion } from './native.js';
 export { scanZcode } from './catalog.js';
 export const zcodeInfo = {
     id: 'zcode', label: 'ZCode CLI', command: 'zcode', requiresCwd: true,
@@ -43,7 +43,7 @@ export async function checkZcode({ cwd, engineOptions = {} } = {}) {
         return { engine: 'zcode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'ZCode executable not found. Install ZCode or enter its absolute path.' }] };
     let version;
     try {
-        version = await cliVersion(executable);
+        version = await zcodeCliVersion(executable);
         checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
     }
     catch {
@@ -454,7 +454,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
             if (!executable)
                 throw new Error('ZCode executable not found. Install ZCode or edit the profile CLI path.');
             if (!identity) {
-                const version = instructions ? await cliVersion(executable, { env, cwd }).catch(() => '') : '';
+                const version = instructions ? await zcodeCliVersion(executable, { env, cwd }).catch(() => '') : '';
                 if (disposed)
                     throw new Error('ZCode driver disposed');
                 identity = zcodeInstructions({ instructions, env, cwd, version, directory: instructionDir, identityFiles, identityOwner });

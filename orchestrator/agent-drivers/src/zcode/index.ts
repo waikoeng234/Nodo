@@ -2,11 +2,11 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js'
-import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
+import { invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { collector, listDirs } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges, textToolChanges } from '../file-changes.js'
-import { connectZcode, findZcodeExecutable, parseZcodeModel } from './native.js'
+import { connectZcode, findZcodeExecutable, parseZcodeModel, zcodeCliVersion } from './native.js'
 import { roleMcp } from '../role-mcp.js'
 import { zcodeInstructions } from './instructions.js'
 import { zcodeMcpServers } from './mcp.js'
@@ -84,7 +84,7 @@ type Compaction = { resolve(): void; reject(error: unknown): void; turnId: strin
 type CommandResult = { status: string; result?: { type?: string; inputId?: string } }
 type CompactResult = { compact?: { state?: string } }
 
-export { findZcodeExecutable } from './native.js'
+export { findZcodeExecutable, launchZcode, zcodeCliVersion } from './native.js'
 export { scanZcode } from './catalog.js'
 
 export const zcodeInfo = {
@@ -111,7 +111,7 @@ export async function checkZcode({ cwd, engineOptions = {} }: EngineScanOptions 
   const executable = findZcodeExecutable(options.bin ?? 'zcode')
   if (!executable) return { engine: 'zcode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'ZCode executable not found. Install ZCode or enter its absolute path.' }] }
   let version
-  try { version = await cliVersion(executable); checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` }) }
+  try { version = await zcodeCliVersion(executable); checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` }) }
   catch { return { engine: 'zcode', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] } }
   const peer = connectZcode({ executable, cwd, onRequest: request => {
     if (request.method === 'interaction/requestOfficialMcpAuthHeaders') peer.reply(request.id, { headers: {} })
@@ -452,7 +452,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       const executable = findZcodeExecutable(bin)
       if (!executable) throw new Error('ZCode executable not found. Install ZCode or edit the profile CLI path.')
       if (!identity) {
-        const version = instructions ? await cliVersion(executable, { env, cwd }).catch(() => '') : ''
+        const version = instructions ? await zcodeCliVersion(executable, { env, cwd }).catch(() => '') : ''
         if (disposed) throw new Error('ZCode driver disposed')
         identity = zcodeInstructions({ instructions, env, cwd, version, directory: instructionDir, identityFiles, identityOwner })
         coverage.setIdentity({ transport: 'legacy session/event', ...(version ? { cliVersion: version } : {}) })

@@ -1,5 +1,5 @@
 import { accessSync, constants, statSync } from 'node:fs';
-import { isAbsolute, join, delimiter } from 'node:path';
+import { extname, isAbsolute, join, delimiter } from 'node:path';
 import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -32,12 +32,16 @@ export function validateBin(bin) {
         throw invalidConfig('CLI executable must be an absolute path or a command name');
     return clean || undefined;
 }
-export function findExecutable(command, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'] } = {}) {
+// Windows resolves bare command names through PATHEXT, so a `claude` on PATH is
+// really claude.exe or claude.cmd; probe the common extensions after the bare name.
+const windowsExtensions = ['.exe', '.cmd', '.bat'];
+export function findExecutable(command, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'], extra = [], platform = process.platform } = {}) {
     const bin = validateBin(command);
     if (!bin)
         return undefined;
-    const dirs = [...path.split(delimiter), ...defaults].filter(dir => isAbsolute(dir));
-    const candidates = isAbsolute(bin) ? [bin] : [...new Set(dirs)].map(dir => join(dir, bin));
+    const dirs = [...path.split(delimiter), ...defaults, ...extra].filter(dir => isAbsolute(dir));
+    const names = platform === 'win32' && extname(bin) === '' ? [bin, ...windowsExtensions.map(extension => bin + extension)] : [bin];
+    const candidates = isAbsolute(bin) ? names : [...new Set(dirs)].flatMap(dir => names.map(name => join(dir, name)));
     return candidates.find(candidate => {
         try {
             accessSync(candidate, constants.X_OK);
@@ -48,7 +52,20 @@ export function findExecutable(command, { path = process.env.PATH ?? '', home = 
         }
     });
 }
+// Node refuses to spawn .cmd/.bat shims directly (CVE-2024-27980); route them
+// through cmd.exe with the command quoted. An argument is quoted when it
+// contains whitespace, so an argument value must not contain double quotes.
+export function launchCommand(bin, args = [], { platform = process.platform } = {}) {
+    if (platform !== 'win32' || !/\.(cmd|bat)$/i.test(bin))
+        return { bin, args };
+    return { bin: 'cmd.exe', args: ['/d', '/s', '/c', [`"${bin}"`, ...args.map(arg => /\s/.test(arg) ? `"${arg}"` : arg)].join(' ')], verbatim: true };
+}
 export async function cliVersion(bin, options = {}) {
-    const { stdout } = await execute(bin, ['--version'], { ...options, ...(options.env ? { env: { ...process.env, ...options.env } } : {}), timeout: 5000, maxBuffer: 16_384, windowsHide: true });
+    const { args, ...rest } = options;
+    const launch = launchCommand(bin, args ?? ['--version']);
+    const { stdout } = await execute(launch.bin, launch.args, {
+        ...rest, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}),
+        ...(rest.env ? { env: { ...process.env, ...rest.env } } : {}), timeout: 5000, maxBuffer: 16_384, windowsHide: true,
+    });
     return stdout.trim().split('\n')[0].slice(0, 120);
 }

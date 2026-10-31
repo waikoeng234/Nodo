@@ -304,9 +304,9 @@ test('DSH discovers an existing npm CLI without replacing an explicit path', asy
     const cached = join(root, '.bin/dsh')
     copyFileSync(bin, cached)
     chmodSync(cached, 0o755)
-    assert.equal(findDshExecutable('dsh', { home: cwd, path: '', defaults: [] }), cached)
+    assert.equal(findDshExecutable('dsh', { home: cwd, path: '', defaults: [], env: {}, platform: 'linux' }), cached)
     assert.equal(findDshExecutable(bin, { home: cwd, path: '' }), bin)
-    assert.equal(findDshExecutable(join(cwd, 'missing'), { home: cwd, path: '' }), undefined)
+    assert.equal(findDshExecutable(join(cwd, 'missing'), { home: cwd, path: '', env: {}, platform: 'linux' }), undefined)
   })
 })
 

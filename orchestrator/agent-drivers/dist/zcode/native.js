@@ -1,18 +1,23 @@
 import { accessSync, constants, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { findExecutable, invalidConfig } from '../cli.js';
+import { cliVersion, findExecutable, invalidConfig } from '../cli.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
-// The CLI ships inside the Desktop app bundle and is normally not on PATH.
-const bundleCandidates = (home) => [
+// The CLI ships inside the Desktop app bundle and is normally not on PATH;
+// the Windows installer puts it under the product directory.
+const bundleCandidates = (home, env, platform) => [
     join(home, 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
     '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
+    ...(platform === 'win32' ? [
+        ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, 'Programs/ZCode/resources/glm/zcode.cjs')] : []),
+        ...(env.ProgramFiles ? [join(env.ProgramFiles, 'ZCode/resources/glm/zcode.cjs')] : []),
+    ] : []),
 ];
-export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH } = {}) {
-    const direct = findExecutable(bin, { home, path });
+export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH, env = process.env, platform = process.platform } = {}) {
+    const direct = findExecutable(bin, { home, path, platform });
     if (direct || bin !== 'zcode')
         return direct;
-    return bundleCandidates(home).find(candidate => {
+    return bundleCandidates(home, env, platform).find(candidate => {
         try {
             accessSync(candidate, constants.X_OK);
             return statSync(candidate).isFile();
@@ -21,6 +26,17 @@ export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = pr
             return false;
         }
     });
+}
+// Windows cannot exec the shebang'd bundle script directly, so it runs under
+// the host's own Node; an Electron host supplies that via ELECTRON_RUN_AS_NODE.
+export function launchZcode(executable, { platform = process.platform, execPath = process.execPath } = {}) {
+    return platform === 'win32' && executable.toLowerCase().endsWith('.cjs')
+        ? { bin: execPath, args: [executable], env: { ELECTRON_RUN_AS_NODE: '1' } }
+        : { bin: executable, args: [], env: {} };
+}
+export async function zcodeCliVersion(executable, options = {}) {
+    const { bin, args, env } = launchZcode(executable);
+    return cliVersion(bin, { ...options, env: { ...options.env, ...env }, args: [...args, '--version'] });
 }
 // ZCode model selection is {providerId, modelId} on the wire; its picker spells
 // it providerId$modelId because ids themselves may contain "/".
@@ -55,7 +71,8 @@ export function parseZcodeModel(raw) {
 // ZCode app injects ZCODE_BUILTIN_PROVIDER_CONFIG_FILE into everything it spawns,
 // so a foreign host has to resolve the newest copy under ~/.zcode itself.
 const runtimeArch = { arm64: 'aarch64', x64: 'x86_64' };
-export function zcodeProviderEnv({ home = homedir(), platform = process.platform, arch = runtimeArch[process.arch] ?? process.arch, env = process.env } = {}) {
+const runtimePlatform = { win32: 'windows' };
+export function zcodeProviderEnv({ home = homedir(), platform = process.platform, arch = process.arch, env = process.env } = {}) {
     const configured = env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE;
     if (configured) {
         try {
@@ -66,7 +83,7 @@ export function zcodeProviderEnv({ home = homedir(), platform = process.platform
     }
     let newest = null;
     try {
-        const root = join(home, '.zcode/v2/runtime/provider', `${platform}-${arch}`);
+        const root = join(home, '.zcode/v2/runtime/provider', `${runtimePlatform[platform] ?? platform}-${runtimeArch[arch] ?? arch}`);
         for (const version of readdirSync(root))
             for (const endpoint of readdirSync(join(root, version))) {
                 const candidate = join(root, version, endpoint, 'zcode-builtin.json');
@@ -82,5 +99,6 @@ export function zcodeProviderEnv({ home = homedir(), platform = process.platform
     return newest ? { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: newest.path } : {};
 }
 export function connectZcode({ executable, cwd, env, ...callbacks }) {
-    return jsonRpcProcess({ bin: executable, args: ['app-server'], cwd, env: { ...zcodeProviderEnv(), ...env }, ...callbacks });
+    const { bin, args, env: launchEnv } = launchZcode(executable);
+    return jsonRpcProcess({ bin, args: [...args, 'app-server'], cwd, env: { ...zcodeProviderEnv(), ...launchEnv, ...env }, ...callbacks });
 }

@@ -4,7 +4,7 @@ import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, 
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine } from '../agent-drivers/dist/index.js'
-import { findZcodeExecutable } from '../agent-drivers/dist/zcode/index.js'
+import { findZcodeExecutable, launchZcode } from '../agent-drivers/dist/zcode/index.js'
 import { zcodeProviderEnv } from '../agent-drivers/dist/zcode/native.js'
 import { withHost, boot, until } from './helpers/host.js'
 
@@ -652,6 +652,21 @@ test('ZCode executable discovery checks PATH first and then the app bundle', asy
     assert.equal(findZcodeExecutable(join(cwd, 'missing'), { home: cwd, path: '' }), undefined)
     const bundle = findZcodeExecutable('zcode', { home: cwd, path: '' })
     assert.ok(bundle === undefined || bundle.endsWith('zcode.cjs'))
+    const installed = join(cwd, 'appdata', 'Programs', 'ZCode', 'resources', 'glm', 'zcode.cjs')
+    const machine = join(cwd, 'pf', 'ZCode', 'resources', 'glm', 'zcode.cjs')
+    for (const file of [installed, machine]) { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, ''); chmodSync(file, 0o755) }
+    assert.equal(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'win32', env: { LOCALAPPDATA: join(cwd, 'appdata') } }), installed)
+    assert.equal(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'win32', env: { ProgramFiles: join(cwd, 'pf') } }), machine)
+    assert.notEqual(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'darwin', env: { LOCALAPPDATA: cwd } }), installed, 'the Windows layout stays out of other platforms')
+  })
+})
+
+test('ZCode Windows launch runs the bundle script under the host Node', async () => {
+  await withFixture(async ({ cwd }) => {
+    const bundle = join(cwd, 'resources', 'glm', 'zcode.cjs')
+    assert.deepEqual(launchZcode(bundle, { platform: 'win32', execPath: 'host-node' }), { bin: 'host-node', args: [bundle], env: { ELECTRON_RUN_AS_NODE: '1' } })
+    assert.deepEqual(launchZcode(join(cwd, 'zcode.exe'), { platform: 'win32' }), { bin: join(cwd, 'zcode.exe'), args: [], env: {} }, 'a real Windows executable spawns directly')
+    assert.deepEqual(launchZcode('/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs', { platform: 'darwin' }), { bin: '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs', args: [], env: {} })
   })
 })
 
@@ -667,6 +682,9 @@ test('ZCode spawn env resolves the built-in provider config the CLI cannot find 
     assert.deepEqual(zcodeProviderEnv({ ...options, env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: stale } }), {}, 'a valid inherited path is respected')
     assert.deepEqual(zcodeProviderEnv({ ...options, env: { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: join(root, 'gone.json') } }), { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: fresh })
     assert.deepEqual(zcodeProviderEnv({ home: join(root, 'empty'), platform: 'linux', arch: 'x64', env: {} }), {}, 'no runtime, no injection')
+    const windows = join(root, '.zcode/v2/runtime/provider/windows-x86_64/3.17.1/endpoint-c/zcode-builtin.json')
+    mkdirSync(dirname(windows), { recursive: true }); writeFileSync(windows, '{}')
+    assert.deepEqual(zcodeProviderEnv({ home: root, platform: 'win32', arch: 'x86_64', env: {} }), { ZCODE_BUILTIN_PROVIDER_CONFIG_FILE: windows }, 'the Windows runtime layout is windows-x86_64')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

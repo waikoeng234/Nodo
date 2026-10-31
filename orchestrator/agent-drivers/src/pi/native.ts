@@ -3,6 +3,7 @@
 // Records split on LF only — U+2028/U+2029 are valid inside JSON strings, so the
 // engine's own docs forbid line readers like readline.
 import { spawn } from 'node:child_process'
+import { launchCommand } from '../cli.js'
 import type { PermissionMode } from '../spi.js'
 
 export type PiArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode }
@@ -32,7 +33,8 @@ export function piArgs({ model, thinking, instructions, driverSessionId, permiss
 }
 
 export function connectPi<Frame = unknown>({ executable, args, cwd, env, onFrame = () => {}, onClose = () => {} }: PiConnectOptions<Frame>): PiConnection {
-  const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  const launch = launchCommand(executable, args ?? [])
+  const child = spawn(launch.bin, launch.args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) })
   let closed = false
   let stderrTail = ''
   let buffer = ''

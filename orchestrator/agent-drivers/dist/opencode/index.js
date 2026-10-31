@@ -9,6 +9,11 @@ import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspa
 import { collector, COMMAND_NAME } from '../skills.js';
 import { opencodeInstructions } from './instructions.js';
 export { findExecutable } from '../cli.js';
+// The official installer puts the binary in ~/.opencode/bin, which is not on
+// PATH everywhere; PATH and the standard defaults still come first.
+export function findOpencodeExecutable(bin = 'opencode', { home = homedir(), path, platform = process.platform } = {}) {
+    return findExecutable(bin, { home, ...(path === undefined ? {} : { path }), platform, extra: [join(home, '.opencode/bin')] });
+}
 export const opencodeInfo = {
     id: 'opencode', label: 'OpenCode CLI', command: 'opencode', requiresCwd: true,
     description: 'Uses the local OpenCode CLI and its existing login; sessions are shared with OpenCode.',
@@ -35,7 +40,7 @@ export async function checkOpencode({ cwd, engineOptions = {} } = {}) {
         checks.push({ label: 'Working directory', ok: false, message: error.message });
     }
     const options = validateOpencodeOptions(engineOptions);
-    const executable = findExecutable(options.bin ?? 'opencode');
+    const executable = findOpencodeExecutable(options.bin ?? 'opencode');
     if (!executable)
         return { engine: 'opencode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'OpenCode executable not found. Install OpenCode or enter its absolute path.' }] };
     let version;
@@ -77,7 +82,7 @@ async function handshakeOpencode({ executable, cwd }) {
 // levels recomputed for that model.
 export async function scanOpencode({ engineOptions = {}, cwd } = {}) {
     const options = validateOpencodeOptions(engineOptions);
-    const executable = findExecutable(options.bin ?? 'opencode');
+    const executable = findOpencodeExecutable(options.bin ?? 'opencode');
     if (!executable)
         return { source: 'OpenCode CLI not found', models: [] };
     let peer;

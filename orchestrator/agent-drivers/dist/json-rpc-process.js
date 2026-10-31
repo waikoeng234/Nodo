@@ -3,8 +3,10 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { Duplex } from 'node:stream';
+import { launchCommand } from './cli.js';
 export function jsonRpcProcess({ bin, args, cwd, env, jsonrpc, WebSocket, onNotification = () => { }, onRequest = () => { }, onClose = () => { } }) {
-    const child = spawn(bin, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const launch = launchCommand(bin, args ? [...args] : []);
+    const child = spawn(launch.bin, launch.args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) });
     const pending = new Map();
     let sequence = 0;
     let closed = false;

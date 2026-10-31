@@ -3,6 +3,7 @@
 // Records split on LF only — U+2028/U+2029 are valid inside JSON strings, so the
 // engine's own docs forbid line readers like readline.
 import { spawn } from 'node:child_process';
+import { launchCommand } from '../cli.js';
 // RPC mode cannot show the project-trust prompt, and the host never silently
 // trusts a workspace's .pi resources: project settings and extensions stay off.
 // AGENTS.md/CLAUDE.md context files load regardless of this flag.
@@ -22,7 +23,8 @@ export function piArgs({ model, thinking, instructions, driverSessionId, permiss
     ];
 }
 export function connectPi({ executable, args, cwd, env, onFrame = () => { }, onClose = () => { } }) {
-    const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const launch = launchCommand(executable, args ?? []);
+    const child = spawn(launch.bin, launch.args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) });
     let closed = false;
     let stderrTail = '';
     let buffer = '';

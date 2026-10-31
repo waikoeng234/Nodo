@@ -40,17 +40,18 @@ export function validateDshOptions(raw = {}) {
 }
 // Reuse an already installed npm CLI when Desktop has no dsh on PATH. Never
 // invoke npx, install a package, or import Desktop's private runtime files.
-export function findDshExecutable(bin = 'dsh', { home = homedir(), path = process.env.PATH, defaults } = {}) {
-    const direct = findExecutable(bin, { home, path, defaults });
+export function findDshExecutable(bin = 'dsh', { home = homedir(), path = process.env.PATH, defaults, env = process.env, platform = process.platform } = {}) {
+    const direct = findExecutable(bin, { home, path, defaults, platform });
     if (direct || bin !== 'dsh')
         return direct;
-    const cache = join(home, '.npm/_npx');
+    // npm keeps its npx cache outside HOME on Windows.
+    const cache = platform === 'win32' && env.LOCALAPPDATA ? join(env.LOCALAPPDATA, 'npm-cache/_npx') : join(home, '.npm/_npx');
     try {
         return readdirSync(cache).flatMap(id => {
             try {
                 const root = join(cache, id, 'node_modules');
                 const manifest = JSON.parse(readFileSync(join(root, '@deepseek-ai/dsh/package.json'), 'utf8'));
-                const executable = findExecutable(join(root, '.bin/dsh'));
+                const executable = findExecutable(join(root, '.bin/dsh'), { platform });
                 return manifest.name === '@deepseek-ai/dsh' && executable ? [{ executable, at: statSync(join(root, '@deepseek-ai/dsh/package.json')).mtimeMs }] : [];
             }
             catch {

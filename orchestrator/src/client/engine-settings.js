@@ -99,12 +99,12 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
     finally { setBusy(false) }
   }
   const fields = (engine?.fields ?? []).filter(field => field.target === 'engineOptions').map(field =>
-    h(Field, { key: field.name, label: ({ bin: 'CLI 可执行文件', socket: '共享 Codex Socket' })[field.name] ?? field.label },
+    h(Field, { key: field.name, label: ({ bin: '程序路径', socket: '共享 Codex Socket' })[field.name] ?? field.label },
       field.type === 'select'
         ? h('select', { className: 'nodo-dialog-input nodo-dialog-select', disabled: locked || readOnly, value: draft.engineOptions[field.name] ?? field.default ?? '', onChange: editField(field) },
           ...field.choices.map(choice => h('option', { key: choice.value, value: choice.value }, choice.label)))
         : h('input', { className: 'nodo-dialog-input', disabled: locked || readOnly, value: draft.engineOptions[field.name] ?? '', onChange: editField(field),
-          placeholder: field.name === 'bin' ? '自动检测' : field.placeholder, maxLength: 1000 })))
+          placeholder: field.name === 'bin' ? '留空自动检测，检测不到时填写完整路径' : field.placeholder, maxLength: 1000 })))
   const card = item => {
     const expanded = selected === item.id
     const result = checks[checkKey(item.id)]

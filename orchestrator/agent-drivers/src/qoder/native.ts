@@ -3,6 +3,7 @@
 // so assistant frames arrive whole and text is snapshot-only.
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { launchCommand } from '../cli.js'
 import type { PermissionMode } from '../spi.js'
 
 export type QoderArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode }
@@ -28,7 +29,8 @@ export function qoderArgs({ model, thinking, instructions, driverSessionId, perm
 }
 
 export function connectQoder<Frame = unknown, Request = unknown>({ executable, args, cwd, env, onFrame = () => {}, onRequest = () => {}, onClose = () => {} }: QoderConnectOptions<Frame, Request>): QoderConnection {
-  const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  const launch = launchCommand(executable, args ?? [])
+  const child = spawn(launch.bin, launch.args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) })
   let closed = false
   let stderrTail = ''
   const write = (frame: unknown) => {

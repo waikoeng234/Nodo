@@ -3,12 +3,13 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector, listDirs } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
-import { connectCodex, ensureCodexWorkspace } from './native.js';
+import { connectCodex, ensureCodexWorkspace, findCodexExecutable } from './native.js';
 import { createFileChanges } from '../file-changes.js';
 import { LEAD_TOOLS } from '../lead-mcp.js';
+export { findCodexExecutable } from './native.js';
 export const codexInfo = {
     id: 'codex', label: 'Codex CLI', command: 'codex', requiresCwd: true,
     description: 'Uses the local Codex CLI and its existing login and settings.',
@@ -46,7 +47,7 @@ export async function checkCodex({ cwd, engineOptions = {} } = {}) {
         checks.push({ label: 'Working directory', ok: false, message: error.message });
     }
     const options = validateCodexOptions(engineOptions);
-    const executable = findExecutable(options.bin ?? 'codex');
+    const executable = findCodexExecutable(options.bin ?? 'codex');
     if (!executable)
         return { engine: 'codex', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'Codex executable not found. Enter its absolute path.' }] };
     let version;
@@ -126,7 +127,7 @@ export async function scanCodex({ engineOptions = {} } = {}) {
         const models = codexConfigModels(join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'config.toml'));
         return { source: 'Codex config.toml', ...(models[0] ? { defaultModel: models[0].id } : {}), models };
     };
-    const executable = findExecutable(options.bin ?? 'codex');
+    const executable = findCodexExecutable(options.bin ?? 'codex');
     if (!executable)
         return configModels();
     const peer = await connectCodex({ executable, socket: options.socket, start: true }).catch(() => null);
@@ -425,7 +426,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             if (disposed)
                 throw new Error('Codex driver disposed');
             validateWorkspace(cwd, true);
-            const executable = findExecutable(bin);
+            const executable = findCodexExecutable(bin);
             if (!executable)
                 throw new Error('Codex executable not found. Edit the profile CLI path or install the CLI separately.');
             emit({ type: 'session', state: 'starting' });

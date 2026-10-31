@@ -1,28 +1,46 @@
 import { accessSync, constants, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { findExecutable, invalidConfig } from '../cli.js'
+import { cliVersion, findExecutable, invalidConfig } from '../cli.js'
 import { jsonRpcProcess } from '../json-rpc-process.js'
 import type { JsonRpcPeer, JsonRpcProcessOptions } from '../json-rpc-process.js'
-import type { FindExecutableOptions } from '../cli.js'
+import type { CliVersionOptions, FindExecutableOptions } from '../cli.js'
 
 export type ZcodeModelRoute = { providerId: string; modelId: string }
 type ModelInput = { providerId?: unknown; modelId?: unknown } | null
 type ConnectOptions<Params> = Pick<JsonRpcProcessOptions<Params>, 'cwd' | 'env' | 'onNotification' | 'onRequest' | 'onClose'> & { executable: string }
 type ProviderEnvOptions = { home?: string; platform?: string; arch?: string; env?: NodeJS.ProcessEnv }
 
-// The CLI ships inside the Desktop app bundle and is normally not on PATH.
-const bundleCandidates = (home: string) => [
+// The CLI ships inside the Desktop app bundle and is normally not on PATH;
+// the Windows installer puts it under the product directory.
+const bundleCandidates = (home: string, env: NodeJS.ProcessEnv, platform: string) => [
   join(home, 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
   '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
+  ...(platform === 'win32' ? [
+    ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, 'Programs/ZCode/resources/glm/zcode.cjs')] : []),
+    ...(env.ProgramFiles ? [join(env.ProgramFiles, 'ZCode/resources/glm/zcode.cjs')] : []),
+  ] : []),
 ]
 
-export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH }: FindExecutableOptions = {}) {
-  const direct = findExecutable(bin, { home, path })
+export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH, env = process.env, platform = process.platform }: FindExecutableOptions & { env?: NodeJS.ProcessEnv; platform?: string } = {}) {
+  const direct = findExecutable(bin, { home, path, platform })
   if (direct || bin !== 'zcode') return direct
-  return bundleCandidates(home).find(candidate => {
+  return bundleCandidates(home, env, platform).find(candidate => {
     try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile() } catch { return false }
   })
+}
+
+// Windows cannot exec the shebang'd bundle script directly, so it runs under
+// the host's own Node; an Electron host supplies that via ELECTRON_RUN_AS_NODE.
+export function launchZcode(executable: string, { platform = process.platform, execPath = process.execPath }: { platform?: string; execPath?: string } = {}): { bin: string; args: string[]; env: NodeJS.ProcessEnv } {
+  return platform === 'win32' && executable.toLowerCase().endsWith('.cjs')
+    ? { bin: execPath, args: [executable], env: { ELECTRON_RUN_AS_NODE: '1' } }
+    : { bin: executable, args: [], env: {} }
+}
+
+export async function zcodeCliVersion(executable: string, options: CliVersionOptions = {}) {
+  const { bin, args, env } = launchZcode(executable)
+  return cliVersion(bin, { ...options, env: { ...options.env, ...env }, args: [...args, '--version'] })
 }
 
 // ZCode model selection is {providerId, modelId} on the wire; its picker spells
@@ -51,12 +69,13 @@ export function parseZcodeModel(raw: unknown): ZcodeModelRoute | undefined {
 // ZCode app injects ZCODE_BUILTIN_PROVIDER_CONFIG_FILE into everything it spawns,
 // so a foreign host has to resolve the newest copy under ~/.zcode itself.
 const runtimeArch: Record<string, string> = { arm64: 'aarch64', x64: 'x86_64' }
-export function zcodeProviderEnv({ home = homedir(), platform = process.platform, arch = runtimeArch[process.arch] ?? process.arch, env = process.env }: ProviderEnvOptions = {}): NodeJS.ProcessEnv {
+const runtimePlatform: Record<string, string> = { win32: 'windows' }
+export function zcodeProviderEnv({ home = homedir(), platform = process.platform, arch = process.arch, env = process.env }: ProviderEnvOptions = {}): NodeJS.ProcessEnv {
   const configured = env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE
   if (configured) { try { if (statSync(configured).isFile()) return {} } catch { /* stale path, resolve again */ } }
   let newest: { path: string; at: number } | null = null
   try {
-    const root = join(home, '.zcode/v2/runtime/provider', `${platform}-${arch}`)
+    const root = join(home, '.zcode/v2/runtime/provider', `${runtimePlatform[platform] ?? platform}-${runtimeArch[arch] ?? arch}`)
     for (const version of readdirSync(root)) for (const endpoint of readdirSync(join(root, version))) {
       const candidate = join(root, version, endpoint, 'zcode-builtin.json')
       try {
@@ -69,5 +88,6 @@ export function zcodeProviderEnv({ home = homedir(), platform = process.platform
 }
 
 export function connectZcode<Params = unknown>({ executable, cwd, env, ...callbacks }: ConnectOptions<Params>): JsonRpcPeer {
-  return jsonRpcProcess<Params>({ bin: executable, args: ['app-server'], cwd, env: { ...zcodeProviderEnv(), ...env }, ...callbacks })
+  const { bin, args, env: launchEnv } = launchZcode(executable)
+  return jsonRpcProcess<Params>({ bin, args: [...args, 'app-server'], cwd, env: { ...zcodeProviderEnv(), ...launchEnv, ...env }, ...callbacks })
 }

@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import type { Interface } from 'node:readline'
 import { Duplex } from 'node:stream'
+import { launchCommand } from './cli.js'
 import type { HostWebSocketConstructor } from './websocket.js'
 
 export type RpcId = string | number
@@ -32,7 +33,8 @@ type RpcMessage = { method?: unknown; id?: unknown; error?: unknown; result?: un
 type RpcError = { message?: string; code?: unknown; data?: unknown }
 
 export function jsonRpcProcess<Params = unknown>({ bin, args, cwd, env, jsonrpc, WebSocket, onNotification = () => {}, onRequest = () => {}, onClose = () => {} }: JsonRpcProcessOptions<Params>): JsonRpcPeer {
-  const child = spawn(bin, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+  const launch = launchCommand(bin, args ? [...args] : [])
+  const child = spawn(launch.bin, launch.args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) })
   const pending = new Map<unknown, PendingRequest>()
   let sequence = 0
   let closed = false

@@ -41,7 +41,13 @@ html[data-platform=darwin] [data-sidebar-collapsed] .nodo-left-control,html[data
 html[data-windows-titlebar] .nodo-left-control{top:calc((var(--dsh-windows-titlebar-height) - 28px) / 2);left:12px}
 html[data-windows-titlebar][data-nodo-space]:has([data-sidebar-collapsed=true]){--dsh-windows-menu-start:48px}
 html[data-windows-titlebar] .nodo-space-chrome{display:none}
+/* The host's own top row (terminal tab strip, right icon) centres ~19px below
+   the columns; the rail tabs and the title row follow that line. */
+html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-body{padding-top:6px}
 html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-tabs{margin-top:-2px}
+html[data-windows-titlebar] .nodo-head{padding-top:4px}
+html[data-windows-titlebar] .nodo-right-head{padding-top:4px}
+html[data-windows-titlebar] .nodo-right-control{top:calc(var(--dsh-frame-chrome-top,0px) + 4px)}
 /* The macOS host only exposes its frame columns through these data attributes:
    the centre column sits right before [data-rightbar-col]. Theme tokens resolve
    below <html>, so the chrome variables live on the frame. */

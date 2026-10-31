@@ -3,6 +3,7 @@
 // side writes user frames, control_requests and control_responses.
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { launchCommand } from '../cli.js';
 import { LEAD_TOOLS } from '../lead-mcp.js';
 // The flags every driver session needs: streaming both ways, partial chunks,
 // replayed user frames (they carry tool results), and prompts routed to us over
@@ -36,7 +37,8 @@ export function claudeArgs({ model, thinking, instructions, driverSessionId, per
     ];
 }
 export function connectClaude({ executable, args, cwd, env, onFrame = () => { }, onRequest = () => { }, onClose = () => { } }) {
-    const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const launch = launchCommand(executable, args ?? []);
+    const child = spawn(launch.bin, launch.args, { cwd, env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) });
     let closed = false;
     let stderrTail = '';
     const write = (frame) => {

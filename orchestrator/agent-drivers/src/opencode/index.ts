@@ -25,6 +25,12 @@ type OpencodeSession = { sessionId?: unknown; configOptions?: AcpConfigOption<un
 
 export { findExecutable } from '../cli.js'
 
+// The official installer puts the binary in ~/.opencode/bin, which is not on
+// PATH everywhere; PATH and the standard defaults still come first.
+export function findOpencodeExecutable(bin = 'opencode', { home = homedir(), path, platform = process.platform }: { home?: string; path?: string; platform?: string } = {}) {
+  return findExecutable(bin, { home, ...(path === undefined ? {} : { path }), platform, extra: [join(home, '.opencode/bin')] })
+}
+
 export const opencodeInfo = {
   id: 'opencode', label: 'OpenCode CLI', command: 'opencode', requiresCwd: true,
   description: 'Uses the local OpenCode CLI and its existing login; sessions are shared with OpenCode.',
@@ -46,7 +52,7 @@ export async function checkOpencode({ cwd, engineOptions = {} }: EngineScanOptio
   try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
   catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validateOpencodeOptions(engineOptions)
-  const executable = findExecutable(options.bin ?? 'opencode')
+  const executable = findOpencodeExecutable(options.bin ?? 'opencode')
   if (!executable) return { engine: 'opencode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'OpenCode executable not found. Install OpenCode or enter its absolute path.' }] }
   let version
   try { version = await cliVersion(executable); checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` }) }
@@ -74,7 +80,7 @@ async function handshakeOpencode({ executable, cwd }: { executable: string; cwd?
 // levels recomputed for that model.
 export async function scanOpencode({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<Omit<ModelCatalog, 'engine'>> {
   const options = validateOpencodeOptions(engineOptions)
-  const executable = findExecutable(options.bin ?? 'opencode')
+  const executable = findOpencodeExecutable(options.bin ?? 'opencode')
   if (!executable) return { source: 'OpenCode CLI not found', models: [] }
   let peer: JsonRpcPeer | undefined
   try {
