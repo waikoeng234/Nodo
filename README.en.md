@@ -12,12 +12,12 @@ The clip above is a short loop; you can also [watch the full 40-second video](ht
 
 ## The problem
 
-When you use several AI coding tools at once, you jump between terminals, copy results by hand, retell context, and keep track of who did what in your head.
+When you use several AI coding tools at once, you jump between terminals, copy results by hand, retell context, and keep track of who did what in your head. The real bottleneck is your attention: every extra session is more context to hold.
 
 Nodo is a plugin for DeepSeek Harness (dsh). It puts those Agents in **one window**:
 
 - **Each keeps its own setup**: every Agent still uses its own login, models, and tools. Nodo connects through each Agent's public interfaces and does not do the work for it.
-- **Someone dispatches**: set one **lead**. It assigns work to the right role by task type and difficulty, and the results return to the lead automatically, with no copying from you.
+- **Someone dispatches**: set one **lead**. It classifies each task, then hands it to a role by the rules you configured, and the results return to the lead automatically, with no copying from you. The lead receives only conclusions and references, so execution details do not fill its context.
 - **Save cost**: hard work goes to a stronger model, routine work to a cheaper role.
 
 ## Three steps
@@ -61,11 +61,12 @@ flowchart LR
     N --> D
     D --> A[Codex · Claude Code · OpenCode …]
     A --> P[(Project directory)]
+    A -.->|report| L
 ```
 
 - **Integration**: through each Agent's public interface (for example Codex app-server, Claude Code stream-JSON, OpenCode ACP).
 - **Roles**: the role summary is injected through the Agent's own system-prompt channel, once per conversation.
-- **Delegation**: the lead dispatches one task at a time and may dispatch the next only after the report returns.
+- **Delegation**: the lead only classifies a task (type and whether it is hard). Who takes it is decided by your configuration in 任务分配 (task assignment), so the same input gives the same result.
 - **Reports**: the lead receives only conclusions and references. Intermediate steps stay in the executor conversation; open 查看会话 to read them.
 
 For more detail, see the [architecture guide](docs/architecture.md).
@@ -79,6 +80,8 @@ For more detail, see the [architecture guide](docs/architecture.md).
 
 - Agents differ in models, thinking levels, images, attachments, and more. Nodo only integrates what an Agent actually provides.
 - Only Claude Code and Codex can currently lead.
+- The lead dispatches one task at a time and may dispatch the next only after the report returns; parallel dispatch is not supported yet.
+- Nodo acts only after you send a message. It does not watch chats, pull requests, or CI for external events, and it does not start work on its own.
 - If a task type has no assigned role, the lead cannot dispatch it; it states the gap and stops.
 - ZCode cannot call its subscription service directly. Create an API key under your coding plan, add a custom provider in ZCode with that key, and ZCode models will then be detected.
 

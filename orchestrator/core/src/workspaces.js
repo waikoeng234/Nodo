@@ -10,11 +10,13 @@ import { readdirSync } from 'node:fs'
 import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { validateWorkspace } from '../../agent-drivers/dist/cli.js'
 import { IMAGE_BYTES_MAX, NAME_MAX } from './constants.js'
-import { normalize, unquote } from './text.js'
+import { normalize, unquote, uniqueName } from './text.js'
+import { failure, invalid } from './errors.js'
+import { nativeIdOf } from '../shared/session.js'
 
 // The @-context search answers at most this many paths and walks at most this
 // deep, so a big tree costs the same small reply.
-const FILES_MAX = 30
+const FILES_MATCH_MAX = 30
 const FILES_DEPTH = 6
 // The changes card's on-demand file view reads at most this many bytes.
 const FILE_VIEW_LIMIT = 512 * 1024
@@ -23,30 +25,25 @@ const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image
 
 const confine = (base, path) => {
   const rest = relative(base, path)
-  if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)) throw Object.assign(new Error('文件不在会话工作区内'), { code: 'orch/invalid' })
+  if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)) throw invalid('文件不在会话工作区内')
 }
 const unreadable = error => {
   if (error.code === 'ENOENT') return null
-  throw Object.assign(new Error(`文件不可读：${error.message}`), { code: 'orch/invalid' })
+  throw invalid(`文件不可读：${error.message}`)
 }
 const directoryUnreadable = error => {
   const missing = error.code === 'ENOENT'
-  throw Object.assign(new Error(missing ? '目录不存在' : '目录不可读'), { code: missing ? 'orch/not-found' : 'orch/invalid' })
+  throw missing ? failure('目录不存在', 'orch/not-found') : invalid('目录不可读')
 }
 
 export function install(rt) {
   const { state } = rt
 
-  const cleanName = (raw, exceptId) => {
-    const name = unquote(raw).slice(0, NAME_MAX)
-    if (name === '') throw Object.assign(new Error('A workspace needs a name'), { code: 'orch/invalid' })
-    const taken = Object.values(state.workspaces).find(workspace => workspace.id !== exceptId && normalize(workspace.name) === normalize(name))
-    if (taken !== undefined) throw Object.assign(new Error(`The name "${name}" is already ${taken.name}`), { code: 'orch/invalid' })
-    return name
-  }
+  const cleanName = (raw, exceptId) => uniqueName(raw, 'workspace', name =>
+    Object.values(state.workspaces).find(workspace => workspace.id !== exceptId && normalize(workspace.name) === normalize(name))?.name)
   const cleanCwd = (raw) => {
     const cwd = typeof raw === 'string' ? raw.trim() : ''
-    if (cwd === '' || !isAbsolute(cwd) || cwd.includes('\0')) throw Object.assign(new Error('Workspace directory must be an absolute path'), { code: 'orch/invalid' })
+    if (cwd === '' || !isAbsolute(cwd) || cwd.includes('\0')) throw invalid('Workspace directory must be an absolute path')
     try { return validateWorkspace(cwd) } catch (error) { if (!error.message.includes('does not exist')) throw error; return cwd }
   }
 
@@ -59,15 +56,15 @@ export function install(rt) {
       ...(worktree === undefined ? {} : { worktree }) }
     state.workspaces[workspace.id] = workspace
     await rt.save()
-    return workspaceView(workspace)
+    return { ...workspace }
   }
 
   const updateWorkspace = async (id, changes) => {
     await rt.load()
     const workspace = state.workspaces[String(id ?? '')]
-    if (workspace === undefined) throw Object.assign(new Error('No such workspace'), { code: 'orch/not-found' })
+    if (workspace === undefined) throw failure('No such workspace', 'orch/not-found')
     const profiles = profilesIn(workspace).filter(profile => !profile.deletedAt)
-    if (profiles.some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id && rt.workView?.()[session.id]?.active))) throw Object.assign(new Error('Stop or finish the running tasks before editing this workspace'), { code: 'orch/busy' })
+    if (profiles.some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id && rt.workView?.()[session.id]?.active))) throw failure('Stop or finish the running tasks before editing this workspace', 'orch/busy')
     // Validate the complete candidate before mutating the live record.
     const next = { ...workspace }
     if (changes.name !== undefined) next.name = cleanName(changes.name, workspace.id)
@@ -78,18 +75,18 @@ export function install(rt) {
     // as editing a profile's own directory did before workspaces existed.
     if (moved) for (const profile of profiles) await rt.restartConversations(profile, workspace.id)
     await rt.save()
-    return workspaceView(workspace)
+    return { ...workspace }
   }
 
   const deleteWorkspace = async (id) => {
     await rt.load()
     const workspace = state.workspaces[String(id ?? '')]
-    if (workspace === undefined) throw Object.assign(new Error('No such workspace'), { code: 'orch/not-found' })
+    if (workspace === undefined) throw failure('No such workspace', 'orch/not-found')
     const profiles = profilesIn(workspace)
     const refuseBusy = () => {
       const work = rt.workView()
       if (profilesIn(workspace).some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id
-        && work[session.id]?.active))) throw Object.assign(new Error('请先停止或完成此工作区中正在运行的任务，再删除工作区'), { code: 'orch/busy' })
+        && work[session.id]?.active))) throw failure('请先停止或完成此工作区中正在运行的任务，再删除工作区', 'orch/busy')
     }
     refuseBusy()
     const rollback = await rt.archiveHostSessions?.(profiles.flatMap(profile => rt.sessionsOf(profile).filter(session => rt.sessionWorkspace(profile, session)?.id === workspace.id)))
@@ -116,13 +113,12 @@ export function install(rt) {
   }
 
   const workspaceOf = profile => state.workspaces[profile?.workspaceId]
-  const workspaceView = workspace => ({ ...workspace })
 
   // The composer's @-context search: relative file paths under the workspace's
   // directory, engine-agnostic — every agent reads a path with its own tools.
   const workspaceFiles = ({ workspace, query = '' }) => {
     const target = rt.findWorkspace(workspace)
-    if (target === undefined) throw Object.assign(new Error(`No workspace "${workspace}"`), { code: 'orch/invalid' })
+    if (target === undefined) throw invalid(`No workspace "${workspace}"`)
     const wanted = String(query ?? '').trim().toLowerCase()
     const found = []
     const visit = (prefix, depth) => {
@@ -134,7 +130,7 @@ export function install(rt) {
         if (entry.isFile()) {
           if (wanted === '' || path.toLowerCase().includes(wanted)) found.push(path)
         } else if (entry.isDirectory() && depth > 1) visit(path, depth - 1)
-        if (found.length >= FILES_MAX) return
+        if (found.length >= FILES_MATCH_MAX) return
       }
     }
     visit('', FILES_DEPTH)
@@ -146,17 +142,17 @@ export function install(rt) {
     let found, cwd
     if (workspace !== undefined) {
       const project = typeof workspace === 'string' && rt.state.workspaces[workspace]
-      if (!project || project.deletedAt) throw Object.assign(new Error('No such workspace'), { code: 'orch/not-found' })
+      if (!project || project.deletedAt) throw failure('No such workspace', 'orch/not-found')
       cwd = project.cwd
     } else if (target !== undefined) {
       found = Object.values(rt.state.profiles).flatMap(item => rt.sessionsOf(item).map(owned => ({ profile: item, session: owned })))
-        .find(item => ((item.session.engine === 'dsh' ? item.session.driverSessionId : undefined) ?? item.session.id) === target)
-      if (!found) throw Object.assign(new Error('No such session'), { code: 'orch/not-found' })
+        .find(item => (nativeIdOf(item.session) ?? item.session.id) === target)
+      if (!found) throw failure('No such session', 'orch/not-found')
     } else {
-      try { found = rt.conversation(profile, session) } catch { throw Object.assign(new Error('No such session'), { code: 'orch/not-found' }) }
+      try { found = rt.conversation(profile, session) } catch { throw failure('No such session', 'orch/not-found') }
     }
     if (found) cwd = found.session.cwd ?? rt.sessionWorkspace(found.profile, found.session)?.cwd
-    if (!cwd || typeof wanted !== 'string' || (!directory && wanted === '') || wanted.includes('\0')) throw Object.assign(new Error('需要会话工作区内的文件路径'), { code: 'orch/invalid' })
+    if (!cwd || typeof wanted !== 'string' || (!directory && wanted === '') || wanted.includes('\0')) throw invalid('需要会话工作区内的文件路径')
     const root = resolve(cwd)
     const full = resolve(root, wanted)
     try { confine(root, full) } catch (error) {
@@ -174,7 +170,7 @@ export function install(rt) {
 
   const workspaceDir = async body => {
     const { real, root } = await workspacePath(body, true)
-    if (real === null || !(await stat(real).catch(directoryUnreadable)).isDirectory()) throw Object.assign(new Error('目录不存在'), { code: 'orch/not-found' })
+    if (real === null || !(await stat(real).catch(directoryUnreadable)).isDirectory()) throw failure('目录不存在', 'orch/not-found')
     const entries = []
     for (const entry of await readdir(real, { withFileTypes: true }).catch(directoryUnreadable)) {
       if (entry.name === '.git') continue
@@ -224,6 +220,6 @@ export function install(rt) {
 
   Object.assign(rt, {
     createWorkspace, updateWorkspace, deleteWorkspace, findWorkspace, workspaceOf, workspaceFiles, workspaceDir, workspaceFile, cleanWorkspaceName: cleanName,
-    workspacesView: () => Object.values(state.workspaces).map(workspaceView),
+    workspacesView: () => Object.values(state.workspaces).map(workspace => ({ ...workspace })),
   })
 }

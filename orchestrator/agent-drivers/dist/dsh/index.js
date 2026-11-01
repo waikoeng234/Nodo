@@ -13,7 +13,7 @@ export function createDshDriver({ nativeHost, name, sessionName, workspaceId, wo
         throw new Error('DSH native workspace/session services are unavailable on this host');
     return createAcpDshDriver(options);
 }
-export function createAcpDshDriver({ cwd, env = {}, model, thinking, permission, driverSessionId, storageDir, instructions, instructionDir, ...raw } = {}) {
+function createAcpDshDriver({ cwd, env = {}, model, thinking, permission, driverSessionId, storageDir, instructions, instructionDir, ...raw } = {}) {
     if (permission !== undefined)
         throw new Error('DSH ACP cannot set a session permission tier. Clear the override to use the DSH profile permissions, or use the native host.');
     const { onEvent, ...config } = raw;

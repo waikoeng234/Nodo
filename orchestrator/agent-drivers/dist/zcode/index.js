@@ -3,14 +3,14 @@ import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js';
 import { invalidConfig, validateBin, validateWorkspace } from '../cli.js';
-import { collector, listDirs } from '../skills.js';
+import { collector, listDirs, newestPluginVersions } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, textToolChanges } from '../file-changes.js';
 import { connectZcode, findZcodeExecutable, parseZcodeModel, zcodeCliVersion } from './native.js';
 import { roleMcp } from '../role-mcp.js';
 import { zcodeInstructions } from './instructions.js';
 import { zcodeMcpServers } from './mcp.js';
-export { findZcodeExecutable, launchZcode, zcodeCliVersion } from './native.js';
+export { findZcodeExecutable, launchZcode } from './native.js';
 export { scanZcode } from './catalog.js';
 export const zcodeInfo = {
     id: 'zcode', label: 'ZCode CLI', command: 'zcode', requiresCwd: true,
@@ -748,12 +748,7 @@ export async function scanZcodeCommands({ engineOptions = {} } = {}) {
             found.add(join(path, 'SKILL.md'), basename(path), owner, scope);
     };
     scanSkills(join(homedir(), '.agents', 'skills'));
-    const cache = join(homedir(), '.zcode', 'cli', 'plugins', 'cache');
-    for (const org of listDirs(cache))
-        for (const plugin of listDirs(org)) {
-            const versions = listDirs(plugin).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-            if (versions.length > 0)
-                scanSkills(join(versions.at(-1), 'skills'), basename(plugin), 'plugin');
-        }
+    for (const { name, path } of newestPluginVersions(join(homedir(), '.zcode', 'cli', 'plugins', 'cache')))
+        scanSkills(join(path, 'skills'), name, 'plugin');
     return found.list('ZCode skills');
 }

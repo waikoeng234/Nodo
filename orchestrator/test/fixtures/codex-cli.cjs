@@ -17,6 +17,7 @@ let thread = 'fixture-thread'
 let turn = null
 let next = 0
 let approval = null
+let nativeGoal = null
 const note = (method, params) => send({ method, params: { threadId: thread, ...params } })
 const done = (status = 'completed') => { if (turn) note('turn/completed', { turn: { id: turn, status } }); turn = null }
 // One finished request reports its own usage the way the app-server does, in
@@ -48,6 +49,21 @@ const receive = line => {
     if (message.result?.decision === 'accept') answer('Approved')
     else if (message.result?.answers) answer('Answered ' + Object.keys(message.result.answers).join(','))
     else done('interrupted')
+    return
+  }
+  if (method.startsWith('thread/goal/')) {
+    appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
+    if (method === 'thread/goal/set') nativeGoal = { objective: params.objective, status: 'active' }
+    if (method === 'thread/goal/clear') nativeGoal = null
+    const goal = nativeGoal
+    send({ id, result: { goal } })
+    if (goal && method !== 'thread/goal/get') {
+      note('thread/goal/updated', { goal })
+      if (params.objective === 'Complete while idle') setTimeout(() => {
+        nativeGoal = { ...goal, status: 'complete' }
+        note('thread/goal/updated', { goal: nativeGoal })
+      }, 30)
+    } else if (!goal) note('thread/goal/cleared')
     return
   }
   if (method === 'account/read') { send({ id, result: { account: { type: 'chatgpt', email: 'private@example.test' }, requiresOpenaiAuth: true } }); return }

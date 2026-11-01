@@ -203,6 +203,15 @@ export function addUsage(base, next) {
 }
 /** The normalized `timing` keys. */
 export const TIMING_KEYS = Object.freeze(['ttftMs', 'ttftSteps', 'llmMs', 'toolMs', 'decodeMs', 'decodeTokens']);
+/**
+ * The prompt-side token sum over an Anthropic-shaped usage frame's parts
+ * (uncached input plus the cache buckets); undefined when no part is a number.
+ */
+export function promptTokensOf(parts) {
+    return parts.some(value => typeof value === 'number' && Number.isFinite(value))
+        ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
+        : undefined;
+}
 /** The clean-up `usageOf` does, for a `timing` object. */
 export function timingOf(raw) {
     if (raw === null || typeof raw !== 'object')
@@ -228,6 +237,7 @@ export function missingPrimitives(candidate) {
  * refuses. New optional primitives join this list.
  */
 export const OPTIONAL_METHODS = [
+    'goals',
     'compact', // compact the session's older history; absent when the engine's channel has no such request
 ];
 /** Whether a driver implements one optional primitive. */

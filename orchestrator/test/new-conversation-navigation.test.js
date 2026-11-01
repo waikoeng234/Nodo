@@ -88,8 +88,25 @@ async function harness(engine, profile, workspace) {
     welcome: props => render('welcome', NewConversation, props),
     addMenu: props => render('add-menu', loaded.AddMenu, props)[0],
     page: () => render('page', loaded.NodoPage, { contentOnly: true }),
+    draftPage: () => render('draft', NewConversation, { draft }),
     content: () => render('content', loaded.NodoPage, { contentOnly: true }).find(node => node.type === loaded.Feed).props }
 }
+
+test('a native goal stays in draft choices, can be cleared, and reaches session creation on first send', async () => {
+  const h = await harness('codex', 'a', 'main')
+  h.views.draft.profiles[0].goal = 'Existing responsibilities'
+  h.composer().onGoal()
+  h.draftPage().find(node => node.type === h.loaded.GoalDialog).props.onSaved('All tests pass')
+  assert.equal(h.composer().profile.nativeGoal, 'All tests pass')
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.views.draft.profiles[0].goal, 'Existing responsibilities')
+  h.composer().onModelChange({ nativeGoal: '' })
+  assert.equal(h.composer().profile.nativeGoal, '')
+  h.composer().onModelChange({ nativeGoal: 'All tests pass' })
+  h.composer().onChange('Fix the bug')
+  await h.composer().onSend()
+  assert.equal(h.calls.find(call => call.endpoint === 'session-create').choices.nativeGoal, 'All tests pass')
+})
 
 test('a new conversation displays the role tier and keeps explicit draft permission choices', async () => {
   const h = await harness('codex', 'a', 'main')

@@ -3,9 +3,8 @@ import type { Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js'
-import { jsonRpcProcess } from '../json-rpc-process.js'
 import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
-import { collector, listDirs } from '../skills.js'
+import { collector, listDirs, newestPluginVersions } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import type { Coverage } from '../coverage.js'
 import { connectCodex, ensureCodexWorkspace, findCodexExecutable } from './native.js'
@@ -76,6 +75,7 @@ type CodexItem = {
 }
 type CodexParams = {
   threadId?: string
+  goal?: { objective?: string; status?: string } | null
   requestId?: RpcId
   turnId?: string
   diff?: string
@@ -123,7 +123,7 @@ export const codexInfo = {
     { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'Leave blank to use Codex settings' },
     { name: 'socket', target: 'engineOptions', label: 'Shared Codex socket (optional)', type: 'text', placeholder: 'Default shared daemon; or its absolute control socket path' },
   ],
-  capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] },
+  capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, goals: true, permissionModes: ['plan', 'workspace', 'full'] },
 } satisfies EngineInfo
 
 export function validateCodexOptions(raw: Record<string, unknown> = {}) {
@@ -291,6 +291,10 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     if (method === 'serverRequest/resolved') {
       if (running && !running.started) { (running.pending ??= []).push({ kind: 'notification', message: { method, params } }); return }
       for (const [id, request] of requests) if (request.id === params.requestId) { requests.delete(id); emit({ type: 'request/closed', id }) }
+      return
+    }
+    if (params.threadId === threadId && (method === 'thread/goal/updated' || method === 'thread/goal/cleared')) {
+      emit({ type: 'goal', ...(params.goal ?? {}), ...(method === 'thread/goal/cleared' ? { cleared: true } : {}) })
       return
     }
     if (!running || params.threadId !== threadId) return
@@ -505,6 +509,13 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     get instructionMode() { return connected ? instructionMode : 'none' },
     get coverage() { return coverage },
     openSession: boot,
+    async goals(objective) {
+      await boot()
+      const result = await peer!.request<{ goal?: { objective?: string; status?: string } | null }>(objective === undefined ? 'thread/goal/get' : objective === null ? 'thread/goal/clear' : 'thread/goal/set',
+        { threadId, ...(objective == null ? {} : { objective, origin: 'user' }) })
+      emit({ type: 'goal', ...(result.goal ?? {}), ...(objective === null || result.goal === null ? { cleared: true } : {}) })
+      return result
+    },
     async sendTurn(text, images = []) {
       if (disposed) throw new Error('Codex driver disposed')
       if (running) throw new Error('Codex already has a running turn')
@@ -608,10 +619,6 @@ export async function scanCodexCommands({ engineOptions = {} }: CodexOptions = {
   const scanSkills = (dir: string) => {
     for (const path of listDirs(dir)) found.add(join(path, 'SKILL.md'), basename(path), undefined, 'plugin')
   }
-  const cache = join(home, 'plugins', 'cache')
-  for (const org of listDirs(cache)) for (const plugin of listDirs(org)) {
-    const versions = listDirs(plugin).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-    if (versions.length > 0) scanSkills(join(versions.at(-1)!, 'skills'))
-  }
+  for (const { path } of newestPluginVersions(join(home, 'plugins', 'cache'))) scanSkills(join(path, 'skills'))
   return found.list('Codex prompts and plugin skills')
 }

@@ -2,9 +2,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js';
-import { jsonRpcProcess } from '../json-rpc-process.js';
 import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
-import { collector, listDirs } from '../skills.js';
+import { collector, listDirs, newestPluginVersions } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { connectCodex, ensureCodexWorkspace, findCodexExecutable } from './native.js';
 import { createFileChanges } from '../file-changes.js';
@@ -18,7 +17,7 @@ export const codexInfo = {
         { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'Leave blank to use Codex settings' },
         { name: 'socket', target: 'engineOptions', label: 'Shared Codex socket (optional)', type: 'text', placeholder: 'Default shared daemon; or its absolute control socket path' },
     ],
-    capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] },
+    capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, goals: true, permissionModes: ['plan', 'workspace', 'full'] },
 };
 export function validateCodexOptions(raw = {}) {
     for (const key of Object.keys(raw))
@@ -246,6 +245,10 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                     requests.delete(id);
                     emit({ type: 'request/closed', id });
                 }
+            return;
+        }
+        if (params.threadId === threadId && (method === 'thread/goal/updated' || method === 'thread/goal/cleared')) {
+            emit({ type: 'goal', ...(params.goal ?? {}), ...(method === 'thread/goal/cleared' ? { cleared: true } : {}) });
             return;
         }
         if (!running || params.threadId !== threadId)
@@ -508,6 +511,12 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         get instructionMode() { return connected ? instructionMode : 'none'; },
         get coverage() { return coverage; },
         openSession: boot,
+        async goals(objective) {
+            await boot();
+            const result = await peer.request(objective === undefined ? 'thread/goal/get' : objective === null ? 'thread/goal/clear' : 'thread/goal/set', { threadId, ...(objective == null ? {} : { objective, origin: 'user' }) });
+            emit({ type: 'goal', ...(result.goal ?? {}), ...(objective === null || result.goal === null ? { cleared: true } : {}) });
+            return result;
+        },
         async sendTurn(text, images = []) {
             if (disposed)
                 throw new Error('Codex driver disposed');
@@ -669,12 +678,7 @@ export async function scanCodexCommands({ engineOptions = {} } = {}) {
         for (const path of listDirs(dir))
             found.add(join(path, 'SKILL.md'), basename(path), undefined, 'plugin');
     };
-    const cache = join(home, 'plugins', 'cache');
-    for (const org of listDirs(cache))
-        for (const plugin of listDirs(org)) {
-            const versions = listDirs(plugin).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-            if (versions.length > 0)
-                scanSkills(join(versions.at(-1), 'skills'));
-        }
+    for (const { path } of newestPluginVersions(join(home, 'plugins', 'cache')))
+        scanSkills(join(path, 'skills'));
     return found.list('Codex prompts and plugin skills');
 }

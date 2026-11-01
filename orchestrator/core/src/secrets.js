@@ -1,23 +1,25 @@
 // Keys the user saves for the agents. They live only in secrets.json (mode 600) and
 // in this process: drivers receive them as ORCH_SECRET_* environment variables, and
 // whatever is stored or shown passes through the redactor first.
-import { createHash, randomUUID } from 'node:crypto'
-import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { chmod, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { failure, invalid } from './errors.js'
+import { atomicWrite } from './fs.js'
 
-export const SECRET_NAME = /^[A-Z][A-Z0-9_]{0,63}$/
-export const ENV_PREFIX = 'ORCH_SECRET_'
-export const MIN_VALUE = 4
+const SECRET_NAME = /^[A-Z][A-Z0-9_]{0,63}$/
+const ENV_PREFIX = 'ORCH_SECRET_'
+const MIN_VALUE = 4
 // Values shorter than this (a PIN) are only replaced where no letter or digit touches them.
-export const WHOLE_VALUE = 8
-export const MAX_VALUE = 16384
+const WHOLE_VALUE = 8
+const MAX_VALUE = 16384
 
 export const envName = name => `${ENV_PREFIX}${name}`
-export const canUse = (secret, profileId) => secret !== undefined && profileId !== undefined
+const canUse = (secret, profileId) => secret !== undefined && profileId !== undefined
   && (secret.scope === 'all' || (Array.isArray(secret.scope) && secret.scope.includes(profileId)))
 
 // Accepts `$NAME`, `$env:NAME` and the prefixed environment name.
-export function normalizeName(raw) {
+function normalizeName(raw) {
   const name = String(raw ?? '').trim().replace(/^\$(?:env:)?/i, '').toUpperCase()
   return (name.startsWith(ENV_PREFIX) ? name.slice(ENV_PREFIX.length) : name).replace(/[\s-]+/g, '_')
 }
@@ -148,22 +150,11 @@ export function install(rt) {
     // Saving would replace keys the file holds but this host could not read.
     if (unreadable !== undefined) return Promise.reject(new Error('secrets.json could not be read; fix or remove it before saving keys'))
     const text = JSON.stringify({ version: 1, secrets: [...secrets.values()] }, null, 2)
-    const job = writing.then(async () => {
-      const temp = `${path}.${randomUUID()}.tmp`
-      await mkdir(home, { recursive: true })
-      try {
-        await writeFile(temp, text, { encoding: 'utf8', mode: 0o600 })
-        await rename(temp, path)
-      } catch (error) {
-        await rm(temp, { force: true })
-        throw error
-      }
-    })
+    const job = writing.then(() => atomicWrite(path, text, 0o600))
     writing = job.catch(error => rt.warn('nodo: secrets write failed (%s)', codeOf(error)))
     return job
   }
 
-  const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
   const cleanValue = (raw) => {
     const value = typeof raw === 'string' ? raw.trim() : ''
     if (value === '') throw invalid('Type the key first')
@@ -219,7 +210,7 @@ export function install(rt) {
     await loadSecrets()
     const key = normalizeName(name)
     retire(secrets.get(key))
-    if (!secrets.delete(key)) throw Object.assign(new Error('No such key'), { code: 'orch/not-found' })
+    if (!secrets.delete(key)) throw failure('No such key', 'orch/not-found')
     await commit()
     return true
   }

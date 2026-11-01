@@ -10,6 +10,29 @@ const harness = answerRequest => {
   return { rt, rearmed }
 }
 
+test('only an accepted ExitPlanMode approval returns Claude and CodeBuddy sessions to workspace', async () => {
+  for (const engine of ['claude', 'codebuddy', 'codex']) {
+    for (const decision of ['allow', 'deny']) {
+      const { rt } = harness(async () => true)
+      const session = { engine, permission: 'plan' }
+      let saves = 0
+      rt.conversationOf = () => ({ profile: { name: 'Rho' }, session })
+      rt.save = async () => { saves++ }
+      rt.openApproval('session', { id: 'exit', tool: 'ExitPlanMode', kind: 'permission' })
+      await rt.answerApproval('exit', { decision })
+      const approved = decision === 'allow' && engine !== 'codex'
+      assert.equal(session.permission, approved ? 'workspace' : 'plan')
+      assert.equal(saves, approved ? 1 : 0)
+    }
+  }
+  const { rt } = harness(async () => false)
+  const session = { engine: 'claude', permission: 'plan' }
+  rt.conversationOf = () => ({ profile: { name: 'Rho' }, session })
+  rt.openApproval('session', { id: 'exit', tool: 'ExitPlanMode', kind: 'permission' })
+  await assert.rejects(rt.answerApproval('exit', { decision: 'allow' }), /no longer active/)
+  assert.equal(session.permission, 'plan')
+})
+
 test('a card the engine closes while its answer fails stays closed, and the watchdog resumes', async () => {
   let fail
   const { rt, rearmed } = harness(() => new Promise((_, reject) => { fail = reject }))

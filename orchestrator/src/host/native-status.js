@@ -1,3 +1,5 @@
+import { nativeIdOf as nativeId } from '../../core/shared/session.js'
+
 const empty = () => ({ seq: -1, turn: null, status: 'idle', since: null, finishedAt: null, completionSeq: null, lastAt: null, tools: new Map(), approvals: new Set() })
 const observed = new Set(['turn/start', 'turn/end', 'tool/call', 'tool/result', 'approval/asked', 'approval/decided'])
 const outcome = kind => kind === 'completed' ? 'completed'
@@ -36,7 +38,6 @@ export function install(rt) {
   const entries = new Map()
   const stops = []
   let disposed = false
-  const nativeId = session => session.engine === 'dsh' ? session.driverSessionId : undefined
   const bound = id => typeof id === 'string' && Object.values(rt.state.profiles).some(profile => rt.sessionsOf(profile).some(session => nativeId(session) === id))
   const entryOf = id => {
     if (!entries.has(id)) entries.set(id, { state: empty(), requests: new Map(), loaded: false })

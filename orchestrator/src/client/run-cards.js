@@ -64,7 +64,9 @@ export function ApprovalCard({ card, refresh, readOnly, from }) {
             h('span', null, [from.role.name, from.role.engine && engineDisplayName({ id: from.role.engine }), from.session.name].filter(Boolean).join(' · ')))),
         h('div', { className: 'nodo-approval-body', tabIndex: 0, role: 'group', 'aria-label': '审批详情' },
           h('p', { className: 'nodo-approval-headline' }, card.tool ? `工具「${card.tool}」请求执行` : card.reason),
-          card.tool && card.reason ? h('p', { className: 'nodo-approval-command' }, card.reason) : null),
+          card.tool && card.reason ? h('p', { className: 'nodo-approval-command' }, card.reason) : null,
+          card.tool === 'ExitPlanMode' && typeof (card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan) === 'string'
+            && h('div', { className: 'nodo-approval-plan' }, card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan)),
         h('div', { className: 'nodo-approval-actions' },
           h(Button, { variant: 'outline', className: 'nodo-approval-reject', disabled: blocked, onClick: () => void answer('deny') }, '拒绝'),
           h(Button, { variant: 'primary', disabled: blocked, onClick: () => void answer('allow') }, '允许一次'))),

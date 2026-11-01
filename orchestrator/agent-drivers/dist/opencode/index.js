@@ -8,7 +8,6 @@ import { jsonRpcProcess } from '../json-rpc-process.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector, COMMAND_NAME } from '../skills.js';
 import { opencodeInstructions } from './instructions.js';
-export { findExecutable } from '../cli.js';
 // The official installer puts the binary in ~/.opencode/bin, which is not on
 // PATH everywhere; PATH and the standard defaults still come first.
 export function findOpencodeExecutable(bin = 'opencode', { home = homedir(), path, platform = process.platform } = {}) {

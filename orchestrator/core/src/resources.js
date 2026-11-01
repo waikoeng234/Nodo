@@ -5,9 +5,9 @@
 // stored attachment references. Remote URIs remain references.
 import { imageFileType, imageReferences } from './image-files.js'
 export const RESOURCE_LIMITS = Object.freeze({ count: 16, preview: 4, images: 8, text: 4000, uri: 1000, name: 200, mimeType: 100, imageBytes: 5 * 1024 * 1024 })
-export const RESOURCE_KINDS = Object.freeze(['image', 'file', 'link', 'audio', 'text'])
-export const RESOURCE_STATES = Object.freeze(['pending', 'stored', 'reference', 'unsupported', 'unavailable'])
-export const RESOURCE_REASONS = Object.freeze(['unsupported-type', 'invalid-image', 'image-too-large', 'storage-unavailable', 'attachment-unavailable', 'source-limit', 'no-reader'])
+const RESOURCE_KINDS = Object.freeze(['image', 'file', 'link', 'audio', 'text'])
+const RESOURCE_STATES = Object.freeze(['pending', 'stored', 'reference', 'unsupported', 'unavailable'])
+const RESOURCE_REASONS = Object.freeze(['unsupported-type', 'invalid-image', 'image-too-large', 'storage-unavailable', 'attachment-unavailable', 'source-limit', 'no-reader'])
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const blobs = new Set(['image', 'audio', 'resource_link', 'file', 'inputImage', 'inputAudio'])

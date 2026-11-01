@@ -1,9 +1,9 @@
 import type { ReactNode } from './ui-shared.js'
 import {
-  h, Fragment, useState, Menu, Tooltip, Button, WorkDot, workLabel, workKind, runningOf,
+  h, Fragment, useState, Menu, Tooltip, WorkDot, workLabel, workKind, runningOf,
   sessionTime, workspaceIdOf, roleStateOf, ARCHIVED_VIEWS, SESSION_FOLD, layoutService,
-  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconUnarchiveOutlineRegular, IconBranchOutlineRegular, IconChevronDownOutlineRegular,
-  IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
+  IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconUnarchiveOutlineRegular, IconBranchOutlineRegular,
+  IconChevronLeftOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
   IconFlatListOutlineRegular, IconFolderOpenOutlineRegular,
   IconNewChatOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
@@ -66,41 +66,6 @@ export function SessionRow({ role, session, current, work, busy, readOnly, conte
             onClick={event => { event.stopPropagation(); setOpen(current => !current) }}><IconEllipsisOutlineRegular /></button>} />
       </span>}
     </div>
-  )
-}
-
-interface PickerOptions {
-  workspaces: RailWorkspace[]; workspace?: RailWorkspace | null; running?: Set<string>; open: boolean
-  setOpen: (update: (open: boolean) => boolean) => void; onSelect: (id: string) => void
-  none?: string; button?: boolean; label?: string; disabled?: boolean
-}
-
-// The project picker of the rail. `none` adds a
-// first item for no workspace; `button` draws the anchor as a small outline button.
-export const workspacePicker = ({ workspaces, workspace, running = new Set(), open, setOpen, onSelect, none, button = false, label = '选择项目', disabled }: PickerOptions) => {
-  const ordered = [...workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-  const othersRunning = ordered.some(item => item.id !== workspace?.id && running.has(item.id))
-  const name = workspace?.name ?? none
-  const Glyph = workspace ? workspace.worktree ? IconBranchOutlineRegular : IconFolderOpenOutlineRegular : null
-  const anchor = <Fragment>
-    {Glyph && <span className="nodo-folder"><Glyph size={16} /></span>}
-    <span className="nodo-row-title">{name}</span>
-    {othersRunning && <span className="nodo-project-state" title="其他项目或分支有正在运行的任务"><WorkDot kind="run" /></span>}
-    <span className="nodo-chevron" data-open={open ? '' : undefined}><IconChevronDownOutlineRegular size={14} /></span>
-  </Fragment>
-  const props = { disabled, 'aria-haspopup': 'menu' as const, 'aria-expanded': open, 'aria-label': `${label}，当前 ${name}`,
-    title: workspace ? workspace.worktree ? `${workspace.worktree.branch} · ${workspace.cwd}` : workspace.cwd : undefined,
-    onClick: (event: { stopPropagation(): void }) => { event.stopPropagation(); setOpen(value => !value) } }
-  return (
-    <Menu open={open} onClose={() => setOpen(() => false)} portal selectedId={workspace?.id ?? ''} align="start" className="nodo-picker"
-      items={[...(none ? [{ id: '', label: none }] : []), ...ordered.map(item => ({ id: item.id,
-        label: running.has(item.id)
-          ? <span className="nodo-menu-label">{item.name}<span className="nodo-menu-dot" title="有正在运行的任务"><WorkDot kind="run" /></span></span>
-          : item.name,
-        icon: item.worktree ? <IconBranchOutlineRegular /> : <IconFolderOpenOutlineRegular /> }))]}
-      onSelect={(id: string) => { setOpen(() => false); onSelect(id) }}
-      anchor={button ? <Button variant="outline" size="sm" className="nodo-project-pick" {...props}>{anchor}</Button>
-        : <button type="button" className="nodo-project-select" {...props}>{anchor}</button>} />
   )
 }
 

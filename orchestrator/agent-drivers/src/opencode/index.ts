@@ -23,8 +23,6 @@ export type OpencodeDriverOptions = AcpDriverOptions & {
 }
 type OpencodeSession = { sessionId?: unknown; configOptions?: AcpConfigOption<unknown>[] | null }
 
-export { findExecutable } from '../cli.js'
-
 // The official installer puts the binary in ~/.opencode/bin, which is not on
 // PATH everywhere; PATH and the standard defaults still come first.
 export function findOpencodeExecutable(bin = 'opencode', { home = homedir(), path, platform = process.platform }: { home?: string; path?: string; platform?: string } = {}) {

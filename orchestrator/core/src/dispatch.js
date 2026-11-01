@@ -8,8 +8,10 @@ import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, TURN_IDLE_TIMEOUT_MS, RETRY_IDLE_TI
 import { clip } from './text.js'
 import { LEAD_ENGINES, leadModeOf } from '../shared/lead.js'
 import { projectContent } from './resources.js'
-import { changesTool, normalizeProgress, planObservation, previewRecord } from './stream-records.js'
+import { changesTool, normalizeProgress, previewRecord } from './stream-records.js'
 import { createMessageStream } from './message-stream.js'
+import { failure, invalid } from './errors.js'
+import { nativeIdOf } from '../shared/session.js'
 import { randomUUID } from 'node:crypto'
 
 const readable = (value, imageOutput = false) => projectContent(value, imageOutput).text
@@ -110,301 +112,311 @@ export function install(rt) {
     }
   }
   // The one event sink every driver of this plugin reports through (drivers.js).
+  // One handler per event type; dispatch only arms the idle watchdog and
+  // forwards. Handlers drop events that cannot belong to the active turn.
+  const sinkSession = (profileId, st, event) => {
+    if (event.state === 'closed') { say(profileId, { who: 'system', kind: 'note', text: 'engine session closed' }) }
+    else if (event.state === 'ready') void rt.flushLeadReports?.(profileId)
+  }
+
+  const sinkTurnStart = (profileId, st, event) => {
+    if (!st.active && !st.starting && st.cancelledStart && !rt.isCompacting(profileId)) {
+      st.endedTurn = event.turnId == null ? null : String(event.turnId)
+      return
+    }
+    st.cancelledStart = false
+    st.active = true
+    st.starting = false
+    st.turnId = event.turnId ?? null
+    bindTurn(st, st.seq, st.turnId)
+    st.buffer = ''
+    st.messages = null
+    st.lifecycles = new Map()
+    // A plan that raced in before this turn's start owns the row already;
+    // anything else is the previous turn's history, not this row.
+    if (st.planTurn === null || String(st.planTurn) !== String(event.turnId ?? '')) { st.planLine = null; st.planLines = new Map() }
+    st.planTurn = null
+    st.tools = new Map()
+    st.closedTools = new Set()
+    st.records ??= rt.newStreamRun?.(profileId)
+    st.recordWrites = Promise.resolve()
+    armIdle(profileId, st)
+  }
+
+  const sinkText = (profileId, st, event) => {
+    if (foreign(st, event)) return
+    if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
+    messagesOf(profileId, st).accept(event)
+    if (typeof event.text === 'string' && event.text !== '') rt.statsOutput(profileId)
+  }
+
+  const sinkChanges = (profileId, st, event) => {
+    if (foreign(st, event) || st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
+    closeMessages(st)
+    const tool = changesTool(event)
+    st.records ??= rt.newStreamRun?.(profileId)
+    const record = tool && st.records?.accept(tool)
+    if (!record) { say(profileId, { who: 'agent', kind: 'note', text: tool.output }); return }
+    const line = say(profileId, { who: 'agent', kind: 'changes', text: tool.output, presentation: previewRecord(record) })
+    if (line) saveRecord(profileId, st, line, record)
+  }
+
+  const sinkPlan = (profileId, st, event) => {
+    // Snapshots replace only the same source plan; unidentified plans use
+    // the turn's default plan slot.
+    if (foreign(st, event)) return
+    if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
+    closeMessages(st)
+    const entityId = typeof event.entityId === 'string' && event.entityId !== '' ? event.entityId : undefined
+    st.planLines ??= new Map()
+    const prior = entityId ? st.planLines.get(entityId) : st.planLine
+    const steps = (Array.isArray(event.steps) ? event.steps : []).slice(0, 50)
+      .map(step => ({ text: clip(rt.redactDeepSecrets(String(step?.text ?? '')), 500, 'long plan step'), status: ['pending', 'in_progress', 'completed'].includes(step?.status) ? step.status : 'pending' }))
+      .filter(step => step.text !== '')
+    const removed = event.removed === true || (Array.isArray(event.steps) && steps.length === 0)
+    const text = clip(rt.redactDeepSecrets(String(event.explanation ?? event.text ?? event.title ?? '')), TRANSCRIPT_TEXT_MAX, 'long plan')
+    if (prior) {
+      Object.assign(prior, removed ? { steps: [], text: '', removed: true } : { steps, text, removed: false })
+    } else if (!removed) {
+      const line = rt.appendLine(profileId, { who: 'agent', kind: 'plan', text, steps,
+        ...(event.turnId !== undefined ? { turnId: event.turnId } : {}), ...(entityId ? { entityId } : {}) })
+      if (entityId) st.planLines.set(entityId, line)
+      else st.planLine = line
+      st.planTurn = event.turnId !== undefined ? String(event.turnId) : null
+    }
+    void rt.save().catch(() => {})
+  }
+
+  const sinkActivity = (profileId, st, event) => {
+    // One subagent/member row reuses the tool-row machinery (callId pairing,
+    // running merge) without becoming a tool record or a second execution.
+    if (foreign(st, event)) return
+    if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
+    if (event.entityId === undefined || event.entityId === null || event.entityId === '') return
+    closeMessages(st)
+    // A name rides only when the source sent one (or on the row-opening
+    // start), so an update never renames the merged row. The source's own
+    // ids (parent run, child session, tool call) stay on the row.
+    return driverSink(profileId, { type: 'tool', turnId: event.turnId, callId: String(event.entityId),
+      phase: ['start', 'update', 'end'].includes(event.phase) ? event.phase : 'update',
+      ...(event.name !== undefined || event.phase === 'start' ? { name: String(event.name ?? 'subagent') } : {}),
+      brief: event.title, output: event.detail,
+      ...(event.parentId !== undefined ? { parentCallId: String(event.parentId) } : {}),
+      ...(event.childId !== undefined ? { childId: String(event.childId) } : {}),
+      ...(event.toolCallId !== undefined ? { toolCallId: String(event.toolCallId) } : {}),
+      isError: event.isError === true, noRecord: true })
+  }
+
+  const sinkLifecycle = (profileId, st, event) => {
+    if (!foreign(st, event) && !st.finishing && (st.active || st.starting || event.turnId === undefined)) {
+      closeMessages(st)
+      const line = say(profileId, { who: 'system', kind: 'lifecycle', event: event.kind, phase: event.phase,
+        ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
+        ...(event.entityId !== undefined ? { entityId: event.entityId } : {}),
+        ...(event.detail ? { text: clip(rt.redactDeepSecrets(String(event.detail)), 2000, 'long lifecycle detail') } : {}), ...(event.isError ? { isError: true } : {}), ...(event.cancelled ? { cancelled: true } : {}) })
+      if (event.turnId !== undefined || event.kind === 'retry') {
+        st.lifecycles ??= new Map()
+        const key = JSON.stringify([event.kind, event.entityId ?? null])
+        if (event.phase === 'start') st.lifecycles.set(key, line)
+        else st.lifecycles.delete(key)
+      }
+    }
+  }
+
+  const sinkTool = (profileId, st, event) => {
+    // A missing or foreign turnId proves nothing about the active turn, so
+    // it cannot be matched by name or by the single open pending tool.
+    if (foreign(st, event)) return
+    // Late events after turn/end must not revive a finished operation. A
+    // driver event always names its turn; legacy fixtures without one keep
+    // the old direct-sink behaviour.
+    if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
+    closeMessages(st)
+    const phase = event.phase === 'end' ? 'end' : event.phase === 'update' ? 'update' : 'start'
+    const key = event.callId === undefined ? null : String(event.callId)
+    // A call id that already reached its end stays terminal until the next
+    // turn starts, even if the source repeats a start or a second end.
+    if (key !== null && phase !== 'update' && st.closedTools.has(key)) return
+    st.records ??= rt.newStreamRun?.(profileId)
+    if (phase === 'update') {
+      const line = key === null ? null : st.tools.get(key)
+      // An update without a started identity is not attached to a guess.
+      if (!line) return
+      applyToolFields(line, event)
+      const record = event.noRecord ? null : st.records?.accept(event)
+      if (record) line.presentation = previewRecord(record)
+      return
+    }
+    const repeated = phase === 'start' && key !== null && st.tools.has(key)
+    if (repeated) {
+      // A repeated start is the same execution, not a second tool.
+      const line = st.tools.get(key)
+      applyToolFields(line, event)
+      const record = event.noRecord ? null : st.records?.accept(event)
+      if (record) line.presentation = previewRecord(record)
+      return
+    }
+    // An activity row is a status, not an execution: it never counts as a
+    // tool step nor opens a tool-time span.
+    if (event.noRecord !== true) rt.statsTool(profileId, phase === 'end' ? 'end' : 'start')
+    const record = event.noRecord ? null : st.records?.accept(event)
+    const line = say(profileId, {
+      who: 'agent', kind: 'tool', name: String(event.name ?? 'tool'), phase, timeline: true,
+      ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
+      ...(event.noRecord === true ? { activity: true } : {}),
+      ...(key !== null ? { callId: key } : {}),
+      ...(event.parentCallId !== undefined ? { parentCallId: String(event.parentCallId) } : {}),
+      ...(event.childId !== undefined ? { childId: String(event.childId) } : {}),
+      ...(event.toolCallId !== undefined ? { toolCallId: String(event.toolCallId) } : {}),
+      ...(event.input !== undefined || event.inputText !== undefined ? { input: clip(readable(rt.redactDeepSecrets(event.input ?? event.inputText)), TRANSCRIPT_TEXT_MAX, 'long tool input') } : {}),
+      ...(event.output !== undefined || event.outputText !== undefined ? { output: clip(readable(rt.redactDeepSecrets(event.output ?? event.outputText), event.name === 'imageGeneration'), TRANSCRIPT_TEXT_MAX, 'long tool output') } : {}),
+      ...(event.progress !== undefined ? { progress: normalizeProgress(rt.redactDeepSecrets(event.progress)) } : {}),
+      ...(typeof event.brief === 'string' && event.brief !== '' ? { brief: clip(rt.redactDeepSecrets(event.brief), 2000, 'long tool output') } : {}),
+      isError: event.isError === true,
+      ...(record ? { presentation: previewRecord(record) } : {}),
+    })
+    if (phase === 'start' && key !== null) st.tools.set(key, line)
+    if (phase === 'end' && key !== null) { st.tools.delete(key); st.closedTools.add(key) }
+    if (record && phase === 'end' && line) {
+      saveRecord(profileId, st, line, record)
+    }
+    st.toolOpen = phase === 'end' ? null : String(event.name ?? 'tool')
+  }
+
+  const sinkRequestOpened = (profileId, st, event) => {
+    if (st.requests?.has(event.id)) return
+    closeMessages(st)
+    let request
+    if (st.active || st.starting) {
+      st.requests ??= new Map()
+      request = { kind: event.kind, turnId: st.turnId }
+      st.requests.set(event.id, request)
+      say(profileId, { who: 'system', kind: 'request', requestId: event.id, requestKind: event.kind, phase: 'start',
+        ...(st.turnId !== null ? { turnId: st.turnId } : {}), text: clip(rt.redactDeepSecrets(String(event.reason ?? event.tool ?? '')), 2000, 'long request') })
+    }
+    rt.openApproval(profileId, event, request ? async reply => {
+      settleRequest(profileId, st, event.id, request)
+      const questions = Array.isArray(event.detail?.questions) ? event.detail.questions.slice(0, 50)
+        .filter(question => typeof question?.id === 'string')
+        .map(question => ({ id: question.id.slice(0, 200), label: String(question.header ?? question.question ?? question.id).slice(0, 2000) })) : []
+      if (request.line) {
+        delete request.line.cancelled
+        request.line.response = rt.redactDeepSecrets({ ...reply,
+          ...(questions.length > 1 && JSON.stringify(questions).length <= 4000 ? { questions } : {}) })
+      }
+      if (st.requests.get(event.id) === request) st.requests.delete(event.id)
+      await rt.save()
+    } : undefined)
+    if (!foreign(st, event)) armIdle(profileId, st)
+  }
+
+  const sinkRequestClosed = (profileId, st, event) => {
+    if (st.requests?.has(event.id)) {
+      const request = st.requests.get(event.id)
+      settleRequest(profileId, st, event.id, request, event.cancelled === true)
+      st.requests.delete(event.id)
+    }
+    rt.closeApproval(event.id)
+    void rt.flushLeadReports?.(profileId)
+    if (!foreign(st, event)) armIdle(profileId, st)
+  }
+
+  const sinkNote = (profileId, st, event) => {
+    closeMessages(st)
+    if (typeof event.text === 'string' && event.text) say(profileId, { who: 'system', kind: 'note', text: event.text })
+  }
+
+  const sinkTurnEnd = (profileId, st, event) => {
+    if ((!st.active && !st.starting) || st.finishing || foreign(st, event)) return
+    clearTimeout(st.cancelTimer)
+    st.cancelTimer = null
+    st.finishing = true
+    const ended = st.turnId ?? event.turnId
+    if (ended !== undefined && ended !== null) st.endedTurn = String(ended)
+    for (const [id, request] of st.requests ?? []) {
+      settleRequest(profileId, st, id, request, event.reason === 'interrupted')
+      rt.closeApproval(id)
+    }
+    st.requests?.clear()
+    for (const line of st.lifecycles?.values() ?? []) {
+      say(profileId, { who: 'system', kind: 'lifecycle', event: line.event, phase: 'end',
+        ...(line.entityId !== undefined ? { entityId: line.entityId } : {}), ...(ended != null ? { turnId: ended } : {}),
+        ...(event.reason === 'interrupted' ? { cancelled: true } : {}), ...(event.reason === 'error' ? { isError: true } : {}) })
+    }
+    st.lifecycles?.clear()
+    for (const record of st.records?.close(event.reason === 'interrupted' ? 'interrupted' : 'unknown') ?? []) {
+      const line = say(profileId, { who: 'agent', kind: 'tool', name: record.title, callId: record.entityId, phase: 'end',
+        timeline: true, ...(ended != null ? { turnId: ended } : {}),
+        isError: true, brief: 'Agent 未确认执行结果', presentation: previewRecord(record) })
+      if (line) saveRecord(profileId, st, line, record)
+    }
+    const seq = st.seq
+    const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
+    const reply = replyLines.find(line => line.reply)
+    const session = rt.conversationOf?.(profileId)?.session
+    rt.leadEnded?.(profileId, event)
+    const replyId = session?.engine === 'dsh' ? reply?.messageId : reply ? (reply.replyId ??= randomUUID()) : undefined
+    const flushed = st.messages.text()
+    rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
+    st.task = null
+    for (const line of replyLines) {
+      if (rt.saveReplyImages) st.recordWrites = Promise.resolve(st.recordWrites).then(async () => {
+        const images = await rt.saveReplyImages(profileId, line.text)
+        if (images.length) line.images = images
+      }).catch(() => rt.warn?.('nodo: reply images could not be persisted'))
+    }
+    st.buffer = ''
+    if (event.reason === 'error' && typeof event.error === 'string') {
+      say(profileId, { who: 'agent', kind: 'error', text: rt.redactDeepSecrets(String(event.error)).slice(0, 2000) })
+    }
+    if (event.usage !== undefined) {
+      say(profileId, { who: 'system', kind: 'usage', usage: event.usage })
+    }
+    rt.statsEnd(profileId, event.usage, event.timing)
+    closeMessages(st)
+    disarmIdle(st)
+    const finish = reason => {
+      st.active = false
+      st.starting = false
+      st.finishing = false
+      st.records = null
+      st.planLine = null
+      st.planLines = new Map()
+      st.planTurn = null
+      st.tools = new Map()
+      st.closedTools = new Set()
+      st.turnId = null
+      st.startedAt = null
+      const unconfirmed = event.unconfirmed === true ? { unconfirmed: true } : {}
+      // `final` is the engine's own last message of the turn; `text` stays the whole turn.
+      const final = typeof event.text === 'string' && event.text.trim() !== '' ? { final: event.text } : {}
+      const reply = replyId ? { replyId } : {}
+      const retryable = reason === 'error' && event.retryable === true ? { retryable: true } : {}
+      settle(st, seq, { reason, text: flushed !== '' ? flushed : final.final, ...final, ...unconfirmed, ...reply, ...retryable })
+      st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed, ...reply, ...retryable } }
+      for (const joined of st.joined.splice(0)) settle(st, joined, st.ended.outcome)
+      drain(profileId, st)
+      void rt.flushLeadReports?.(profileId)
+    }
+    void Promise.resolve(st.recordWrites).then(() => rt.save()).then(() => finish(event.reason), () => {
+      rt.appendLine(profileId, { who: 'agent', kind: 'error', text: 'Task finished, but its saved context could not be persisted.' })
+      finish('error')
+    })
+  }
+
+  const SINKS = {
+    session: sinkSession,
+    'turn/start': sinkTurnStart,
+    thinking: sinkText, delta: sinkText, text: sinkText,
+    changes: sinkChanges, plan: sinkPlan, activity: sinkActivity, lifecycle: sinkLifecycle, tool: sinkTool,
+    'request/opened': sinkRequestOpened, 'request/closed': sinkRequestClosed, note: sinkNote, 'turn/end': sinkTurnEnd,
+  }
   const driverSink = (profileId, event) => {
     const st = stateOf(profileId)
     if (event && event.type !== 'session' && event.type !== 'turn/start' && event.type !== 'turn/end' && !foreign(st, event) && (st.active || st.starting)) {
       armIdle(profileId, st, event.kind === 'retry' && event.phase === 'start' ? RETRY_IDLE_TIMEOUT_MS : TURN_IDLE_TIMEOUT_MS)
     }
-    switch (event?.type) {
-      case 'session':
-        if (event.state === 'closed') { say(profileId, { who: 'system', kind: 'note', text: 'engine session closed' }) }
-        else if (event.state === 'ready') void rt.flushLeadReports?.(profileId)
-        return
-      case 'turn/start':
-        if (!st.active && !st.starting && st.cancelledStart && !rt.isCompacting(profileId)) {
-          st.endedTurn = event.turnId == null ? null : String(event.turnId)
-          return
-        }
-        st.cancelledStart = false
-        st.active = true
-        st.starting = false
-        st.turnId = event.turnId ?? null
-        bindTurn(st, st.seq, st.turnId)
-        st.buffer = ''
-        st.messages = null
-        st.lifecycles = new Map()
-        // A plan that raced in before this turn's start owns the row already;
-        // anything else is the previous turn's history, not this row.
-        if (st.planTurn === null || String(st.planTurn) !== String(event.turnId ?? '')) { st.planLine = null; st.planLines = new Map() }
-        st.planTurn = null
-        st.tools = new Map()
-        st.closedTools = new Set()
-        st.records ??= rt.newStreamRun?.(profileId)
-        st.recordWrites = Promise.resolve()
-        armIdle(profileId, st)
-        return
-      case 'thinking':
-      case 'delta':
-      case 'text':
-        if (foreign(st, event)) return
-        if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        messagesOf(profileId, st).accept(event)
-        if (typeof event.text === 'string' && event.text !== '') rt.statsOutput(profileId)
-        return
-      case 'changes': {
-        if (foreign(st, event) || st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        closeMessages(st)
-        const tool = changesTool(event)
-        st.records ??= rt.newStreamRun?.(profileId)
-        const record = tool && st.records?.accept(tool)
-        if (!record) { say(profileId, { who: 'agent', kind: 'note', text: tool.output }); return }
-        const line = say(profileId, { who: 'agent', kind: 'changes', text: tool.output, presentation: previewRecord(record) })
-        if (line) saveRecord(profileId, st, line, record)
-        return
-      }
-      case 'plan': {
-        // Snapshots replace only the same source plan; unidentified plans use
-        // the turn's default plan slot.
-        if (foreign(st, event)) return
-        if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        closeMessages(st)
-        const entityId = typeof event.entityId === 'string' && event.entityId !== '' ? event.entityId : undefined
-        st.planLines ??= new Map()
-        const prior = entityId ? st.planLines.get(entityId) : st.planLine
-        const steps = (Array.isArray(event.steps) ? event.steps : []).slice(0, 50)
-          .map(step => ({ text: clip(rt.redactDeepSecrets(String(step?.text ?? '')), 500, 'long plan step'), status: ['pending', 'in_progress', 'completed'].includes(step?.status) ? step.status : 'pending' }))
-          .filter(step => step.text !== '')
-        const removed = event.removed === true || (Array.isArray(event.steps) && steps.length === 0)
-        const text = clip(rt.redactDeepSecrets(String(event.explanation ?? event.text ?? event.title ?? '')), TRANSCRIPT_TEXT_MAX, 'long plan')
-        if (prior) {
-          Object.assign(prior, removed ? { steps: [], text: '', removed: true } : { steps, text, removed: false })
-        } else if (!removed) {
-          const line = rt.appendLine(profileId, { who: 'agent', kind: 'plan', text, steps,
-            ...(event.turnId !== undefined ? { turnId: event.turnId } : {}), ...(entityId ? { entityId } : {}) })
-          if (entityId) st.planLines.set(entityId, line)
-          else st.planLine = line
-          st.planTurn = event.turnId !== undefined ? String(event.turnId) : null
-        }
-        void rt.save().catch(() => {})
-        return
-      }
-      case 'activity': {
-        // One subagent/member row reuses the tool-row machinery (callId pairing,
-        // running merge) without becoming a tool record or a second execution.
-        if (foreign(st, event)) return
-        if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        if (event.entityId === undefined || event.entityId === null || event.entityId === '') return
-        closeMessages(st)
-        // A name rides only when the source sent one (or on the row-opening
-        // start), so an update never renames the merged row. The source's own
-        // ids (parent run, child session, tool call) stay on the row.
-        return driverSink(profileId, { type: 'tool', turnId: event.turnId, callId: String(event.entityId),
-          phase: ['start', 'update', 'end'].includes(event.phase) ? event.phase : 'update',
-          ...(event.name !== undefined || event.phase === 'start' ? { name: String(event.name ?? 'subagent') } : {}),
-          brief: event.title, output: event.detail,
-          ...(event.parentId !== undefined ? { parentCallId: String(event.parentId) } : {}),
-          ...(event.childId !== undefined ? { childId: String(event.childId) } : {}),
-          ...(event.toolCallId !== undefined ? { toolCallId: String(event.toolCallId) } : {}),
-          isError: event.isError === true, noRecord: true })
-      }
-      case 'lifecycle':
-        if (!foreign(st, event) && !st.finishing && (st.active || st.starting || event.turnId === undefined)) {
-          closeMessages(st)
-          const line = say(profileId, { who: 'system', kind: 'lifecycle', event: event.kind, phase: event.phase,
-            ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
-            ...(event.entityId !== undefined ? { entityId: event.entityId } : {}),
-            ...(event.detail ? { text: clip(rt.redactDeepSecrets(String(event.detail)), 2000, 'long lifecycle detail') } : {}), ...(event.isError ? { isError: true } : {}), ...(event.cancelled ? { cancelled: true } : {}) })
-          if (event.turnId !== undefined || event.kind === 'retry') {
-            st.lifecycles ??= new Map()
-            const key = JSON.stringify([event.kind, event.entityId ?? null])
-            if (event.phase === 'start') st.lifecycles.set(key, line)
-            else st.lifecycles.delete(key)
-          }
-        }
-        return
-      case 'tool':
-      {
-        // A missing or foreign turnId proves nothing about the active turn, so
-        // it cannot be matched by name or by the single open pending tool.
-        if (foreign(st, event)) return
-        // Late events after turn/end must not revive a finished operation. A
-        // driver event always names its turn; legacy fixtures without one keep
-        // the old direct-sink behaviour.
-        if (st.finishing || (!st.active && !st.starting && event.turnId !== undefined)) return
-        closeMessages(st)
-        const phase = event.phase === 'end' ? 'end' : event.phase === 'update' ? 'update' : 'start'
-        const key = event.callId === undefined ? null : String(event.callId)
-        // A call id that already reached its end stays terminal until the next
-        // turn starts, even if the source repeats a start or a second end.
-        if (key !== null && phase !== 'update' && st.closedTools.has(key)) return
-        st.records ??= rt.newStreamRun?.(profileId)
-        if (phase === 'update') {
-          const line = key === null ? null : st.tools.get(key)
-          // An update without a started identity is not attached to a guess.
-          if (!line) return
-          applyToolFields(line, event)
-          const record = event.noRecord ? null : st.records?.accept(event)
-          if (record) line.presentation = previewRecord(record)
-          return
-        }
-        const repeated = phase === 'start' && key !== null && st.tools.has(key)
-        if (repeated) {
-          // A repeated start is the same execution, not a second tool.
-          const line = st.tools.get(key)
-          applyToolFields(line, event)
-          const record = event.noRecord ? null : st.records?.accept(event)
-          if (record) line.presentation = previewRecord(record)
-          return
-        }
-        // An activity row is a status, not an execution: it never counts as a
-        // tool step nor opens a tool-time span.
-        if (event.noRecord !== true) rt.statsTool(profileId, phase === 'end' ? 'end' : 'start')
-        const record = event.noRecord ? null : st.records?.accept(event)
-        const line = say(profileId, {
-          who: 'agent', kind: 'tool', name: String(event.name ?? 'tool'), phase, timeline: true,
-          ...(event.turnId !== undefined ? { turnId: event.turnId } : {}),
-          ...(event.noRecord === true ? { activity: true } : {}),
-          ...(key !== null ? { callId: key } : {}),
-          ...(event.parentCallId !== undefined ? { parentCallId: String(event.parentCallId) } : {}),
-          ...(event.childId !== undefined ? { childId: String(event.childId) } : {}),
-          ...(event.toolCallId !== undefined ? { toolCallId: String(event.toolCallId) } : {}),
-          ...(event.input !== undefined || event.inputText !== undefined ? { input: clip(readable(rt.redactDeepSecrets(event.input ?? event.inputText)), TRANSCRIPT_TEXT_MAX, 'long tool input') } : {}),
-          ...(event.output !== undefined || event.outputText !== undefined ? { output: clip(readable(rt.redactDeepSecrets(event.output ?? event.outputText), event.name === 'imageGeneration'), TRANSCRIPT_TEXT_MAX, 'long tool output') } : {}),
-          ...(event.progress !== undefined ? { progress: normalizeProgress(rt.redactDeepSecrets(event.progress)) } : {}),
-          ...(typeof event.brief === 'string' && event.brief !== '' ? { brief: clip(rt.redactDeepSecrets(event.brief), 2000, 'long tool output') } : {}),
-          isError: event.isError === true,
-          ...(record ? { presentation: previewRecord(record) } : {}),
-        })
-        if (phase === 'start' && key !== null) st.tools.set(key, line)
-        if (phase === 'end' && key !== null) { st.tools.delete(key); st.closedTools.add(key) }
-        if (record && phase === 'end' && line) {
-          saveRecord(profileId, st, line, record)
-        }
-        st.toolOpen = phase === 'end' ? null : String(event.name ?? 'tool')
-        return
-      }
-      case 'request/opened': {
-        if (st.requests?.has(event.id)) return
-        closeMessages(st)
-        let request
-        if (st.active || st.starting) {
-          st.requests ??= new Map()
-          request = { kind: event.kind, turnId: st.turnId }
-          st.requests.set(event.id, request)
-          say(profileId, { who: 'system', kind: 'request', requestId: event.id, requestKind: event.kind, phase: 'start',
-            ...(st.turnId !== null ? { turnId: st.turnId } : {}), text: clip(rt.redactDeepSecrets(String(event.reason ?? event.tool ?? '')), 2000, 'long request') })
-        }
-        rt.openApproval(profileId, event, request ? async reply => {
-          settleRequest(profileId, st, event.id, request)
-          const questions = Array.isArray(event.detail?.questions) ? event.detail.questions.slice(0, 50)
-            .filter(question => typeof question?.id === 'string')
-            .map(question => ({ id: question.id.slice(0, 200), label: String(question.header ?? question.question ?? question.id).slice(0, 2000) })) : []
-          if (request.line) {
-            delete request.line.cancelled
-            request.line.response = rt.redactDeepSecrets({ ...reply,
-              ...(questions.length > 1 && JSON.stringify(questions).length <= 4000 ? { questions } : {}) })
-          }
-          if (st.requests.get(event.id) === request) st.requests.delete(event.id)
-          await rt.save()
-        } : undefined)
-        if (!foreign(st, event)) armIdle(profileId, st)
-        return
-      }
-      case 'request/closed':
-        if (st.requests?.has(event.id)) {
-          const request = st.requests.get(event.id)
-          settleRequest(profileId, st, event.id, request, event.cancelled === true)
-          st.requests.delete(event.id)
-        }
-        rt.closeApproval(event.id)
-        void rt.flushLeadReports?.(profileId)
-        if (!foreign(st, event)) armIdle(profileId, st)
-        return
-      case 'note':
-        closeMessages(st)
-        if (typeof event.text === 'string' && event.text) say(profileId, { who: 'system', kind: 'note', text: event.text })
-        return
-      case 'turn/end': {
-        if ((!st.active && !st.starting) || st.finishing || foreign(st, event)) return
-        clearTimeout(st.cancelTimer)
-        st.cancelTimer = null
-        st.finishing = true
-        const ended = st.turnId ?? event.turnId
-        if (ended !== undefined && ended !== null) st.endedTurn = String(ended)
-        for (const [id, request] of st.requests ?? []) {
-          settleRequest(profileId, st, id, request, event.reason === 'interrupted')
-          rt.closeApproval(id)
-        }
-        st.requests?.clear()
-        for (const line of st.lifecycles?.values() ?? []) {
-          say(profileId, { who: 'system', kind: 'lifecycle', event: line.event, phase: 'end',
-            ...(line.entityId !== undefined ? { entityId: line.entityId } : {}), ...(ended != null ? { turnId: ended } : {}),
-            ...(event.reason === 'interrupted' ? { cancelled: true } : {}), ...(event.reason === 'error' ? { isError: true } : {}) })
-        }
-        st.lifecycles?.clear()
-        for (const record of st.records?.close(event.reason === 'interrupted' ? 'interrupted' : 'unknown') ?? []) {
-          const line = say(profileId, { who: 'agent', kind: 'tool', name: record.title, callId: record.entityId, phase: 'end',
-            timeline: true, ...(ended != null ? { turnId: ended } : {}),
-            isError: true, brief: 'Agent 未确认执行结果', presentation: previewRecord(record) })
-          if (line) saveRecord(profileId, st, line, record)
-        }
-        const seq = st.seq
-        const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
-        const reply = replyLines.find(line => line.reply)
-        const session = rt.conversationOf?.(profileId)?.session
-        rt.leadEnded?.(profileId, event)
-        const replyId = session?.engine === 'dsh' ? reply?.messageId : reply ? (reply.replyId ??= randomUUID()) : undefined
-        const flushed = st.messages.text()
-        rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
-        st.task = null
-        for (const line of replyLines) {
-          if (rt.saveReplyImages) st.recordWrites = Promise.resolve(st.recordWrites).then(async () => {
-            const images = await rt.saveReplyImages(profileId, line.text)
-            if (images.length) line.images = images
-          }).catch(() => rt.warn?.('nodo: reply images could not be persisted'))
-        }
-        st.buffer = ''
-        if (event.reason === 'error' && typeof event.error === 'string') {
-          say(profileId, { who: 'agent', kind: 'error', text: rt.redactDeepSecrets(String(event.error)).slice(0, 2000) })
-        }
-        if (event.usage !== undefined) {
-          say(profileId, { who: 'system', kind: 'usage', usage: event.usage })
-        }
-        rt.statsEnd(profileId, event.usage, event.timing)
-        closeMessages(st)
-        disarmIdle(st)
-        const finish = reason => {
-          st.active = false
-          st.starting = false
-          st.finishing = false
-          st.records = null
-          st.planLine = null
-          st.planLines = new Map()
-          st.planTurn = null
-          st.tools = new Map()
-          st.closedTools = new Set()
-          st.turnId = null
-          st.startedAt = null
-          const unconfirmed = event.unconfirmed === true ? { unconfirmed: true } : {}
-          // `final` is the engine's own last message of the turn; `text` stays the whole turn.
-          const final = typeof event.text === 'string' && event.text.trim() !== '' ? { final: event.text } : {}
-          const reply = replyId ? { replyId } : {}
-          const retryable = reason === 'error' && event.retryable === true ? { retryable: true } : {}
-          settle(st, seq, { reason, text: flushed !== '' ? flushed : final.final, ...final, ...unconfirmed, ...reply, ...retryable })
-          st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed, ...reply, ...retryable } }
-          for (const joined of st.joined.splice(0)) settle(st, joined, st.ended.outcome)
-          drain(profileId, st)
-          void rt.flushLeadReports?.(profileId)
-        }
-        void Promise.resolve(st.recordWrites).then(() => rt.save()).then(() => finish(event.reason), () => {
-          rt.appendLine(profileId, { who: 'agent', kind: 'error', text: 'Task finished, but its saved context could not be persisted.' })
-          finish('error')
-        })
-        return
-      }
-      default:
-        return
-    }
+    if (event && Object.hasOwn(SINKS, event.type)) SINKS[event.type](profileId, st, event)
   }
 
   // A driver with `watchdog: false` leaves liveness to its host. Waiting on
@@ -477,7 +489,8 @@ export function install(rt) {
         const { session } = rt.conversationOf(profileId)
         const snapshot = rt.leadSnapshot?.(profileId)
         const input = snapshot ? `${text}\n\n${snapshot}` : text
-        const message = restoreContext || session.restoreContext ? rt.renderRecovery(session, input) : input
+        const goalCommand = session.engine !== 'codex' && typeof driver.goals === 'function' && /^\/goal\s/.test(text)
+        const message = goalCommand ? text : restoreContext || session.restoreContext ? rt.renderRecovery(session, input) : input
         const instructionMode = driver.instructionMode === 'native' ? 'native' : 'none'
         if (instructionMode === 'none' && session.instructionMode !== 'none') {
           const reason = IDENTITY_FALLBACK[driver.instructionFallback]
@@ -486,12 +499,12 @@ export function install(rt) {
         session.instructionMode = instructionMode
         session.instructionTarget = instructionMode === 'native' ? driver.instructionTarget ?? 'engine' : undefined
         const briefSent = session.briefSent
-        session.briefSent = true
+        if (!goalCommand) session.briefSent = true
         st.records = rt.newStreamRun?.(profileId)
         sent = true
-        try { await driver.sendTurn(message, images) }
+        try { await (goalCommand ? driver.goals(text === '/goal clear' ? null : text.slice(6)) : driver.sendTurn(message, images)) }
         catch (error) { session.briefSent = briefSent; throw error }
-        session.restoreContext = false
+        if (!goalCommand) session.restoreContext = false
         await rt.save()
       } catch (error) {
         // Once sendTurn is called the engine may already be working, so this end is unconfirmed;
@@ -535,34 +548,34 @@ export function install(rt) {
     // code lets result delivery tell the executor why its report cannot land.
     // A 1:1 chat session runs like any executor: no lead engine or plan rules.
     if (leadModeOf(profile, session)) {
-      if (!LEAD_ENGINES.includes(profile.engine)) throw Object.assign(new Error(`主控「${profile.name}」的引擎 ${profile.engine} 暂不支持主控，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`), { code: 'orch/lead-invalid' })
-      if ((session.permission ?? profile.permission) === 'plan') throw Object.assign(new Error(`主控「${profile.name}」是计划模式权限，请改成其他权限后再发送`), { code: 'orch/lead-invalid' })
+      if (!LEAD_ENGINES.includes(profile.engine)) throw failure(`主控「${profile.name}」的引擎 ${profile.engine} 暂不支持主控，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`, 'orch/lead-invalid')
+      if ((session.permission ?? profile.permission) === 'plan') throw failure(`主控「${profile.name}」是计划模式权限，请改成其他权限后再发送`, 'orch/lead-invalid')
     }
     profileId = session.id
-    const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
+    const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw failure('The session is busy', 'orch/busy') }
     refuseBusy()
     const text = String(rawText ?? '').trim()
-    if (text.length > TASK_TEXT_MAX) throw Object.assign(new Error(`Task exceeds ${TASK_TEXT_MAX} characters`), { code: 'orch/invalid' })
+    if (text.length > TASK_TEXT_MAX) throw invalid(`Task exceeds ${TASK_TEXT_MAX} characters`)
     const images = rt.admitImages(rawImages)
-    if (text === '' && images.length === 0 && !files?.paths?.length) throw Object.assign(new Error('Nothing to send'), { code: 'orch/invalid' })
-    if (!Array.isArray(references) || references.length > 4) throw Object.assign(new Error('Choose at most four reference sessions'), { code: 'orch/invalid' })
+    if (text === '' && images.length === 0 && !files?.paths?.length) throw invalid('Nothing to send')
+    if (!Array.isArray(references) || references.length > 4) throw invalid('Choose at most four reference sessions')
     const sources = []
     for (const ref of references) sources.push(ref?.id
       ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
     const input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
-    if (!session.briefSent) {
+    if (!session.briefSent && !(session.engine === 'claude' && /^\/goal\s/.test(text))) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {
         session.name = named
         delete session.draftedAt
-        const twin = session.engine === 'dsh' ? session.driverSessionId : null
+        const twin = nativeIdOf(session)
         if (twin && session.profileName) rt.renameHostSession?.(twin, `${session.profileName} · ${named}`)
       }
     }
     const refs = await rt.saveImages(images)
     rt.assertSessionWritable?.(profile, session)
-    if (cancelled?.()) throw Object.assign(new Error('Send cancelled'), { code: 'orch/cancelled' })
+    if (cancelled?.()) throw failure('Send cancelled', 'orch/cancelled')
     refuseBusy()
     const st = stateOf(profileId)
     const leadFlight = userInput ? rt.prepareLeadInput?.(session) : undefined
@@ -602,7 +615,7 @@ export function install(rt) {
       drain(profileId, st)
       return action === 'edit' ? { text: rt.redactDeepSecrets(item.task), images: item.images } : { mode: 'deleted' }
     }
-    if (action !== 'send') throw Object.assign(new Error('Unknown queue action'), { code: 'orch/invalid' })
+    if (action !== 'send') throw invalid('Unknown queue action')
     if (!occupied(profileId, st)) {
       st.queued.splice(st.queued.indexOf(item), 1)
       say(profileId, item.pendingLine)

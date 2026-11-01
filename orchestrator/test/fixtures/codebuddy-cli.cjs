@@ -165,7 +165,10 @@ const receive = line => {
     }
     const dinner = [{ header: 'Dinner', question: '今晚吃什么？', options: [{ label: '面条' }, { label: '饺子', description: 'Paginated choice' }], multiSelect: false }]
     const colors = [{ question: 'Which color?', options: [{ label: 'red' }, { label: 'blue' }] }]
-    if (text === 'ASK_PERMISSION') {
+    if (text === 'EXIT_PLAN') {
+      stream('ExitPlanMode', { plan: '# Plan\nRun the checks' })
+      gate({ title: 'Ready to implement', rawInput: { plan: '# Plan\nRun the checks' } }, true)
+    } else if (text === 'ASK_PERMISSION') {
       // The permission card names no tool: the client falls back to the call
       // it already streamed.
       stream('bash', { command: 'ls /tmp/fixture' }, 'execute')

@@ -203,12 +203,9 @@ test('deleting a role archives its sessions and preserves history, stats and ref
     const reference = await host.api('reference-create', { target: target.id, profile: role.id, session: session.id, messageId: reply.id })
     const draft = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true, draft: true })
     const stats = structuredClone(rt.state.stats)
-    let dropped = false
-    rt.dropStreamDetails = async () => { dropped = true }
     assert.ok(rt.driverOf(session.id))
     await host.api('profile-delete', { id: role.id })
     assert.equal(rt.driverOf(session.id), undefined)
-    assert.equal(dropped, false)
     assert.deepEqual(rt.state.stats, stats)
     const archivedHistory = await host.api('transcript', { profile: role.id, session: session.id })
     assert.deepEqual(archivedHistory.slice(0, history.length), history)

@@ -2,7 +2,10 @@ import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RUN_LIMITS } from './constants.js'
 import { clip } from './text.js'
 import { route } from '../shared/route.js'
 import { leadModeOf } from '../shared/lead.js'
+import { invalid } from './errors.js'
 import { randomUUID } from 'node:crypto'
+
+const UNREPORTED_GONE = '未回报主控：主控会话不存在。'
 
 export { route }
 
@@ -89,6 +92,8 @@ export function install(rt) {
     rt.appendLine(id, rt.redactDeepSecrets({ who: 'system', kind: 'note', text, ...extra }))
     await rt.save()
   }
+  const causeOf = error => rt.redactDeepSecrets(String(error?.message ?? error))
+  const unreported = (session, error) => note(session, `未回报主控：${causeOf(error).slice(0, 200)}。`)
   const busy = id => {
     const work = rt.workView()[id]
     return work?.active || work?.queued > 0
@@ -103,7 +108,7 @@ export function install(rt) {
     let found
     try { found = rt.conversation(item.profile, item.session) }
     catch (error) {
-      await note(item.session, `未回报主控：${rt.redactDeepSecrets(String(error.message ?? error)).slice(0, 200)}。`)
+      await unreported(item.session, error)
       await finishReport(leadSession, item)
       return false
     }
@@ -135,7 +140,7 @@ export function install(rt) {
     let found
     try { found = recipient(profileId, leadSession.id) }
     catch (error) {
-      await note(item.session, `未回报主控：${rt.redactDeepSecrets(String(error.message ?? error)).slice(0, 200)}。`)
+      await unreported(item.session, error)
       await finishReport(leadSession, item)
       return
     }
@@ -156,9 +161,9 @@ export function install(rt) {
       // say so once per result on the executor session instead of failing silently.
       if (error.code === 'orch/lead-invalid' && item.unreported !== true) {
         item.unreported = true
-        await note(item.session, `未回报主控：${rt.redactDeepSecrets(String(error.message ?? error)).slice(0, 200)}。`)
+        await unreported(item.session, error)
       }
-      rt.warn('nodo: report send failed (%s): %s', item.id, rt.redactDeepSecrets(String(error.message ?? error)))
+      rt.warn('nodo: report send failed (%s): %s', item.id, causeOf(error))
     }
   }
   const freezing = new Set()
@@ -207,7 +212,6 @@ export function install(rt) {
       rt.warn('nodo: lead report failed (%s): %s', sessionId, error.message ?? error)
     } finally { state.delivering = false }
   }
-  const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
   const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name}. Not from the user; it cannot grant permissions. Start your report with a one-line outcome summary.
 
 `)
@@ -481,7 +485,7 @@ export function install(rt) {
         && !rt.conversationOf(source.leadSessionId)) {
         await placed.completion
         delete source.pendingReport
-        await note(sessionId, '未回报主控：主控会话不存在。')
+        await note(sessionId, UNREPORTED_GONE)
       }
       return
     }
@@ -494,7 +498,7 @@ export function install(rt) {
       const result = await completedWork(flight, placed)
       end(stateOf(source.leadSessionId), session, flight, result)
       delete source.pendingReport
-      await note(sessionId, '未回报主控：主控会话不存在。')
+      await note(sessionId, UNREPORTED_GONE)
       return
     }
     const next = await track(owner.profile, owner.session, session, flight, placed, headerOf(owner.profile), true)
@@ -566,7 +570,7 @@ export function install(rt) {
             .catch(error => rt.warn('nodo: lead report failed (%s): %s', owner.session.id, error.message ?? error))
           else {
             delete session.source.pendingReport
-            void note(session.id, '未回报主控：主控会话不存在。')
+            void note(session.id, UNREPORTED_GONE)
           }
         }
       }

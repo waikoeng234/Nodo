@@ -11,7 +11,8 @@
 // last one left off. Nothing here knows how to talk to an engine — that is drivers.js.
 import { randomUUID } from 'node:crypto'
 import { INSTRUCTIONS_MAX, MAX_PROFILES, NAME_MAX, ROLE_MAX } from './constants.js'
-import { normalize, unquote } from './text.js'
+import { normalize, unquote, uniqueName } from './text.js'
+import { failure, invalid } from './errors.js'
 import avatarTemplates from '../shared/avatar-templates.json' with { type: 'json' }
 import builtInPresets from '../shared/role-presets.json' with { type: 'json' }
 import { LEAD_ENGINES } from '../shared/lead.js'
@@ -20,13 +21,13 @@ const cleanIdentity = raw => String(raw ?? '').trim().slice(0, NAME_MAX)
 
 const cleanAvatarTemplate = raw => {
   if (raw === undefined || raw === null || raw === '') return undefined
-  if (!avatarTemplates.some(item => item.id === raw)) throw Object.assign(new Error('Invalid avatar template'), { code: 'orch/invalid' })
+  if (!avatarTemplates.some(item => item.id === raw)) throw invalid('Invalid avatar template')
   return raw
 }
 
 export const cleanModel = raw => {
   if (raw === undefined || raw === null || raw === '') return undefined
-  if (typeof raw !== 'string' || raw.length > 200 || /[\r\n\0]/.test(raw)) throw Object.assign(new Error('Invalid model name'), { code: 'orch/invalid' })
+  if (typeof raw !== 'string' || raw.length > 200 || /[\r\n\0]/.test(raw)) throw invalid('Invalid model name')
   return raw.trim() || undefined
 }
 
@@ -35,7 +36,7 @@ export const cleanModel = raw => {
 // catalog, so a saved level survives a catalog that changed since.
 export const cleanThinking = raw => {
   if (raw === undefined || raw === null || raw === '') return undefined
-  if (typeof raw !== 'string' || raw.length > 60 || !/^[\w.-]+$/.test(raw.trim())) throw Object.assign(new Error('Invalid thinking level'), { code: 'orch/invalid' })
+  if (typeof raw !== 'string' || raw.length > 60 || !/^[\w.-]+$/.test(raw.trim())) throw invalid('Invalid thinking level')
   return raw.trim() === 'default' ? undefined : raw.trim()
 }
 
@@ -50,35 +51,30 @@ export function install(rt) {
     const modes = rt.enginePermissionModes(engine)
     if ((raw === undefined || raw === null || raw === '') && !modes.length) return undefined
     const permission = String(raw)
-    if (!modes.includes(permission)) throw Object.assign(new Error(`Engine ${engine} does not offer the permission tier "${permission}"`), { code: 'orch/invalid' })
+    if (!modes.includes(permission)) throw invalid(`Engine ${engine} does not offer the permission tier "${permission}"`)
     return permission
   }
 
-  const cleanName = (raw, exceptId) => {
-    const name = unquote(raw).slice(0, NAME_MAX)
-    if (name === '') throw Object.assign(new Error('A profile needs a name'), { code: 'orch/invalid' })
-    const taken = activeProfiles().find(profile => profile.id !== exceptId && normalize(profile.name) === normalize(name))
-    if (taken !== undefined) throw Object.assign(new Error(`The name "${name}" is already ${taken.name}`), { code: 'orch/invalid' })
-    return name
-  }
+  const cleanName = (raw, exceptId) => uniqueName(raw, 'profile', name =>
+    activeProfiles().find(profile => profile.id !== exceptId && normalize(profile.name) === normalize(name))?.name)
   const cleanEngine = (raw) => {
     const engine = String(raw ?? '')
     if (!rt.listEngines().includes(engine)) {
-      throw Object.assign(new Error(`Unknown engine "${engine}"; pick from ${rt.listEngines().join(', ')}`), { code: 'orch/invalid' })
+      throw invalid(`Unknown engine "${engine}"; pick from ${rt.listEngines().join(', ')}`)
     }
     return engine
   }
   const cleanWorkspace = (raw) => {
-    if (raw === undefined || raw === null || raw === '') throw Object.assign(new Error('A profile needs a workspace'), { code: 'orch/invalid' })
+    if (raw === undefined || raw === null || raw === '') throw invalid('A profile needs a workspace')
     const workspace = rt.findWorkspace(raw)
-    if (workspace === undefined) throw Object.assign(new Error(`No workspace "${raw}"`), { code: 'orch/invalid' })
+    if (workspace === undefined) throw invalid(`No workspace "${raw}"`)
     return workspace.id
   }
   const createProfile = async ({ name, identity, role = '', engine, workspace, model, thinking, permission, engineOptions, instructions = '', goal = '', avatarTemplate, lead }) => {
     await rt.load()
     await rt.driversReady()
-    if (activeProfiles().length >= MAX_PROFILES) throw Object.assign(new Error(`At most ${MAX_PROFILES} profiles`), { code: 'orch/invalid' })
-    if (lead === true && !activeProfiles().some(profile => profile.lead !== true)) throw Object.assign(new Error('主控至少需要一个执行角色'), { code: 'orch/invalid' })
+    if (activeProfiles().length >= MAX_PROFILES) throw invalid(`At most ${MAX_PROFILES} profiles`)
+    if (lead === true && !activeProfiles().some(profile => profile.lead !== true)) throw invalid('主控至少需要一个执行角色')
     engine = cleanEngine(engine)
     const workspaceId = workspace === undefined ? undefined : cleanWorkspace(workspace)
     const chosenIdentity = cleanIdentity(identity)
@@ -87,8 +83,8 @@ export function install(rt) {
     const chosenThinking = cleanThinking(thinking === undefined ? defaults.thinking : thinking)
     const chosenPermission = cleanPermission(engine, permission === undefined ? defaultPermission(engine) : permission)
     if (lead === true) {
-      if (!LEAD_ENGINES.includes(engine)) throw Object.assign(new Error(`引擎 ${engine} 暂不支持主控，主控请选择 ${LEAD_ENGINES.join('、')}`), { code: 'orch/invalid' })
-      if (chosenPermission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+      if (!LEAD_ENGINES.includes(engine)) throw invalid(`引擎 ${engine} 暂不支持主控，主控请选择 ${LEAD_ENGINES.join('、')}`)
+      if (chosenPermission === 'plan') throw invalid('主控不能使用计划模式权限，请改选其他权限')
     }
     const profile = {
       id: randomUUID(),
@@ -127,27 +123,27 @@ export function install(rt) {
     await rt.load()
     await rt.driversReady()
     const profile = state.profiles[String(id ?? '')]
-    if (!profile || profile.deletedAt) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
-    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before editing this profile'), { code: 'orch/busy' })
+    if (!profile || profile.deletedAt) throw failure('No such profile', 'orch/not-found')
+    if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw failure('Stop or finish the running task before editing this profile', 'orch/busy')
     // Validate the complete candidate before mutating the live record or driver.
     const next = { ...profile }
     if (changes.name !== undefined) next.name = cleanName(changes.name, profile.id)
     if (changes.identity !== undefined) next.identity = cleanIdentity(changes.identity)
     if (changes.role !== undefined) next.role = String(changes.role ?? '').slice(0, ROLE_MAX)
     if (changes.lead !== undefined) next.lead = changes.lead === true
-    if (profile.lead !== true && next.lead === true && !activeProfiles().some(item => item.id !== profile.id && item.lead !== true)) throw Object.assign(new Error('主控至少需要一个执行角色'), { code: 'orch/invalid' })
+    if (profile.lead !== true && next.lead === true && !activeProfiles().some(item => item.id !== profile.id && item.lead !== true)) throw invalid('主控至少需要一个执行角色')
     if (changes.avatarTemplate !== undefined) next.avatarTemplate = cleanAvatarTemplate(changes.avatarTemplate)
     next.engine = cleanEngine(changes.engine !== undefined ? changes.engine : profile.engine)
     // An engine is fixed for the life of a role: presets and native sessions
     // are keyed by it, and a switch would orphan every conversation it has.
-    if (next.engine !== profile.engine) throw Object.assign(new Error('An engine is fixed once a role is created; make a new role for another engine'), { code: 'orch/invalid' })
+    if (next.engine !== profile.engine) throw invalid('An engine is fixed once a role is created; make a new role for another engine')
     if (changes.workspace !== undefined) next.workspaceId = cleanWorkspace(changes.workspace)
     next.model = cleanModel(changes.model !== undefined ? changes.model : profile.model)
     next.thinking = cleanThinking(changes.thinking !== undefined ? changes.thinking : profile.thinking)
     next.permission = cleanPermission(next.engine, changes.permission !== undefined ? changes.permission : profile.permission)
     if (next.lead === true) {
-      if (!LEAD_ENGINES.includes(next.engine)) throw Object.assign(new Error(`引擎 ${next.engine} 暂不支持主控；引擎创建后不能更换，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`), { code: 'orch/invalid' })
-      if (next.permission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+      if (!LEAD_ENGINES.includes(next.engine)) throw invalid(`引擎 ${next.engine} 暂不支持主控；引擎创建后不能更换，请新建 ${LEAD_ENGINES.join('、')} 的主控角色`)
+      if (next.permission === 'plan') throw invalid('主控不能使用计划模式权限，请改选其他权限')
     }
     next.engineOptions = rt.validateEngineOptions(next.engine, changes.engineOptions !== undefined ? changes.engineOptions : profile.engineOptions)
     if (changes.instructions !== undefined) next.instructions = String(changes.instructions ?? '').slice(0, INSTRUCTIONS_MAX)
@@ -209,7 +205,7 @@ export function install(rt) {
   const orderProfiles = async ids => {
     await rt.load()
     if (!Array.isArray(ids) || ids.length !== activeProfiles().length || new Set(ids).size !== ids.length
-      || ids.some(id => typeof id !== 'string' || !Object.hasOwn(state.profiles, id) || state.profiles[id].deletedAt)) throw Object.assign(new Error('profile-order needs every active profile id exactly once'), { code: 'orch/invalid' })
+      || ids.some(id => typeof id !== 'string' || !Object.hasOwn(state.profiles, id) || state.profiles[id].deletedAt)) throw invalid('profile-order needs every active profile id exactly once')
     const cards = [...ids.map(id => state.profiles[id]), ...Object.values(state.profiles).filter(profile => profile.deletedAt)]
     for (const id of Object.keys(state.profiles)) delete state.profiles[id]
     for (const card of cards) state.profiles[card.id] = card
@@ -227,11 +223,11 @@ export function install(rt) {
   const deleteProfile = async (id) => {
     await rt.load()
     const profile = state.profiles[String(id ?? '')]
-    if (!profile || profile.deletedAt) throw Object.assign(new Error('No such profile'), { code: 'orch/not-found' })
+    if (!profile || profile.deletedAt) throw failure('No such profile', 'orch/not-found')
     const refuseBusy = () => {
-      if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw Object.assign(new Error('Stop or finish the running task before deleting this profile'), { code: 'orch/busy' })
+      if (rt.sessionsOf(profile).some(session => rt.workView?.()[session.id]?.active)) throw failure('Stop or finish the running task before deleting this profile', 'orch/busy')
       if (profile.lead !== true && activeProfiles().some(item => item.lead === true)
-        && !activeProfiles().some(item => item.id !== profile.id && item.lead !== true)) throw Object.assign(new Error('主控至少需要一个执行角色'), { code: 'orch/invalid' })
+        && !activeProfiles().some(item => item.id !== profile.id && item.lead !== true)) throw invalid('主控至少需要一个执行角色')
     }
     refuseBusy()
     const rollback = await rt.archiveHostSessions?.(rt.sessionsOf(profile))
@@ -266,8 +262,8 @@ export function install(rt) {
   const saveRolePreset = async ({ name, role = '', instructions = '' } = {}) => {
     await rt.load()
     const title = unquote(name).slice(0, NAME_MAX)
-    if (title === '') throw Object.assign(new Error('A saved identity needs a name'), { code: 'orch/invalid' })
-    if (builtInPresets.some(item => normalize(item.name) === normalize(title))) throw Object.assign(new Error(`"${title}" is a built-in identity; pick another name`), { code: 'orch/invalid' })
+    if (title === '') throw invalid('A saved identity needs a name')
+    if (builtInPresets.some(item => normalize(item.name) === normalize(title))) throw invalid(`"${title}" is a built-in identity; pick another name`)
     const entries = savedIdentities().filter(item => normalize(item.name) !== normalize(title))
     entries.push({ name: title, role: String(role ?? '').slice(0, ROLE_MAX), instructions: String(instructions ?? '').slice(0, INSTRUCTIONS_MAX), createdAt: Date.now() })
     entries.sort((a, b) => a.createdAt - b.createdAt)
@@ -280,7 +276,7 @@ export function install(rt) {
     await rt.load()
     const entries = savedIdentities()
     const kept = entries.filter(item => item.name !== String(name ?? ''))
-    if (kept.length === entries.length) throw Object.assign(new Error(`No saved identity "${name ?? ''}"`), { code: 'orch/not-found' })
+    if (kept.length === entries.length) throw failure(`No saved identity "${name ?? ''}"`, 'orch/not-found')
     state.prefs.rolePresets = kept
     await rt.save()
     return kept

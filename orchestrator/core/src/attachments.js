@@ -7,12 +7,12 @@ import { basename, isAbsolute, join, relative, sep } from 'node:path'
 import { IMAGE_BYTES_MAX, IMAGES_MAX, FILE_BYTES_MAX, FILES_MAX } from './constants.js'
 import { materializeResources, projectContent } from './resources.js'
 import { readImageFile } from './image-files.js'
+import { invalid } from './errors.js'
 
 const ignoreFolder = folder => writeFile(join(folder, '.gitignore'), '*\n', { flag: 'wx' })
   .catch(error => { if (error.code !== 'EEXIST') throw error })
 
 const EXTENSIONS = new Map([['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/webp', 'webp'], ['image/gif', 'gif']])
-const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
 const fileName = raw => {
   const name = basename(String(raw ?? 'file').replaceAll('\\', '/')).replace(/[\u0000-\u001f]/g, '').slice(0, 200)
   return name && name !== '.' && name !== '..' ? name : 'file'
@@ -23,13 +23,6 @@ export function install(rt) {
   const dir = join(rt.home, 'attachments')
   const filesDir = join(rt.home, 'files')
 
-  const cleanImageRefs = (images = []) => {
-    if (!Array.isArray(images) || images.length > IMAGES_MAX) throw invalid(`At most ${IMAGES_MAX} images per task`)
-    return images.map(image => {
-      if (!validId(image?.id) || !EXTENSIONS.has(image.mediaType)) throw invalid('Unknown image')
-      return { id: image.id, mediaType: image.mediaType, name: fileName(image.name) }
-    })
-  }
   const cleanFileRefs = (files = []) => {
     if (!Array.isArray(files) || files.length > FILES_MAX) throw invalid(`At most ${FILES_MAX} files per task`)
     return files.map(file => {
@@ -144,5 +137,5 @@ export function install(rt) {
     return saved
   }
 
-  Object.assign(rt, { admitImages, saveImages, imageOf, cleanImageRefs, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, saveReplyImages })
+  Object.assign(rt, { admitImages, saveImages, imageOf, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, saveReplyImages })
 }

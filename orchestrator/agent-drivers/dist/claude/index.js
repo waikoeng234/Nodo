@@ -2,11 +2,12 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { STEER, addUsage, usageOf } from '../spi.js';
+import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { claudeArgs, connectClaude, leadMcpEnv } from './native.js';
+import { askAnswers, askOpened } from '../questions.js';
 import { createFileChanges } from '../file-changes.js';
 import { claudeFileChanges } from './file-changes.js';
 export { findExecutable } from '../cli.js';
@@ -17,7 +18,7 @@ export const claudeInfo = {
         { name: 'bin', target: 'engineOptions', label: 'CLI executable (optional)', type: 'text', placeholder: 'Auto-detect claude; or enter an absolute path' },
         { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'Alias or full name; blank uses Claude Code settings' },
     ],
-    capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] },
+    capabilities: { resume: true, steer: true, permissions: true, questions: true, commands: true, compact: true, goals: true, permissionModes: ['plan', 'workspace', 'full'] },
 };
 export function validateClaudeOptions(raw = {}) {
     for (const key of Object.keys(raw))
@@ -203,12 +204,7 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd } = {}) {
 // cache buckets separately; the result frame sums the turn's API round-trips,
 // while one assistant frame is one request, so its prompt size is the context
 // occupancy. `modelUsage` carries the routed model's context window.
-const claudePromptTokens = (raw) => {
-    const parts = [raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens];
-    return parts.some(value => typeof value === 'number' && Number.isFinite(value))
-        ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
-        : undefined;
-};
+const claudePromptTokens = (raw) => promptTokensOf([raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens]);
 export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
@@ -521,19 +517,9 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
                 coverage.count('unknown-request');
             return peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: { behavior: 'deny', message: 'No matching active turn' } } });
         }
-        const question = request.tool_name === 'AskUserQuestion';
-        const cardId = `claude:${sessionId}:${frame.request_id}`;
-        requests.set(cardId, frame);
-        emit({
-            type: 'request/opened', id: cardId, kind: question ? 'question' : 'permission',
-            tool: request.tool_name,
-            reason: question
-                ? (request.input?.questions ?? []).map(item => item.question).join('\n')
-                : request.description ?? request.input?.description ?? request.input?.command ?? `${request.display_name ?? request.tool_name} requests permission`,
-            ...(question ? { detail: { questions: (request.input?.questions ?? []).map((item, index) => ({ id: `q${index}`, question: item.question, header: item.header,
-                        ...(item.options ? { options: item.options } : {}), ...(item.multiSelect === undefined ? {} : { multiSelect: item.multiSelect }) })) } }
-                : { detail: { input: request.input } }),
-        });
+        const opened = askOpened('claude', sessionId, frame.request_id, request);
+        requests.set(opened.id, frame);
+        emit(opened);
     };
     const boot = () => {
         if (ready)
@@ -633,6 +619,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         },
         // The slash line is claude's own native channel; print mode executes it.
         compact() { return this.sendTurn('/compact'); },
+        goals(objective) { return this.sendTurn(objective === undefined ? '/goal' : objective === null ? '/goal clear' : `/goal ${objective}`); },
         async interruptTurn() {
             const turn = running;
             if (!turn)
@@ -668,42 +655,25 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             if (running === turn)
                 drop();
         },
-        respondToRequest(id, { decision, value } = {}) {
+        async respondToRequest(id, { decision, value } = {}) {
             const frame = requests.get(id);
             if (!frame || !peer)
-                return Promise.resolve(false);
+                return false;
             const request = frame.request ?? {};
             if (request.tool_name === 'AskUserQuestion') {
-                const questions = request.input?.questions ?? [];
-                let answers;
-                if (questions.length === 1)
-                    answers = { [questions[0].question]: String(value ?? '').trim() };
-                else {
-                    try {
-                        answers = JSON.parse(value);
-                    }
-                    catch {
-                        return Promise.reject(new Error('Answer each question using the form'));
-                    }
-                    if (!answers || typeof answers !== 'object' || Array.isArray(answers))
-                        return Promise.reject(new Error('Answer each question using the form'));
-                }
-                const answerOf = (item, index) => String(answers?.[`q${index}`] ?? answers?.[item.question] ?? '').trim();
-                if (questions.some((item, index) => answerOf(item, index) === ''))
-                    return Promise.reject(new Error('Answer every question first'));
-                const mapped = Object.fromEntries(questions.map((item, index) => [item.question, answerOf(item, index)]));
+                const mapped = askAnswers(request.input?.questions ?? [], value);
                 peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: { behavior: 'allow', updatedInput: { ...request.input, answers: mapped } } } });
             }
             else {
                 if (!['allow', 'deny'].includes(decision))
-                    return Promise.resolve(false);
+                    return false;
                 peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: decision === 'allow'
                             ? { behavior: 'allow', updatedInput: request.input ?? {} }
                             : { behavior: 'deny', message: 'Denied by the user' } } });
             }
             requests.delete(id);
             emit({ type: 'request/closed', id });
-            return Promise.resolve(true);
+            return true;
         },
         onEvent() { throw new Error('Pass onEvent to createClaudeDriver'); },
         hasSession() { return connected; },

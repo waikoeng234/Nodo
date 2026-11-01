@@ -179,7 +179,10 @@ export function Composer({ profile, workspace, value, images, running, stoppable
     h('span', { className: 'nodo-composer-tools' },
       (onInsert || onReference) && h(AddMenu, { key: profile?.engine, profile: profile ?? { engine: '' }, workspace, disabled: readOnly || busy, trigger, onInsert, onToken: insertToken, onGoal, onModelChange, onCompact, onReference,
         onUpload: onAttachFiles ? () => picker.current?.click() : undefined }),
-      onModelChange && h(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange })),
+      onModelChange && h(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange }),
+      profile?.nativeGoal && onModelChange && h('button', { type: 'button', className: 'nodo-mode-chip',
+        disabled: modelDisabled, 'aria-label': '清除目标', title: profile.nativeGoal, onClick: () => onModelChange({ nativeGoal: '' }) },
+      h(IconGoalOutlineRegular, { size: 16 }), '目标')),
     rolePicker,
     onModelChange && h(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange }),
     onSend && stoppable && hasContent && h('button', { type: 'button', className: 'nodo-pending-stop',
@@ -198,8 +201,8 @@ export function Composer({ profile, workspace, value, images, running, stoppable
 // The composer's add menu, a copy of the host's own trigger menu
 // (dsh-client-ui-input-trigger): sectioned rows with the kit's icons and the
 // native zh faces. 添加 holds files — the system picker where the page has an
-// upload channel, otherwise the '@' workspace card — the role's
-// responsibilities and the plan tier; 指令 holds the host's compact command and
+// upload channel, otherwise the '@' workspace card — the agent's
+// native goal and the plan tier; 指令 holds the host's compact command and
 // the engine's invocable commands, scanned per engine like the model catalog.
 // Workspace files and skills land in the draft as plain text — paths and slash
 // lines are what every agent resolves — while picker files ride the send as
@@ -271,7 +274,13 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
   // scan state still speaks, and a query matching nothing says so.
   const query = trigger === null ? '' : trigger.query.trim().toLowerCase()
   const scopeLabel = { project: '项目', plugin: '插件' }
+  const actions = [
+    ...(onGoal && engine?.capabilities?.goals === true ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('目标', 'goal') }] : []),
+    ...(onModelChange && modes.includes('plan') && modes.includes('workspace') && !leadModeOf(profile, profile)
+      ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
+  ]
   const candidates = [
+    ...(query === '' ? [] : actions),
     ...(onCompact && engine?.capabilities?.compact === true ? [{ id: 'compact', icon: h(IconCompactOutlineRegular), label: row('压缩', 'compact', '压缩以上对话内容') }] : []),
     ...commands.map(command => ({ id: `cmd:${command.id}`, label: row(command.id, scopeLabel[command.scope] ?? '', command.description) })),
   ]
@@ -292,12 +301,7 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
     // workspace file card.
     { id: onUpload ? 'upload' : 'file', icon: h(IconPaperclipOutlineRegular), label: row('文件', 'file'), disabled: !onUpload && (!workspace || !onInsert) },
     ...(onReference ? [{ id: 'reference', icon: h(IconLinkOutlineRegular), label: addRow('引用会话', '', '选择其他角色的一条回复') }] : []),
-    ...(onGoal ? [{ id: 'goal', icon: h(IconGoalOutlineRegular), label: row('职责', 'goal', '设置或查看角色职责') }] : []),
-    // Only a plan↔workspace pair is a safe toggle: without workspace the row
-    // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card. Lead-mode sessions never run in plan; a
-    // lead's 1:1 chat may.
-    ...(modes.includes('plan') && modes.includes('workspace') && !leadModeOf(profile, profile) ? [{ id: 'plan', icon: h(IconPlanOutlineRegular), label: row('计划', 'plan', '进入或退出计划模式') }] : []),
+    ...actions,
     { type: 'label', id: 'cmd-title', text: '指令' },
     ...commandSection,
   ] : [{ type: 'label', id: 'cmd-title', text: '指令' }, ...commandSection]
@@ -385,9 +389,7 @@ export function PermissionMenu({ profile, disabled, onChange }) {
   const loaded = useRef(null)
   const current = profile.permission
   const { pick, confirmation } = usePermissionChange(disabled)
-  const openMenu = () => {
-    if ((open && loaded.current === profile.engine) || confirmation) return setOpen(false)
-    setOpen(true)
+  const loadModes = () => {
     // The tiers are one engine's declaration; a role moved to another engine
     // re-reads them instead of offering tiers it never declared.
     if (loaded.current === profile.engine) return
@@ -397,6 +399,12 @@ export function PermissionMenu({ profile, disabled, onChange }) {
       const offered = items.find(item => item.id === profile.engine)?.capabilities?.permissionModes
       setModes(Array.isArray(offered) ? offered : [])
     }).catch(() => { loaded.current = null; setModes([]) })
+  }
+  useEffect(loadModes, [profile.engine])
+  const openMenu = () => {
+    if ((open && loaded.current === profile.engine) || confirmation) return setOpen(false)
+    setOpen(true)
+    loadModes()
   }
   const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : []))
     .filter(mode => !leadModeOf(profile, profile) || mode !== 'plan')
@@ -413,12 +421,14 @@ export function PermissionMenu({ profile, disabled, onChange }) {
       h('span', { className: 'nodo-perm-label' }, label),
       h('span', { className: `nodo-perm-chevron${open ? ' nodo-perm-chevron-open' : ''}`, 'aria-hidden': true }, h(IconChevronDownOutlineRegular))),
     }),
+    current === 'plan' && offered.includes('plan') && offered.includes('workspace') && h('button', { type: 'button', className: 'nodo-mode-chip',
+      disabled, 'aria-label': '关闭计划模式', title: '关闭计划模式', onClick: () => onChange({ permission: 'workspace' }) },
+    h(IconPlanOutlineRegular, { size: 16 }), '计划'),
     confirmation)
 }
 
-// Responsibilities use the same identity injection as the role text.
 export function GoalDialog({ profile, onSaved, onCancel }) {
-  const [goal, setGoal] = useState(profile.goal ?? '')
+  const [goal, setGoal] = useState(profile.nativeGoal ?? '')
   const [busy, setBusy] = useState(false)
   const submit = event => {
     event.preventDefault()
@@ -428,17 +438,16 @@ export function GoalDialog({ profile, onSaved, onCancel }) {
   }
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭',
-    title: '角色职责', description: '说明这个角色负责什么、工作范围和交付要求，随身份说明用于该角色的会话。',
+    title: '目标',
     className: 'nodo-dialog',
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
-      h(Button, { key: 'save', type: 'submit', form: GOAL_FORM, variant: 'primary', disabled: busy }, busy ? '保存中…' : '保存职责'),
+      h(Button, { key: 'save', type: 'submit', form: GOAL_FORM, variant: 'primary', disabled: busy || !goal.trim() }, busy ? '保存中…' : '设置目标'),
     ],
   },
-  h('form', { id: GOAL_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': '角色职责' },
+  h('form', { id: GOAL_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': '目标' },
     h('label', { className: 'nodo-field' },
-      h('span', null, '职责'),
-      h('textarea', { className: 'nodo-dialog-input nodo-dialog-textarea', rows: 4, value: goal,
-        placeholder: '例如：负责代码审查，检查实现是否满足需求，识别缺陷与风险并给出修改建议',
+      h('span', null, '完成条件'),
+      h('textarea', { className: 'nodo-dialog-input nodo-dialog-textarea', rows: 4, maxLength: 4000, value: goal,
         onChange: event => setGoal(event.target.value), 'data-modal-autofocus': true }))))
 }

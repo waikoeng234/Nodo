@@ -1,8 +1,8 @@
 import { INSTRUCTIONS_MAX, TRANSCRIPT_TEXT_MAX } from './constants.js'
 import { clip } from './text.js'
 import { transcriptReplies } from './session-references.js'
-
-const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
+import { invalid } from './errors.js'
+import { nativeIdOf } from '../shared/session.js'
 
 export function install(rt) {
   const cleanTaskState = raw => {
@@ -30,7 +30,7 @@ export function install(rt) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw invalid('Reference limit must be between 1 and 20')
     const { session } = rt.conversation(profile.id, id)
     await rt.loadSecrets()
-    const nativeId = session.engine === 'dsh' ? session.driverSessionId : undefined
+    const nativeId = nativeIdOf(session)
     const reports = nativeId && typeof rt.ctx.sessionController?.inspect === 'function'
       ? (await rt.referenceReplies({ profile: profile.id, session: session.id })).messages.slice(0, limit).reverse()
       : transcriptReplies(rt.transcriptOf(session.id)).slice(-limit)

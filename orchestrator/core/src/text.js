@@ -1,4 +1,7 @@
 // Text helpers shared by the host modules.
+import { NAME_MAX } from './constants.js'
+import { invalid } from './errors.js'
+
 export const normalize = value => `${value ?? ''}`.trim().toLowerCase()
 
 // Quote marks a user may type around a name, ASCII and CJK.
@@ -8,6 +11,16 @@ export function unquote(text) {
   while (QUOTES.has(chars[0])) chars.shift()
   while (QUOTES.has(chars.at(-1))) chars.pop()
   return chars.join('').trim()
+}
+
+// A user-typed display name: unquoted, length-capped, and unique up to
+// normalization; `taken` returns the conflicting name, if any.
+export function uniqueName(raw, what, taken) {
+  const name = unquote(raw).slice(0, NAME_MAX)
+  if (name === '') throw invalid(`A ${what} needs a name`)
+  const conflict = taken(name)
+  if (conflict !== undefined) throw invalid(`The name "${name}" is already ${conflict}`)
+  return name
 }
 
 export const clip = (text, max, what) => (text.length <= max ? text : `${text.slice(0, max)}… (${what} truncated)`)

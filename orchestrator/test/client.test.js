@@ -332,9 +332,35 @@ test('conversation controls allow next-turn settings while this or another sessi
     assert.deepEqual(calls.at(-1), { endpoint: 'session-update', payload: { profile: 'role', session: 'conversation', changes } })
   }
   composer().props.onGoal()
-  render().find(node => node.props?.key === 'goal:role').props.onSaved('Ship it')
+  render().find(node => node.props?.key === 'goal:conversation').props.onSaved('Ship it')
   await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(calls.at(-1), { endpoint: 'profile-update', payload: { id: 'role', changes: { goal: 'Ship it' } } }, 'the goal stays a role setting')
+  assert.deepEqual(calls.at(-1), { endpoint: 'session-update', payload: { profile: 'role', session: 'conversation', changes: { nativeGoal: 'Ship it' } } }, 'the native goal belongs to the conversation')
+})
+
+test('a role without a conversation in the workspace offers no goal entry', async () => {
+  const view = { profiles: [{ id: 'role', engine: 'claude', activeSessionId: 'elsewhere', sessions: [{ id: 'elsewhere', workspaceRef: 'other' }] }],
+    workspaces: [{ id: 'project' }], work: {}, stats: {}, prefs: { onboardedAt: 1 } }
+  const loaded = await loadClient('page.js', {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
+      subscribeNativeSession() {}, readNativeSession: () => null, runningOf: () => ({ active: false }),
+      call: async () => ({}),
+    },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      localStorage: { getItem: key => key === 'nodo.navigation'
+        ? JSON.stringify({ profile: 'role', workspace: 'project' }) : null, setItem() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const render = () => { loaded.host.reset(); return all(loaded.NodoPage({ contentOnly: true })) }
+  const composer = () => render().find(node => node.props?.onModelChange)
+  assert.equal(composer().props.onGoal, undefined, 'the goal entry needs a conversation to belong to')
+  assert.equal(render().some(node => typeof node.props?.key === 'string' && node.props.key.startsWith('goal:')), false)
+  view.profiles[0].sessions = [{ id: 'conversation', workspaceRef: 'project' }]
+  assert.equal(typeof composer().props.onGoal, 'function', 'the goal entry appears once the conversation exists')
 })
 
 test('role selection restores a conversation within the current workspace', async () => {
@@ -1002,7 +1028,7 @@ test('the header avatar opens the template grid and submits the selected templat
 const loadRail = async (react, primitives) => loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], { react, primitives })
 
 test('rail omits redundant status icons and distinguishes unarchive from the archive filter', async () => {
-  const { SessionRow, RoleAvatar, workspacePicker } = await loadRail()
+  const { SessionRow, RoleAvatar } = await loadRail()
   const nodes = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(nodes)] : []
   const changes = []
   const row = nodes(SessionRow({ role: { name: 'Coder' }, session: { name: 'History', archivedAt: 1 },
@@ -1014,10 +1040,6 @@ test('rail omits redundant status icons and distinguishes unarchive from the arc
   assert.equal(action.children[0].type, 'IconUnarchiveOutlineRegular')
   action.props.onClick({ stopPropagation() {} })
   assert.deepEqual(changes, [false])
-  const picker = workspacePicker({ workspaces: [{ id: 'p', name: 'Project' }], none: '无项目' })
-  assert.equal(picker.props.items[0].icon, undefined)
-  assert.equal(picker.props.items[1].icon.type, 'IconFolderOpenOutlineRegular')
-  assert.equal(nodes(picker.props.anchor).some(node => node.type === 'IconUsersOutlineRegular'), false)
 })
 
 test('the global archive lists only archived sessions with a deleted role or project and keeps their names', async () => {
@@ -1883,7 +1905,7 @@ test('the composer add menu offers the native sections and inserts text picks in
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
       if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }] }
-      if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, permissionModes: ['plan', 'workspace', 'full'] } },
+      if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, goals: true, permissionModes: ['plan', 'workspace', 'full'] } },
         { id: 'pi', capabilities: { permissionModes: ['plan', 'full'] } }]
     },
   })
@@ -1892,7 +1914,7 @@ test('the composer add menu offers the native sections and inserts text picks in
     onInsert: text => inserted.push(text), onToken: text => tokened.push(text), onModelChange: change => changed.push(change),
     onGoal: () => requested.push('goal'), onCompact: () => requested.push('compact'), ...props }) }
   const closed = render()
-  assert.deepEqual([...closed.props.items].map(item => item.id), ['add-title', 'file', 'goal', 'cmd-title', 'hint'], 'the add section offers file and goal before the scans answer')
+  assert.deepEqual([...closed.props.items].map(item => item.id), ['add-title', 'file', 'cmd-title', 'hint'], 'goal waits for the engine capability declaration')
   closed.props.anchor.props.onClick()
   await tick(); await tick()
   assert.deepEqual(requests.filter(request => request.endpoint === 'engine-commands').map(request => ({ ...request.payload })), [{ engine: 'claude', workspace: 'w1' }])
@@ -2101,6 +2123,7 @@ test('the new conversation feeds picker files into the draft and sends documents
     uiShared: {
       useStateView: () => ({ view, error: '' }),
       readImage: async file => file,
+      base64Of: dataUrl => dataUrl.slice(dataUrl.indexOf(',') + 1),
       call: async (endpoint, payload) => {
         calls.push({ endpoint, payload })
         if (endpoint === 'attachment-save') return { images: [], files: [{ id: '11111111-1111-1111-1111-111111111111', name: 'spec.pdf' }] }
@@ -2139,7 +2162,7 @@ test('the new conversation feeds picker files into the draft and sends documents
   assert.deepEqual(JSON.parse(JSON.stringify(sent.payload.images)), [{ mediaType: 'image/png', name: 'shot.png', data: 'AAAA' }])
 })
 
-test('the responsibilities dialog retains the goal field and saves it trimmed', async () => {
+test('the goal dialog uses the conversation goal and saves it trimmed', async () => {
   const states = [], saved = []
   let cursor = 0
   const { GoalDialog } = await loadClient('composer.js', {
@@ -2152,13 +2175,13 @@ test('the responsibilities dialog retains the goal field and saves it trimmed', 
     },
   })
   const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
-  const render = () => { cursor = 0; return GoalDialog({ profile: { goal: '  ship it  ' }, onSaved: value => saved.push(value), onCancel() {} }) }
-  assert.equal(render().props.title, '角色职责')
+  const render = () => { cursor = 0; return GoalDialog({ profile: { nativeGoal: '  ship it  ', goal: 'Old responsibilities' }, onSaved: value => saved.push(value), onCancel() {} }) }
+  assert.equal(render().props.title, '目标')
   const box = nodes(render()).find(node => node.props?.className?.includes?.('nodo-dialog-textarea'))
   assert.equal(box.props.value, '  ship it  ', 'the dialog opens with the saved goal')
   box.props.onChange({ target: { value: '  port the tests  ' } })
   const form = nodes(render()).find(node => node.props?.id === 'nodo-goal-form')
-  assert.equal(form.props['aria-label'], '角色职责')
+  assert.equal(form.props['aria-label'], '目标')
   form.props.onSubmit({ preventDefault() {} })
   assert.deepEqual([...saved], ['port the tests'])
 })

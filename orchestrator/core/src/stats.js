@@ -103,13 +103,8 @@ export function install(rt) {
     void rt.save().catch(() => {})
   }
 
-  const statsDrop = (sessionId) => {
-    open.delete(sessionId)
-    delete state.stats[sessionId]
-  }
-
   /** What the client polls: one small record per session that has run a turn. */
   const statsView = () => Object.fromEntries(Object.entries(state.stats).map(([sessionId, record]) => [sessionId, { ...record }]))
 
-  Object.assign(rt, { statsRound, statsOutput, statsTool, statsEnd, statsDrop, statsView })
+  Object.assign(rt, { statsRound, statsOutput, statsTool, statsEnd, statsView })
 }

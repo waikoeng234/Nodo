@@ -1,56 +1,23 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { toolText } from './text.js'
 import { estimateResources, materializeResources, normalizeResources, previewResources, projectContent } from './resources.js'
 import { normalizeChanges } from '../../agent-drivers/dist/file-changes.js'
 import { readImageFile } from './image-files.js'
+import { failure } from './errors.js'
+import { atomicWrite } from './fs.js'
+import { nativeIdOf } from '../shared/session.js'
 
 export const STREAM_LIMITS = Object.freeze({ detailBytes: 1024 * 1024, sessionBytes: 16 * 1024 * 1024, entries: 1024 })
 const ATTACHMENT_READ_TIMEOUT = 10_000
 const UUID = /^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/
-const statuses = ['running', 'done', 'error', 'denied', 'interrupted', 'unknown']
 const captures = ['complete', 'partial', 'unavailable']
 const reasons = ['unsupported', 'source-limit', 'source-truncated', 'detail-limit', 'quota', 'write-failed', 'read-only', 'conflict', 'unconfirmed']
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const bytes = value => Buffer.byteLength(JSON.stringify(value))
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-const invalid = () => Object.assign(new Error('该工具详情不可用或不属于此会话。'), { code: 'orch/stream-detail' })
-
-const string = { type: 'string' }
-const resourceSchema = { type: 'object', additionalProperties: false, required: ['kind', 'state'], properties: {
-  kind: { type: 'string', enum: ['image', 'file', 'link', 'audio', 'text'] },
-  state: { type: 'string', enum: ['pending', 'stored', 'reference', 'unsupported', 'unavailable'] },
-  reason: { type: 'string', enum: ['unsupported-type', 'invalid-image', 'image-too-large', 'storage-unavailable', 'attachment-unavailable', 'source-limit', 'no-reader'] },
-  name: string, mimeType: string, uri: string, bytes: { type: 'integer' },
-  ref: { type: 'object', additionalProperties: false, required: ['id', 'mediaType'], properties: { id: string, mediaType: string } },
-} }
-const editSchema = { type: 'object', additionalProperties: false, required: ['operation'], properties: {
-  operation: { type: 'string', enum: ['add', 'update', 'delete', 'move', 'unknown'] }, fromPath: string,
-  availability: { type: 'string', enum: ['binary', 'oversized', 'coarse', 'unavailable'] },
-  oldText: { oneOf: [string, { type: 'null' }] }, newText: string, diffText: string,
-} }
-export const STREAM_VIEW_SCHEMA = {
-  type: 'object', additionalProperties: false,
-  required: ['version', 'kind', 'mode', 'profileId', 'conversationId', 'runId', 'entityId', 'revision', 'status', 'source', 'title', 'body', 'capture', 'truncated', 'details'],
-  properties: {
-    version: { type: 'integer', const: 1 }, kind: { type: 'string', enum: ['tool', 'changes'] }, mode: { type: 'string', const: 'snapshot' },
-    profileId: string, conversationId: string, runId: string, entityId: string, revision: { type: 'integer' },
-    status: { type: 'string', enum: statuses }, title: string, capture: { type: 'string', enum: captures }, reason: { type: 'string', enum: reasons }, truncated: { type: 'boolean' },
-    source: { type: 'object', additionalProperties: false, required: ['engine'], properties: { engine: string, engineSessionId: string, engineTurnId: string } },
-    details: { type: 'object', additionalProperties: false, required: ['state'], properties: { state: { type: 'string', enum: ['stored', 'truncated', 'unavailable'] }, ref: string, reason: { type: 'string', enum: reasons } } },
-    body: { type: 'object', additionalProperties: false, properties: {
-      scope: { type: 'string', enum: ['edit-tools', 'workspace-snapshot'] }, coverage: { type: 'string', const: 'partial' }, fileCount: { type: 'integer' }, turnDiff: string,
-      files: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['path', 'edits'], properties: {
-        path: string, edits: { type: 'array', items: editSchema },
-      } } },
-      inputText: string, outputText: string, command: string, cwd: string, signal: string, exitCode: { type: 'integer' },
-      resources: { type: 'array', items: resourceSchema },
-      diffs: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['path', 'oldText', 'newText'],
-        properties: { path: string, oldText: { oneOf: [string, { type: 'null' }] }, newText: string, created: { type: 'boolean', const: true } } } },
-    } },
-  },
-}
+const invalid = () => failure('该工具详情不可用或不属于此会话。', 'orch/stream-detail')
 
 export function normalizePresentation(value) {
   if (!plain(value) || value.version !== 1 || !['tool', 'changes'].includes(value.kind) || value.mode !== 'snapshot' || !plain(value.body)) return null
@@ -256,37 +223,6 @@ export function changesTool(event) {
     output: supported ? workspace ? '宿主工作区变更记录（可能包含其他进程修改，部分覆盖）' : 'Agent 编辑文件记录（部分覆盖）' : '文件变更格式尚不支持，详情不可得。' }
 }
 
-// Native activity and plan projections are display-only, not model-visible thinking.
-const noteClip = (text, limit) => text.length > limit ? `${text.slice(0, limit)}…` : text
-
-/** The native path's one card per finished subtask: the end event only, carrying
- * the start-remembered title and the engine's result summary; start/update stay
- * silent while the running dock covers progress. */
-export function activityRow(event) {
-  if (event?.phase !== 'end') return null
-  const title = typeof event?.title === 'string' && event.title ? noteClip(event.title.split('\n')[0], 160) : ''
-  const detail = typeof event?.detail === 'string' && event.detail ? noteClip(event.detail, 200) : ''
-  if (!title && !detail) return null
-  return { type: 'tool', turnId: event.turnId, callId: `activity-${randomUUID()}`, name: title ? `子任务：${title}` : '子任务',
-    phase: 'end', observation: true, isError: event.isError === true,
-    brief: event.isError === true ? '子任务失败' : '子任务结束',
-    output: detail || (event.isError === true ? '子任务失败' : '子任务已完成') }
-}
-
-/** The native path's one final plan row per turn: the last snapshot, never the update stream. */
-export function planObservation(event) {
-  const steps = Array.isArray(event?.steps) ? event.steps : []
-  // A markdown-form plan (no steps) keeps its text; a structured one lists its
-  // steps and the two forms never mix.
-  const body = [typeof event?.explanation === 'string' && event.explanation ? event.explanation : '',
-    ...(steps.length ? steps.map(step => `${step?.status === 'completed' ? '[x]' : step?.status === 'in_progress' ? '[~]' : '[ ]'} ${step?.text ?? ''}`)
-      : [typeof event?.text === 'string' ? event.text : ''])]
-    .filter(Boolean).join('\n').trim()
-  if (body === '') return null
-  return { type: 'tool', turnId: event.turnId, callId: `plan-${randomUUID()}`, name: '计划', phase: 'end', observation: true,
-    brief: '本轮执行计划（最终快照）', output: body }
-}
-
 export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
   const folder = join(rt.home, 'stream-details')
   let writing = Promise.resolve()
@@ -337,7 +273,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
         },
         readAttachment: async attachment => {
           const signal = AbortSignal.timeout(ATTACHMENT_READ_TIMEOUT)
-          const nativeId = found.session.engine === 'dsh' ? found.session.driverSessionId : undefined
+          const nativeId = nativeIdOf(found.session)
           if (!nativeId) throw new Error('attachment-unavailable')
           if (!sessionAttachments) {
             const inspected = await rt.ctx?.sessionController?.inspect?.(nativeId, signal)
@@ -363,17 +299,14 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
       if (all.length >= limits.entries || all.reduce((sum, entry) => sum + entry.bytes, 0) + size > limits.sessionBytes) return unavailable(record, 'quota')
       const ref = randomUUID()
       const file = join(folder, `${ref}.json`)
-      const temp = join(folder, `${ref}.tmp`)
       try {
         await mkdir(folder, { recursive: true, mode: 0o700 })
-        await writeFile(temp, JSON.stringify(record), { flag: 'wx', mode: 0o600 })
-        await rename(temp, file)
+        await atomicWrite(file, JSON.stringify(record), 0o600)
         index()[ref] = { ref, profileId: found.profile.id, conversationId, runId: record.runId, entityId: record.entityId,
           revision: record.revision, bytes: size, hash, sourceHash }
         try { await rt.save() } catch (error) { delete index()[ref]; throw error }
         return previewRecord(record, { state: record.reason === 'source-limit' ? 'truncated' : 'stored', ref })
       } catch {
-        await unlink(temp).catch(() => {})
         await unlink(file).catch(() => {})
         rt.warn?.('nodo: tool detail could not be saved')
         return unavailable(record, 'write-failed')
@@ -389,7 +322,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
       if (!UUID.test(ref ?? '')) throw invalid()
       if (target) {
         const found = Object.values(rt.state.profiles).flatMap(p => rt.sessionsOf(p).map(s => ({ profile: p.id, session: s.id,
-          native: s.engine === 'dsh' ? s.driverSessionId : undefined }))).find(item => item.native === target)
+          native: nativeIdOf(s) }))).find(item => item.native === target)
         if (!found) throw invalid()
         profile = found.profile; session = found.session
       }
@@ -403,13 +336,6 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
         || record.runId !== entry.runId || record.entityId !== entry.entityId || record.revision !== entry.revision || digest(record) !== entry.hash) throw invalid()
       await rt.loadSecrets()
       return rt.redactDeepSecrets(record)
-    },
-    async drop(profileId) {
-      await writing
-      const refs = Object.values(index()).filter(entry => entry.profileId === profileId).map(entry => entry.ref)
-      for (const ref of refs) delete index()[ref]
-      await rt.save()
-      await Promise.all(refs.filter(ref => UUID.test(ref)).map(ref => unlink(join(folder, `${ref}.json`)).catch(() => rt.warn?.('nodo: retired tool detail cleanup failed'))))
     },
   }
   return store
@@ -426,6 +352,5 @@ export function install(rt) {
     },
     saveStreamRecord: store.save,
     readStreamDetail: store.read,
-    dropStreamDetails: store.drop,
   })
 }

@@ -2,13 +2,12 @@
 // { ok: true, value } or { ok: false, error }. `state` returns only the live parts
 // while the client's revision is current.
 import { leadModeOf } from '../shared/lead.js'
+import { failure, invalid } from './errors.js'
 
-const failure = (message, code) => Object.assign(new Error(message), { code })
-const invalid = message => failure(message, 'orch/invalid')
 const BUGS = [TypeError, ReferenceError, RangeError, SyntaxError]
 // Bugs and system errors (ENOENT, EACCES…) are recorded with their stack; any other
 // error was thrown on purpose and its message is for the user.
-export function errorCode(error) {
+function errorCode(error) {
   const code = typeof error?.code === 'string' ? error.code : ''
   if (code.startsWith('orch/')) return code
   return BUGS.some(type => error instanceof type) || /^E[A-Z_]+$/.test(code) ? 'orch/internal' : 'orch/refused'
@@ -171,13 +170,14 @@ export function install(rt) {
         const profile = resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
         rt.assertSessionWritable(profile, session)
+        const goalStarted = await rt.applySessionGoal(profile, session)
         const cwd = session.cwd ?? rt.sessionWorkspace(profile, session)?.cwd
         const leadMode = leadModeOf(profile, session)
         const images = leadMode && cwd ? await rt.materializeImages(rt.admitImages(body.images), cwd) : []
         const files = body.files?.length || images.length ? { refs: body.files?.length ? rt.cleanFileRefs(body.files) : undefined,
           paths: [...await rt.materializeFiles(body.files, cwd), ...images] } : undefined
         const placed = await rt.send(profile.id, body.text, body.session, body.images, body.references,
-          { files, userInput: true, queue: body.mode === 'queue', ...(leadMode ? { brief: rt.leadBrief(profile, session) } : {}) })
+          { files, userInput: true, queue: goalStarted || body.mode === 'queue', ...(leadMode ? { brief: rt.leadBrief(profile, session) } : {}) })
         if (leadMode) void rt.followLead(profile.id, session.id, placed, files?.paths)
         else void rt.followLeadReport(session.id, placed, placed.leadFlight)
         void rt.flushLeadReports(session.id)

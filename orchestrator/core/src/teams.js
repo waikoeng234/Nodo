@@ -7,9 +7,8 @@ import { randomUUID } from 'node:crypto'
 import { TEAMS_MAX, TEAM_NAME_MAX, TASK_TYPES_MAX, TASK_TYPE_NAME_MAX, TASK_TYPE_WHEN_MAX } from './constants.js'
 import { normalize, unquote } from './text.js'
 import { cleanModel, cleanThinking } from './profiles.js'
+import { invalid } from './errors.js'
 import defaultTaskTypes from '../shared/task-types.json' with { type: 'json' }
-
-const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
 
 export function install(rt) {
   const { state } = rt

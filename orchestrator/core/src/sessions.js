@@ -3,6 +3,8 @@ import { leadModeOf } from '../shared/lead.js'
 import { mkdir, realpath } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { cleanModel, cleanThinking } from './profiles.js'
+import { failure, invalid } from './errors.js'
+import { nativeIdOf } from '../shared/session.js'
 
 export function install(rt) {
   const snapshotIdentity = (profile, session) => {
@@ -20,7 +22,7 @@ export function install(rt) {
     ?? rt.workspaceOf(profile)
   const assertSessionWritable = (profile, session) => {
     if (profile.deletedAt || session.archivedAt) {
-      throw Object.assign(new Error('This conversation is read-only'), { code: 'orch/refused' })
+      throw failure('This conversation is read-only', 'orch/refused')
     }
   }
   const archiveDeletedSession = (profile, session) => {
@@ -62,13 +64,18 @@ export function install(rt) {
   }
   // A new conversation starts from the role card's model, thinking and permission.
   const sessionChoices = profile => ({ model: profile.model, thinking: profile.thinking, permission: profile.permission })
+  const cleanNativeGoal = (profile, value) => {
+    if (!rt.engineCatalog().find(item => item.id === profile.engine)?.capabilities?.goals) throw invalid('This engine has no native goal support')
+    if (typeof value !== 'string' || value.length > 4000 || value.includes('\0')) throw invalid('Invalid conversation goal')
+    return value.trim()
+  }
   const cleanSessionChoices = (profile, choices = {}) => {
     if (!choices || typeof choices !== 'object' || Array.isArray(choices)
-      || Object.keys(choices).some(key => !['model', 'thinking', 'permission'].includes(key))) {
-      throw Object.assign(new Error('Invalid conversation choices'), { code: 'orch/invalid' })
+      || Object.keys(choices).some(key => !['model', 'thinking', 'permission', 'nativeGoal'].includes(key))) {
+      throw invalid('Invalid conversation choices')
     }
     return Object.fromEntries(Object.entries(choices).filter(([, value]) => value !== undefined).map(([key, value]) => [key,
-      (key === 'model' ? cleanModel(value) : key === 'thinking' ? cleanThinking(value) : rt.cleanPermission(profile.engine, value)) ?? '']))
+      (key === 'nativeGoal' ? cleanNativeGoal(profile, value) : key === 'model' ? cleanModel(value) : key === 'thinking' ? cleanThinking(value) : rt.cleanPermission(profile.engine, value)) ?? '']))
   }
   // `team` marks a session opened from the Team view: only there does a lead
   // card's conversation run in lead mode. An absent flag means lead mode,
@@ -95,13 +102,14 @@ export function install(rt) {
     const thinking = choices.thinking !== undefined ? cleanThinking(choices.thinking) : inherited.thinking
     const permission = choices.permission !== undefined ? rt.cleanPermission(profile.engine, choices.permission) : inherited.permission
     const leadMode = profile.lead === true && team !== false
-    if (leadMode && permission === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+    if (leadMode && permission === 'plan') throw invalid('主控不能使用计划模式权限，请改选其他权限')
     const session = { id: randomUUID(), name: String(name ?? (draft ? '新会话' : `Session ${profile.sessions.length + 1}`)).slice(0, 80), workspaceRef: workspace.id,
       engine: profile.engine, model, thinking,
       engineOptions: { ...profile.engineOptions }, briefSent: false, createdAt: Date.now(),
       ...(profile.lead === true ? { leadMode } : {}),
       ...(source ? { source } : {}),
       ...(permission !== undefined ? { permission } : {}),
+      ...(choices.nativeGoal ? { nativeGoal: choices.nativeGoal, goalPending: true } : {}),
       ...(draft && name === undefined ? { draftedAt: Date.now() } : {}) }
     snapshotIdentity(profile, session)
     profile.sessions.push(session)
@@ -126,7 +134,7 @@ export function install(rt) {
     if (profile?.engine !== 'dsh') throw new Error('This engine does not expose a native host session')
     if (id) assertSessionWritable(profile, conversation(profile.id, id).session)
     const session = id ? await selectSession(profile.id, id) : await createSession(profile.id, undefined, workspace, true, true)
-    const sessionId = nativeTwinOf(session)
+    const sessionId = nativeIdOf(session)
     const agent = sessionId && rt.ctx.agents?.get(sessionId)
     if (agent?.status === 'running') {
       if (agent.session.header.cwd !== (session.cwd ?? sessionWorkspace(profile, session)?.cwd)) throw new Error('DSH session belongs to another workspace')
@@ -142,9 +150,9 @@ export function install(rt) {
     const { profile, session } = conversation(profileId, id)
     if (!archived) {
       assertSessionWritable(profile, { ...session, archivedAt: undefined })
-      if (session.workspaceRef && !rt.state.workspaces[session.workspaceRef]) throw Object.assign(new Error('This conversation is read-only'), { code: 'orch/refused' })
+      if (session.workspaceRef && !rt.state.workspaces[session.workspaceRef]) throw failure('This conversation is read-only', 'orch/refused')
     }
-    if (archived && rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the running task before archiving this session'), { code: 'orch/busy' })
+    if (archived && rt.workView?.()[session.id]?.active) throw failure('Stop or finish the running task before archiving this session', 'orch/busy')
     if (archived) session.archivedAt = Date.now()
     else delete session.archivedAt
     if (archived && profile.activeSessionId === session.id) profile.activeSessionId = profile.sessions.find(item => item.id !== session.id && !item.archivedAt)?.id
@@ -156,16 +164,18 @@ export function install(rt) {
     assertSessionWritable(profile, session)
     const choices = cleanSessionChoices(profile, Object.fromEntries(['model', 'thinking', 'permission']
       .filter(key => changes[key] !== undefined).map(key => [key, changes[key]])))
-    if (leadModeOf(profile, session) && (choices.permission ?? session.permission) === 'plan') throw Object.assign(new Error('主控不能使用计划模式权限，请改选其他权限'), { code: 'orch/invalid' })
+    const nativeGoal = changes.nativeGoal === undefined ? undefined : cleanNativeGoal(profile, changes.nativeGoal)
+    if (nativeGoal && rt.workView?.()[session.id]?.active) throw failure('Stop or finish the task before changing its goal', 'orch/busy')
+    if (leadModeOf(profile, session) && (choices.permission ?? session.permission) === 'plan') throw invalid('主控不能使用计划模式权限，请改选其他权限')
     let taskState
     if (changes.taskState !== undefined) {
-      if (rt.workView?.()[session.id]?.active) throw Object.assign(new Error('Stop or finish the task before editing its saved context'), { code: 'orch/busy' })
+      if (rt.workView?.()[session.id]?.active) throw failure('Stop or finish the task before editing its saved context', 'orch/busy')
       await rt.loadSecrets()
       taskState = rt.cleanTaskState(changes.taskState)
     }
     if (changes.name !== undefined) {
       const name = String(changes.name).trim().slice(0, 80)
-      if (name === '') throw Object.assign(new Error('Session name cannot be empty'), { code: 'orch/invalid' })
+      if (name === '') throw invalid('Session name cannot be empty')
       session.name = name
     }
     if (changes.pinned !== undefined) {
@@ -182,6 +192,13 @@ export function install(rt) {
       else session[key] = value
     }
     await rt.save()
+    if (nativeGoal !== undefined) {
+      if (!nativeGoal && profile.engine !== 'codex' && rt.workView?.()[session.id]?.active) await rt.interrupt(profile.id, session.id)
+      session.nativeGoal = nativeGoal
+      session.goalPending = true
+      await rt.save()
+      await rt.applySessionGoal(profile, session)
+    }
     return session
   }
   // A session keeps its default "Session N" — or the new-conversation draft's
@@ -202,10 +219,9 @@ export function install(rt) {
     return typeof content === 'string' ? content
       : Array.isArray(content) ? content.filter(block => block?.type === 'text').map(block => block.text).join('') : ''
   }
-  const nativeTwinOf = session => session.engine === 'dsh' ? session.driverSessionId : null
   const titleSessionFromNative = async (nativeSessionId, data) => {
     for (const profile of Object.values(rt.state.profiles)) {
-      const session = rt.sessionsOf(profile).find(item => nativeTwinOf(item) === nativeSessionId)
+      const session = rt.sessionsOf(profile).find(item => nativeIdOf(item) === nativeSessionId)
       if (!session) continue
       session.lastActiveAt = Date.now()
       const named = rt.turnTitle(session.name, messageText(data), [])
@@ -213,7 +229,7 @@ export function install(rt) {
       session.name = named
       delete session.draftedAt
       await rt.save()
-      const twin = nativeTwinOf(session)
+      const twin = nativeIdOf(session)
       if (twin) await rt.renameHostSession?.(twin, `${session.profileName ?? profile.name} · ${named}`)
       return
     }
@@ -228,5 +244,5 @@ export function install(rt) {
     if (session.id === profile.id && event.sessionId) profile.driverSessionId = event.sessionId
     await rt.save()
   }
-  Object.assign(rt, { snapshotIdentity, sessionsOf, sessionChoices, cleanSessionChoices, sessionWorkspace, archiveDeletedSession, assertSessionWritable, conversationOf, conversation, prepareConversation, createSession, selectSession, openNativeSession, archiveSession, updateSession, turnTitle, titleSessionFromNative, saveSessionEvent })
+  Object.assign(rt, { snapshotIdentity, sessionsOf, sessionWorkspace, archiveDeletedSession, assertSessionWritable, conversationOf, conversation, prepareConversation, createSession, selectSession, openNativeSession, archiveSession, updateSession, turnTitle, titleSessionFromNative, saveSessionEvent })
 }

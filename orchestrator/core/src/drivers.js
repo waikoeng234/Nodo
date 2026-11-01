@@ -14,9 +14,9 @@ import { join } from 'node:path'
 import { createIdentityFiles } from '../../agent-drivers/dist/identity-files.js'
 import { DRIVER_IDLE_RELEASE_MS } from './constants.js'
 import { leadModeOf } from '../shared/lead.js'
+import { failure, invalid } from './errors.js'
 
 const DRIVERS_SPECIFIER = '../../agent-drivers/dist/index.js'
-const invalidConfig = message => Object.assign(new Error(message), { code: 'orch/invalid' })
 
 export function install(rt) {
   const { ctx } = rt
@@ -47,7 +47,7 @@ export function install(rt) {
 
   const ensureDriver = async (profile) => {
     await driversReady()
-    if (api === null) throw Object.assign(new Error(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`), { code: 'orch/no-drivers' })
+    if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`, 'orch/no-drivers')
     const signature = JSON.stringify([signatureOf(profile), leadModeOf(profile, profile)])
     const existing = instances.get(profile.id)
     if (existing !== undefined && existing.signature === signature && (!leadModeOf(profile, profile) || existing.revoke)) return armIdle(profile.id, existing).driver
@@ -81,6 +81,15 @@ export function install(rt) {
         if (idled.has(driver)) return
         if (event?.type === 'session' && typeof event.sessionId === 'string' && event.sessionId !== '') {
           void rt.saveSessionEvent(profile.id, event).catch(() => {})
+        }
+        if (event?.type === 'goal') {
+          const session = rt.conversationOf(profile.id)?.session
+          if (session) {
+            if (event.cleared || event.status === 'complete') delete session.nativeGoal
+            else if (typeof event.objective === 'string') session.nativeGoal = event.objective
+            session.nativeGoalStatus = event.cleared ? 'cleared' : event.status
+            void rt.save().catch(() => {})
+          }
         }
         rt.driverSink?.(profile.id, event)
         if (event?.type !== 'turn/end') return
@@ -134,11 +143,11 @@ export function install(rt) {
   // Compaction addresses the active driver; an engine without the optional
   // SPI channel is refused instead of pretending.
   const compactDriver = async (profileId) => {
-    if (rt.workView()[profileId]?.active) throw Object.assign(new Error('Stop or finish the task before compacting this session'), { code: 'orch/busy' })
+    if (rt.workView()[profileId]?.active) throw failure('Stop or finish the task before compacting this session', 'orch/busy')
     compactions.add(profileId)
     try {
       const driver = await ensureDriver(await rt.prepareConversation(profileId))
-      if (typeof driver.compact !== 'function') throw invalidConfig('This engine has no compaction channel')
+      if (typeof driver.compact !== 'function') throw invalid('This engine has no compaction channel')
       await driver.openSession()
       const { session } = rt.conversationOf(profileId)
       session.restoreContext = true
@@ -149,6 +158,27 @@ export function install(rt) {
       rt.drainQueue(profileId)
       void rt.flushLeadReports?.(profileId)
     }
+    return true
+  }
+
+  const applySessionGoal = async (profile, session) => {
+    if (!session.goalPending) return false
+    if (profile.engine === 'codex') {
+      const driver = await ensureDriver(await rt.prepareConversation(session.id))
+      await driver.goals(session.nativeGoal || null)
+    } else {
+      let placed
+      try {
+        placed = await rt.send(profile.id, session.nativeGoal ? `/goal ${session.nativeGoal}` : '/goal clear', session.id, [], [], { exclusive: true })
+      } catch (error) {
+        // The interrupt above may leave the turn settling; the next send retries the goal command.
+        if (error?.code === 'orch/busy') return false
+        throw error
+      }
+      if (!await placed.turn) throw failure('Could not start the goal command', 'orch/refused')
+    }
+    delete session.goalPending
+    await rt.save()
     return true
   }
 
@@ -177,19 +207,18 @@ export function install(rt) {
   }, 'nodo: drivers')
 
   Object.assign(rt, {
-    driversReady, listEngines: () => engines.slice(), ensureDriver, driverOf, releaseDriver, collectIdentityFiles, answerRequest, interruptDriver, compactDriver, runProbe,
+    driversReady, listEngines: () => engines.slice(), ensureDriver, driverOf, releaseDriver, collectIdentityFiles, answerRequest, interruptDriver, compactDriver, applySessionGoal, runProbe,
     isCompacting: id => compactions.has(id),
     engineCatalog: () => api?.engineCatalog(ctx) ?? [],
-    requiresWorkspace: engine => api?.requiresWorkspace(engine) ?? false,
     enginePermissionModes: engine => api?.enginePermissionModes(engine, ctx) ?? ['workspace'],
     validateEngineOptions: (engine, options) => api.validateEngineOptions(engine, options),
     checkEngine: config => api.checkEngine({ ...config, nativeHost: ctx }),
     scanEngineModels: (config) => {
-      if (api === null) throw Object.assign(new Error(`No engines available: ${apiError?.message ?? 'missing'}`), { code: 'orch/no-drivers' })
+      if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'missing'}`, 'orch/no-drivers')
       return api.scanEngine(config.engine, { ...config, nativeHost: ctx })
     },
     scanEngineCommands: (config) => {
-      if (api === null) throw Object.assign(new Error(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`), { code: 'orch/no-drivers' })
+      if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`, 'orch/no-drivers')
       return api.scanEngineCommands(config.engine, { ...config, nativeHost: ctx })
     },
   })

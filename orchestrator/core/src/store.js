@@ -7,6 +7,7 @@ import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promis
 import { basename, join } from 'node:path'
 import { NAME_MAX, TRANSCRIPT_MAX } from './constants.js'
 import { normalize } from './text.js'
+import { failure } from './errors.js'
 import { homeLock } from './home-lock.js'
 
 const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'stats', 'engineCatalogs', 'prefs']
@@ -187,7 +188,7 @@ export function install(rt) {
   let refreshing
   const refresh = () => refreshing ??= sync().finally(() => { refreshing = undefined })
 
-  const lockLost = () => Object.assign(new Error('Nodo lost the state lock to another dsh'), { code: 'ELOCKLOST' })
+  const lockLost = () => failure('Nodo lost the state lock to another dsh', 'ELOCKLOST')
   // False on a host that only reads; throws on one that wrote until it lost the lock.
   const writable = () => {
     if (blocked === undefined && other === undefined) {

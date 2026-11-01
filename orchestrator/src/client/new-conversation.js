@@ -1,5 +1,5 @@
-import { h, useState, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, NodoLogo, rightPanelService } from './ui-shared.js'
-import { Composer } from './composer.js'
+import { h, useState, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, base64Of, NodoLogo, rightPanelService } from './ui-shared.js'
+import { Composer, GoalDialog } from './composer.js'
 import { RolePicker } from './role-seat.js'
 import { nativeRole, readDrafts, heldImages, subscribeNavigation, readNavigation, setNavigation } from './page.js'
 
@@ -28,6 +28,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const references = selection.references ?? []
     const files = selection.files ?? []
     const [reference, setReference] = useState(null)
+    const [goalOpen, setGoalOpen] = useState(false)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const [notice, setNotice] = useState('')
@@ -80,7 +81,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
         if (added.length) changeImages(current => [...current, ...added])
         if (documents.length) {
           const saved = await call('attachment-save', { images: [],
-            files: documents.map(item => ({ name: item.name, mediaType: item.mediaType, data: item.dataUrl.slice(item.dataUrl.indexOf(',') + 1) })) })
+            files: documents.map(item => ({ name: item.name, mediaType: item.mediaType, data: base64Of(item.dataUrl) })) })
           updateSelection(current => ({ ...current, files: [...(current.files ?? []), ...saved.files] }))
         }
       } catch (failure) { setError(failure.message) }
@@ -112,7 +113,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
             const result = await binding.session.prompt([
               ...(input.trim() ? [{ type: 'text', text: input }] : []),
               ...images.map(image => ({ type: 'image', mediaType: image.mediaType, name: image.name,
-                data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })),
+                data: base64Of(image.dataUrl) })),
             ], 'queue')
             if (!result.ok) throw new Error(result.error.message)
             setNavigation(value => ({ ...value, archivedSession: undefined, profile: profile.id, workspace: workspace.id,
@@ -127,7 +128,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
             text: text || (references.length ? '请参考引用的会话结果。' : ''),
             ...(files.length ? { files } : {}),
             ...(bound.length ? { references: bound.map(item => ({ id: item.id })) } : {}),
-            images: images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) })) })
+            images: images.map(image => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) })) })
           setNavigation(value => ({ ...value, archivedSession: undefined, profile: profile.id, workspace: workspace.id,
             sessions: { ...value.sessions, [`${workspace.id}:${profile.id}`]: session.id } }))
           if (active()) space.showLegacy()
@@ -146,13 +147,18 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
           onRemoveImage: index => changeImages(images.filter((_, position) => position !== index)),
           onRemoveFile: index => updateSelection(current => ({ ...current, files: (current.files ?? []).filter((_, at) => at !== index) })),
           onInsert: profile ? value => changeText(`${text}${text && !/\s$/.test(text) ? ' ' : ''}${value}`) : undefined,
-          onGoal: () => { setError(''); setNotice('请在角色配置中修改职责说明。') }, onCompact: () => { setError(''); setNotice('发送后可压缩会话上下文。') },
+          onGoal: profile ? () => setGoalOpen(true) : undefined, onCompact: () => { setError(''); setNotice('发送后可压缩会话上下文。') },
           onModelChange: profile ? changes => updateSelection(current => ({ ...current, profile: profile.id, choices: { ...current.choices, ...changes,
             ...(changes.permission === '' && profile.engine !== 'dsh' ? { permission: 'workspace' } : {}) } })) : undefined,
           rolePicker: h(RolePicker, { profiles, profile, disabled, onSelect: chooseRole }),
           onReference: value => { if (!disabled) setReference(value?.id ? value : {}) },
           onRemoveReference: id => { if (!disabled) updateSelection(current => ({ ...current, references: (current.references ?? []).filter(item => item.id !== id) })) },
         }),
+        goalOpen && profile && h(GoalDialog, { profile: composerProfile, onCancel: () => setGoalOpen(false),
+          onSaved: nativeGoal => {
+            updateSelection(current => ({ ...current, choices: { ...current.choices, nativeGoal } }))
+            setGoalOpen(false)
+          } }),
         reference && h(ReferenceDialog, { draft: selection.referenceDraft, workspaceId: workspace?.id, snapshot: reference.id ? reference : undefined,
           count: references.length, onClose: () => setReference(null), onPick: value => {
             if (!active() || disabled) return false

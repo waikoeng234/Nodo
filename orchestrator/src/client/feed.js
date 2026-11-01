@@ -6,23 +6,22 @@
 // scrolling away pauses following, and the floating button or a sent message
 // resumes it.
 import {
-  h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, MarkdownText, StateDot,
-  Button, Menu, Modal, ComposerGlyph, rightPanelService,
+  h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, StateDot,
+  Button, Menu, Modal, rightPanelService,
   IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
   IconGaugeOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
   billedTokens, cacheHitPercent, contextPercent, compactTokens, compactDuration, exactTokens, tokensPerSecond, turnTokens,
 } from './ui-shared.js'
-import { supportedStreamRecord, StreamRecordCard } from './stream-records.js'
+import { supportedStreamRecord, StreamRecordCard, streamProgress, toolFileCards } from './stream-records.js'
 import { StreamingText } from './streaming-text.tsx'
 import { referenceHistory } from './session-references.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
-import { HoverPreview, HoverFilePreview, ToolFileChip, useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
+import { HoverPreview, useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
 import { toolFileChange } from './tool-file.ts'
-import { CodeDiff } from './code-diff.tsx'
 import { ToolTimeline } from './tool-timeline.tsx'
 import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
 import { leadModeOf } from '../../core/shared/lead.js'
-import { modelName, modelLabel } from './model-options.js'
+import { modelName, modelLabel, thinkingAfterModelChange } from './model-options.js'
 export { modelName }
 
 const FOLLOW_PX = 25
@@ -75,7 +74,7 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
   const text = typeof body === 'string' ? body.trim() : ''
   const expandable = text !== '' || Boolean(input) || Boolean(output) || Boolean(progress)
   const streaming = running === true
-  const progressNote = progressText(progress)
+  const progressNote = streamProgress(progress)
   const collapsed = summary ? [
     h('span', { key: 'sep', className: 'nodo-tool-sep', 'data-shimmer-decoration': true, 'aria-hidden': true }),
     kind === 'thinking'
@@ -83,7 +82,7 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
       : h('span', { key: 'summary', className: 'nodo-row-summary', 'data-error': error ? '' : undefined }, summary),
   ] : null
   const disclosure = kind === 'thinking' && !timeline ? {
-    icon: timeline ? undefined : (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
+    icon: (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
     title, open, expandable, running: streaming, expandOnRowClick: true, keepContentWhenOpen: true,
     contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
     onToggle: () => setOpen(current => !current),
@@ -93,22 +92,15 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
     compact: timeline, kind,
     status: error ? 'error' : streaming ? 'running' : status ?? 'done', open, onOpenChange: setOpen,
   }
-  const chip = kind === 'tool' && file ? h(ToolFileChip, {
-    file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }) : null
-  const preview = kind === 'tool' && file ? h(HoverPreview, { preview: hover, className: 'nodo-hover-preview',
-      label: `${file.display} ${file.diffs.length > 0 ? '变更预览' : '文件预览'}`,
-      children: file.diffs.length > 0 ? file.diffs.map((change, index) => h(CodeDiff, {
-        key: index, filename: change.path, previewable: false, cycle: 0, preview: true,
-        ...(change.patch !== undefined ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }) }))
-        : h(HoverFilePreview, { preview: hover, scope, path: file.path }) }) : null
+  const cards = kind === 'tool' && file ? toolFileCards(file, hover, scope) : null
   useHoverPreviewPlacement(hover)
   // 只有成功或运行中的文件行收起输入输出；失败等状态保留原有展开能力。
   const settledFile = kind === 'tool' && file && ['done', 'running', 'started'].includes(disclosure.status)
   return h(kind === 'thinking' && !timeline ? DisclosureRow : ToolCall, {
     ...disclosure,
-    ...(chip ? { queryNode: chip } : {}),
+    ...(cards ? { queryNode: cards.chip } : {}),
     ...(settledFile ? { expandable: false, onOpenChange: () => {} } : {}),
-    ...(preview ? { after: preview } : {}),
+    ...(cards ? { after: cards.preview } : {}),
     children: kind === 'thinking'
       ? h('div', { className: 'nodo-think-body' }, h(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact' }))
       : settledFile ? null : h('div', { className: 'nodo-io-card' },
@@ -126,18 +118,6 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
   })
 }
 
-const sizeText = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
-function progressText(progress) {
-  if (!progress || typeof progress !== 'object') return null
-  const parts = []
-  if (Number.isFinite(progress.elapsedMs)) parts.push(`已用时 ${(progress.elapsedMs / 1000).toFixed(1)} 秒`)
-  if (typeof progress.message === 'string' && progress.message !== '') parts.push(progress.message.slice(0, 200))
-  if (Number.isFinite(progress.outputBytes)) parts.push(`输出 ${sizeText(progress.outputBytes)}`)
-  if (Number.isFinite(progress.stdoutBytes)) parts.push(`stdout ${sizeText(progress.stdoutBytes)}`)
-  if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${sizeText(progress.stderrBytes)}`)
-  return parts.length ? parts.join(' · ') : null
-}
-
 // The engine's plan: one replaceable row per turn showing the step list the
 // source last sent — updates rewrite it in place, they never append.
 export function PlanRow({ plan, running, timeline }) {
@@ -147,16 +127,19 @@ export function PlanRow({ plan, running, timeline }) {
   const summary = active ? String(active.text).split('\n')[0] : plan.text ? String(plan.text).split('\n')[0] : null
   // A markdown-form plan has no steps but a real body: it still expands.
   const expandable = steps.length > 0 || Boolean(plan.text)
-  return h(timeline ? ToolCall : DisclosureRow, {
-    ...(timeline ? { label: '计划', activeLabel: '计划中', query: summary ?? '', compact: true, kind: 'plan', status: running ? 'running' : 'done', onOpenChange: setOpen } : {}),
-    icon: timeline ? undefined : TOOL_VARIANTS.plan.icon({ size: 14 }),
-    title: '计划', open, expandable, running, expandOnRowClick: expandable, keepContentWhenOpen: true,
+  const head = timeline ? {
+    label: '计划', activeLabel: '计划中', query: summary ?? '', compact: true, kind: 'plan', status: running ? 'running' : 'done', onOpenChange: setOpen,
+  } : {
+    icon: TOOL_VARIANTS.plan.icon({ size: 14 }), title: '计划', open, expandable, running, expandOnRowClick: expandable, keepContentWhenOpen: true,
     contentClassName: 'nodo-row-content', contentLayoutClassName: 'nodo-row-content-layout',
     onToggle: () => setOpen(state => !state),
     collapsedContent: summary ? [
       h('span', { key: 'sep', className: 'nodo-tool-sep', 'data-shimmer-decoration': true, 'aria-hidden': true }),
       h('span', { key: 'summary', className: 'nodo-row-summary', 'data-streaming': running ? '' : undefined }, summary),
     ] : null,
+  }
+  return h(timeline ? ToolCall : DisclosureRow, {
+    ...head,
     children: steps.length > 0
       ? h('div', { className: 'nodo-plan-list' }, steps.map((step, index) => h('div', { key: index, className: 'nodo-plan-step', 'data-status': step.status ?? 'pending' },
         h('span', { className: 'nodo-plan-mark', 'aria-hidden': true }, step.status === 'completed' ? '✓' : step.status === 'in_progress' ? '•' : '○'),
@@ -171,7 +154,7 @@ export function toolRow(row, { profile, session, work, timeline }) {
     timeline, eventPhase: row.invocation ? 'start' : row.result ? 'end' : undefined, request: { profile: profile.id, session: session.id }, cwd: session?.cwd })
   const action = toolVariant(item.name)
   const variant = TOOL_VARIANTS[action]
-  const progress = progressText(item.progress)
+  const progress = streamProgress(item.progress)
   return h(ProcessRow, {
     key: index, kind: 'tool', variant, timeline, title: `${row.invocation ? '调用 · ' : row.result ? '结果 · ' : ''}${variant.title}`,
     summary: [item.brief ? item.brief.split('\n')[0] : null, progress].filter(Boolean).join(' · ') || null,
@@ -571,7 +554,7 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
     if (id === 'model' || id === 'thinking') { setPane(id); return }
     if (id.startsWith('group:')) return
     const changes = id.startsWith('model:')
-      ? { model: id.slice(6), thinking: (models.find(item => item.id === id.slice(6))?.thinking ?? []).some(level => level.id === thinking) ? thinking : '' }
+      ? { model: id.slice(6), thinking: thinkingAfterModelChange(models, id.slice(6), thinking) }
       : { ...(model ? { model } : {}), thinking: id.slice(9) }
     close()
     onChange(changes)

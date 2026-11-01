@@ -9216,6 +9216,7 @@ var readImage = (file) => new Promise((resolve, reject) => {
   reader.onerror = () => reject(reader.error);
   reader.readAsDataURL(file);
 });
+var base64Of = (dataUrl) => dataUrl.slice(dataUrl.indexOf(",") + 1);
 function useStateView() {
   const [view, setView] = (0, import_react.useState)(null);
   const [error, setError] = (0, import_react.useState)("");
@@ -11603,6 +11604,22 @@ var STREAM_TERMINAL_LABELS = {
   expand: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C`
 };
 var streamSize = (bytes) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+var toolFileCards = (file, hover, scope) => ({
+  chip: (0, import_react.createElement)(ToolFileChip, { file, onShow: (row) => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }),
+  preview: (0, import_react.createElement)(HoverPreview, {
+    preview: hover,
+    className: "nodo-hover-preview",
+    label: `${file.display} ${file.diffs.length > 0 ? "\u53D8\u66F4\u9884\u89C8" : "\u6587\u4EF6\u9884\u89C8"}`,
+    children: file.diffs.length > 0 ? file.diffs.map((change, index) => (0, import_react.createElement)(CodeDiff, {
+      key: index,
+      filename: change.path,
+      previewable: false,
+      cycle: 0,
+      preview: true,
+      ...change.patch !== void 0 ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }
+    })) : (0, import_react.createElement)(HoverFilePreview, { preview: hover, scope, path: file.path })
+  })
+});
 var RESOURCE_LABELS = { image: "\u56FE\u7247", file: "\u6587\u4EF6", link: "\u8D44\u6E90\u5F15\u7528", audio: "\u97F3\u9891", text: "\u5D4C\u5165\u6587\u672C\u8D44\u6E90" };
 var RESOURCE_REASONS = {
   "unsupported-type": "\u5F53\u524D\u5BBF\u4E3B\u4E0D\u652F\u6301\u6B64\u5185\u5BB9\u7C7B\u578B",
@@ -11776,7 +11793,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
     busy,
     available,
     error,
-    renderFile: (file2, patch, panel = false, preview2 = false) => (0, import_react.createElement)(ChangedFile, { key: file2.path, file: file2, patch, panel, preview: preview2, inline: true, root: body.cwd, cycle: record.revision })
+    renderFile: (file2, patch, panel = false, preview = false) => (0, import_react.createElement)(ChangedFile, { key: file2.path, file: file2, patch, panel, preview, inline: true, root: body.cwd, cycle: record.revision })
   });
   const status2 = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
   const notice = record.capture !== "complete" ? STREAM_REASON[record.reason] ?? "\u6765\u6E90\u5185\u5BB9\u4E0D\u5B8C\u6574" : null;
@@ -11784,20 +11801,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
   const terminal = typeof body.command === "string";
   const diffs = Array.isArray(body.diffs) ? body.diffs.filter((diff) => typeof diff.path === "string" && typeof diff.newText === "string" && (typeof diff.oldText === "string" || diff.oldText === null && diff.created === true)) : [];
   const file = record.kind === "tool" && !terminal && ["read", "write", "edit"].includes(toolVariant(record.title)) ? toolFileChange(body.input ?? body.inputText) : null;
-  const chip = file ? (0, import_react.createElement)(ToolFileChip, { file, onShow: (row) => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }) : null;
-  const preview = file ? (0, import_react.createElement)(HoverPreview, {
-    preview: hover,
-    className: "nodo-hover-preview",
-    label: `${file.display} ${file.diffs.length > 0 ? "\u53D8\u66F4\u9884\u89C8" : "\u6587\u4EF6\u9884\u89C8"}`,
-    children: file.diffs.length > 0 ? file.diffs.map((change, index) => (0, import_react.createElement)(CodeDiff, {
-      key: index,
-      filename: change.path,
-      previewable: false,
-      cycle: 0,
-      preview: true,
-      ...change.patch !== void 0 ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }
-    })) : (0, import_react.createElement)(HoverFilePreview, { preview: hover, scope: request, path: file.path })
-  }) : null;
+  const cards = file ? toolFileCards(file, hover, request) : null;
   const state = eventPhase === "start" ? "started" : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : "unknown";
   const settledFile = Boolean(file) && ["done", "running", "started"].includes(state);
   const disclosure = {
@@ -11814,7 +11818,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
       ...disclosure,
       open,
       compact: timeline,
-      ...chip ? { queryNode: chip } : {},
+      ...cards ? { queryNode: cards.chip } : {},
       ...settledFile ? { expandable: false, onOpenChange: () => {
       } } : {},
       children: settledFile ? null : (0, import_react.createElement)(
@@ -11865,7 +11869,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
         error && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, error)
       )
     }),
-    preview
+    cards?.preview
   );
 }
 
@@ -12487,13 +12491,13 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
   const text = typeof body === "string" ? body.trim() : "";
   const expandable = text !== "" || Boolean(input) || Boolean(output) || Boolean(progress);
   const streaming = running === true;
-  const progressNote = progressText(progress);
+  const progressNote = streamProgress(progress);
   const collapsed = summary ? [
     (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
     kind === "thinking" ? (0, import_react.createElement)("span", { key: "summary", className: "nodo-think-summary", "data-streaming": streaming ? "" : void 0 }, summary) : (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-error": error ? "" : void 0 }, summary)
   ] : null;
   const disclosure = kind === "thinking" && !timeline ? {
-    icon: timeline ? void 0 : (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
+    icon: (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
     title,
     open,
     expandable,
@@ -12514,33 +12518,15 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     open,
     onOpenChange: setOpen
   };
-  const chip = kind === "tool" && file ? (0, import_react.createElement)(ToolFileChip, {
-    file,
-    onShow: (row) => hover.show(file.path, row),
-    onClose: hover.close,
-    onOpened: hover.hide
-  }) : null;
-  const preview = kind === "tool" && file ? (0, import_react.createElement)(HoverPreview, {
-    preview: hover,
-    className: "nodo-hover-preview",
-    label: `${file.display} ${file.diffs.length > 0 ? "\u53D8\u66F4\u9884\u89C8" : "\u6587\u4EF6\u9884\u89C8"}`,
-    children: file.diffs.length > 0 ? file.diffs.map((change, index) => (0, import_react.createElement)(CodeDiff, {
-      key: index,
-      filename: change.path,
-      previewable: false,
-      cycle: 0,
-      preview: true,
-      ...change.patch !== void 0 ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }
-    })) : (0, import_react.createElement)(HoverFilePreview, { preview: hover, scope, path: file.path })
-  }) : null;
+  const cards = kind === "tool" && file ? toolFileCards(file, hover, scope) : null;
   useHoverPreviewPlacement(hover);
   const settledFile = kind === "tool" && file && ["done", "running", "started"].includes(disclosure.status);
   return (0, import_react.createElement)(kind === "thinking" && !timeline ? import_dsh_client_ui_primitives.DisclosureRow : ToolCall, {
     ...disclosure,
-    ...chip ? { queryNode: chip } : {},
+    ...cards ? { queryNode: cards.chip } : {},
     ...settledFile ? { expandable: false, onOpenChange: () => {
     } } : {},
-    ...preview ? { after: preview } : {},
+    ...cards ? { after: cards.preview } : {},
     children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : settledFile ? null : (0, import_react.createElement)(
       "div",
       { className: "nodo-io-card" },
@@ -12572,26 +12558,22 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     )
   });
 }
-var sizeText = (bytes) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-function progressText(progress) {
-  if (!progress || typeof progress !== "object") return null;
-  const parts = [];
-  if (Number.isFinite(progress.elapsedMs)) parts.push(`\u5DF2\u7528\u65F6 ${(progress.elapsedMs / 1e3).toFixed(1)} \u79D2`);
-  if (typeof progress.message === "string" && progress.message !== "") parts.push(progress.message.slice(0, 200));
-  if (Number.isFinite(progress.outputBytes)) parts.push(`\u8F93\u51FA ${sizeText(progress.outputBytes)}`);
-  if (Number.isFinite(progress.stdoutBytes)) parts.push(`stdout ${sizeText(progress.stdoutBytes)}`);
-  if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${sizeText(progress.stderrBytes)}`);
-  return parts.length ? parts.join(" \xB7 ") : null;
-}
 function PlanRow({ plan, running, timeline }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const steps = Array.isArray(plan.steps) ? plan.steps : [];
   const active = steps.find((step) => step.status === "in_progress") ?? steps[0];
   const summary = active ? String(active.text).split("\n")[0] : plan.text ? String(plan.text).split("\n")[0] : null;
   const expandable = steps.length > 0 || Boolean(plan.text);
-  return (0, import_react.createElement)(timeline ? ToolCall : import_dsh_client_ui_primitives.DisclosureRow, {
-    ...timeline ? { label: "\u8BA1\u5212", activeLabel: "\u8BA1\u5212\u4E2D", query: summary ?? "", compact: true, kind: "plan", status: running ? "running" : "done", onOpenChange: setOpen } : {},
-    icon: timeline ? void 0 : TOOL_VARIANTS.plan.icon({ size: 14 }),
+  const head = timeline ? {
+    label: "\u8BA1\u5212",
+    activeLabel: "\u8BA1\u5212\u4E2D",
+    query: summary ?? "",
+    compact: true,
+    kind: "plan",
+    status: running ? "running" : "done",
+    onOpenChange: setOpen
+  } : {
+    icon: TOOL_VARIANTS.plan.icon({ size: 14 }),
     title: "\u8BA1\u5212",
     open,
     expandable,
@@ -12604,7 +12586,10 @@ function PlanRow({ plan, running, timeline }) {
     collapsedContent: summary ? [
       (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
       (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-streaming": running ? "" : void 0 }, summary)
-    ] : null,
+    ] : null
+  };
+  return (0, import_react.createElement)(timeline ? ToolCall : import_dsh_client_ui_primitives.DisclosureRow, {
+    ...head,
     children: steps.length > 0 ? (0, import_react.createElement)("div", { className: "nodo-plan-list" }, steps.map((step, index) => (0, import_react.createElement)(
       "div",
       { key: index, className: "nodo-plan-step", "data-status": step.status ?? "pending" },
@@ -12625,7 +12610,7 @@ function toolRow(row, { profile, session, work, timeline }) {
   });
   const action = toolVariant(item.name);
   const variant = TOOL_VARIANTS[action];
-  const progress = progressText(item.progress);
+  const progress = streamProgress(item.progress);
   return (0, import_react.createElement)(ProcessRow, {
     key: index,
     kind: "tool",
@@ -13117,7 +13102,7 @@ function ModelPicker({ profile, disabled, onChange }) {
       return;
     }
     if (id.startsWith("group:")) return;
-    const changes = id.startsWith("model:") ? { model: id.slice(6), thinking: (models.find((item) => item.id === id.slice(6))?.thinking ?? []).some((level) => level.id === thinking) ? thinking : "" } : { ...model ? { model } : {}, thinking: id.slice(9) };
+    const changes = id.startsWith("model:") ? { model: id.slice(6), thinking: thinkingAfterModelChange(models, id.slice(6), thinking) } : { ...model ? { model } : {}, thinking: id.slice(9) };
     close();
     onChange(changes);
   };
@@ -14462,7 +14447,20 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
           onReference,
           onUpload: onAttachFiles ? () => picker.current?.click() : void 0
         }),
-        onModelChange && (0, import_react.createElement)(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange })
+        onModelChange && (0, import_react.createElement)(PermissionMenu, { profile, disabled: modelDisabled, onChange: onModelChange }),
+        profile?.nativeGoal && onModelChange && (0, import_react.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "nodo-mode-chip",
+            disabled: modelDisabled,
+            "aria-label": "\u6E05\u9664\u76EE\u6807",
+            title: profile.nativeGoal,
+            onClick: () => onModelChange({ nativeGoal: "" })
+          },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular, { size: 16 }),
+          "\u76EE\u6807"
+        )
       ),
       rolePicker,
       onModelChange && (0, import_react.createElement)(ModelPicker, { profile, disabled: modelDisabled, onChange: onModelChange }),
@@ -14559,7 +14557,12 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
   const commands = scan?.commands ?? [];
   const query = trigger === null ? "" : trigger.query.trim().toLowerCase();
   const scopeLabel = { project: "\u9879\u76EE", plugin: "\u63D2\u4EF6" };
+  const actions = [
+    ...onGoal && engine?.capabilities?.goals === true ? [{ id: "goal", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular), label: row("\u76EE\u6807", "goal") }] : [],
+    ...onModelChange && modes.includes("plan") && modes.includes("workspace") && !leadModeOf(profile, profile) ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : []
+  ];
   const candidates = [
+    ...query === "" ? [] : actions,
     ...onCompact && engine?.capabilities?.compact === true ? [{ id: "compact", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompactOutlineRegular), label: row("\u538B\u7F29", "compact", "\u538B\u7F29\u4EE5\u4E0A\u5BF9\u8BDD\u5185\u5BB9") }] : [],
     ...commands.map((command) => ({ id: `cmd:${command.id}`, label: row(command.id, scopeLabel[command.scope] ?? "", command.description) }))
   ];
@@ -14572,12 +14575,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     // workspace file card.
     { id: onUpload ? "upload" : "file", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPaperclipOutlineRegular), label: row("\u6587\u4EF6", "file"), disabled: !onUpload && (!workspace || !onInsert) },
     ...onReference ? [{ id: "reference", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconLinkOutlineRegular), label: addRow("\u5F15\u7528\u4F1A\u8BDD", "", "\u9009\u62E9\u5176\u4ED6\u89D2\u8272\u7684\u4E00\u6761\u56DE\u590D") }] : [],
-    ...onGoal ? [{ id: "goal", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGoalOutlineRegular), label: row("\u804C\u8D23", "goal", "\u8BBE\u7F6E\u6216\u67E5\u770B\u89D2\u8272\u804C\u8D23") }] : [],
-    // Only a plan↔workspace pair is a safe toggle: without workspace the row
-    // could not leave plan, and stepping up to full must go through the risk
-    // confirmation on the role card. Lead-mode sessions never run in plan; a
-    // lead's 1:1 chat may.
-    ...modes.includes("plan") && modes.includes("workspace") && !leadModeOf(profile, profile) ? [{ id: "plan", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular), label: row("\u8BA1\u5212", "plan", "\u8FDB\u5165\u6216\u9000\u51FA\u8BA1\u5212\u6A21\u5F0F") }] : [],
+    ...actions,
     { type: "label", id: "cmd-title", text: "\u6307\u4EE4" },
     ...commandSection
   ] : [{ type: "label", id: "cmd-title", text: "\u6307\u4EE4" }, ...commandSection];
@@ -14705,9 +14703,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
   const loaded = (0, import_react.useRef)(null);
   const current = profile.permission;
   const { pick, confirmation } = usePermissionChange(disabled);
-  const openMenu = () => {
-    if (open && loaded.current === profile.engine || confirmation) return setOpen(false);
-    setOpen(true);
+  const loadModes = () => {
     if (loaded.current === profile.engine) return;
     loaded.current = profile.engine;
     setModes(null);
@@ -14718,6 +14714,12 @@ function PermissionMenu({ profile, disabled, onChange }) {
       loaded.current = null;
       setModes([]);
     });
+  };
+  (0, import_react.useEffect)(loadModes, [profile.engine]);
+  const openMenu = () => {
+    if (open && loaded.current === profile.engine || confirmation) return setOpen(false);
+    setOpen(true);
+    loadModes();
   };
   const offered = ((loaded.current === profile.engine ? modes : null) ?? (current ? [current] : [])).filter((mode) => !leadModeOf(profile, profile) || mode !== "plan");
   const label = offered.length ? PERMISSION_LABELS[current] ?? current : "\u65E0\u53EF\u7528\u6743\u9650\u6863\u4F4D";
@@ -14759,11 +14761,24 @@ function PermissionMenu({ profile, disabled, onChange }) {
         (0, import_react.createElement)("span", { className: `nodo-perm-chevron${open ? " nodo-perm-chevron-open" : ""}`, "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular))
       )
     }),
+    current === "plan" && offered.includes("plan") && offered.includes("workspace") && (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-mode-chip",
+        disabled,
+        "aria-label": "\u5173\u95ED\u8BA1\u5212\u6A21\u5F0F",
+        title: "\u5173\u95ED\u8BA1\u5212\u6A21\u5F0F",
+        onClick: () => onChange({ permission: "workspace" })
+      },
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlanOutlineRegular, { size: 16 }),
+      "\u8BA1\u5212"
+    ),
     confirmation
   );
 }
 function GoalDialog({ profile, onSaved, onCancel }) {
-  const [goal, setGoal] = (0, import_react.useState)(profile.goal ?? "");
+  const [goal, setGoal] = (0, import_react.useState)(profile.nativeGoal ?? "");
   const [busy, setBusy] = (0, import_react.useState)(false);
   const submit = (event) => {
     event.preventDefault();
@@ -14779,26 +14794,25 @@ function GoalDialog({ profile, onSaved, onCancel }) {
         if (!busy) onCancel();
       },
       closeLabel: "\u5173\u95ED",
-      title: "\u89D2\u8272\u804C\u8D23",
-      description: "\u8BF4\u660E\u8FD9\u4E2A\u89D2\u8272\u8D1F\u8D23\u4EC0\u4E48\u3001\u5DE5\u4F5C\u8303\u56F4\u548C\u4EA4\u4ED8\u8981\u6C42\uFF0C\u968F\u8EAB\u4EFD\u8BF4\u660E\u7528\u4E8E\u8BE5\u89D2\u8272\u7684\u4F1A\u8BDD\u3002",
+      title: "\u76EE\u6807",
       className: "nodo-dialog",
       footer: [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "save", type: "submit", form: GOAL_FORM, variant: "primary", disabled: busy }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58\u804C\u8D23")
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "save", type: "submit", form: GOAL_FORM, variant: "primary", disabled: busy || !goal.trim() }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u8BBE\u7F6E\u76EE\u6807")
       ]
     },
     (0, import_react.createElement)(
       "form",
-      { id: GOAL_FORM, className: "nodo-dialog-fields", onSubmit: submit, "aria-label": "\u89D2\u8272\u804C\u8D23" },
+      { id: GOAL_FORM, className: "nodo-dialog-fields", onSubmit: submit, "aria-label": "\u76EE\u6807" },
       (0, import_react.createElement)(
         "label",
         { className: "nodo-field" },
-        (0, import_react.createElement)("span", null, "\u804C\u8D23"),
+        (0, import_react.createElement)("span", null, "\u5B8C\u6210\u6761\u4EF6"),
         (0, import_react.createElement)("textarea", {
           className: "nodo-dialog-input nodo-dialog-textarea",
           rows: 4,
+          maxLength: 4e3,
           value: goal,
-          placeholder: "\u4F8B\u5982\uFF1A\u8D1F\u8D23\u4EE3\u7801\u5BA1\u67E5\uFF0C\u68C0\u67E5\u5B9E\u73B0\u662F\u5426\u6EE1\u8DB3\u9700\u6C42\uFF0C\u8BC6\u522B\u7F3A\u9677\u4E0E\u98CE\u9669\u5E76\u7ED9\u51FA\u4FEE\u6539\u5EFA\u8BAE",
           onChange: (event) => setGoal(event.target.value),
           "data-modal-autofocus": true
         })
@@ -14897,7 +14911,8 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
           "div",
           { className: "nodo-approval-body", tabIndex: 0, role: "group", "aria-label": "\u5BA1\u6279\u8BE6\u60C5" },
           (0, import_react.createElement)("p", { className: "nodo-approval-headline" }, card.tool ? `\u5DE5\u5177\u300C${card.tool}\u300D\u8BF7\u6C42\u6267\u884C` : card.reason),
-          card.tool && card.reason ? (0, import_react.createElement)("p", { className: "nodo-approval-command" }, card.reason) : null
+          card.tool && card.reason ? (0, import_react.createElement)("p", { className: "nodo-approval-command" }, card.reason) : null,
+          card.tool === "ExitPlanMode" && typeof (card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan) === "string" && (0, import_react.createElement)("div", { className: "nodo-approval-plan" }, card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan)
         ),
         (0, import_react.createElement)(
           "div",
@@ -16415,73 +16430,14 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
     )
   );
 }
-function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
-  const [draft, setDraft] = (0, import_react.useState)(workspace.name);
+function RenameDialog({ title, label, action, maxLength, initial, conflict, conflictMessage, onSaved, onCancel }) {
+  const [draft, setDraft] = (0, import_react.useState)(initial);
   const [busy, setBusy] = (0, import_react.useState)(false);
   const [error, setError] = (0, import_react.useState)("");
   const composing = (0, import_react.useRef)(false);
   const name = draft.trim();
-  const conflict = names.some((item) => item.id !== workspace.id && item.name.trim() === name);
-  const blocked = busy || name === "" || name === workspace.name || conflict;
-  const submit = async () => {
-    if (blocked) return;
-    setBusy(true);
-    setError("");
-    try {
-      await onSaved(workspace.id, name);
-    } catch (failure) {
-      setError(failure.message);
-      setBusy(false);
-    }
-  };
-  return (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Modal,
-    {
-      open: true,
-      onClose: () => {
-        if (!busy) onCancel();
-      },
-      closeLabel: "\u5173\u95ED",
-      title: "\u91CD\u547D\u540D\u9879\u76EE",
-      footer: [
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "save", variant: "primary", disabled: blocked, onClick: () => void submit() }, "\u91CD\u547D\u540D")
-      ]
-    },
-    (0, import_react.createElement)("input", {
-      className: "nodo-dialog-input",
-      value: draft,
-      "aria-label": "\u9879\u76EE\u540D\u79F0",
-      "data-modal-autofocus": true,
-      disabled: busy,
-      onFocus: (event) => event.target.select(),
-      onChange: (event) => {
-        setDraft(event.target.value);
-        setError("");
-      },
-      onCompositionStart: () => {
-        composing.current = true;
-      },
-      onCompositionEnd: () => {
-        composing.current = false;
-      },
-      onKeyDown: (event) => {
-        if (event.key !== "Enter" || composing.current) return;
-        event.preventDefault();
-        void submit();
-      }
-    }),
-    conflict && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, `\u5DF2\u5B58\u5728\u540D\u4E3A\u201C${name}\u201D\u7684\u9879\u76EE\u3002`),
-    error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
-  );
-}
-function SessionRenameDialog({ session, onCancel, onSaved }) {
-  const [draft, setDraft] = (0, import_react.useState)(session.name);
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
-  const composing = (0, import_react.useRef)(false);
-  const name = draft.trim();
-  const blocked = busy || name === "" || name === session.name;
+  const clashing = conflict?.(name) ?? false;
+  const blocked = busy || name === "" || name === initial || clashing;
   const submit = async () => {
     if (blocked) return;
     setBusy(true);
@@ -16501,19 +16457,19 @@ function SessionRenameDialog({ session, onCancel, onSaved }) {
         if (!busy) onCancel();
       },
       closeLabel: "\u5173\u95ED",
-      title: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0",
+      title,
       footer: [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "save", variant: "primary", disabled: blocked, onClick: () => void submit() }, "\u4FDD\u5B58")
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "save", variant: "primary", disabled: blocked, onClick: () => void submit() }, action)
       ]
     },
     (0, import_react.createElement)("input", {
       className: "nodo-dialog-input",
       value: draft,
-      "aria-label": "\u4F1A\u8BDD\u540D\u79F0",
+      "aria-label": label,
       "data-modal-autofocus": true,
       disabled: busy,
-      maxLength: 80,
+      maxLength,
       onFocus: (event) => event.target.select(),
       onChange: (event) => {
         setDraft(event.target.value);
@@ -16531,8 +16487,32 @@ function SessionRenameDialog({ session, onCancel, onSaved }) {
         void submit();
       }
     }),
+    clashing && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, conflictMessage(name)),
     error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
   );
+}
+function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
+  return (0, import_react.createElement)(RenameDialog, {
+    title: "\u91CD\u547D\u540D\u9879\u76EE",
+    label: "\u9879\u76EE\u540D\u79F0",
+    action: "\u91CD\u547D\u540D",
+    initial: workspace.name,
+    onCancel,
+    conflict: (name) => names.some((item) => item.id !== workspace.id && item.name.trim() === name),
+    conflictMessage: (name) => `\u5DF2\u5B58\u5728\u540D\u4E3A\u201C${name}\u201D\u7684\u9879\u76EE\u3002`,
+    onSaved: (name) => onSaved(workspace.id, name)
+  });
+}
+function SessionRenameDialog({ session, onCancel, onSaved }) {
+  return (0, import_react.createElement)(RenameDialog, {
+    title: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0",
+    label: "\u4F1A\u8BDD\u540D\u79F0",
+    action: "\u4FDD\u5B58",
+    maxLength: 80,
+    initial: session.name,
+    onCancel,
+    onSaved
+  });
 }
 function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -16858,7 +16838,7 @@ function PickCell({ label, pick, team, roles, engines, optional, disabled, onCha
         type: "button",
         className: "nodo-pick-option",
         "aria-pressed": item.id === pick?.model,
-        onClick: () => set({ model: item.id, thinking: item.thinking?.some((level) => level.id === pick?.thinking) ? pick?.thinking : void 0 })
+        onClick: () => set({ model: item.id, thinking: thinkingAfterModelChange(models, item.id, pick?.thinking) || void 0 })
       },
       modelLabel(item)
     )))))),
@@ -17354,6 +17334,9 @@ var ROLES_CSS = `
 @media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
 ${TEAMS_CSS}`;
 
+// core/shared/session.js
+var nativeIdOf = (session) => session?.engine === "dsh" ? session.driverSessionId : void 0;
+
 // src/client/page.js
 var heldImages = {};
 var readDrafts = () => {
@@ -17544,8 +17527,8 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
   const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view?.work[item.session?.id]?.active === true);
-  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
-  const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => (item.engine === "dsh" ? item.driverSessionId : null) === currentNativeSession) : null;
+  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
+  const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => nativeIdOf(item) === currentNativeSession) : null;
   const viewedWork = view?.work[viewed?.id];
   (0, import_react.useEffect)(() => {
     if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq);
@@ -17582,6 +17565,14 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     selection.current++;
     setEditing(value);
   };
+  const attempt = async (tracked, work2) => {
+    setActionError("");
+    try {
+      await work2();
+    } catch (failure) {
+      if (tracked()) setActionError(failure.message);
+    }
+  };
   const openRolesPage = (target) => {
     selection.current++;
     openRoles(target);
@@ -17590,22 +17581,17 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const updateEngineChoice = async (changes) => {
     if (!profile || sessionBusy || conversationReadOnly) return;
     setSessionBusy(true);
-    setActionError("");
     const current = trackSelection();
-    const relevant = trackSelection(true);
-    try {
-      if (sessionId && ["model", "thinking", "permission"].some((key) => changes[key] !== void 0)) {
+    await attempt(trackSelection(true), async () => {
+      if (sessionId && ["model", "thinking", "permission", "nativeGoal"].some((key) => changes[key] !== void 0)) {
         await call("session-update", { profile: profile.id, session: sessionId, changes });
       } else {
         const saved = await call("profile-update", { id: profile.id, changes });
         if (current()) remember(saved.id, workspace?.id, saved.activeSessionId);
       }
       await refresh(true);
-    } catch (failure) {
-      if (relevant()) setActionError(failure.message);
-    } finally {
-      setSessionBusy(false);
-    }
+    });
+    setSessionBusy(false);
   };
   const savedWorkspace = async (saved) => {
     await refresh(true);
@@ -17662,28 +17648,20 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const archiveSession = async (role, id, archived2) => {
     if (busy || readOnly) return;
     setBusy(true);
-    setActionError("");
-    try {
+    await attempt(() => true, async () => {
       await call("session-archive", { profile: role.id, session: id, archived: archived2 });
       await refresh(true);
-    } catch (failure) {
-      setActionError(failure.message);
-    } finally {
-      setBusy(false);
-    }
+    });
+    setBusy(false);
   };
   const updateSession = async (role, id, changes) => {
     if (busy || readOnly) return;
     setBusy(true);
-    setActionError("");
-    try {
+    await attempt(() => true, async () => {
       await call("session-update", { profile: role.id, session: id, changes });
       await refresh(true);
-    } catch (failure) {
-      setActionError(failure.message);
-    } finally {
-      setBusy(false);
-    }
+    });
+    setBusy(false);
   };
   const renamedSession = async ({ role, session: session2 }, name) => {
     await call("session-update", { profile: role.id, session: session2.id, changes: { name } });
@@ -17713,30 +17691,24 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     const images = pastedImages[draftKey] ?? [];
     if (!profile || !workspace || !text && images.length === 0 || sessionBusy || conversationReadOnly) return;
     setSessionBusy(true);
-    setActionError("");
     const current = trackSelection();
-    const relevant = trackSelection(true);
-    try {
+    await attempt(trackSelection(true), async () => {
       const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
-      const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }));
+      const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }));
       await call("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
       if (current()) setSentTick((tick) => tick + 1);
       setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
       setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
       await refresh(true);
       if (current()) remember(profile.id, workspace.id, id);
-    } catch (failure) {
-      if (relevant()) setActionError(failure.message);
-    } finally {
-      setSessionBusy(false);
-    }
+    });
+    setSessionBusy(false);
   };
   const queueAction = async (seq, action) => {
     if (!profile || !sessionId || sessionBusy || conversationReadOnly) return;
     setSessionBusy(true);
-    setActionError("");
     const relevant = trackSelection(true);
-    try {
+    await attempt(relevant, async () => {
       const result = await call("queued-message", { profile: profile.id, session: sessionId, seq, action });
       if (action === "edit") {
         setDrafts((current) => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join("\n\n") }));
@@ -17750,27 +17722,19 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         else if (result.mode !== "cancelled") setSentTick((tick) => tick + 1);
       }
       await refresh(true);
-    } catch (failure) {
-      if (relevant()) setActionError(failure.message);
-    } finally {
-      setSessionBusy(false);
-    }
+    });
+    setSessionBusy(false);
   };
   const interrupt = async () => {
     if (!profile || sessionBusy || conversationReadOnly) return;
     setSessionBusy(true);
-    setActionError("");
-    const current = trackSelection(true);
-    try {
+    await attempt(trackSelection(true), async () => {
       for (const [id, target] of team ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
         await call("interrupt", { profile: id, session: target });
       }
       await refresh(true);
-    } catch (failure) {
-      if (current()) setActionError(failure.message);
-    } finally {
-      setSessionBusy(false);
-    }
+    });
+    setSessionBusy(false);
   };
   const stopMember = async (step) => {
     try {
@@ -17786,17 +17750,12 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       setActionError("\u5148\u5F00\u59CB\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u538B\u7F29\u4E0A\u4E0B\u6587");
       return;
     }
-    setCompacting((current2) => [...current2, sessionId]);
-    setActionError("");
-    const current = trackSelection(true);
-    try {
+    setCompacting((current) => [...current, sessionId]);
+    await attempt(trackSelection(true), async () => {
       await call("session-compact", { profile: profile.id, session: sessionId });
       await refresh(true);
-    } catch (failure) {
-      if (current()) setActionError(failure.message);
-    } finally {
-      setCompacting((current2) => current2.filter((id) => id !== sessionId));
-    }
+    });
+    setCompacting((current) => current.filter((id) => id !== sessionId));
   };
   const openSession = (id) => {
     const role = view.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
@@ -17884,7 +17843,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       pending: work?.pending ?? [],
       onQueueAction: (seq, action) => void queueAction(seq, action),
       onInsert: insertDraft,
-      onGoal: () => setGoalOpen(true),
+      onGoal: sessionId ? () => setGoalOpen(true) : void 0,
       onCompact: () => void compactSession(),
       onModelChange: (changes) => void updateEngineChoice(changes),
       rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view.profiles, profile })
@@ -17957,7 +17916,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         onRoles: () => layoutService?.selectPanel("nodo-roles"),
         onSessions: () => showSessions("sessions"),
         onTeam: () => showSessions("team"),
-        onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
+        onBack: () => rolesGuard(() => nativeSpace.leave()),
         onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
         onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
         onDeleteWorkspace: (workspace2) => setWorkspaceDialog({ kind: "delete", workspace: workspace2 })
@@ -17991,11 +17950,11 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       onCreated: createdWorktree
     }),
     goalOpen && profile && (0, import_react.createElement)(GoalDialog, {
-      key: `goal:${profile.id}`,
-      profile,
+      key: `goal:${sessionId}`,
+      profile: composerProfile,
       onSaved: (value) => {
         setGoalOpen(false);
-        void updateEngineChoice({ goal: value });
+        void updateEngineChoice({ nativeGoal: value });
       },
       onCancel: () => setGoalOpen(false)
     }),
@@ -19341,6 +19300,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const references = selection.references ?? [];
     const files = selection.files ?? [];
     const [reference, setReference] = (0, import_react.useState)(null);
+    const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
     const [busy, setBusy] = (0, import_react.useState)(false);
     const [error, setError] = (0, import_react.useState)("");
     const [notice, setNotice] = (0, import_react.useState)("");
@@ -19398,7 +19358,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         if (documents.length) {
           const saved = await call("attachment-save", {
             images: [],
-            files: documents.map((item) => ({ name: item.name, mediaType: item.mediaType, data: item.dataUrl.slice(item.dataUrl.indexOf(",") + 1) }))
+            files: documents.map((item) => ({ name: item.name, mediaType: item.mediaType, data: base64Of(item.dataUrl) }))
           });
           updateSelection((current) => ({ ...current, files: [...current.files ?? [], ...saved.files] }));
         }
@@ -19445,7 +19405,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
                 type: "image",
                 mediaType: image.mediaType,
                 name: image.name,
-                data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1)
+                data: base64Of(image.dataUrl)
               }))
             ], "queue");
             if (!result.ok) throw new Error(result.error.message);
@@ -19468,7 +19428,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             text: text || (references.length ? "\u8BF7\u53C2\u8003\u5F15\u7528\u7684\u4F1A\u8BDD\u7ED3\u679C\u3002" : ""),
             ...files.length ? { files } : {},
             ...bound.length ? { references: bound.map((item) => ({ id: item.id })) } : {},
-            images: images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(",") + 1) }))
+            images: images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }))
           });
           setNavigation((value) => ({
             ...value,
@@ -19510,10 +19470,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
           onRemoveImage: (index) => changeImages(images.filter((_2, position) => position !== index)),
           onRemoveFile: (index) => updateSelection((current) => ({ ...current, files: (current.files ?? []).filter((_2, at2) => at2 !== index) })),
           onInsert: profile ? (value) => changeText(`${text}${text && !/\s$/.test(text) ? " " : ""}${value}`) : void 0,
-          onGoal: () => {
-            setError("");
-            setNotice("\u8BF7\u5728\u89D2\u8272\u914D\u7F6E\u4E2D\u4FEE\u6539\u804C\u8D23\u8BF4\u660E\u3002");
-          },
+          onGoal: profile ? () => setGoalOpen(true) : void 0,
           onCompact: () => {
             setError("");
             setNotice("\u53D1\u9001\u540E\u53EF\u538B\u7F29\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u3002");
@@ -19529,6 +19486,14 @@ function createNewConversation(ctx, space, ReferenceDialog) {
           },
           onRemoveReference: (id) => {
             if (!disabled) updateSelection((current) => ({ ...current, references: (current.references ?? []).filter((item) => item.id !== id) }));
+          }
+        }),
+        goalOpen && profile && (0, import_react.createElement)(GoalDialog, {
+          profile: composerProfile,
+          onCancel: () => setGoalOpen(false),
+          onSaved: (nativeGoal) => {
+            updateSelection((current) => ({ ...current, choices: { ...current.choices, nativeGoal } }));
+            setGoalOpen(false);
           }
         }),
         reference && (0, import_react.createElement)(ReferenceDialog, {
@@ -19987,15 +19952,9 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-project:hover{background:var(--nodo-rail-hover)}
 .nodo-project .nodo-row-actions{padding-right:2px}
 .nodo-project .nodo-chevron[data-open]{transform:rotate(90deg)}
-.nodo-picker{display:flex;flex:1;min-width:0}
 .nodo-project-select{display:flex;align-items:center;gap:8px;flex:1;min-width:0;height:100%;padding:0 4px;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .nodo-chevron{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-caption);transition:transform .15s var(--ds-ease-in-out)}
 .nodo-chevron[data-open]{transform:rotate(180deg)}
-.nodo-project-pick{gap:6px;max-width:240px}
-.nodo-project-pick>.nodo-row-title{font-size:inherit;line-height:inherit}
-.nodo-project-state{display:inline-flex;flex:none}
-.nodo-menu-label{display:inline-flex;align-items:center;gap:6px}
-.nodo-menu-dot{display:inline-flex}
 /* Row actions follow the host's own workspace row: hidden until the row is
    hovered, its menu is open, or a button inside holds the keyboard. */
 .nodo-row-actions{display:none;flex:none;align-items:center;gap:2px}
@@ -20028,7 +19987,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-session .nodo-avatar{flex:none}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project .nodo-row-meta{margin-left:0}
-.nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
+.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
 .nodo-dot{position:relative;display:inline-block;flex:none;width:7px;height:7px;border-radius:50%;background:var(--nodo-dot)}
 .nodo-dot[data-s=run]{--nodo-dot:var(--dsw-alias-state-success-primary)}
 .nodo-dot[data-s=wait]{--nodo-dot:var(--dsw-alias-state-warn-primary)}
@@ -20230,6 +20189,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-approval-body{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;max-height:var(--dsh-composer-text-max-height,336px);padding:12px 16px 0;overflow-y:auto;outline:none}
 .nodo-approval-headline{margin:0;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px;text-wrap:pretty}
 .nodo-approval-command{margin:0;color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);font-size:13px;line-height:20px;word-break:break-all}
+.nodo-approval-plan{white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;font-size:14px;line-height:24px}
 .nodo-approval-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px}
 .nodo-approval-reject:not(:disabled):hover{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-color:transparent}
 .nodo-approval-error{margin:8px 0 0;color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}
@@ -20277,6 +20237,10 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-page .nodo-composer textarea:focus-visible{outline:none}
 .nodo-composer-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:2px 8px 6px}
 .nodo-composer-tools{display:flex;align-items:center;gap:12px;min-width:0;margin-right:auto}
+.nodo-mode-chip{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-mode-chip:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.nodo-mode-chip:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
+.nodo-mode-chip:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px;max-height:90px;overflow:auto}
 .nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
@@ -20379,12 +20343,6 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-dialog .nodo-field{gap:6px;padding:12px 0}
 .nodo-dialog .nodo-field:first-child{padding-top:0}
 .nodo-dialog .nodo-field+.nodo-field{border-top:.5px solid var(--dsw-alias-border-l2)}
-/* A row keeps the field rhythm: the row draws the separator and its own fields
-   drop the per-field padding and hairline. */
-.nodo-dialog-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;border-top:.5px solid var(--dsw-alias-border-l2)}
-.nodo-dialog-row>.nodo-field,.nodo-dialog-row>.nodo-field+.nodo-field{padding:0;border-top:0}
-.nodo-dialog-fields>.nodo-dialog-row:first-child{border-top:0;padding-top:0}
-.nodo-dialog-row+.nodo-field{border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-dialog .nodo-field>span{font-size:13px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-primary)}
 .nodo-dialog-input{width:100%;height:44px;padding:7px 12px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;font-weight:400;line-height:22px;outline:none}
 .nodo-dialog-input:focus-visible{border-color:var(--dsw-alias-state-business-primary)}
@@ -20459,7 +20417,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-role-dialog .nodo-role-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-role-confirm-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 8px 8px 16px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
-:is(.nodo-template-pick,.nodo-text-button,.nodo-roles-order):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+:is(.nodo-template-pick,.nodo-text-button):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-templates-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .nodo-template{position:relative;min-width:0}
 .nodo-role-dialog .nodo-template-pick{display:flex;align-items:center;height:28px;padding:0 12px;border:0;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
@@ -20472,13 +20430,8 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-template-remove{opacity:0}
 .nodo-template:is(:hover,:focus-within) .nodo-template-remove{opacity:1}
 .nodo-template-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
-.nodo-templates-divider{width:1px;height:22px;background:var(--dsw-alias-border-l2)}
 .nodo-template-filled{display:flex;align-items:center;gap:8px;margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-template-filled>.nodo-text-button{height:24px;padding:0 6px}
-.nodo-dialog-counted{position:relative}
-.nodo-dialog-counted>.nodo-dialog-input{padding-right:64px}
-.nodo-dialog-count{position:absolute;right:12px;bottom:9px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;pointer-events:none}
-.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:260px;min-height:112px;padding:12px 12px 30px;resize:vertical}
 .nodo-identity-save{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-identity-save>.nodo-dialog-hint{grid-column:1/-1}
 .nodo-role-dialog .nodo-identity-save .nodo-dialog-input{height:34px}

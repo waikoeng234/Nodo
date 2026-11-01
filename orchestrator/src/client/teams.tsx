@@ -3,7 +3,7 @@ import { RoleAvatar, avatarTemplateOf } from './avatar.tsx'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
 import { route } from '../../core/shared/route.js'
 import type { ReactNode } from './ui-shared.js'
-import { modelName, modelLabel } from './model-options.js'
+import { modelName, modelLabel, thinkingAfterModelChange } from './model-options.js'
 import type { ModelChoice } from './model-options.js'
 
 const fitText = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }
@@ -260,7 +260,7 @@ export function PickCell({ label, pick, team, roles, engines, optional, disabled
                 {group && <span className="nodo-pick-provider">{group}</span>}
                 <div className="nodo-pick-group">
                   {items.map(item => <button key={item.id} type="button" className="nodo-pick-option" aria-pressed={item.id === pick?.model}
-                    onClick={() => set({ model: item.id, thinking: item.thinking?.some(level => level.id === pick?.thinking) ? pick?.thinking : undefined })}>{modelLabel(item)}</button>)}
+                    onClick={() => set({ model: item.id, thinking: thinkingAfterModelChange(models, item.id, pick?.thinking) || undefined })}>{modelLabel(item)}</button>)}
                 </div>
               </Fragment>
             ))}

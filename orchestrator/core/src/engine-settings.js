@@ -62,5 +62,5 @@ export function install(rt) {
     return { enabledEngines: rt.state.prefs.enabledEngines ?? null, onboardedAt: rt.state.prefs.onboardedAt }
   }
 
-  Object.assign(rt, { engineConfig, saveEngineConfig, engineCatalogOf, scanEngineCatalog, engineCatalogView, engineDetectView, saveEngineEnables })
+  Object.assign(rt, { engineConfig, saveEngineConfig, scanEngineCatalog, engineCatalogView, engineDetectView, saveEngineEnables })
 }

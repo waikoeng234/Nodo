@@ -134,7 +134,7 @@ test('a ratio pair the engine reported in half is left out instead of mixed with
   assert.equal(record.decodeTokens, 60, 'the unpaired decodeTokens cannot ride a measured window')
 })
 
-test('a round without usage still counts, and dropping a session clears its record', async () => {
+test('a round without usage still counts, and events outside a round are ignored', async () => {
   const rt = recorder()
   rt.statsRound('s2')
   rt.statsEnd('s2')
@@ -145,8 +145,6 @@ test('a round without usage still counts, and dropping a session clears its reco
   rt.statsTool('s3', 'start')
   rt.statsEnd('s3')
   assert.equal(rt.statsView().s3, undefined)
-  rt.statsDrop('s2')
-  assert.equal(rt.statsView().s2, undefined)
 })
 
 test('a finished turn lands one session record and the state answer carries it', async () => {

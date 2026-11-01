@@ -6,7 +6,7 @@
 export type PermissionMode = 'plan' | 'workspace' | 'full'
 export type EngineField = { name: string; target: string; label: string; type: string; placeholder?: string; default?: unknown }
 export type EngineCapabilities = {
-  resume?: boolean; steer?: boolean; permissions?: boolean; questions?: boolean; commands?: boolean; compact?: boolean
+  resume?: boolean; steer?: boolean; permissions?: boolean; questions?: boolean; commands?: boolean; compact?: boolean; goals?: boolean
   permissionModes?: PermissionMode[]
   [name: string]: boolean | PermissionMode[] | undefined
 }
@@ -75,6 +75,7 @@ export type ChangesPresentation = {
 }
 
 export type DriverEvent =
+  | { type: 'goal'; objective?: string; status?: string; cleared?: boolean }
   | { type: 'note'; text: string }
   | { type: 'session'; state: 'starting' | 'ready' | 'closed'; sessionId?: string; workspaceId?: string; detail?: unknown }
   | { type: 'turn/start'; turnId: string }
@@ -109,6 +110,7 @@ export interface Driver {
   hasSession(): boolean
   dispose(): void
   compact?(): Promise<unknown>
+  goals?(objective?: string | null): Promise<unknown>
 }
 
 /** The eight primitives. `missingPrimitives` checks an adapter against this list. */
@@ -317,6 +319,16 @@ export function addUsage(base: Usage | undefined, next: Usage | undefined): Usag
 /** The normalized `timing` keys. */
 export const TIMING_KEYS = Object.freeze(['ttftMs', 'ttftSteps', 'llmMs', 'toolMs', 'decodeMs', 'decodeTokens'] as const)
 
+/**
+ * The prompt-side token sum over an Anthropic-shaped usage frame's parts
+ * (uncached input plus the cache buckets); undefined when no part is a number.
+ */
+export function promptTokensOf(parts: unknown[]) {
+  return parts.some(value => typeof value === 'number' && Number.isFinite(value))
+    ? parts.reduce<number>((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
+    : undefined
+}
+
 /** The clean-up `usageOf` does, for a `timing` object. */
 export function timingOf(raw: unknown): Timing | undefined {
   if (raw === null || typeof raw !== 'object') return undefined
@@ -341,6 +353,7 @@ export function missingPrimitives(candidate: unknown) {
  * refuses. New optional primitives join this list.
  */
 export const OPTIONAL_METHODS = [
+  'goals',
   'compact', // compact the session's older history; absent when the engine's channel has no such request
 ]
 

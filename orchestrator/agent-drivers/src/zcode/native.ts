@@ -14,8 +14,10 @@ type ProviderEnvOptions = { home?: string; platform?: string; arch?: string; env
 // The CLI ships inside the Desktop app bundle and is normally not on PATH;
 // the Windows installer puts it under the product directory.
 const bundleCandidates = (home: string, env: NodeJS.ProcessEnv, platform: string) => [
-  join(home, 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
-  '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
+  ...(platform === 'darwin' ? [
+    join(home, 'Applications/ZCode.app/Contents/Resources/glm/zcode.cjs'),
+    '/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs',
+  ] : []),
   ...(platform === 'win32' ? [
     ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, 'Programs/ZCode/resources/glm/zcode.cjs')] : []),
     ...(env.ProgramFiles ? [join(env.ProgramFiles, 'ZCode/resources/glm/zcode.cjs')] : []),

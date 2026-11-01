@@ -243,50 +243,16 @@ export function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
 
 // Rename a workspace by name alone, like dsh's own dialog: the folder itself is
 // not touched, and the name has to stay unique across the list.
-export function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
-  const [draft, setDraft] = useState(workspace.name)
+// One rename dialog for projects and sessions: draft/busy/error/composing
+// handling with Enter submit; the callers keep the save path and the labels.
+function RenameDialog({ title, label, action, maxLength, initial, conflict, conflictMessage, onSaved, onCancel }) {
+  const [draft, setDraft] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const composing = useRef(false)
   const name = draft.trim()
-  const conflict = names.some(item => item.id !== workspace.id && item.name.trim() === name)
-  const blocked = busy || name === '' || name === workspace.name || conflict
-  const submit = async () => {
-    if (blocked) return
-    setBusy(true)
-    setError('')
-    try { await onSaved(workspace.id, name) } catch (failure) { setError(failure.message); setBusy(false) }
-  }
-  return h(Modal, {
-    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '重命名项目',
-    footer: [
-      h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
-      h(Button, { key: 'save', variant: 'primary', disabled: blocked, onClick: () => void submit() }, '重命名'),
-    ],
-  },
-  h('input', {
-    className: 'nodo-dialog-input', value: draft, 'aria-label': '项目名称', 'data-modal-autofocus': true, disabled: busy,
-    onFocus: event => event.target.select(),
-    onChange: event => { setDraft(event.target.value); setError('') },
-    onCompositionStart: () => { composing.current = true },
-    onCompositionEnd: () => { composing.current = false },
-    onKeyDown: event => {
-      if (event.key !== 'Enter' || composing.current) return
-      event.preventDefault()
-      void submit()
-    },
-  }),
-  conflict && h('div', { className: 'nodo-dialog-error', role: 'alert' }, `已存在名为“${name}”的项目。`),
-  error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
-}
-
-export function SessionRenameDialog({ session, onCancel, onSaved }) {
-  const [draft, setDraft] = useState(session.name)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const composing = useRef(false)
-  const name = draft.trim()
-  const blocked = busy || name === '' || name === session.name
+  const clashing = conflict?.(name) ?? false
+  const blocked = busy || name === '' || name === initial || clashing
   const submit = async () => {
     if (blocked) return
     setBusy(true)
@@ -294,14 +260,14 @@ export function SessionRenameDialog({ session, onCancel, onSaved }) {
     try { await onSaved(name) } catch (failure) { setError(failure.message); setBusy(false) }
   }
   return h(Modal, {
-    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '修改会话名称',
+    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title,
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
-      h(Button, { key: 'save', variant: 'primary', disabled: blocked, onClick: () => void submit() }, '保存'),
+      h(Button, { key: 'save', variant: 'primary', disabled: blocked, onClick: () => void submit() }, action),
     ],
   },
   h('input', {
-    className: 'nodo-dialog-input', value: draft, 'aria-label': '会话名称', 'data-modal-autofocus': true, disabled: busy, maxLength: 80,
+    className: 'nodo-dialog-input', value: draft, 'aria-label': label, 'data-modal-autofocus': true, disabled: busy, maxLength,
     onFocus: event => event.target.select(),
     onChange: event => { setDraft(event.target.value); setError('') },
     onCompositionStart: () => { composing.current = true },
@@ -312,7 +278,24 @@ export function SessionRenameDialog({ session, onCancel, onSaved }) {
       void submit()
     },
   }),
+  clashing && h('div', { className: 'nodo-dialog-error', role: 'alert' }, conflictMessage(name)),
   error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
+}
+
+export function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
+  return h(RenameDialog, {
+    title: '重命名项目', label: '项目名称', action: '重命名', initial: workspace.name, onCancel,
+    conflict: name => names.some(item => item.id !== workspace.id && item.name.trim() === name),
+    conflictMessage: name => `已存在名为“${name}”的项目。`,
+    onSaved: name => onSaved(workspace.id, name),
+  })
+}
+
+export function SessionRenameDialog({ session, onCancel, onSaved }) {
+  return h(RenameDialog, {
+    title: '修改会话名称', label: '会话名称', action: '保存', maxLength: 80, initial: session.name, onCancel,
+    onSaved,
+  })
 }
 
 export function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {

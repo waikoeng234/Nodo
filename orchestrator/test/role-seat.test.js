@@ -36,6 +36,7 @@ async function harness({ defaultRole = 'a', readOnly = null, sourceSessionId } =
       subscribeNavigation: () => () => {}, readNavigation: () => navigation,
       setNavigation: update => { navigation = update(navigation) },
       readImage: async image => image,
+      base64Of: dataUrl => dataUrl.slice(dataUrl.indexOf(',') + 1),
       call: async (endpoint, payload) => {
         calls.push({ endpoint, ...plain(payload) })
         if (endpoint === 'session-create') return { id: `session-${++sequence}` }

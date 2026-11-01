@@ -39,10 +39,3 @@ export function modelChoices(models, value = '', fallback = '') {
 /** @param {ModelChoice[]} models */
 export const thinkingAfterModelChange = (models, model, thinking) =>
   (models.find(item => item.id === model)?.thinking ?? []).some(level => level.id === thinking) ? thinking : ''
-
-/** @param {ModelChoice | undefined} model */
-export const thinkingOptions = (model, value = '') => [
-  ...unlistedOption(value, model?.thinking ?? []), ...(model?.thinking ?? []).map(level =>
-    h('option', { key: level.id, value: level.id, title: level.id },
-      level.id === model.defaultThinking ? `${level.label ?? level.id}（模型默认）` : level.label ?? level.id)),
-]

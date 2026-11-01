@@ -16,6 +16,23 @@ const withFixture = async (run) => {
 
 const deltas = events => events.filter(event => event.type === 'delta').map(event => event.text).join('')
 
+test('Claude success results and goal-like prose do not become goal lifecycle events', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      for (const result of ['Goal achieved', 'goal_met', 'Goal cleared: All tests pass']) {
+        events.length = 0
+        await driver.sendTurn(`RESULT ${JSON.stringify({ subtype: 'success', result })}`)
+        const end = await until(() => events.find(event => event.type === 'turn/end'))
+        assert.equal(end.reason, 'done')
+        assert.equal(events.find(event => event.type === 'text')?.text, result)
+        assert.equal(events.some(event => event.type === 'goal'), false)
+      }
+    } finally { driver.dispose() }
+  })
+})
+
 test('Claude adapter streams one response natively and resumes the same CLI session', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

@@ -100,7 +100,7 @@ const INDEX = {
             error: 'partial', 'thread/started': 'unmapped', 'thread/status/changed': 'unmapped', 'thread/archived': 'unmapped',
             'thread/deleted': 'unmapped', 'thread/unarchived': 'unmapped', 'thread/closed': 'unmapped', 'thread/reverted': 'unmapped',
             'skills/changed': 'unmapped', 'thread/name/updated': 'unmapped', 'thread/attachment/updated': 'unmapped',
-            'thread/goal/updated': 'unmapped', 'thread/goal/cleared': 'unmapped', 'thread/queue/changed': 'unmapped',
+            'thread/goal/updated': 'mapped', 'thread/goal/cleared': 'mapped', 'thread/queue/changed': 'unmapped',
             'project/changed': 'unmapped', 'thread/project/updated': 'unmapped', 'thread/environment/connected': 'unmapped',
             'thread/environment/disconnected': 'unmapped', 'thread/settings/updated': 'unmapped',
             'hook/started': 'unmapped', 'hook/completed': 'unmapped', 'turn/diff/updated': 'partial', 'turn/plan/updated': 'mapped',

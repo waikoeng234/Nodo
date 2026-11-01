@@ -20,6 +20,17 @@ const STREAM_CODE_LABELS = { copy: '复制', copied: '已复制' }
 const STREAM_TERMINAL_LABELS = { ...STREAM_CODE_LABELS, signal: value => `信号 ${value}`, exitCode: value => `退出码 ${value}`, noExitCode: '退出码未知',
   running: '运行中', failed: '失败', done: '已完成', noOutput: '无输出', collapseAria: '收起输出', expandAria: n => `展开其余 ${n} 行`, collapse: '收起', expand: n => `展开其余 ${n} 行` }
 const streamSize = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+// The one file chip + hover-preview pair a read/write/edit tool row carries:
+// the chip rides the row's label, the preview hangs after the row.
+export const toolFileCards = (file, hover, scope) => ({
+  chip: h(ToolFileChip, { file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }),
+  preview: h(HoverPreview, { preview: hover, className: 'nodo-hover-preview',
+    label: `${file.display} ${file.diffs.length > 0 ? '变更预览' : '文件预览'}`,
+    children: file.diffs.length > 0 ? file.diffs.map((change, index) => h(CodeDiff, {
+      key: index, filename: change.path, previewable: false, cycle: 0, preview: true,
+      ...(change.patch !== undefined ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }) }))
+      : h(HoverFilePreview, { preview: hover, scope, path: file.path }) }),
+})
 const RESOURCE_LABELS = { image: '图片', file: '文件', link: '资源引用', audio: '音频', text: '嵌入文本资源' }
 const RESOURCE_REASONS = { 'unsupported-type': '当前宿主不支持此内容类型', 'invalid-image': '图片来源数据无效，未保存', 'image-too-large': '图片超过保存上限，未保存',
   'storage-unavailable': '图片未能保存，仅保留来源信息', 'attachment-unavailable': '源附件不可读取', 'source-limit': '会话详情超过保存上限，图片未保存', 'no-reader': '宿主未提供读取或预览通道' }
@@ -70,7 +81,7 @@ export function ResourceList({ resources, scope, cwd }) {
   if (items.length === 0) return null
   return h('div', { 'data-nodo-resources': '' }, items.map((resource, index) => h(ResourceItem, { key: index, resource, scope, cwd })))
 }
-function streamProgress(progress) {
+export function streamProgress(progress) {
   if (!progress || typeof progress !== 'object') return null
   const parts = []
   if (Number.isFinite(progress.elapsedMs)) parts.push(`已用时 ${(progress.elapsedMs / 1000).toFixed(1)} 秒`)
@@ -147,13 +158,7 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
     && (typeof diff.oldText === 'string' || diff.oldText === null && diff.created === true)) : []
   const file = record.kind === 'tool' && !terminal && ['read', 'write', 'edit'].includes(toolVariant(record.title))
     ? toolFileChange(body.input ?? body.inputText) : null
-  const chip = file ? h(ToolFileChip, { file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }) : null
-  const preview = file ? h(HoverPreview, { preview: hover, className: 'nodo-hover-preview',
-      label: `${file.display} ${file.diffs.length > 0 ? '变更预览' : '文件预览'}`,
-      children: file.diffs.length > 0 ? file.diffs.map((change, index) => h(CodeDiff, {
-        key: index, filename: change.path, previewable: false, cycle: 0, preview: true,
-        ...(change.patch !== undefined ? { patch: change.patch } : { diff: { path: change.path, oldText: change.oldText ?? null, newText: change.newText } }) }))
-        : h(HoverFilePreview, { preview: hover, scope: request, path: file.path }) }) : null
+  const cards = file ? toolFileCards(file, hover, request) : null
   // 只有成功或运行中的文件行收起详情；失败等状态保留状态行与输出。
   const state = eventPhase === 'start' ? 'started' : Object.hasOwn(STREAM_STATUS, record.status) ? record.status : 'unknown'
   const settledFile = Boolean(file) && ['done', 'running', 'started'].includes(state)
@@ -164,7 +169,7 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
   }
   return h('div', { 'data-nodo-stream-record': record.entityId, 'data-record-status': record.status },
     h(ToolCall, {
-      ...disclosure, open, compact: timeline, ...(chip ? { queryNode: chip } : {}),
+      ...disclosure, open, compact: timeline, ...(cards ? { queryNode: cards.chip } : {}),
       ...(settledFile ? { expandable: false, onOpenChange: () => {} } : {}),
       children: settledFile ? null : h('div', { className: 'nodo-stream-content' },
         h('p', { className: 'nodo-note', 'data-error': failed ? '' : undefined }, status),
@@ -190,5 +195,5 @@ export function StreamRecordCard({ record, request, eventPhase, timeline = false
         !available && record.status !== 'running' && h('p', { className: 'nodo-note' }, STREAM_REASON[record.details?.reason] ?? '详情不可用。'),
         error && h('p', { role: 'alert', className: 'nodo-error-line' }, error)),
     }),
-    preview)
+    cards?.preview)
 }

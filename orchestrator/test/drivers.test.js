@@ -36,6 +36,26 @@ test('a conversation that already holds a direct engine thread keeps its engine 
   } finally { h.dispose() }
 })
 
+test('applySessionGoal keeps the goal pending on a busy session and reports other send failures', async () => {
+  const h = harness()
+  try {
+    h.rt.save = async () => {}
+    const profile = { id: 'role', engine: 'claude' }
+    const session = { id: 'conv-1', goalPending: true, nativeGoal: '' }
+    const sends = []
+    h.rt.send = async (...args) => { sends.push(args); throw Object.assign(new Error('The session is busy'), { code: 'orch/busy' }) }
+    assert.equal(await h.rt.applySessionGoal(profile, session), false, 'a busy session keeps the goal pending without failing')
+    assert.equal(session.goalPending, true, 'the next send retries /goal clear')
+    h.rt.send = async () => { throw new Error('driver gone') }
+    await assert.rejects(h.rt.applySessionGoal(profile, session), /driver gone/, 'other send failures still surface')
+    assert.equal(session.goalPending, true)
+    h.rt.send = async () => ({ turn: Promise.resolve('turn-1') })
+    assert.equal(await h.rt.applySessionGoal(profile, session), true)
+    assert.equal(session.goalPending, undefined)
+    assert.equal(sends[0][1], '/goal clear')
+  } finally { h.dispose() }
+})
+
 test('driver bindings are issued once and revoked on replacement and release', async () => {
   const h = harness(), revoked = []
   let issued = 0

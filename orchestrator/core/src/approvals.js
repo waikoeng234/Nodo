@@ -1,4 +1,5 @@
 import { ANSWER_TEXT_MAX } from './constants.js'
+import { failure, invalid } from './errors.js'
 
 export function install(rt) {
   /** @type {Map<string, {id:string, profileId:?string, name:?string, kind:'permission'|'question', tool:?string, reason:string, detail:any, at:number, answer:(choice:{decision:string, value?:string})=>void}>} */
@@ -37,7 +38,7 @@ export function install(rt) {
         answering.delete(entry.id)
         rt.rearmIdle?.(profileId)
       }
-      if (!accepted) throw Object.assign(new Error('This engine request is no longer active'), { code: 'orch/stale' })
+      if (!accepted) throw failure('This engine request is no longer active', 'orch/stale')
     }
   }
 
@@ -46,18 +47,25 @@ export function install(rt) {
     const entry = pending.get(id)
     const typed = typeof value === 'string' && value.trim() !== ''
     if (entry === undefined) {
-      throw Object.assign(new Error('This card is no longer open'), { code: 'orch/stale' })
+      throw failure('This card is no longer open', 'orch/stale')
     }
     if (entry.kind === 'permission' && decision !== 'allow' && decision !== 'deny') {
-      throw Object.assign(new Error('Choose allow or deny'), { code: 'orch/invalid' })
+      throw invalid('Choose allow or deny')
     }
     if (entry.kind === 'question') {
       if (decision !== 'answer' || !typed) {
-        throw Object.assign(new Error('Type an answer first'), { code: 'orch/invalid' })
+        throw invalid('Type an answer first')
       }
     }
     const reply = { decision, value: typeof value === 'string' ? value.slice(0, ANSWER_TEXT_MAX) : undefined }
     await entry.answer(reply)
+    if (!entry.cancelled && decision === 'allow' && entry.tool === 'ExitPlanMode') {
+      const found = rt.conversationOf(entry.profileId)
+      if (['claude', 'codebuddy'].includes(found?.session?.engine) && (found.session.permission ?? found.profile.permission) === 'plan') {
+        found.session.permission = 'workspace'
+        await rt.save()
+      }
+    }
     if (!entry.cancelled) await entry.onAnswered?.(reply)
     if (entry.profileId) void rt.flushLeadReports?.(entry.profileId)
   }

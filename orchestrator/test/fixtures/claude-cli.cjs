@@ -155,7 +155,10 @@ const receive = line => {
     send({ type: 'system', subtype: 'task_notification', task_id: 'task-2', status: 'completed', summary: 'child two done', output_file: '/tmp/out', session_id: session })
     return say('Lifecycle done')
   }
-  if (text.includes('ASK_PERMISSION')) {
+  if (text === 'EXIT_PLAN') {
+    pending = { id: 'plan-' + turn, tool: 'ExitPlanMode' }
+    send({ type: 'control_request', request_id: pending.id, request: { subtype: 'can_use_tool', tool_name: 'ExitPlanMode', input: { plan: '# Plan\nRun the checks' } } })
+  } else if (text.includes('ASK_PERMISSION')) {
     pending = { id: 'perm-' + turn, tool: 'Write' }
     send({ type: 'control_request', request_id: pending.id, request: { subtype: 'can_use_tool', tool_name: 'Write', display_name: 'Write', input: { file_path: '/tmp/fixture', content: 'hi' }, description: '/tmp/fixture' } })
   } else if (text.includes('ASK_QUESTIONS')) {

@@ -1,11 +1,10 @@
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { STEER, addUsage, usageOf } from '../spi.js';
+import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { piArgs, connectPi } from './native.js';
-export { findExecutable } from '../cli.js';
 export const piInfo = {
     id: 'pi', label: 'Pi', command: 'pi', requiresCwd: true,
     description: 'Uses the local pi CLI with its configured model providers; sessions live in the shared pi store.',
@@ -182,12 +181,7 @@ function piFileChanges(name, input, existedBefore, details) {
     }
     return [];
 }
-const promptTokens = (raw) => {
-    const parts = [raw?.input, raw?.cacheRead, raw?.cacheWrite];
-    return parts.some(value => typeof value === 'number' && Number.isFinite(value))
-        ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
-        : undefined;
-};
+const promptTokens = (raw) => promptTokensOf([raw?.input, raw?.cacheRead, raw?.cacheWrite]);
 const textOf = (message) => (Array.isArray(message?.content) ? message.content : [])
     .filter(block => block?.type === 'text' && typeof block.text === 'string')
     .map(block => block.text).join('');
@@ -565,7 +559,9 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
                 drop();
                 return;
             }
-            await Promise.race([turn.done, new Promise(resolve => { setTimeout(resolve, 5000); })]);
+            let timer;
+            await Promise.race([turn.done, new Promise(resolve => { timer = setTimeout(resolve, 5000); })]);
+            clearTimeout(timer);
             if (running === turn)
                 drop();
         },

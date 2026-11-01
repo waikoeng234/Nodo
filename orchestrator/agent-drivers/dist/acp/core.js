@@ -298,7 +298,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         if (method === 'session/request_permission') {
             if (!Array.isArray(params.options) || !params.options.length)
                 return peer.refuse(requestId, 'No permission choices supplied');
-            const tool = params.toolCall?.name ?? params.toolCall?.title ?? running.tools.get(params.toolCall?.toolCallId)?.name;
+            const tool = params.toolCall?.name ?? running.tools.get(params.toolCall?.toolCallId)?.name ?? params.toolCall?.title;
             // An engine may promote a permission into a question: CodeBuddy gates its
             // AskUserQuestion tool with one, the questions riding in the tool call's
             // raw input, and the answers travel back outside the ACP reply. The hook

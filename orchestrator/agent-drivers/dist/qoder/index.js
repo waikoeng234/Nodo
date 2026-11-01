@@ -1,12 +1,12 @@
 import { readdirSync, statSync, constants, accessSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { STEER, addUsage, usageOf } from '../spi.js';
+import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js';
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { qoderArgs, connectQoder } from './native.js';
-export { findExecutable } from '../cli.js';
+import { askAnswers, askOpened } from '../questions.js';
 export const qoderInfo = {
     id: 'qoder', label: 'Qoder CLI', command: 'qodercli', requiresCwd: true,
     description: 'Uses the local Qoder CLI and its existing login; sessions live in the shared Qoder store.',
@@ -184,12 +184,7 @@ function qoderFileChanges(name, input, resultText) {
 }
 // One assistant frame is one request, so its prompt-side token sum is the
 // context occupancy; the routed model's context window rides the result frame.
-const qoderPromptTokens = (raw) => {
-    const parts = [raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens];
-    return parts.some(value => typeof value === 'number' && Number.isFinite(value))
-        ? parts.reduce((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
-        : undefined;
-};
+const qoderPromptTokens = (raw) => promptTokensOf([raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens]);
 // A free route bills nothing, so its Anthropic counters all read 0 while the CLI still
 // reports the request's context occupancy as a ratio of the routed model's window.
 const qoderRatioTokens = (raw, contextWindow) => typeof raw?.context_usage_ratio === 'number' && raw.context_usage_ratio > 0
@@ -408,19 +403,9 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
                 coverage.count('unknown-request');
             return peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: { behavior: 'deny', message: 'No matching active turn' } } });
         }
-        const question = request.tool_name === 'AskUserQuestion';
-        const cardId = `qoder:${sessionId}:${frame.request_id}`;
-        requests.set(cardId, frame);
-        emit({
-            type: 'request/opened', id: cardId, kind: question ? 'question' : 'permission',
-            tool: request.tool_name,
-            reason: question
-                ? (request.input?.questions ?? []).map(item => item.question).join('\n')
-                : request.description ?? request.input?.description ?? request.input?.command ?? `${request.display_name ?? request.tool_name} requests permission`,
-            ...(question ? { detail: { questions: (request.input?.questions ?? []).map((item, index) => ({ id: `q${index}`, question: item.question, header: item.header,
-                        ...(item.options ? { options: item.options } : {}), ...(item.multiSelect === undefined ? {} : { multiSelect: item.multiSelect }) })) } }
-                : { detail: { input: request.input } }),
-        });
+        const opened = askOpened('qoder', sessionId, frame.request_id, request);
+        requests.set(opened.id, frame);
+        emit(opened);
     };
     const boot = () => {
         if (ready)
@@ -543,42 +528,25 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
                 drop();
             })();
         },
-        respondToRequest(id, { decision, value } = {}) {
+        async respondToRequest(id, { decision, value } = {}) {
             const frame = requests.get(id);
             if (!frame || !peer)
-                return Promise.resolve(false);
+                return false;
             const request = frame.request ?? {};
             if (request.tool_name === 'AskUserQuestion') {
-                const questions = request.input?.questions ?? [];
-                let answers;
-                if (questions.length === 1)
-                    answers = { [questions[0].question]: String(value ?? '').trim() };
-                else {
-                    try {
-                        answers = JSON.parse(value);
-                    }
-                    catch {
-                        return Promise.reject(new Error('Answer each question using the form'));
-                    }
-                    if (!answers || typeof answers !== 'object' || Array.isArray(answers))
-                        return Promise.reject(new Error('Answer each question using the form'));
-                }
-                const answerOf = (item, index) => String(answers?.[`q${index}`] ?? answers?.[item.question] ?? '').trim();
-                if (questions.some((item, index) => answerOf(item, index) === ''))
-                    return Promise.reject(new Error('Answer every question first'));
-                const mapped = Object.fromEntries(questions.map((item, index) => [item.question, answerOf(item, index)]));
+                const mapped = askAnswers(request.input?.questions ?? [], value);
                 peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: { behavior: 'allow', updatedInput: { ...request.input, answers: mapped } } } });
             }
             else {
                 if (!['allow', 'deny'].includes(decision))
-                    return Promise.resolve(false);
+                    return false;
                 peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: decision === 'allow'
                             ? { behavior: 'allow', updatedInput: request.input ?? {} }
                             : { behavior: 'deny', message: 'Denied by the user' } } });
             }
             requests.delete(id);
             emit({ type: 'request/closed', id });
-            return Promise.resolve(true);
+            return true;
         },
         onEvent() { throw new Error('Pass onEvent to createQoderDriver'); },
         hasSession() { return connected; },

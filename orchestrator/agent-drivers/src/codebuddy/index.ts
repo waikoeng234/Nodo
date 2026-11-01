@@ -20,8 +20,6 @@ type CodebuddyQuestionInput = {
   questions?: { question?: unknown; multiSelect?: unknown; options?: { label?: unknown; description?: unknown }[] }[]
 }
 
-export { findExecutable } from '../cli.js'
-
 export const codebuddyInfo = {
   id: 'codebuddy', label: 'CodeBuddy', command: 'codebuddy', requiresCwd: true,
   description: 'Uses the local CodeBuddy CLI and its existing login; sessions live in the CLI\'s own storage.',

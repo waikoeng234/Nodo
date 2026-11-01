@@ -49,6 +49,7 @@ test('the conversation sends in queue mode and restores edited text and images w
       nativeSpace: { subscribe() {}, getSnapshot: () => space },
       completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       subscribeNativeSession() {}, readNativeSession: () => null,
+      base64Of: dataUrl => dataUrl.slice(dataUrl.indexOf(',') + 1),
       call: async (endpoint, payload) => {
         calls.push({ endpoint, ...JSON.parse(JSON.stringify(payload)) })
         if (endpoint === 'queued-message' && payload.action === 'edit') return {

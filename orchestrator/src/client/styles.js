@@ -164,15 +164,9 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-project:hover{background:var(--nodo-rail-hover)}
 .nodo-project .nodo-row-actions{padding-right:2px}
 .nodo-project .nodo-chevron[data-open]{transform:rotate(90deg)}
-.nodo-picker{display:flex;flex:1;min-width:0}
 .nodo-project-select{display:flex;align-items:center;gap:8px;flex:1;min-width:0;height:100%;padding:0 4px;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .nodo-chevron{display:inline-flex;align-items:center;flex:none;color:var(--dsw-alias-label-caption);transition:transform .15s var(--ds-ease-in-out)}
 .nodo-chevron[data-open]{transform:rotate(180deg)}
-.nodo-project-pick{gap:6px;max-width:240px}
-.nodo-project-pick>.nodo-row-title{font-size:inherit;line-height:inherit}
-.nodo-project-state{display:inline-flex;flex:none}
-.nodo-menu-label{display:inline-flex;align-items:center;gap:6px}
-.nodo-menu-dot{display:inline-flex}
 /* Row actions follow the host's own workspace row: hidden until the row is
    hovered, its menu is open, or a button inside holds the keyboard. */
 .nodo-row-actions{display:none;flex:none;align-items:center;gap:2px}
@@ -205,7 +199,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-session .nodo-avatar{flex:none}
 .nodo-row-meta{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-project .nodo-row-meta{margin-left:0}
-.nodo-row-state,.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
+.nodo-row-running{display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
 .nodo-dot{position:relative;display:inline-block;flex:none;width:7px;height:7px;border-radius:50%;background:var(--nodo-dot)}
 .nodo-dot[data-s=run]{--nodo-dot:var(--dsw-alias-state-success-primary)}
 .nodo-dot[data-s=wait]{--nodo-dot:var(--dsw-alias-state-warn-primary)}
@@ -407,6 +401,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-approval-body{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;max-height:var(--dsh-composer-text-max-height,336px);padding:12px 16px 0;overflow-y:auto;outline:none}
 .nodo-approval-headline{margin:0;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px;text-wrap:pretty}
 .nodo-approval-command{margin:0;color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);font-size:13px;line-height:20px;word-break:break-all}
+.nodo-approval-plan{white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;font-size:14px;line-height:24px}
 .nodo-approval-actions{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px}
 .nodo-approval-reject:not(:disabled):hover{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-color:transparent}
 .nodo-approval-error{margin:8px 0 0;color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}
@@ -454,6 +449,10 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-page .nodo-composer textarea:focus-visible{outline:none}
 .nodo-composer-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:2px 8px 6px}
 .nodo-composer-tools{display:flex;align-items:center;gap:12px;min-width:0;margin-right:auto}
+.nodo-mode-chip{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-mode-chip:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.nodo-mode-chip:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
+.nodo-mode-chip:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px;max-height:90px;overflow:auto}
 .nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
@@ -556,12 +555,6 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-dialog .nodo-field{gap:6px;padding:12px 0}
 .nodo-dialog .nodo-field:first-child{padding-top:0}
 .nodo-dialog .nodo-field+.nodo-field{border-top:.5px solid var(--dsw-alias-border-l2)}
-/* A row keeps the field rhythm: the row draws the separator and its own fields
-   drop the per-field padding and hairline. */
-.nodo-dialog-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;border-top:.5px solid var(--dsw-alias-border-l2)}
-.nodo-dialog-row>.nodo-field,.nodo-dialog-row>.nodo-field+.nodo-field{padding:0;border-top:0}
-.nodo-dialog-fields>.nodo-dialog-row:first-child{border-top:0;padding-top:0}
-.nodo-dialog-row+.nodo-field{border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-dialog .nodo-field>span{font-size:13px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-primary)}
 .nodo-dialog-input{width:100%;height:44px;padding:7px 12px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;font-weight:400;line-height:22px;outline:none}
 .nodo-dialog-input:focus-visible{border-color:var(--dsw-alias-state-business-primary)}
@@ -636,7 +629,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-role-dialog .nodo-role-more:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-role-confirm-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 8px 8px 16px;border-radius:calc(var(--nodo-role-radius) + 4px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-role-confirm{flex:1;margin:0;color:var(--dsw-alias-state-error-primary);font-size:13px;line-height:20px}
-:is(.nodo-template-pick,.nodo-text-button,.nodo-roles-order):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+:is(.nodo-template-pick,.nodo-text-button):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-templates-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .nodo-template{position:relative;min-width:0}
 .nodo-role-dialog .nodo-template-pick{display:flex;align-items:center;height:28px;padding:0 12px;border:0;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
@@ -649,13 +642,8 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-template-remove{opacity:0}
 .nodo-template:is(:hover,:focus-within) .nodo-template-remove{opacity:1}
 .nodo-template-remove:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-error-primary)}
-.nodo-templates-divider{width:1px;height:22px;background:var(--dsw-alias-border-l2)}
 .nodo-template-filled{display:flex;align-items:center;gap:8px;margin:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .nodo-template-filled>.nodo-text-button{height:24px;padding:0 6px}
-.nodo-dialog-counted{position:relative}
-.nodo-dialog-counted>.nodo-dialog-input{padding-right:64px}
-.nodo-dialog-count{position:absolute;right:12px;bottom:9px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;pointer-events:none}
-.nodo-role-dialog .nodo-dialog-counted>.nodo-dialog-textarea{height:260px;min-height:112px;padding:12px 12px 30px;resize:vertical}
 .nodo-identity-save{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:calc(var(--nodo-role-radius) + 8px);background:var(--dsw-alias-bg-layer-1)}
 .nodo-identity-save>.nodo-dialog-hint{grid-column:1/-1}
 .nodo-role-dialog .nodo-identity-save .nodo-dialog-input{height:34px}

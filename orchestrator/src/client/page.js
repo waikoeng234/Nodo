@@ -1,6 +1,6 @@
 import {
-  h, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, nativeSpace, openNativeSession, completionTracker, layoutService,
-  subscribeNativeSession, readNativeSession, runningOf, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular, rightPanelService,
+  h, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, base64Of, nativeSpace, openNativeSession, completionTracker, layoutService,
+  subscribeNativeSession, readNativeSession, NodoLogo, NewConversation, Button, Tooltip, IconPanelLeftOutlineRegular, rightPanelService,
 } from './ui-shared.js'
 import { RolePicker } from './role-seat.js'
 import { Rail } from './session-rail.tsx'
@@ -13,6 +13,7 @@ import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
 import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
 import { leadModeOf } from '../../core/shared/lead.js'
+import { nativeIdOf } from '../../core/shared/session.js'
 
 // Unsent drafts outlive the page: text is kept in localStorage across reloads,
 // pasted images (too large for storage) in memory across remounts.
@@ -205,10 +206,10 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   // mode a not-yet-created lead conversation would get: Team leads, the session
   // view chats.
   const composerProfile = profile && session
-    ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode }
+    ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal }
     : profile?.lead === true ? { ...profile, leadMode: team } : profile
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
-    ? view?.profiles.flatMap(role => role.sessions).find(item => (item.engine === 'dsh' ? item.driverSessionId : null) === currentNativeSession) : null
+    ? view?.profiles.flatMap(role => role.sessions).find(item => nativeIdOf(item) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
   useEffect(() => {
     if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq)
@@ -234,6 +235,14 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   }
   const cancelEditing = () => setEditing(null)
   const edit = value => { selection.current++; setEditing(value) }
+  // The page actions share one envelope: clear the error, surface a failure
+  // only while the user is still looking at the same selection, and never
+  // rethrow — the caller releases its busy flag right after.
+  const attempt = async (tracked, work) => {
+    setActionError('')
+    try { await work() }
+    catch (failure) { if (tracked()) setActionError(failure.message) }
+  }
   // The roles panel is the one place roles are configured; the roster's buttons
   // land there with the target preselected. Bumping the selection retires any
   // pending session selection, the way opening a form always did.
@@ -244,20 +253,17 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const updateEngineChoice = async changes => {
     if (!profile || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
-    setActionError('')
     const current = trackSelection()
-    const relevant = trackSelection(true)
-    try {
-      if (sessionId && ['model', 'thinking', 'permission'].some(key => changes[key] !== undefined)) {
+    await attempt(trackSelection(true), async () => {
+      if (sessionId && ['model', 'thinking', 'permission', 'nativeGoal'].some(key => changes[key] !== undefined)) {
         await call('session-update', { profile: profile.id, session: sessionId, changes })
       } else {
         const saved = await call('profile-update', { id: profile.id, changes })
         if (current()) remember(saved.id, workspace?.id, saved.activeSessionId)
       }
       await refresh(true)
-    }
-    catch (failure) { if (relevant()) setActionError(failure.message) }
-    finally { setSessionBusy(false) }
+    })
+    setSessionBusy(false)
   }
   const savedWorkspace = async saved => { await refresh(true); remember(profile?.id, saved.id); setEditing(null) }
   const createdWorktree = async created => {
@@ -303,17 +309,15 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const select = (role, id, project) => selectSession(role, id, project, pageEnv)
   const archiveSession = async (role, id, archived) => {
     if (busy || readOnly) return
-    setBusy(true); setActionError('')
-    try { await call('session-archive', { profile: role.id, session: id, archived }); await refresh(true) }
-    catch (failure) { setActionError(failure.message) }
-    finally { setBusy(false) }
+    setBusy(true)
+    await attempt(() => true, async () => { await call('session-archive', { profile: role.id, session: id, archived }); await refresh(true) })
+    setBusy(false)
   }
   const updateSession = async (role, id, changes) => {
     if (busy || readOnly) return
-    setBusy(true); setActionError('')
-    try { await call('session-update', { profile: role.id, session: id, changes }); await refresh(true) }
-    catch (failure) { setActionError(failure.message) }
-    finally { setBusy(false) }
+    setBusy(true)
+    await attempt(() => true, async () => { await call('session-update', { profile: role.id, session: id, changes }); await refresh(true) })
+    setBusy(false)
   }
   const renamedSession = async ({ role, session }, name) => {
     await call('session-update', { profile: role.id, session: session.id, changes: { name } })
@@ -325,7 +329,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     if (team && !roleId) return
     startConversation(roleId, pageEnv, project)
   }
-  const attach = async (files) => {    try {
+  const attach = async files => {
+    try {
       const added = await Promise.all(files.map(readImage))
       setPastedImages(current => ({ ...current, [draftKey]: [...(current[draftKey] ?? []), ...added] }))
     } catch (failure) { setActionError(failure.message) }
@@ -342,27 +347,24 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     const images = pastedImages[draftKey] ?? []
     if (!profile || !workspace || (!text && images.length === 0) || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
-    setActionError('')
     const current = trackSelection()
-    const relevant = trackSelection(true)
-    try {
+    await attempt(trackSelection(true), async () => {
       const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true, team })).id
-      const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: image.dataUrl.slice(image.dataUrl.indexOf(',') + 1) }))
+      const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }))
       await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue' })
       if (current()) setSentTick(tick => tick + 1)
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
       await refresh(true)
       if (current()) remember(profile.id, workspace.id, id)
-    } catch (failure) { if (relevant()) setActionError(failure.message) }
-    finally { setSessionBusy(false) }
+    })
+    setSessionBusy(false)
   }
   const queueAction = async (seq, action) => {
     if (!profile || !sessionId || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
-    setActionError('')
     const relevant = trackSelection(true)
-    try {
+    await attempt(relevant, async () => {
       const result = await call('queued-message', { profile: profile.id, session: sessionId, seq, action })
       if (action === 'edit') {
         setDrafts(current => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join('\n\n') }))
@@ -375,22 +377,19 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         else if (result.mode !== 'cancelled') setSentTick(tick => tick + 1)
       }
       await refresh(true)
-    } catch (failure) { if (relevant()) setActionError(failure.message) }
-    finally { setSessionBusy(false) }
+    })
+    setSessionBusy(false)
   }
   const interrupt = async () => {
     if (!profile || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
-    setActionError('')
-    const current = trackSelection(true)
-    try {
+    await attempt(trackSelection(true), async () => {
       for (const [id, target] of team ? roundLive.map(item => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
         await call('interrupt', { profile: id, session: target })
       }
       await refresh(true)
-    }
-    catch (failure) { if (current()) setActionError(failure.message) }
-    finally { setSessionBusy(false) }
+    })
+    setSessionBusy(false)
   }
   const stopMember = async step => {
     try { await call('interrupt', { profile: step.profile, session: step.session }); await refresh(true) }
@@ -402,11 +401,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     if (!profile || sessionBusy || conversationReadOnly || work?.active === true) return
     if (!sessionId) { setActionError('先开始一个会话，再压缩上下文'); return }
     setCompacting(current => [...current, sessionId])
-    setActionError('')
-    const current = trackSelection(true)
-    try { await call('session-compact', { profile: profile.id, session: sessionId }); await refresh(true) }
-    catch (failure) { if (current()) setActionError(failure.message) }
-    finally { setCompacting(current => current.filter(id => id !== sessionId)) }
+    await attempt(trackSelection(true), async () => { await call('session-compact', { profile: profile.id, session: sessionId }); await refresh(true) })
+    setCompacting(current => current.filter(id => id !== sessionId))
   }
 
   const openSession = id => {
@@ -452,7 +448,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
       pending: work?.pending ?? [], onQueueAction: (seq, action) => void queueAction(seq, action),
       onInsert: insertDraft,
-      onGoal: () => setGoalOpen(true), onCompact: () => void compactSession(),
+      onGoal: sessionId ? () => setGoalOpen(true) : undefined, onCompact: () => void compactSession(),
       onModelChange: changes => void updateEngineChoice(changes),
       rolePicker: h(RolePicker, { profiles: team ? profiles : view.profiles, profile }),
     }),
@@ -499,7 +495,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         onRoles: () => layoutService?.selectPanel('nodo-roles'),
         onSessions: () => showSessions('sessions'),
         onTeam: () => showSessions('team'),
-        onBack: () => rolesGuard(() => nativeSpace ? nativeSpace.leave() : layoutService?.selectPanel(null)),
+        onBack: () => rolesGuard(() => nativeSpace.leave()),
         onNewWorkspace: () => edit({ kind: 'workspace', id: 'new', workspace: null }),
         onRenameWorkspace: workspace => setWorkspaceDialog({ kind: 'rename', workspace }),
         onDeleteWorkspace: workspace => setWorkspaceDialog({ kind: 'delete', workspace }),
@@ -523,8 +519,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       onCancel: () => setWorktreeOpen(false), onCreated: createdWorktree,
     }),
     goalOpen && profile && h(GoalDialog, {
-      key: `goal:${profile.id}`, profile,
-      onSaved: value => { setGoalOpen(false); void updateEngineChoice({ goal: value }) },
+      key: `goal:${sessionId}`, profile: composerProfile,
+      onSaved: value => { setGoalOpen(false); void updateEngineChoice({ nativeGoal: value }) },
       onCancel: () => setGoalOpen(false),
     }),
     statsOpen && !leadModeOf(profile, session) && view !== undefined && (view.stats ?? {})[sessionId] !== undefined && h(StatsDialog, {

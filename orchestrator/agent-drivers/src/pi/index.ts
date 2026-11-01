@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { STEER, addUsage, usageOf } from '../spi.js'
+import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges, replacementEdit } from '../file-changes.js'
@@ -56,8 +56,6 @@ type PiTurn = {
   usage?: Usage; contextUsed?: number; changes?: FileChanges | null; settle: (() => void) | null
   done?: Promise<void>; compacting?: boolean; unconfirmed?: boolean
 }
-
-export { findExecutable } from '../cli.js'
 
 export const piInfo = {
   id: 'pi', label: 'Pi', command: 'pi', requiresCwd: true,
@@ -211,12 +209,7 @@ function piFileChanges(name: string, input: PiInput | undefined, existedBefore?:
   return []
 }
 
-const promptTokens = (raw: PiUsage | undefined) => {
-  const parts = [raw?.input, raw?.cacheRead, raw?.cacheWrite]
-  return parts.some(value => typeof value === 'number' && Number.isFinite(value))
-    ? parts.reduce<number>((total, value) => total + (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0), 0)
-    : undefined
-}
+const promptTokens = (raw: PiUsage | undefined) => promptTokensOf([raw?.input, raw?.cacheRead, raw?.cacheWrite])
 
 const textOf = (message: PiMessage | undefined) => (Array.isArray(message?.content) ? message.content : [])
   .filter(block => block?.type === 'text' && typeof block.text === 'string')
@@ -511,7 +504,9 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
       turn.interrupting = true
       try { await command('abort', {}, 120_000) }
       catch { drop(); return }
-      await Promise.race([turn.done, new Promise(resolve => { setTimeout(resolve, 5000) })])
+      let timer: NodeJS.Timeout | undefined
+      await Promise.race([turn.done, new Promise(resolve => { timer = setTimeout(resolve, 5000) })])
+      clearTimeout(timer)
       if (running === turn) drop()
     },
     respondToRequest(id, { decision, value }: Omit<DriverResponse, 'value'> & { value?: unknown } = {}) {

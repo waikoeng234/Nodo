@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TRANSCRIPT_TEXT_MAX } from './constants.js'
+import { invalid } from './errors.js'
+import { nativeIdOf } from '../shared/session.js'
 
-const invalid = message => Object.assign(new Error(message), { code: 'orch/invalid' })
 const textOf = content => typeof content === 'string' ? content
   : (content ?? []).filter(block => block?.type === 'text').map(block => block.text).join('\n\n')
 const mention = /\[引用会话\]\(nodo-reference:([\da-f-]{36})\)/g
@@ -34,8 +35,7 @@ export const transcriptReplies = lines => lines.flatMap((line, index) => {
 
 export function install(rt) {
   const folder = join(rt.home, 'references')
-  const nativeId = session => session.engine === 'dsh' ? session.driverSessionId : undefined
-  const owns = id => typeof id === 'string' && Object.values(rt.state.profiles).some(profile => rt.sessionsOf(profile).some(session => session.id === id || nativeId(session) === id))
+  const owns = id => typeof id === 'string' && Object.values(rt.state.profiles).some(profile => rt.sessionsOf(profile).some(session => session.id === id || nativeIdOf(session) === id))
   const saveReference = async snapshot => {
     await mkdir(folder, { recursive: true })
     await writeFile(join(folder, `${snapshot.id}.json`), JSON.stringify(snapshot), { flag: 'wx', mode: 0o600 })
@@ -46,7 +46,7 @@ export function install(rt) {
     const profile = rt.findProfile(ref)
     if (!profile) throw invalid('请选择有效的来源角色。')
     const { session } = rt.conversation(profile.id, id)
-    const hostId = nativeId(session)
+    const hostId = nativeIdOf(session)
     let messages
     if (hostId) {
       if (typeof rt.ctx.sessionController?.inspect !== 'function') throw invalid('当前宿主无法读取原生会话。')
@@ -142,7 +142,7 @@ export function install(rt) {
     return { ...decision, messages }
   }, { prepend: true })
   const dropReferences = async sessions => {
-    const targets = new Set(sessions.flatMap(session => [session.id, nativeId(session)]).filter(Boolean))
+    const targets = new Set(sessions.flatMap(session => [session.id, nativeIdOf(session)]).filter(Boolean))
     for (const file of await readdir(folder).catch(() => [])) {
       const path = join(folder, file)
       const target = await readFile(path, 'utf8').then(JSON.parse).then(snapshot => snapshot?.target, () => undefined)

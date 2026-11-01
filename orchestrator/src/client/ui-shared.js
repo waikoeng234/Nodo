@@ -18,13 +18,13 @@ import {
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
-  IconSparkleRegular, IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
+  IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconGaugeOutlineRegular,
   IconBranchOutlineRegular, IconCompareSplitOutlineRegular, IconFolderCloseRegular, IconRightUpOutlineRegular,
   IconContextInjectionOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
-  IconAgentPresetOutlineRegular, IconUserOutlineRegular, IconPlayOutlineRegular, IconCheckCircleOutlineRegular,
+  IconAgentPresetOutlineRegular,
   IconInspectOutlineRegular, IconUnarchiveOutlineRegular, IconChecklistOutlineRegular,
-  IconWorkspaceTreeOutlineRegular, PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
+  PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
   IconDataOutlineRegular, IconGlobeOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import NODO_LOGO from './assets/nodo-logo.png'
@@ -38,13 +38,13 @@ export {
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
-  IconSparkleRegular, IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
+  IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconGaugeOutlineRegular,
   IconBranchOutlineRegular, IconCompareSplitOutlineRegular, IconFolderCloseRegular, IconRightUpOutlineRegular,
   IconContextInjectionOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
-  IconAgentPresetOutlineRegular, IconUserOutlineRegular, IconPlayOutlineRegular, IconCheckCircleOutlineRegular,
+  IconAgentPresetOutlineRegular,
   IconInspectOutlineRegular, IconUnarchiveOutlineRegular, IconChecklistOutlineRegular,
-  IconWorkspaceTreeOutlineRegular, PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
+  PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
   IconDataOutlineRegular, IconGlobeOutlineRegular,
 }
 
@@ -101,6 +101,9 @@ export const readImage = file => new Promise((resolve, reject) => {
   reader.onerror = () => reject(reader.error)
   reader.readAsDataURL(file)
 })
+
+// The wire format takes the bare base64; a data URL keeps its `data:…;base64,` head.
+export const base64Of = dataUrl => dataUrl.slice(dataUrl.indexOf(',') + 1)
 
 /** @returns {{ view: any, error: string, refresh: (force?: boolean) => Promise<void> }} */
 export function useStateView() {

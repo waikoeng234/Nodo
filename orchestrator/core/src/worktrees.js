@@ -7,10 +7,10 @@ import { execFile } from 'node:child_process'
 import { mkdir, lstat, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
+import { invalid } from './errors.js'
 
 const execFileAsync = promisify(execFile)
 const REFS_MAX = 200
-const INVALID = 'orch/invalid'
 const GIT_SCRUB = [
   'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
   'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
@@ -19,8 +19,6 @@ const GIT_SCRUB = [
 ]
 const GIT_ENV = { GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1', GIT_NO_LAZY_FETCH: '1' }
 const HOOKS_OFF = process.platform === 'win32' ? 'NUL' : '/dev/null'
-
-const invalid = message => Object.assign(new Error(message), { code: INVALID })
 const text = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '')
 
 async function git(cwd, args, { env = {}, allowExit = [0] } = {}) {

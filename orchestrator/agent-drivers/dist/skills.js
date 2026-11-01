@@ -3,7 +3,7 @@
 // protocol listing, so `source` names what answered and an empty scan stays an
 // honest empty list.
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 const frontmatter = (path) => {
     let head;
     try {
@@ -44,6 +44,12 @@ export const listFiles = (dir) => {
         return [];
     }
 };
+// One entry per plugin in a versioned plugin cache: the plugin's plain name and
+// the path of its newest downloaded version.
+export const newestPluginVersions = (cache) => listDirs(cache).flatMap(org => listDirs(org).flatMap(plugin => {
+    const versions = listDirs(plugin).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return versions.length > 0 ? [{ name: basename(plugin), path: versions.at(-1) }] : [];
+}));
 // One collector per scan: the id rules and dedupe the claude scan established,
 // shared so every engine's menu behaves alike. Each entry keeps where it lives
 // (`path`, realpath-resolved so a symlinked skill lists once) and who answers

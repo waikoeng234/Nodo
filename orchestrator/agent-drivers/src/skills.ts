@@ -3,7 +3,7 @@
 // protocol listing, so `source` names what answered and an empty scan stays an
 // honest empty list.
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 export type SkillCommand = { id: string; description?: string; path: string; scope: string; origin: string }
 export type SkillInventory = { source?: string; commands: SkillCommand[] }
@@ -36,6 +36,13 @@ export const listDirs = (dir: string) => {
 export const listFiles = (dir: string) => {
   try { return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => join(dir, entry.name)) } catch { return [] }
 }
+
+// One entry per plugin in a versioned plugin cache: the plugin's plain name and
+// the path of its newest downloaded version.
+export const newestPluginVersions = (cache: string) => listDirs(cache).flatMap(org => listDirs(org).flatMap(plugin => {
+  const versions = listDirs(plugin).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  return versions.length > 0 ? [{ name: basename(plugin), path: versions.at(-1)! }] : []
+}))
 
 // One collector per scan: the id rules and dedupe the claude scan established,
 // shared so every engine's menu behaves alike. Each entry keeps where it lives
