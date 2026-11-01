@@ -58,6 +58,15 @@ test('welcome shadows the conversation only for a blank session inside the Nodo 
   assert.equal(h.registrations.length, 0)
 })
 
+test('welcome also stands in for the host page when no session is current', async () => {
+  const h = await harness({})
+  h.enter()
+  assert.equal(h.registrations.length, 1)
+  h.open('unknown')
+  assert.equal(h.registrations.length, 0, 'a session the catalog has not listed yet stays with the host')
+  h.dispose()
+})
+
 test('the first sent message hands the area back to the host flow', async () => {
   const sessions = { 'nodo-1': { blank: true } }
   const h = await harness(sessions)

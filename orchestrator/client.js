@@ -9492,6 +9492,15 @@ function createRoleSeat(ctx, space) {
   return { RoleSeat };
 }
 
+// core/shared/version.js
+var isNewer = (base, candidate) => {
+  const parse = (value) => typeof value === "string" && /^v?\d+\.\d+\.\d+$/i.test(value) ? value.replace(/^v/i, "").split(".").map(Number) : null;
+  const a = parse(typeof base === "string" ? base.split(/[-+]/)[0] : base ?? "0.0.0"), b2 = parse(candidate ?? "");
+  if (!a || !b2) return false;
+  for (let index = 0; index < 3; index++) if (b2[index] !== a[index]) return b2[index] > a[index];
+  return false;
+};
+
 // src/client/search-dialog.tsx
 function SearchDialog({ items, onClose }) {
   const [query, setQuery] = (0, import_react.useState)("");
@@ -13719,6 +13728,23 @@ function RoundMenu({ members, work, onOpen }) {
 var ROLE_FOLD = 5;
 var ROSTER_HEIGHT_KEY = "nodo.rosterHeight";
 var TREE_MIN = 120;
+var UPDATE_SKIP_KEY = "nodo.updateSkipped";
+var UPDATE_COMMAND = "git pull && npm ci --ignore-scripts && npm run build:check";
+function UpdateCard({ info, onClose, onSkip }) {
+  const [copied, setCopied] = (0, import_react.useState)(false);
+  const root = (0, import_react.useRef)(null);
+  (0, import_react.useEffect)(() => {
+    for (const item of root.current?.querySelectorAll(".nodo-update-notes li") ?? [])
+      item.classList.toggle("nodo-update-breaking", item.textContent?.includes("\u4E0D\u517C\u5BB9") ?? false);
+  }, [info.notes]);
+  const at2 = info.publishedAt ? new Date(info.publishedAt) : null;
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-card", role: "dialog", "aria-label": "Nodo \u6709\u65B0\u7248\u672C", ref: root }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-update-title" }, "Nodo \u6709\u65B0\u7248\u672C"), /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-update-line" }, "v", info.current, " \u2192 v", info.latest, at2 && !Number.isNaN(at2.getTime()) ? ` \xB7 ${at2.toLocaleDateString("sv-SE")}` : ""), info.notes && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-notes" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: info.notes, labels: MARKDOWN_LABELS })), info.source && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-command" }, /* @__PURE__ */ (0, import_react.createElement)("code", null, UPDATE_COMMAND), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-copy", "aria-label": copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236", title: copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236", onClick: async () => {
+    if (await (0, import_dsh_client_ui_primitives.writeClipboard)(UPDATE_COMMAND)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2e3);
+    }
+  } }, copied ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCopyOutlineRegular, { size: 14 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-actions" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-quiet", onClick: onSkip }, "\u8DF3\u8FC7\u6B64\u7248\u672C"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-quiet", onClick: onClose }, "\u7A0D\u540E"), info.url && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", size: "sm", onClick: () => globalThis.open(info.url, "_blank", "noopener,noreferrer") }, "\u67E5\u770B\u53D1\u5E03\u9875")));
+}
 function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const archived = !!session.archivedAt;
@@ -13797,6 +13823,30 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   const [opened, setOpened] = (0, import_react.useState)({});
   const [expanded, setExpanded] = (0, import_react.useState)({});
   const [rolesOpen, setRolesOpen] = (0, import_react.useState)(false);
+  const [update, setUpdate] = (0, import_react.useState)(null);
+  const [updateOpen, setUpdateOpen] = (0, import_react.useState)(false);
+  const [updateSkipped, setUpdateSkipped] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem(UPDATE_SKIP_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    const refresh = () => {
+      void call("update-info").then((info) => {
+        if (live) setUpdate(info ?? null);
+      }).catch(() => {
+      });
+    };
+    refresh();
+    const timer = setInterval(refresh, 30 * 60 * 1e3);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, []);
   const [rosterHeight, setRosterHeight] = (0, import_react.useState)(() => {
     try {
       return Number(localStorage.getItem(ROSTER_HEIGHT_KEY)) || null;
@@ -14062,6 +14112,16 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     } catch {
     }
   };
+  const skipUpdate = () => {
+    if (update) {
+      setUpdateSkipped(update.latest);
+      try {
+        localStorage.setItem(UPDATE_SKIP_KEY, update.latest);
+      } catch {
+      }
+    }
+    setUpdateOpen(false);
+  };
   const rosterLimit = (split) => {
     const roster2 = split.previousElementSibling, list2 = roster2.firstElementChild;
     const rows = [...list2.children].slice(0, 2).reduce((sum, row) => sum + row.offsetHeight + 2, 0);
@@ -14102,7 +14162,22 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   }), dock("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 }), {
     "aria-pressed": navigation?.view === "roles",
     onClick: navigation?.view === "roles" ? void 0 : onRoles
-  }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+  }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), update && isNewer(updateSkipped, update.latest) && /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open: updateOpen,
+      onClose: () => setUpdateOpen(false),
+      portal: true,
+      side: "right",
+      className: "nodo-update",
+      anchor: dock(
+        `\u65B0\u7248\u672C v${update.latest}`,
+        /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDownloadOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("i", { className: "nodo-update-dot", "aria-hidden": true })),
+        { "aria-haspopup": "menu", "aria-expanded": updateOpen, onClick: () => setUpdateOpen((open) => !open) }
+      )
+    },
+    updateOpen && /* @__PURE__ */ (0, import_react.createElement)(UpdateCard, { info: update, onClose: () => setUpdateOpen(false), onSkip: skipUpdate })
+  ), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
     onClick: onBack,
     disabled: typeof layoutService?.selectPanel !== "function"
   })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-tabs", role: "tablist", "aria-label": "\u4E3B\u9875\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", role: "tab", "aria-selected": !team, onClick: team ? onSessions : void 0 }, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", role: "tab", "aria-selected": team, onClick: team ? void 0 : onTeam }, "\u56E2\u961F")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD", style: rosterHeight ? { maxHeight: rosterHeight } : void 0 }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster-list" }, team ? shownTeams.map(teamItem) : shownRoles.map(rosterItem)), (team ? teamRows.length : roster.length) > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
@@ -15615,467 +15690,50 @@ function IdentityDeleteDialog({ identity, onDeleted, onCancel }) {
   );
 }
 
-// src/client/engine-settings.js
-function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClose }) {
-  const seed = (engineId) => {
-    const source = view.prefs?.engineConfigs?.[engineId];
-    return { engineOptions: { ...source?.engineOptions } };
-  };
-  const [engines, setEngines] = (0, import_react.useState)([]);
-  const [enabled, setEnabled] = (0, import_react.useState)(() => view?.prefs?.enabledEngines ?? null);
-  const [selected, setSelected] = (0, import_react.useState)("");
-  const [draft, setDraft] = (0, import_react.useState)(() => seed(""));
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [scanning, setScanning] = (0, import_react.useState)("");
-  const [checks, setChecks] = (0, import_react.useState)({});
-  const [checking, setChecking] = (0, import_react.useState)("");
-  const [loading, setLoading] = (0, import_react.useState)(true);
-  const [saved, setSaved] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
-  const pick = (engineId) => {
-    setSelected(engineId);
-    setDraft(seed(engineId));
-    setSaved(false);
-    setError("");
-  };
-  const scan = async (id) => {
-    if (id === "" || scanning !== "") return;
-    setScanning(id);
-    setError("");
-    try {
-      const catalog = await call("engine-scan", { engine: id });
-      setEngines((current) => current.map((item) => item.id === id ? { ...item, catalog } : item));
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setScanning("");
-    }
-  };
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call("engine-detect").then((items) => {
-      if (live) setEngines(items);
-    }).catch((failure) => {
-      if (live) setError(failure.message);
-    }).finally(() => {
-      if (live) setLoading(false);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  const engine = engines.find((item) => item.id === selected);
-  const locked = busy || checking !== "" || scanning !== "";
-  const detected = engines.filter((item) => item.usable);
-  const others = engines.filter((item) => !item.usable);
-  const enabledSet = enabled ?? detected.map((item) => item.id);
-  const toggleEnabled = async (item) => {
-    if (locked || readOnly) return;
-    const next = enabledSet.includes(item.id) ? enabledSet.filter((id) => id !== item.id) : [...enabledSet, item.id];
-    setEnabled(next);
-    setError("");
-    try {
-      const saved2 = await call("engine-enable-set", { engines: next });
-      setEnabled(saved2.enabledEngines ?? next);
-      await refresh(true);
-    } catch (failure) {
-      setError(failure.message);
-      setEnabled(enabled);
-    }
-  };
-  const checkKey = (id) => JSON.stringify([id, workspace?.id]);
-  const check = checks[checkKey(selected)];
-  const inspect = async (all = false) => {
-    if (locked || !all && !engine) return;
-    setChecking(all ? "all" : selected);
-    setError("");
-    try {
-      const items = all ? engines : [engine];
-      await Promise.all(items.map(async (item) => {
-        const key = checkKey(item.id);
-        const result = await call("engine-check", { engine: item.id, ...seed(item.id), cwd: workspace?.cwd }).catch((failure) => ({ ok: false, checks: [{ label: "\u68C0\u67E5\u5931\u8D25", ok: false, message: failure.message }] }));
-        setChecks((current) => ({ ...current, [key]: result }));
-      }));
-    } finally {
-      setChecking("");
-    }
-  };
-  const editField = (field) => (event) => {
-    const value = event.target.value;
-    setSaved(false);
-    setDraft((current) => ({ ...current, engineOptions: { ...current.engineOptions, [field.name]: value } }));
-  };
-  const run = async (event) => {
-    event.preventDefault();
-    if (locked || engine === void 0 || readOnly) return;
-    setBusy(true);
-    setError("");
-    setSaved(false);
-    try {
-      const values = { engine: engine.id, engineOptions: draft.engineOptions };
-      await call("engine-config-set", values);
-      await refresh(true);
-      setChecks((current) => Object.fromEntries(Object.entries(current).filter(([key]) => JSON.parse(key)[0] !== selected)));
-      setSaved(true);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const fields = (engine?.fields ?? []).filter((field) => field.target === "engineOptions").map((field) => (0, import_react.createElement)(
-    Field,
-    { key: field.name, label: { bin: "\u7A0B\u5E8F\u8DEF\u5F84", socket: "\u5171\u4EAB Codex Socket" }[field.name] ?? field.label },
-    field.type === "select" ? (0, import_react.createElement)(
-      "select",
-      { className: "nodo-dialog-input nodo-dialog-select", disabled: locked || readOnly, value: draft.engineOptions[field.name] ?? field.default ?? "", onChange: editField(field) },
-      ...field.choices.map((choice) => (0, import_react.createElement)("option", { key: choice.value, value: choice.value }, choice.label))
-    ) : (0, import_react.createElement)("input", {
-      className: "nodo-dialog-input",
-      disabled: locked || readOnly,
-      value: draft.engineOptions[field.name] ?? "",
-      onChange: editField(field),
-      placeholder: field.name === "bin" ? "\u7559\u7A7A\u81EA\u52A8\u68C0\u6D4B\uFF0C\u68C0\u6D4B\u4E0D\u5230\u65F6\u586B\u5199\u5B8C\u6574\u8DEF\u5F84" : field.placeholder,
-      maxLength: 1e3
-    })
-  ));
-  const card = (item) => {
-    const expanded = selected === item.id;
-    const result = checks[checkKey(item.id)];
-    const on2 = item.usable && enabledSet.includes(item.id);
-    const rawVersion = result?.ok ? String(result.version || "").replace(/\s*\([^)]*\)/g, "").trim() : "";
-    const version = result?.ok ? /(?:^|\s)v?(\d[\w.]*(?:[-+][\w.]+)?)(?:\s|$)/.exec(rawVersion)?.[1] ?? rawVersion : "";
-    const caption = checking === "all" || checking === item.id ? "\u68C0\u67E5\u4E2D\u2026" : result ? result.ok ? version || "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : !item.usable || item.executable ? "" : item.nativeRuntime ? "\u539F\u751F" : "\u81EA\u5B9A\u4E49\u8DEF\u5F84";
-    const title = engineDisplayName(item);
-    return (0, import_react.createElement)(
-      "section",
-      { key: item.id, className: "nodo-engine-card", "data-expanded": expanded ? "" : void 0, "data-muted": item.usable ? void 0 : "" },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-engine-row" },
-        (0, import_react.createElement)(
-          "button",
-          {
-            type: "button",
-            className: "nodo-engine-toggle",
-            disabled: locked,
-            "aria-expanded": expanded,
-            "aria-controls": `nodo-engine-${item.id}`,
-            onClick: () => pick(expanded ? "" : item.id)
-          },
-          (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
-          (0, import_react.createElement)(
-            "span",
-            { className: "nodo-engine-name" },
-            (0, import_react.createElement)("strong", null, title),
-            caption && (0, import_react.createElement)("span", { className: "nodo-engine-caption", "data-bad": result?.ok === false ? "" : void 0 }, caption)
-          ),
-          (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": expanded ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
-        ),
-        item.usable && (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-engine-switch",
-          "aria-pressed": on2,
-          "aria-label": `${on2 ? "\u505C\u7528" : "\u542F\u7528"} ${title}`,
-          disabled: locked || readOnly,
-          onClick: () => void toggleEnabled(item)
-        })
-      ),
-      expanded && (0, import_react.createElement)(
-        "div",
-        { id: `nodo-engine-${item.id}`, className: "nodo-engine-detail" },
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-engine-connection" },
-          (0, import_react.createElement)("strong", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: check ? check.ok ? "done" : "error" : "idle", size: 8 }), check ? check.ok ? "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : "\u672A\u68C0\u67E5"),
-          (0, import_react.createElement)(
-            import_dsh_client_ui_primitives.Button,
-            { variant: "outline", size: "sm", disabled: locked || engine.requiresCwd && !workspace, onClick: () => void inspect() },
-            checking === selected ? "\u68C0\u67E5\u4E2D\u2026" : "\u68C0\u67E5\u8FDE\u63A5"
-          )
-        ),
-        (0, import_react.createElement)(
-          "form",
-          { id: ENGINE_FORM, className: "nodo-dialog-fields nodo-engine-fields", onSubmit: run, "aria-label": "\u914D\u7F6E Agent" },
-          (fields.length > 0 || engine.executable || readOnly) && (0, import_react.createElement)(
-            "div",
-            { className: "nodo-engine-section" },
-            fields.length > 0 && (0, import_react.createElement)("div", { className: "nodo-engine-config" }, fields),
-            engine.executable && (0, import_react.createElement)("p", { className: "nodo-dialog-path" }, engine.executable),
-            readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002")
-          ),
-          check && (0, import_react.createElement)(
-            "dl",
-            { className: "nodo-engine-section nodo-engine-check", role: "status" },
-            ...check.checks.map((entry, index) => (0, import_react.createElement)(
-              "div",
-              { key: index, className: "nodo-engine-check-row" },
-              (0, import_react.createElement)("dt", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: entry.ok === null ? "idle" : entry.ok ? "done" : "error", size: 6 }), entry.label),
-              (0, import_react.createElement)("dd", { className: entry.ok === false ? "nodo-bad" : void 0 }, entry.message)
-            ))
-          ),
-          (0, import_react.createElement)(
-            "div",
-            { className: "nodo-engine-section nodo-engine-scan" },
-            (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `${engine.catalog.models?.length ?? 0} \u4E2A` : "\u672A\u626B\u63CF")),
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? "\u626B\u63CF\u4E2D\u2026" : "\u626B\u63CF")
-          ),
-          saved && (0, import_react.createElement)("p", { className: "nodo-ok", role: "status" }, "Agent \u914D\u7F6E\u5DF2\u4FDD\u5B58")
-        )
-      )
-    );
-  };
-  const heading = (title, items) => (0, import_react.createElement)("h3", { key: title, className: "nodo-engine-group" }, title, (0, import_react.createElement)("span", null, items.length));
-  const grid = (key, items) => items.length > 0 && (0, import_react.createElement)("div", { key, className: "nodo-engine-grid" }, ...items.map((item) => card(item)));
-  return (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Modal,
-    {
-      open: true,
-      onClose: () => {
-        if (!locked) onClose();
-      },
-      closeLabel: "\u5173\u95ED",
-      title: "\u6A21\u578B\u63D0\u4F9B\u65B9\u4E0E Agent",
-      className: "nodo-dialog nodo-engine-dialog",
-      contentClassName: "nodo-engine-shell",
-      footer: engine ? [
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-          key: "run",
-          type: "submit",
-          form: ENGINE_FORM,
-          variant: "primary",
-          size: "sm",
-          disabled: locked || readOnly
-        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58")
-      ] : void 0
-    },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-engine-content" },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-engine-toolbar" },
-        loading ? (0, import_react.createElement)("span", null, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026") : heading("\u5DF2\u68C0\u6D4B", detected),
-        (0, import_react.createElement)(
-          import_dsh_client_ui_primitives.Button,
-          { variant: "ghost", size: "sm", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRefreshOutlineRegular, { size: 14 }), title: "\u68C0\u67E5\u6240\u6709 Agent \u7684\u9ED8\u8BA4\u914D\u7F6E", disabled: locked || loading || !engines.length, onClick: () => void inspect(true) },
-          checking === "all" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5"
-        )
-      ),
-      !loading && !engines.length && !error && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6682\u65E0\u53EF\u7528 Agent"),
-      grid("detected", detected),
-      others.length > 0 && heading("\u672A\u68C0\u6D4B\u5230", others),
-      grid("others", others),
-      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
-    )
-  );
-}
-function OnboardingDialog({ view, onDone }) {
-  const [engines, setEngines] = (0, import_react.useState)(null);
-  const [picked, setPicked] = (0, import_react.useState)(null);
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
-  const [step, setStep] = (0, import_react.useState)("engines");
-  const [name, setName] = (0, import_react.useState)("\u4E07\u80FD\u52A9\u624B");
-  const [engine, setEngine] = (0, import_react.useState)("");
-  const [project, setProject] = (0, import_react.useState)({ name: "", cwd: "" });
-  const [picking, setPicking] = (0, import_react.useState)(false);
-  const [created, setCreated] = (0, import_react.useState)({});
-  const executor = view?.profiles.find((profile) => !profile.deletedAt && profile.lead !== true);
-  const hasWorkspace = (view?.workspaces.length ?? 0) > 0;
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call("engine-detect").then((items) => {
-      if (!live) return;
-      const detected = items.filter((item) => item.usable);
-      setEngines(detected);
-      setPicked(new Set(detected.map((item) => item.id)));
-    }).catch((failure) => {
-      if (live) {
-        setEngines([]);
-        setError(failure.message);
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  const finish = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (step === "engines") await call("engine-enable-set", { engines: picked ? [...picked] : [] });
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-    onDone();
-  };
-  const complete = (saved) => {
-    if (saved.profile || saved.workspace) {
-      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view?.workspaces[0]?.id };
-      setNavigation((current) => ({ ...current, archivedSession: void 0, ...selection }));
-      nativeSpace?.startDraft(selection);
-    }
-    onDone();
-  };
-  const next = async () => {
-    if (busy || step === "engines" && !picked?.size || step === "role" && (!name.trim() || !picked?.has(engine)) || step === "workspace" && (!project.name.trim() || !project.cwd.trim())) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (step === "engines") {
-        await call("engine-enable-set", { engines: [...picked] });
-        if (!executor) {
-          setEngine([...picked][0]);
-          setStep("role");
-        } else if (!hasWorkspace) setStep("workspace");
-        else complete(created);
-      } else if (step === "role") {
-        const profile = await call("profile-create", { name: name.trim(), engine, avatarTemplate: avatar_templates_default[0].id });
-        const saved = { ...created, profile: profile.id };
-        setCreated(saved);
-        if (!hasWorkspace) setStep("workspace");
-        else complete(saved);
-      } else {
-        const workspace = await call("workspace-create", { name: project.name.trim(), cwd: project.cwd.trim() });
-        complete({ ...created, workspace: workspace.id });
-      }
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const choose = async () => {
-    if (busy || picking || !nativePickDirectory) return;
-    setPicking(true);
-    setError("");
-    try {
-      const path = await nativePickDirectory();
-      if (path) setProject((current) => ({ ...current, cwd: path }));
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setPicking(false);
-    }
-  };
-  const toggle = (id) => setPicked((current) => {
-    if (current.has(id) && current.size === 1) return current;
-    const next2 = new Set(current);
-    if (next2.has(id)) next2.delete(id);
-    else next2.add(id);
-    return next2;
-  });
-  return (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Modal,
-    {
-      open: true,
-      onClose: () => void finish(),
-      closeLabel: "\u8DF3\u8FC7",
-      title: step === "engines" ? "\u542F\u7528 Agent" : step === "role" ? "\u521B\u5EFA\u4E07\u80FD\u89D2\u8272" : "\u6DFB\u52A0\u9879\u76EE",
-      description: step === "engines" ? "\u9009\u62E9\u8981\u542F\u7528\u7684 Agent\uFF0C\u968F\u65F6\u53EF\u5728\u8BBE\u7F6E\u4E2D\u8C03\u6574\u3002" : step === "role" ? "\u4E3A\u4E07\u80FD\u52A9\u624B\u53D6\u4E2A\u540D\u5B57\uFF0C\u9009\u62E9\u4F7F\u7528\u7684 Agent\u3002" : "\u9009\u62E9\u672C\u673A\u5DE5\u4F5C\u76EE\u5F55\uFF0C\u89D2\u8272\u5C06\u5728\u5176\u4E2D\u5DE5\u4F5C\u3002",
-      className: "nodo-dialog nodo-onboard-dialog",
-      contentClassName: "nodo-engine-shell",
-      footer: [
-        (0, import_react.createElement)("span", { key: "hint", className: "nodo-dialog-leading nodo-dialog-hint" }, step === "engines" ? "\u65B0\u89D2\u8272\u9ED8\u8BA4\u4F7F\u7528\u7B2C\u4E00\u4E2A\u542F\u7528\u7684 Agent" : ""),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-          key: "go",
-          type: "submit",
-          form: "nodo-onboard-form",
-          variant: "primary",
-          disabled: busy || (step === "engines" ? !picked?.size : step === "role" ? !name.trim() || !picked?.has(engine) : !project.name.trim() || !project.cwd.trim())
-        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : step === "workspace" ? "\u5B8C\u6210" : "\u4E0B\u4E00\u6B65")
-      ]
-    },
-    (0, import_react.createElement)(
-      "form",
-      { id: "nodo-onboard-form", className: "nodo-engine-content", onSubmit: (event) => {
-        event.preventDefault();
-        void next();
-      } },
-      step === "engines" && engines === null && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026"),
-      step === "engines" && engines !== null && [
-        (0, import_react.createElement)("h3", { key: "group", className: "nodo-engine-group" }, "\u5728\u7CFB\u7EDF\u4E2D\u5DF2\u68C0\u6D4B", (0, import_react.createElement)("span", null, engines.length)),
-        (0, import_react.createElement)("div", { key: "grid", className: "nodo-engine-grid" }, ...engines.map((item) => {
-          const on2 = picked?.has(item.id) === true;
-          return (0, import_react.createElement)(
-            "button",
-            { key: item.id, type: "button", className: "nodo-engine-card nodo-engine-pick", "aria-pressed": on2, disabled: busy, onClick: () => toggle(item.id) },
-            (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
-            (0, import_react.createElement)(
-              "span",
-              { className: "nodo-engine-name" },
-              (0, import_react.createElement)("strong", null, engineDisplayName(item)),
-              (0, import_react.createElement)("span", { className: "nodo-engine-caption" }, item.nativeRuntime ? "\u539F\u751F Agent" : item.executable ? "\u5DF2\u68C0\u6D4B\u5230" : "\u5DF2\u914D\u7F6E\u81EA\u5B9A\u4E49\u8DEF\u5F84")
-            ),
-            (0, import_react.createElement)("span", { className: "nodo-engine-switch", "aria-hidden": true }, on2 && (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 }))
-          );
-        })),
-        engines.length === 0 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u672A\u68C0\u6D4B\u5230\u5DF2\u9002\u914D\u7684 Agent\uFF1B\u5B89\u88C5 CLI \u6216\u5728\u8BBE\u7F6E\u7684 Agent \u5361\u7247\u4E2D\u586B\u5199\u8DEF\u5F84\u540E\u5373\u53EF\u4F7F\u7528\u3002")
-      ],
-      step === "role" && (0, import_react.createElement)(
-        "div",
-        { className: "nodo-dialog-fields" },
-        (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
-          className: "nodo-dialog-input",
-          "aria-label": "\u540D\u5B57",
-          "data-modal-autofocus": true,
-          required: true,
-          maxLength: 40,
-          disabled: busy,
-          value: name,
-          onChange: (event) => setName(event.target.value)
-        })),
-        (0, import_react.createElement)(Field, { label: "Agent", required: true }, (0, import_react.createElement)(
-          "select",
-          {
-            className: "nodo-dialog-input nodo-dialog-select",
-            "aria-label": "Agent",
-            disabled: busy,
-            value: engine,
-            onChange: (event) => setEngine(event.target.value)
-          },
-          ...[...picked].map((id) => (0, import_react.createElement)("option", { key: id, value: id }, engineDisplayName(engines.find((item) => item.id === id))))
-        ))
-      ),
-      step === "workspace" && (0, import_react.createElement)(
-        "div",
-        { className: "nodo-dialog-fields" },
-        (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
-          className: "nodo-dialog-input",
-          "aria-label": "\u9879\u76EE\u540D\u79F0",
-          "data-modal-autofocus": true,
-          required: true,
-          maxLength: 40,
-          disabled: busy,
-          value: project.name,
-          placeholder: "\u4F8B\u5982 Website",
-          onChange: (event) => setProject((current) => ({ ...current, name: event.target.value }))
-        })),
-        (0, import_react.createElement)(Field, { label: "\u9879\u76EE\u76EE\u5F55", required: true }, nativePickDirectory ? (0, import_react.createElement)(
-          "div",
-          { className: "nodo-dialog-pick" },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: busy || picking, onClick: () => void choose() }, picking ? "\u9009\u62E9\u4E2D\u2026" : "\u9009\u62E9\u76EE\u5F55\u2026"),
-          (0, import_react.createElement)("p", { className: "nodo-dialog-path", title: project.cwd }, project.cwd || "\u5C1A\u672A\u9009\u62E9\u76EE\u5F55")
-        ) : (0, import_react.createElement)("input", {
-          className: "nodo-dialog-input",
-          "aria-label": "\u9879\u76EE\u76EE\u5F55",
-          required: true,
-          disabled: busy,
-          value: project.cwd,
-          placeholder: "/absolute/path (created if missing)",
-          onChange: (event) => setProject((current) => ({ ...current, cwd: event.target.value }))
-        }))
-      ),
-      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
-    )
-  );
-}
-
 // src/client/workspace-dialogs.js
+var folderName = (path) => path.split(/[\\/]/).filter(Boolean).pop() || path;
+function WorkspaceFields({ draft, busy, picking, onEdit, onPick }) {
+  return (0, import_react.createElement)(
+    import_react.Fragment,
+    null,
+    (0, import_react.createElement)(Field, { label: "\u9879\u76EE\u540D\u79F0" }, (0, import_react.createElement)("input", {
+      className: "nodo-dialog-input",
+      "aria-label": "\u9879\u76EE\u540D\u79F0",
+      "data-modal-autofocus": true,
+      disabled: busy,
+      value: draft.name,
+      onChange: onEdit("name"),
+      required: true,
+      maxLength: 40,
+      placeholder: "\u65B0\u9879\u76EE"
+    })),
+    (0, import_react.createElement)(
+      Field,
+      { label: "\u6E90\u6587\u4EF6\u5939" },
+      nativePickDirectory ? (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-workspace-drop",
+          title: draft.cwd || void 0,
+          disabled: busy || picking,
+          onClick: onPick
+        },
+        (0, import_react.createElement)("span", { className: "nodo-workspace-drop-mark", "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, { size: 20 })),
+        (0, import_react.createElement)("span", { className: "nodo-workspace-drop-name" }, picking ? "\u9009\u62E9\u4E2D\u2026" : draft.cwd === "" ? "\u9009\u62E9\u6587\u4EF6\u5939" : folderName(draft.cwd)),
+        draft.cwd !== "" && (0, import_react.createElement)("span", { className: "nodo-dialog-path" }, draft.cwd)
+      ) : (0, import_react.createElement)("input", {
+        className: "nodo-dialog-input",
+        "aria-label": "\u9879\u76EE\u76EE\u5F55",
+        disabled: busy,
+        value: draft.cwd,
+        onChange: onEdit("cwd"),
+        required: true,
+        placeholder: "/absolute/path (created if missing)"
+      })
+    )
+  );
+}
 function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
   const [draft, setDraft] = (0, import_react.useState)({ name: workspace?.name ?? "", cwd: workspace?.cwd ?? "" });
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -16117,11 +15775,10 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
         if (!busy) onCancel();
       },
       closeLabel: "\u5173\u95ED",
-      title: workspace ? "\u7F16\u8F91\u9879\u76EE" : "\u65B0\u5EFA\u9879\u76EE",
-      description: "\u9879\u76EE\u662F\u672C\u673A\u4E0A\u7684\u4E00\u4E2A\u76EE\u5F55\uFF0C\u89D2\u8272\u5728\u5176\u4E2D\u5DE5\u4F5C\u3002",
-      className: "nodo-dialog",
+      title: workspace ? "\u7F16\u8F91\u9879\u76EE" : "\u521B\u5EFA\u9879\u76EE",
+      className: "nodo-dialog nodo-workspace-dialog",
       footer: [
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "ghost", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
           key: "save",
           type: "submit",
@@ -16133,38 +15790,8 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
     },
     (0, import_react.createElement)(
       "form",
-      { id: WORKSPACE_FORM, className: "nodo-dialog-fields", onSubmit: submit, "aria-label": workspace ? "\u7F16\u8F91\u9879\u76EE" : "\u65B0\u5EFA\u9879\u76EE" },
-      (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
-        className: "nodo-dialog-input",
-        "data-modal-autofocus": true,
-        disabled: busy,
-        value: draft.name,
-        onChange: edit("name"),
-        required: true,
-        maxLength: 40,
-        placeholder: "\u4F8B\u5982 Website"
-      })),
-      (0, import_react.createElement)(
-        Field,
-        { label: "\u9879\u76EE\u76EE\u5F55", required: true },
-        nativePickDirectory ? (0, import_react.createElement)(
-          "div",
-          { className: "nodo-dialog-pick" },
-          (0, import_react.createElement)(
-            import_dsh_client_ui_primitives.Button,
-            { variant: "outline", disabled: busy || picking, onClick: () => void choose() },
-            picking ? "\u9009\u62E9\u4E2D\u2026" : "\u9009\u62E9\u76EE\u5F55\u2026"
-          ),
-          (0, import_react.createElement)("p", { className: "nodo-dialog-path", title: draft.cwd }, draft.cwd || "\u5C1A\u672A\u9009\u62E9\u76EE\u5F55")
-        ) : (0, import_react.createElement)("input", {
-          className: "nodo-dialog-input",
-          disabled: busy,
-          value: draft.cwd,
-          onChange: edit("cwd"),
-          required: true,
-          placeholder: "/absolute/path (created if missing)"
-        })
-      ),
+      { id: WORKSPACE_FORM, className: "nodo-dialog-fields nodo-workspace-fields", onSubmit: submit, "aria-label": workspace ? "\u7F16\u8F91\u9879\u76EE" : "\u521B\u5EFA\u9879\u76EE" },
+      WorkspaceFields({ draft, busy, picking, onEdit: edit, onPick: () => void choose() }),
       error && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
     )
   );
@@ -16570,6 +16197,443 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
     },
     busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, "\u6B63\u5728\u5220\u9664\u9879\u76EE\u2026"),
     error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
+  );
+}
+
+// src/client/engine-settings.js
+function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClose }) {
+  const seed = (engineId) => {
+    const source = view.prefs?.engineConfigs?.[engineId];
+    return { engineOptions: { ...source?.engineOptions } };
+  };
+  const [engines, setEngines] = (0, import_react.useState)([]);
+  const [enabled, setEnabled] = (0, import_react.useState)(() => view?.prefs?.enabledEngines ?? null);
+  const [selected, setSelected] = (0, import_react.useState)("");
+  const [draft, setDraft] = (0, import_react.useState)(() => seed(""));
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [scanning, setScanning] = (0, import_react.useState)("");
+  const [checks, setChecks] = (0, import_react.useState)({});
+  const [checking, setChecking] = (0, import_react.useState)("");
+  const [loading, setLoading] = (0, import_react.useState)(true);
+  const [saved, setSaved] = (0, import_react.useState)(false);
+  const [error, setError] = (0, import_react.useState)("");
+  const pick = (engineId) => {
+    setSelected(engineId);
+    setDraft(seed(engineId));
+    setSaved(false);
+    setError("");
+  };
+  const scan = async (id) => {
+    if (id === "" || scanning !== "") return;
+    setScanning(id);
+    setError("");
+    try {
+      const catalog = await call("engine-scan", { engine: id });
+      setEngines((current) => current.map((item) => item.id === id ? { ...item, catalog } : item));
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setScanning("");
+    }
+  };
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("engine-detect").then((items) => {
+      if (live) setEngines(items);
+    }).catch((failure) => {
+      if (live) setError(failure.message);
+    }).finally(() => {
+      if (live) setLoading(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const engine = engines.find((item) => item.id === selected);
+  const locked = busy || checking !== "" || scanning !== "";
+  const detected = engines.filter((item) => item.usable);
+  const others = engines.filter((item) => !item.usable);
+  const enabledSet = enabled ?? detected.map((item) => item.id);
+  const toggleEnabled = async (item) => {
+    if (locked || readOnly) return;
+    const next = enabledSet.includes(item.id) ? enabledSet.filter((id) => id !== item.id) : [...enabledSet, item.id];
+    setEnabled(next);
+    setError("");
+    try {
+      const saved2 = await call("engine-enable-set", { engines: next });
+      setEnabled(saved2.enabledEngines ?? next);
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+      setEnabled(enabled);
+    }
+  };
+  const checkKey = (id) => JSON.stringify([id, workspace?.id]);
+  const check = checks[checkKey(selected)];
+  const inspect = async (all = false) => {
+    if (locked || !all && !engine) return;
+    setChecking(all ? "all" : selected);
+    setError("");
+    try {
+      const items = all ? engines : [engine];
+      await Promise.all(items.map(async (item) => {
+        const key = checkKey(item.id);
+        const result = await call("engine-check", { engine: item.id, ...seed(item.id), cwd: workspace?.cwd }).catch((failure) => ({ ok: false, checks: [{ label: "\u68C0\u67E5\u5931\u8D25", ok: false, message: failure.message }] }));
+        setChecks((current) => ({ ...current, [key]: result }));
+      }));
+    } finally {
+      setChecking("");
+    }
+  };
+  const editField = (field) => (event) => {
+    const value = event.target.value;
+    setSaved(false);
+    setDraft((current) => ({ ...current, engineOptions: { ...current.engineOptions, [field.name]: value } }));
+  };
+  const run = async (event) => {
+    event.preventDefault();
+    if (locked || engine === void 0 || readOnly) return;
+    setBusy(true);
+    setError("");
+    setSaved(false);
+    try {
+      const values = { engine: engine.id, engineOptions: draft.engineOptions };
+      await call("engine-config-set", values);
+      await refresh(true);
+      setChecks((current) => Object.fromEntries(Object.entries(current).filter(([key]) => JSON.parse(key)[0] !== selected)));
+      setSaved(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fields = (engine?.fields ?? []).filter((field) => field.target === "engineOptions").map((field) => (0, import_react.createElement)(
+    Field,
+    { key: field.name, label: { bin: "\u7A0B\u5E8F\u8DEF\u5F84", socket: "\u5171\u4EAB Codex Socket" }[field.name] ?? field.label },
+    field.type === "select" ? (0, import_react.createElement)(
+      "select",
+      { className: "nodo-dialog-input nodo-dialog-select", disabled: locked || readOnly, value: draft.engineOptions[field.name] ?? field.default ?? "", onChange: editField(field) },
+      ...field.choices.map((choice) => (0, import_react.createElement)("option", { key: choice.value, value: choice.value }, choice.label))
+    ) : (0, import_react.createElement)("input", {
+      className: "nodo-dialog-input",
+      disabled: locked || readOnly,
+      value: draft.engineOptions[field.name] ?? "",
+      onChange: editField(field),
+      placeholder: field.name === "bin" ? "\u7559\u7A7A\u81EA\u52A8\u68C0\u6D4B\uFF0C\u68C0\u6D4B\u4E0D\u5230\u65F6\u586B\u5199\u5B8C\u6574\u8DEF\u5F84" : field.placeholder,
+      maxLength: 1e3
+    })
+  ));
+  const card = (item) => {
+    const expanded = selected === item.id;
+    const result = checks[checkKey(item.id)];
+    const on2 = item.usable && enabledSet.includes(item.id);
+    const rawVersion = result?.ok ? String(result.version || "").replace(/\s*\([^)]*\)/g, "").trim() : "";
+    const version = result?.ok ? /(?:^|\s)v?(\d[\w.]*(?:[-+][\w.]+)?)(?:\s|$)/.exec(rawVersion)?.[1] ?? rawVersion : "";
+    const caption = checking === "all" || checking === item.id ? "\u68C0\u67E5\u4E2D\u2026" : result ? result.ok ? version || "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : !item.usable || item.executable ? "" : item.nativeRuntime ? "\u539F\u751F" : "\u81EA\u5B9A\u4E49\u8DEF\u5F84";
+    const title = engineDisplayName(item);
+    return (0, import_react.createElement)(
+      "section",
+      { key: item.id, className: "nodo-engine-card", "data-expanded": expanded ? "" : void 0, "data-muted": item.usable ? void 0 : "" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-engine-row" },
+        (0, import_react.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "nodo-engine-toggle",
+            disabled: locked,
+            "aria-expanded": expanded,
+            "aria-controls": `nodo-engine-${item.id}`,
+            onClick: () => pick(expanded ? "" : item.id)
+          },
+          (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
+          (0, import_react.createElement)(
+            "span",
+            { className: "nodo-engine-name" },
+            (0, import_react.createElement)("strong", null, title),
+            caption && (0, import_react.createElement)("span", { className: "nodo-engine-caption", "data-bad": result?.ok === false ? "" : void 0 }, caption)
+          ),
+          (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": expanded ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
+        ),
+        item.usable && (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-engine-switch",
+          "aria-pressed": on2,
+          "aria-label": `${on2 ? "\u505C\u7528" : "\u542F\u7528"} ${title}`,
+          disabled: locked || readOnly,
+          onClick: () => void toggleEnabled(item)
+        })
+      ),
+      expanded && (0, import_react.createElement)(
+        "div",
+        { id: `nodo-engine-${item.id}`, className: "nodo-engine-detail" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-engine-connection" },
+          (0, import_react.createElement)("strong", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: check ? check.ok ? "done" : "error" : "idle", size: 8 }), check ? check.ok ? "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : "\u672A\u68C0\u67E5"),
+          (0, import_react.createElement)(
+            import_dsh_client_ui_primitives.Button,
+            { variant: "outline", size: "sm", disabled: locked || engine.requiresCwd && !workspace, onClick: () => void inspect() },
+            checking === selected ? "\u68C0\u67E5\u4E2D\u2026" : "\u68C0\u67E5\u8FDE\u63A5"
+          )
+        ),
+        (0, import_react.createElement)(
+          "form",
+          { id: ENGINE_FORM, className: "nodo-dialog-fields nodo-engine-fields", onSubmit: run, "aria-label": "\u914D\u7F6E Agent" },
+          (fields.length > 0 || engine.executable || readOnly) && (0, import_react.createElement)(
+            "div",
+            { className: "nodo-engine-section" },
+            fields.length > 0 && (0, import_react.createElement)("div", { className: "nodo-engine-config" }, fields),
+            engine.executable && (0, import_react.createElement)("p", { className: "nodo-dialog-path" }, engine.executable),
+            readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002")
+          ),
+          check && (0, import_react.createElement)(
+            "dl",
+            { className: "nodo-engine-section nodo-engine-check", role: "status" },
+            ...check.checks.map((entry, index) => (0, import_react.createElement)(
+              "div",
+              { key: index, className: "nodo-engine-check-row" },
+              (0, import_react.createElement)("dt", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: entry.ok === null ? "idle" : entry.ok ? "done" : "error", size: 6 }), entry.label),
+              (0, import_react.createElement)("dd", { className: entry.ok === false ? "nodo-bad" : void 0 }, entry.message)
+            ))
+          ),
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-engine-section nodo-engine-scan" },
+            (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `${engine.catalog.models?.length ?? 0} \u4E2A` : "\u672A\u626B\u63CF")),
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? "\u626B\u63CF\u4E2D\u2026" : "\u626B\u63CF")
+          ),
+          saved && (0, import_react.createElement)("p", { className: "nodo-ok", role: "status" }, "Agent \u914D\u7F6E\u5DF2\u4FDD\u5B58")
+        )
+      )
+    );
+  };
+  const heading = (title, items) => (0, import_react.createElement)("h3", { key: title, className: "nodo-engine-group" }, title, (0, import_react.createElement)("span", null, items.length));
+  const grid = (key, items) => items.length > 0 && (0, import_react.createElement)("div", { key, className: "nodo-engine-grid" }, ...items.map((item) => card(item)));
+  return (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Modal,
+    {
+      open: true,
+      onClose: () => {
+        if (!locked) onClose();
+      },
+      closeLabel: "\u5173\u95ED",
+      title: "\u6A21\u578B\u63D0\u4F9B\u65B9\u4E0E Agent",
+      className: "nodo-dialog nodo-engine-dialog",
+      contentClassName: "nodo-engine-shell",
+      footer: engine ? [
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+          key: "run",
+          type: "submit",
+          form: ENGINE_FORM,
+          variant: "primary",
+          size: "sm",
+          disabled: locked || readOnly
+        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58")
+      ] : void 0
+    },
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-engine-content" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-engine-toolbar" },
+        loading ? (0, import_react.createElement)("span", null, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026") : heading("\u5DF2\u68C0\u6D4B", detected),
+        (0, import_react.createElement)(
+          import_dsh_client_ui_primitives.Button,
+          { variant: "ghost", size: "sm", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRefreshOutlineRegular, { size: 14 }), title: "\u68C0\u67E5\u6240\u6709 Agent \u7684\u9ED8\u8BA4\u914D\u7F6E", disabled: locked || loading || !engines.length, onClick: () => void inspect(true) },
+          checking === "all" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5"
+        )
+      ),
+      !loading && !engines.length && !error && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6682\u65E0\u53EF\u7528 Agent"),
+      grid("detected", detected),
+      others.length > 0 && heading("\u672A\u68C0\u6D4B\u5230", others),
+      grid("others", others),
+      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+    )
+  );
+}
+function OnboardingDialog({ view, onDone }) {
+  const [engines, setEngines] = (0, import_react.useState)(null);
+  const [picked, setPicked] = (0, import_react.useState)(null);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [error, setError] = (0, import_react.useState)("");
+  const [step, setStep] = (0, import_react.useState)("engines");
+  const [name, setName] = (0, import_react.useState)("\u4E07\u80FD\u52A9\u624B");
+  const [engine, setEngine] = (0, import_react.useState)("");
+  const [project, setProject] = (0, import_react.useState)({ name: "", cwd: "" });
+  const [picking, setPicking] = (0, import_react.useState)(false);
+  const [created, setCreated] = (0, import_react.useState)({});
+  const executor = view?.profiles.find((profile) => !profile.deletedAt && profile.lead !== true);
+  const hasWorkspace = (view?.workspaces.length ?? 0) > 0;
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("engine-detect").then((items) => {
+      if (!live) return;
+      const detected = items.filter((item) => item.usable);
+      setEngines(detected);
+      setPicked(new Set(detected.map((item) => item.id)));
+    }).catch((failure) => {
+      if (live) {
+        setEngines([]);
+        setError(failure.message);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (step === "engines") await call("engine-enable-set", { engines: picked ? [...picked] : [] });
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+    onDone();
+  };
+  const complete = (saved) => {
+    if (saved.profile || saved.workspace) {
+      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view?.workspaces[0]?.id };
+      setNavigation((current) => ({ ...current, archivedSession: void 0, ...selection }));
+      nativeSpace?.startDraft(selection);
+    }
+    onDone();
+  };
+  const next = async () => {
+    if (busy || step === "engines" && !picked?.size || step === "role" && (!name.trim() || !picked?.has(engine)) || step === "workspace" && (!project.name.trim() || !project.cwd.trim())) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (step === "engines") {
+        await call("engine-enable-set", { engines: [...picked] });
+        if (!executor) {
+          setEngine([...picked][0]);
+          setStep("role");
+        } else if (!hasWorkspace) setStep("workspace");
+        else complete(created);
+      } else if (step === "role") {
+        const profile = await call("profile-create", { name: name.trim(), engine, avatarTemplate: avatar_templates_default[0].id });
+        const saved = { ...created, profile: profile.id };
+        setCreated(saved);
+        if (!hasWorkspace) setStep("workspace");
+        else complete(saved);
+      } else {
+        const workspace = await call("workspace-create", { name: project.name.trim(), cwd: project.cwd.trim() });
+        complete({ ...created, workspace: workspace.id });
+      }
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const choose = async () => {
+    if (busy || picking || !nativePickDirectory) return;
+    setPicking(true);
+    setError("");
+    try {
+      const path = await nativePickDirectory();
+      if (path) setProject((current) => ({ ...current, cwd: path }));
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setPicking(false);
+    }
+  };
+  const edit = (key) => (event) => setProject((current) => ({ ...current, [key]: event.target.value }));
+  const toggle = (id) => setPicked((current) => {
+    if (current.has(id) && current.size === 1) return current;
+    const next2 = new Set(current);
+    if (next2.has(id)) next2.delete(id);
+    else next2.add(id);
+    return next2;
+  });
+  return (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Modal,
+    {
+      open: true,
+      onClose: () => void finish(),
+      closeLabel: "\u8DF3\u8FC7",
+      title: step === "engines" ? "\u542F\u7528 Agent" : step === "role" ? "\u521B\u5EFA\u4E07\u80FD\u89D2\u8272" : "\u6DFB\u52A0\u9879\u76EE",
+      description: step === "engines" ? "\u9009\u62E9\u8981\u542F\u7528\u7684 Agent\uFF0C\u968F\u65F6\u53EF\u5728\u8BBE\u7F6E\u4E2D\u8C03\u6574\u3002" : step === "role" ? "\u4E3A\u4E07\u80FD\u52A9\u624B\u53D6\u4E2A\u540D\u5B57\uFF0C\u9009\u62E9\u4F7F\u7528\u7684 Agent\u3002" : void 0,
+      className: "nodo-dialog nodo-onboard-dialog",
+      contentClassName: "nodo-engine-shell",
+      footer: [
+        (0, import_react.createElement)("span", { key: "hint", className: "nodo-dialog-leading nodo-dialog-hint" }, step === "engines" ? "\u65B0\u89D2\u8272\u9ED8\u8BA4\u4F7F\u7528\u7B2C\u4E00\u4E2A\u542F\u7528\u7684 Agent" : ""),
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+          key: "go",
+          type: "submit",
+          form: "nodo-onboard-form",
+          variant: "primary",
+          disabled: busy || (step === "engines" ? !picked?.size : step === "role" ? !name.trim() || !picked?.has(engine) : !project.name.trim() || !project.cwd.trim())
+        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : step === "workspace" ? "\u5B8C\u6210" : "\u4E0B\u4E00\u6B65")
+      ]
+    },
+    (0, import_react.createElement)(
+      "form",
+      { id: "nodo-onboard-form", className: "nodo-engine-content", onSubmit: (event) => {
+        event.preventDefault();
+        void next();
+      } },
+      step === "engines" && engines === null && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026"),
+      step === "engines" && engines !== null && [
+        (0, import_react.createElement)("h3", { key: "group", className: "nodo-engine-group" }, "\u5728\u7CFB\u7EDF\u4E2D\u5DF2\u68C0\u6D4B", (0, import_react.createElement)("span", null, engines.length)),
+        (0, import_react.createElement)("div", { key: "grid", className: "nodo-engine-grid" }, ...engines.map((item) => {
+          const on2 = picked?.has(item.id) === true;
+          return (0, import_react.createElement)(
+            "button",
+            { key: item.id, type: "button", className: "nodo-engine-card nodo-engine-pick", "aria-pressed": on2, disabled: busy, onClick: () => toggle(item.id) },
+            (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
+            (0, import_react.createElement)(
+              "span",
+              { className: "nodo-engine-name" },
+              (0, import_react.createElement)("strong", null, engineDisplayName(item)),
+              (0, import_react.createElement)("span", { className: "nodo-engine-caption" }, item.nativeRuntime ? "\u539F\u751F Agent" : item.executable ? "\u5DF2\u68C0\u6D4B\u5230" : "\u5DF2\u914D\u7F6E\u81EA\u5B9A\u4E49\u8DEF\u5F84")
+            ),
+            (0, import_react.createElement)("span", { className: "nodo-engine-switch", "aria-hidden": true }, on2 && (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 }))
+          );
+        })),
+        engines.length === 0 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u672A\u68C0\u6D4B\u5230\u5DF2\u9002\u914D\u7684 Agent\uFF1B\u5B89\u88C5 CLI \u6216\u5728\u8BBE\u7F6E\u7684 Agent \u5361\u7247\u4E2D\u586B\u5199\u8DEF\u5F84\u540E\u5373\u53EF\u4F7F\u7528\u3002")
+      ],
+      step === "role" && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-dialog-fields" },
+        (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
+          className: "nodo-dialog-input",
+          "aria-label": "\u540D\u5B57",
+          "data-modal-autofocus": true,
+          required: true,
+          maxLength: 40,
+          disabled: busy,
+          value: name,
+          onChange: (event) => setName(event.target.value)
+        })),
+        (0, import_react.createElement)(Field, { label: "Agent", required: true }, (0, import_react.createElement)(
+          "select",
+          {
+            className: "nodo-dialog-input nodo-dialog-select",
+            "aria-label": "Agent",
+            disabled: busy,
+            value: engine,
+            onChange: (event) => setEngine(event.target.value)
+          },
+          ...[...picked].map((id) => (0, import_react.createElement)("option", { key: id, value: id }, engineDisplayName(engines.find((item) => item.id === id))))
+        ))
+      ),
+      step === "workspace" && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-dialog-fields nodo-workspace-fields" },
+        WorkspaceFields({ draft: project, busy, picking, onEdit: edit, onPick: () => void choose() })
+      ),
+      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+    )
   );
 }
 
@@ -19104,7 +19168,7 @@ function createNativeWelcome(ctx, space, Welcome) {
   const update = () => {
     const state = space.getSnapshot();
     const id = ctx.uiSession.adapter.current.getSnapshot().key;
-    const show = state.active && !state.legacy && !state.drafting && ctx.sessions.list.getSnapshot().byId[id]?.blank === true;
+    const show = state.active && !state.legacy && !state.drafting && (id == null || ctx.sessions.list.getSnapshot().byId[id]?.blank === true);
     if (show && !release) release = ctx.slots.register({ name: "main.conversation", priority: -100 }, Welcome);
     else if (!show && release) {
       release();
@@ -19312,7 +19376,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     }
   };
   function NewConversation2({ draft, sourceSessionId }) {
-    const { view, error: loadError } = useStateView();
+    const { view, error: loadError, refresh } = useStateView();
     const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
     const state = (0, import_react.useSyncExternalStore)(space.subscribe, space.getSnapshot);
     const key = `new:${draft?.id ?? sourceSessionId}`;
@@ -19327,6 +19391,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const files = selection.files ?? [];
     const [reference, setReference] = (0, import_react.useState)(null);
     const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
+    const [adding, setAdding] = (0, import_react.useState)(false);
     const [busy, setBusy] = (0, import_react.useState)(false);
     const [error, setError] = (0, import_react.useState)("");
     const [notice, setNotice] = (0, import_react.useState)("");
@@ -19341,7 +19406,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
       if (panelVisible && workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: workspace.cwd, ...view.readOnly != null ? { readOnly: true } : {} });
     }, [panelVisible, workspace?.id, workspace?.cwd, view?.readOnly]);
     const disabled = busy || !view || view.readOnly != null;
-    const active = () => space.getSnapshot().active && (draft ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id : ctx.uiSession.adapter.current.getSnapshot().key === sourceSessionId);
+    const active = () => space.getSnapshot().active && (draft ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id : (ctx.uiSession.adapter.current.getSnapshot().key ?? null) === (sourceSessionId ?? null));
     const changeText = (value) => {
       setText(value);
       try {
@@ -19396,12 +19461,12 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     };
     const send = async () => {
       if (disabled || pending.current || !text.trim() && !images.length && !references.length && !files.length) return;
-      if (!profile) {
-        setError("\u8BF7\u9009\u62E9\u63A5\u6536\u6D88\u606F\u7684\u89D2\u8272\u3002");
+      if (!workspace) {
+        setAdding(true);
         return;
       }
-      if (!workspace) {
-        setError("\u8BF7\u5148\u6DFB\u52A0\u6216\u9009\u62E9\u9879\u76EE\u3002");
+      if (!profile) {
+        setError("\u8BF7\u9009\u62E9\u63A5\u6536\u6D88\u606F\u7684\u89D2\u8272\u3002");
         return;
       }
       pending.current = true;
@@ -19514,6 +19579,11 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             if (!disabled) updateSelection((current) => ({ ...current, references: (current.references ?? []).filter((item) => item.id !== id) }));
           }
         }),
+        adding && (0, import_react.createElement)(WorkspaceDialog, { onCancel: () => setAdding(false), onSaved: async (saved) => {
+          await refresh(true);
+          setNavigation((value) => ({ ...value, workspace: saved.id }));
+          setAdding(false);
+        } }),
         goalOpen && profile && (0, import_react.createElement)(GoalDialog, {
           profile: composerProfile,
           onCancel: () => setGoalOpen(false),
@@ -19925,6 +19995,23 @@ html[data-windows-titlebar][data-nodo-space] .nodo-right-control{top:calc(var(--
 .nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
 .nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
+.nodo-update{position:relative;display:inline-flex}
+.nodo-update .nodo-icon-btn{position:relative}
+.nodo-update-dot{position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-business-primary)}
+.nodo-update-card{display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:320px;padding:14px;color:var(--dsw-alias-label-primary);text-align:left}
+.nodo-update-card p{margin:0}
+.nodo-update-title{font-size:15px;font-weight:600;line-height:22px}
+.nodo-update-line{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}
+.nodo-update-notes{min-height:0;max-height:240px;padding:10px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);overflow-y:auto;font-size:13px}
+.nodo-update-breaking{margin:-2px;padding:6px 8px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK}}
+.nodo-update-command{display:flex;align-items:center;gap:6px}
+.nodo-update-command code{flex:1;min-width:0;padding:6px 8px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;overflow-wrap:anywhere}
+.nodo-update-copy{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);cursor:pointer}
+.nodo-update-copy:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-update-actions{display:flex;align-items:center;gap:10px;margin-top:2px}
+.nodo-update-actions>button:last-child{margin-left:auto}
+.nodo-update-quiet{flex:none;padding:5px 6px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-update-quiet:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--nodo-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
 .nodo-space-sidebar .nodo-rail-tabs{margin-top:-10px}
 .nodo-rail-tabs{display:grid;grid-template-columns:1fr 1fr;flex:none;margin:0 2px 8px;box-shadow:inset 0 -.5px 0 var(--dsw-alias-border-l2)}
@@ -20382,8 +20469,16 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-dialog-select option:disabled,.nodo-reference-scope option:disabled,.nodo-reference-preview option:disabled{color:var(--dsw-alias-label-dimmed)}
 .nodo-dialog-textarea{height:auto;min-height:88px;padding:12px;resize:vertical}
 .nodo-dialog-hint{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.nodo-dialog-pick{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .nodo-dialog-path{margin:0;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
+.nodo-workspace-fields .nodo-field,.nodo-workspace-fields .nodo-field+.nodo-field{gap:8px;padding:0;border:0}
+.nodo-workspace-fields .nodo-field+.nodo-field{margin-top:20px}
+.nodo-workspace-fields .nodo-dialog-input,.nodo-workspace-drop{border-radius:var(--dsw-radius-sm)}
+.nodo-workspace-drop{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;padding:24px 16px;border:1px dashed var(--dsw-alias-border-l4);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
+.nodo-workspace-drop:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-workspace-drop:disabled{cursor:default}
+.nodo-workspace-drop-mark{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-workspace-drop-name{font-size:14px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-primary)}
+.nodo-workspace-drop>.nodo-dialog-path{max-width:100%}
 .nodo-dialog-leading{margin-right:auto}
 .nodo-dialog-error{margin:8px 0 0;color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}
 .nodo-dialog-status{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}

@@ -21,11 +21,11 @@ import {
   IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconGaugeOutlineRegular,
   IconBranchOutlineRegular, IconCompareSplitOutlineRegular, IconFolderCloseRegular, IconRightUpOutlineRegular,
-  IconContextInjectionOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
+  IconContextInjectionOutlineRegular, IconCopyOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
   IconAgentPresetOutlineRegular,
   IconInspectOutlineRegular, IconUnarchiveOutlineRegular, IconChecklistOutlineRegular,
   PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
-  IconDataOutlineRegular, IconGlobeOutlineRegular,
+  IconDataOutlineRegular, IconGlobeOutlineRegular, IconDownloadOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import NODO_LOGO from './assets/nodo-logo.png'
 
@@ -41,11 +41,11 @@ export {
   IconThinkOutlineRegular, IconTrashOutlineRegular, IconUsersOutlineRegular,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconGaugeOutlineRegular,
   IconBranchOutlineRegular, IconCompareSplitOutlineRegular, IconFolderCloseRegular, IconRightUpOutlineRegular,
-  IconContextInjectionOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
+  IconContextInjectionOutlineRegular, IconCopyOutlineRegular, IconPluginPinwheelOutlineRegular, IconLinkOutlineRegular,
   IconAgentPresetOutlineRegular,
   IconInspectOutlineRegular, IconUnarchiveOutlineRegular, IconChecklistOutlineRegular,
   PermissionIconFullAccessRegular, PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular,
-  IconDataOutlineRegular, IconGlobeOutlineRegular,
+  IconDataOutlineRegular, IconGlobeOutlineRegular, IconDownloadOutlineRegular,
 }
 
 export const PANEL_ID = 'nodo'

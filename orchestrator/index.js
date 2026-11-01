@@ -10,6 +10,7 @@ import * as core from './core/src/index.js'
 import * as nativeStatus from './src/host/native-status.js'
 import * as route from './src/host/route.js'
 import * as terminal from './src/host/terminal.js'
+import * as update from './src/host/update.js'
 
 export const name = 'nodo'
 export const inject = ['connection', 'workspaceRegistry', 'sessionController', 'llm', 'agents', 'agentPresets', 'permissionPresets', 'systemPrompt', 'agentDefaultModel', 'attachments']
@@ -17,7 +18,7 @@ export const inject = ['connection', 'workspaceRegistry', 'sessionController', '
 export async function createRuntime(ctx, config = {}) {
   // The data directory keeps its old name so saved roles and sessions carry over.
   const home = config.home ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'orchestrator')
-  return core.createRuntime(ctx, { ...config, home }, [nativeStatus, route, terminal])
+  return core.createRuntime(ctx, { ...config, home }, [nativeStatus, route, terminal, update])
 }
 
 export async function apply(ctx, config = {}) {

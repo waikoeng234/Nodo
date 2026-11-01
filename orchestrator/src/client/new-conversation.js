@@ -1,6 +1,7 @@
 import { h, useState, useLayoutEffect, useRef, useSyncExternalStore, useStateView, call, readImage, base64Of, NodoLogo, rightPanelService } from './ui-shared.js'
 import { Composer, GoalDialog } from './composer.js'
 import { RolePicker } from './role-seat.js'
+import { WorkspaceDialog } from './workspace-dialogs.js'
 import { nativeRole, readDrafts, heldImages, subscribeNavigation, readNavigation, setNavigation } from './page.js'
 
 export function createNewConversation(ctx, space, ReferenceDialog) {
@@ -14,7 +15,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     try { localStorage.setItem('nodo.draft-options', JSON.stringify(options)) } catch {}
   }
   function NewConversation({ draft, sourceSessionId }) {
-    const { view, error: loadError } = useStateView()
+    const { view, error: loadError, refresh } = useStateView()
     const navigation = useSyncExternalStore(subscribeNavigation, readNavigation)
     const state = useSyncExternalStore(space.subscribe, space.getSnapshot)
     const key = `new:${draft?.id ?? sourceSessionId}`
@@ -29,6 +30,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const files = selection.files ?? []
     const [reference, setReference] = useState(null)
     const [goalOpen, setGoalOpen] = useState(false)
+    const [adding, setAdding] = useState(false)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const [notice, setNotice] = useState('')
@@ -46,7 +48,7 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     const disabled = busy || !view || view.readOnly != null
     const active = () => space.getSnapshot().active && (draft
       ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id
-      : ctx.uiSession.adapter.current.getSnapshot().key === sourceSessionId)
+      : (ctx.uiSession.adapter.current.getSnapshot().key ?? null) === (sourceSessionId ?? null))
     const changeText = value => {
       setText(value)
       try { localStorage.setItem('nodo.drafts', JSON.stringify({ ...readDrafts(), [key]: value })) } catch {}
@@ -89,8 +91,8 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
     }
     const send = async () => {
       if (disabled || pending.current || (!text.trim() && !images.length && !references.length && !files.length)) return
+      if (!workspace) { setAdding(true); return }
       if (!profile) { setError('请选择接收消息的角色。'); return }
-      if (!workspace) { setError('请先添加或选择项目。'); return }
       pending.current = true; setBusy(true); setError('')
       try {
         const team = !!draft && navigation.view === 'team'
@@ -154,6 +156,11 @@ export function createNewConversation(ctx, space, ReferenceDialog) {
           onReference: value => { if (!disabled) setReference(value?.id ? value : {}) },
           onRemoveReference: id => { if (!disabled) updateSelection(current => ({ ...current, references: (current.references ?? []).filter(item => item.id !== id) })) },
         }),
+        adding && h(WorkspaceDialog, { onCancel: () => setAdding(false), onSaved: async saved => {
+          await refresh(true)
+          setNavigation(value => ({ ...value, workspace: saved.id }))
+          setAdding(false)
+        } }),
         goalOpen && profile && h(GoalDialog, { profile: composerProfile, onCancel: () => setGoalOpen(false),
           onSaved: nativeGoal => {
             updateSelection(current => ({ ...current, choices: { ...current.choices, nativeGoal } }))

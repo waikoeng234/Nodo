@@ -828,6 +828,7 @@ test('onboarding creates a general-purpose role and project in three steps and s
   const avatar = JSON.parse(readFileSync(new URL('../core/shared/avatar-templates.json', import.meta.url), 'utf8'))[0].id
   assert.deepEqual(requests.find(item => item.endpoint === 'profile-create').payload, { name: '万能助手', engine: 'codex', avatarTemplate: avatar })
   assert.equal(modal().props.title, '添加项目')
+  assert.equal(modal().props.description, undefined, 'the project step explains itself through its fields, like the dialog')
   assert.deepEqual(frame(), initialFrame)
   assert.equal(modal().props.footer.at(-1).children[0], '完成')
   assert.equal(modal().props.footer.at(-1).props.disabled, true)
@@ -895,8 +896,12 @@ test('onboarding offers the native directory picker for its project step', async
   const flow = await onboardingFixture({ view: { profiles: [{ id: 'worker' }], workspaces: [] }, pickDirectory: async () => '/tmp/picked' })
   await flow.next()
   flow.input('项目名称').props.onChange({ target: { value: 'Picked' } })
-  flow.render().find(node => node.type === 'Button' && node.children.includes('选择目录…')).props.onClick()
+  const drop = () => flow.render().find(node => node.type === 'button' && node.props?.className === 'nodo-workspace-drop')
+  const dropName = () => flow.render().find(node => node.props?.className === 'nodo-workspace-drop-name').children[0]
+  assert.equal(dropName(), '选择文件夹', 'the wizard step uses the dialog dropzone')
+  await drop().props.onClick()
   await tickAll()
+  assert.equal(flow.render().find(node => node.props?.className === 'nodo-dialog-path').children[0], '/tmp/picked')
   await flow.next()
   assert.deepEqual(flow.requests.at(-1), { endpoint: 'workspace-create', payload: { name: 'Picked', cwd: '/tmp/picked' } })
 })
@@ -1477,6 +1482,44 @@ test('the worktree dialog selects a free existing branch or creates a new one', 
   await tree.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
   assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), { endpoint: 'worktree-create',
     payload: { workspace: 'w', mode: 'new', branch: 'nodo/test', from: 'main' } })
+})
+
+test('the project dialog picks a folder in the dropzone and falls back to a path input', async () => {
+  const calls = []
+  const { WorkspaceDialog, host } = await loadClient('workspace-dialogs.js', {
+    uiShared: {
+      nativePickDirectory: async () => '/tmp/website',
+      WORKSPACE_FORM: 'nodo-workspace-form',
+      call: async (endpoint, payload) => { calls.push({ endpoint, payload: JSON.parse(JSON.stringify(payload)) }); return { id: 'w' } },
+    },
+  })
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const render = workspace => { host.reset(); return nodes(WorkspaceDialog({ workspace, onSaved: async () => {}, onCancel() {} })) }
+  const modal = () => render().find(node => node.type === 'Modal')
+  const drop = () => render().find(node => node.type === 'button' && node.props?.className === 'nodo-workspace-drop')
+  const dropName = () => render().find(node => node.props?.className === 'nodo-workspace-drop-name').children[0]
+  const dropPath = () => render().find(node => node.props?.className === 'nodo-dialog-path').children[0]
+  assert.equal(modal().props.title, '创建项目')
+  assert.equal(modal().props.description, undefined)
+  assert.equal(dropName(), '选择文件夹', 'the untouched dropzone only offers the picker')
+  await drop().props.onClick(); await tickAll()
+  assert.equal(dropName(), 'website', 'the picked folder shows its name')
+  assert.equal(dropPath(), '/tmp/website')
+  render().find(node => node.type === 'input').props.onChange({ target: { value: 'Website' } })
+  await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+  assert.deepEqual(calls.at(-1), { endpoint: 'workspace-create', payload: { name: 'Website', cwd: '/tmp/website' } })
+
+  const editing = render({ id: 'w', name: 'Website', cwd: '/tmp/website' })
+  assert.equal(editing.find(node => node.type === 'Modal').props.title, '编辑项目')
+  assert.equal(editing.find(node => node.props?.className === 'nodo-workspace-drop-name').children[0], 'website',
+    'editing shows the current folder at once')
+
+  const fallback = await loadClient('workspace-dialogs.js', {
+    uiShared: { WORKSPACE_FORM: 'nodo-workspace-form', call: async () => ({ id: 'w' }) },
+  })
+  const bare = nodes(fallback.WorkspaceDialog({ onSaved: async () => {}, onCancel() {} }))
+    .find(node => node.type === 'input' && node.props?.placeholder === '/absolute/path (created if missing)')
+  assert.ok(bare, 'without the native picker the dialog keeps the path input')
 })
 
 // The composer picker writes model and thinking onto the role card and offers

@@ -1,8 +1,34 @@
 import {
   h, Fragment, useState, useEffect, useRef, call, nativePickDirectory, WORKSPACE_FORM, WORKTREE_FORM,
-  Menu, Modal, Button, IconChevronDownOutlineRegular,
+  Menu, Modal, Button, IconChevronDownOutlineRegular, IconProjectAddOutlineRegular,
 } from './ui-shared.js'
 import { Field } from './profile-dialogs.js'
+
+const folderName = path => path.split(/[\\/]/).filter(Boolean).pop() || path
+
+// The 项目名称 + 源文件夹 pair, shared by the workspace dialog and onboarding's
+// project step: purely presentational, the host dialog owns draft/pick/submit.
+export function WorkspaceFields({ draft, busy, picking, onEdit, onPick }) {
+  return h(Fragment, null,
+    h(Field, { label: '项目名称' }, h('input', {
+      className: 'nodo-dialog-input', 'aria-label': '项目名称', 'data-modal-autofocus': true,
+      disabled: busy, value: draft.name, onChange: onEdit('name'),
+      required: true, maxLength: 40, placeholder: '新项目',
+    })),
+    h(Field, { label: '源文件夹' },
+      nativePickDirectory
+        ? h('button', {
+          type: 'button', className: 'nodo-workspace-drop', title: draft.cwd || undefined,
+          disabled: busy || picking, onClick: onPick,
+        },
+        h('span', { className: 'nodo-workspace-drop-mark', 'aria-hidden': true }, h(IconProjectAddOutlineRegular, { size: 20 })),
+        h('span', { className: 'nodo-workspace-drop-name' }, picking ? '选择中…' : draft.cwd === '' ? '选择文件夹' : folderName(draft.cwd)),
+        draft.cwd !== '' && h('span', { className: 'nodo-dialog-path' }, draft.cwd))
+        : h('input', {
+          className: 'nodo-dialog-input', 'aria-label': '项目目录', disabled: busy, value: draft.cwd, onChange: onEdit('cwd'),
+          required: true, placeholder: '/absolute/path (created if missing)',
+        })))
+}
 
 // Creating or editing a workspace uses the same modal as the role dialog, so no
 // rail entry ever replaces the conversation with a form page.
@@ -38,32 +64,18 @@ export function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
   }
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭',
-    title: workspace ? '编辑项目' : '新建项目',
-    description: '项目是本机上的一个目录，角色在其中工作。',
-    className: 'nodo-dialog',
+    title: workspace ? '编辑项目' : '创建项目',
+    className: 'nodo-dialog nodo-workspace-dialog',
     footer: [
-      h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
+      h(Button, { key: 'cancel', variant: 'ghost', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, {
         key: 'save', type: 'submit', form: WORKSPACE_FORM, variant: 'primary',
         disabled: busy || !draft.name.trim() || !draft.cwd.trim(),
       }, busy ? '保存中…' : workspace ? '保存修改' : '创建项目'),
     ],
   },
-  h('form', { id: WORKSPACE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': workspace ? '编辑项目' : '新建项目' },
-    h(Field, { label: '名字', required: true }, h('input', {
-      className: 'nodo-dialog-input', 'data-modal-autofocus': true, disabled: busy, value: draft.name, onChange: edit('name'),
-      required: true, maxLength: 40, placeholder: '例如 Website',
-    })),
-    h(Field, { label: '项目目录', required: true },
-      nativePickDirectory
-        ? h('div', { className: 'nodo-dialog-pick' },
-          h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() },
-            picking ? '选择中…' : '选择目录…'),
-          h('p', { className: 'nodo-dialog-path', title: draft.cwd }, draft.cwd || '尚未选择目录'))
-        : h('input', {
-          className: 'nodo-dialog-input', disabled: busy, value: draft.cwd, onChange: edit('cwd'),
-          required: true, placeholder: '/absolute/path (created if missing)',
-        })),
+  h('form', { id: WORKSPACE_FORM, className: 'nodo-dialog-fields nodo-workspace-fields', onSubmit: submit, 'aria-label': workspace ? '编辑项目' : '创建项目' },
+    WorkspaceFields({ draft, busy, picking, onEdit: edit, onPick: () => void choose() }),
     error && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)))
 }
 

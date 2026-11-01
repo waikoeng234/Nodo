@@ -252,3 +252,22 @@ test('legacy session shells keep project drafts separate and bind the new conver
   assert.deepEqual(h.bindings.at(-1), { profile: 'a', session: 'new-session', cwd: '/branch' })
   assert.equal(Object.hasOwn(JSON.parse(h.storage.get('nodo.drafts')), 'new:undefined'), false)
 })
+
+test('sending with no project opens the add-project dialog and keeps the message for the saved project', async () => {
+  const h = await harness('codex', 'a', undefined)
+  h.views.draft.workspaces = []
+  h.composer().onChange('Fix the bug')
+  await h.composer().onSend()
+  const dialog = () => h.draftPage().find(node => node.type?.name === 'WorkspaceDialog')
+  assert.ok(dialog(), 'send asks for a project instead of failing')
+  assert.equal(h.calls.length, 0)
+  dialog().props.onCancel()
+  assert.equal(dialog(), undefined)
+  await h.composer().onSend()
+  h.views.draft.workspaces = [{ id: 'added', cwd: '/added' }]
+  await dialog().props.onSaved({ id: 'added' })
+  assert.equal(dialog(), undefined)
+  assert.equal(h.composer().value, 'Fix the bug')
+  await h.composer().onSend()
+  assert.equal(h.calls.find(call => call.endpoint === 'session-create').workspace, 'added')
+})

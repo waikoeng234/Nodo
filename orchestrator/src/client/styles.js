@@ -111,6 +111,23 @@ html[data-windows-titlebar][data-nodo-space] .nodo-right-control{top:calc(var(--
 .nodo-rail-dock .nodo-icon-btn{width:36px;height:36px;border-radius:var(--dsw-radius-md)}
 .nodo-rail-dock .nodo-icon-btn[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2)}
 .nodo-rail-spacer{flex:1}
+.nodo-update{position:relative;display:inline-flex}
+.nodo-update .nodo-icon-btn{position:relative}
+.nodo-update-dot{position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-state-business-primary)}
+.nodo-update-card{display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:320px;padding:14px;color:var(--dsw-alias-label-primary);text-align:left}
+.nodo-update-card p{margin:0}
+.nodo-update-title{font-size:15px;font-weight:600;line-height:22px}
+.nodo-update-line{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}
+.nodo-update-notes{min-height:0;max-height:240px;padding:10px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);overflow-y:auto;font-size:13px}
+.nodo-update-breaking{margin:-2px;padding:6px 8px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK}}
+.nodo-update-command{display:flex;align-items:center;gap:6px}
+.nodo-update-command code{flex:1;min-width:0;padding:6px 8px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code);font-size:11px;line-height:16px;overflow-wrap:anywhere}
+.nodo-update-copy{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);cursor:pointer}
+.nodo-update-copy:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-update-actions{display:flex;align-items:center;gap:10px;margin-top:2px}
+.nodo-update-actions>button:last-child{margin-left:auto}
+.nodo-update-quiet{flex:none;padding:5px 6px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-update-quiet:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-rail-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;--nodo-rail-inset:12px;padding:max(6px,calc(var(--nodo-top-clearance,0px) - 8px)) var(--nodo-rail-inset) 6px}
 .nodo-space-sidebar .nodo-rail-tabs{margin-top:-10px}
 .nodo-rail-tabs{display:grid;grid-template-columns:1fr 1fr;flex:none;margin:0 2px 8px;box-shadow:inset 0 -.5px 0 var(--dsw-alias-border-l2)}
@@ -568,8 +585,16 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-dialog-select option:disabled,.nodo-reference-scope option:disabled,.nodo-reference-preview option:disabled{color:var(--dsw-alias-label-dimmed)}
 .nodo-dialog-textarea{height:auto;min-height:88px;padding:12px;resize:vertical}
 .nodo-dialog-hint{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.nodo-dialog-pick{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .nodo-dialog-path{margin:0;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
+.nodo-workspace-fields .nodo-field,.nodo-workspace-fields .nodo-field+.nodo-field{gap:8px;padding:0;border:0}
+.nodo-workspace-fields .nodo-field+.nodo-field{margin-top:20px}
+.nodo-workspace-fields .nodo-dialog-input,.nodo-workspace-drop{border-radius:var(--dsw-radius-sm)}
+.nodo-workspace-drop{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;padding:24px 16px;border:1px dashed var(--dsw-alias-border-l4);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
+.nodo-workspace-drop:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-workspace-drop:disabled{cursor:default}
+.nodo-workspace-drop-mark{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:50%;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-workspace-drop-name{font-size:14px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-primary)}
+.nodo-workspace-drop>.nodo-dialog-path{max-width:100%}
 .nodo-dialog-leading{margin-right:auto}
 .nodo-dialog-error{margin:8px 0 0;color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}
 .nodo-dialog-status{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}

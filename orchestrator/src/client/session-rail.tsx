@@ -1,9 +1,12 @@
 import type { ReactNode } from './ui-shared.js'
+import { isNewer } from '../../core/shared/version.js'
 import {
-  h, Fragment, useState, Menu, Tooltip, WorkDot, workLabel, workKind, runningOf,
+  h, Fragment, useState, useEffect, useRef, call, Button, MarkdownText, MARKDOWN_LABELS, writeClipboard,
+  Menu, Tooltip, WorkDot, workLabel, workKind, runningOf,
   sessionTime, workspaceIdOf, roleStateOf, ARCHIVED_VIEWS, SESSION_FOLD, layoutService,
   IconArchiveOutlineRegular, IconArchiveOffOutlineRegular, IconUnarchiveOutlineRegular, IconBranchOutlineRegular,
-  IconChevronLeftOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
+  IconChevronLeftOutlineRegular, IconCheckOutlineRegular, IconCopyOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
+  IconDownloadOutlineRegular,
   IconFlatListOutlineRegular, IconFolderOpenOutlineRegular,
   IconNewChatOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconPlusOutlineRegular,
   IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
@@ -22,6 +25,40 @@ type Archived = keyof typeof ARCHIVED_VIEWS
 const ROLE_FOLD = 5
 const ROSTER_HEIGHT_KEY = 'nodo.rosterHeight'
 const TREE_MIN = 120
+const UPDATE_SKIP_KEY = 'nodo.updateSkipped'
+const UPDATE_COMMAND = 'git pull && npm ci --ignore-scripts && npm run build:check'
+
+export interface UpdateInfo { current: string; latest: string; publishedAt?: string | null; notes?: string; url: string; source: boolean }
+
+export function UpdateCard({ info, onClose, onSkip }: { info: UpdateInfo; onClose: () => void; onSkip: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const root = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    for (const item of root.current?.querySelectorAll('.nodo-update-notes li') ?? [])
+      item.classList.toggle('nodo-update-breaking', item.textContent?.includes('不兼容') ?? false)
+  }, [info.notes])
+  const at = info.publishedAt ? new Date(info.publishedAt) : null
+  return (
+    <div className="nodo-update-card" role="dialog" aria-label="Nodo 有新版本" ref={root}>
+      <p className="nodo-update-title">Nodo 有新版本</p>
+      <p className="nodo-update-line">v{info.current} → v{info.latest}{at && !Number.isNaN(at.getTime()) ? ` · ${at.toLocaleDateString('sv-SE')}` : ''}</p>
+      {info.notes && <div className="nodo-update-notes">
+        <MarkdownText text={info.notes} labels={MARKDOWN_LABELS} />
+      </div>}
+      {info.source && <div className="nodo-update-command">
+        <code>{UPDATE_COMMAND}</code>
+        <button type="button" className="nodo-update-copy" aria-label={copied ? '已复制' : '复制'} title={copied ? '已复制' : '复制'} onClick={async () => {
+          if (await writeClipboard(UPDATE_COMMAND)) { setCopied(true); setTimeout(() => setCopied(false), 2000) }
+        }}>{copied ? <IconCheckOutlineRegular size={14} /> : <IconCopyOutlineRegular size={14} />}</button>
+      </div>}
+      <div className="nodo-update-actions">
+        <button type="button" className="nodo-update-quiet" onClick={onSkip}>跳过此版本</button>
+        <button type="button" className="nodo-update-quiet" onClick={onClose}>稍后</button>
+        {info.url && <Button variant="primary" size="sm" onClick={() => globalThis.open(info.url, '_blank', 'noopener,noreferrer')}>查看发布页</Button>}
+      </div>
+    </div>
+  )
+}
 
 interface SessionRowProps {
   role: RailRole; session: RailSession; current: boolean; work?: { active?: boolean }; busy?: boolean; readOnly?: boolean; context?: string
@@ -90,6 +127,16 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const [opened, setOpened] = useState<Record<string, boolean>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [rolesOpen, setRolesOpen] = useState(false)
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  const [updateOpen, setUpdateOpen] = useState(false)
+  const [updateSkipped, setUpdateSkipped] = useState<string | null>(() => { try { return localStorage.getItem(UPDATE_SKIP_KEY) || null } catch { return null } })
+  useEffect(() => {
+    let live = true
+    const refresh = () => { void call('update-info').then(info => { if (live) setUpdate(info ?? null) }).catch(() => {}) }
+    refresh()
+    const timer = setInterval(refresh, 30 * 60 * 1000)
+    return () => { live = false; clearInterval(timer) }
+  }, [])
   const [rosterHeight, setRosterHeight] = useState<number | null>(() => { try { return Number(localStorage.getItem(ROSTER_HEIGHT_KEY)) || null } catch { return null } })
   const busyNow = readOnly || busy
   const team = navigation?.view === 'team'
@@ -288,6 +335,10 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     setRosterHeight(height)
     try { if (height) localStorage.setItem(ROSTER_HEIGHT_KEY, String(height)); else localStorage.removeItem(ROSTER_HEIGHT_KEY) } catch {}
   }
+  const skipUpdate = () => {
+    if (update) { setUpdateSkipped(update.latest); try { localStorage.setItem(UPDATE_SKIP_KEY, update.latest) } catch {} }
+    setUpdateOpen(false)
+  }
   const rosterLimit = (split: HTMLElement) => {
     const roster = split.previousElementSibling as HTMLElement, list = roster.firstElementChild as HTMLElement
     const rows = [...list.children].slice(0, 2).reduce((sum, row) => sum + (row as HTMLElement).offsetHeight + 2, 0)
@@ -320,6 +371,12 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         {dock('角色', <IconUsersOutlineRegular size={18} />, { 'aria-pressed': navigation?.view === 'roles',
           onClick: navigation?.view === 'roles' ? undefined : onRoles })}
         <span className="nodo-rail-spacer" />
+        {update && isNewer(updateSkipped, update.latest) && <Menu open={updateOpen} onClose={() => setUpdateOpen(false)} portal side="right"
+          className="nodo-update"
+          anchor={dock(`新版本 v${update.latest}`, <Fragment><IconDownloadOutlineRegular size={16} /><i className="nodo-update-dot" aria-hidden /></Fragment>,
+            { 'aria-haspopup': 'menu', 'aria-expanded': updateOpen, onClick: () => setUpdateOpen(open => !open) })}>
+          {updateOpen && <UpdateCard info={update} onClose={() => setUpdateOpen(false)} onSkip={skipUpdate} />}
+        </Menu>}
         {dock('设置', <IconSettingsOutlineRegular size={16} />, { onClick: onSettings, 'aria-pressed': editing?.kind === 'settings' ? 'true' : undefined })}
         {dock('返回普通空间', <IconChevronLeftOutlineRegular size={16} />, { onClick: onBack,
           disabled: typeof (layoutService as { selectPanel?: unknown } | null)?.selectPanel !== 'function' })}

@@ -3,6 +3,7 @@ import {
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconRefreshOutlineRegular,
 } from './ui-shared.js'
 import { Field } from './profile-dialogs.js'
+import { WorkspaceFields } from './workspace-dialogs.js'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
 import { setNavigation } from './page.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
@@ -248,6 +249,7 @@ export function OnboardingDialog({ view, onDone }) {
     } catch (failure) { setError(failure.message) }
     finally { setPicking(false) }
   }
+  const edit = key => event => setProject(current => ({ ...current, [key]: event.target.value }))
   const toggle = id => setPicked(current => {
     if (current.has(id) && current.size === 1) return current
     const next = new Set(current)
@@ -258,7 +260,7 @@ export function OnboardingDialog({ view, onDone }) {
     open: true, onClose: () => void finish(), closeLabel: '跳过',
     title: step === 'engines' ? '启用 Agent' : step === 'role' ? '创建万能角色' : '添加项目',
     description: step === 'engines' ? '选择要启用的 Agent，随时可在设置中调整。'
-      : step === 'role' ? '为万能助手取个名字，选择使用的 Agent。' : '选择本机工作目录，角色将在其中工作。',
+      : step === 'role' ? '为万能助手取个名字，选择使用的 Agent。' : undefined,
     className: 'nodo-dialog nodo-onboard-dialog',
     contentClassName: 'nodo-engine-shell',
     footer: [
@@ -288,15 +290,7 @@ export function OnboardingDialog({ view, onDone }) {
       h(Field, { label: 'Agent', required: true }, h('select', { className: 'nodo-dialog-input nodo-dialog-select', 'aria-label': 'Agent',
         disabled: busy, value: engine, onChange: event => setEngine(event.target.value) },
       ...[...picked].map(id => h('option', { key: id, value: id }, engineDisplayName(engines.find(item => item.id === id))))))),
-    step === 'workspace' && h('div', { className: 'nodo-dialog-fields' },
-      h(Field, { label: '名字', required: true }, h('input', { className: 'nodo-dialog-input', 'aria-label': '项目名称',
-        'data-modal-autofocus': true, required: true, maxLength: 40, disabled: busy, value: project.name,
-        placeholder: '例如 Website', onChange: event => setProject(current => ({ ...current, name: event.target.value })) })),
-      h(Field, { label: '项目目录', required: true }, nativePickDirectory
-        ? h('div', { className: 'nodo-dialog-pick' },
-          h(Button, { variant: 'outline', disabled: busy || picking, onClick: () => void choose() }, picking ? '选择中…' : '选择目录…'),
-          h('p', { className: 'nodo-dialog-path', title: project.cwd }, project.cwd || '尚未选择目录'))
-        : h('input', { className: 'nodo-dialog-input', 'aria-label': '项目目录', required: true, disabled: busy, value: project.cwd,
-          placeholder: '/absolute/path (created if missing)', onChange: event => setProject(current => ({ ...current, cwd: event.target.value })) }))),
+    step === 'workspace' && h('div', { className: 'nodo-dialog-fields nodo-workspace-fields' },
+      WorkspaceFields({ draft: project, busy, picking, onEdit: edit, onPick: () => void choose() })),
     error !== '' && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)))
 }
