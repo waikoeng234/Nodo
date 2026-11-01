@@ -30,10 +30,7 @@ Nodo is a plugin for DeepSeek Harness (dsh). It puts those Agents in **one windo
 
 **Requirements**: dsh 0.2.0-rc.1 or later; at least one Agent that is logged in. Current integrations: Codex, Claude Code, DeepSeek Harness, ZCode, CodeBuddy, OpenCode, Qoder, and Pi (experimental).
 
-On the dsh plugin page, click **Add plugin** → **Install third-party plugin**, enter either source below, and reload. The plugin is installed when **Nodo** appears in the sidebar:
-
-- Package name: `dsh-plugin-nodo`
-- GitHub URL: `https://github.com/waikoeng234/Nodo`
+On the dsh plugin page, click **Add plugin** → **Install third-party plugin**, enter the GitHub URL `https://github.com/waikoeng234/Nodo`, and reload. The plugin is installed when **Nodo** appears in the sidebar:
 
 To install from source, clone the repository, run `npm ci --ignore-scripts && npm run build:check` in `orchestrator/` (Node.js 24+), then enter that directory's path on the plugin page.
 
