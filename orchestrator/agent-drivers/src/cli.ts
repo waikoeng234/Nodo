@@ -30,14 +30,15 @@ export function validateBin(bin: unknown) {
 }
 
 // Windows resolves bare command names through PATHEXT, so a `claude` on PATH is
-// really claude.exe or claude.cmd; probe the common extensions after the bare name.
+// really claude.exe or claude.cmd. npm also leaves an extensionless sh shim in the
+// same directory that cannot be spawned, so the bare name is probed last.
 const windowsExtensions = ['.exe', '.cmd', '.bat']
 
 export function findExecutable(command: unknown, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'], extra = [], platform = process.platform }: FindExecutableOptions = {}) {
   const bin = validateBin(command)
   if (!bin) return undefined
   const dirs = [...path.split(delimiter), ...defaults, ...extra].filter(dir => isAbsolute(dir))
-  const names = platform === 'win32' && extname(bin) === '' ? [bin, ...windowsExtensions.map(extension => bin + extension)] : [bin]
+  const names = platform === 'win32' && extname(bin) === '' ? [...windowsExtensions.map(extension => bin + extension), bin] : [bin]
   const candidates = isAbsolute(bin) ? names : [...new Set(dirs)].flatMap(dir => names.map(name => join(dir, name)))
   return candidates.find(candidate => {
     try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile() } catch { return false }

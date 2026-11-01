@@ -30,10 +30,7 @@ Nodo 是运行在 DeepSeek Harness（下称 dsh）里的插件，把这些 Agent
 
 **需要**：dsh 0.2.0-rc.1 或更高版本；至少一个已登录的 Agent（目前已接入 Codex、Claude Code、DeepSeek Harness、ZCode、CodeBuddy、OpenCode、Qoder，Pi 为实验性接入）。
 
-在 dsh 插件页点击 **添加插件** → **安装第三方插件**，输入下面任一来源，重新加载后侧栏出现 **Nodo** 即成功：
-
-- 包名：`dsh-plugin-nodo`
-- GitHub 地址：`https://github.com/waikoeng234/Nodo`
+在 dsh 插件页点击 **添加插件** → **安装第三方插件**，输入 GitHub 地址 `https://github.com/waikoeng234/Nodo`，重新加载后侧栏出现 **Nodo** 即成功：
 
 从源码安装：克隆仓库后在 `orchestrator/` 执行 `npm ci --ignore-scripts && npm run build:check`（需要 Node.js 24+），再在插件页填入该目录路径。
 

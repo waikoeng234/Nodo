@@ -14,7 +14,7 @@ const withRoot = async run => {
 }
 const touch = path => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, ''); chmodSync(path, 0o755) }
 
-test('findExecutable probes Windows executable extensions after the bare name', async () => {
+test('findExecutable probes Windows executable extensions before the bare name', async () => {
   await withRoot(root => {
     const dir = join(root, 'tools')
     const exe = join(dir, 'codex.exe')
@@ -26,6 +26,19 @@ test('findExecutable probes Windows executable extensions after the bare name', 
     assert.equal(findExecutable('claude', { path: dir, defaults: [], platform: 'win32' }), cmd, 'a .cmd shim is found when no .exe exists')
     assert.equal(findExecutable(join(dir, 'claude'), { path: '', defaults: [], platform: 'win32' }), cmd, 'an extensionless absolute path probes too')
     assert.equal(findExecutable('codex', { path: dir, defaults: [], extra: [dir], platform: 'win32' }), exe, 'extra dirs come after PATH')
+    touch(join(dir, 'claude'))
+    assert.equal(findExecutable('claude', { path: dir, defaults: [], platform: 'win32' }), cmd, 'the extensionless sh shim next to claude.cmd is not picked')
+    assert.equal(findExecutable(join(dir, 'claude'), { path: '', defaults: [], platform: 'win32' }), cmd, 'an absolute path to the sh shim resolves to claude.cmd')
+  })
+})
+
+test('every engine skips the npm sh shim and finds the .cmd beside it on Windows', async () => {
+  await withRoot(root => {
+    for (const name of ['codex', 'opencode', 'dsh']) { touch(join(root, name)); touch(join(root, `${name}.cmd`)) }
+    const options = { home: join(root, 'empty'), path: root, defaults: [], platform: 'win32' }
+    assert.equal(findCodexExecutable('codex', options), join(root, 'codex.cmd'))
+    assert.equal(findOpencodeExecutable('opencode', options), join(root, 'opencode.cmd'))
+    assert.equal(findDshExecutable('dsh', options), join(root, 'dsh.cmd'))
   })
 })
 
