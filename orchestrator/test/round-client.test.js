@@ -198,7 +198,7 @@ test('a delegation chip names its executor, and the faces stack lists every role
   assert.equal(text(speaker), 'Lead')
 })
 
-test('a live executor message shows its turn\'s latest five entries — text, thinking and tools — with the streaming reply as the newest', async () => {
+test('a live executor message keeps its latest four entries — text, thinking and tools — with the streaming reply as the newest', async () => {
   const calls = []
   const tool = (id, phase) => ({ who: 'agent', kind: 'tool', name: 'Bash', phase, callId: id, brief: id })
   const lines = [{ who: 'user', kind: 'text', text: 'Task' }, tool('c0', 'start'), tool('c0', 'end'),
@@ -222,17 +222,116 @@ test('a live executor message shows its turn\'s latest five entries — text, th
   assert.deepEqual(plain(calls), [{ endpoint: 'transcript', payload: { profile: 'tester', session: 'e2' } }])
   round.work.e2.buffer = 'Writing the patch now'
   const rows = tools().children
-  assert.equal(rows.length, 6, 'six committed entries keep only the latest five, plus the streaming reply')
+  assert.equal(rows.length, 5, 'six committed entries keep only the latest four, plus the streaming reply')
   assert.equal(nodes(tools()).some(node => typeof node.props.text === 'string' && node.props.text.includes('临时故障')), false,
     'the automatic continuation note never shows as the executor\'s words')
-  assert.deepEqual(rows.map(row => row.type === ProcessRow ? row.props.kind : 'text'), ['text', 'thinking', 'tool', 'text', 'tool', 'text'])
-  assert.equal(rows[1].props.summary, 'Plan the fix')
-  assert.equal(rows[2].props.summary, 'c1')
-  assert.equal(rows[4].props.running, true, 'a running tool call stays live')
-  assert.equal(rows[0].children[0].props.text, 'Reading the module first')
-  assert.equal(rows[0].children[0].props.streaming, false)
-  assert.equal(rows[5].children[0].props.text, 'Writing the patch now', 'the executor\'s streaming text is the newest entry')
-  assert.equal(rows[5].children[0].props.streaming, true)
+  assert.deepEqual(rows.map(row => row.type === ProcessRow ? row.props.kind : 'text'), ['thinking', 'tool', 'text', 'tool', 'text'])
+  assert.equal(rows[0].props.summary, 'Plan the fix')
+  assert.equal(rows[1].props.summary, 'c1')
+  assert.equal(rows[3].props.running, true, 'a running tool call stays live')
+  assert.equal(rows[2].children[0].props.text, 'Now editing')
+  assert.equal(rows[2].children[0].props.streaming, false)
+  assert.equal(rows[4].children[0].props.text, 'Writing the patch now', 'the executor\'s streaming text is the newest entry')
+  assert.equal(rows[4].children[0].props.streaming, true)
+})
+
+test('an executor message shows its own file-changes card and skips legacy or empty summaries', async () => {
+  const base = { version: 1, mode: 'snapshot', runId: 'r', entityId: 'c', revision: 1, status: 'done', capture: 'complete' }
+  const changes = fileCount => ({ who: 'agent', kind: 'changes', at: 3,
+    presentation: { ...base, kind: 'changes', body: { scope: 'edit-tools', coverage: 'partial', fileCount, files: fileCount ? [{ path: '/ws/f.ts', edits: [] }] : [] } } })
+  const lines = [{ who: 'user', kind: 'text', text: 'Task' },
+    { who: 'agent', kind: 'tool', name: 'Write', callId: 'w', phase: 'end', brief: 'w' },
+    changes(2),
+    { who: 'agent', kind: 'changes', text: 'legacy summary stays hidden' },
+    { who: 'agent', kind: 'text', text: 'Done', at: 4 }]
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
+  const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
+  const tools = () => {
+    host.reset()
+    const node = nodes(RoundMember({ step, round })).find(item => item.props.step === step && item.type !== RoundMember)
+    return node.type(node.props)
+  }
+  tools()
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  const cards = nodes(tools()).filter(node => node.type === StreamRecordCard && node.props.record.kind === 'changes')
+  assert.equal(cards.length, 1, 'the executor\'s own changes summary renders inside its message')
+  assert.equal(cards[0].props.record.body.fileCount, 2)
+  assert.deepEqual(plain(cards[0].props.request), { profile: 'tester', session: 'e2' }, 'details load from the executor\'s session')
+  assert.ok(!JSON.stringify(tools()).includes('legacy summary'), 'a summary without a saved presentation never renders as a tool row')
+})
+
+test('a reported executor message keeps its own file-changes card under the report', async () => {
+  const base = { version: 1, mode: 'snapshot', runId: 'r', entityId: 'c', revision: 1, status: 'done', capture: 'complete' }
+  const presentation = { ...base, kind: 'changes', body: { scope: 'edit-tools', coverage: 'partial', fileCount: 1, files: [{ path: '/ws/f.ts', edits: [] }] } }
+  const lines = [{ who: 'user', kind: 'text', text: 'Task', at: 1 },
+    { who: 'agent', kind: 'text', text: 'Fixed it', at: 2 },
+    { who: 'agent', kind: 'changes', at: 3, presentation }]
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], onOpen: () => {} }
+  const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false, report: 'Fixed the login bug\nDetails', at: 9 }
+  const body = () => nodes(RoundMember({ step, round })).find(node => node.props.className === 'nodo-round-body')
+  const changesNode = () => {
+    host.reset()
+    const node = nodes(body()).find(item => item.props.step === step && item.type !== RoundMember)
+    return node.type(node.props)
+  }
+  assert.ok(!changesNode(), 'nothing shows before the transcript arrives')
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  const report = body().children[1]
+  assert.equal(report.children[0].props.className, 'nodo-round-summary', 'the report text comes first')
+  assert.equal(report.children[1].props.step, step, 'the card slots directly under the report')
+  const cards = nodes(changesNode()).filter(node => node.type === StreamRecordCard && node.props.record.kind === 'changes')
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].props.record.body.fileCount, 1)
+  assert.deepEqual(plain(cards[0].props.request), { profile: 'tester', session: 'e2' }, 'details load from the executor\'s session')
+})
+
+test('a reported executor message without saved changes shows no card', async () => {
+  const lines = [{ who: 'user', kind: 'text', text: 'Task', at: 1 },
+    { who: 'agent', kind: 'text', text: 'Fixed it', at: 2 }]
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], onOpen: () => {} }
+  const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false, report: 'Fixed the login bug', at: 9 }
+  const changesNode = () => {
+    host.reset()
+    const node = nodes(RoundMember({ step, round })).find(item => item.props.step === step && item.type !== RoundMember)
+    return node.type(node.props)
+  }
+  changesNode()
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  assert.equal(nodes(changesNode()).some(node => node.type === StreamRecordCard), false,
+    'a report without saved changes shows no card')
+})
+
+test('the changes card keeps its slot when continuation rows crowd the delegation window', async () => {
+  const base = { version: 1, mode: 'snapshot', runId: 'r', entityId: 'c', revision: 1, status: 'done', capture: 'complete' }
+  const presentation = { ...base, kind: 'changes', body: { scope: 'edit-tools', coverage: 'partial', fileCount: 2, files: [{ path: '/ws/a.ts', edits: [] }, { path: '/ws/b.ts', edits: [] }] } }
+  const tool = (id, phase) => ({ who: 'agent', kind: 'tool', name: 'Bash', phase, callId: id, brief: id })
+  const lines = [{ who: 'user', kind: 'text', text: 'Task', at: 1 }, tool('c0', 'end'),
+    { who: 'agent', kind: 'text', text: 'Edited the files', at: 2 },
+    { who: 'agent', kind: 'changes', at: 3, presentation },
+    { who: 'user', kind: 'text', text: '继续', origin: { kind: 'retry' }, at: 4 },
+    { who: 'agent', kind: 'text', text: 'Verifying', at: 5 }, tool('c1', 'end'), tool('c2', 'end'), tool('c3', 'end'), tool('c4', 'end')]
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
+  const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
+  const tools = () => {
+    host.reset()
+    const node = nodes(RoundMember({ step, round })).find(item => item.props.step === step && item.type !== RoundMember)
+    return node.type(node.props)
+  }
+  tools()
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  const rows = tools().children
+  assert.deepEqual(rows.map(row => row.type === StreamRecordCard ? 'changes' : row.props.className === 'nodo-round-text' ? 'text' : 'tool'),
+    ['changes', 'tool', 'tool', 'tool', 'tool'], 'the card survives and precedes the four newest other rows in original order')
+  assert.equal(rows[0].type, StreamRecordCard)
+  assert.equal(rows[0].props.record.body.fileCount, 2)
 })
 
 test('an open executor transcript message streams until its message or turn settles', async () => {

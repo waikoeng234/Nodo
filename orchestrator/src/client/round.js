@@ -1,9 +1,10 @@
 import {
-  h, useState, useEffect, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
+  h, Fragment, useState, useEffect, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
   IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular,
 } from './ui-shared.js'
 import { RoleAvatar } from './avatar.tsx'
 import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
+import { supportedStreamRecord } from './stream-records.js'
 import { StreamingText } from './streaming-text.tsx'
 import { runDuration } from './running.js'
 
@@ -83,6 +84,18 @@ const roleOf = (round, id) => round.profiles.find(role => role.id === id) ?? { i
 const typeName = (round, id) => (round.teams?.find(team => team.lead === round.leadId)?.types ?? []).find(item => item.id === id)?.name
   ?? (round.teams ?? []).flatMap(team => team.types ?? []).find(item => item.id === id)?.name ?? id
 
+// One delegation's transcript window: from its task line to the next one;
+// retry continuations stay inside.
+const delegationRows = (lines, step) => {
+  const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
+  const start = step.deferred ? lines.findIndex(line => boundary(line) && line.at >= step.at) + 1
+    : lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
+  const end = lines.findIndex((line, index) => index >= start && boundary(line))
+  return transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? undefined : end))
+}
+const shownChanges = row => row.item.kind === 'changes' && supportedStreamRecord(row.item.presentation)
+  && row.item.presentation.body.fileCount > 0
+
 // A reused session has several tasks; keep each delegation's recent output in
 // its own row, the live reply as the newest entry.
 function RoundTools({ step, work }) {
@@ -92,12 +105,11 @@ function RoundTools({ step, work }) {
     void call('transcript', { profile: step.profile, session: step.session }).then(next => { if (live) setLines(next) }).catch(() => {})
     return () => { live = false }
   }, [step.session, step.at, work?.active === true ? work : null])
-  const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
-  const start = step.deferred ? lines.findIndex(line => boundary(line) && line.at >= step.at) + 1
-    : lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
-  const end = lines.findIndex((line, index) => index >= start && boundary(line))
-  const rows = transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? undefined : end))
-    .filter(row => row.item.who !== 'user' && ['text', 'thinking', 'tool'].includes(row.item.kind)).slice(-5)
+  const shown = delegationRows(lines, step).filter(row => row.item.who !== 'user'
+    && (['text', 'thinking', 'tool'].includes(row.item.kind) || shownChanges(row)))
+  const changes = shown.findLast(shownChanges)
+  const rows = [...shown.filter(row => row.item.kind !== 'changes').slice(-4), ...(changes ? [changes] : [])]
+    .sort((a, b) => a.index - b.index)
   const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? '').trim() !== '' ? work.buffer : null
   return (rows.length > 0 || buffer !== null) && h('div', { className: 'nodo-round-tools' },
     rows.map(row => row.item.kind === 'text'
@@ -108,6 +120,19 @@ function RoundTools({ step, work }) {
         : toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, work: step.ended ? undefined : work, timeline: true })),
     buffer !== null && h('div', { key: 'live', className: 'nodo-round-text' },
       h(StreamingText, { text: buffer, streaming: true, labels: MARKDOWN_LABELS })))
+}
+
+// A reported delegation keeps its own saved file changes under its report.
+function RoundChanges({ step }) {
+  const [lines, setLines] = useState([])
+  useEffect(() => {
+    let live = true
+    void call('transcript', { profile: step.profile, session: step.session }).then(next => { if (live) setLines(next) }).catch(() => {})
+    return () => { live = false }
+  }, [step.session, step.at])
+  const row = delegationRows(lines, step).findLast(shownChanges)
+  return row && h('div', { className: 'nodo-round-tools' },
+    toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, timeline: true }))
 }
 
 export function RoundSpeaker({ role, running }) {
@@ -152,10 +177,12 @@ export function RoundMember({ step, round }) {
           h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'currentColor', 'aria-hidden': true }, h('rect', { width: 10, height: 10, rx: 2 })), stopping ? '停止中…' : '停止'),
         h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
           h(IconRightUpOutlineRegular, { size: 14 }), '查看会话')),
-      step.report ? rest
-        ? h('button', { type: 'button', className: 'nodo-round-summary', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
-          h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
-        : h('p', { className: 'nodo-round-summary' }, summary)
+      step.report ? h(Fragment, null,
+        rest
+          ? h('button', { type: 'button', className: 'nodo-round-summary', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
+            h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
+          : h('p', { className: 'nodo-round-summary' }, summary),
+        h(RoundChanges, { step }))
         : h(RoundTools, { step, work }),
       !step.report && step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
       open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))))

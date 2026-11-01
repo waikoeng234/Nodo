@@ -236,16 +236,12 @@ export function transcriptRows(lines) {
 const isProcess = row => ['tool', 'thinking', 'plan'].includes(row.item.kind)
 function processBlocks(rows) {
   const blocks = []
-  const summaries = []
-  const flushSummaries = () => blocks.push(...summaries.splice(0))
   rows.forEach((row, position) => {
-    if (row.item.who === 'user') flushSummaries()
-    if (row.item.kind === 'changes') { summaries.push({ process: false, rows: [{ row, position }] }); return }
+    if (row.item.kind === 'changes') { blocks.push({ process: false, rows: [{ row, position }] }); return }
     const last = blocks.at(-1)
     if (isProcess(row) && last?.process) last.rows.push({ row, position })
     else blocks.push({ process: isProcess(row), rows: [{ row, position }] })
   })
-  flushSummaries()
   return blocks
 }
 

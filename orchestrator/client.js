@@ -12701,19 +12701,15 @@ function transcriptRows(lines) {
 var isProcess = (row) => ["tool", "thinking", "plan"].includes(row.item.kind);
 function processBlocks(rows) {
   const blocks2 = [];
-  const summaries = [];
-  const flushSummaries = () => blocks2.push(...summaries.splice(0));
   rows.forEach((row, position) => {
-    if (row.item.who === "user") flushSummaries();
     if (row.item.kind === "changes") {
-      summaries.push({ process: false, rows: [{ row, position }] });
+      blocks2.push({ process: false, rows: [{ row, position }] });
       return;
     }
     const last = blocks2.at(-1);
     if (isProcess(row) && last?.process) last.rows.push({ row, position });
     else blocks2.push({ process: isProcess(row), rows: [{ row, position }] });
   });
-  flushSummaries();
   return blocks2;
 }
 function ProcessGroup({ rows, running, depths = [], children = [] }) {
@@ -13530,6 +13526,13 @@ var reportParts = (text) => {
 };
 var roleOf = (round, id) => round.profiles.find((role) => role.id === id) ?? { id, name: id };
 var typeName = (round, id) => (round.teams?.find((team) => team.lead === round.leadId)?.types ?? []).find((item) => item.id === id)?.name ?? (round.teams ?? []).flatMap((team) => team.types ?? []).find((item) => item.id === id)?.name ?? id;
+var delegationRows = (lines, step) => {
+  const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
+  const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
+  const end = lines.findIndex((line, index) => index >= start && boundary(line));
+  return transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? void 0 : end));
+};
+var shownChanges = (row) => row.item.kind === "changes" && supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0;
 function RoundTools({ step, work }) {
   const [lines, setLines] = (0, import_react.useState)([]);
   (0, import_react.useEffect)(() => {
@@ -13542,10 +13545,9 @@ function RoundTools({ step, work }) {
       live = false;
     };
   }, [step.session, step.at, work?.active === true ? work : null]);
-  const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
-  const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
-  const end = lines.findIndex((line, index) => index >= start && boundary(line));
-  const rows = transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? void 0 : end)).filter((row) => row.item.who !== "user" && ["text", "thinking", "tool"].includes(row.item.kind)).slice(-5);
+  const shown = delegationRows(lines, step).filter((row) => row.item.who !== "user" && (["text", "thinking", "tool"].includes(row.item.kind) || shownChanges(row)));
+  const changes = shown.findLast(shownChanges);
+  const rows = [...shown.filter((row) => row.item.kind !== "changes").slice(-4), ...changes ? [changes] : []].sort((a, b2) => a.index - b2.index);
   const buffer = work?.active === true && work.timeline !== true && (work.buffer ?? "").trim() !== "" ? work.buffer : null;
   return (rows.length > 0 || buffer !== null) && (0, import_react.createElement)(
     "div",
@@ -13564,6 +13566,25 @@ function RoundTools({ step, work }) {
       { key: "live", className: "nodo-round-text" },
       (0, import_react.createElement)(StreamingText, { text: buffer, streaming: true, labels: MARKDOWN_LABELS })
     )
+  );
+}
+function RoundChanges({ step }) {
+  const [lines, setLines] = (0, import_react.useState)([]);
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("transcript", { profile: step.profile, session: step.session }).then((next) => {
+      if (live) setLines(next);
+    }).catch(() => {
+    });
+    return () => {
+      live = false;
+    };
+  }, [step.session, step.at]);
+  const row = delegationRows(lines, step).findLast(shownChanges);
+  return row && (0, import_react.createElement)(
+    "div",
+    { className: "nodo-round-tools" },
+    toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, timeline: true })
   );
 }
 function RoundSpeaker({ role, running }) {
@@ -13636,12 +13657,17 @@ function RoundMember({ step, round }) {
           "\u67E5\u770B\u4F1A\u8BDD"
         )
       ),
-      step.report ? rest ? (0, import_react.createElement)(
-        "button",
-        { type: "button", className: "nodo-round-summary", "aria-expanded": open, onClick: () => setOpen((value) => !value) },
-        (0, import_react.createElement)("span", null, summary),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
-      ) : (0, import_react.createElement)("p", { className: "nodo-round-summary" }, summary) : (0, import_react.createElement)(RoundTools, { step, work }),
+      step.report ? (0, import_react.createElement)(
+        import_react.Fragment,
+        null,
+        rest ? (0, import_react.createElement)(
+          "button",
+          { type: "button", className: "nodo-round-summary", "aria-expanded": open, onClick: () => setOpen((value) => !value) },
+          (0, import_react.createElement)("span", null, summary),
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
+        ) : (0, import_react.createElement)("p", { className: "nodo-round-summary" }, summary),
+        (0, import_react.createElement)(RoundChanges, { step })
+      ) : (0, import_react.createElement)(RoundTools, { step, work }),
       !step.report && step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),
       open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))
     )

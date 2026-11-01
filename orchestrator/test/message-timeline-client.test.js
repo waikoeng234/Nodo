@@ -244,7 +244,7 @@ test('a message completed between polls animates when new, while loaded history 
   assert.equal(JSON.stringify(feed.lines), before, 'animation eligibility does not change the stored events')
 })
 
-test('nonempty file summaries appear after completion and in history while empty summaries stay hidden', async () => {
+test('nonempty file summaries stay at their turn position while empty summaries stay hidden', async () => {
   const tool = { version: 1, kind: 'tool', mode: 'snapshot', runId: 'r', entityId: 'edit', revision: 1, status: 'done',
     body: { diffs: [{ path: 'file.ts', oldText: 'before', newText: 'after' }] } }
   const summary = (scope, fileCount) => ({ who: 'agent', kind: 'changes', text: 'summary text must stay hidden',
@@ -258,6 +258,7 @@ test('nonempty file summaries appear after completion and in history while empty
     summary('edit-tools', 1),
     { who: 'agent', kind: 'text', text: 'new answer' },
     summary('workspace-snapshot', 1),
+    { who: 'system', kind: 'lifecycle', event: 'retry', phase: 'end' },
     { who: 'agent', kind: 'changes', text: 'legacy summary must stay hidden' },
   ] }
   const { Feed, ProcessGroup, StreamRecordCard } = await loadClient(['feed.js', 'stream-records.js'], {
@@ -276,9 +277,13 @@ test('nonempty file summaries appear after completion and in history while empty
     assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-reply').length, 2)
     if (!active) {
       const content = nodes(tree).find(node => node.props.className === 'nodo-feed-inner').children.filter(child => child && typeof child === 'object')
+      const changes = content.filter(node => node.type === StreamRecordCard && node.props.record.kind === 'changes')
       const answer = content.findLastIndex(node => node.props.className === 'nodo-reply')
-      assert.ok(content.findIndex(node => node.type === StreamRecordCard && node.props.record.kind === 'changes') > answer,
-        'the summary sits after the final answer even when its source event arrived earlier')
+      assert.equal(changes.length, 2, 'each summary renders at the position its event landed, nothing is lifted to the feed end')
+      assert.ok(content.indexOf(changes[0]) < answer, 'a summary that arrived before the reply stays under its own turn, not below the answer')
+      assert.ok(content.indexOf(changes[1]) > answer, 'a summary that arrived after the reply hangs under that output')
+      const tail = content.findIndex(node => node.props.className === 'nodo-note' && String(node.children?.[0]).includes('重试'))
+      assert.ok(tail >= 0 && content.indexOf(changes[1]) < tail, 'the last summary never floats below rows that follow its turn')
     }
   }
   assert.equal(JSON.stringify(feed.lines), before, 'hiding a card does not delete saved events')

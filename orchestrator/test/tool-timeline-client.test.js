@@ -89,7 +89,7 @@ test('feed keeps commentary and results in order and shows file summary cards ou
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false, timeline: true } })
   const children = find(tree, 'nodo-feed-inner').children.filter(child => child && typeof child === 'object')
   assert.deepEqual(children.map(node => node.type === ProcessGroup ? 'timeline' : node.type === StreamRecordCard ? 'changes' : node.props.className),
-    ['timeline', 'nodo-reply', 'timeline', 'nodo-reply', 'changes'])
+    ['timeline', 'nodo-reply', 'timeline', 'changes', 'nodo-reply'])
   const first = ProcessGroup({ ...children[0].props, children: children[0].children })
   const second = ProcessGroup({ ...children[2].props, children: children[2].children })
   assert.equal(first.type, ToolTimeline)
