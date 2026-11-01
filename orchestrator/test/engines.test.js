@@ -644,7 +644,7 @@ test('session activity timestamps and role deletion cover every conversation', a
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.ok(saved.profiles[profile.id].deletedAt)
     assert.equal(saved.profiles[profile.id].activeSessionId, undefined)
-    assert.deepEqual(saved.transcripts[session.id].slice(0, lines.length), lines)
+    assert.deepEqual(JSON.parse(readFileSync(join(home, 'transcripts', `${session.id}.json`), 'utf8')).slice(0, lines.length), lines)
     assert.ok(saved.profiles[profile.id].sessions.every(item => item.archivedAt))
   })
 })

@@ -44,7 +44,7 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 
 | Responsibility | Modules |
 | --- | --- |
-| State and data | `store` (`state.json` reads and writes), `home-lock` (single-writer lock), `secrets` (credentials and redaction) |
+| State and data | `store` (`state.json` and transcript reads and writes), `home-lock` (single-writer lock), `secrets` (credentials and redaction) |
 | Projects and roles | `workspaces` (project directories), `worktrees` (Git worktrees), `profiles` (roles), `sessions` (conversations) |
 | Agent bridging | `drivers` (driver process lifecycle), `engine-settings` (Agent settings), `dispatch` (sending, steering, and queuing messages), `approvals` (approval cards) |
 | Conversation content | `prompt` (rendering role briefs, references, and lead rules), `session-references` (conversation references), `attachments` (images and attachments), `stream-records` (tool details), `stats` (conversation statistics), `context`, `native-status` (plugin module in `src/host/`) |
@@ -86,7 +86,8 @@ The plugin data directory defaults to `~/.dsh/orchestrator/`, or the `orchestrat
 
 | Location | Contents |
 | --- | --- |
-| `state.json` | Projects, roles, conversations, conversation statistics, engine catalogs, and preferences including teams and their task assignments |
+| `state.json` | Projects, roles, conversations, an index of transcript lengths and last activity, conversation statistics, engine catalogs, and preferences including teams and their task assignments |
+| `transcripts/` | One transcript file per conversation, loaded when the conversation is read or written |
 | `state.lock` | Write lock: only one dsh can write to the same data directory; other instances are read-only |
 | `secrets.json` | Credentials, with mode 600; drivers receive them through `ORCH_SECRET_*` environment variables |
 | `attachments/`, `files/` | Pasted images and attachments |
@@ -96,7 +97,7 @@ The plugin data directory defaults to `~/.dsh/orchestrator/`, or the `orchestrat
 | `runtime/` | Private lead channel socket and its per-session tokens; removed when the plugin unloads |
 | `workspaces/` | Working directories created for legacy roles that had none |
 
-`state.json` is written through a temporary file followed by a rename. The project's `.nodo/` stores Git worktrees under `worktrees/` and copies of files and images sent to a lead under `workflow-inputs/`, and Nodo automatically writes a `.gitignore` there.
+`state.json` and the transcript files are written through a temporary file followed by a rename; changed transcripts are written before `state.json`. On first start after the upgrade, transcripts are moved out of an older `state.json`, which is kept as `state.v1.json` or `state.v2.json`. The project's `.nodo/` stores Git worktrees under `worktrees/` and copies of files and images sent to a lead under `workflow-inputs/`, and Nodo automatically writes a `.gitignore` there.
 
 Deleting a role marks it with `deletedAt` and archives its conversations; deleting a project archives the conversations that ran in it and records the original project name in `workspaceName`. Every archived conversation keeps its `cwd`, `workspaceRef`, and the role and project names it had. Transcripts, statistics, references, tool details, and identity files remain available. A deleted role leaves every team it was in, a team it led loses its lead, and task routing no longer offers it; it no longer holds a name or a slot under the profile limit, so its name can be reused.
 

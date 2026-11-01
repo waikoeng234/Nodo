@@ -289,7 +289,7 @@ export function install(rt) {
   // never-sent draft — the host has no session-delete API, so an abandoned
   // "新会话" is kept for reuse and reappears only while it is the session in use.
   const profileView = profile => {
-    const used = profile.driverSessionId !== undefined || (state.transcripts[profile.id]?.length ?? 0) > 0
+    const used = profile.driverSessionId !== undefined || rt.transcriptInfo(profile.id).lines > 0
     return { ...profile, cwd: rt.workspaceOf(profile)?.cwd, workspaceName: rt.workspaceOf(profile)?.name,
       sessions: rt.sessionsOf(profile)
         .filter(session => session.archivedAt || session.id !== profile.id || used)
@@ -298,7 +298,7 @@ export function install(rt) {
           // The rail's session time is its latest activity — the dispatch
           // transcript's last line, the native twin's last turn, or a native
           // send stamp — falling back to when the session was created.
-          updatedAt: (Math.max(state.transcripts[session.id]?.at(-1)?.at ?? 0, rt.nativeWork?.(session)?.lastAt ?? 0, session.lastActiveAt ?? 0)
+          updatedAt: (Math.max(rt.transcriptInfo(session.id).at, rt.nativeWork?.(session)?.lastAt ?? 0, session.lastActiveAt ?? 0)
             || session.createdAt) ?? profile.createdAt })),
       activeSessionId: profile.deletedAt ? undefined : activeSessionOf(profile)?.id }
   }

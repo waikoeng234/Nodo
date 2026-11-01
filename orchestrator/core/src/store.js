@@ -1,22 +1,29 @@
-// state.json under the plugin home. Only the host holding state.lock (home-lock.js)
-// writes it; another dsh on the same home follows the file read-only and takes over
+// state.json under the plugin home, with each conversation's transcript in
+// transcripts/<id>.json. Only the host holding state.lock (home-lock.js) writes
+// them; another dsh on the same home follows the files read-only and takes over
 // once the lock frees. Writes go through a temp file and are serialized.
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { NAME_MAX, TRANSCRIPT_MAX } from './constants.js'
 import { normalize } from './text.js'
 import { failure } from './errors.js'
 import { homeLock } from './home-lock.js'
 
-const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'stats', 'engineCatalogs', 'prefs']
-const blank = () => ({ version: 2, workspaces: {}, profiles: {}, transcripts: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null, revision: 0 })
+const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
+// `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
+const blank = () => ({ version: 3, workspaces: {}, profiles: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null, revision: 0 })
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
 export function install(rt) {
   const { ctx, home, warn } = rt
   const statePath = join(home, 'state.json')
+  const transcriptPath = id => join(home, 'transcripts', `${encodeURIComponent(id)}.json`)
+  // Transcript text as last read or written, and the transcripts this host appended to:
+  // lines handed out by appendLine may still change, so those stay loaded.
+  const written = new Map()
+  const held = new Set()
 
   /** @type {ReturnType<typeof blank>} */
   const state = blank()
@@ -95,7 +102,7 @@ export function install(rt) {
       else warn('nodo: unreadable state %s: %s; backup failed: %s', statePath, error, blocked)
       return undefined
     }
-    blocked = saved?.version === 1 || saved?.version === 2 ? undefined : 'saved by a newer Nodo; update the plugin'
+    blocked = [1, 2, 3].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
     return blocked === undefined ? saved : undefined
   }
 
@@ -104,8 +111,11 @@ export function install(rt) {
     Object.assign(state, blank(), saved)
     delete state.workflows
     for (const key of SECTIONS) if (!isRecord(state[key])) state[key] = {}
+    written.clear()
+    held.clear()
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
+    state.version = 3
     for (const profile of Object.values(state.profiles)) {
       if (!rt.listEngines().includes(profile.engine)) continue
       const modes = rt.enginePermissionModes(profile.engine)
@@ -151,7 +161,8 @@ export function install(rt) {
     adopt(saved)
     if (readOnly() === undefined) {
       await rm(join(home, 'runs'), { recursive: true, force: true })
-      if (saved && Object.hasOwn(saved, 'workflows')) await save()
+      if (saved && saved.version !== 3) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
+      if (saved && (saved.version !== 3 || Object.hasOwn(saved, 'workflows'))) await save()
     }
     rt.recoverLeadDelegations?.()
   }
@@ -203,18 +214,34 @@ export function install(rt) {
   const assertLock = () => {
     if (!unlockable && !lock.owns()) throw lockLost()
   }
-  const writeState = async (text) => {
-    const temp = `${statePath}.${randomUUID()}.tmp`
-    await mkdir(home, { recursive: true })
+  const writeLocked = async (path, text) => {
+    const temp = `${path}.${randomUUID()}.tmp`
+    await mkdir(dirname(path), { recursive: true })
     try {
       assertLock()
       await writeFile(temp, text, 'utf8')
       assertLock()
-      await rename(temp, statePath)
-      seen = fileVersion()
+      await rename(temp, path)
     } catch (error) {
       await rm(temp, { force: true })
       throw error
+    }
+  }
+  const indexOf = lines => ({ lines: lines.length, at: lines.at(-1)?.at ?? 0 })
+  // Changed transcripts are written before state.json, so its index never points past
+  // them; transcripts loaded only for reading are then dropped from memory.
+  const writeState = async (stateText, loaded) => {
+    for (const [id, , text] of loaded) {
+      if (written.get(id) === text) continue
+      await writeLocked(transcriptPath(id), text)
+      written.set(id, text)
+    }
+    await writeLocked(statePath, stateText)
+    seen = fileVersion()
+    for (const [id, value] of loaded) {
+      if (held.has(id) || state.transcripts[id] !== value) continue
+      delete state.transcripts[id]
+      written.delete(id)
     }
   }
 
@@ -222,14 +249,18 @@ export function install(rt) {
   const save = async () => {
     if (stopped || !writable()) return writing
     state.revision += 1
-    for (const [id, lines] of Object.entries(state.transcripts)) if (lines.length > TRANSCRIPT_MAX) state.transcripts[id] = lines.slice(-TRANSCRIPT_MAX)
-    // Statistics of a dropped conversation would never be shown again.
-    for (const id of Object.keys(state.stats)) if (state.transcripts[id] === undefined) delete state.stats[id]
     // Saves made before the next write starts share it: the state is serialized when it starts.
     if (queued === undefined) {
       queued = writing.then(() => {
         queued = undefined
-        return writeState(JSON.stringify(state, null, 2))
+        for (const [id, lines] of Object.entries(state.transcripts)) {
+          if (lines.length > TRANSCRIPT_MAX) state.transcripts[id] = lines.slice(-TRANSCRIPT_MAX)
+          state.transcriptIndex[id] = indexOf(state.transcripts[id])
+        }
+        // Statistics of a dropped conversation would never be shown again.
+        for (const id of Object.keys(state.stats)) if (state.transcriptIndex[id] === undefined) delete state.stats[id]
+        const loaded = Object.entries(state.transcripts).map(([id, lines]) => [id, lines, JSON.stringify(lines)])
+        return writeState(JSON.stringify(state, function (key, value) { return this === state && key === 'transcripts' ? undefined : value }, 2), loaded)
       }).catch((error) => {
         warn('nodo: state write failed: %s', error)
         throw error
@@ -245,14 +276,35 @@ export function install(rt) {
     lock.release()
   }, 'nodo: state lock')
 
-  // Transcript helpers: every profile's conversation lives in state.transcripts.
-  const transcriptOf = (profileId) => (state.transcripts[profileId] ??= [])
-  const appendLine = (profileId, line) => {
-    const lines = transcriptOf(profileId)
-    lines.push({ at: Date.now(), ...line })
-    if (lines.length > TRANSCRIPT_MAX) state.transcripts[profileId] = lines.slice(-TRANSCRIPT_MAX)
-    return state.transcripts[profileId].at(-1)
+  // A conversation's transcript, loaded into state.transcripts on first use. An
+  // unreadable file is moved aside so the next write does not replace it.
+  const transcriptOf = (id) => {
+    if (state.transcripts[id] !== undefined) return state.transcripts[id]
+    const path = transcriptPath(id)
+    let lines = []
+    try {
+      const text = readFileSync(path, 'utf8')
+      lines = JSON.parse(text)
+      if (!Array.isArray(lines)) throw new TypeError('not a list')
+      written.set(id, text)
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        lines = []
+        warn('nodo: unreadable transcript %s: %s', path, error)
+        if (readOnly() === undefined) try { renameSync(path, `${path}.broken-${Date.now()}`) } catch {}
+      }
+    }
+    return (state.transcripts[id] = lines)
   }
+  const appendLine = (id, line) => {
+    const lines = transcriptOf(id)
+    held.add(id)
+    lines.push({ at: Date.now(), ...line })
+    if (lines.length > TRANSCRIPT_MAX) state.transcripts[id] = lines.slice(-TRANSCRIPT_MAX)
+    return state.transcripts[id].at(-1)
+  }
+  // Line count and last line time without loading the transcript.
+  const transcriptInfo = (id) => state.transcripts[id] !== undefined ? indexOf(state.transcripts[id]) : state.transcriptIndex[id] ?? { lines: 0, at: 0 }
 
-  Object.assign(rt, { state, load, save, refresh, readOnly, transcriptOf, appendLine })
+  Object.assign(rt, { state, load, save, refresh, readOnly, transcriptOf, appendLine, transcriptInfo })
 }
