@@ -242,7 +242,7 @@ const receive = line => {
 }
 
 if (process.argv.includes('proxy')) {
-  const WebSocket = createRequire(join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles/package.json'))('ws')
+  const WebSocket = createRequire(process.env.CODEX_FIXTURE_WS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'profiles/package.json'))('ws')
   const server = createServer()
   const wss = new WebSocket.WebSocketServer({ noServer: true })
   const stream = Duplex.from({ readable: process.stdin, writable: process.stdout })
