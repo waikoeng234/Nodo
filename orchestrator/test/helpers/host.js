@@ -1,8 +1,13 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRuntime } from '../../index.js'
 import { registerEchoEngine } from './echo-driver.js'
+
+// Engine fixtures that proxy WebSocket framing over stdio need the ws library;
+// point them at the host's own modules where no DSH home provides one.
+process.env.CODEX_FIXTURE_WS ??= fileURLToPath(new URL('../../package.json', import.meta.url))
 
 export const until = async (check, timeout = 8000) => {
   const end = Date.now() + timeout

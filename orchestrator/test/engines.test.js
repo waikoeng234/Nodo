@@ -3,16 +3,10 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/dist/index.js'
 import { claudeArgs } from '../agent-drivers/dist/claude/native.js'
 import { leadMcp, LEAD_TOOLS } from '../agent-drivers/dist/lead-mcp.js'
 import { withHost, boot, until } from './helpers/host.js'
-
-// The fixture's shared-runtime proxy serves WebSocket framing over stdio and
-// needs the ws library; point it at the host's own modules where no DSH home
-// provides one.
-process.env.CODEX_FIXTURE_WS = fileURLToPath(new URL('../package.json', import.meta.url))
 
 const withFixture = async (run) => {
   const dir = mkdtempSync(join(tmpdir(), 'orch-codex-fixture-'))
