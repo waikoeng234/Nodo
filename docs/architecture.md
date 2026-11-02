@@ -29,7 +29,7 @@ flowchart LR
 orchestrator/
   index.js             dsh plugin entry: data home, then core plus the dsh-only modules
   core/                Embedded host package: host modules under src/, plus shared/ used by host and client
-  src/host/            dsh-only host modules: native session status, HTTP route, and project terminals
+  src/host/            dsh-only host modules: native session status, HTTP routes and streams, project terminals, and the loopback MCP endpoint
   src/client/          Sidebar, roles and teams, conversations, settings, and the right sidebar
   agent-drivers/       Agent registration, protocol adapters, and capability interfaces
   scripts/             Build, check, and verification scripts
@@ -48,9 +48,9 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 | Projects and roles | `workspaces` (project directories), `worktrees` (Git worktrees), `profiles` (roles), `sessions` (conversations) |
 | Agent bridging | `drivers` (driver process lifecycle), `engine-settings` (Agent settings), `dispatch` (sending, steering, and queuing messages), `approvals` (approval cards) |
 | Conversation content | `prompt` (rendering role briefs, references, and lead rules), `session-references` (conversation references), `attachments` (images and attachments), `stream-records` (tool details), `stats` (conversation statistics), `context`, `native-status` (plugin module in `src/host/`) |
-| Teams and leads | `teams` (teams, task types, and the per-type assignment table in `prefs.teams`), `lead` (routing, dispatch, reports, and retries), `lead-channel` (the `nodo_lead` MCP channel), `core/shared/route.js` (pure routing decision), `core/shared/lead.js` (which engines may lead) |
+| Teams and leads | `teams` (teams, task types, and the per-type assignment table in `prefs.teams`), `lead` (routing, dispatch, reports, and retries), `lead-channel` (the `nodo_lead` MCP channel; served from the host's loopback MCP endpoint in `src/host/mcp.js`, with a stdio child process as fallback), `core/shared/route.js` (pure routing decision), `core/shared/lead.js` (which engines may lead) |
 | Project tools | `terminal` (plugin module in `src/host/`: terminals over the host subprocess service and the `/api/nodo/terminal` route) |
-| Interface | `channel` (answers `POST /api/nodo`, called by the client), `route` (plugin module in `src/host/`, registers the HTTP route) |
+| Interface | `channel` (answers `POST /api/nodo`), `route` (registers that HTTP route), `live` (pushes updates over `GET /api/nodo/live`) |
 
 ## Message paths
 
@@ -67,6 +67,8 @@ Each module under `core/src/` exports `install(rt)` and attaches its functions t
 `scripts/build-client.mjs` bundles `src/client/` (ESM, plus `core/shared/` data) into `client.js` with esbuild and inlines assets such as icons. dsh loads `client.js` as a plain script. React and UI components are supplied by the host and are not bundled separately.
 
 The client mounts its parts through host UI slots, including run status and references above the composer, conversation message nodes, and tool detail views. UI state such as drafts and navigation is saved in the browser's `localStorage`.
+
+All mounted surfaces share one live data source and one GET NDJSON stream at `/api/nodo/live`. After the initial state and transcript reads, the host combines changes over 100ms and pushes running status, approvals, statistics, session activity and subscribed transcript deltas. Each transcript subscription carries its last position for reconnects; unchanged rows retain their object identity in the client. Structural changes trigger a full state read. Runtime session metadata is persisted without changing the structure version and arrives through the stream. While disconnected, the shared source falls back to incremental polling and retries the stream with exponential backoff from one to 30 seconds. Unmounting the last subscriber aborts the connection and clears its timers; the host releases subscriptions on cancellation or plugin unload.
 
 The sidebar rail switches between the projects tree and the roles page. The roles page carries the team editor: a grid of role cards, one column per team with a lead slot and a member column, and a per-team task assignment table. Dragging a card into a lead slot makes it that team's lead; a lead leads one team and belongs to no member list.
 
@@ -86,8 +88,9 @@ The plugin data directory defaults to `~/.dsh/orchestrator/`, or the `orchestrat
 
 | Location | Contents |
 | --- | --- |
-| `state.json` | Projects, roles, conversations, an index of transcript lengths and last activity, conversation statistics, engine catalogs, and preferences including teams and their task assignments |
-| `transcripts/` | One transcript file per conversation, loaded when the conversation is read or written |
+| `state.json` | Projects, roles, conversations, engine catalogs, and preferences including teams and their task assignments |
+| `activity.json` | Transcript lengths and last activity, conversation statistics, and the tool detail ownership index |
+| `transcripts/` | One append-only `.jsonl` transcript per conversation; incomplete trailing rows are ignored on read |
 | `state.lock` | Write lock: only one dsh can write to the same data directory; other instances are read-only |
 | `secrets.json` | Credentials, with mode 600; drivers receive them through `ORCH_SECRET_*` environment variables |
 | `attachments/`, `files/` | Pasted images and attachments |
@@ -97,7 +100,7 @@ The plugin data directory defaults to `~/.dsh/orchestrator/`, or the `orchestrat
 | `runtime/` | Private lead channel socket and its per-session tokens; removed when the plugin unloads |
 | `workspaces/` | Working directories created for legacy roles that had none |
 
-`state.json` and the transcript files are written through a temporary file followed by a rename; changed transcripts are written before `state.json`. On first start after the upgrade, transcripts are moved out of an older `state.json`, which is kept as `state.v1.json` or `state.v2.json`. The project's `.nodo/` stores Git worktrees under `worktrees/` and copies of files and images sent to a lead under `workflow-inputs/`, and Nodo automatically writes a `.gitignore` there.
+State and activity files are written through a temporary file followed by a rename. During a turn, saves are combined at one-second intervals; turn completion and plugin shutdown flush pending writes. Rows of a running turn are written to a per-conversation `.open` journal with each combined save, and append to the JSONL when the turn settles; on load, a journal left by an interrupted host is appended first. History is read on demand, with at most 16 rows and 64KB cached per conversation. Files exceeding 800 rows are compacted on load, or after a write once they reach twice that. An older `.json` transcript migrates on first read and is renamed to `.json.bak`. An unreadable transcript is left unchanged and logged; when its conversation gets new rows, an unreadable `.jsonl` is renamed to `.jsonl.broken-<time>` and a new file starts. Older embedded transcripts are moved out of `state.json`, whose original is kept as `state.v1.json` or `state.v2.json`. Removing retired state fields or moving the tool detail index keeps `state.retired.json.bak`. The project's `.nodo/` stores Git worktrees under `worktrees/` and copies of files and images sent to a lead under `workflow-inputs/`, and Nodo automatically writes a `.gitignore` there.
 
 Deleting a role marks it with `deletedAt` and archives its conversations; deleting a project archives the conversations that ran in it and records the original project name in `workspaceName`. Every archived conversation keeps its `cwd`, `workspaceRef`, and the role and project names it had. Transcripts, statistics, references, tool details, and identity files remain available. A deleted role leaves every team it was in, a team it led loses its lead, and task routing no longer offers it; it no longer holds a name or a slot under the profile limit, so its name can be reused.
 
