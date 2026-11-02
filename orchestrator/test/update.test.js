@@ -158,7 +158,7 @@ test('update-info checks GitHub once and serves the cache afterwards', async () 
     assert.equal(first.latest, '999.0.0')
     assert.equal(first.source, existsSync(join(import.meta.dirname, '../../.git')))
   } finally {
-    host.dispose()
+    await host.dispose()
     globalThis.fetch = fetch
     rmSync(home, { recursive: true, force: true })
   }

@@ -2,6 +2,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
 
+
+// Feed reads its lines from the shared store; tests seed it with this stub.
+const liveStub = feed => ({
+  transcriptOf: key => feed.lines, transcriptError: () => feed.error ?? '',
+  pullTranscript: async () => {}, watchTranscript: () => () => {}, subscribeStore: () => () => {}, getStoreVersion: () => 0,
+})
 const nodes = node => !node || typeof node !== 'object' ? [] : [node,
   ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(nodes)]
 const find = (tree, className) => nodes(tree).find(node => node.props.className === className)
@@ -83,7 +89,7 @@ test('feed keeps commentary and results in order and shows file summary cards ou
     { who: 'agent', kind: 'text', text: 'final' },
   ] }
   const { Feed, ProcessGroup, ToolTimeline, StreamRecordCard } = await loadClient(['feed.js', 'tool-timeline.tsx', 'stream-records.js'], {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const before = JSON.stringify(feed.lines)
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false, timeline: true } })
@@ -110,7 +116,7 @@ test('agent file summaries stay separate from the timeline and child calls keep 
     { who: 'agent', kind: 'text', text: 'done' },
   ] }
   const { Feed, ProcessGroup, StreamRecordCard } = await loadClient(['feed.js', 'stream-records.js'], {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
   const group = nodes(tree).find(node => node.type === ProcessGroup)
@@ -131,7 +137,7 @@ test('all genuinely pending parallel tools stay active even after a newer commen
     { who: 'agent', kind: 'text', text: 'waiting for both calls' },
   ] }
   const { Feed, ProcessGroup } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const render = active => {
     const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active } })
@@ -155,7 +161,7 @@ test('structured failure states and interleaved result cards retain their origin
     tool('c', 'end', 'denied'), tool('d', 'end', 'interrupted'),
   ] }
   const { Feed, ProcessGroup } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: true } })
   const group = nodes(tree).find(node => node.type === ProcessGroup)
@@ -177,7 +183,7 @@ test('the last plan remains active after preceding start and result events fold 
     { kind: 'plan', steps: [{ text: 'verify', status: 'in_progress' }] },
   ] }
   const { Feed, ProcessGroup } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: true } })
   const group = nodes(tree).find(node => node.type === ProcessGroup)

@@ -22,20 +22,22 @@ export function install(rt) {
       onAnswered,
     }
     pending.set(entry.id, entry)
+    rt.notifyLive?.()
     // The card leaves at the first answer, so a second click cannot answer the
     // engine twice; it comes back only when the answer could not be delivered
     // and the engine has not closed the request meanwhile.
     entry.answer = async ({ decision, value }) => {
       if (!pending.delete(entry.id)) return
+      rt.notifyLive?.()
       answering.set(entry.id, entry)
       let accepted
       try {
         accepted = await rt.answerRequest(profileId, entry.id, { decision, value })
       } catch (error) {
         if (!entry.closed) pending.set(entry.id, entry)
+        rt.notifyLive?.()
         throw error
       } finally {
-        answering.delete(entry.id)
         rt.rearmIdle?.(profileId)
       }
       if (!accepted) throw failure('This engine request is no longer active', 'orch/stale')
@@ -58,16 +60,19 @@ export function install(rt) {
       }
     }
     const reply = { decision, value: typeof value === 'string' ? value.slice(0, ANSWER_TEXT_MAX) : undefined }
-    await entry.answer(reply)
-    if (!entry.cancelled && decision === 'allow' && entry.tool === 'ExitPlanMode') {
-      const found = rt.conversationOf(entry.profileId)
-      if (['claude', 'codebuddy'].includes(found?.session?.engine) && (found.session.permission ?? found.profile.permission) === 'plan') {
-        found.session.permission = 'workspace'
-        await rt.save()
+    try {
+      await entry.answer(reply)
+      if (!entry.cancelled && decision === 'allow' && entry.tool === 'ExitPlanMode') {
+        const found = rt.conversationOf(entry.profileId)
+        if (['claude', 'codebuddy'].includes(found?.session?.engine) && (found.session.permission ?? found.profile.permission) === 'plan') {
+          found.session.permission = 'workspace'
+          await rt.save()
+        }
       }
-    }
-    if (!entry.cancelled) await entry.onAnswered?.(reply)
-    if (entry.profileId) void rt.flushLeadReports?.(entry.profileId)
+      answering.delete(entry.id)
+      if (!entry.cancelled) await entry.onAnswered?.(reply)
+      if (entry.profileId) void rt.flushLeadReports?.(entry.profileId)
+    } finally { answering.delete(entry.id) }
   }
 
   // A profile gone or its driver disposed: settle its cards as denied so
@@ -89,10 +94,12 @@ export function install(rt) {
 
   const closeApproval = id => {
     pending.delete(id)
+    rt.notifyLive?.()
     const entry = answering.get(id)
     if (entry) entry.closed = true
   }
   const awaitingAnswer = profileId => [...pending.values()].some(entry => entry.profileId === profileId)
 
-  Object.assign(rt, { openApproval, answerApproval, cancelApprovals, approvalsView, closeApproval, awaitingAnswer })
+  const settlingAnswer = profileId => [...answering.values()].some(entry => entry.profileId === profileId)
+  Object.assign(rt, { openApproval, answerApproval, cancelApprovals, approvalsView, closeApproval, awaitingAnswer, settlingAnswer })
 }

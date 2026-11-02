@@ -48,7 +48,7 @@ test('a key split across deltas, an update brief and the live reply are redacted
     assert.equal(lines[0].input, 'echo [secret:FIXTURE]')
     assert.equal(lines[0].output, '[secret:FIXTURE]\n')
     assert.equal(lines[0].brief, 'run [secret:FIXTURE]')
-    assert.equal(rt.workView().profile.buffer, 'the key is [secret:FIXTURE]')
+    assert.equal(rt.workView().profile?.buffer, 'the key is [secret:FIXTURE]')
   } finally { cleanup() }
 })
 
@@ -98,6 +98,7 @@ const harness = () => {
     openApproval: (_id, event) => approvals.push(event), closeApproval: id => closed.push(id),
     appendLine: (_id, line) => { lines.push(line); return line },
   }
+  rt.saveRuntime = () => rt.save()
   install(rt)
   return { rt, lines, stats, approvals, closed, cleanup }
 }
@@ -345,8 +346,8 @@ test('a silent startup only warns unless its driver leaves liveness to the host'
         mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
         await tick(); await tick()
         assert.equal(outcome, undefined, 'silence must not settle startup')
-        assert.equal(rt.workView().profile.active, true)
-        assert.equal(rt.workView().profile.suspect, watchdog !== false)
+        assert.equal(rt.workView().profile?.active, true)
+        assert.equal(rt.workView().profile?.suspect, watchdog !== false)
         assert.equal(lines.filter(line => line.text?.includes('疑似卡住')).length, watchdog === false ? 0 : 1)
         mock.timers.tick(TURN_IDLE_TIMEOUT_MS * 3)
         assert.equal(lines.filter(line => line.text?.includes('疑似卡住')).length, watchdog === false ? 0 : 1)
@@ -391,16 +392,16 @@ test('a late turn start after a startup warning binds and completes the waiting 
     await tick()
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
     await tick()
-    assert.equal(rt.workView().profile.suspect, true)
+    assert.equal(rt.workView().profile?.suspect, true)
     assert.equal(outcome, undefined)
     assert.equal(turn, undefined)
     await assert.rejects(rt.send('profile', 'OTHER', undefined, [], [], { exclusive: true }), { code: 'orch/busy' })
     rt.driverSink('profile', { type: 'turn/start', turnId: 'late' })
     assert.equal(await first.turn, 'late')
-    assert.equal(rt.workView().profile.suspect, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'late', reason: 'done', text: 'Recovered startup' })
     assert.deepEqual(await first.completion, { reason: 'done', text: 'Recovered startup', final: 'Recovered startup', replyId: lines.findLast(line => line.reply).replyId })
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
     assert.equal(ends, 1)
   } finally { cleanup(); mock.timers.reset() }
 })
@@ -414,7 +415,7 @@ test('session events cannot clear suspicion or repeat the warning during continu
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
     for (const state of ['closed', 'ready']) {
       rt.driverSink('profile', { type: 'session', state })
-      assert.equal(rt.workView().profile.suspect, true)
+      assert.equal(rt.workView().profile?.suspect, true)
       mock.timers.tick(TURN_IDLE_TIMEOUT_MS * 2)
       assert.equal(lines.filter(line => line.text?.includes('疑似卡住')).length, 1)
     }
@@ -438,22 +439,22 @@ for (const starting of [false, true]) test(`an explicit stop settles an unrespon
     first.completion.then(value => { outcome = value })
     await tick()
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
-    assert.equal(rt.workView().profile.suspect, true)
+    assert.equal(rt.workView().profile?.suspect, true)
     const queued = await rt.send('profile', 'QUEUED', undefined, [], [], { queue: true })
     await rt.interrupt('profile')
     assert.equal((await queued.completion).reason, 'interrupted')
     mock.timers.tick(RUN_LIMITS.cancelConfirmMs - 1)
     await tick()
     assert.equal(outcome, undefined)
-    assert.equal(rt.workView().profile.active, true)
+    assert.equal(rt.workView().profile?.active, true)
     await rt.interrupt('profile')
     mock.timers.tick(1)
     const result = await first.completion
     assert.equal(result.reason, 'interrupted')
     assert.equal(result.unconfirmed, true)
     assert.equal(await first.turn, starting ? null : 'T1')
-    assert.equal(rt.workView().profile.active, false)
-    assert.equal(rt.workView().profile.suspect, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
     assert.equal(ends, 1, 'repeated stops keep the original deadline and settle once')
     const count = lines.length
     const late = () => {
@@ -466,8 +467,8 @@ for (const starting of [false, true]) test(`an explicit stop settles an unrespon
     late()
     await tick()
     assert.equal(ends, 1)
-    assert.equal(rt.workView().profile.buffer, null)
-    assert.equal(rt.workView().profile.active, true)
+    assert.equal(rt.workView().profile?.buffer ?? null, null)
+    assert.equal(rt.workView().profile?.active, true)
     assert.equal(lines.some(line => line.text === 'stale'), false)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T2', reason: 'done' })
     assert.equal((await next.completion).reason, 'done')
@@ -493,7 +494,7 @@ for (const cancellation of ['deadline', 'driver confirmation']) test(`a cancelle
     if (cancellation === 'deadline') mock.timers.tick(RUN_LIMITS.cancelConfirmMs)
     await tick()
     assert.equal(saving, true)
-    assert.equal(rt.workView().profile.active, true)
+    assert.equal(rt.workView().profile?.active, true)
     open()
     await tick()
     assert.equal(sends, 0, 'initialization must not send while cancellation is being saved')
@@ -502,7 +503,7 @@ for (const cancellation of ['deadline', 'driver confirmation']) test(`a cancelle
     assert.equal(outcome.reason, 'interrupted')
     assert.equal(outcome.unconfirmed, cancellation === 'deadline' ? true : undefined)
     assert.equal(await placed.turn, null)
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
     assert.equal(ends, 1)
   } finally { releaseSave(); cleanup(); mock.timers.reset() }
 })
@@ -526,7 +527,7 @@ test('a cancelled startup ignores late starts and keeps the next sequence bound 
     rt.driverSink('profile', { type: 'delta', turnId: 'T1', text: 'Ghost reply' })
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T1', reason: 'done', text: 'Ghost reply' })
     await tick()
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
     assert.equal(lines.length, count, 'a late start cannot revive the cancelled startup or its reply')
     const next = await rt.send('profile', 'NEXT', undefined, [], [], { exclusive: true })
     assert.equal(await next.turn, 'T2')
@@ -557,7 +558,7 @@ test('a late end without a known turn id after startup fallback cannot settle or
     assert.equal(lines.length, count)
     assert.equal(ends, 1)
     assert.deepEqual(outcomes, [['profile', 'TASK', 'interrupted', '']], 'only the fallback records a task outcome')
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
   } finally { cleanup(); mock.timers.reset() }
 })
 
@@ -579,7 +580,7 @@ test('startup cancellation has no previous reply in its completion or task outco
     const previous = lines.find(line => line.text === 'Previous reply')
     const next = await rt.send('profile', 'NEXT')
     await tick()
-    assert.equal(rt.workView().profile.buffer, null, 'a new startup does not expose the last reply')
+    assert.equal(rt.workView().profile?.buffer, null, 'a new startup does not expose the last reply')
     await rt.interrupt('profile')
     mock.timers.tick(RUN_LIMITS.cancelConfirmMs)
     assert.deepEqual(await next.completion, { reason: 'interrupted', text: undefined, unconfirmed: true })
@@ -605,7 +606,7 @@ test('a cancelled startup still permits an idle compaction turn to start and end
     rt.driverSink('profile', { type: 'turn/end', turnId: 'compact', reason: 'done' })
     rt.isCompacting = () => false
     await tick()
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
     assert.equal(lines.find(line => line.text === 'Compacted')?.reason, 'done')
   } finally { cleanup(); mock.timers.reset() }
 })
@@ -627,7 +628,7 @@ test('a driver end before the cancellation deadline wins once and cannot stop th
     await tick()
     mock.timers.tick(RUN_LIMITS.cancelConfirmMs)
     assert.equal(ends, 1)
-    assert.equal(rt.workView().profile.active, true)
+    assert.equal(rt.workView().profile?.active, true)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T2', reason: 'done' })
     assert.equal((await next.completion).reason, 'done')
   } finally { cleanup(); mock.timers.reset() }
@@ -649,7 +650,7 @@ test('an unresponsive driver stop cannot keep the interrupt request pending afte
     mock.timers.tick(1)
     assert.equal((await completion).unconfirmed, true)
     assert.equal(await stopping, true)
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
   } finally { cleanup(); mock.timers.reset() }
 })
 
@@ -677,9 +678,9 @@ test('an idle warning keeps completion, queued messages and exclusive occupancy 
     assert.equal(queuedOutcome, undefined)
     assert.deepEqual(interrupted, [])
     assert.equal(ends, 0)
-    assert.equal(rt.workView().profile.active, true)
-    assert.equal(rt.workView().profile.suspect, true)
-    assert.equal(rt.workView().profile.queued, 1)
+    assert.equal(rt.workView().profile?.active, true)
+    assert.equal(rt.workView().profile?.suspect, true)
+    assert.equal(rt.workView().profile?.queued, 1)
     assert.equal(rt.workView().profile.pending.length, 1)
     assert.deepEqual(sent, ['TASK'])
     await assert.rejects(rt.send('profile', 'EXCLUSIVE', undefined, [], [], { exclusive: true }), { code: 'orch/busy' })
@@ -694,10 +695,10 @@ test('an idle warning keeps completion, queued messages and exclusive occupancy 
     assert.deepEqual(await first.completion, { reason: 'done', text: 'Late success', final: 'Late success', replyId: lines.findLast(line => line.reply).replyId })
     await tick()
     assert.deepEqual(sent, ['TASK', 'NEXT'], 'only the real end drains the queue')
-    assert.equal(rt.workView().profile.suspect, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T2', reason: 'done', text: 'Next done' })
     assert.equal((await queued.completion).reason, 'done')
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
     assert.deepEqual(interrupted, [])
   } finally { cleanup(); mock.timers.reset() }
 })
@@ -714,7 +715,7 @@ test('a native driver leaves active turn liveness to its host without warning', 
     mock.timers.tick(RETRY_IDLE_TIMEOUT_MS)
     await tick()
     assert.equal(outcome, undefined)
-    assert.equal(rt.workView().profile.suspect, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
     assert.equal(lines.some(line => line.text?.includes('疑似卡住')), false)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T1', reason: 'done' })
     assert.equal((await completion).reason, 'done')
@@ -740,14 +741,14 @@ test('an open card holds the idle watchdog, and later silence only warns', async
       mock.timers.tick(TURN_IDLE_TIMEOUT_MS * 2)
       await tick(); await tick()
       assert.equal(outcome, undefined, 'a card waiting on the user is not engine silence')
-      assert.equal(rt.workView().profile.suspect, false)
+      assert.equal(rt.workView().profile?.suspect ?? false, false)
       assert.equal(lines.some(line => line.text?.includes('疑似卡住')), false)
       open = false
       rt.rearmIdle('profile')
       mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
       await tick(); await tick()
       assert.equal(outcome, undefined)
-      assert.equal(rt.workView().profile.suspect, true)
+      assert.equal(rt.workView().profile?.suspect, true)
       assert.deepEqual(interrupted, [])
     } finally { cleanup() }
   } finally { mock.timers.reset() }
@@ -768,15 +769,15 @@ test('an announced retry delays the idle warning and still accepts a late succes
       mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
       await tick(); await tick()
       assert.equal(outcome, undefined, 'the retry backoff outlasts the ordinary idle window')
-      assert.equal(rt.workView().profile.suspect, false)
+      assert.equal(rt.workView().profile?.suspect ?? false, false)
       mock.timers.tick(RETRY_IDLE_TIMEOUT_MS - TURN_IDLE_TIMEOUT_MS)
       await tick(); await tick()
       assert.equal(outcome, undefined)
-      assert.equal(rt.workView().profile.suspect, true)
+      assert.equal(rt.workView().profile?.suspect, true)
       assert.match(lines.find(line => line.kind === 'note').text, /600 秒.*仍在等待/)
       rt.driverSink('profile', { type: 'turn/end', turnId: 'T1', reason: 'done', text: 'Recovered' })
       assert.equal((await completion).reason, 'done')
-      assert.equal(rt.workView().profile.suspect, false)
+      assert.equal(rt.workView().profile?.suspect ?? false, false)
     } finally { cleanup() }
   } finally { mock.timers.reset() }
 })
@@ -803,7 +804,7 @@ test('an ordinary event after a retry returns the turn to the ordinary idle wind
       mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
       await tick(); await tick()
       assert.equal(outcome, undefined)
-      assert.equal(rt.workView().profile.suspect, true)
+      assert.equal(rt.workView().profile?.suspect, true)
       assert.match(lines.find(line => line.kind === 'note').text, /120 秒.*仍在等待/)
     } finally { cleanup() }
   } finally { mock.timers.reset() }
@@ -831,24 +832,24 @@ test('any current-turn engine activity clears suspicion and rearms one warning p
       { type: 'note', text: 'Reconnected' },
     ]
     for (const event of events) {
-      assert.equal(rt.workView().profile.suspect, true)
+      assert.equal(rt.workView().profile?.suspect, true)
       rt.driverSink('profile', { ...event, turnId: 'old' })
-      assert.equal(rt.workView().profile.suspect, true, 'foreign activity cannot clear suspicion')
+      assert.equal(rt.workView().profile?.suspect, true, 'foreign activity cannot clear suspicion')
       const before = warnings()
       rt.driverSink('profile', { ...event, turnId: 'T1' })
-      assert.equal(rt.workView().profile.suspect, false, event.type)
+      assert.equal(rt.workView().profile?.suspect, false, event.type)
       mock.timers.tick(TURN_IDLE_TIMEOUT_MS - 1)
-      assert.equal(rt.workView().profile.suspect, false)
+      assert.equal(rt.workView().profile?.suspect ?? false, false)
       assert.equal(warnings(), before)
       mock.timers.tick(1)
-      assert.equal(rt.workView().profile.suspect, true)
+      assert.equal(rt.workView().profile?.suspect, true)
       assert.equal(warnings(), before + 1)
     }
     await tick()
     assert.equal(outcome, undefined)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T1', reason: 'done' })
     assert.equal((await completion).reason, 'done')
-    assert.equal(rt.workView().profile.suspect, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
   } finally { cleanup(); mock.timers.reset() }
 })
 
@@ -859,11 +860,11 @@ for (const reason of ['error', 'interrupted']) test(`an idle warning preserves t
     const { completion } = await rt.send('profile', 'TASK')
     await tick()
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
-    assert.equal(rt.workView().profile.suspect, true)
+    assert.equal(rt.workView().profile?.suspect, true)
     rt.driverSink('profile', { type: 'turn/end', turnId: 'T1', reason })
     assert.equal((await completion).reason, reason)
-    assert.equal(rt.workView().profile.suspect, false)
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
   } finally { cleanup(); mock.timers.reset() }
 })
 
@@ -889,14 +890,14 @@ test('an explicit interrupt after an idle warning keeps late events out between 
   try {
     rt.driverSink('profile', { type: 'turn/start', turnId: 'T1' })
     mock.timers.tick(TURN_IDLE_TIMEOUT_MS)
-    assert.equal(rt.workView().profile.suspect, true)
+    assert.equal(rt.workView().profile?.suspect, true)
     await rt.interrupt('profile')
     await tick()
     assert.deepEqual(interrupted, ['profile'])
-    assert.equal(rt.workView().profile.suspect, false)
+    assert.equal(rt.workView().profile?.suspect ?? false, false)
     late()
     await tick()
-    assert.equal(rt.workView().profile.active, false)
+    assert.equal(rt.workView().profile?.active ?? false, false)
     assert.equal(ends, 1)
     const { completion } = await rt.send('profile', 'NEXT')
     let outcome
@@ -907,8 +908,8 @@ test('an explicit interrupt after an idle warning keeps late events out between 
     await tick(); await tick()
     assert.equal(outcome, undefined)
     assert.equal(ends, 1)
-    assert.equal(rt.workView().profile.buffer, null)
-    assert.equal(rt.workView().profile.suspect, true, 'old events cannot reset the next turn watchdog')
+    assert.equal(rt.workView().profile?.buffer ?? null, null)
+    assert.equal(rt.workView().profile?.suspect, true, 'old events cannot reset the next turn watchdog')
     assert.ok(!lines.some(line => line.text === 'old'))
     release()
   } finally { cleanup(); mock.timers.reset() }

@@ -64,7 +64,7 @@ for (const engine of ['claude', 'codebuddy']) {
           assert.deepEqual(wire.filter(item => item.spawn).map(item => item.permissionMode), ['plan', 'auto'])
         } else assert.deepEqual(wire.filter(item => item.configId === 'mode').map(item => item.value), ['plan', 'auto'])
         assert.equal(rt.state.profiles[role.id].permission, 'plan')
-      } finally { host.dispose() }
+      } finally { await host.dispose() }
     })
   })
 }
@@ -94,7 +94,7 @@ test('Claude goal commands are visible turns, keep recovery for the task and cle
       assert.deepEqual(transcript.filter(item => item.who === 'user').map(item => item.text), ['/goal All tests pass', 'Fix the bug', '/goal clear'])
       assert.ok(requests(cwd, 'claude').some(item => item.user === '/goal clear'))
       assert.equal(rt.conversationOf(session.id).session.nativeGoal, '')
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -122,7 +122,7 @@ test('clearing a busy Claude session\'s goal stays pending and the next send ret
       const owned = rt.conversationOf(session.id).session
       assert.equal(owned.nativeGoal, '')
       assert.equal(owned.goalPending, undefined)
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -149,6 +149,6 @@ test('goal choices validate before persistence and preserve the role snapshot', 
         const unsupportedSession = await host.api('session-create', { profile: unsupported.id, workspace: workspace.id, lazy: true })
         await assert.rejects(host.api('session-update', { profile: unsupported.id, session: unsupportedSession.id, changes: { nativeGoal: 'Do work' } }), /no native goal support/)
       }
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })

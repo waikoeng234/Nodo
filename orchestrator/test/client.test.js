@@ -2077,16 +2077,21 @@ test('a lead card\'s 1:1 chat keeps usage rows while Team sessions hide them', a
       },
       useRef: initial => ({ current: null }),
       useEffect(effect) { effects.push(effect) },
+      useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
     },
+    stubs: { 'live.js': {
+      transcriptOf: key => lines, transcriptError: () => '',
+      pullTranscript: async () => {}, watchTranscript: () => () => {}, subscribeStore: () => () => {}, getStoreVersion: () => 0,
+    } },
     uiShared: {
-      call: async () => lines, MARKDOWN_LABELS: {}, TOOL_VARIANTS: {}, toolVariant: () => 'run', ComposerGlyph: () => 'send',
+      MARKDOWN_LABELS: {}, TOOL_VARIANTS: {}, toolVariant: () => 'run', ComposerGlyph: () => 'send',
       billedTokens: stats => stats.inputTokens + stats.outputTokens, cacheHitPercent: () => null, contextPercent: () => null,
       compactTokens: value => String(value), compactDuration: () => '', exactTokens: value => String(value),
       tokensPerSecond: () => '', turnTokens: usage => (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
     },
   })
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all), ...Object.values(tree.props ?? {}).flatMap(all)] : []
-  const render = (profile, session) => { cursor = 0; return all(Feed({ profile, session, revision: 1, work: null, sentTick: 0 })) }
+  const render = (profile, session) => { cursor = 0; return all(Feed({ profile, session, work: null, sentTick: 0 })) }
   const open = async (profile, session) => {
     render(profile, session)
     for (const effect of effects.splice(0)) effect()
@@ -2549,7 +2554,7 @@ test('the reference dialog keeps its frame still and scrolls the reply pane', ()
 
 test('the rail marks the roles view pressed and shows its published body', async () => {
   assert.match(clientSource('index.js'), /register\(\{ name: 'main', key: 'nodo-roles' \}, RolesEntry\)/)
-  assert.match(clientSource('ui-shared.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats/)
+  assert.match(clientSource('live.js'), /work: answer\.work, approvals: answer\.approvals, stats: answer\.stats/)
   const { Rail } = await loadRail({ useState: initial => [initial, () => {}] })
   const content = { type: 'nav', props: {}, children: ['角色列表'] }
   const calls = []

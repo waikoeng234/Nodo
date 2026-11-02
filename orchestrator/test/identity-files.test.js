@@ -51,7 +51,7 @@ test('starting an engine collects identity versions no session references', asyn
     const orphan = files.bind('removed-session', 'Orphaned identity')
     const kept = files.bind(profile.id, 'Kept identity')
     await host.api('send', { profile: profile.id, text: 'Start' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.equal(existsSync(orphan.path), false)
     assert.equal(existsSync(kept.path), true)
   })

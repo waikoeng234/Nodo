@@ -17,6 +17,7 @@ const harness = answer => {
     answerRequest: (...args) => answer(rt, ...args),
     statsOutput() {}, statsTool() {}, statsEnd() {}, recordTaskOutcome() {}, isCompacting: () => false,
   }
+  rt.saveRuntime = () => rt.save()
   installDispatch(rt)
   installApprovals(rt)
   const emit = event => rt.driverSink('p', { turnId: 't', ...event })

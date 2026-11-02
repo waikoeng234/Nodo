@@ -9167,6 +9167,260 @@ module.exports = __toCommonJS(index_exports);
 
 // src/client/ui-shared.js
 var import_react = require("react");
+
+// src/client/live.js
+var ROUTE = "/api/nodo";
+var call = async (endpoint, payload) => {
+  const response = await fetch(ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ endpoint, payload })
+  });
+  const answer = await response.json();
+  if (answer?.ok !== true) throw new Error(answer?.error?.message ?? "request failed");
+  return answer.value;
+};
+var view = null;
+var error = "";
+var listeners = /* @__PURE__ */ new Set();
+var timer = null;
+var requested = 0;
+var applied = 0;
+var polling = false;
+var connection = null;
+var retry = null;
+var failures = 0;
+var connected = false;
+var restarting = false;
+var transcripts = /* @__PURE__ */ new Map();
+var emit = () => {
+  for (const listener of listeners) listener();
+};
+var mergeSessions = (current, updates) => !updates ? current : {
+  ...current,
+  profiles: current.profiles.map((profile) => ({ ...profile, sessions: profile.sessions.map((session) => updates[session.id] ? { ...session, ...updates[session.id] } : session) }))
+};
+var poll = async (force = false) => {
+  const order = ++requested;
+  try {
+    const answer = await call("state", force || view === null ? void 0 : { since: { struct: view.struct } });
+    if (!polling || order < applied) return;
+    applied = order;
+    const moved = view !== null && answer.activity !== view.activity;
+    view = answer.unchanged && view !== null ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
+    view = mergeSessions(view, answer.sessions);
+    error = "";
+    if (moved && !connected) for (const [key, { profileId, sessionId }] of watched) void pullTranscript(profileId, sessionId, key);
+  } catch (failure) {
+    if (polling && order >= applied) {
+      error = failure.message;
+      emit();
+    }
+    return;
+  }
+  emit();
+};
+var schedule = () => {
+  if (!polling || connected || timer !== null) return;
+  const busy = Object.values(view?.work ?? {}).some((state) => state?.active === true);
+  timer = setTimeout(async () => {
+    timer = null;
+    await poll();
+    if (connection === null) void connect();
+    schedule();
+  }, busy ? 400 : 1200);
+};
+var connect = async () => {
+  if (!polling || view === null) return;
+  connection?.abort();
+  const abort = connection = new AbortController();
+  const watch = [...watched.values()].map(({ profileId: profile, sessionId: session }) => ({ profile, session, since: transcripts.get(keyOf(profile, session))?.positions }));
+  try {
+    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch) });
+    const response = await fetch(`${ROUTE}/live?${query}`, { signal: abort.signal });
+    if (!response.ok || !response.body) throw new Error("Stream unavailable");
+    if (abort.signal.aborted) return;
+    connected = true;
+    clearTimeout(timer);
+    timer = null;
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let pending = "";
+    try {
+      while (!abort.signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        pending += decoder.decode(value, { stream: true });
+        let newline;
+        while ((newline = pending.indexOf("\n")) >= 0) {
+          const line = pending.slice(0, newline);
+          pending = pending.slice(newline + 1);
+          if (!line || abort.signal.aborted) continue;
+          const frame = JSON.parse(line);
+          failures = 0;
+          if (frame.type === "structure") {
+            if (frame.struct !== view.struct) await poll(true);
+          } else if (frame.type === "live") {
+            const { type, sessions, reset, ...live } = frame;
+            for (const key of ["work", "stats"]) if (live[key]) {
+              const values = live[key];
+              live[key] = { ...reset ? {} : view[key], ...values };
+              for (const [id, value2] of Object.entries(values)) if (value2 === null) delete live[key][id];
+            }
+            view = mergeSessions({ ...view, ...live }, sessions);
+            error = "";
+            emit();
+          } else if (frame.type === "transcript") merge(frame.key, frame.value);
+        }
+      }
+    } finally {
+      await reader.cancel().catch(() => {
+      });
+      reader.releaseLock();
+    }
+  } catch (failure) {
+    if (!abort.signal.aborted) {
+      error = failure.message;
+      emit();
+    }
+  } finally {
+    if (connection === abort && !abort.signal.aborted) {
+      connected = false;
+      schedule();
+      retry = setTimeout(() => {
+        retry = null;
+        void connect();
+      }, Math.min(3e4, 1e3 * 2 ** Math.min(failures++, 5)));
+    }
+  }
+};
+var restart = () => {
+  if (!polling || restarting) return;
+  restarting = true;
+  void Promise.resolve().then(() => {
+    restarting = false;
+    clearTimeout(retry);
+    retry = null;
+    void connect();
+  });
+};
+var subscribeLive = (listener) => {
+  listeners.add(listener);
+  if (!polling) {
+    polling = true;
+    void poll(true).then(() => {
+      if (polling) {
+        schedule();
+        void connect();
+      }
+    });
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      polling = false;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      clearTimeout(retry);
+      retry = null;
+      connection?.abort();
+      connection = null;
+      connected = false;
+    }
+  };
+};
+var getLive = () => view;
+var liveError = () => error;
+var refreshLive = async (force = true) => {
+  if (force || !connected) await poll(force);
+};
+var keyOf = (profileId, sessionId) => `${profileId}:${sessionId}`;
+var transcriptOf = (key) => transcripts.get(key)?.lines ?? EMPTY;
+var EMPTY = [];
+var merge = (key, answer) => {
+  const current = transcripts.get(key);
+  if (answer.unchanged) {
+    if (current?.error) {
+      transcripts.set(key, { ...current, error: "" });
+      bumpStore();
+    }
+    return;
+  }
+  if (answer.archived) {
+    transcripts.set(key, { positions: { archived: true }, lines: answer.lines, error: "" });
+    bumpStore();
+    return;
+  }
+  if (answer.full) {
+    transcripts.set(key, { positions: { token: answer.token, base: answer.base, n: answer.base + answer.lines.length - 1, dirty: answer.dirty }, lines: answer.lines.map((item) => item.line), error: "" });
+    bumpStore();
+    return;
+  }
+  const cut = answer.base - current.positions.base;
+  const positions = { token: answer.token, base: answer.base, n: current.positions.n, dirty: answer.dirty };
+  if (cut === 0 && answer.appended.length === 0 && answer.changed.length === 0) {
+    transcripts.set(key, { ...current, positions, error: "" });
+    if (current.error) bumpStore();
+    return;
+  }
+  const lines = current.lines.slice(cut);
+  for (const { n, line } of [...answer.appended, ...answer.changed]) lines[n - answer.base] = line;
+  transcripts.set(key, { positions: { ...positions, n: answer.base + lines.length - 1 }, lines, error: "" });
+  bumpStore();
+};
+var inflight = /* @__PURE__ */ new Map();
+var pullTranscript = (profileId, sessionId, key = keyOf(profileId, sessionId)) => {
+  const running = inflight.get(key);
+  if (running) {
+    running.again = true;
+    return running.done;
+  }
+  const entry = { again: false };
+  entry.done = (async () => {
+    do {
+      entry.again = false;
+      const positions = transcripts.get(key)?.positions;
+      try {
+        const answer = await call("transcript", { profile: profileId, session: sessionId, since: positions ?? {} });
+        merge(key, answer);
+      } catch (failure) {
+        transcripts.set(key, { ...transcripts.get(key) ?? { lines: EMPTY }, error: failure.message });
+        bumpStore();
+      }
+    } while (entry.again);
+    inflight.delete(key);
+  })();
+  inflight.set(key, entry);
+  return entry.done;
+};
+var watched = /* @__PURE__ */ new Map();
+var watchTranscript = (profileId, sessionId) => {
+  const key = keyOf(profileId, sessionId);
+  const current = watched.get(key) ?? { profileId, sessionId, count: 0 };
+  current.count += 1;
+  watched.set(key, current);
+  if (current.count === 1) void pullTranscript(profileId, sessionId, key).then(restart);
+  return () => {
+    current.count -= 1;
+    if (current.count === 0) {
+      watched.delete(key);
+      restart();
+    }
+  };
+};
+var transcriptError = (key) => transcripts.get(key)?.error ?? "";
+var storeVersion = 0;
+var storeListeners = /* @__PURE__ */ new Set();
+var bumpStore = () => {
+  storeVersion += 1;
+  for (const listener of storeListeners) listener();
+};
+var subscribeStore = (listener) => {
+  storeListeners.add(listener);
+  return () => storeListeners.delete(listener);
+};
+var getStoreVersion = () => storeVersion;
+
+// src/client/ui-shared.js
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 
 // src/client/assets/nodo-logo.png
@@ -9174,7 +9428,7 @@ var nodo_logo_default = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABD4AAAFqC
 
 // src/client/ui-shared.js
 var PANEL_ID = "nodo";
-var ROUTE = "/api/nodo";
+var ROUTE2 = "/api/nodo";
 var ROLE_FORM = "nodo-role-form";
 var WORKSPACE_FORM = "nodo-workspace-form";
 var WORKTREE_FORM = "nodo-worktree-form";
@@ -9200,8 +9454,8 @@ function setHostServices(services) {
   layoutService = services.layoutService;
   rightPanelService = services.rightPanelService;
 }
-var call = async (endpoint, payload) => {
-  const response = await fetch(ROUTE, {
+var call2 = async (endpoint, payload) => {
+  const response = await fetch(ROUTE2, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ endpoint, payload })
@@ -9218,44 +9472,8 @@ var readImage = (file) => new Promise((resolve, reject) => {
 });
 var base64Of = (dataUrl) => dataUrl.slice(dataUrl.indexOf(",") + 1);
 function useStateView() {
-  const [view, setView] = (0, import_react.useState)(null);
-  const [error, setError] = (0, import_react.useState)("");
-  const live = (0, import_react.useRef)(false);
-  const snapshot = (0, import_react.useRef)(null);
-  const requested = (0, import_react.useRef)(0);
-  const applied = (0, import_react.useRef)(0);
-  const refresh = async (force = false) => {
-    const order = ++requested.current;
-    try {
-      const answer = await call("state", force ? void 0 : { since: snapshot.current?.revision });
-      if (!live.current || order < applied.current) return;
-      applied.current = order;
-      const next = answer.unchanged && snapshot.current !== null ? { ...snapshot.current, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
-      snapshot.current = next;
-      setView(next);
-      setError("");
-    } catch (failure) {
-      if (live.current && order >= applied.current) setError(failure.message);
-    }
-  };
-  (0, import_react.useEffect)(() => {
-    live.current = true;
-    void refresh(true);
-    let timer = null;
-    const schedule = () => {
-      const busy = Object.values(snapshot.current?.work ?? {}).some((state) => state?.active === true);
-      timer = setTimeout(() => {
-        void refresh();
-        schedule();
-      }, busy ? 400 : 1200);
-    };
-    schedule();
-    return () => {
-      live.current = false;
-      clearTimeout(timer);
-    };
-  }, []);
-  return { view, error, refresh };
+  const view2 = (0, import_react.useSyncExternalStore)(subscribeLive, getLive);
+  return { view: view2, error: liveError(), refresh: refreshLive };
 }
 var WARN_INK = "color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,var(--dsw-alias-label-primary))";
 var MARKDOWN_LABELS = {
@@ -9302,12 +9520,12 @@ var runningOf = (profile, work) => {
   const current = active.find((state) => state.status === "waiting-question") ?? active.find((state) => state.status === "waiting-approval") ?? active[0] ?? states.filter((state) => state.finishedAt && !state.seen).sort((a, b2) => b2.finishedAt - a.finishedAt)[0];
   return { ...current, active: active.length > 0, queued: states.reduce((total, state) => total + (state.queued ?? 0), 0) };
 };
-var workspaceIdOf = (view, role, session) => session.workspaceRef ?? view.workspaces.find((item) => item.cwd === session.cwd)?.id ?? role.workspaceId;
-var roleStateOf = (profile, view, workspace) => {
-  const live = runningOf(profile, view.work);
+var workspaceIdOf = (view2, role, session) => session.workspaceRef ?? view2.workspaces.find((item) => item.cwd === session.cwd)?.id ?? role.workspaceId;
+var roleStateOf = (profile, view2, workspace) => {
+  const live = runningOf(profile, view2.work);
   if (live.active) return live;
-  const visible = (profile.sessions ?? []).filter((session) => !session.archivedAt && workspaceIdOf(view, profile, session) === workspace?.id);
-  return { ...runningOf({ ...profile, sessions: visible }, view.work), queued: live.queued };
+  const visible = (profile.sessions ?? []).filter((session) => !session.archivedAt && workspaceIdOf(view2, profile, session) === workspace?.id);
+  return { ...runningOf({ ...profile, sessions: visible }, view2.work), queued: live.queued };
 };
 var TIME_WORDS = { now: "\u521A\u521A", minutes: "{n}\u5206\u949F", hours: "{n}\u5C0F\u65F6", days: "{n}\u5929", months: "{n}\u4E2A\u6708", years: "{n}\u5E74", ago: "{t}\u524D" };
 var sessionTime = (at2) => {
@@ -9467,10 +9685,10 @@ function RolePicker({ profiles, profile, disabled, onSelect }) {
 }
 function createRoleSeat(ctx, space) {
   function RoleSeat({ sessionId }) {
-    const { view } = useStateView();
-    const profile = view?.profiles.find((role) => !role.deletedAt && role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sessionId));
+    const { view: view2 } = useStateView();
+    const profile = view2?.profiles.find((role) => !role.deletedAt && role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sessionId));
     if (typeof ctx.sessions.subagentAddress === "function" && ctx.sessions.subagentAddress(sessionId) !== void 0) return null;
-    return (0, import_react.createElement)(RolePicker, { profiles: view?.profiles ?? [], profile });
+    return (0, import_react.createElement)(RolePicker, { profiles: view2?.profiles ?? [], profile });
   }
   ctx.slots.inject("conversation.input.right", () => {
     let unregister;
@@ -9601,8 +9819,8 @@ function ToolCall({ label, activeLabel = label, query = "", queryNode, after, st
       return;
     }
     if (!mounted) return;
-    const timer = setTimeout(() => setMounted(false), COLLAPSE_MS);
-    return () => clearTimeout(timer);
+    const timer2 = setTimeout(() => setMounted(false), COLLAPSE_MS);
+    return () => clearTimeout(timer2);
   }, [open, mounted]);
   const running = status2 === "running";
   const statusLabel = kind === "tool" ? `\uFF1A${STATUS_LABELS[status2]}` : running ? "\uFF1A\u8FDB\u884C\u4E2D" : "";
@@ -9773,14 +9991,14 @@ function useHoverPreview() {
   const [value, setValue] = (0, import_react.useState)(null);
   const anchor = (0, import_react.useRef)(null);
   const popup = (0, import_react.useRef)(null);
-  const timer = (0, import_react.useRef)(null);
+  const timer2 = (0, import_react.useRef)(null);
   const keep = () => {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
+    if (timer2.current !== null) clearTimeout(timer2.current);
+    timer2.current = null;
   };
   const close = () => {
     keep();
-    timer.current = setTimeout(() => {
+    timer2.current = setTimeout(() => {
       if (!popup.current?.contains(document.activeElement)) setValue(null);
     }, 180);
   };
@@ -9857,7 +10075,7 @@ function HoverFilePreview({ preview, scope, path }) {
   (0, import_react.useEffect)(() => {
     setContent(null);
     let live = true;
-    call("workspace-file", { ...scope, path }).then((value) => {
+    call2("workspace-file", { ...scope, path }).then((value) => {
       if (live) setContent(value);
     }).catch(() => {
       if (live) preview.hide();
@@ -11173,8 +11391,8 @@ function CodeDiff({ filename, previewable = true, diff, patch, cycle = 0, panel 
   }, [filename, patch, cycle]);
   (0, import_react.useEffect)(() => {
     if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1200);
-    return () => clearTimeout(timer);
+    const timer2 = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(timer2);
   }, [copied]);
   const diffs = diff ? [diff] : [];
   const parsed = (0, import_react.useMemo)(() => !diff && patch !== void 0 ? parsedPatch(patch) : null, [diff, patch]);
@@ -11396,7 +11614,7 @@ var panelTarget2 = () => rightPanelService?.getSnapshot().target ?? null;
 function Counts({ value }) {
   return value ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${value.added} \u884C\uFF0C\u5220\u9664 ${value.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", value.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", value.removed.toLocaleString())) : null;
 }
-function FileChangesSummary({ record, value, full, load, loadChanges = load, busy = false, available, error, renderFile }) {
+function FileChangesSummary({ record, value, full, load, loadChanges = load, busy = false, available, error: error2, renderFile }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
   const [open, setOpen] = (0, import_react.useState)(false);
   const target = (0, import_react.useSyncExternalStore)(subscribePanel2, panelTarget2);
@@ -11428,16 +11646,16 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
       void load();
       return;
     }
-    let requested = false;
+    let requested2 = false;
     const observer = new IntersectionObserver((entries) => {
-      if (requested || !entries.some((entry) => entry.isIntersecting)) return;
-      requested = true;
+      if (requested2 || !entries.some((entry) => entry.isIntersecting)) return;
+      requested2 = true;
       observer.disconnect();
       void load();
     }, { rootMargin: "200px" });
     if (box.current) observer.observe(box.current);
     return () => {
-      requested = true;
+      requested2 = true;
       observer.disconnect();
     };
   }, [record.runId, record.entityId, record.revision, canLoad]);
@@ -11533,7 +11751,7 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
     },
     expanded ? "\u6536\u8D77\u6587\u4EF6\u5217\u8868" : `\u518D\u663E\u793A ${count - 3} \u4E2A\u6587\u4EF6`,
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14, style: expanded ? { transform: "rotate(180deg)" } : void 0 })
-  ), files.length < count && !canLoad && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", count, " \u4E2A\u6587\u4EF6"), error && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error), selectedFile && /* @__PURE__ */ (0, import_react.createElement)(
+  ), files.length < count && !canLoad && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", count, " \u4E2A\u6587\u4EF6"), error2 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error2), selectedFile && /* @__PURE__ */ (0, import_react.createElement)(
     "div",
     {
       id: previewId,
@@ -11549,7 +11767,7 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
         if (!event.currentTarget.contains(event.relatedTarget) && !hover.anchor.current?.contains(event.relatedTarget)) hover.close();
       }
     },
-    busy && canLoad ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error) : renderFile(selectedFile.file, selectedFile.patch, false, true)
+    busy && canLoad ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-notice", role: "alert" }, error2) : renderFile(selectedFile.file, selectedFile.patch, false, true)
   ), open && files.length === 0 && value.body.turnDiff && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-details", role: "region", "aria-label": "\u6587\u4EF6\u53D8\u66F4\u8BE6\u60C5" }, /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: value.body.turnDiff, cycle: record.revision })));
 }
 var FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
@@ -11736,12 +11954,12 @@ function ChangedFile({ file, load, loaded, available, root, cycle = 0, inline = 
       (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: edit.newText, copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236", ...panel || preview ? { wrap: true, lineNumbers: true, showHeader: false } : {} })
     ) : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6B64\u7F16\u8F91\u7684\u5DEE\u5F02\u8BE6\u60C5\u4E0D\u53EF\u5F97\u3002")
   ));
-  const view = (0, import_react.createElement)(
+  const view2 = (0, import_react.createElement)(
     "div",
     { "data-nodo-tool-file": file.path },
     patch || edits.length ? edits : (0, import_react.createElement)("p", { className: "nodo-note" }, "\u6765\u6E90\u672A\u63D0\u4F9B\u6B64\u6587\u4EF6\u7684\u5DEE\u5F02\u8BE6\u60C5\u3002")
   );
-  if (inline) return view;
+  if (inline) return view2;
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.DisclosureRow, {
     title: path,
     open,
@@ -11749,14 +11967,14 @@ function ChangedFile({ file, load, loaded, available, root, cycle = 0, inline = 
     expandOnRowClick: true,
     keepContentWhenOpen: true,
     onToggle: () => void toggle(),
-    children: view
+    children: view2
   });
 }
 function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [full, setFull] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const generation = (0, import_react.useRef)(0);
   (0, import_react.useEffect)(() => {
     generation.current += 1;
@@ -11770,7 +11988,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
   const hover = useHoverPreview();
   useHoverPreviewPlacement(hover);
   const readDetails = async () => {
-    const value2 = await call("stream-detail", { ...request, ref: record.details.ref });
+    const value2 = await call2("stream-detail", { ...request, ref: record.details.ref });
     if (!supportedStreamRecord(value2) || value2.runId !== record.runId || value2.entityId !== record.entityId || value2.revision !== record.revision) throw new Error("\u5DE5\u5177\u8BE6\u60C5\u7248\u672C\u4E0D\u5339\u914D\u3002");
     return value2;
   };
@@ -11801,7 +12019,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
     loadChanges: readDetails,
     busy,
     available,
-    error,
+    error: error2,
     renderFile: (file2, patch, panel = false, preview = false) => (0, import_react.createElement)(ChangedFile, { key: file2.path, file: file2, patch, panel, preview, inline: true, root: body.cwd, cycle: record.revision })
   });
   const status2 = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
@@ -11875,7 +12093,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
         available && !full && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { size: "sm", variant: "outline", disabled: busy, onClick: () => void load() }, busy ? "\u52A0\u8F7D\u4E2D\u2026" : record.capture === "complete" && record.details.state === "stored" ? "\u67E5\u770B\u5B8C\u6574\u8BE6\u60C5" : "\u67E5\u770B\u5DF2\u4FDD\u5B58\u8BE6\u60C5"),
         full && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u5DF2\u52A0\u8F7D\u4FDD\u5B58\u7684\u8BE6\u60C5\u3002"),
         !available && record.status !== "running" && (0, import_react.createElement)("p", { className: "nodo-note" }, STREAM_REASON[record.details?.reason] ?? "\u8BE6\u60C5\u4E0D\u53EF\u7528\u3002"),
-        error && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, error)
+        error2 && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, error2)
       )
     }),
     cards?.preview
@@ -11916,13 +12134,13 @@ function textRange(document2, nodes, start, end) {
 }
 function decorateStreamingText(root, caret, { name, streaming, animate = streaming }) {
   const document2 = root.ownerDocument;
-  const view = document2.defaultView;
-  if (!view) return { update() {
+  const view2 = document2.defaultView;
+  if (!view2) return { update() {
   }, dispose() {
   } };
-  const highlights = view.CSS?.highlights;
-  const canHighlight = highlights && typeof view.Highlight === "function" && segmenter;
-  const reducedMotion = view.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  const highlights = view2.CSS?.highlights;
+  const canHighlight = highlights && typeof view2.Highlight === "function" && segmenter;
+  const reducedMotion = view2.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
   let palette = null;
   const active = /* @__PURE__ */ new Map();
   let previous = "";
@@ -11944,7 +12162,7 @@ function decorateStreamingText(root, caret, { name, streaming, animate = streami
   };
   const draw = () => {
     frame = 0;
-    const now = view.performance.now();
+    const now = view2.performance.now();
     const rules = [];
     for (const [key, item] of active) {
       const progress = Math.max(0, Math.min(1, (now - item.since) / FADE_MS));
@@ -11962,19 +12180,19 @@ function decorateStreamingText(root, caret, { name, streaming, animate = streami
         document2.head.appendChild(palette);
       }
       palette.textContent = rules.join("\n");
-      frame = view.requestAnimationFrame(draw);
+      frame = view2.requestAnimationFrame(draw);
     } else {
       palette?.remove();
       palette = null;
     }
   };
   const update = () => {
-    if (frame) view.cancelAnimationFrame(frame);
+    if (frame) view2.cancelAnimationFrame(frame);
     frame = 0;
     const parsed = streamingWords(root);
     nodes = parsed.nodes;
     positionCaret();
-    const now = view.performance.now();
+    const now = view2.performance.now();
     let prefix = 0;
     for (const letter of parsed.text) {
       if (previous.slice(prefix, prefix + letter.length) !== letter) break;
@@ -12009,15 +12227,15 @@ function decorateStreamingText(root, caret, { name, streaming, animate = streami
         active.delete(key);
         continue;
       }
-      item.ink = view.getComputedStyle(parent).color;
-      highlights.set(item.name, new view.Highlight(range));
+      item.ink = view2.getComputedStyle(parent).color;
+      highlights.set(item.name, new view2.Highlight(range));
     }
     draw();
   };
   update();
-  const mutation = typeof view.MutationObserver === "function" ? new view.MutationObserver(update) : null;
+  const mutation = typeof view2.MutationObserver === "function" ? new view2.MutationObserver(update) : null;
   mutation?.observe(root, { subtree: true, childList: true, characterData: true });
-  const resize = typeof view.ResizeObserver === "function" ? new view.ResizeObserver(positionCaret) : null;
+  const resize = typeof view2.ResizeObserver === "function" ? new view2.ResizeObserver(positionCaret) : null;
   resize?.observe(root);
   return {
     update(nextStreaming, nextAnimate = nextStreaming) {
@@ -12026,7 +12244,7 @@ function decorateStreamingText(root, caret, { name, streaming, animate = streami
       update();
     },
     dispose() {
-      if (frame) view.cancelAnimationFrame(frame);
+      if (frame) view2.cancelAnimationFrame(frame);
       mutation?.disconnect();
       resize?.disconnect();
       for (const item of active.values()) highlights?.delete(item.name);
@@ -12068,14 +12286,14 @@ var referenceHistory = (references) => (0, import_react.createElement)(
 function createSessionReferences(ctx, space) {
   const source = "nodo-reference";
   let dialog = null;
-  const listeners = /* @__PURE__ */ new Set();
+  const listeners2 = /* @__PURE__ */ new Set();
   const publish = (value) => {
     dialog = value;
-    for (const listener of listeners) listener();
+    for (const listener of listeners2) listener();
   };
   const subscribe = (listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    listeners2.add(listener);
+    return () => listeners2.delete(listener);
   };
   const inputFor = (id) => ctx.conversation.input.for(ctx.sessions.scope(id));
   const enabled = () => space.getSnapshot().active && !space.getSnapshot().legacy;
@@ -12099,7 +12317,7 @@ function createSessionReferences(ctx, space) {
           clipboardText: (ref) => `[\u5F15\u7528\u4F1A\u8BDD](nodo-reference:${JSON.parse(ref).id})`,
           serialize: async (ref, signal) => {
             signal.throwIfAborted();
-            const snapshot = await call("reference-read", JSON.parse(ref));
+            const snapshot = await call2("reference-read", JSON.parse(ref));
             signal.throwIfAborted();
             return `[\u5F15\u7528\u4F1A\u8BDD](nodo-reference:${snapshot.id})`;
           }
@@ -12118,22 +12336,22 @@ function createSessionReferences(ctx, space) {
     ];
     return () => {
       for (const stop of stops) stop();
-      listeners.clear();
+      listeners2.clear();
     };
   }, "nodo: session references");
   function ReferenceDialog({ target, draft, snapshot, inputActions, onPick, count = 0, workspaceId, onClose }) {
-    const [view, setView] = (0, import_react.useState)(null);
+    const [view2, setView] = (0, import_react.useState)(null);
     const [workspace, setWorkspace] = (0, import_react.useState)("");
     const [role, setRole] = (0, import_react.useState)("");
     const [query, setQuery] = (0, import_react.useState)("");
     const [selected, setSelected] = (0, import_react.useState)(null);
     const [result, setResult] = (0, import_react.useState)(null);
     const [messageId, setMessageId] = (0, import_react.useState)("");
-    const [error, setError] = (0, import_react.useState)("");
+    const [error2, setError] = (0, import_react.useState)("");
     const [busy, setBusy] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       let live = true;
-      if (snapshot) void call("reference-read", { id: snapshot.id, target, draft }).then((value) => {
+      if (snapshot) void call2("reference-read", { id: snapshot.id, target, draft }).then((value) => {
         if (live) {
           setResult(value);
           setMessageId(value.messages[0].id);
@@ -12141,7 +12359,7 @@ function createSessionReferences(ctx, space) {
       }).catch((failure) => {
         if (live) setError(failure.message);
       });
-      else void call("state").then((value) => {
+      else void call2("state").then((value) => {
         if (!live) return;
         setView(value);
         const current = value.profiles.flatMap((profile) => profile.sessions).find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === target);
@@ -12159,7 +12377,7 @@ function createSessionReferences(ctx, space) {
       setResult(null);
       setError("");
       setMessageId("");
-      void call("reference-replies", selected).then((value) => {
+      void call2("reference-replies", selected).then((value) => {
         if (live) {
           setResult(value);
           setMessageId(value.messages[0]?.id ?? "");
@@ -12180,7 +12398,7 @@ function createSessionReferences(ctx, space) {
       setBusy(true);
       setError("");
       try {
-        const value = await call("reference-create", { target, draft, ...selected, messageId });
+        const value = await call2("reference-create", { target, draft, ...selected, messageId });
         if (onPick) {
           if (onPick(value) !== false) onClose();
           return;
@@ -12198,7 +12416,7 @@ function createSessionReferences(ctx, space) {
         setBusy(false);
       }
     };
-    const rows = view?.profiles.flatMap((profile) => profile.sessions.filter((session) => !session.archivedAt && (target === void 0 || (session.engine === "dsh" ? session.driverSessionId : void 0) !== target)).map((session) => ({ profile, session }))).filter((row) => (!workspace || row.session.workspaceRef === workspace) && (!role || row.profile.id === role) && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a, b2) => b2.session.updatedAt - a.session.updatedAt) ?? [];
+    const rows = view2?.profiles.flatMap((profile) => profile.sessions.filter((session) => !session.archivedAt && (target === void 0 || (session.engine === "dsh" ? session.driverSessionId : void 0) !== target)).map((session) => ({ profile, session }))).filter((row) => (!workspace || row.session.workspaceRef === workspace) && (!role || row.profile.id === role) && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a, b2) => b2.session.updatedAt - a.session.updatedAt) ?? [];
     return (0, import_react.createElement)(
       import_dsh_client_ui_primitives.Modal,
       {
@@ -12228,13 +12446,13 @@ function createSessionReferences(ctx, space) {
               "select",
               { value: workspace, "aria-label": "\u6765\u6E90\u9879\u76EE", onChange: (event) => setWorkspace(event.target.value) },
               (0, import_react.createElement)("option", { value: "" }, "\u5168\u90E8\u9879\u76EE"),
-              ...(view?.workspaces ?? []).map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.name))
+              ...(view2?.workspaces ?? []).map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.name))
             ),
             (0, import_react.createElement)(
               "select",
               { value: role, "aria-label": "\u6765\u6E90\u89D2\u8272", onChange: (event) => setRole(event.target.value) },
               (0, import_react.createElement)("option", { value: "" }, "\u5168\u90E8\u89D2\u8272"),
-              ...(view?.profiles ?? []).filter((item) => !item.deletedAt).map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.name))
+              ...(view2?.profiles ?? []).filter((item) => !item.deletedAt).map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.name))
             )
           ),
           (0, import_react.createElement)(import_dsh_client_ui_primitives.Input, { type: "search", value: query, "data-modal-autofocus": true, placeholder: "\u641C\u7D22\u89D2\u8272\u6216\u4F1A\u8BDD\u2026", "aria-label": "\u641C\u7D22\u6765\u6E90\u4F1A\u8BDD", onChange: (event) => setQuery(event.target.value) }),
@@ -12253,7 +12471,7 @@ function createSessionReferences(ctx, space) {
               (0, import_react.createElement)("strong", null, `${profile.name} \xB7 ${session.name}`),
               (0, import_react.createElement)("time", null, session.updatedAt ? new Date(session.updatedAt).toLocaleString() : "")
             )),
-            (0, import_react.createElement)("p", { className: "nodo-note" }, !view ? "\u6B63\u5728\u8BFB\u53D6\u4F1A\u8BDD\u2026" : !rows.length ? "\u6CA1\u6709\u5339\u914D\u7684\u4F1A\u8BDD" : "")
+            (0, import_react.createElement)("p", { className: "nodo-note" }, !view2 ? "\u6B63\u5728\u8BFB\u53D6\u4F1A\u8BDD\u2026" : !rows.length ? "\u6CA1\u6709\u5339\u914D\u7684\u4F1A\u8BDD" : "")
           )
         ),
         (0, import_react.createElement)(
@@ -12267,7 +12485,7 @@ function createSessionReferences(ctx, space) {
           message ? (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: message.text, labels: MARKDOWN_LABELS }) : (0, import_react.createElement)("p", { className: "nodo-note" }, result ? "\u8BE5\u4F1A\u8BDD\u8FD8\u6CA1\u6709\u53EF\u5F15\u7528\u7684\u5B8C\u6574\u56DE\u590D\u3002" : selected || snapshot ? "\u6B63\u5728\u8BFB\u53D6\u56DE\u590D\u2026" : "\u9009\u62E9\u5DE6\u4FA7\u4F1A\u8BDD\uFF0C\u9884\u89C8\u8981\u5F15\u7528\u7684\u56DE\u590D\u3002")
         )
       ),
-      error && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, error)
+      error2 && (0, import_react.createElement)("p", { role: "alert", className: "nodo-error-line" }, error2)
     );
   }
   function ReferenceDock({ sessionId, useInput, inputActions }) {
@@ -12279,7 +12497,7 @@ function createSessionReferences(ctx, space) {
       const token = [...input.draft.matchAll(/\[引用会话\]\(nodo-reference:([\da-f-]{36})\)/g)].find((match) => !input.occurrences.some((item) => match.index >= item.offset && match.index < item.offset + item.length));
       if (!token) return;
       let live = true;
-      void call("reference-read", { id: token[1], target: sessionId }).then((value) => {
+      void call2("reference-read", { id: token[1], target: sessionId }).then((value) => {
         if (!live) return;
         const start = token.index - input.occurrences.filter((item) => item.offset < token.index).reduce((total, item) => total + item.length - 1, 0);
         inputFor(sessionId).insertReference(
@@ -12326,7 +12544,7 @@ function createSessionReferences(ctx, space) {
         const hasReferences = node.data.referenceLabels?.length > 0;
         (0, import_react.useEffect)(() => {
           let live = true;
-          if (hasReferences) void call("reference-history", { target: sessionId, seq: node.data.seq }).then((value) => {
+          if (hasReferences) void call2("reference-history", { target: sessionId, seq: node.data.seq }).then((value) => {
             if (live) setReferences(value);
           }).catch(() => {
           });
@@ -12382,8 +12600,8 @@ function ToolTimeline({ steps, summary, streaming = false }) {
       return;
     }
     if (!mounted) return;
-    const timer = setTimeout(() => setMounted(false), COLLAPSE_MS2);
-    return () => clearTimeout(timer);
+    const timer2 = setTimeout(() => setMounted(false), COLLAPSE_MS2);
+    return () => clearTimeout(timer2);
   }, [open, mounted]);
   if (steps.length === 0) return null;
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline", "data-flow": "process", "data-open": open, "data-streaming": streaming }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-tool-timeline-trigger", "aria-expanded": open, "aria-controls": id, onClick: () => setOpen((value) => !value) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-label" }, streaming ? "\u6B63\u5728\u5904\u7406" : `${steps.length} \u4E2A\u6B65\u9AA4`), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-timeline-summary" }, summary)), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-timeline-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-clip" }, (open || mounted) && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-timeline-content" }, /* @__PURE__ */ (0, import_react.createElement)("ol", { className: "nodo-tool-timeline-steps" }, steps.map((step) => /* @__PURE__ */ (0, import_react.createElement)(
@@ -12460,6 +12678,7 @@ function modelChoices(models, value = "", fallback = "") {
 var thinkingAfterModelChange = (models, model, thinking) => (models.find((item) => item.id === model)?.thinking ?? []).some((level) => level.id === thinking) ? thinking : "";
 
 // src/client/feed.js
+var EMPTY_LINES = [];
 var FOLLOW_PX = 25;
 var brief = (text) => (text ?? "").slice(0, 400);
 function requestReply(item) {
@@ -12494,7 +12713,7 @@ var completedLead = (text) => {
     start = next.index + next[0].length;
   }
 };
-function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status: status2, timeline, file, scope }) {
+function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error: error2, status: status2, timeline, file, scope }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const hover = useHoverPreview();
   const text = typeof body === "string" ? body.trim() : "";
@@ -12503,7 +12722,7 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
   const progressNote = streamProgress(progress);
   const collapsed = summary ? [
     (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
-    kind === "thinking" ? (0, import_react.createElement)("span", { key: "summary", className: "nodo-think-summary", "data-streaming": streaming ? "" : void 0 }, summary) : (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-error": error ? "" : void 0 }, summary)
+    kind === "thinking" ? (0, import_react.createElement)("span", { key: "summary", className: "nodo-think-summary", "data-streaming": streaming ? "" : void 0 }, summary) : (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-error": error2 ? "" : void 0 }, summary)
   ] : null;
   const disclosure = kind === "thinking" && !timeline ? {
     icon: (variant ?? TOOL_VARIANTS.generic).icon({ size: 14 }),
@@ -12523,7 +12742,7 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     query: kind === "thinking" ? summary ?? "" : toolCallQuery(input, summary ?? ""),
     compact: timeline,
     kind,
-    status: error ? "error" : streaming ? "running" : status2 ?? "done",
+    status: error2 ? "error" : streaming ? "running" : status2 ?? "done",
     open,
     onOpenChange: setOpen
   };
@@ -12544,7 +12763,7 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
         "div",
         { key: label, className: "nodo-io-section" },
         (0, import_react.createElement)("span", { className: "nodo-io-label" }, label),
-        (0, import_react.createElement)("span", { className: "nodo-io-text", "data-error": error && label === "\u8F93\u51FA" ? "" : void 0 }, value)
+        (0, import_react.createElement)("span", { className: "nodo-io-text", "data-error": error2 && label === "\u8F93\u51FA" ? "" : void 0 }, value)
       )),
       ...progress?.outputPreview ? [(0, import_react.createElement)(
         "div",
@@ -12743,8 +12962,7 @@ function ProcessGroup({ rows, running, depths = [], children = [] }) {
   });
   return (0, import_react.createElement)(ToolTimeline, { steps, summary, streaming: running });
 }
-function Feed({ profile, session, revision, work, sentTick, round }) {
-  const [feed, setFeed] = (0, import_react.useState)({ key: null, lines: [], error: "" });
+function Feed({ profile, session, work, sentTick, round }) {
   const [following, setFollowing] = (0, import_react.useState)(true);
   const [activeTurn, setActiveTurn] = (0, import_react.useState)(null);
   const key = `${profile.id}:${session?.id ?? ""}`;
@@ -12776,29 +12994,21 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
   (0, import_react.useEffect)(() => () => {
     if (probe.current) cancelAnimationFrame(probe.current);
   }, []);
-  (0, import_react.useEffect)(() => {
-    if (!session) return;
-    let live = true;
-    void call("transcript", { profile: profile.id, session: session?.id }).then((lines2) => {
-      if (live) setFeed({ key, lines: lines2, error: "" });
-    }).catch((failure) => {
-      if (live) setFeed({ key, lines: [], error: failure.message });
-    });
-    return () => {
-      live = false;
-    };
-  }, [key, revision, work?.active === true ? work : null]);
+  const version = (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
+  (0, import_react.useEffect)(() => session ? watchTranscript(profile.id, session.id) : void 0, [key]);
+  const shown = session ? transcriptOf(key) : EMPTY_LINES;
+  const feedError = session ? transcriptError(key) : "";
   (0, import_react.useEffect)(() => {
     if (box.current !== null && following) box.current.scrollTop = box.current.scrollHeight;
     sample();
-  }, [feed, following]);
+  }, [version, following]);
   (0, import_react.useEffect)(() => {
     setFollowing(true);
   }, [sentTick]);
-  const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines;
-  const shown = leadModeOf(profile, session) ? source.filter((line2) => line2.kind !== "usage") : source;
+  const source = round ? roundLines(shown, work?.active === true) : shown;
+  const visible = leadModeOf(profile, session) ? source.filter((line2) => line2.kind !== "usage") : source;
   const turns = [];
-  for (const [index, item] of shown.entries()) {
+  for (const [index, item] of visible.entries()) {
     if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
     else if (item.who === "agent" && item.kind === "text" && !item.parentCallId && turns.length !== 0) {
       const turn = turns.at(-1);
@@ -12815,7 +13025,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
     setFollowing(false);
     node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop;
   };
-  const lines = feed.key === key ? shown : [];
+  const lines = visible;
   const latestUser = lines.findLastIndex((item) => item.who === "user");
   const replyEnds = /* @__PURE__ */ new Set();
   let replyPending = work?.active !== true;
@@ -12950,7 +13160,7 @@ function Feed({ profile, session, revision, work, sentTick, round }) {
       (0, import_react.createElement)(
         "div",
         { className: "nodo-feed-inner", "data-round": round ? "" : void 0 },
-        feed.key === key && feed.error && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, feed.error),
+        session && feedError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, feedError),
         lines.length === 0 && !work?.active && (0, import_react.createElement)(
           "p",
           { className: "nodo-note nodo-feed-empty" },
@@ -13056,11 +13266,11 @@ function ModelPicker({ profile, disabled, onChange }) {
   const [pane, setPane] = (0, import_react.useState)("root");
   const [engines, setEngines] = (0, import_react.useState)([]);
   const [scanning, setScanning] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const loaded = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("engine-catalog").then((items2) => {
+    void call2("engine-catalog").then((items2) => {
       if (live) setEngines(items2);
     }).catch(() => {
     });
@@ -13085,11 +13295,11 @@ function ModelPicker({ profile, disabled, onChange }) {
     setOpen(true);
     if (loaded.current.has(profile.engine)) return;
     loaded.current.add(profile.engine);
-    void call("engine-catalog").then((items2) => {
+    void call2("engine-catalog").then((items2) => {
       setEngines(items2);
       if (!items2.some((item) => item.id === profile.engine && !item.catalog)) return;
       setScanning(true);
-      return call("engine-scan", { engine: profile.engine }).then((catalog) => setEngines((current) => current.map((item) => item.id === profile.engine ? { ...item, catalog } : item)));
+      return call2("engine-scan", { engine: profile.engine }).then((catalog) => setEngines((current) => current.map((item) => item.id === profile.engine ? { ...item, catalog } : item)));
     }).catch((failure) => {
       loaded.current.delete(profile.engine);
       setError(failure.message);
@@ -13118,7 +13328,7 @@ function ModelPicker({ profile, disabled, onChange }) {
     (0, import_react.createElement)("span", { className: "nodo-model-cell-value" }, value),
     filled && (0, import_react.createElement)("span", { className: "nodo-model-cell-chev" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }))
   );
-  const items = pane === "model" ? models.length ? modelItems : [{ type: "label", id: "hint", text: scanning ? "\u6B63\u5728\u626B\u63CF\u672C\u5730\u914D\u7F6E\u2026" : error || "\u672A\u626B\u63CF\u5230\u6A21\u578B\uFF0C\u53EF\u5728\u8BBE\u7F6E\u4E2D\u91CD\u65B0\u626B\u63CF" }] : pane === "thinking" ? [
+  const items = pane === "model" ? models.length ? modelItems : [{ type: "label", id: "hint", text: scanning ? "\u6B63\u5728\u626B\u63CF\u672C\u5730\u914D\u7F6E\u2026" : error2 || "\u672A\u626B\u63CF\u5230\u6A21\u578B\uFF0C\u53EF\u5728\u8BBE\u7F6E\u4E2D\u91CD\u65B0\u626B\u63CF" }] : pane === "thinking" ? [
     { id: "thinking:", label: "\u9ED8\u8BA4\uFF08\u8DDF\u968F Agent \u8BBE\u7F6E\uFF09" },
     ...levels.map((level) => ({
       id: `thinking:${level.id}`,
@@ -13160,7 +13370,7 @@ function ModelPicker({ profile, disabled, onChange }) {
 }
 function TranscriptImage({ image }) {
   const [src, setSrc] = (0, import_react.useState)(null);
-  const [error, setError] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)(false);
   const [preview, setPreview] = (0, import_react.useState)(false);
   const hover = useHoverPreview();
   const panel = rightPanelService?.getSnapshot().target;
@@ -13169,7 +13379,7 @@ function TranscriptImage({ image }) {
     setSrc(null);
     setError(false);
     setPreview(false);
-    call("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
+    call2("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
       if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
     }).catch(() => {
       if (live) setError(true);
@@ -13192,7 +13402,7 @@ function TranscriptImage({ image }) {
   return (0, import_react.createElement)(
     import_react.Fragment,
     null,
-    error ? (0, import_react.createElement)("span", { className: "nodo-note", role: "status" }, `${alt}\uFF1A\u56FE\u7247\u4E0D\u53EF\u7528`) : (0, import_react.createElement)(
+    error2 ? (0, import_react.createElement)("span", { className: "nodo-note", role: "status" }, `${alt}\uFF1A\u56FE\u7247\u4E0D\u53EF\u7528`) : (0, import_react.createElement)(
       "button",
       {
         type: "button",
@@ -13343,9 +13553,9 @@ function nativeRunningSince(snapshot) {
 }
 function NativeRunningDock({ sessionId, useSession, useConversation }) {
   const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
-  const { view } = useStateView();
-  const work = Object.values(view?.profiles ?? {}).flatMap((profile) => profile.sessions ?? []).find((session) => (session.engine === "dsh" ? session.driverSessionId : null) === sessionId);
-  const engine = work ? view.work?.[work.id]?.engine : void 0;
+  const { view: view2 } = useStateView();
+  const work = Object.values(view2?.profiles ?? {}).flatMap((profile) => profile.sessions ?? []).find((session) => (session.engine === "dsh" ? session.driverSessionId : null) === sessionId);
+  const engine = work ? view2.work?.[work.id]?.engine : void 0;
   const running = useSession((session) => session.running);
   const since = useConversation(nativeRunningSince);
   return space.active && !space.legacy && running ? (0, import_react.createElement)("div", { className: "nodo-running-dock", "data-nodo-native-running": "" }, (0, import_react.createElement)(RunningLine, { key: sessionId, since, engine })) : null;
@@ -13374,8 +13584,8 @@ function RunningLine({ since, engine, work }) {
   const [reduced, setReduced] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
     setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
+    const timer2 = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer2);
   }, [since]);
   (0, import_react.useEffect)(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -13468,8 +13678,8 @@ var RUNNING_CSS = `
 // src/client/round.js
 var NODO_BLOCK = /^```nodo[ \t]*\r?\n[\s\S]*?(?:^```[ \t]*$|(?![\s\S]))/gm;
 var stripNodo = (text) => String(text ?? "").replace(NODO_BLOCK, "").trim();
-function roundIndex(view) {
-  const all = view.profiles.flatMap((role) => role.sessions.map((session) => ({ role, session })));
+function roundIndex(view2) {
+  const all = view2.profiles.flatMap((role) => role.sessions.map((session) => ({ role, session })));
   const byId = new Map(all.map((entry) => [entry.session.id, entry]));
   const lead = /* @__PURE__ */ new Map(), members = /* @__PURE__ */ new Map();
   for (const entry of all) {
@@ -13543,17 +13753,9 @@ var delegationRows = (lines, step) => {
 };
 var shownChanges = (row) => row.item.kind === "changes" && supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0;
 function RoundTools({ step, work }) {
-  const [lines, setLines] = (0, import_react.useState)([]);
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call("transcript", { profile: step.profile, session: step.session }).then((next) => {
-      if (live) setLines(next);
-    }).catch(() => {
-    });
-    return () => {
-      live = false;
-    };
-  }, [step.session, step.at, work?.active === true ? work : null]);
+  (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
+  const lines = transcriptOf(`${step.profile}:${step.session}`);
+  (0, import_react.useEffect)(() => watchTranscript(step.profile, step.session), [step.profile, step.session]);
   const shown = delegationRows(lines, step).filter((row) => row.item.who !== "user" && (["text", "thinking", "tool"].includes(row.item.kind) || shownChanges(row)));
   const changes = shown.findLast(shownChanges);
   const rows = [...shown.filter((row) => row.item.kind !== "changes").slice(-4), ...changes ? [changes] : []].sort((a, b2) => a.index - b2.index);
@@ -13578,17 +13780,9 @@ function RoundTools({ step, work }) {
   );
 }
 function RoundChanges({ step }) {
-  const [lines, setLines] = (0, import_react.useState)([]);
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call("transcript", { profile: step.profile, session: step.session }).then((next) => {
-      if (live) setLines(next);
-    }).catch(() => {
-    });
-    return () => {
-      live = false;
-    };
-  }, [step.session, step.at]);
+  (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
+  const lines = transcriptOf(`${step.profile}:${step.session}`);
+  (0, import_react.useEffect)(() => watchTranscript(step.profile, step.session), [step.profile, step.session]);
   const row = delegationRows(lines, step).findLast(shownChanges);
   return row && (0, import_react.createElement)(
     "div",
@@ -13624,8 +13818,8 @@ function RoundMember({ step, round }) {
   (0, import_react.useEffect)(() => {
     if (!live) return;
     setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1e3);
-    return () => clearInterval(timer);
+    const timer2 = setInterval(() => setNow(Date.now()), 1e3);
+    return () => clearInterval(timer2);
   }, [live]);
   const { summary, rest } = reportParts(step.report);
   const tag = (text, tone) => (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": tone }, text);
@@ -13815,7 +14009,7 @@ function SessionRow({ role, session, current, work, busy, readOnly, context, onS
     }
   )));
 }
-function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onNewTeam, onEditTeam, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
+function Rail({ view: view2, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onNewTeam, onEditTeam, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
   const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
   const [archives, setArchives] = (0, import_react.useState)({});
   const [searching, setSearching] = (0, import_react.useState)(false);
@@ -13835,16 +14029,16 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   (0, import_react.useEffect)(() => {
     let live = true;
     const refresh = () => {
-      void call("update-info").then((info) => {
+      void call2("update-info").then((info) => {
         if (live) setUpdate(info ?? null);
       }).catch(() => {
       });
     };
     refresh();
-    const timer = setInterval(refresh, 30 * 60 * 1e3);
+    const timer2 = setInterval(refresh, 30 * 60 * 1e3);
     return () => {
       live = false;
-      clearInterval(timer);
+      clearInterval(timer2);
     };
   }, []);
   const [rosterHeight, setRosterHeight] = (0, import_react.useState)(() => {
@@ -13856,34 +14050,34 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   });
   const busyNow = readOnly || busy;
   const team = navigation?.view === "team";
-  const rounds = roundIndex(view);
-  const sessions = view.profiles.flatMap((role) => role.sessions.map((session) => ({
+  const rounds = roundIndex(view2);
+  const sessions = view2.profiles.flatMap((role) => role.sessions.map((session) => ({
     role,
     session,
-    workspaceId: workspaceIdOf(view, role, session)
+    workspaceId: workspaceIdOf(view2, role, session)
   })));
   const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh" && session.leadMode !== false;
   const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
   const rowOf = (role, session) => {
     const group = groupOf(role, session);
-    return group.length === 1 ? { session, work: view.work[session.id], current: session.id === sessionId } : {
+    return group.length === 1 ? { session, work: view2.work[session.id], current: session.id === sessionId } : {
       session: { ...session, updatedAt: Math.max(...group.map((entry) => entry.session.updatedAt ?? 0)) },
-      work: runningOf({ sessions: group.map((entry) => entry.session) }, view.work),
+      work: runningOf({ sessions: group.map((entry) => entry.session) }, view2.work),
       current: group.some((entry) => entry.session.id === sessionId)
     };
   };
-  const roles = view.profiles.filter((role) => !role.deletedAt && (!team || role.lead === true && role.engine !== "dsh"));
+  const roles = view2.profiles.filter((role) => !role.deletedAt && (!team || role.lead === true && role.engine !== "dsh"));
   const stateAt = (role) => {
-    const state = roleStateOf(role, view, workspace);
+    const state = roleStateOf(role, view2, workspace);
     return state.active || state.status ? Math.max(state.since ?? 1, state.finishedAt ?? 0, state.lastAt ?? 0) : 0;
   };
   const roster = [...roles].sort((a, b2) => Number(b2.lead === true) - Number(a.lead === true)).map((role) => ({ role, at: stateAt(role) })).sort((a, b2) => b2.at - a.at).map((entry) => entry.role);
-  const teamRows = (view.teams ?? []).map((item) => ({ team: item, lead: roles.find((role) => role.id === item.lead) }));
-  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
+  const teamRows = (view2.teams ?? []).map((item) => ({ team: item, lead: roles.find((role) => role.id === item.lead) }));
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view2.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
   const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
   const draftProfile = roles.find((role) => role.id === draft?.profile);
-  const ordered = [...view.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
+  const ordered = [...view2.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
   const scopeOf = (item) => {
     const archived = archives[item.id] ?? "hide";
     return { archived, filtering: !!filterRole || archived === "only" };
@@ -13907,9 +14101,9 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     },
     icon
   ));
-  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view.work[entry.session.id]?.active);
+  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view2.work[entry.session.id]?.active);
   const toggle = (key, open, Glyph, title, tip, live) => {
-    const waiting = live.some((entry) => workKind(view.work[entry.session.id]) === "wait");
+    const waiting = live.some((entry) => workKind(view2.work[entry.session.id]) === "wait");
     return /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
@@ -14016,7 +14210,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   const shownRoles = rolesOpen ? roster : roster.filter((item, index) => index < ROLE_FOLD || item === filterRole);
   const shownTeams = rolesOpen ? teamRows : teamRows.filter((row, index) => index < ROLE_FOLD || row.lead?.id === filterRole?.id);
   const rosterItem = (item) => {
-    const state = roleStateOf(item, view, workspace);
+    const state = roleStateOf(item, view2, workspace);
     const pressed = item.id === filterRole?.id;
     const label = workLabel(state);
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
@@ -14052,7 +14246,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
     )));
   };
   const teamItem = ({ team: team2, lead }) => {
-    const state = lead ? roleStateOf(lead, view, workspace) : runningOf({}, view.work);
+    const state = lead ? roleStateOf(lead, view2, workspace) : runningOf({}, view2.work);
     const pressed = lead !== void 0 && lead.id === filterRole?.id;
     const label = workLabel(state);
     const name = team2.name || "\u672A\u547D\u540D\u56E2\u961F";
@@ -14091,8 +14285,8 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
   };
   const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
-    const project = view.workspaces.find((item) => item.id === workspaceId), row = rowOf(role, session);
+  const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view2.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
+    const project = view2.workspaces.find((item) => item.id === workspaceId), row = rowOf(role, session);
     return {
       id: session.id,
       role,
@@ -14209,7 +14403,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
         }
       }
     }
-  ), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, head("\u9879\u76EE\u533A", action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow)), tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], import_dsh_client_ui_primitives.IconArchiveOutlineRegular, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
+  ), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, head("\u9879\u76EE\u533A", action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow)), tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view2.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], import_dsh_client_ui_primitives.IconArchiveOutlineRegular, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
     SessionRow,
     {
       key: session.id,
@@ -14218,7 +14412,7 @@ function Rail({ view, profile, workspace, sessionId, editing, draft, drafting, o
       busy,
       readOnly: true,
       current: rowOf(role, session).current && !editing && !drafting,
-      context: `${session.profileName ?? role.name} \xB7 ${session.workspaceName ?? view.workspaces.find((item) => item.id === workspaceId)?.name ?? session.cwd ?? "\u672A\u6307\u5B9A\u9879\u76EE"}`,
+      context: `${session.profileName ?? role.name} \xB7 ${session.workspaceName ?? view2.workspaces.find((item) => item.id === workspaceId)?.name ?? session.cwd ?? "\u672A\u6307\u5B9A\u9879\u76EE"}`,
       onSelect: () => onSelectSession(role, session.id),
       onArchive: () => {
       },
@@ -14396,8 +14590,8 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
   (0, import_react.useEffect)(() => {
     if (!fileOpen) return;
     let live = true;
-    const timer = setTimeout(() => {
-      call("workspace-files", { workspace: workspace.id, query: mention.query }).then((result) => {
+    const timer2 = setTimeout(() => {
+      call2("workspace-files", { workspace: workspace.id, query: mention.query }).then((result) => {
         if (live) setFiles(result.files);
       }).catch(() => {
         if (live) setFiles([]);
@@ -14405,7 +14599,7 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
     }, 150);
     return () => {
       live = false;
-      clearTimeout(timer);
+      clearTimeout(timer2);
     };
   }, [fileOpen, mention?.query, workspace?.id]);
   const pickFile = (file) => {
@@ -14606,8 +14800,8 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
       return;
     }
     setScanning(true);
-    void call("engine-commands", { engine: profile.engine, workspace: workspace?.id }).then((value) => setScan(value)).catch(() => setScan({ source: "unavailable", commands: [] })).finally(() => setScanning(false));
-    void call("engine-catalog", {}).then((value) => setCatalog(value)).catch(() => setCatalog([]));
+    void call2("engine-commands", { engine: profile.engine, workspace: workspace?.id }).then((value) => setScan(value)).catch(() => setScan({ source: "unavailable", commands: [] })).finally(() => setScanning(false));
+    void call2("engine-catalog", {}).then((value) => setCatalog(value)).catch(() => setCatalog([]));
   };
   const open = manual || trigger !== null && trigger.start !== dismissed;
   (0, import_react.useEffect)(() => {
@@ -14808,7 +15002,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
     if (loaded.current === profile.engine) return;
     loaded.current = profile.engine;
     setModes(null);
-    void call("engine-catalog").then((items2) => {
+    void call2("engine-catalog").then((items2) => {
       const offered2 = items2.find((item) => item.id === profile.engine)?.capabilities?.permissionModes;
       setModes(Array.isArray(offered2) ? offered2 : []);
     }).catch(() => {
@@ -14953,7 +15147,7 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
   const [step, setStep] = (0, import_react.useState)(0);
   const [answers, setAnswers] = (0, import_react.useState)({});
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const blocked = busy || readOnly;
   const question = questions[Math.min(step, questions.length - 1)];
   const draft = answers[question.id] ?? "";
@@ -14964,7 +15158,7 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
     setBusy(true);
     setError("");
     try {
-      await call("approval-answer", { id: card.id, decision, ...decision === "answer" ? { value } : {} });
+      await call2("approval-answer", { id: card.id, decision, ...decision === "answer" ? { value } : {} });
       await refresh(true);
     } catch (failure) {
       setError(failure.message);
@@ -15022,7 +15216,7 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
           (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: blocked, onClick: () => void answer("allow") }, "\u5141\u8BB8\u4E00\u6B21")
         )
       ),
-      error && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error)
+      error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
     );
   }
   return (0, import_react.createElement)(
@@ -15123,7 +15317,7 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
             onClick: next
           }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 }))
         ),
-        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "status" }, error),
+        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "status" }, error2),
         (0, import_react.createElement)(
           "div",
           { className: "nodo-question-actions" },
@@ -15208,7 +15402,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
   const [moreTemplates, setMoreTemplates] = (0, import_react.useState)(false);
   const [deletingIdentity, setDeletingIdentity] = (0, import_react.useState)(null);
   const [scanning, setScanning] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const [dirty, setDirty] = (0, import_react.useState)(false);
   const scanned = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   const engine = engines.find((item) => item.id === draft.engine);
@@ -15221,7 +15415,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
   const identityTaken = saved.some((item) => item.name.trim().toLowerCase() === identityTitle.toLowerCase());
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("engine-catalog").then((items) => {
+    void call2("engine-catalog").then((items) => {
       if (!live) return;
       const scoped = profile === null && enabledEngines !== null ? items.filter((item) => enabledEngines.includes(item.id)) : items;
       const choices = scoped.length > 0 ? scoped : items;
@@ -15243,7 +15437,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     if (!engine || engine.catalog || scanned.current.has(engine.id)) return;
     scanned.current.add(engine.id);
     setScanning(true);
-    void call("engine-scan", { engine: engine.id }).then((catalog) => setEngines((current2) => current2.map((item) => item.id === engine.id ? { ...item, catalog } : item))).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
+    void call2("engine-scan", { engine: engine.id }).then((catalog) => setEngines((current2) => current2.map((item) => item.id === engine.id ? { ...item, catalog } : item))).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
   }, [engine]);
   (0, import_react.useEffect)(() => {
     onDirtyChange?.(dirty);
@@ -15295,7 +15489,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
         thinking: draft.thinking,
         permission: draft.permission
       };
-      const saved2 = await call(profile ? "profile-update" : "profile-create", profile ? { id: profile.id, changes: values } : values);
+      const saved2 = await call2(profile ? "profile-update" : "profile-create", profile ? { id: profile.id, changes: values } : values);
       setBusy(false);
       setDirty(false);
       await onSaved(saved2);
@@ -15309,7 +15503,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     setBusy(true);
     setError("");
     try {
-      await call("role-preset-save", { name: identityName, role: draft.role, instructions: draft.instructions });
+      await call2("role-preset-save", { name: identityName, role: draft.role, instructions: draft.instructions });
       setIdentityName(null);
       void refresh?.(true);
     } catch (failure) {
@@ -15642,7 +15836,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
           sessions > 0 && identityDirty && (0, import_react.createElement)("p", { className: "nodo-role-notice", role: "status" }, `\u8EAB\u4EFD\u5DF2\u4FEE\u6539\uFF0C\u4FDD\u5B58\u540E\u5C06\u4E8E\u4E0B\u8F6E\u751F\u6548 \xB7 \u5F71\u54CD ${sessions} \u4E2A\u4F1A\u8BDD`)
         )
       ),
-      error && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+      error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
     ),
     permissionConfirmation,
     deletingIdentity && (0, import_react.createElement)(IdentityDeleteDialog, {
@@ -15657,13 +15851,13 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
 }
 function IdentityDeleteDialog({ identity, onDeleted, onCancel }) {
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const remove = async () => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      await call("role-preset-delete", { name: identity.name });
+      await call2("role-preset-delete", { name: identity.name });
       onDeleted(identity.name);
     } catch (failure) {
       setError(failure.message);
@@ -15686,7 +15880,7 @@ function IdentityDeleteDialog({ identity, onDeleted, onCancel }) {
       ]
     },
     busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, "\u6B63\u5728\u5220\u9664\u6A21\u677F\u2026"),
-    error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
+    error2 !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error2)
   );
 }
 
@@ -15738,7 +15932,7 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
   const [draft, setDraft] = (0, import_react.useState)({ name: workspace?.name ?? "", cwd: workspace?.cwd ?? "" });
   const [busy, setBusy] = (0, import_react.useState)(false);
   const [picking, setPicking] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const edit = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
   const choose = async () => {
     if (busy || picking || !nativePickDirectory) return;
@@ -15760,7 +15954,7 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
     setError("");
     try {
       const values = { name: draft.name.trim(), cwd: draft.cwd.trim() };
-      const saved = await call(workspace ? "workspace-update" : "workspace-create", workspace ? { id: workspace.id, changes: values } : values);
+      const saved = await call2(workspace ? "workspace-update" : "workspace-create", workspace ? { id: workspace.id, changes: values } : values);
       await onSaved(saved);
     } catch (failure) {
       setError(failure.message);
@@ -15792,7 +15986,7 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
       "form",
       { id: WORKSPACE_FORM, className: "nodo-dialog-fields nodo-workspace-fields", onSubmit: submit, "aria-label": workspace ? "\u7F16\u8F91\u9879\u76EE" : "\u521B\u5EFA\u9879\u76EE" },
       WorkspaceFields({ draft, busy, picking, onEdit: edit, onPick: () => void choose() }),
-      error && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+      error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
     )
   );
 }
@@ -15810,10 +16004,10 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
   const [sessionName, setSessionName] = (0, import_react.useState)("");
   const [openSession, setOpenSession] = (0, import_react.useState)(profile != null);
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   (0, import_react.useEffect)(() => {
     let live = true;
-    call("worktree-refs", { workspace: workspace.id }).then((result) => {
+    call2("worktree-refs", { workspace: workspace.id }).then((result) => {
       if (!live) return;
       setRefs(result);
       setBase((current) => current === "HEAD" && result.head?.name ? result.head.name : current);
@@ -15854,7 +16048,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
     setBusy(true);
     setError("");
     try {
-      const created = await call("worktree-create", existingMode ? {
+      const created = await call2("worktree-create", existingMode ? {
         workspace: workspace.id,
         mode: "existing",
         branch: workBranch,
@@ -16079,14 +16273,14 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
         "\u521B\u5EFA\u540E\u5728\u65B0\u5DE5\u4F5C\u6811\u4E2D\u65B0\u5EFA\u4F1A\u8BDD"
       ),
       profile == null && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5F53\u524D\u6CA1\u6709\u9009\u4E2D\u89D2\u8272\uFF1B\u5DE5\u4F5C\u6811\u521B\u5EFA\u540E\u53EF\u5728\u5DE6\u4FA7\u9009\u62E9\u89D2\u8272\uFF0C\u518D\u65B0\u5EFA\u4F1A\u8BDD\u3002"),
-      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
     )
   );
 }
 function RenameDialog({ title, label, action, maxLength, initial, conflict, conflictMessage, onSaved, onCancel }) {
   const [draft, setDraft] = (0, import_react.useState)(initial);
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const composing = (0, import_react.useRef)(false);
   const name = draft.trim();
   const clashing = conflict?.(name) ?? false;
@@ -16141,7 +16335,7 @@ function RenameDialog({ title, label, action, maxLength, initial, conflict, conf
       }
     }),
     clashing && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, conflictMessage(name)),
-    error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
+    error2 !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error2)
   );
 }
 function WorkspaceRenameDialog({ workspace, names, onCancel, onSaved }) {
@@ -16169,7 +16363,7 @@ function SessionRenameDialog({ session, onCancel, onSaved }) {
 }
 function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const remove = async () => {
     setBusy(true);
     setError("");
@@ -16196,18 +16390,18 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
       ]
     },
     busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, "\u6B63\u5728\u5220\u9664\u9879\u76EE\u2026"),
-    error !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error)
+    error2 !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error2)
   );
 }
 
 // src/client/engine-settings.js
-function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClose }) {
+function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly, onClose }) {
   const seed = (engineId) => {
-    const source = view.prefs?.engineConfigs?.[engineId];
+    const source = view2.prefs?.engineConfigs?.[engineId];
     return { engineOptions: { ...source?.engineOptions } };
   };
   const [engines, setEngines] = (0, import_react.useState)([]);
-  const [enabled, setEnabled] = (0, import_react.useState)(() => view?.prefs?.enabledEngines ?? null);
+  const [enabled, setEnabled] = (0, import_react.useState)(() => view2?.prefs?.enabledEngines ?? null);
   const [selected, setSelected] = (0, import_react.useState)("");
   const [draft, setDraft] = (0, import_react.useState)(() => seed(""));
   const [busy, setBusy] = (0, import_react.useState)(false);
@@ -16216,7 +16410,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
   const [checking, setChecking] = (0, import_react.useState)("");
   const [loading, setLoading] = (0, import_react.useState)(true);
   const [saved, setSaved] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const pick = (engineId) => {
     setSelected(engineId);
     setDraft(seed(engineId));
@@ -16228,7 +16422,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
     setScanning(id);
     setError("");
     try {
-      const catalog = await call("engine-scan", { engine: id });
+      const catalog = await call2("engine-scan", { engine: id });
       setEngines((current) => current.map((item) => item.id === id ? { ...item, catalog } : item));
     } catch (failure) {
       setError(failure.message);
@@ -16238,7 +16432,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
   };
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("engine-detect").then((items) => {
+    void call2("engine-detect").then((items) => {
       if (live) setEngines(items);
     }).catch((failure) => {
       if (live) setError(failure.message);
@@ -16260,7 +16454,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
     setEnabled(next);
     setError("");
     try {
-      const saved2 = await call("engine-enable-set", { engines: next });
+      const saved2 = await call2("engine-enable-set", { engines: next });
       setEnabled(saved2.enabledEngines ?? next);
       await refresh(true);
     } catch (failure) {
@@ -16278,7 +16472,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
       const items = all ? engines : [engine];
       await Promise.all(items.map(async (item) => {
         const key = checkKey(item.id);
-        const result = await call("engine-check", { engine: item.id, ...seed(item.id), cwd: workspace?.cwd }).catch((failure) => ({ ok: false, checks: [{ label: "\u68C0\u67E5\u5931\u8D25", ok: false, message: failure.message }] }));
+        const result = await call2("engine-check", { engine: item.id, ...seed(item.id), cwd: workspace?.cwd }).catch((failure) => ({ ok: false, checks: [{ label: "\u68C0\u67E5\u5931\u8D25", ok: false, message: failure.message }] }));
         setChecks((current) => ({ ...current, [key]: result }));
       }));
     } finally {
@@ -16298,7 +16492,7 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
     setSaved(false);
     try {
       const values = { engine: engine.id, engineOptions: draft.engineOptions };
-      await call("engine-config-set", values);
+      await call2("engine-config-set", values);
       await refresh(true);
       setChecks((current) => Object.fromEntries(Object.entries(current).filter(([key]) => JSON.parse(key)[0] !== selected)));
       setSaved(true);
@@ -16447,30 +16641,30 @@ function EngineSettingsDialog({ view, workspace = null, refresh, readOnly, onClo
           checking === "all" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5"
         )
       ),
-      !loading && !engines.length && !error && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6682\u65E0\u53EF\u7528 Agent"),
+      !loading && !engines.length && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6682\u65E0\u53EF\u7528 Agent"),
       grid("detected", detected),
       others.length > 0 && heading("\u672A\u68C0\u6D4B\u5230", others),
       grid("others", others),
-      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
     )
   );
 }
-function OnboardingDialog({ view, onDone }) {
+function OnboardingDialog({ view: view2, onDone }) {
   const [engines, setEngines] = (0, import_react.useState)(null);
   const [picked, setPicked] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const [step, setStep] = (0, import_react.useState)("engines");
   const [name, setName] = (0, import_react.useState)("\u4E07\u80FD\u52A9\u624B");
   const [engine, setEngine] = (0, import_react.useState)("");
   const [project, setProject] = (0, import_react.useState)({ name: "", cwd: "" });
   const [picking, setPicking] = (0, import_react.useState)(false);
   const [created, setCreated] = (0, import_react.useState)({});
-  const executor = view?.profiles.find((profile) => !profile.deletedAt && profile.lead !== true);
-  const hasWorkspace = (view?.workspaces.length ?? 0) > 0;
+  const executor = view2?.profiles.find((profile) => !profile.deletedAt && profile.lead !== true);
+  const hasWorkspace = (view2?.workspaces.length ?? 0) > 0;
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("engine-detect").then((items) => {
+    void call2("engine-detect").then((items) => {
       if (!live) return;
       const detected = items.filter((item) => item.usable);
       setEngines(detected);
@@ -16490,7 +16684,7 @@ function OnboardingDialog({ view, onDone }) {
     setBusy(true);
     setError("");
     try {
-      if (step === "engines") await call("engine-enable-set", { engines: picked ? [...picked] : [] });
+      if (step === "engines") await call2("engine-enable-set", { engines: picked ? [...picked] : [] });
     } catch (failure) {
       setError(failure.message);
     } finally {
@@ -16500,7 +16694,7 @@ function OnboardingDialog({ view, onDone }) {
   };
   const complete = (saved) => {
     if (saved.profile || saved.workspace) {
-      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view?.workspaces[0]?.id };
+      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view2?.workspaces[0]?.id };
       setNavigation((current) => ({ ...current, archivedSession: void 0, ...selection }));
       nativeSpace?.startDraft(selection);
     }
@@ -16512,20 +16706,20 @@ function OnboardingDialog({ view, onDone }) {
     setError("");
     try {
       if (step === "engines") {
-        await call("engine-enable-set", { engines: [...picked] });
+        await call2("engine-enable-set", { engines: [...picked] });
         if (!executor) {
           setEngine([...picked][0]);
           setStep("role");
         } else if (!hasWorkspace) setStep("workspace");
         else complete(created);
       } else if (step === "role") {
-        const profile = await call("profile-create", { name: name.trim(), engine, avatarTemplate: avatar_templates_default[0].id });
+        const profile = await call2("profile-create", { name: name.trim(), engine, avatarTemplate: avatar_templates_default[0].id });
         const saved = { ...created, profile: profile.id };
         setCreated(saved);
         if (!hasWorkspace) setStep("workspace");
         else complete(saved);
       } else {
-        const workspace = await call("workspace-create", { name: project.name.trim(), cwd: project.cwd.trim() });
+        const workspace = await call2("workspace-create", { name: project.name.trim(), cwd: project.cwd.trim() });
         complete({ ...created, workspace: workspace.id });
       }
     } catch (failure) {
@@ -16632,7 +16826,7 @@ function OnboardingDialog({ view, onDone }) {
         { className: "nodo-dialog-fields nodo-workspace-fields" },
         WorkspaceFields({ draft: project, busy, picking, onEdit: edit, onPick: () => void choose() })
       ),
-      error !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error)
+      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
     )
   );
 }
@@ -17194,20 +17388,20 @@ var registerDraftRemover = (remover) => {
     draftRemovers.delete(remover);
   };
 };
-function RolesPage({ view, readOnly, refresh }) {
+function RolesPage({ view: view2, readOnly, refresh }) {
   const target = (0, import_react.useSyncExternalStore)(subscribeRolesTarget, readRolesTarget);
   const [roleId, setRoleId] = (0, import_react.useState)(() => target?.profileId && target.profileId !== "new" ? target.profileId : null);
   const [assignOpen, setAssignOpen] = (0, import_react.useState)(false);
   const [teamId, setTeamId] = (0, import_react.useState)(null);
   const [confirm2, setConfirm] = (0, import_react.useState)(null);
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const [nonce, setNonce] = (0, import_react.useState)(0);
   const [adding, setAdding] = (0, import_react.useState)(() => target?.profileId === "new");
   const [engines, setEngines] = (0, import_react.useState)(null);
   const dirtyRef = (0, import_react.useRef)(false);
-  const roles = view.profiles.filter((role) => !role.deletedAt);
-  const teams = view.teams ?? [];
+  const roles = view2.profiles.filter((role) => !role.deletedAt);
+  const teams = view2.teams ?? [];
   const types = (teams.find((item) => item.id === teamId) ?? teams[0])?.types ?? [];
   const executors = roles.filter((item) => item.lead !== true);
   const creating = adding || !executors.length;
@@ -17266,7 +17460,7 @@ function RolesPage({ view, readOnly, refresh }) {
   (0, import_react.useEffect)(() => {
     if (engines !== null) return;
     setEngines([]);
-    void call("engine-catalog").then((items) => {
+    void call2("engine-catalog").then((items) => {
       setEngines(items);
     }).catch((failure) => setError(failure.message));
   }, [engines]);
@@ -17276,7 +17470,7 @@ function RolesPage({ view, readOnly, refresh }) {
     setRoleId(saved.id);
   };
   const deletedRole = async (item) => {
-    await call("profile-delete", { id: item.id });
+    await call2("profile-delete", { id: item.id });
     await refresh(true);
     const sessionIds = (item.sessions ?? []).map((session) => session.id);
     for (const remove of draftRemovers) remove(sessionIds);
@@ -17291,8 +17485,8 @@ function RolesPage({ view, readOnly, refresh }) {
   const saveTeams = (next) => void perform(async () => {
     const leads = new Set(next.map((team) => team.lead));
     const changed = roles.filter((role) => role.lead === true !== leads.has(role.id)).sort((a, b2) => Number(a.lead !== true) - Number(b2.lead !== true));
-    for (const role of changed) await call("profile-update", { id: role.id, changes: { lead: role.lead !== true } });
-    await call("teams-update", { teams: next });
+    for (const role of changed) await call2("profile-update", { id: role.id, changes: { lead: role.lead !== true } });
+    await call2("teams-update", { teams: next });
   });
   const deleteReason = (role) => roles.some((item) => item.lead === true) && role.lead !== true && executors.length === 1 ? "\u4E3B\u63A7\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : void 0;
   const locked = readOnly || busy;
@@ -17333,8 +17527,8 @@ function RolesPage({ view, readOnly, refresh }) {
       key: `${selected.id}:${nonce}`,
       profile: selected,
       deleteReason: deleteReason(selected),
-      enabledEngines: view.prefs?.enabledEngines ?? null,
-      savedIdentities: view.prefs?.rolePresets ?? null,
+      enabledEngines: view2.prefs?.enabledEngines ?? null,
+      savedIdentities: view2.prefs?.rolePresets ?? null,
       refresh,
       readOnly,
       onSaved: savedRole,
@@ -17354,8 +17548,8 @@ function RolesPage({ view, readOnly, refresh }) {
       key: `new:${nonce}`,
       profile: null,
       avatarSeed: roles.length,
-      enabledEngines: view.prefs?.enabledEngines ?? null,
-      savedIdentities: view.prefs?.rolePresets ?? null,
+      enabledEngines: view2.prefs?.enabledEngines ?? null,
+      savedIdentities: view2.prefs?.rolePresets ?? null,
       refresh,
       readOnly,
       onSaved: savedRole,
@@ -17369,7 +17563,7 @@ function RolesPage({ view, readOnly, refresh }) {
         dirtyRef.current = value;
       }
     }
-  ) : overview, error && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error))), confirm2 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
+  ) : overview, error2 && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2))), confirm2 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", onClick: () => setConfirm(null) }, "\u7EE7\u7EED\u7F16\u8F91"),
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "drop", variant: "primary", onClick: () => {
       const { action } = confirm2;
@@ -17379,13 +17573,13 @@ function RolesPage({ view, readOnly, refresh }) {
   ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, "\u5F53\u524D\u4FEE\u6539\u5C1A\u672A\u4FDD\u5B58\u3002")));
 }
 function RolesEntry() {
-  const { view, error, refresh } = useStateView();
+  const { view: view2, error: error2, refresh } = useStateView();
   (0, import_react.useEffect)(() => {
     if (document.querySelector("[data-sidebar-collapsed]")) layoutService?.toggleSidebar?.();
     return () => rolesPublishSidebar(null);
   }, []);
-  if (!view) return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles" }, error || "\u6B63\u5728\u8BFB\u53D6\u89D2\u8272\u2026");
-  return /* @__PURE__ */ (0, import_react.createElement)(RolesPage, { view, readOnly: !!view.readOnly, refresh });
+  if (!view2) return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles" }, error2 || "\u6B63\u5728\u8BFB\u53D6\u89D2\u8272\u2026");
+  return /* @__PURE__ */ (0, import_react.createElement)(RolesPage, { view: view2, readOnly: !!view2.readOnly, refresh });
 }
 var ROLES_CSS = `
 .nodo-roles{overflow:hidden}
@@ -17498,13 +17692,13 @@ var selectSession = async (role, id, project, page) => {
       else if (sidebarOnly) nativeSpace.showLegacy();
       origin = nativeSpace.getSnapshot();
       if (!readOnly) {
-        await call("session-select", { profile: role.id, session: id });
+        await call2("session-select", { profile: role.id, session: id });
         if (current()) await refresh(true);
       }
       return;
     }
     if (native) {
-      const opened = await call("session-open", { profile: role.id, session: id, workspace: project.id });
+      const opened = await call2("session-open", { profile: role.id, session: id, workspace: project.id });
       if (!current()) return;
       remember(role.id, project.id, opened.conversationId);
       setEditing(null);
@@ -17513,7 +17707,7 @@ var selectSession = async (role, id, project, page) => {
       return;
     }
     if (!readOnly) {
-      await call("session-select", { profile: role.id, session: id });
+      await call2("session-select", { profile: role.id, session: id });
       if (!current()) return;
       await refresh(true);
     }
@@ -17541,7 +17735,7 @@ var openInitialSidebarSession = (page) => {
   else nativeSpace.showLegacy();
 };
 function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
-  const { view, error, refresh } = useStateView();
+  const { view: view2, error: error2, refresh } = useStateView();
   const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
   const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
   const currentNativeSession = (0, import_react.useSyncExternalStore)(subscribeNativeSession, readNativeSession);
@@ -17578,7 +17772,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [statsOpen, setStatsOpen] = (0, import_react.useState)(false);
   const [onboardDone, setOnboardDone] = (0, import_react.useState)(false);
   const onboarding = (0, import_react.useRef)(false);
-  if (view && view.prefs?.onboardedAt == null) onboarding.current = true;
+  if (view2 && view2.prefs?.onboardedAt == null) onboarding.current = true;
   const [busy, setBusy] = (0, import_react.useState)(false);
   const selection = (0, import_react.useRef)(0);
   const [pending, setPending] = (0, import_react.useState)([]);
@@ -17587,10 +17781,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [actionError, setActionError] = (0, import_react.useState)("");
   const team = navigation.view === "team";
   const leadSession = (role, session2) => role.lead === true && (session2.engine ?? role.engine) !== "dsh" && session2.leadMode !== false;
-  const archived = view?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || leadSession(role, session2))).map((session2) => ({ role, session: session2 })))[0];
-  const profiles = view?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
+  const archived = view2?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || leadSession(role, session2))).map((session2) => ({ role, session: session2 })))[0];
+  const profiles = view2?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
   const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
-  const workspaces = view?.workspaces ?? [];
+  const workspaces = view2?.workspaces ?? [];
   const workspace = archived ? workspaces.find((item) => item.id === archived.session.workspaceRef) ?? null : workspaces.find((item) => item.id === navigation.workspace) ?? workspaces[0] ?? null;
   const navigationKey = `${workspace?.id}:${profile?.id}`;
   const session = archived?.session ?? sessionForWorkspace(
@@ -17603,11 +17797,11 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const draftKey = sessionId ?? `new:${navigationKey}`;
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
   const setSessionBusy = (value) => setPending((current) => value ? [...current, draftKey] : current.filter((key) => key !== draftKey));
-  const readOnly = view !== null && view.readOnly != null;
+  const readOnly = view2 !== null && view2.readOnly != null;
   const archivedConversation = !!session?.archivedAt || !!profile?.deletedAt;
   const conversationReadOnly = readOnly || archivedConversation;
-  const work = sessionId ? view.work[sessionId] : null;
-  const rounds = view ? roundIndex(view) : null;
+  const work = sessionId ? view2.work[sessionId] : null;
+  const rounds = view2 ? roundIndex(view2) : null;
   const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
@@ -17616,14 +17810,14 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
-  const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view?.work[item.session?.id]?.active === true);
+  const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view2?.work[item.session?.id]?.active === true);
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
-  const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view?.profiles.flatMap((role) => role.sessions).find((item) => nativeIdOf(item) === currentNativeSession) : null;
-  const viewedWork = view?.work[viewed?.id];
+  const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view2?.profiles.flatMap((role) => role.sessions).find((item) => nativeIdOf(item) === currentNativeSession) : null;
+  const viewedWork = view2?.work[viewed?.id];
   (0, import_react.useEffect)(() => {
     if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq);
   }, [viewed?.id, viewedWork?.active, viewedWork?.completionSeq]);
-  const railView = view && { ...view, work: Object.fromEntries(Object.entries(view.work).map(([id, work2]) => [
+  const railView = view2 && { ...view2, work: Object.fromEntries(Object.entries(view2.work).map(([id, work2]) => [
     id,
     { ...work2, seen: Number.isFinite(work2.completionSeq) && seen[id] >= work2.completionSeq }
   ])) };
@@ -17674,9 +17868,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     const current = trackSelection();
     await attempt(trackSelection(true), async () => {
       if (sessionId && ["model", "thinking", "permission", "nativeGoal"].some((key) => changes[key] !== void 0)) {
-        await call("session-update", { profile: profile.id, session: sessionId, changes });
+        await call2("session-update", { profile: profile.id, session: sessionId, changes });
       } else {
-        const saved = await call("profile-update", { id: profile.id, changes });
+        const saved = await call2("profile-update", { id: profile.id, changes });
         if (current()) remember(saved.id, workspace?.id, saved.activeSessionId);
       }
       await refresh(true);
@@ -17698,12 +17892,12 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     try {
       let sessionId2;
       if (nativeRole(profile) && openNativeSession) {
-        const opened = await call("session-open", { profile: profile.id, workspace: created.workspace.id });
+        const opened = await call2("session-open", { profile: profile.id, workspace: created.workspace.id });
         sessionId2 = opened.conversationId;
-        if (created.sessionName !== "") await call("session-update", { profile: profile.id, session: sessionId2, changes: { name: created.sessionName } });
+        if (created.sessionName !== "") await call2("session-update", { profile: profile.id, session: sessionId2, changes: { name: created.sessionName } });
         openNativeSession(opened.sessionId);
       } else {
-        const saved = await call("session-create", {
+        const saved = await call2("session-create", {
           profile: profile.id,
           workspace: created.workspace.id,
           lazy: true,
@@ -17723,23 +17917,23 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     }
   };
   const renamedWorkspace = async (id, name) => {
-    await call("workspace-update", { id, changes: { name } });
+    await call2("workspace-update", { id, changes: { name } });
     await refresh(true);
     setWorkspaceDialog(null);
   };
   const deletedWorkspace = async (id) => {
-    await call("workspace-delete", { id });
+    await call2("workspace-delete", { id });
     await refresh(true);
     if (workspace?.id === id) setNavigation((current) => ({ ...current, workspace: null }));
     setWorkspaceDialog(null);
   };
-  const pageEnv = { workspace, busy, workspaces, work: view?.work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing };
+  const pageEnv = { workspace, busy, workspaces, work: view2?.work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing };
   const select = (role, id, project) => selectSession(role, id, project, pageEnv);
   const archiveSession = async (role, id, archived2) => {
     if (busy || readOnly) return;
     setBusy(true);
     await attempt(() => true, async () => {
-      await call("session-archive", { profile: role.id, session: id, archived: archived2 });
+      await call2("session-archive", { profile: role.id, session: id, archived: archived2 });
       await refresh(true);
     });
     setBusy(false);
@@ -17748,13 +17942,13 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (busy || readOnly) return;
     setBusy(true);
     await attempt(() => true, async () => {
-      await call("session-update", { profile: role.id, session: id, changes });
+      await call2("session-update", { profile: role.id, session: id, changes });
       await refresh(true);
     });
     setBusy(false);
   };
   const renamedSession = async ({ role, session: session2 }, name) => {
-    await call("session-update", { profile: role.id, session: session2.id, changes: { name } });
+    await call2("session-update", { profile: role.id, session: session2.id, changes: { name } });
     await refresh(true);
     setSessionDialog(null);
   };
@@ -17783,13 +17977,13 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setSessionBusy(true);
     const current = trackSelection();
     await attempt(trackSelection(true), async () => {
-      const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
+      const id = sessionId ?? (await call2("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }));
-      await call("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
+      await call2("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
       if (current()) setSentTick((tick) => tick + 1);
       setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
       setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
-      await refresh(true);
+      await refresh(!sessionId);
       if (current()) remember(profile.id, workspace.id, id);
     });
     setSessionBusy(false);
@@ -17799,7 +17993,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setSessionBusy(true);
     const relevant = trackSelection(true);
     await attempt(relevant, async () => {
-      const result = await call("queued-message", { profile: profile.id, session: sessionId, seq, action });
+      const result = await call2("queued-message", { profile: profile.id, session: sessionId, seq, action });
       if (action === "edit") {
         setDrafts((current) => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join("\n\n") }));
         setPastedImages((current) => ({ ...current, [draftKey]: [
@@ -17811,7 +18005,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         if (result.mode === "queued") setActionError("\u5F53\u524D\u65E0\u6CD5\u63D2\u5165\u672C\u8F6E\uFF0C\u6D88\u606F\u4ECD\u5728\u6392\u961F");
         else if (result.mode !== "cancelled") setSentTick((tick) => tick + 1);
       }
-      await refresh(true);
+      await refresh(false);
     });
     setSessionBusy(false);
   };
@@ -17820,16 +18014,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setSessionBusy(true);
     await attempt(trackSelection(true), async () => {
       for (const [id, target] of team ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
-        await call("interrupt", { profile: id, session: target });
+        await call2("interrupt", { profile: id, session: target });
       }
-      await refresh(true);
+      await refresh(false);
     });
     setSessionBusy(false);
   };
   const stopMember = async (step) => {
     try {
-      await call("interrupt", { profile: step.profile, session: step.session });
-      await refresh(true);
+      await call2("interrupt", { profile: step.profile, session: step.session });
+      await refresh(false);
     } catch (failure) {
       setActionError(failure.message);
     }
@@ -17842,20 +18036,20 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     }
     setCompacting((current) => [...current, sessionId]);
     await attempt(trackSelection(true), async () => {
-      await call("session-compact", { profile: profile.id, session: sessionId });
+      await call2("session-compact", { profile: profile.id, session: sessionId });
       await refresh(true);
     });
     setCompacting((current) => current.filter((id) => id !== sessionId));
   };
   const openSession = (id) => {
-    const role = view.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
+    const role = view2.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
     if (role) {
       setNavigation((current) => ({ ...current, view: "sessions" }));
       void select(role, id, workspaces.find((item) => item.id === role.sessions.find((entry) => entry.id === id)?.workspaceRef));
     }
   };
-  const showSessions = (view2) => rolesGuard(() => {
-    setNavigation((current) => ({ ...current, view: view2 }));
+  const showSessions = (view3) => rolesGuard(() => {
+    setNavigation((current) => ({ ...current, view: view3 }));
     setEditing(null);
     nativeSpace.showLegacy();
   });
@@ -17889,7 +18083,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         (0, import_react.createElement)(
           "span",
           { className: "nodo-head-actions" },
-          members.length > 0 && (0, import_react.createElement)(RoundMenu, { members, work: view.work, onOpen: openSession })
+          members.length > 0 && (0, import_react.createElement)(RoundMenu, { members, work: view2.work, onOpen: openSession })
         )
       )
     ),
@@ -17897,17 +18091,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       key: `${team}:${sessionId}`,
       profile,
       session,
-      revision: view.revision,
       work,
       sentTick,
-      round: team ? { profiles: view.profiles, teams: view.teams, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
+      round: team ? { profiles: view2.profiles, teams: view2.teams, leadId: profile.id, work: view2.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
     }),
     work?.active === true && (0, import_react.createElement)(
       "div",
       { className: "nodo-running-dock" },
       (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work })
     ),
-    ...(!archivedConversation ? view.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
+    ...(!archivedConversation ? view2.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
       key: card.id,
       card,
       refresh,
@@ -17936,7 +18129,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       onGoal: sessionId ? () => setGoalOpen(true) : void 0,
       onCompact: () => void compactSession(),
       onModelChange: (changes) => void updateEngineChoice(changes),
-      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view.profiles, profile })
+      rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view2.profiles, profile })
     }),
     // The host chat's statistics line sits right below the input card, one per
     // session, inside the dock the composer keeps: the dock holds its height
@@ -17944,7 +18137,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     (0, import_react.createElement)(
       "div",
       { className: "nodo-stats" },
-      (0, import_react.createElement)(SessionStats, { stats: leadModeOf(profile, session) ? void 0 : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
+      (0, import_react.createElement)(SessionStats, { stats: leadModeOf(profile, session) ? void 0 : (view2?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
     )
   );
   const page = () => {
@@ -17963,11 +18156,11 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   return (0, import_react.createElement)(
     "section",
     { className: `nodo-page${sidebarOnly ? " nodo-space-sidebar" : ""}`, "aria-label": sidebarOnly ? "Nodo \u7A7A\u95F4" : "Nodo" },
-    error && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error),
+    error2 && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2),
     (0, import_react.createElement)(
       "div",
       { className: "nodo-frame" },
-      !contentOnly && view && (0, import_react.createElement)(Rail, {
+      !contentOnly && view2 && (0, import_react.createElement)(Rail, {
         key: team ? "team" : "sessions",
         view: railView,
         profile,
@@ -17981,7 +18174,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         busy,
         navigation: railNavigation ?? (team ? { view: "team" } : null),
         onSelect: (id) => {
-          const role = view.profiles.find((item) => item.id === id);
+          const role = view2.profiles.find((item) => item.id === id);
           if (role && workspace) void select(role);
           else {
             remember(id, workspace?.id);
@@ -18014,7 +18207,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       !sidebarOnly && (0, import_react.createElement)(
         "main",
         { className: "nodo-main" },
-        !view ? (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026") : page(),
+        !view2 ? (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026") : page(),
         actionError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, actionError)
       )
     ),
@@ -18048,9 +18241,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       },
       onCancel: () => setGoalOpen(false)
     }),
-    statsOpen && !leadModeOf(profile, session) && view !== void 0 && (view.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
+    statsOpen && !leadModeOf(profile, session) && view2 !== void 0 && (view2.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
       key: `stats:${sessionId}`,
-      stats: view.stats[sessionId],
+      stats: view2.stats[sessionId],
       onClose: () => setStatsOpen(false)
     }),
     editing?.kind === "workspace" && (0, import_react.createElement)(WorkspaceDialog, {
@@ -18061,15 +18254,15 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     }),
     editing?.kind === "settings" && (0, import_react.createElement)(EngineSettingsDialog, {
       key: "settings",
-      view,
+      view: view2,
       workspace,
       refresh,
       readOnly,
       onClose: cancelEditing
     }),
-    view && !readOnly && !onboardDone && onboarding.current && (0, import_react.createElement)(OnboardingDialog, {
+    view2 && !readOnly && !onboardDone && onboarding.current && (0, import_react.createElement)(OnboardingDialog, {
       key: "onboard",
-      view,
+      view: view2,
       onDone: () => {
         setOnboardDone(true);
         refresh(true);
@@ -18159,7 +18352,7 @@ function createNativeSpace(ctx, Sidebar, SidebarControl) {
   }
   let state = { active: false, legacy: saved?.legacy === true, nativeSession: saved?.nativeSession, nodoSession: saved?.nodoSession, draft: saved?.draft, drafting: saved?.drafting ?? !!saved?.draft };
   let awaitingEntry = false;
-  const listeners = /* @__PURE__ */ new Set();
+  const listeners2 = /* @__PURE__ */ new Set();
   const current = () => ctx.uiSession.adapter.current.getSnapshot().key;
   const publish = (changes) => {
     const next = { ...state, ...changes };
@@ -18169,11 +18362,11 @@ function createNativeSpace(ctx, Sidebar, SidebarControl) {
       localStorage.setItem("nodo.space", JSON.stringify(state));
     } catch {
     }
-    for (const listener of listeners) listener();
+    for (const listener of listeners2) listener();
   };
   const subscribe = (listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    listeners2.add(listener);
+    return () => listeners2.delete(listener);
   };
   const draftEmpty = (draft) => {
     const read = (key2) => {
@@ -18239,7 +18432,7 @@ function createNativeSpace(ctx, Sidebar, SidebarControl) {
       live = false;
       stop();
       stopCatalog();
-      listeners.clear();
+      listeners2.clear();
     };
   }, "nodo: native space");
   return {
@@ -18285,7 +18478,7 @@ function ChangesView({ source, initialPath = "", openFile }) {
   const [body, setBody] = (0, import_react.useState)(source.body);
   const [selected, setSelected] = (0, import_react.useState)(initialPath);
   const [busy, setBusy] = (0, import_react.useState)(!!source.load);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const [attempt, setAttempt] = (0, import_react.useState)(0);
   (0, import_react.useEffect)(() => {
     if (!source.load) return;
@@ -18310,7 +18503,7 @@ function ChangesView({ source, initialPath = "", openFile }) {
     const content = /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: path }, /* @__PURE__ */ (0, import_react.createElement)("span", { dir: "ltr" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-directory" }, path.slice(0, slash)), /* @__PURE__ */ (0, import_react.createElement)("strong", null, path.slice(slash)))), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }));
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: entry.file.path, className: "nodo-changes-row" }, detail ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-row-title" }, content) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-changes-row-title", "aria-label": `\u67E5\u770B ${path} \u7684\u53D8\u66F4`, onClick: () => setSelected(entry.file.path) }, content), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${path}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) }));
   };
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, selected ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-detail-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u53D8\u66F4\u5217\u8868", onClick: () => setSelected(""), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), current && row(current, true)) : totals && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-total" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals }))), busy ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : selected ? current ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff", key: selected }, source.renderFile(current.file, current.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u6587\u4EF6\u53D8\u66F4\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-list" }, files.map((entry) => row(entry)), files.length < body.fileCount && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", body.fileCount, " \u4E2A\u6587\u4EF6"), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u65E0\u6587\u4EF6\u53D8\u66F4"))));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, selected ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-detail-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u53D8\u66F4\u5217\u8868", onClick: () => setSelected(""), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), current && row(current, true)) : totals && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-total" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals }))), busy ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error2), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : selected ? current ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff", key: selected }, source.renderFile(current.file, current.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u6587\u4EF6\u53D8\u66F4\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-list" }, files.map((entry) => row(entry)), files.length < body.fileCount && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u4EC5\u4FDD\u5B58 ", files.length, " / ", body.fileCount, " \u4E2A\u6587\u4EF6"), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, "\u65E0\u6587\u4EF6\u53D8\u66F4"))));
 }
 var CHANGES_PANEL_CSS = `
 .nodo-right-changes{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
@@ -18356,7 +18549,7 @@ function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
   const [bridge] = (0, import_react.useState)(desktopBrowser);
   const [address, setAddress] = (0, import_react.useState)(initialUrl);
   const [url, setUrl] = (0, import_react.useState)(initialUrl);
-  const [error, setError] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
   const [navigation, setNavigation2] = (0, import_react.useState)({ back: false, forward: false });
   const [revision, setRevision] = (0, import_react.useState)(0);
   const viewport = (0, import_react.useRef)(null);
@@ -18499,7 +18692,7 @@ function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
       autoCorrect: "off",
       spellCheck: false
     }
-  )), !bridge && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", disabled: !url, onClick: () => globalThis.open(url, "_blank", "noopener,noreferrer") }, "\u5728\u5916\u90E8\u6253\u5F00")), error && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser-viewport", ref: viewport }, !bridge && /* @__PURE__ */ (0, import_react.createElement)(
+  )), !bridge && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", disabled: !url, onClick: () => globalThis.open(url, "_blank", "noopener,noreferrer") }, "\u5728\u5916\u90E8\u6253\u5F00")), error2 && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error2), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser-viewport", ref: viewport }, !bridge && /* @__PURE__ */ (0, import_react.createElement)(
     "iframe",
     {
       key: revision,
@@ -18514,11 +18707,11 @@ function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
 
 // src/client/terminal.tsx
 var terminalScope = (target) => target.workspace !== void 0 ? { workspace: target.workspace } : { profile: target.profile, session: target.session };
-var ROUTE2 = "/api/nodo/terminal";
+var ROUTE3 = "/api/nodo/terminal";
 var TerminalMissingError = class extends Error {
 };
 async function terminalRequest(op, payload = {}) {
-  const response = await fetch(ROUTE2, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, ...payload }) });
+  const response = await fetch(ROUTE3, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, ...payload }) });
   const answer = await response.json();
   if (response.status === 404 || answer.error?.code === "terminal/not-found") throw new TerminalMissingError("\u7EC8\u7AEF\u4E0D\u5B58\u5728");
   if (!answer.ok) throw new Error("\u7EC8\u7AEF\u64CD\u4F5C\u5931\u8D25");
@@ -18532,9 +18725,9 @@ async function openTerminal(element, size) {
   try {
     terminal.loadAddon(fit);
     terminal.open(element);
-  } catch (error) {
+  } catch (error2) {
     terminal.dispose();
-    throw error;
+    throw error2;
   }
   return { terminal, fit };
 }
@@ -18544,14 +18737,14 @@ async function measureTerminal(element) {
   screen.className = "nodo-terminal";
   screen.style.cssText = "position:absolute;inset:0;visibility:hidden;pointer-events:none";
   element.appendChild(screen);
-  let view;
+  let view2;
   try {
-    view = await openTerminal(screen);
-    const size = view.fit.proposeDimensions();
+    view2 = await openTerminal(screen);
+    const size = view2.fit.proposeDimensions();
     if (!size) throw new Error("Terminal dimensions unavailable");
     return sizeOf(size);
   } finally {
-    view?.terminal.dispose();
+    view2?.terminal.dispose();
     screen.remove();
   }
 }
@@ -18575,11 +18768,11 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
         return;
       }
       let exited = false, seq = 0, writing = Promise.resolve();
-      let frame, retry, resizing = false, resizeFailures = 0;
-      let applied = initialSize, desired;
+      let frame, retry2, resizing = false, resizeFailures = 0;
+      let applied2 = initialSize, desired;
       const abort = new AbortController();
-      const missing = (error) => {
-        if (!(error instanceof TerminalMissingError)) return false;
+      const missing = (error2) => {
+        if (!(error2 instanceof TerminalMissingError)) return false;
         exited = true;
         gone.current();
         return true;
@@ -18595,27 +18788,27 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
         };
       };
       const syncSize = async () => {
-        if (resizing || !desired || applied?.cols === desired.cols && applied?.rows === desired.rows) return;
+        if (resizing || !desired || applied2?.cols === desired.cols && applied2?.rows === desired.rows) return;
         const size = desired;
         resizing = true;
         try {
           await terminalRequest("resize", { ...scope.current, id, ...size });
           if (!live) return;
-          applied = size;
+          applied2 = size;
           resizeFailures = 0;
           terminal.resize(size.cols, size.rows);
           setMessage((current) => current === "\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : current);
-        } catch (error) {
-          if (live && !missing(error)) {
+        } catch (error2) {
+          if (live && !missing(error2)) {
             setMessage("\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026");
-            retry = setTimeout(() => {
-              retry = void 0;
+            retry2 = setTimeout(() => {
+              retry2 = void 0;
               resize.current();
             }, Math.min(1e3 * 2 ** resizeFailures++, 8e3));
           }
         } finally {
           resizing = false;
-          if (live && !exited && !retry && (applied?.cols !== desired?.cols || applied?.rows !== desired?.rows)) resize.current();
+          if (live && !exited && !retry2 && (applied2?.cols !== desired?.cols || applied2?.rows !== desired?.rows)) resize.current();
         }
       };
       resize.current = () => {
@@ -18627,7 +18820,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
           const size = fit.proposeDimensions();
           if (size) {
             desired = sizeOf(size);
-            if (!retry) void syncSize();
+            if (!retry2) void syncSize();
           }
         });
       };
@@ -18646,8 +18839,8 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
             await terminalRequest("write", { ...scope.current, id, data: data.slice(start, end) });
             start = end;
           }
-        }).catch((error) => {
-          if (live && !missing(error)) setMessage("\u8F93\u5165\u5931\u8D25");
+        }).catch((error2) => {
+          if (live && !missing(error2)) setMessage("\u8F93\u5165\u5931\u8D25");
         });
       });
       const apply2 = async (frame2) => {
@@ -18663,13 +18856,13 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
           setMessage(frame2.failed ? "\u7EC8\u7AEF\u5DF2\u4E2D\u65AD" : `\u5DF2\u9000\u51FA${frame2.code == null ? "" : ` (${frame2.code})`}`);
         }
       };
-      const connect = async () => {
-        let failures = 0;
+      const connect2 = async () => {
+        let failures2 = 0;
         while (live && !exited) {
           const before = seq;
           try {
             const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
-            const response = await fetch(`${ROUTE2}?${query}`, { signal: abort.signal });
+            const response = await fetch(`${ROUTE3}?${query}`, { signal: abort.signal });
             if (!live) return;
             if (response.status === 404) {
               exited = true;
@@ -18700,24 +18893,24 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
           } catch {
             if (live) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
           }
-          if (seq > before) failures = 0;
-          if (live && !exited && ++failures > 5) {
+          if (seq > before) failures2 = 0;
+          if (live && !exited && ++failures2 > 5) {
             setMessage("\u8FDE\u63A5\u5DF2\u4E2D\u65AD");
             break;
           }
           if (live && !exited) await new Promise((resolve) => {
             const done = () => {
-              clearTimeout(timer);
+              clearTimeout(timer2);
               abort.signal.removeEventListener("abort", done);
               resolve();
             };
-            const timer = setTimeout(done, 1e3 * 2 ** (failures - 1));
+            const timer2 = setTimeout(done, 1e3 * 2 ** (failures2 - 1));
             abort.signal.addEventListener("abort", done, { once: true });
             if (abort.signal.aborted) done();
           });
         }
       };
-      void connect();
+      void connect2();
       cleanup = () => {
         live = false;
         abort.abort();
@@ -18726,7 +18919,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
         input.dispose();
         terminal.dispose();
         if (frame !== void 0) cancelAnimationFrame(frame);
-        clearTimeout(retry);
+        clearTimeout(retry2);
         resize.current = () => {
         };
       };
@@ -18754,19 +18947,20 @@ function createRightPanel(ctx) {
   let browserSequence = 0;
   let changesSequence = 0;
   let bound;
-  const listeners = /* @__PURE__ */ new Set();
+  let boundCwd;
+  const listeners2 = /* @__PURE__ */ new Set();
   const closed = /* @__PURE__ */ new Set();
   const directories = /* @__PURE__ */ new Map();
   const normalized = (cwd) => cwd && (directories.get(cwd) ?? cwd);
   const publish = (changes) => {
     state = { ...state, ...changes };
-    for (const listener of listeners) listener();
+    for (const listener of listeners2) listener();
   };
   const panel = {
     subscribe: (listener) => {
-      listeners.add(listener);
+      listeners2.add(listener);
       return () => {
-        listeners.delete(listener);
+        listeners2.delete(listener);
       };
     },
     getSnapshot: () => state,
@@ -18774,6 +18968,21 @@ function createRightPanel(ctx) {
       const current = ++generation;
       const previous = bound;
       const scope = scopeKey(target);
+      const resolvedCwd = boundCwd !== target.cwd && normalized(boundCwd) === normalized(target.cwd);
+      boundCwd = target.cwd;
+      const unbind = () => {
+        void Promise.resolve().then(() => {
+          if (current === generation) {
+            generation++;
+            publish({ target: null });
+          }
+        });
+      };
+      if (previous && state.available && resolvedCwd && scopeKey(previous) === scope && previous.readOnly === target.readOnly) {
+        bound = { ...target, cwd: normalized(target.cwd) };
+        publish({ target: bound });
+        return unbind;
+      }
       let adopted = false;
       const adopt = (cwd = target.cwd) => {
         const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd);
@@ -18813,14 +19022,7 @@ function createRightPanel(ctx) {
         }
       };
       if (!target.readOnly) void restore();
-      return () => {
-        void Promise.resolve().then(() => {
-          if (current === generation) {
-            generation++;
-            publish({ target: null });
-          }
-        });
-      };
+      return unbind;
     },
     toggle: () => publish({ expanded: !state.expanded }),
     openFiles: () => publish({ tabs: state.tabs.some((tab) => tab.kind === "files") ? state.tabs : [...state.tabs, { kind: "files" }], active: "files" }),
@@ -18885,8 +19087,8 @@ function createRightPanel(ctx) {
       panel.forgetTab(id);
       try {
         if (tab.kind === "terminal" && target) await terminalRequest("close", { ...terminalScope(target), id });
-      } catch (error) {
-        if (!(error instanceof TerminalMissingError)) {
+      } catch (error2) {
+        if (!(error2 instanceof TerminalMissingError)) {
           closed.delete(id);
           if (current === generation) publish({
             tabs: [...state.tabs.slice(0, index), tab, ...state.tabs.slice(index)],
@@ -19061,7 +19263,7 @@ function WorkspaceFiles({ target, selected: selection, onSelect }) {
   (0, import_react.useEffect)(() => {
     for (const path of Object.keys(expanded).filter((path2) => expanded[path2] && !directories[path2] && !pending.current.has(path2))) {
       pending.current.add(path);
-      void call("workspace-dir", { ...terminalScope(target), path }).then((value) => {
+      void call2("workspace-dir", { ...terminalScope(target), path }).then((value) => {
         if (live.current) setDirectories((current) => ({ ...current, [path]: value }));
       }).catch(() => {
         if (live.current) setDirectories((current) => ({ ...current, [path]: { error: true } }));
@@ -19120,13 +19322,13 @@ var LANGUAGES = {
 };
 function FilePreview({ target, path, onBack }) {
   const [content, setContent] = (0, import_react.useState)(null);
-  const [error, setError] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)(false);
   const [source, setSource] = (0, import_react.useState)(false);
   const [lightbox, setLightbox] = (0, import_react.useState)(false);
   const [imageError, setImageError] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("workspace-file", { ...terminalScope(target), path }).then((value) => {
+    void call2("workspace-file", { ...terminalScope(target), path }).then((value) => {
       if (live) setContent(value);
     }).catch(() => {
       if (live) setError(true);
@@ -19137,11 +19339,11 @@ function FilePreview({ target, path, onBack }) {
   }, [target, path]);
   const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
   const markdown = extension === "md" && typeof content?.text === "string";
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u6587\u4EF6\u6811", onClick: onBack, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { title: path }, path), markdown && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-pressed": source, onClick: () => setSource((value) => !value) }, source ? "\u9884\u89C8" : "\u6E90\u7801")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, content?.truncated && status("\u6587\u4EF6\u5DF2\u622A\u65AD"), error ? status("\u6587\u4EF6\u4E0D\u53EF\u7528") : !content ? status("\u52A0\u8F7D\u4E2D\u2026") : content.missing ? status("\u6587\u4EF6\u4E0D\u5B58\u5728") : content.binary ? status("\u4E8C\u8FDB\u5236\u6587\u4EF6") : content.image ? imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src: content.image.dataUrl, alt: path, onError: () => setImageError(true) })) : markdown && !source ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: content.text ?? "", labels: MARKDOWN_LABELS }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text ?? "", lang: LANGUAGES[extension] ?? "text", copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })), lightbox && !imageError && content?.image && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src: content.image.dataUrl, alt: path, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-head" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u8FD4\u56DE\u6587\u4EF6\u6811", onClick: onBack, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { title: path }, path), markdown && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-pressed": source, onClick: () => setSource((value) => !value) }, source ? "\u9884\u89C8" : "\u6E90\u7801")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, content?.truncated && status("\u6587\u4EF6\u5DF2\u622A\u65AD"), error2 ? status("\u6587\u4EF6\u4E0D\u53EF\u7528") : !content ? status("\u52A0\u8F7D\u4E2D\u2026") : content.missing ? status("\u6587\u4EF6\u4E0D\u5B58\u5728") : content.binary ? status("\u4E8C\u8FDB\u5236\u6587\u4EF6") : content.image ? imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src: content.image.dataUrl, alt: path, onError: () => setImageError(true) })) : markdown && !source ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: content.text ?? "", labels: MARKDOWN_LABELS }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text ?? "", lang: LANGUAGES[extension] ?? "text", copyLabel: "\u590D\u5236", copiedLabel: "\u5DF2\u590D\u5236" })), lightbox && !imageError && content?.image && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src: content.image.dataUrl, alt: path, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
 }
 function ImageView({ image }) {
   const [src, setSrc] = (0, import_react.useState)(null);
-  const [error, setError] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)(false);
   const [lightbox, setLightbox] = (0, import_react.useState)(false);
   const [imageError, setImageError] = (0, import_react.useState)(false);
   const alt = image.name || "\u56FE\u7247";
@@ -19150,7 +19352,7 @@ function ImageView({ image }) {
     setSrc(null);
     setError(false);
     setImageError(false);
-    call("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
+    call2("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
       if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
     }).catch(() => {
       if (live) setError(true);
@@ -19159,7 +19361,7 @@ function ImageView({ image }) {
       live = false;
     };
   }, [image.id, image.mediaType]);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, error ? status("\u56FE\u7247\u4E0D\u53EF\u7528") : !src ? status("\u52A0\u8F7D\u4E2D\u2026") : imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src, alt, onError: () => setImageError(true) }))), lightbox && !imageError && src && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, error2 ? status("\u56FE\u7247\u4E0D\u53EF\u7528") : !src ? status("\u52A0\u8F7D\u4E2D\u2026") : imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src, alt, onError: () => setImageError(true) }))), lightbox && !imageError && src && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
 }
 
 // src/client/native-welcome.js
@@ -19198,9 +19400,9 @@ function createCompletionTracker(storage, events) {
     }
   };
   let snapshot = read();
-  const listeners = /* @__PURE__ */ new Set();
+  const listeners2 = /* @__PURE__ */ new Set();
   const notify = () => {
-    for (const listener of listeners) listener();
+    for (const listener of listeners2) listener();
   };
   const changed = (event) => {
     if (event.key === key || event.key === null) {
@@ -19212,8 +19414,8 @@ function createCompletionTracker(storage, events) {
   return {
     getSnapshot: () => snapshot,
     subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+      listeners2.add(listener);
+      return () => listeners2.delete(listener);
     },
     mark(id, at2) {
       if (!Number.isFinite(at2) || (snapshot[id] ?? -1) >= at2) return;
@@ -19229,7 +19431,7 @@ function createCompletionTracker(storage, events) {
     },
     dispose() {
       events.removeEventListener?.("storage", changed);
-      listeners.clear();
+      listeners2.clear();
     }
   };
 }
@@ -19243,7 +19445,7 @@ function createModelSeat(ctx, space) {
     const state = (0, import_react.useSyncExternalStore)(directory.store.subscribe, directory.store.getSnapshot);
     const [open, setOpen] = (0, import_react.useState)(false);
     const [pane, setPane] = (0, import_react.useState)("root");
-    const [error, setError] = (0, import_react.useState)("");
+    const [error2, setError] = (0, import_react.useState)("");
     if (!available) return null;
     const close = () => {
       setOpen(false);
@@ -19303,7 +19505,7 @@ function createModelSeat(ctx, space) {
         label: level.id === currentModel?.reasoning?.defaultEffort ? `${level.name ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.name ?? level.id
       }))
     ] : [
-      ...error ? [{ type: "label", id: "error", text: error }] : [],
+      ...error2 ? [{ type: "label", id: "error", text: error2 }] : [],
       { id: "model", label: cell("\u6A21\u578B", modelText, groups.length > 0), disabled: !groups.length },
       { id: "thinking", label: cell("\u63A8\u7406\u7B49\u7EA7", effortText || "\u9ED8\u8BA4", efforts.length > 0), disabled: !efforts.length }
     ];
@@ -19376,7 +19578,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     }
   };
   function NewConversation2({ draft, sourceSessionId }) {
-    const { view, error: loadError, refresh } = useStateView();
+    const { view: view2, error: loadError, refresh } = useStateView();
     const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
     const state = (0, import_react.useSyncExternalStore)(space.subscribe, space.getSnapshot);
     const key = `new:${draft?.id ?? sourceSessionId}`;
@@ -19393,19 +19595,19 @@ function createNewConversation(ctx, space, ReferenceDialog) {
     const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
     const [adding, setAdding] = (0, import_react.useState)(false);
     const [busy, setBusy] = (0, import_react.useState)(false);
-    const [error, setError] = (0, import_react.useState)("");
+    const [error2, setError] = (0, import_react.useState)("");
     const [notice, setNotice] = (0, import_react.useState)("");
     const pending = (0, import_react.useRef)(false), created = (0, import_react.useRef)(null), uploading = (0, import_react.useRef)(false);
-    const profiles = view?.profiles.filter((role) => !role.deletedAt && (!draft || navigation.view !== "team" || role.lead === true && role.engine !== "dsh")) ?? [];
+    const profiles = view2?.profiles.filter((role) => !role.deletedAt && (!draft || navigation.view !== "team" || role.lead === true && role.engine !== "dsh")) ?? [];
     const sourceRole = sourceSessionId && profiles.find((role) => role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId));
     const sourceSession = sourceRole?.sessions.find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sourceSessionId);
     const profile = profiles.find((role) => role.id === (selection.profile ?? sourceRole?.id ?? (!draft ? navigation.profile : void 0)));
-    const workspace = view?.workspaces.find((item) => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view?.workspaces[0];
+    const workspace = view2?.workspaces.find((item) => item.id === (draft?.workspace ?? sourceSession?.workspaceRef ?? navigation.workspace)) ?? view2?.workspaces[0];
     const panelVisible = !sourceSessionId && draft && state.active && state.drafting && state.draft?.id === draft.id;
     (0, import_react.useLayoutEffect)(() => {
-      if (panelVisible && workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: workspace.cwd, ...view.readOnly != null ? { readOnly: true } : {} });
-    }, [panelVisible, workspace?.id, workspace?.cwd, view?.readOnly]);
-    const disabled = busy || !view || view.readOnly != null;
+      if (panelVisible && workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: workspace.cwd, ...view2.readOnly != null ? { readOnly: true } : {} });
+    }, [panelVisible, workspace?.id, workspace?.cwd, view2?.readOnly]);
+    const disabled = busy || !view2 || view2.readOnly != null;
     const active = () => space.getSnapshot().active && (draft ? space.getSnapshot().drafting && space.getSnapshot().draft?.id === draft.id : (ctx.uiSession.adapter.current.getSnapshot().key ?? null) === (sourceSessionId ?? null));
     const changeText = (value) => {
       setText(value);
@@ -19447,7 +19649,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         if (added.length + images.length > 8 || documents.length + files.length > 8) throw new Error("\u6BCF\u6761\u6D88\u606F\u6700\u591A\u6DFB\u52A0 8 \u5F20\u56FE\u7247\u548C 8 \u4E2A\u6587\u4EF6\u3002");
         if (added.length) changeImages((current) => [...current, ...added]);
         if (documents.length) {
-          const saved = await call("attachment-save", {
+          const saved = await call2("attachment-save", {
             images: [],
             files: documents.map((item) => ({ name: item.name, mediaType: item.mediaType, data: base64Of(item.dataUrl) }))
           });
@@ -19476,18 +19678,18 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         const team = !!draft && navigation.view === "team";
         const signature = JSON.stringify([profile.id, workspace.id, choices, team]);
         if (created.current?.signature !== signature) {
-          const session2 = await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices, team });
+          const session2 = await call2("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices, team });
           created.current = { signature, session: session2 };
         }
         if (!active()) return;
         const session = created.current.session;
         if (nativeRole(profile)) {
-          const placed = files.length ? await call("attachment-place", { files, workspace: workspace.id }) : { text: "" };
-          const opened = await call("session-open", { profile: profile.id, session: session.id, workspace: workspace.id });
+          const placed = files.length ? await call2("attachment-place", { files, workspace: workspace.id }) : { text: "" };
+          const opened = await call2("session-open", { profile: profile.id, session: session.id, workspace: workspace.id });
           await ctx.sessions.using(opened.sessionId, { source: "controllerOperation" }, async (reference2) => {
             const binding = await reference2.ready;
             if (!active()) return;
-            const bound = await Promise.all(references.map((item) => call("reference-bind", { id: item.id, draft: selection.referenceDraft, target: opened.sessionId })));
+            const bound = await Promise.all(references.map((item) => call2("reference-bind", { id: item.id, draft: selection.referenceDraft, target: opened.sessionId })));
             if (!active()) return;
             const input = [text, placed.text, ...bound.map((item) => `[\u5F15\u7528\u4F1A\u8BDD](nodo-reference:${item.id})`)].filter(Boolean).join("\n");
             const result = await binding.session.prompt([
@@ -19511,9 +19713,9 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             clearDraft();
           });
         } else {
-          const bound = await Promise.all(references.map((item) => call("reference-bind", { id: item.id, draft: selection.referenceDraft, target: session.id })));
+          const bound = await Promise.all(references.map((item) => call2("reference-bind", { id: item.id, draft: selection.referenceDraft, target: session.id })));
           if (!active()) return;
-          await call("send", {
+          await call2("send", {
             profile: profile.id,
             session: session.id,
             text: text || (references.length ? "\u8BF7\u53C2\u8003\u5F15\u7528\u7684\u4F1A\u8BDD\u7ED3\u679C\u3002" : ""),
@@ -19606,7 +19808,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             ] }));
           }
         }),
-        error || loadError ? (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error || loadError) : notice && (0, import_react.createElement)("p", { className: "nodo-note", role: "status" }, notice)
+        error2 || loadError ? (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2 || loadError) : notice && (0, import_react.createElement)("p", { className: "nodo-note", role: "status" }, notice)
       )
     );
   }
@@ -20662,8 +20864,8 @@ function installScrollbars(document2) {
   document2.addEventListener("scroll", onScroll, { capture: true, passive: true });
   return () => {
     document2.removeEventListener("scroll", onScroll, { capture: true });
-    for (const [element, timer] of timers) {
-      clearTimeout(timer);
+    for (const [element, timer2] of timers) {
+      clearTimeout(timer2);
       rest(element);
     }
   };

@@ -2,6 +2,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
 
+
+// Feed reads its lines from the shared store; tests seed it with this stub.
+const liveStub = feed => ({
+  transcriptOf: key => feed.lines, transcriptError: () => feed.error ?? '',
+  pullTranscript: async () => {}, watchTranscript: () => () => {}, subscribeStore: () => () => {}, getStoreVersion: () => 0,
+})
 const nodes = node => !node || typeof node !== 'object' ? []
   : [node, ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(nodes)]
 const find = (tree, className) => nodes(tree).find(node => node.props.className === className)
@@ -169,7 +175,7 @@ test('legacy and structured calls share the TSX component and preserve terminal 
 
 test('the feed never marks a legacy call successful while its completion is missing', async () => {
   const feed = { key: 'profile:session', lines: [{ kind: 'tool', name: 'Read', callId: 'call', phase: 'start', input: 'file.ts' }], error: '' }
-  const { Feed, ProcessRow } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const { Feed, ProcessRow } = await loadClient('feed.js', { stubs: { 'live.js': liveStub(feed) } })
   const props = { profile: { id: 'profile' }, session: { id: 'session' } }
   const row = nodes(Feed({ ...props, work: { active: false } })).find(node => node.type === ProcessRow)
   assert.equal(row.props.running, false)

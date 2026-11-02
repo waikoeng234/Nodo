@@ -96,7 +96,7 @@ for (const kind of ['profile', 'workspace']) {
       assert.deepEqual(calls, [['archive', 'racing-native'], ['unarchive', 'racing-native']])
       assert.equal(JSON.stringify(rt.state), before)
       assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), disk)
-    } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+    } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
   })
 
   test(`${kind} deletion archives only dsh twins before changing local state and rolls back a host refusal`, async () => {
@@ -143,7 +143,7 @@ for (const kind of ['profile', 'workspace']) {
       assert.deepEqual([...archived], ['already', 'first', 'second'])
       assert.ok(rt.state.profiles[role.id].sessions.every(session => session.archivedAt))
       if (kind === 'workspace') assert.ok(rt.state.profiles[external.id].sessions.every(session => session.archivedAt))
-    } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+    } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
   })
 }
 
@@ -183,7 +183,7 @@ test('archived native conversations are read through the transcript endpoint wit
     const lines = await host.api('transcript', { profile: role.id, session: session.id })
     assert.deepEqual(lines.map(line => [line.who, line.text]), [['user', 'Original question'], ['agent', 'Original answer']])
     assert.equal(rt.driverOf(session.id), undefined)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('archived native reads prefer local tool rows and fall back safely when inspect fails', async () => {
@@ -195,16 +195,17 @@ test('archived native reads prefer local tool rows and fall back safely when ins
     const session = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
     const rt = await host.runtime
     Object.assign(rt.conversation(role.id, session.id).session, { driverSessionId: 'native-local', archivedAt: 1 })
-    const lines = rt.state.transcripts[session.id] = [{ who: 'agent', kind: 'tool', name: 'read', brief: 'Retained tool details', at: 1 }]
+    const lines = [rt.appendLine(session.id, { who: 'agent', kind: 'tool', name: 'read', brief: 'Retained tool details', at: 1 })]
     native.sessionController.inspect = async () => { native.reads.push('failed'); throw new TypeError('Inspection failed') }
     assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), lines)
     await host.api('workspace-create', { name: 'Revision', cwd: join(home, 'other') })
     assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), lines)
     assert.deepEqual(native.reads, [], 'revision changes never inspect when local history exists')
-    rt.state.transcripts[session.id] = []
-    assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), [])
+    const empty = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    Object.assign(rt.conversation(role.id, empty.id).session, { driverSessionId: 'native-empty', archivedAt: 1 })
+    assert.deepEqual(await host.api('transcript', { profile: role.id, session: empty.id }), [])
     assert.deepEqual(native.reads, ['failed'])
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('native sends from multiple DSH sessions drive the existing work view and remain session-scoped', async () => {
@@ -235,10 +236,10 @@ test('native sends from multiple DSH sessions drive the existing work view and r
     host.event('codex', 'tool/result', { turn: 1, message: { toolCallId: 'same-id' } })
     host.event('codex', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
     host.agents.get('codex').status = 'idle'
-    assert.equal(rt.workView()['nodo-codex'].status, 'completed')
-    assert.equal(rt.workView()['nodo-codex'].active, false)
-    assert.equal(rt.workView()['nodo-claude'].active, true)
-    assert.equal(rt.workView()['nodo-claude'].tool, 'claude-tool')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'completed')
+    assert.equal(rt.workView()['nodo-codex']?.active ?? false, false)
+    assert.equal(rt.workView()['nodo-claude']?.active, true)
+    assert.equal(rt.workView()['nodo-claude']?.tool, 'claude-tool')
     assert.equal(rt.workView().ordinary, undefined)
     assert.equal(rt.nativeWork(rt.state.profiles.external.sessions[0]), null)
     await rt.refreshNativeStatus()
@@ -290,21 +291,21 @@ test('native approvals and questions delegate unchanged, close on answers and ab
     let resolve
     const waiting = new Promise(done => { resolve = done })
     const result = host.ask('approval/request', agent.id, () => waiting)
-    assert.equal(rt.workView()['nodo-codex'].status, 'waiting-approval')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'waiting-approval')
     resolve('rejected')
     assert.equal(await result, 'rejected')
     host.event(agent.id, 'approval/decided', { id: 'approval', outcome: 'rejected' })
-    assert.equal(rt.workView()['nodo-codex'].status, 'running')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'running')
     const signal = new AbortController()
     const question = host.ask('user-questions/request', agent.id, () => new Promise(done => { resolve = done }), signal.signal)
-    assert.equal(rt.workView()['nodo-codex'].status, 'waiting-question')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'waiting-question')
     signal.abort()
-    assert.equal(rt.workView()['nodo-codex'].status, 'running')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'running')
     const answer = { answers: [{ id: 'q', selected: ['Blue'] }] }
     resolve(answer)
     assert.equal(await question, answer)
     await assert.rejects(host.ask('user-questions/request', agent.id, () => Promise.reject(new Error('unavailable'))), /unavailable/)
-    assert.equal(rt.workView()['nodo-codex'].status, 'running')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'running')
     host.add('ordinary')
     assert.equal(await host.ask('approval/request', 'ordinary', async () => 'allowed-once'), 'allowed-once')
     assert.equal(rt.workView().ordinary, undefined)
@@ -320,11 +321,11 @@ test('stops, errors, blocked turns and later sends follow host outcomes instead 
     for (const [kind, expected] of [['aborted', 'stopped'], ['error', 'error'], ['blocked', 'blocked'], ['max-tokens', 'blocked'], ['completed', 'completed']]) {
       agent.status = 'running'
       host.event(agent.id, 'turn/start', { turn: ++turn })
-      assert.equal(rt.workView()['nodo-codex'].status, 'running')
+      assert.equal(rt.workView()['nodo-codex']?.status, 'running')
       host.event(agent.id, 'turn/end', { turn: turn - 1, reason: { kind: 'completed' } })
-      assert.equal(rt.workView()['nodo-codex'].status, 'running', 'a stale turn must not close the current one')
+      assert.equal(rt.workView()['nodo-codex']?.status, 'running', 'a stale turn must not close the current one')
       host.event(agent.id, 'turn/end', { turn, reason: { kind } })
-      assert.equal(rt.workView()['nodo-codex'].active, true, 'host stays authoritative until its driver retires')
+      assert.equal(rt.workView()['nodo-codex']?.active, true, 'host stays authoritative until its driver retires')
       agent.status = 'idle'
       const work = rt.workView()['nodo-codex']
       assert.equal(work.status, expected)
@@ -350,8 +351,8 @@ test('cold status comes from public inspection without activating agents or copy
     ])
     host.agents.clear()
     await rt.refreshNativeStatus()
-    assert.equal(rt.workView()['nodo-dsh'].status, 'completed')
-    assert.equal(rt.workView()['nodo-codex'].status, 'stopped')
+    assert.equal(rt.workView()['nodo-dsh']?.status, 'completed')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'stopped')
     assert.equal(rt.workView()['nodo-dsh'].lastAt, 12, 'replayed turns date the session from the recorded times')
     assert.equal(rt.workView()['nodo-codex'].lastAt, 21)
     assert.equal(host.agents.size, 0)
@@ -367,9 +368,9 @@ test('native status leaves the existing dispatch stream and queued work visible'
     rt.statsOutput = () => {}
     rt.driverSink('nodo-dsh', { type: 'turn/start', turnId: 'legacy' })
     rt.driverSink('nodo-dsh', { type: 'delta', text: 'existing stream' })
-    assert.equal(rt.workView()['nodo-dsh'].active, true)
-    assert.equal(rt.workView()['nodo-dsh'].status, 'running')
-    assert.equal(rt.workView()['nodo-dsh'].buffer, 'existing stream')
+    assert.equal(rt.workView()['nodo-dsh']?.active, true)
+    assert.equal(rt.workView()['nodo-dsh']?.status, 'running')
+    assert.equal(rt.workView()['nodo-dsh']?.buffer, 'existing stream')
   } finally { dispose() }
 })
 
@@ -393,7 +394,7 @@ test('inspection races preserve live events and concurrent polls share the same 
     release()
     await Promise.all([first, second])
     assert.equal(host.reads.filter(id => id === 'dsh').length, 1)
-    assert.equal(rt.workView()['nodo-dsh'].status, 'stopped')
+    assert.equal(rt.workView()['nodo-dsh']?.status, 'stopped')
   } finally { dispose() }
 })
 
@@ -402,17 +403,17 @@ test('missing history is explicit and idle or disposed agents cannot remain runn
   try {
     rt.ctx.sessionController.inspect = async () => { throw new Error('missing') }
     await rt.refreshNativeStatus()
-    assert.equal(rt.workView()['nodo-codex'].status, 'unavailable')
+    assert.equal(rt.workView()['nodo-codex']?.status, 'unavailable')
     const agent = host.agents.get('codex')
     agent.status = 'running'
     host.event(agent.id, 'turn/start', { turn: 1 })
-    assert.equal(rt.workView()['nodo-codex'].active, true)
+    assert.equal(rt.workView()['nodo-codex']?.active, true)
     agent.status = 'idle'
-    assert.equal(rt.workView()['nodo-codex'].active, false)
-    assert.equal(rt.workView()['nodo-codex'].status, 'stopped')
+    assert.equal(rt.workView()['nodo-codex']?.active ?? false, false)
+    assert.equal(rt.workView()['nodo-codex']?.status, 'stopped')
     host.agents.delete(agent.id)
     host.emit('agent/disposed', { agent })
-    assert.equal(rt.workView()['nodo-codex'].active, false)
+    assert.equal(rt.workView()['nodo-codex']?.active ?? false, false)
   } finally { dispose() }
   assert.equal(host.listeners.get('session/event').size, 0)
   assert.equal(host.listeners.get('approval/request').size, 0)
@@ -432,9 +433,9 @@ test('state polling and busy guards use native status without duplicating transc
     const agent = native.agents.get(opened.sessionId)
     agent.status = 'running'
     native.event(agent.id, 'turn/start', { turn: 1 })
-    const active = await host.api('state', { since: before.revision })
+    const active = await host.api('state', { since: { struct: before.struct } })
     assert.equal(active.unchanged, true)
-    assert.equal(active.work[opened.conversationId].active, true)
+    assert.equal(active.work[opened.conversationId]?.active, true)
     for (const [endpoint, payload] of [
       ['session-archive', { profile: role.id, session: opened.conversationId, archived: true }],
       ['session-update', { profile: role.id, session: opened.conversationId, changes: { taskState: {} } }],
@@ -444,13 +445,13 @@ test('state polling and busy guards use native status without duplicating transc
     native.event(agent.id, 'assistant/message', { turn: 1, message: { content: [{ type: 'text', text: 'native reply' }], usage: { outputTokens: 9 } } })
     native.event(agent.id, 'turn/end', { turn: 1, reason: { kind: 'completed' } })
     agent.status = 'idle'
-    const finished = await host.api('state', { since: before.revision })
-    assert.equal(finished.work[opened.conversationId].status, 'completed')
+    const finished = await host.api('state', { since: { struct: before.struct } })
+    assert.equal(finished.work[opened.conversationId]?.status, 'completed')
     assert.equal(finished.unchanged, true, 'native turns alone do not bump the revision')
     assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).sessions.find(item => item.id === opened.conversationId).updatedAt, 1002,
       'a native turn dates the session for the rail even without a transcript')
     assert.deepEqual(finished.stats, before.stats)
     assert.deepEqual(await host.api('transcript', { profile: role.id, session: opened.conversationId }), transcript)
     assert.equal((await host.post('session-archive', { profile: role.id, session: opened.conversationId, archived: true })).ok, true)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })

@@ -42,13 +42,14 @@ export function install(rt) {
   const say = (profileId, line) => {
     const redacted = rt.redactDeepSecrets(line)
     const saved = rt.appendLine(profileId, redacted)
-    void rt.save().catch(() => {})
+    void rt.save(true).catch(() => {})
     return saved
   }
 
   const messagesOf = (profileId, st) => st.messages ??= createMessageStream({
     append: line => rt.appendLine(profileId, line), redact: rt.redactDeepSecrets, head: rt.redactHead,
-    save: () => { void rt.save().catch(() => {}) },
+    save: () => { void rt.save(true).catch(() => {}) },
+    touch: (...lines) => rt.touchLine?.(profileId, ...lines),
   })
   const closeMessages = st => st.messages?.close()
 
@@ -86,7 +87,8 @@ export function install(rt) {
   const saveRecord = (profileId, st, line, record) => {
     st.recordWrites = Promise.resolve(st.recordWrites).then(async () => {
       line.presentation = await rt.saveStreamRecord(profileId, record)
-      await rt.save()
+      rt.touchLine?.(profileId, line)
+      await rt.save(true)
     }).catch(() => rt.warn?.('nodo: tool detail projection could not be persisted'))
   }
   // Fold one update into the running row. Deltas append because the driver
@@ -177,6 +179,7 @@ export function install(rt) {
     const text = clip(rt.redactDeepSecrets(String(event.explanation ?? event.text ?? event.title ?? '')), TRANSCRIPT_TEXT_MAX, 'long plan')
     if (prior) {
       Object.assign(prior, removed ? { steps: [], text: '', removed: true } : { steps, text, removed: false })
+      rt.touchLine?.(profileId, prior)
     } else if (!removed) {
       const line = rt.appendLine(profileId, { who: 'agent', kind: 'plan', text, steps,
         ...(event.turnId !== undefined ? { turnId: event.turnId } : {}), ...(entityId ? { entityId } : {}) })
@@ -184,7 +187,7 @@ export function install(rt) {
       else st.planLine = line
       st.planTurn = event.turnId !== undefined ? String(event.turnId) : null
     }
-    void rt.save().catch(() => {})
+    void rt.save(true).catch(() => {})
   }
 
   const sinkActivity = (profileId, st, event) => {
@@ -245,6 +248,7 @@ export function install(rt) {
       applyToolFields(line, event)
       const record = event.noRecord ? null : st.records?.accept(event)
       if (record) line.presentation = previewRecord(record)
+      rt.touchLine?.(profileId, line)
       return
     }
     const repeated = phase === 'start' && key !== null && st.tools.has(key)
@@ -254,6 +258,7 @@ export function install(rt) {
       applyToolFields(line, event)
       const record = event.noRecord ? null : st.records?.accept(event)
       if (record) line.presentation = previewRecord(record)
+      rt.touchLine?.(profileId, line)
       return
     }
     // An activity row is a status, not an execution: it never counts as a
@@ -303,9 +308,10 @@ export function install(rt) {
         delete request.line.cancelled
         request.line.response = rt.redactDeepSecrets({ ...reply,
           ...(questions.length > 1 && JSON.stringify(questions).length <= 4000 ? { questions } : {}) })
+        rt.touchLine?.(profileId, request.line)
       }
       if (st.requests.get(event.id) === request) st.requests.delete(event.id)
-      await rt.save()
+      await rt.save(true)
     } : undefined)
     if (!foreign(st, event)) armIdle(profileId, st)
   }
@@ -362,7 +368,7 @@ export function install(rt) {
     for (const line of replyLines) {
       if (rt.saveReplyImages) st.recordWrites = Promise.resolve(st.recordWrites).then(async () => {
         const images = await rt.saveReplyImages(profileId, line.text)
-        if (images.length) line.images = images
+        if (images.length) { line.images = images; rt.touchLine?.(profileId, line) }
       }).catch(() => rt.warn?.('nodo: reply images could not be persisted'))
     }
     st.buffer = ''
@@ -397,8 +403,9 @@ export function install(rt) {
       for (const joined of st.joined.splice(0)) settle(st, joined, st.ended.outcome)
       drain(profileId, st)
       void rt.flushLeadReports?.(profileId)
+      rt.notifyLive?.()
     }
-    void Promise.resolve(st.recordWrites).then(() => rt.save()).then(() => finish(event.reason), () => {
+    void Promise.resolve(st.recordWrites).then(() => rt.saveRuntime(profileId)).then(() => finish(event.reason), () => {
       rt.appendLine(profileId, { who: 'agent', kind: 'error', text: 'Task finished, but its saved context could not be persisted.' })
       finish('error')
     })
@@ -505,7 +512,7 @@ export function install(rt) {
         try { await (goalCommand ? driver.goals(text === '/goal clear' ? null : text.slice(6)) : driver.sendTurn(message, images)) }
         catch (error) { session.briefSent = briefSent; throw error }
         if (!goalCommand) session.restoreContext = false
-        await rt.save()
+        await (session.draftedAt ? rt.save() : rt.saveRuntime())
       } catch (error) {
         // Once sendTurn is called the engine may already be working, so this end is unconfirmed;
         // an end the engine already reported stands.
@@ -542,6 +549,7 @@ export function install(rt) {
   }
   const send = async (profileId, rawText, sessionId, rawImages, references = [], { exclusive = false, files, brief, queue = false, origin, cancelled, userInput = false } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
+    let structureChanged = session.id === profile.id && !profile.driverSessionId && rt.transcriptInfo(session.id).lines === 0
     rt.assertSessionWritable?.(profile, session)
     // createProfile and updateProfile keep new leads compliant; this catches
     // cards saved before the rules, which never migrate in place. The dedicated
@@ -571,6 +579,7 @@ export function install(rt) {
         delete session.draftedAt
         const twin = nativeIdOf(session)
         if (twin && session.profileName) rt.renameHostSession?.(twin, `${session.profileName} · ${named}`)
+        structureChanged = true
       }
     }
     const refs = await rt.saveImages(images)
@@ -590,6 +599,7 @@ export function install(rt) {
       ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
     const pendingLine = queue && occupied(profileId, st) ? line : undefined
     if (!pendingLine) say(profileId, line)
+    if (structureChanged) await rt.save()
     if (occupied(profileId, st)) {
       const item = { text: input, task: text, images, seq, pendingLine, onInput, resolve: outcome => settle(st, seq, outcome) }
       const outcome = queue ? null : await steer(profileId, st, item)
@@ -686,7 +696,9 @@ export function install(rt) {
     for (const [id, work] of Object.entries(view)) {
       if (rt.leadRetryWaiting?.(id)) Object.assign(work, { active: true, retryWaiting: true })
     }
-    return view
+    // 完全空闲又无原生状态的条目没有信息量：省略后客户端按 undefined 读（全部走 ?.）。
+    return Object.fromEntries(Object.entries(view).filter(([, work]) => work.active || work.suspect || work.queued
+      || work.status !== undefined && work.status !== 'idle' || work.finishedAt !== undefined))
   }
 
   ctx.effect(() => () => {

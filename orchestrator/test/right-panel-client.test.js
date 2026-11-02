@@ -8,6 +8,26 @@ const plain = value => JSON.parse(JSON.stringify(value))
 const target = { profile: 'role', session: 'first', cwd: '/workspace' }
 const button = (tree, label) => nodes(tree).find(node => node.props['aria-label'] === label)
 const unavailable = async endpoint => { assert.equal(endpoint, 'list'); return { available: false, terminals: [] } }
+
+test('rebinding the same session at its resolved directory keeps terminals without another list request', async () => {
+  let lists = 0
+  const loaded = await loadClient('right-panel.tsx', { call: async endpoint => {
+    assert.equal(endpoint, 'list'); lists++
+    return { cwd: '/real/workspace', available: true, terminals: [] }
+  } })
+  const panel = loaded.createRightPanel(host().ctx)
+  const leave = panel.bind(target)
+  await tick()
+  panel.openFiles()
+  leave()
+  const stop = panel.bind({ ...target, cwd: '/real/workspace' })
+  await tick()
+  assert.equal(lists, 1)
+  assert.equal(panel.getSnapshot().available, true)
+  assert.equal(panel.getSnapshot().tabs.at(-1).kind, 'files')
+  stop(); await tick()
+  assert.equal(panel.getSnapshot().target, null)
+})
 const changesSource = (path = '/workspace/src/x.ts') => ({ revision: 1,
   body: { scope: 'edit-tools', cwd: '/workspace', fileCount: 1, files: [{ path, edits: [{ operation: 'update', diffText: '@@ -8 +8 @@\n-before\n+after\n' }] }] },
   renderFile: (file, patch, panel) => ({ type: 'file-detail', props: { path: file.path, patch, panel }, children: [] }),

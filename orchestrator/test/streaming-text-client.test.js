@@ -1,3 +1,9 @@
+
+// Feed reads its lines from the shared store; tests seed it with this stub.
+const liveStub = feed => ({
+  transcriptOf: key => feed.lines, transcriptError: () => feed.error ?? '',
+  pullTranscript: async () => {}, watchTranscript: () => () => {}, subscribeStore: () => () => {}, getStoreVersion: () => 0,
+})
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
@@ -284,7 +290,7 @@ test('StreamingText retains one decoration through renders and completion and cl
 test('the feed retains StreamingText for completed messages while the legacy buffer and reasoning still stream', async () => {
   const feed = { key: 'profile:session', lines: [{ who: 'agent', kind: 'text', text: '**Earlier reply**' }], error: '' }
   const { Feed, ProcessRow, StreamingText } = await loadClient(['feed.js', 'streaming-text.tsx'], {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const all = node => !node || typeof node !== 'object' ? [] : [node, ...[...(node.children ?? []), node.props.children].flat(Infinity).flatMap(all)]
   const props = { profile: { id: 'profile', name: 'Role' }, session: { id: 'session' }, work: { active: true, buffer: '你好 hello' } }

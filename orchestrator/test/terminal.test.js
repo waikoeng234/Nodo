@@ -513,7 +513,7 @@ test('the full plugin loads without subprocess and leaves terminal availability 
   await withHost(async host => {
     const state = await host.api('state')
     assert.equal('terminal' in state, false)
-    const unchanged = await host.api('state', { since: state.revision })
+    const unchanged = await host.api('state', { since: { struct: state.struct } })
     assert.equal(unchanged.unchanged, true)
     assert.equal('terminal' in unchanged, false)
   })
