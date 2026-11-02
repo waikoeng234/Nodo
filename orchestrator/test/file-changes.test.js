@@ -191,15 +191,15 @@ test('ZCode replacement evidence survives saved-detail loading and host restart'
       const workspace = await host.api('workspace-create', { name: 'Diff evidence', cwd })
       const profile = await host.api('profile-create', { name: 'Coder', engine: 'zcode', workspace: workspace.id, engineOptions: { bin } })
       await host.api('send', { profile: profile.id, text: 'FILE_DIFFS' })
-      await until(async () => !(await host.api('state')).work[profile.id].active)
+      await until(async () => !(await host.api('state')).work[profile.id]?.active)
       const record = (await host.api('transcript', { profile: profile.id })).find(line => line.kind === 'changes').presentation
       const request = { profile: profile.id, ref: record.details.ref }
       const full = await host.api('stream-detail', request)
       assert.equal(applyPatch('before\n', full.body.files[0].edits[0].diffText), 'approved\n')
       assert.equal(record.body.files[0].edits[0].diffText, undefined, 'the preview must load the saved detail')
-      host.dispose(); host = boot(home)
+      await host.dispose(); host = boot(home)
       assert.deepEqual(await host.api('stream-detail', request), full)
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -225,7 +225,7 @@ test('two legacy conversations preserve independent summaries and immutable deta
       const a = await host.api('profile-create', { name: 'A', engine: 'es05-legacy', workspace: workspace.id })
       const b = await host.api('profile-create', { name: 'B', engine: 'es05-legacy', workspace: workspace.id })
       await Promise.all([host.api('send', { profile: a.id, text: 'FILES_FLOW' }), host.api('send', { profile: b.id, text: 'EMPTY' })])
-      await until(async () => { const state = await host.api('state'); return !state.work[a.id].active && !state.work[b.id].active })
+      await until(async () => { const state = await host.api('state'); return !state.work[a.id]?.active && !state.work[b.id]?.active })
       const ar = (await host.api('transcript', { profile: a.id })).find(line => line.kind === 'changes').presentation
       const br = (await host.api('transcript', { profile: b.id })).find(line => line.kind === 'changes').presentation
       assert.equal(ar.body.fileCount, 10); assert.equal(br.body.fileCount, 0)
@@ -233,13 +233,13 @@ test('two legacy conversations preserve independent summaries and immutable deta
       const full = await host.api('stream-detail', { profile: a.id, ref: ar.details.ref })
       assert.equal(full.body.files.length, 10)
       await assert.rejects(host.api('stream-detail', { profile: b.id, ref: ar.details.ref }), /不属于此会话/)
-      host.dispose(); host = boot(home)
+      await host.dispose(); host = boot(home)
       assert.deepEqual(await host.api('stream-detail', { profile: a.id, ref: ar.details.ref }), full)
       await host.api('profile-delete', { id: a.id })
       assert.deepEqual(await host.api('stream-detail', { profile: a.id, ref: ar.details.ref }), full)
       const deleted = (await host.api('state')).profiles.find(item => item.id === a.id)
       assert.ok(deleted.deletedAt)
       assert.equal(deleted.activeSessionId, undefined)
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })

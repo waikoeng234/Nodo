@@ -53,6 +53,7 @@ export function createRightPanel(ctx: {
   let browserSequence = 0
   let changesSequence = 0
   let bound: Target | undefined
+  let boundCwd: string | undefined
   const listeners = new Set<() => void>()
   const closed = new Set<string>()
   const directories = new Map<string, string>()
@@ -68,6 +69,14 @@ export function createRightPanel(ctx: {
       const current = ++generation
       const previous = bound
       const scope = scopeKey(target)
+      const resolvedCwd = boundCwd !== target.cwd && normalized(boundCwd) === normalized(target.cwd)
+      boundCwd = target.cwd
+      const unbind = () => { void Promise.resolve().then(() => { if (current === generation) { generation++; publish({ target: null }) } }) }
+      if (previous && state.available && resolvedCwd && scopeKey(previous) === scope && previous.readOnly === target.readOnly) {
+        bound = { ...target, cwd: normalized(target.cwd) }
+        publish({ target: bound })
+        return unbind
+      }
       let adopted = false
       const adopt = (cwd = target.cwd) => {
         const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd)
@@ -101,7 +110,7 @@ export function createRightPanel(ctx: {
       }
       if (!target.readOnly) void restore()
       // React cleans up the old page before binding its replacement.
-      return () => { void Promise.resolve().then(() => { if (current === generation) { generation++; publish({ target: null }) } }) }
+      return unbind
     },
     toggle: () => publish({ expanded: !state.expanded }),
     openFiles: () => publish({ tabs: state.tabs.some(tab => tab.kind === 'files') ? state.tabs : [...state.tabs, { kind: 'files' }], active: 'files' }),

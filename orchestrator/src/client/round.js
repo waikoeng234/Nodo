@@ -1,7 +1,8 @@
 import {
-  h, Fragment, useState, useEffect, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
+  h, Fragment, useState, useEffect, useSyncExternalStore, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
   IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular,
 } from './ui-shared.js'
+import { transcriptOf, watchTranscript, subscribeStore, getStoreVersion } from './live.js'
 import { RoleAvatar } from './avatar.tsx'
 import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
 import { supportedStreamRecord } from './stream-records.js'
@@ -99,12 +100,9 @@ const shownChanges = row => row.item.kind === 'changes' && supportedStreamRecord
 // A reused session has several tasks; keep each delegation's recent output in
 // its own row, the live reply as the newest entry.
 function RoundTools({ step, work }) {
-  const [lines, setLines] = useState([])
-  useEffect(() => {
-    let live = true
-    void call('transcript', { profile: step.profile, session: step.session }).then(next => { if (live) setLines(next) }).catch(() => {})
-    return () => { live = false }
-  }, [step.session, step.at, work?.active === true ? work : null])
+  useSyncExternalStore(subscribeStore, getStoreVersion)
+  const lines = transcriptOf(`${step.profile}:${step.session}`)
+  useEffect(() => watchTranscript(step.profile, step.session), [step.profile, step.session])
   const shown = delegationRows(lines, step).filter(row => row.item.who !== 'user'
     && (['text', 'thinking', 'tool'].includes(row.item.kind) || shownChanges(row)))
   const changes = shown.findLast(shownChanges)
@@ -124,12 +122,9 @@ function RoundTools({ step, work }) {
 
 // A reported delegation keeps its own saved file changes under its report.
 function RoundChanges({ step }) {
-  const [lines, setLines] = useState([])
-  useEffect(() => {
-    let live = true
-    void call('transcript', { profile: step.profile, session: step.session }).then(next => { if (live) setLines(next) }).catch(() => {})
-    return () => { live = false }
-  }, [step.session, step.at])
+  useSyncExternalStore(subscribeStore, getStoreVersion)
+  const lines = transcriptOf(`${step.profile}:${step.session}`)
+  useEffect(() => watchTranscript(step.profile, step.session), [step.profile, step.session])
   const row = delegationRows(lines, step).findLast(shownChanges)
   return row && h('div', { className: 'nodo-round-tools' },
     toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, timeline: true }))

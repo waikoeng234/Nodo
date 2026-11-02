@@ -21,5 +21,7 @@ node_modules/
 *-requests.jsonl
 acp-wire.jsonl
 session-ledger
+orchestrator/edited.txt
+orchestrator/updated.txt
 
 # client.js 是宿主加载入口，构建后需随源码提交。

@@ -1,36 +1,40 @@
-// state.json under the plugin home, with each conversation's transcript in
-// transcripts/<id>.json. Only the host holding state.lock (home-lock.js) writes
-// them; another dsh on the same home follows the files read-only and takes over
-// once the lock frees. Writes go through a temp file and are serialized.
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, statSync } from 'node:fs'
+import { mkdirSync, statSync, watch } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { NAME_MAX, TRANSCRIPT_MAX } from './constants.js'
+import { NAME_MAX } from './constants.js'
 import { normalize } from './text.js'
 import { failure } from './errors.js'
 import { homeLock } from './home-lock.js'
+import { createTranscripts } from './transcripts.js'
 
 const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
-const blank = () => ({ version: 3, workspaces: {}, profiles: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null, revision: 0 })
+const blank = () => ({ version: 3, workspaces: {}, profiles: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
+const STAMP_MS = 1000
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
 export function install(rt) {
   const { ctx, home, warn } = rt
   const statePath = join(home, 'state.json')
-  const transcriptPath = id => join(home, 'transcripts', `${encodeURIComponent(id)}.json`)
-  // Transcript text as last read or written, and the transcripts this host appended to:
-  // lines handed out by appendLine may still change, so those stay loaded.
-  const written = new Map()
-  const held = new Set()
+  const activityPath = join(home, 'activity.json')
 
   /** @type {ReturnType<typeof blank>} */
   const state = blank()
-  const lock = homeLock(join(home, 'state.lock'))
+  let watching = false
+  const lock = homeLock(join(home, 'state.lock'), { watched: () => watching })
   let loading
   let writing = Promise.resolve()
   let queued
+  let forceAll = false
+  const forceIds = new Set()
+  let timer
+  let structureDirty = false
+  let activityDirty = false
+  let lastWrite = 0
+  let activitySeen = ''
+  let legacyState = false
+  let retiredState = false
   let stopped = false
   // The lock record of the dsh that writes while this one reads.
   let other
@@ -40,15 +44,37 @@ export function install(rt) {
   let blocked
   let warnedBlocked = false
   let seen = ''
+  // 两个客户端版本号：结构版本随 save 增加（活动数据除外），活动计数只随对话内容增加。
+  let struct = 0
+  let activity = 0
+  // 行编号的有效期标记：客户端回传的位置带它；换了宿主或重新读入状态就换新，客户端随之全量重取。
+  let bootToken = randomUUID()
+  const listeners = new Set()
+  const notifyLive = () => { for (const listener of listeners) listener() }
 
+  // Another machine's writes on a shared directory never reach the watcher, so the stamp also expires.
+  const fileStamp = { value: null, at: 0 }
   const fileVersion = () => {
+    if (fileStamp.value !== null && Date.now() - fileStamp.at < STAMP_MS) return fileStamp.value
     try {
-      const { mtimeMs, size } = statSync(statePath)
-      return `${size}@${mtimeMs}`
+      fileStamp.value = stamp(statePath)
     } catch {
-      return ''
+      fileStamp.value = ''
     }
+    fileStamp.at = Date.now()
+    return fileStamp.value
   }
+  let watcher
+  try {
+    mkdirSync(home, { recursive: true })
+    watcher = watch(home, { persistent: false }, (_event, name) => {
+      if (name === null || name === basename(statePath) || name === basename(activityPath)) fileStamp.value = null
+      if (name === null || name === 'state.lock') lock.revalidate()
+      if (listeners.size) void refresh().then(notifyLive).catch(() => {})
+    })
+    watcher.on('error', () => { watching = false })
+    watching = true
+  } catch {}
 
   // Whether this host may write after trying to take the lock.
   const takeLock = () => {
@@ -103,16 +129,30 @@ export function install(rt) {
       return undefined
     }
     blocked = [1, 2, 3].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
-    return blocked === undefined ? saved : undefined
+    if (blocked !== undefined) return undefined
+    legacyState = ['transcriptIndex', 'stats', 'streamDetails'].some(key => Object.hasOwn(saved, key))
+    retiredState = ['adapterSessions', 'streamDetails'].some(key => Object.hasOwn(saved, key))
+    try {
+      const live = JSON.parse(await readFile(activityPath, 'utf8'))
+      for (const key of ['transcriptIndex', 'stats', 'streamDetails']) if (isRecord(live[key])) saved[key] = live[key]
+    } catch (error) { if (error.code !== 'ENOENT') throw error }
+    activitySeen = stamp(activityPath)
+    return saved
   }
 
   const adopt = (saved) => {
     for (const key of Object.keys(state)) delete state[key]
     Object.assign(state, blank(), saved)
     delete state.workflows
+    delete state.revision
+    delete state.adapterSessions
     for (const key of SECTIONS) if (!isRecord(state[key])) state[key] = {}
-    written.clear()
-    held.clear()
+    transcripts.reset()
+    structureDirty = false
+    activityDirty = false
+    bootToken = randomUUID()
+    struct += 1
+    activity += 1
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
     state.version = 3
@@ -162,7 +202,9 @@ export function install(rt) {
     if (readOnly() === undefined) {
       await rm(join(home, 'runs'), { recursive: true, force: true })
       if (saved && saved.version !== 3) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
-      if (saved && (saved.version !== 3 || Object.hasOwn(saved, 'workflows'))) await save()
+      const retired = saved && retiredState
+      if (retired) await copyFile(statePath, join(home, 'state.retired.json.bak'))
+      if (saved && (saved.version !== 3 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
     }
     rt.recoverLeadDelegations?.()
   }
@@ -194,6 +236,15 @@ export function install(rt) {
     if (wasWriter) warn('nodo: %s', readOnly())
     // A writer turned reader drops what it could not save.
     if (wasWriter || fileVersion() !== seen) await restore()
+    else {
+      if (stamp(activityPath) !== activitySeen) {
+        const live = JSON.parse(await readFile(activityPath, 'utf8'))
+        for (const key of ['transcriptIndex', 'stats', 'streamDetails']) if (isRecord(live[key])) state[key] = live[key]
+        activitySeen = stamp(activityPath)
+        activity += 1
+      }
+      if (transcripts.follow()) { activity += 1; bootToken = randomUUID() }
+    }
   }
   // Concurrent requests share one pass, so none goes on before a takeover has reloaded.
   let refreshing
@@ -212,7 +263,7 @@ export function install(rt) {
   }
 
   const assertLock = () => {
-    if (!unlockable && !lock.owns()) throw lockLost()
+    if (!unlockable && !lock.owns(true)) throw lockLost()
   }
   const writeLocked = async (path, text) => {
     const temp = `${path}.${randomUUID()}.tmp`
@@ -227,84 +278,93 @@ export function install(rt) {
       throw error
     }
   }
-  const indexOf = lines => ({ lines: lines.length, at: lines.at(-1)?.at ?? 0 })
-  // Changed transcripts are written before state.json, so its index never points past
-  // them; transcripts loaded only for reading are then dropped from memory.
-  const writeState = async (stateText, loaded) => {
-    for (const [id, , text] of loaded) {
-      if (written.get(id) === text) continue
-      await writeLocked(transcriptPath(id), text)
-      written.set(id, text)
-    }
-    await writeLocked(statePath, stateText)
-    seen = fileVersion()
-    for (const [id, value] of loaded) {
-      if (held.has(id) || state.transcripts[id] !== value) continue
-      delete state.transcripts[id]
-      written.delete(id)
-    }
+  const stamp = path => {
+    try { const s = statSync(path); return `${s.size}@${s.mtimeMs}` } catch { return '' }
   }
-
-  // A reader keeps the revision it read, so its window still sees the writer's next change.
-  const save = async () => {
-    if (stopped || !writable()) return writing
-    state.revision += 1
-    // Saves made before the next write starts share it: the state is serialized when it starts.
+  const active = id => {
+    const work = rt.workView?.()[id]
+    return work?.active || work?.starting
+  }
+  const transcripts = createTranscripts({ home, state, warn, writable: () => readOnly() === undefined,
+    assertLock, active, settling: id => rt.settlingAnswer?.(id), changed: () => { activityDirty = true; activity += 1; notifyLive(); return activity } })
+  const writeState = async (force) => {
+    const structural = structureDirty
+    const live = activityDirty
+    structureDirty = false
+    activityDirty = false
+    let failed
+    try {
+      failed = await transcripts.flush(force)
+      for (const id of Object.keys(state.stats)) if (state.transcriptIndex[id] === undefined) delete state.stats[id]
+      if (live || structural) {
+        await writeLocked(activityPath, JSON.stringify({ transcriptIndex: state.transcriptIndex, stats: state.stats, ...(state.streamDetails ? { streamDetails: state.streamDetails } : {}) }))
+        activitySeen = stamp(activityPath)
+      }
+      if (structural) {
+        await writeLocked(statePath, JSON.stringify(state, function (key, value) {
+          return this === state && ['transcripts', 'transcriptIndex', 'stats', 'streamDetails'].includes(key) ? undefined : value
+        }))
+        fileStamp.value = null
+        seen = fileVersion()
+      }
+      lastWrite = Date.now()
+    } catch (error) {
+      structureDirty ||= structural
+      activityDirty ||= live
+      warn('nodo: state write failed: %s', error)
+      throw error
+    }
+    if (failed.length) throw failed[0]
+  }
+  const flush = (force = false) => {
+    clearTimeout(timer)
+    timer = undefined
+    if (force === true) forceAll = true
+    else if (typeof force === 'string') forceIds.add(force)
     if (queued === undefined) {
       queued = writing.then(() => {
         queued = undefined
-        for (const [id, lines] of Object.entries(state.transcripts)) {
-          if (lines.length > TRANSCRIPT_MAX) state.transcripts[id] = lines.slice(-TRANSCRIPT_MAX)
-          state.transcriptIndex[id] = indexOf(state.transcripts[id])
-        }
-        // Statistics of a dropped conversation would never be shown again.
-        for (const id of Object.keys(state.stats)) if (state.transcriptIndex[id] === undefined) delete state.stats[id]
-        const loaded = Object.entries(state.transcripts).map(([id, lines]) => [id, lines, JSON.stringify(lines)])
-        return writeState(JSON.stringify(state, function (key, value) { return this === state && key === 'transcripts' ? undefined : value }, 2), loaded)
-      }).catch((error) => {
-        warn('nodo: state write failed: %s', error)
-        throw error
+        if (!writable()) return
+        const forced = forceAll ? true : new Set(forceIds)
+        forceAll = false
+        forceIds.clear()
+        return writeState(forced)
       })
       writing = queued.catch(() => {})
     }
     return queued
   }
+  const save = async (activitySave = false, force = false) => {
+    if (stopped || !writable()) return writing
+    if (!activitySave) { struct += 1; structureDirty = true }
+    activityDirty = true
+    notifyLive()
+    const running = Object.values(rt.workView?.() ?? {}).some(work => work.active || work.starting)
+    if (!force && (activitySave || running)) {
+      if (timer === undefined) {
+        timer = setTimeout(() => { void flush().catch(() => {}) }, Math.max(0, 1000 - (Date.now() - lastWrite))).unref()
+      }
+      return writing
+    }
+    return flush(force)
+  }
 
   ctx.effect(() => async () => {
     stopped = true
-    await writing
-    lock.release()
+    clearTimeout(timer)
+    watching = false
+    watcher?.close()
+    try {
+      await writing
+      if (readOnly() === undefined && (structureDirty || activityDirty || Object.values(state.transcripts).some(lines => lines.length))) await flush(true)
+    } finally { lock.release() }
   }, 'nodo: state lock')
 
-  // A conversation's transcript, loaded into state.transcripts on first use. An
-  // unreadable file is moved aside so the next write does not replace it.
-  const transcriptOf = (id) => {
-    if (state.transcripts[id] !== undefined) return state.transcripts[id]
-    const path = transcriptPath(id)
-    let lines = []
-    try {
-      const text = readFileSync(path, 'utf8')
-      lines = JSON.parse(text)
-      if (!Array.isArray(lines)) throw new TypeError('not a list')
-      written.set(id, text)
-    } catch (error) {
-      if (error.code !== 'ENOENT') {
-        lines = []
-        warn('nodo: unreadable transcript %s: %s', path, error)
-        if (readOnly() === undefined) try { renameSync(path, `${path}.broken-${Date.now()}`) } catch {}
-      }
-    }
-    return (state.transcripts[id] = lines)
-  }
-  const appendLine = (id, line) => {
-    const lines = transcriptOf(id)
-    held.add(id)
-    lines.push({ at: Date.now(), ...line })
-    if (lines.length > TRANSCRIPT_MAX) state.transcripts[id] = lines.slice(-TRANSCRIPT_MAX)
-    return state.transcripts[id].at(-1)
-  }
-  // Line count and last line time without loading the transcript.
-  const transcriptInfo = (id) => state.transcripts[id] !== undefined ? indexOf(state.transcripts[id]) : state.transcriptIndex[id] ?? { lines: 0, at: 0 }
-
-  Object.assign(rt, { state, load, save, refresh, readOnly, transcriptOf, appendLine, transcriptInfo })
+  Object.assign(rt, { state, load, save, refresh, readOnly,
+    saveRuntime: force => { structureDirty = true; return save(true, force) },
+    notifyLive, subscribeLive: listener => { listeners.add(listener); return () => listeners.delete(listener) },
+    transcriptOf: transcripts.linesOf, appendLine: transcripts.append, touchLine: transcripts.touch,
+    transcriptDelta: (id, since) => transcripts.delta(id, since, bootToken, activity),
+    transcriptInfo: id => state.transcriptIndex[id] ?? { lines: 0, at: 0 },
+    versions: () => ({ struct, activity }) })
 }

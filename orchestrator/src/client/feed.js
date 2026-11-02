@@ -6,12 +6,15 @@
 // scrolling away pauses following, and the floating button or a sent message
 // resumes it.
 import {
-  h, Fragment, useState, useEffect, useRef, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, StateDot,
+  h, Fragment, useState, useEffect, useRef, useSyncExternalStore, call, MARKDOWN_LABELS, TOOL_VARIANTS, toolVariant, DisclosureRow, StateDot,
   Button, Menu, Modal, rightPanelService,
   IconThinkOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconDataOutlineRegular,
   IconGaugeOutlineRegular, IconPaperclipOutlineRegular, ImageLightbox,
   billedTokens, cacheHitPercent, contextPercent, compactTokens, compactDuration, exactTokens, tokensPerSecond, turnTokens,
 } from './ui-shared.js'
+import { transcriptOf, watchTranscript, transcriptError, subscribeStore, getStoreVersion } from './live.js'
+
+const EMPTY_LINES = []
 import { supportedStreamRecord, StreamRecordCard, streamProgress, toolFileCards } from './stream-records.js'
 import { StreamingText } from './streaming-text.tsx'
 import { referenceHistory } from './session-references.js'
@@ -263,8 +266,7 @@ export function ProcessGroup({ rows, running, depths = [], children = [] }) {
   return h(ToolTimeline, { steps, summary, streaming: running })
 }
 
-export function Feed({ profile, session, revision, work, sentTick, round }) {
-  const [feed, setFeed] = useState({ key: null, lines: [], error: '' })
+export function Feed({ profile, session, work, sentTick, round }) {
   const [following, setFollowing] = useState(true)
   const [activeTurn, setActiveTurn] = useState(null)
   const key = `${profile.id}:${session?.id ?? ''}`
@@ -296,27 +298,27 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
     })
   }
   useEffect(() => () => { if (probe.current) cancelAnimationFrame(probe.current) }, [])
-  // An idle transcript only moves with a revision; while the turn runs, the
-  // per-tick refetch is what carries the host's in-memory tool row updates.
-  useEffect(() => {
-    if (!session) return
-    let live = true
-    void call('transcript', { profile: profile.id, session: session?.id }).then(lines => {
-      if (live) setFeed({ key, lines, error: '' })
-    }).catch(failure => { if (live) setFeed({ key, lines: [], error: failure.message }) })
-    return () => { live = false }
-  }, [key, revision, work?.active === true ? work : null])
+  // The conversation's transcript lives in the shared store: the store's
+  // version moves when a pull lands with new or changed lines, and the store
+  // pulls a watched session only when the host's activity count moves.
+  // Unchanged line objects keep their identity, so memoized rows skip
+  // re-rendering. A not-yet-loaded session reads as empty, so a switch never
+  // shows the previous conversation's rows.
+  const version = useSyncExternalStore(subscribeStore, getStoreVersion)
+  useEffect(() => session ? watchTranscript(profile.id, session.id) : undefined, [key])
+  const shown = session ? transcriptOf(key) : EMPTY_LINES
+  const feedError = session ? transcriptError(key) : ''
   useEffect(() => {
     if (box.current !== null && following) box.current.scrollTop = box.current.scrollHeight
     sample()
-  }, [feed, following])
+  }, [version, following])
   useEffect(() => { setFollowing(true) }, [sentTick])
   // A lead-mode conversation hides token usage: the figures cover only its own session.
-  const source = round ? roundLines(feed.lines, work?.active === true) : feed.lines
-  const shown = leadModeOf(profile, session) ? source.filter(line => line.kind !== 'usage') : source
+  const source = round ? roundLines(shown, work?.active === true) : shown
+  const visible = leadModeOf(profile, session) ? source.filter(line => line.kind !== 'usage') : source
   // One turn starts at each user line; the rail prefers its final parent reply.
   const turns = []
-  for (const [index, item] of shown.entries()) {
+  for (const [index, item] of visible.entries()) {
     if (item.who === 'user') turns.push({ turn: index, prompt: brief(item.text), response: '' })
     else if (item.who === 'agent' && item.kind === 'text' && !item.parentCallId && turns.length !== 0) {
       const turn = turns.at(-1)
@@ -330,7 +332,7 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
     setFollowing(false)
     node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop
   }
-  const lines = feed.key === key ? shown : []
+  const lines = visible
   const latestUser = lines.findLastIndex(item => item.who === 'user')
   const replyEnds = new Set()
   let replyPending = work?.active !== true
@@ -424,7 +426,7 @@ export function Feed({ profile, session, revision, work, sentTick, round }) {
   return h('div', { className: 'nodo-feedwrap' },
     h('div', { className: 'nodo-feed', ref: box, onScroll: sample, 'data-following': following ? '' : undefined, role: 'log', 'aria-label': `${profile.name} transcript` },
       h('div', { className: 'nodo-feed-inner', 'data-round': round ? '' : undefined },
-        feed.key === key && feed.error && h('p', { className: 'nodo-error-line', role: 'alert' }, feed.error),
+        session && feedError && h('p', { className: 'nodo-error-line', role: 'alert' }, feedError),
         lines.length === 0 && !work?.active && h('p', { className: 'nodo-note nodo-feed-empty' },
           `还没有消息。给「${profile.name}」发一条任务，一条消息即一个任务。`),
         ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1

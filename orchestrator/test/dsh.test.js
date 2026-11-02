@@ -69,7 +69,7 @@ test('standalone ACP host uses native identity without copying it into any task'
     const role = await host.api('profile-create', { name: 'ACP', engine: 'dsh', workspace: workspace.id, instructions: 'Keep the role', engineOptions: { bin } })
     for (const text of ['FIRST', 'SECOND']) {
       await host.api('send', { profile: role.id, text })
-      await until(async () => !(await host.api('state')).work[role.id].active)
+      await until(async () => !(await host.api('state')).work[role.id]?.active)
     }
     const requests = readFileSync(join(cwd, 'dsh-requests.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
     assert.match(requests[0].personaPrefix, /Keep the role/)
@@ -85,7 +85,7 @@ test('ACP template literals run without identity instead of interpreting or copy
     const role = await host.api('profile-create', { name: 'Literal', engine: 'dsh', workspace: workspace.id, instructions: 'Keep {{literal}} intact', engineOptions: { bin } })
     for (const text of ['FIRST', 'SECOND']) {
       await host.api('send', { profile: role.id, text })
-      await until(async () => !(await host.api('state')).work[role.id].active)
+      await until(async () => !(await host.api('state')).work[role.id]?.active)
     }
     const requests = readFileSync(join(cwd, 'dsh-requests.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
     assert.equal(requests[0].personaPrefix, undefined)
@@ -140,7 +140,7 @@ test('DSH host restores isolated ids from their existing role storage without re
     runtime.conversation(role.id, session.id).session.driverSessionId = savedId
     await runtime.save()
     await host.api('send', { profile: role.id, session: session.id, text: 'RESTORED' })
-    await until(async () => !(await host.api('state')).work[session.id].active)
+    await until(async () => !(await host.api('state')).work[session.id]?.active)
     const requests = readFileSync(join(cwd, 'dsh-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
     assert.ok(requests.some(request => request.method === 'session/resume'))
     const patch = JSON.parse(readFileSync(join(storageDir, 'dsh/sessions.patch.json'), 'utf8'))
@@ -230,7 +230,7 @@ test('DSH permissions, queued messages and persistence work through the host', a
       assert.equal(card.tool, 'bash')
       assert.equal((await host.api('send', { profile: profile.id, text: 'SECOND' })).mode, 'queued')
       await host.api('approval-answer', { id: card.id, decision })
-      await until(async () => !(await host.api('state')).work[profile.id].active)
+      await until(async () => !(await host.api('state')).work[profile.id]?.active)
       const transcript = await host.api('transcript', { profile: profile.id })
       assert.ok(transcript.some(line => line.text === reply))
       assert.ok(transcript.some(line => line.text === 'Hello world'))
@@ -241,15 +241,15 @@ test('DSH permissions, queued messages and persistence work through the host', a
     await host.api('interrupt', { profile: profile.id })
     assert.equal((await host.api('state')).approvals.length, 0)
     await host.api('send', { profile: profile.id, text: 'SECOND' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
-    host.dispose()
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       assert.equal((await reopened.api('state')).profiles.find(item => item.id === profile.id).driverSessionId, 'fixture-dsh-session')
       await reopened.api('send', { profile: profile.id, text: 'AFTER_RESTART' })
-      await until(async () => !(await reopened.api('state')).work[profile.id].active)
+      await until(async () => !(await reopened.api('state')).work[profile.id]?.active)
       assert.ok(readFileSync(join(cwd, 'session-ledger'), 'utf8').includes('session/resume'))
-    } finally { reopened.dispose() }
+    } finally { await reopened.dispose() }
   }))
 })
 
@@ -258,10 +258,10 @@ test('standalone ACP preserves native ids and newer format errors without migrat
     const workspace = await host.api('workspace-create', { name: 'Fixture', cwd })
     const profile = await host.api('profile-create', { name: 'Isolated', engine: 'dsh', workspace: workspace.id, engineOptions: { bin } })
     await host.api('send', { profile: profile.id, text: 'FIRST' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.equal((await host.api('state')).profiles.find(item => item.id === profile.id).driverSessionId, 'fixture-dsh-session')
     await host.api('send', { profile: profile.id, text: 'SECOND' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.equal((await host.api('transcript', { profile: profile.id })).filter(line => line.text === 'Hello world').length, 2)
     const legacy = createDriver('dsh', { bin, cwd, storageDir: host.home, driverSessionId: 'fixture-dsh-session', env: { DSH_FIXTURE_NEWER_FORMAT: '1' } })
     try {

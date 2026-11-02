@@ -77,12 +77,12 @@ test('host sends OpenCode tasks without identity from the first turn and after r
     const workspace = await host.api('workspace-create', { name: 'Native role', cwd })
     const profile = await host.api('profile-create', { name: 'OpenCode native role', instructions: 'UNIQUE_BOUND_ROLE', engine: 'opencode', workspace: workspace.id, engineOptions: { bin } })
     await host.api('send', { profile: profile.id, text: 'FIRST_TASK' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
-    host.dispose()
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       await reopened.api('send', { profile: profile.id, text: 'RESUMED_TASK' })
-      await until(async () => !(await reopened.api('state')).work[profile.id].active)
+      await until(async () => !(await reopened.api('state')).work[profile.id]?.active)
       const entries = readFileSync(join(cwd, 'opencode-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
       const tasks = entries.filter(entry => entry.method === 'session/prompt')
       assert.equal(tasks.length, 2)
@@ -94,7 +94,7 @@ test('host sends OpenCode tasks without identity from the first turn and after r
       assert.equal(native.length, 4)
       assert.ok(native.every(entry => entry.prompt.includes('UNIQUE_BOUND_ROLE')))
       assert.equal((await reopened.api('state')).profiles.find(entry => entry.id === profile.id).sessions[0].instructionMode, 'native')
-    } finally { reopened.dispose() }
+    } finally { await reopened.dispose() }
   }))
 })
 

@@ -55,11 +55,11 @@ test('loading old cards fills declared permissions and leaves DSH without preset
     assert.equal(persisted.first.permission, 'plan')
     assert.equal(persisted.stored.permission, 'plan')
     assert.equal(Object.hasOwn(persisted.native, 'permission'), false)
-    host.dispose()
+    await host.dispose()
     host = boot(home, { workspaceRegistry: {}, sessionController: {}, get: name => name === 'permissionPresets'
       ? { names: ['workspace-write'], resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }), set() {} } : undefined })
     assert.equal((await host.api('state')).profiles.find(card => card.id === 'native').permission, 'workspace')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a tier change keeps an implicit conversation current instead of opening an empty one', async () => {
@@ -118,7 +118,7 @@ for (const native of [false, true]) test(`loading ${native ? 'reduced native' : 
     const persisted = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles
     assert.equal(persisted.dsh.permission, native ? 'plan' : undefined)
     assert.equal(Object.hasOwn(persisted.echo.sessions[0], 'permission'), false)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('state session views omit report queues while retaining their persisted contents', () => withHost(async ({ api, runtime, home }) => {
@@ -184,7 +184,7 @@ test('loading and reordering roles never assigns task types', async () => {
     await host.api('profile-order', { ids: ['b', 'a'] })
     await host.api('profile-delete', { id: 'b' })
     assert.equal((await host.api('state')).profiles.find(role => role.id === 'a').taskTypes, undefined)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('deleting a role archives its sessions and preserves history, stats and references across restart', async () => {
@@ -231,12 +231,12 @@ test('deleting a role archives its sessions and preserves history, stats and ref
     ]) assert.equal((await host.post(endpoint, payload)).ok, false, endpoint)
     await assert.rejects(rt.send(role.id, 'Refused', session.id), /read-only/)
     await assert.rejects(rt.createSession(role.id, undefined, workspace.id, true), /No such profile/)
-    host.dispose()
+    await host.dispose()
     host = boot(home)
     const restored = (await host.api('state')).profiles.find(item => item.id === role.id)
     assert.ok(restored.deletedAt && restored.sessions[0].archivedAt)
     assert.deepEqual(await host.api('transcript', { profile: role.id, session: session.id }), archivedHistory)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('deleted roles do not consume names, quota or roster order', () => withHost(async ({ api, post, runtime }) => {
@@ -266,7 +266,7 @@ test('display identities trim, truncate, clear and persist without migrating old
     const created = await host.api('profile-create', { name: 'Long', engine: 'echo', identity: ` ${long} ` })
     assert.equal(created.identity, long.slice(0, 40))
     assert.equal((await host.api('profile-update', { id: card.id, changes: { identity: ` ${long} ` } })).identity, long.slice(0, 40))
-    host.dispose()
+    await host.dispose()
     host = boot(home)
     const restored = (await host.api('state')).profiles
     assert.equal(restored.find(item => item.id === card.id).identity, long.slice(0, 40))
@@ -279,7 +279,7 @@ test('display identities trim, truncate, clear and persist without migrating old
     }
     const empty = await host.api('profile-create', { name: 'Empty', engine: 'echo', identity: '  ' })
     assert.equal(Object.hasOwn(empty, 'identity'), false)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('editing display identity leaves prompts, conversations and the running driver unchanged', () => withHost(async ({ api, runtime, home }) => {
@@ -347,12 +347,12 @@ test('avatar selections persist across restart and an avatar-only edit keeps con
     assert.equal(edited.avatarTemplate, 'peach')
     assert.deepEqual(edited.sessions, before.sessions)
     assert.equal(edited.activeSessionId, session.id)
-    host.dispose()
+    await host.dispose()
     host = boot(home)
     const restored = (await host.api('state')).profiles.filter(item => profiles.some(profile => profile.id === item.id))
     assert.deepEqual(restored.map(item => item.avatarTemplate), ['peach', ...templates.slice(1).map(item => item.id)])
     assert.deepEqual(restored[0].sessions, before.sessions)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('role responsibilities retain the goal field and appear in the role identity', async () => {
@@ -369,14 +369,16 @@ test('role responsibilities retain the goal field and appear in the role identit
 })
 
 test('direct roles adopt identity edits in an unsent conversation and never change engine', async () => {
-  await withHost(async ({ api, post, home }) => {
+  await withHost(async ({ api, post, home, runtime }) => {
+    const rt = await runtime
     const workspace = await api('workspace-create', { name: 'Direct', cwd: join(home, 'direct-ws') })
     const profile = await api('profile-create', { name: 'Direct', engine: 'codex' })
     const session = await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })
     const edited = await api('profile-update', { id: profile.id, changes: { instructions: 'Standards to keep' } })
     assert.equal(edited.sessions.length, 1)
     assert.equal(edited.activeSessionId, session.id)
-    assert.equal(edited.sessions[0].instructions, 'Standards to keep')
+    // 会话上的 instructions 不进 state 视图（客户端无读者）；从宿主状态断言。
+    assert.equal(rt.sessionsOf(rt.state.profiles[profile.id])[0].instructions, 'Standards to keep')
     const refused = await post('profile-update', { id: profile.id, changes: { engine: 'dsh' } })
     assert.equal(refused.error.code, 'orch/invalid')
     assert.match(refused.error.message, /fixed once a role is created/)
@@ -459,8 +461,8 @@ test('profile-order takes every id exactly once, reorders in place and persists'
     assert.equal(rt.state.profiles, container, 'the live container keeps its reference')
     assert.deepEqual(Object.keys(container), [c, a, b])
     assert.equal(container[a], rt.profilesView().find(item => item.id === a) && rt.findProfile(a), 'cards keep their identity')
-    host.dispose()
+    await host.dispose()
     host = boot(home)
     assert.deepEqual((await host.api('state')).profiles.map(item => item.id), [c, a, b], 'the order survives a restart')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })

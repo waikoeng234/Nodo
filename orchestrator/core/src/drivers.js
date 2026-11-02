@@ -74,6 +74,7 @@ export function install(rt) {
       sessionName: profile.sessionName,
       instructions: rt.renderIdentity(profile),
       leadMcpServers: leadMcp?.servers,
+      serveMcp: rt.serveMcp,
       identityFiles,
       identityOwner: profile.id,
       instructionDir: join(rt.home, 'drivers', profile.id),

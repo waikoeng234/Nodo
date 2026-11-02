@@ -447,7 +447,7 @@ test('Claude cards settle through the host approval pipeline', async () => {
     const question = await until(async () => (await api('state')).approvals[0])
     assert.equal(question.kind, 'question')
     await api('approval-answer', { id: question.id, decision: 'answer', value: 'Blue' })
-    await until(async () => !(await api('state')).work[profile.id].active)
+    await until(async () => !(await api('state')).work[profile.id]?.active)
     assert.ok((await api('transcript', { profile: profile.id })).some(line => line.text === 'Answered Blue'))
     assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[profile.id].driverSessionId, 'fixture-claude-session')
   }))

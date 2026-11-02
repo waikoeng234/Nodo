@@ -20,6 +20,7 @@ const harness = () => {
     saveReplyImages: async (_id, text) => { images.push(text); return [] },
     appendLine: (_id, line) => { const saved = { at: lines.length, ...line }; lines.push(saved); return saved },
   }
+  rt.saveRuntime = () => rt.save()
   install(rt)
   return { lines, reports, images, saves, rt, emit: event => rt.driverSink('fixture', { turnId: 'turn', ...event }), dispose: () => cleanup() }
 }

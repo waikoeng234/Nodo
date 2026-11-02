@@ -13,13 +13,20 @@ function errorCode(error) {
   return BUGS.some(type => error instanceof type) || /^E[A-Z_]+$/.test(code) ? 'orch/internal' : 'orch/refused'
 }
 
+// 增量应答里的行做同样的脱敏；appended/changed 的行对象换成脱敏副本，位置原样保留。
+function redactDelta(rt, delta) {
+  if (delta.full) return { ...delta, lines: rt.redactDeepSecrets(delta.lines) }
+  return { ...delta, appended: rt.redactDeepSecrets(delta.appended), changed: rt.redactDeepSecrets(delta.changed) }
+}
+
 export function install(rt) {
   const { ctx, state } = rt
-
   // What a new view carries. Secret values never leave the host; profiles carry
-  // only the names of the keys they may use.
+  // only the names of the keys they may use. `struct` moves only when the saved
+  // shape changes; `activity` also moves while turns run.
   const view = () => ({
-    revision: state.revision,
+    struct: rt.versions().struct,
+    activity: rt.versions().activity,
     probe: state.probe,
     workspaces: rt.workspacesView(),
     profiles: rt.profilesView(),
@@ -34,6 +41,7 @@ export function install(rt) {
     work: rt.workView(),
     approvals: rt.approvalsView(),
     stats: rt.statsView(),
+    sessions: rt.sessionActivity(),
   })
 
   // Endpoints a read-only host still serves. Cards are answered from this host's
@@ -51,12 +59,14 @@ export function install(rt) {
     const readOnly = rt.readOnly()
     if (readOnly !== undefined && !READS.has(endpoint)) throw failure(readOnly, 'orch/read-only')
     switch (endpoint) {
-      case 'state':
+      case 'state': {
         await rt.driversReady()
         await rt.loadSecrets()
         await rt.refreshNativeStatus?.()
-        if (body.since === state.revision) return { revision: state.revision, unchanged: true, ...(await live()) }
+        const { struct, activity } = rt.versions()
+        if (body.since?.struct === struct) return { struct, activity, unchanged: true, ...(await live()) }
         return { ...view(), ...(await live()) }
+      }
       case 'engines':
         await rt.driversReady()
         return rt.listEngines()
@@ -99,12 +109,15 @@ export function install(rt) {
         await rt.load()
         const profile = Object.hasOwn(state.profiles, body.profile) ? state.profiles[body.profile] : resolveProfileRef(body.profile)
         const { session } = rt.conversation(profile.id, body.session)
-        let lines = rt.transcriptOf(session.id)
-        if (!lines.length && session.archivedAt) {
+        let lines = body.since === undefined || session.archivedAt ? rt.transcriptOf(session.id) : []
+        const archived = !lines.length && session.archivedAt
+        if (archived && body.since?.archived) return { unchanged: true }
+        if (archived) {
           try { lines = (await rt.readHostTranscript?.(session)) ?? lines } catch {}
         }
         await rt.loadSecrets()
-        return rt.redactDeepSecrets(lines)
+        if (body.since === undefined) return rt.redactDeepSecrets(lines)
+        return archived ? { archived: true, lines: rt.redactDeepSecrets(lines) } : redactDelta(rt, rt.transcriptDelta(session.id, body.since))
       }
       case 'session-reference':
         return rt.sessionReference(body)
@@ -233,6 +246,14 @@ export function install(rt) {
   })
 
   rt.handle = handle
+  rt.sessionActivity = () => Object.fromEntries(Object.values(state.profiles).flatMap(profile => rt.sessionsOf(profile)
+    .filter(session => rt.transcriptInfo(session.id).at > 0 || session.lastActiveAt > 0)
+    .map(session => [session.id, {
+      driverSessionId: session.driverSessionId, briefSent: session.briefSent, cwd: session.cwd, workspaceRef: rt.sessionWorkspace(profile, session)?.id,
+      instructionMode: session.instructionMode, instructionTarget: session.instructionTarget,
+      updatedAt: Math.max(rt.transcriptInfo(session.id).at, session.lastActiveAt ?? 0) || session.createdAt,
+    }])))
+  rt.liveSnapshot = () => ({ ...rt.versions(), work: rt.workView(), approvals: rt.approvalsView(), stats: rt.statsView(), readOnly: rt.readOnly() ?? null, sessions: rt.sessionActivity() })
 
   ctx.effect(() => {
     rt.load().catch(() => {})

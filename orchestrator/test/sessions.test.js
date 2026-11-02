@@ -33,7 +33,7 @@ test('legacy orphan sessions remain selectable, writable and editable without be
     assert.deepEqual(rt.state.workspaces, {})
     await host.api('session-archive', { profile: role.id, session: session.id, archived: true })
     assert.equal((await host.post('session-archive', { profile: role.id, session: session.id, archived: false })).error.code, 'orch/refused')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 const nativeHost = (withInstructions = true, response = 'Native reply') => {
@@ -136,12 +136,12 @@ test('a fresh role shows no session; a nameless new session is a reusable draft 
     mine = await roles()
     assert.deepEqual(mine.sessions.map(item => item.name), ['新会话', 'Spare'], 'the draft reappears only while it is in use')
     await host.api('send', { profile: role.id, session: opened.conversationId, text: '帮我修复登录页\n的报错' })
-    await until(async () => !(await host.api('state')).work[opened.conversationId].active)
+    await until(async () => !(await host.api('state')).work[opened.conversationId]?.active)
     mine = await roles()
     assert.equal(mine.sessions[0].name, '帮我修复登录页 的报错')
     assert.equal(mine.sessions[0].draftedAt, undefined)
     assert.match(native.agents.get(opened.sessionId).session.header.title, /Drafter · 帮我修复登录页 的报错/)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('opening a DSH role resolves a native session without sending a turn and reopens the same session', async () => {
@@ -161,7 +161,7 @@ test('opening a DSH role resolves a native session without sending a turn and re
     assert.equal(native.creates, 1)
     const other = await host.api('profile-create', { name: 'Legacy sidebar role', engine: 'echo' })
     assert.equal((await host.post('session-open', { profile: other.id, workspace: workspace.id })).ok, false)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('reopening a running native DSH session after reload only selects its existing window', async () => {
@@ -174,7 +174,7 @@ test('reopening a running native DSH session after reload only selects its exist
     const opened = await host.api('session-open', { profile: role.id, workspace: workspace.id })
     await until(() => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[role.id].sessions
       .some(session => session.id === opened.conversationId && session.driverSessionId === opened.sessionId))
-    host.dispose()
+    await host.dispose()
     host = boot(home, native)
     const agent = native.agents.get(opened.sessionId)
     const section = agent.ctx.systemPrompt.section
@@ -195,7 +195,7 @@ test('reopening a running native DSH session after reload only selects its exist
     assert.equal(foreign.ok, false)
     assert.match(foreign.error.message, /another workspace/)
     agent.ctx.systemPrompt.section = section
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('native identity stays scoped, preserves literal templates and restores the original session snapshot', async () => {
@@ -209,7 +209,7 @@ test('native identity stays scoped, preserves literal templates and restores the
     await host.api('secret-set', { name: 'READ_ONLY', value: 'fixture-read-only', purpose: 'read the repo', scope: [role.id] })
     const send = async (profile, session, text) => {
       await host.api('send', { profile, session, text })
-      await until(async () => !(await host.api('state')).work[session].active)
+      await until(async () => !(await host.api('state')).work[session]?.active)
     }
     await send(role.id, role.id, 'FIRST')
     await send(role.id, role.id, 'SECOND')
@@ -241,7 +241,7 @@ test('native identity stays scoped, preserves literal templates and restores the
     const version = saved.sessions.find(item => item.id === role.id).identityVersion
     assert.match(version, /^[a-f0-9]{64}$/)
     assert.notEqual(saved.sessions.find(item => item.id === next.id).identityVersion, version)
-    host.dispose()
+    await host.dispose()
     assert.equal(oldAgent.sections.size, 0)
     assert.equal(newAgent.sections.size, 0)
     assert.equal(otherAgent.sections.size, 0)
@@ -255,7 +255,7 @@ test('native identity stays scoped, preserves literal templates and restores the
     assert.match(oldAgent.sections.get('deployment:persona-prefix').text, /Original goal/)
     assert.ok(!oldAgent.sections.get('deployment:persona-prefix').text.includes('New goal'))
     assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).sessions.find(item => item.id === role.id).identityVersion, version)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('card edits adopt in place until the first message starts the conversation', async () => {
@@ -273,7 +273,7 @@ test('card edits adopt in place until the first message starts the conversation'
     assert.equal(kept.sessions.find(item => item.id === session.id).model, 'big-model')
     assert.equal(kept.sessions.find(item => item.id === session.id).thinking, 'high')
     await host.api('send', { profile: role.id, session: session.id, text: 'FIRST' })
-    await until(async () => !(await host.api('state')).work[session.id].active)
+    await until(async () => !(await host.api('state')).work[session.id]?.active)
     await host.api('profile-update', { id: role.id, changes: { model: 'other-model' } })
     const retuned = (await host.api('state')).profiles.find(item => item.id === role.id)
     assert.equal(retuned.sessions.length, before.sessions.length)
@@ -289,7 +289,7 @@ test('card edits adopt in place until the first message starts the conversation'
     assert.equal(restarted.activeSessionId, restarted.sessions.at(-1).id)
     assert.equal(restarted.sessions.find(item => item.id === session.id).model, 'big-model')
     assert.equal(restarted.sessions.at(-1).model, 'other-model')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('native references and task-state updates stay outside identity and load only when needed', async () => {
@@ -302,7 +302,7 @@ test('native references and task-state updates stay outside identity and load on
     const target = await host.api('profile-create', { name: 'Fixture Target', engine: 'dsh', workspace: workspace.id, instructions: 'TARGET_IDENTITY' })
     const send = async (profile, text, references) => {
       await host.api('send', { profile, text, references })
-      await until(async () => !(await host.api('state')).work[profile].active)
+      await until(async () => !(await host.api('state')).work[profile]?.active)
     }
     await send(source.id, 'Report')
     await send(target.id, 'Implement', [{ profile: source.id }])
@@ -325,7 +325,7 @@ test('native references and task-state updates stay outside identity and load on
     await send(target.id, 'Final check')
     assert.equal(native.prompts.at(-1).content[0].text, 'Final check')
     assert.equal(native.creates, 2)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('an engine without native identity runs queued turns and reconnect without role identity', async () => {
@@ -346,13 +346,13 @@ test('an engine without native identity runs queued turns and reconnect without 
     await until(() => release)
     assert.equal((await host.api('send', { profile: role.id, text: 'QUEUED' })).mode, 'queued')
     release()
-    await until(async () => native.prompts.length === 2 && !(await host.api('state')).work[role.id].active)
+    await until(async () => native.prompts.length === 2 && !(await host.api('state')).work[role.id]?.active)
     await host.api('send', { profile: role.id, text: 'SECOND' })
-    await until(async () => native.prompts.length === 3 && !(await host.api('state')).work[role.id].active)
-    host.dispose()
+    await until(async () => native.prompts.length === 3 && !(await host.api('state')).work[role.id]?.active)
+    await host.dispose()
     host = boot(home, native)
     await host.api('send', { profile: role.id, text: 'RESTORED' })
-    await until(async () => native.prompts.length === 4 && !(await host.api('state')).work[role.id].active)
+    await until(async () => native.prompts.length === 4 && !(await host.api('state')).work[role.id]?.active)
     for (const request of native.prompts) {
       const text = request.content[0].text
       assert.equal(text.includes('TAIL_MUST_REMAIN'), false)
@@ -366,7 +366,7 @@ test('an engine without native identity runs queued turns and reconnect without 
     const userLines = (await host.api('transcript', { profile: role.id })).filter(item => item.who === 'user').map(item => item.text)
     assert.deepEqual(userLines.slice(0, 3), ['FIRST', 'QUEUED', 'SECOND'])
     assert.ok(userLines.every(text => !text.includes('TAIL_MUST_REMAIN')))
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('an exclusive send is refused while its session is busy and never reaches the transcript', async () => {
@@ -388,14 +388,14 @@ test('an exclusive send is refused while its session is busy and never reaches t
     await assert.rejects(rt.send(role.id, 'BLOCKED', undefined, undefined, [], { exclusive: true }), { code: 'orch/busy' })
     assert.equal((await host.api('send', { profile: role.id, text: 'QUEUED' })).mode, 'queued')
     release()
-    await until(async () => native.prompts.length === 2 && !(await host.api('state')).work[role.id].active)
+    await until(async () => native.prompts.length === 2 && !(await host.api('state')).work[role.id]?.active)
     const placed = await rt.send(role.id, 'IDLE', undefined, undefined, [], { exclusive: true })
     assert.equal(placed.mode, 'turn')
     assert.equal((await placed.completion).reason, 'done')
     assert.equal(typeof (await placed.turn), 'string')
     const userLines = (await host.api('transcript', { profile: role.id })).filter(item => item.who === 'user').map(item => item.text)
     assert.deepEqual(userLines, ['FIRST', 'QUEUED', 'IDLE'])
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a failed first send is retried as a first turn, and legacy snapshots remain frozen', async () => {
@@ -408,13 +408,13 @@ test('a failed first send is retried as a first turn, and legacy snapshots remai
     const prompt = native.sessionController.prompt
     native.sessionController.prompt = async () => { throw new Error('Fixture send failed') }
     await host.api('send', { profile: role.id, text: 'FAIL' })
-    await until(async () => !(await host.api('state')).work[role.id].active)
+    await until(async () => !(await host.api('state')).work[role.id]?.active)
     assert.notEqual((await host.api('state')).profiles.find(item => item.id === role.id).sessions[0].briefSent, true)
     native.sessionController.prompt = prompt
     await host.api('send', { profile: role.id, text: 'RETRY' })
-    await until(async () => !(await host.api('state')).work[role.id].active)
+    await until(async () => !(await host.api('state')).work[role.id]?.active)
     assert.equal(native.prompts[0].content[0].text, 'RETRY')
-    host.dispose()
+    await host.dispose()
     const path = join(home, 'state.json')
     const saved = JSON.parse(readFileSync(path, 'utf8'))
     delete saved.profiles[role.id].sessions
@@ -422,14 +422,15 @@ test('a failed first send is retried as a first turn, and legacy snapshots remai
     host = boot(home, native)
     await host.api('profile-update', { id: role.id, changes: { instructions: 'New instructions' } })
     await host.api('send', { profile: role.id, session: role.id, text: 'LEGACY' })
-    await until(async () => !(await host.api('state')).work[role.id].active)
-    const old = (await host.api('state')).profiles.find(item => item.id === role.id).sessions.find(item => item.id === role.id)
+    await until(async () => !(await host.api('state')).work[role.id]?.active)
+    const rt = await host.runtime
+    const old = rt.sessionsOf(rt.state.profiles[role.id]).find(item => item.id === role.id)
     assert.equal(old.instructions, 'Old instructions')
     assert.equal(old.profileName, 'Legacy')
     const persona = native.agents.get(native.prompts.at(-1).sessionId).sections.get('deployment:persona-prefix').text
     assert.match(persona, /Old instructions/)
     assert.ok(!persona.includes('New instructions'))
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('interrupting native instruction setup never sends the cancelled task', async () => {
@@ -450,15 +451,15 @@ test('interrupting native instruction setup never sends the cancelled task', asy
     await until(() => release)
     await host.api('interrupt', { profile: role.id })
     release()
-    await until(async () => !(await host.api('state')).work[role.id].active)
+    await until(async () => !(await host.api('state')).work[role.id]?.active)
     await until(() => [...native.agents.values()].some(agent => agent.sections.size === 1))
     assert.equal(native.prompts.length, 0)
     native.sessionController.resolveAgent = resolveAgent
     await host.api('send', { profile: role.id, text: 'RETRY' })
-    await until(async () => native.prompts.length === 1 && !(await host.api('state')).work[role.id].active)
+    await until(async () => native.prompts.length === 1 && !(await host.api('state')).work[role.id]?.active)
     assert.equal(native.prompts[0].content[0].text, 'RETRY')
     assert.ok(!native.prompts[0].content[0].text.includes('CANCELLED'))
-  } finally { release?.(); host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { release?.(); await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('native workspace is created on first dialogue, multiple sessions reuse it and survive reconnect', async () => {
@@ -472,7 +473,7 @@ test('native workspace is created on first dialogue, multiple sessions reuse it 
     assert.equal(existsSync(join(home, 'workspaces', profile.id)), false)
     const first = async text => {
       await host.api('send', { profile: profile.id, text })
-      await until(async () => !(await host.api('state')).work[profile.id].active)
+      await until(async () => !(await host.api('state')).work[profile.id]?.active)
     }
     await first('FIRST')
     await first('SECOND')
@@ -484,7 +485,7 @@ test('native workspace is created on first dialogue, multiple sessions reuse it 
     const second = await host.api('session-create', { profile: profile.id })
     assert.equal(native.creates, 2, 'new window must have a native session before its first message')
     await host.api('send', { profile: profile.id, session: second.id, text: 'THIRD' })
-    await until(async () => !(await host.api('state')).work[second.id].active)
+    await until(async () => !(await host.api('state')).work[second.id]?.active)
     assert.notEqual(native.prompts[2].sessionId, native.prompts[0].sessionId)
     assert.equal(native.prompts[2].content[0].text, 'THIRD')
     assert.equal(native.workspaces.size, 1)
@@ -494,14 +495,14 @@ test('native workspace is created on first dialogue, multiple sessions reuse it 
     assert.equal(value.sessions[0].workspaceId, value.sessions[1].workspaceId)
     assert.equal((await host.api('transcript', { profile: profile.id, session: profile.id })).filter(line => line.who === 'user').length, 2)
     assert.equal((await host.api('transcript', { profile: profile.id, session: second.id })).filter(line => line.who === 'user').length, 1)
-    host.dispose()
+    await host.dispose()
     host = boot(home, native)
     await host.api('session-select', { profile: profile.id, session: profile.id })
     await first('AFTER_RESTART')
     assert.equal(native.creates, 2, 'reconnect must reuse the original native agent')
     assert.equal(native.prompts.at(-1).sessionId, native.prompts[0].sessionId)
     assert.match(native.prompts.at(-1).content[0].text, /# Current task\nAFTER_RESTART$/)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('native ask_user_question surfaces as a question card; other agents fall through', async () => {
@@ -517,14 +518,14 @@ test('native ask_user_question surfaces as a question card; other agents fall th
     assert.equal(card.detail.questions[0].id, 'color')
     await assert.rejects(() => native.ask({ agent: {}, questions: [{ id: 'x', question: 'Foreign?' }], signal: undefined }), /no user-questions answerer/)
     await host.api('approval-answer', { id: card.id, decision: 'answer', value: 'blue' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.deepEqual(native.answers[0], { answers: [{ id: 'color', selected: ['blue'] }] })
     await host.api('send', { profile: profile.id, text: 'ASK' })
     const second = await until(async () => (await host.api('state')).approvals[0])
     await host.api('approval-answer', { id: second.id, decision: 'answer', value: 'teal' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.deepEqual(native.answers[1], { answers: [{ id: 'color', selected: [], custom: 'teal' }] })
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a native tool call is one named pair in the transcript, not a call id', async () => {
@@ -534,12 +535,12 @@ test('a native tool call is one named pair in the transcript, not a call id', as
   const workspace = await host.api('workspace-create', { name: 'Tools', cwd: join(home, 'tools') })
   const profile = await host.api('profile-create', { name: 'Tools', engine: 'dsh', workspace: workspace.id })
   await host.api('send', { profile: profile.id, text: 'TOOL please' })
-  await until(async () => !(await host.api('state')).work[profile.id].active)
+  await until(async () => !(await host.api('state')).work[profile.id]?.active)
   const tools = (await host.api('transcript', { profile: profile.id, session: profile.id })).filter(line => line.kind === 'tool')
   assert.deepEqual(tools.map(line => [line.name, line.phase, line.isError === true]),
     [['bash', 'start', false], ['bash', 'end', true]])
   assert.equal(tools[0].brief, 'npm run build', 'the collapsed row summarizes the call arguments')
-  host.dispose()
+  await host.dispose()
 })
 
 test('generic sessions keep workspace, busy state and transcripts independent', async () => {
@@ -551,18 +552,18 @@ test('generic sessions keep workspace, busy state and transcripts independent', 
     await host.api('send', { profile: profile.id, text: 'FIRST' })
     const second = await host.api('session-create', { profile: profile.id })
     await host.api('send', { profile: profile.id, session: second.id, text: 'SECOND' })
-    await until(async () => { const state = await host.api('state'); return state.work[profile.id].active && state.work[second.id].active })
+    await until(async () => { const state = await host.api('state'); return state.work[profile.id]?.active && state.work[second.id]?.active })
     assert.equal((await host.post('profile-update', { id: profile.id, changes: { name: 'Unsafe edit' } })).error.code, 'orch/busy')
     await host.api('interrupt', { profile: profile.id, session: second.id })
-    assert.equal((await host.api('state')).work[profile.id].active, true)
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    assert.equal((await host.api('state')).work[profile.id]?.active, true)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     const first = await host.api('transcript', { profile: profile.id, session: profile.id })
     const next = await host.api('transcript', { profile: profile.id, session: second.id })
     assert.deepEqual(first.filter(line => line.who === 'user').map(line => line.text), ['FIRST'])
     assert.deepEqual(next.filter(line => line.who === 'user').map(line => line.text), ['SECOND'])
     assert.equal(existsSync(join(home, 'new-workspace')), true)
     assert.equal((await host.post('session-select', { profile: profile.id, session: 'foreign' })).ok, false)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('one global role opens independent conversations in multiple workspaces and preserves them after restart', async () => {
@@ -583,7 +584,7 @@ test('one global role opens independent conversations in multiple workspaces and
     assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).sessions.length, 2)
     await host.api('send', { profile: role.id, session: first.id, text: 'Task A' })
     await host.api('send', { profile: role.id, session: second.id, text: 'Task B' })
-    await until(async () => { const state = await host.api('state'); return !state.work[first.id].active && !state.work[second.id].active })
+    await until(async () => { const state = await host.api('state'); return !state.work[first.id]?.active && !state.work[second.id]?.active })
     const view = (await host.api('state')).profiles.find(item => item.id === role.id)
     assert.equal(view.sessions.find(item => item.id === first.id).cwd, realpathSync(a.cwd))
     assert.equal(view.sessions.find(item => item.id === second.id).cwd, realpathSync(b.cwd))
@@ -591,11 +592,12 @@ test('one global role opens independent conversations in multiple workspaces and
     assert.deepEqual(lines.filter(line => line.who === 'user').map(line => line.text), ['Task A'])
     assert.deepEqual((await host.api('transcript', { profile: role.id, session: second.id })).filter(line => line.who === 'user').map(line => line.text), ['Task B'])
     await host.api('profile-update', { id: role.id, changes: { instructions: 'New identity' } })
-    const updated = (await host.api('state')).profiles.find(item => item.id === role.id)
-    assert.equal(updated.sessions.find(item => item.id === first.id).instructions, 'Original identity')
-    assert.equal(updated.sessions.at(-1).instructions, 'New identity')
+    const rt2 = await host.runtime
+    const updated = rt2.sessionsOf(rt2.state.profiles[role.id])
+    assert.equal(updated.find(item => item.id === first.id).instructions, 'Original identity')
+    assert.equal(updated.at(-1).instructions, 'New identity')
     assert.equal(await host.api('workspace-delete', { id: a.id }), true)
-    host.dispose()
+    await host.dispose()
     host = boot(home)
     const reopened = (await host.api('state')).profiles.find(item => item.id === role.id)
     assert.equal((await host.api('state')).workspaces.some(item => item.id === a.id), false)
@@ -605,7 +607,7 @@ test('one global role opens independent conversations in multiple workspaces and
     assert.deepEqual((await host.api('transcript', { profile: role.id, session: first.id })).filter(line => line.who === 'user').map(line => line.text), ['Task A'])
     const third = await host.api('session-create', { profile: role.id, workspace: b.id, lazy: true })
     assert.equal(third.workspaceRef, b.id, 'the retained role can still start conversations elsewhere')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('archiving hides a session without deleting it, refuses running work and moves the active pointer', async () => {
@@ -618,10 +620,10 @@ test('archiving hides a session without deleting it, refuses running work and mo
     const second = await host.api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
     const sessionOf = async id => (await host.api('state')).profiles.find(item => item.id === role.id).sessions.find(item => item.id === id)
     await host.api('send', { profile: role.id, session: first.id, text: 'Running' })
-    await until(async () => (await host.api('state')).work[first.id].active)
+    await until(async () => (await host.api('state')).work[first.id]?.active)
     assert.equal((await host.post('session-archive', { profile: role.id, session: first.id, archived: true })).error.code, 'orch/busy')
     await host.api('interrupt', { profile: role.id, session: first.id })
-    await until(async () => !(await host.api('state')).work[first.id].active)
+    await until(async () => !(await host.api('state')).work[first.id]?.active)
     await host.api('session-archive', { profile: role.id, session: second.id, archived: true })
     assert.equal(typeof (await sessionOf(second.id)).archivedAt, 'number')
     assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).activeSessionId, first.id)
@@ -631,7 +633,7 @@ test('archiving hides a session without deleting it, refuses running work and mo
     assert.equal((await host.post('session-select', { profile: role.id, session: second.id })).ok, false)
     await host.api('session-archive', { profile: role.id, session: second.id, archived: false })
     assert.equal((await sessionOf(second.id)).archivedAt, undefined)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a session can be renamed and pinned, and an empty name is refused', async () => {
@@ -652,7 +654,7 @@ test('a session can be renamed and pinned, and an empty name is refused', async 
     await host.api('session-update', { profile: role.id, session: first.id, changes: { pinned: false } })
     assert.equal((await sessions()).find(item => item.id === first.id).pinnedAt, undefined)
     assert.equal((await sessions()).find(item => item.id === second.id).name, second.name)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 // The card seeds model, thinking and permission for every new conversation.
@@ -674,7 +676,7 @@ test('a new conversation takes the role permission instead of the previous sessi
     assert.equal(second.model, 'm1', 'the previous conversation\'s own pick stays with that conversation')
     assert.equal(second.thinking, 'high')
     assert.equal(second.permission, 'plan', 'temporary session choices never replace the role permission')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a conversation-level model pick updates the session without touching the role card', async () => {
@@ -697,7 +699,7 @@ test('a conversation-level model pick updates the session without touching the r
     assert.equal(profile.sessions.find(item => item.id === session.id).thinking, undefined, 'an empty level reads the model default again')
     const refused = await host.post('session-update', { profile: role.id, session: session.id, changes: { model: 'bad\nname' } })
     assert.equal(refused.error.code, 'orch/invalid')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('running conversation settings leave the current driver intact and apply on the next send', async () => {
@@ -765,17 +767,17 @@ test('running conversation settings leave the current driver intact and apply on
     assert.equal(second.running, true)
     assert.equal(second.disposed, false)
     second.complete()
-    await until(() => !rt.workView()[session.id].active)
+    await until(() => !rt.workView()[session.id]?.active)
     const third = await send()
     assert.deepEqual(choices(third), { model: 'm2', thinking: 'high', permission: 'workspace' }, 'an explicit session tier overrides the role tier')
     third.complete()
-    await until(() => !rt.workView()[session.id].active)
+    await until(() => !rt.workView()[session.id]?.active)
     const saved = (await host.api('state')).profiles.find(item => item.id === role.id)
     assert.deepEqual({ model: saved.model, thinking: saved.thinking, permission: saved.permission }, { model: 'm1', thinking: 'low', permission: 'full' })
     assert.equal(saved.sessions.find(item => item.id === sibling.id).model, 'm1')
     assert.equal(saved.activeSessionId, sibling.id, 'editing a conversation does not move the active session pointer')
     assert.equal(saved.sessions.length, 2)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('first-send choices belong to the fresh session and leave the role defaults unchanged', async () => {
@@ -800,7 +802,7 @@ test('first-send choices belong to the fresh session and leave the role defaults
       assert.equal(refused.error.code, 'orch/invalid')
     }
     assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).sessions.length, after.sessions.length)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('external model picks ignore stale native pointers and update only the conversation', async () => {
@@ -829,7 +831,7 @@ test('shared native DSH role keeps plugin workspace references separate from nat
     assert.equal(native.creates, 0)
     for (const session of [first, second]) {
       await host.api('send', { profile: role.id, session: session.id, text: 'Check workspace' })
-      await until(async () => !(await host.api('state')).work[session.id].active)
+      await until(async () => !(await host.api('state')).work[session.id]?.active)
     }
     const sessions = (await host.api('state')).profiles.find(item => item.id === role.id).sessions
     assert.equal(native.workspaces.size, 2)
@@ -841,7 +843,7 @@ test('shared native DSH role keeps plugin workspace references separate from nat
       assert.equal(native.agents.get(session.driverSessionId).session.header.title, `Fixture Coder · ${session.name}`)
       assert.equal(native.agents.get(session.driverSessionId).session.header.cwd, realpathSync(workspace.cwd))
     }
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('lead conversations refuse the plan tier on create and update; executors keep it', async () => {
@@ -860,5 +862,5 @@ test('lead conversations refuse the plan tier on create and update; executors ke
     const executor = await host.api('session-create', { profile: (await host.api('state')).profiles.find(item => item.name === 'Worker').id,
       workspace: workspace.id, lazy: true, choices: { permission: 'plan' } })
     assert.equal(executor.permission, 'plan')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })

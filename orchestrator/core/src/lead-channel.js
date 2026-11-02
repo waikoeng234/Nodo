@@ -2,7 +2,7 @@ import { createServer } from 'node:net'
 import { randomBytes, createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, chmodSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { leadMcp } from '../../agent-drivers/dist/lead-mcp.js'
+import { leadMcp, leadServer } from '../../agent-drivers/dist/lead-mcp.js'
 import { leadModeOf } from '../shared/lead.js'
 
 export function install(rt) {
@@ -32,6 +32,21 @@ export function install(rt) {
     if (!args.session) throw new Error('session 必须是非空字符串')
     return rt.leadDispatch.interrupt(id, args.session)
   }
+  const answer = async request => {
+    let result
+    try {
+      const value = await handle(request)
+      result = { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] }
+    } catch (error) { result = { isError: true, content: [{ type: 'text', text: String(error.message) }] } }
+    let text = JSON.stringify(result)
+    for (const token of new Set([...tokens.keys(), request.token].filter(value => typeof value === 'string' && value))) text = text.replaceAll(token, '[redacted]')
+    return rt.redactDeepSecrets(text)
+  }
+  const unavailable = { isError: true, content: [{ type: 'text', text: 'Nodo 本地通道不可用、超时或响应无效' }] }
+  const call = request => new Promise(resolve => {
+    const timer = setTimeout(() => resolve(unavailable), 25_000)
+    answer(request).then(text => JSON.parse(text), () => unavailable).then(result => { clearTimeout(timer); resolve(result) })
+  })
   const start = () => starting ??= (async () => {
     await rt.load()
     if (closed || rt.readOnly?.()) throw new Error('Nodo 当前不能开启主控通道')
@@ -62,15 +77,9 @@ export function install(rt) {
         }
         if (!buffer.includes('\n')) return
         client.removeAllListeners('data')
-        let request, result
-        try {
-          request = JSON.parse(buffer.split('\n', 1)[0])
-          const value = await handle(request)
-          result = { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] }
-        } catch (error) { result = { isError: true, content: [{ type: 'text', text: request ? String(error.message) : '无效请求' }] } }
-        let text = JSON.stringify(result)
-        for (const token of new Set([...tokens.keys(), request?.token].filter(value => typeof value === 'string' && value))) text = text.replaceAll(token, '[redacted]')
-        client.end(rt.redactDeepSecrets(text) + '\n')
+        let request
+        try { request = JSON.parse(buffer.split('\n', 1)[0]) } catch {}
+        client.end((request ? await answer(request) : JSON.stringify({ isError: true, content: [{ type: 'text', text: '无效请求' }] })) + '\n')
       })
     })
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve) })
@@ -80,7 +89,10 @@ export function install(rt) {
     const found = rt.conversationOf(id)
     if (!leadModeOf(found?.profile, found?.session)) return undefined
     if (closed) throw new Error('Nodo 主控通道已关闭')
-    try { await start() } catch (error) {
+    let token, served
+    await rt.load()
+    if (!closed && !rt.readOnly?.()) served = await rt.serveMcp?.(() => leadServer((name, args) => call({ token, name, arguments: args }))).catch(() => undefined)
+    if (!served) try { await start() } catch (error) {
       if (closed) throw error
       server?.close()
       if (directory) rmSync(directory, { recursive: true, force: true })
@@ -88,22 +100,23 @@ export function install(rt) {
       rt.warn('nodo: lead channel unavailable; continuing without nodo_lead')
       return undefined
     }
-    const token = randomBytes(32).toString('hex')
+    token = randomBytes(32).toString('hex')
     tokens.set(token, id)
     // A Bash `env` inside the lead session would echo the token into a tool result,
     // so the host redactor learns it for the token's whole life, revoke included.
     rt.retireValue?.(token, 'NODO_LEAD_TOKEN')
-    try { caller(token) } catch (error) { tokens.delete(token); throw error }
-    const tokenFile = join(directory, createHash('sha256').update(id).digest('hex') + '.token')
-    try { writeFileSync(tokenFile, token, { mode: 0o600 }) } catch (error) { tokens.delete(token); throw error }
+    try { caller(token) } catch (error) { tokens.delete(token); served?.close(); throw error }
+    const tokenFile = served ? undefined : join(directory, createHash('sha256').update(id).digest('hex') + '.token')
+    if (tokenFile) try { writeFileSync(tokenFile, token, { mode: 0o600 }) } catch (error) { tokens.delete(token); throw error }
     const previous = credentials.get(id)
     if (previous) tokens.delete(previous)
     credentials.set(id, token)
-    return { servers: leadMcp(socket, '', tokenFile), revoke: () => {
+    return { servers: served ? [{ name: 'nodo_lead', url: served.url, token: served.token }] : leadMcp(socket, '', tokenFile), revoke: () => {
       tokens.delete(token)
+      served?.close()
       if (credentials.get(id) !== token) return
       credentials.delete(id)
-      rmSync(tokenFile, { force: true })
+      if (tokenFile) rmSync(tokenFile, { force: true })
     } }
   }
   rt.ctx.effect(() => () => {

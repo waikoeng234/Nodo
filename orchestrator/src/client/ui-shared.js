@@ -6,6 +6,7 @@
 // variables the shell already publishes, so the page follows the product look in
 // light, dark and any font-size setting.
 import { createElement as h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore } from 'react'
+import { subscribeLive, getLive, liveError, refreshLive } from './live.js'
 /** @typedef {import('react').ReactNode} ReactNode */
 // The shell seeds this UI kit in the same module table as React, so the panel
 // reuses the host's own controls, rows, markdown renderer and icon artwork (the
@@ -107,45 +108,8 @@ export const base64Of = dataUrl => dataUrl.slice(dataUrl.indexOf(',') + 1)
 
 /** @returns {{ view: any, error: string, refresh: (force?: boolean) => Promise<void> }} */
 export function useStateView() {
-  const [view, setView] = useState(null)
-  const [error, setError] = useState('')
-  const live = useRef(false)
-  const snapshot = useRef(null)
-  const requested = useRef(0)
-  const applied = useRef(0)
-
-  const refresh = async (force = false) => {
-    const order = ++requested.current
-    try {
-      const answer = await call('state', force ? undefined : { since: snapshot.current?.revision })
-      if (!live.current || order < applied.current) return
-      applied.current = order
-      const next = answer.unchanged && snapshot.current !== null
-        ? { ...snapshot.current, work: answer.work, approvals: answer.approvals, stats: answer.stats }
-        : answer
-      snapshot.current = next
-      setView(next)
-      setError('')
-    } catch (failure) {
-      if (live.current && order >= applied.current) setError(failure.message)
-    }
-  }
-
-  useEffect(() => {
-    live.current = true
-    void refresh(true)
-    let timer = null
-    // A live turn shortens the cadence so the feed grows at the host chat's own
-    // rhythm instead of arriving in visible jumps.
-    const schedule = () => {
-      const busy = Object.values(snapshot.current?.work ?? {}).some(state => state?.active === true)
-      timer = setTimeout(() => { void refresh(); schedule() }, busy ? 400 : 1200)
-    }
-    schedule()
-    return () => { live.current = false; clearTimeout(timer) }
-  }, [])
-
-  return { view, error, refresh }
+  const view = useSyncExternalStore(subscribeLive, getLive)
+  return { view, error: liveError(), refresh: refreshLive }
 }
 
 // The host amber is too light for text on light surfaces; mixing toward the label colour keeps it readable in both themes.

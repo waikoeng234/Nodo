@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDriver } from '../agent-drivers/dist/index.js'
+import { probeModels } from './probe-models.mjs'
 
 const TOKEN = 'NODO_PROBE_OK'
 const SKILL_BODY = `Reply with the exact token ${TOKEN} and nothing else.`
@@ -56,15 +57,9 @@ async function probe(engine) {
     }
   }
   const events = []
-  // zcode's account (subscription) provider is fail-closed to externally
-  // spawned app-servers, so the probe pins the personal custom provider.
-  // opencode keeps its own default: its free Go models may hit the workspace
-  // privacy gate, in which case the probe reports that upstream error as-is.
-  const pinned = { zcode: process.env.ZCODE_PROBE_MODEL ?? 'bigmodel-api$GLM-5.3-Flash' }
-  const model = pinned[engine]
   const driver = createDriver(engine, {
     cwd: workspace,
-    ...(model ? { model } : {}),
+    ...probeModels[engine],
     ...(engine === 'dsh' ? { storageDir: join(workspace, 'storage') } : {}),
     onEvent: event => events.push(event),
   })

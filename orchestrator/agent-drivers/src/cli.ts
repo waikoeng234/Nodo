@@ -34,7 +34,7 @@ export function validateBin(bin: unknown) {
 // same directory that cannot be spawned, so the bare name is probed last.
 const windowsExtensions = ['.exe', '.cmd', '.bat']
 
-export function findExecutable(command: unknown, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'], extra = [], platform = process.platform }: FindExecutableOptions = {}) {
+export function findExecutable(command: unknown, { path = process.env.PATH ?? '', home = homedir(), platform = process.platform, defaults = [join(home, '.local/bin'), ...(platform === 'win32' ? [] : ['/usr/local/bin', '/opt/homebrew/bin'])], extra = [] }: FindExecutableOptions = {}) {
   const bin = validateBin(command)
   if (!bin) return undefined
   const dirs = [...path.split(delimiter), ...defaults, ...extra].filter(dir => isAbsolute(dir))

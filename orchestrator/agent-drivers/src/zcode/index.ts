@@ -1,4 +1,5 @@
 import { homedir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js'
@@ -7,13 +8,14 @@ import { collector, listDirs, newestPluginVersions } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges, textToolChanges } from '../file-changes.js'
 import { connectZcode, findZcodeExecutable, parseZcodeModel, zcodeCliVersion } from './native.js'
-import { roleMcp } from '../role-mcp.js'
+import { roleMcp, roleServer } from '../role-mcp.js'
 import { zcodeInstructions } from './instructions.js'
 import { zcodeMcpServers } from './mcp.js'
 import type { Driver, DriverEvent, DriverImage, EngineInfo, EngineCheckResult, PermissionMode, SteerOutcome, Usage } from '../spi.js'
 import type { JsonRpcMessage, JsonRpcRequest, JsonRpcPeer, RpcId } from '../json-rpc-process.js'
 import type { FileChanges } from '../file-changes.js'
 import type { IdentityFiles } from '../identity-files.js'
+import type { ServeMcp } from '../role-mcp.js'
 import type { Coverage } from '../coverage.js'
 import type { EngineScanOptions } from '../index.js'
 import type { SkillInventory } from '../skills.js'
@@ -28,7 +30,7 @@ export type ZcodeDriverOptions = {
   onEvent?: (event: ZcodeEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
   model?: unknown; thinking?: string; permission?: PermissionMode; driverSessionId?: string
   instructions?: string; instructionDir?: string; identityFiles?: IdentityFiles; identityOwner?: string
-  allowEmptyResume?: boolean; healthIntervalMs?: number; healthTimeoutMs?: number
+  allowEmptyResume?: boolean; healthIntervalMs?: number; healthTimeoutMs?: number; serveMcp?: ServeMcp
 }
 type ZcodeDriver = Driver & {
   readonly instructionMode: ZcodeIdentity['mode']; readonly instructionTarget: ZcodeIdentity['target']
@@ -164,7 +166,7 @@ const zcodeUsage = (payload: ZcodePayload, context: ContextUsage | undefined, se
 
 const zcodeContext = (payload: Pick<SessionSnapshot, 'contextUsage' | 'runtime'>) => payload?.contextUsage ?? payload?.runtime?.contextUsage
 
-export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000 }: ZcodeDriverOptions = {}): ZcodeDriver {
+export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000, serveMcp }: ZcodeDriverOptions = {}): ZcodeDriver {
   const emit = (event: ZcodeEvent) => {
     if (running && ['delta', 'thinking', 'tool', 'request/opened', 'request/closed'].includes(event.type)) running.lastEventAt = Date.now()
     try { onEvent?.(event) } catch {}
@@ -179,6 +181,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
   let context: ContextUsage | undefined
   let canRecreateEmpty = allowEmptyResume === true
   let identity: ZcodeIdentity | undefined
+  let roleMount: Awaited<ReturnType<ServeMcp>> | undefined
   let compaction: Compaction | null | undefined
   const requests = new Map<string, ZcodeRequest>()
   const answeredRequests = new Set<RpcId | undefined>()
@@ -481,7 +484,15 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       const createParams = { workspace: { workspacePath: cwd, workspaceKey: cwd }, mode }
       const inherited = instructions ? zcodeMcpServers({ cwd: cwd!, env }) : []
       if (!inherited) identity.reason = 'mcp-config-not-representable'
-      const roleServers = inherited ? roleMcp(instructions, identity.path, identity).map(server => ({ ...server, isolation: 'session', protocolVersion: 'legacy' })) : []
+      roleMount?.close()
+      roleMount = undefined
+      if (inherited && instructions && serveMcp) {
+        const { path, toolIdentity, readyFile } = identity
+        roleMount = await serveMcp(() => roleServer(path ? readFileSync(path, 'utf8') : instructions, { toolIdentity, readyFile })).catch(() => undefined)
+        if (disposed) { roleMount?.close(); throw new Error('ZCode driver disposed') }
+      }
+      const roleServers = roleMount ? [{ name: 'nodo_role', type: 'http', url: roleMount.url, headers: [{ name: 'Authorization', value: `Bearer ${roleMount.token}` }], isolation: 'session' }]
+        : inherited ? roleMcp(instructions, identity.path, identity).map(server => ({ ...server, isolation: 'session', protocolVersion: 'legacy' })) : []
       const mcpServers = [...(inherited ?? []), ...roleServers]
       let attached = Boolean(roleServers.length)
       const attach = async (method: string, params: { sessionId?: string } | typeof createParams) => {
@@ -656,7 +667,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     },
     onEvent() { throw new Error('Pass onEvent to createZcodeDriver') },
     hasSession() { return connected },
-    dispose() { disposed = true; end('interrupted'); disconnect(); identity?.dispose() },
+    dispose() { disposed = true; end('interrupted'); disconnect(); roleMount?.close(); identity?.dispose() },
   }
 }
 

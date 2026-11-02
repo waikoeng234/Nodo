@@ -162,6 +162,6 @@ test('a finished turn lands one session record and the state answer carries it',
     assert.equal(record.decodeMs, 0, 'a committed-message engine offers no decode window to measure')
     assert.equal(record.decodeTokens, 0, 'so no speed figure is invented for it')
     assert.equal(record.inputTokens, 0, 'an engine that reports no usage leaves the buckets at zero')
-    await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active === false ? true : undefined)
+    await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active !== true ? true : undefined)
   })
 })

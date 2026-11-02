@@ -24,7 +24,7 @@ test('workspace lifecycle: deletion keeps roles, conversation history and the di
 
     assert.equal((await post('workspace-delete', { id: 'missing' })).error.code, 'orch/not-found')
     await api('send', { profile: profile.id, text: 'build' })
-    await until(async () => !(await api('state')).work[profile.id].active)
+    await until(async () => !(await api('state')).work[profile.id]?.active)
     assert.equal(existsSync(join(home, 'site')), true, 'the workspace directory is created on first use')
     const history = await api('transcript', { profile: profile.id })
     assert.equal(await api('workspace-delete', { id: workspace.id }), true)
@@ -108,7 +108,7 @@ test('editing a workspace cwd moves its roles and restarts their conversations',
     const workspace = await api('workspace-create', { name: 'Mover', cwd: join(home, 'before') })
     const profile = await api('profile-create', { name: 'Fixture Coder', engine: 'echo', workspace: workspace.id })
     await api('send', { profile: profile.id, text: 'first' })
-    await until(async () => !(await api('state')).work[profile.id].active)
+    await until(async () => !(await api('state')).work[profile.id]?.active)
     const moved = await api('workspace-update', { id: workspace.id, changes: { cwd: join(home, 'after') } })
     assert.equal(moved.cwd, join(home, 'after'))
     const view = (await api('state')).profiles.find(item => item.id === profile.id)
@@ -162,7 +162,7 @@ test('v1 state migrates: shared cwds become one workspace, cwd-less profiles kee
     assert.equal(saved.version, 3)
     assert.ok(saved.workspaces[solo.workspaceId] !== undefined)
     for (const profile of Object.values(saved.profiles)) assert.equal('cwd' in profile, false)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('workspace-file reads one conversation file inside the workspace, bounded and contained', async () => {
@@ -174,7 +174,7 @@ test('workspace-file reads one conversation file inside the workspace, bounded a
     writeFileSync(join(home, 'reader', 'blob.bin'), Buffer.from([0x62, 0, 0x64]))
     writeFileSync(join(home, 'reader', 'big.txt'), 'x'.repeat(512 * 1024 + 10))
     await api('send', { profile: profile.id, text: 'first' })
-    await until(async () => !(await api('state')).work[profile.id].active)
+    await until(async () => !(await api('state')).work[profile.id]?.active)
     const state = await api('state')
     const session = state.profiles.find(item => item.id === profile.id).sessions.at(-1).id
     const read = await api('workspace-file', { profile: profile.id, session, path: 'note.md' })

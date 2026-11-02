@@ -18,7 +18,7 @@ test('a rotated key reaches a rebuilt driver, and both values stay redacted', as
     const profile = await api('profile-create', { name: 'Fixture', engine: 'echo', workspace: workspace.id })
     const turn = async text => {
       await api('send', { profile: profile.id, text })
-      await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active === false)
+      await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active !== true)
     }
     await turn(`one ${OLD}`)
     await api('secret-set', { name: 'FIXTURE_KEY', value: NEW })
@@ -40,5 +40,5 @@ test('an unreadable secrets file is left untouched instead of being replaced', a
   try {
     await assert.rejects(host.api('secret-set', { name: 'FIXTURE_B', value: 'fake-value-bbbb' }), /could not be read/)
     assert.equal(readFileSync(file, 'utf8'), broken)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })

@@ -355,7 +355,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       if (current()) setSentTick(tick => tick + 1)
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
-      await refresh(true)
+      await refresh(!sessionId)
       if (current()) remember(profile.id, workspace.id, id)
     })
     setSessionBusy(false)
@@ -376,7 +376,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         if (result.mode === 'queued') setActionError('当前无法插入本轮，消息仍在排队')
         else if (result.mode !== 'cancelled') setSentTick(tick => tick + 1)
       }
-      await refresh(true)
+      await refresh(false)
     })
     setSessionBusy(false)
   }
@@ -387,12 +387,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       for (const [id, target] of team ? roundLive.map(item => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
         await call('interrupt', { profile: id, session: target })
       }
-      await refresh(true)
+      await refresh(false)
     })
     setSessionBusy(false)
   }
   const stopMember = async step => {
-    try { await call('interrupt', { profile: step.profile, session: step.session }); await refresh(true) }
+    try { await call('interrupt', { profile: step.profile, session: step.session }); await refresh(false) }
     catch (failure) { setActionError(failure.message) }
   }
   // Compaction runs the engine's own channel; there is nothing to show in the
@@ -433,7 +433,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
         members.length > 0 && h(RoundFaces, { roles: [...new Map([profile, ...members.map(item => item.role)].map(role => [role.id, role])).values()] }),
         h('span', { className: 'nodo-head-actions' },
           members.length > 0 && h(RoundMenu, { members, work: view.work, onOpen: openSession })))),
-    h(Feed, { key: `${team}:${sessionId}`, profile, session, revision: view.revision, work, sentTick,
+    h(Feed, { key: `${team}:${sessionId}`, profile, session, work, sentTick,
       round: team ? { profiles: view.profiles, teams: view.teams, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
     work?.active === true && h('div', { className: 'nodo-running-dock' },
       h(RunningLine, { key: sessionId, since: work.since, work })),

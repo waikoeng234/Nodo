@@ -16,13 +16,13 @@ import type { Coverage } from '../coverage.js'
 import type { FileChanges } from '../file-changes.js'
 import type { EngineScanOptions, ModelCatalog } from '../index.js'
 import type { SkillInventory } from '../skills.js'
-import type { RoleMcpServer } from '../role-mcp.js'
+import type { McpMount } from '../role-mcp.js'
 
 export type ClaudeOptions = { bin?: string }
 export type ClaudeDriverOptions = {
   onEvent?: (event: DriverEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
   model?: string; thinking?: string; permission?: PermissionMode; driverSessionId?: string; instructions?: string
-  leadMcpServers?: RoleMcpServer[]
+  leadMcpServers?: McpMount[]
 }
 type ClaudeHandshakeOptions = { executable: string; cwd?: string; env?: NodeJS.ProcessEnv }
 type ClaudeModel = { value?: unknown; displayName?: unknown; supportedEffortLevels?: unknown[] }

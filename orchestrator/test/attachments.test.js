@@ -20,9 +20,9 @@ test('pasted images: refused by type, stored under home, referenced in the trans
     assert.equal(line.images[0].name, 'shot.png')
     assert.deepEqual(await host.api('attachment', { id: line.images[0].id, mediaType: 'image/png' }), { mediaType: 'image/png', data: PNG })
     await assert.rejects(host.api('attachment', { id: '../state', mediaType: 'image/png' }), { code: 'orch/invalid' })
-    await until(async () => (await host.api('state', { since: -1 })).work[profile.id]?.active === false ? true : undefined)
+    await until(async () => (await host.api('state', { since: -1 })).work[profile.id]?.active !== true ? true : undefined)
   } finally {
-    host.dispose()
+    await host.dispose()
     rmSync(home, { recursive: true, force: true })
   }
 })
@@ -35,7 +35,7 @@ test('task files persist by id, reject invalid input and materialize inside the 
     assert.equal(files.files[0].name, 'notes.txt')
     assert.equal(files.files[0].data, undefined)
     await assert.rejects(host.api('attachment-save', { files: [{ name: 'bad', data: 'not base64!' }] }), { code: 'orch/invalid' })
-    host.dispose(); host = boot(home)
+    await host.dispose(); host = boot(home)
     const rt = await host.runtime
     const cwd = join(home, 'workspace')
     const [path] = await rt.materializeFiles(files.files, cwd)
@@ -51,7 +51,7 @@ test('task files persist by id, reject invalid input and materialize inside the 
     await assert.rejects(rt.fileOf({ id: '00000000-0000-0000-0000-000000000000', name: 'missing' }), { code: 'orch/invalid' })
     symlinkSync(outside, join(home, '.nodo'))
     await assert.rejects(rt.materializeFiles(files.files, home), { code: 'orch/invalid' })
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }) }
 })
 
 test('a conversation send carries picked files as chips and keeps the path block out of the echoed text', async () => {
@@ -70,9 +70,9 @@ test('a conversation send carries picked files as chips and keeps the path block
     await host.api('send', { profile: profile.id, session: session.id, text: '', files: saved.files })
     const second = await until(async () => (await host.api('transcript', { profile: profile.id })).filter(entry => entry.who === 'user').at(-1))
     assert.deepEqual(second.files, [{ id: saved.files[0].id, name: 'spec.pdf' }], 'a files-only message is sendable')
-    await until(async () => (await host.api('state', { since: -1 })).work[profile.id]?.active === false ? true : undefined)
+    await until(async () => (await host.api('state', { since: -1 })).work[profile.id]?.active !== true ? true : undefined)
   } finally {
-    host.dispose()
+    await host.dispose()
     for (let attempt = 0; attempt < 10; attempt++) { try { rmSync(home, { recursive: true, force: true }); break } catch { await new Promise(resolve => setTimeout(resolve, 50)) } }
   }
 })
@@ -87,5 +87,5 @@ test('pasted images are private to the owner and still load in a read-only windo
     rt.readOnly = () => 'Another window is writing'
     assert.deepEqual(await host.api('attachment', image), { mediaType: 'image/png', data: PNG })
     assert.equal((await host.post('attachment-save', { images: [{ mediaType: 'image/png', data: PNG }] })).error.code, 'orch/read-only')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })

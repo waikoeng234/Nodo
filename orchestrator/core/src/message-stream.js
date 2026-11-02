@@ -1,11 +1,11 @@
 import { TRANSCRIPT_TEXT_MAX } from './constants.js'
 import { clip } from './text.js'
 
-export function createMessageStream({ append, redact, head = () => undefined, save = () => {} }) {
+export function createMessageStream({ append, redact, head = () => undefined, save = () => {}, touch = () => {} }) {
   const entries = [], identities = new Map(), pending = new Map()
   let current = null
   const close = () => {
-    if (current) { current.line.open = false; save() }
+    if (current) { current.line.open = false; touch(current.line); save() }
     current = null
   }
   const text = () => entries.filter(entry => entry.line.kind === 'text' && !entry.line.parentCallId).map(entry => entry.raw).join('\n')
@@ -51,6 +51,7 @@ export function createMessageStream({ append, redact, head = () => undefined, sa
       entry.line.open = event.boundary !== 'end' && event.type !== 'text'
       if (entry.line.open) current = entry
       else if (current === entry) current = null
+      touch(entry.line)
     }
     if (event.boundary === 'end' && key === null && (event.blockIndex === undefined
       || current?.line.kind === kind && current.line.blockIndex === event.blockIndex)) close()
@@ -77,6 +78,7 @@ export function createMessageStream({ append, redact, head = () => undefined, sa
       }
     }
     if (last && typeof final === 'string' && final.trim()) last.line.final = clip(redact(final), TRANSCRIPT_TEXT_MAX, 'long reply')
+    touch(...entries.map(entry => entry.line))
     return entries.filter(entry => entry.line.kind === 'text').map(entry => entry.line)
   }
   return { accept, close, finish, text }

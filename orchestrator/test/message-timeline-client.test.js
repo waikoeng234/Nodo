@@ -2,6 +2,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
 
+
+// Feed reads its lines from the shared store; tests seed it with this stub.
+const liveStub = feed => ({
+  transcriptOf: key => feed.lines, transcriptError: () => feed.error ?? '',
+  pullTranscript: async () => {}, watchTranscript: () => () => {}, subscribeStore: () => () => {}, getStoreVersion: () => 0,
+})
 const nodes = node => !node || typeof node !== 'object' ? [] : [node,
   ...[...(node.children ?? []), node.props?.children].flat(Infinity).flatMap(nodes)]
 
@@ -32,7 +38,7 @@ test('turn previews prefer the final parent reply and fall back to the last pare
     { who: 'agent', kind: 'text', text: 'legacy first' },
     { who: 'agent', kind: 'text', text: 'legacy last' },
   ] }
-  const { Feed } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const { Feed } = await loadClient('feed.js', { stubs: { 'live.js': liveStub(feed) } })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
   const rail = nodes(tree).find(node => node.type?.name === 'TurnRail')
   assert.deepEqual(Array.from(rail.props.turns, turn => turn.response), ['complete final answer', 'legacy last'])
@@ -43,7 +49,7 @@ test('answered request rows keep the reply visible after restore and render it a
     { who: 'system', kind: 'request', phase: 'start', requestKind: 'question', text: 'Which option?' },
     { who: 'system', kind: 'request', phase: 'end', requestKind: 'question', response: { decision: 'answer', value: '<img src=x>\nChosen option' } },
   ])) }
-  const { Feed } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const { Feed } = await loadClient('feed.js', { stubs: { 'live.js': liveStub(feed) } })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
   const reply = nodes(tree).find(node => node.props.className === 'nodo-request-answer' && node.children.includes(' · <img src=x>\nChosen option'))
   assert.ok(reply)
@@ -60,7 +66,7 @@ test('the feed interleaves local process groups with independent messages and re
     { who: 'agent', kind: 'text', timeline: true, messageId: 'final', channel: 'final_answer', text: 'last', open: true },
   ] }
   const { Feed, ProcessGroup, StreamingText } = await loadClient(['feed.js', 'streaming-text.tsx'], {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: true, timeline: true, buffer: 'first\nlast' } })
   const content = nodes(tree).find(node => node.props.className === 'nodo-feed-inner')
@@ -79,7 +85,7 @@ test('the feed interleaves local process groups with independent messages and re
 test('reply timestamps appear only on each completed turn final, including after history restore', async () => {
   const feed = { key: 'p:s', error: '', lines: [] }
   const { Feed, TurnUsage } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   for (const [active, reply, open, expected] of [
     [true, undefined, false, ['old-final']],
@@ -122,7 +128,7 @@ test('a turn usage line joins the stamped reply foot however many removed rows s
     { who: 'system', kind: 'usage', usage: { outputTokens: 100 } },
   ] }
   const { Feed, TurnUsage } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
   const usages = nodes(tree).filter(node => node.type === TurnUsage)
@@ -140,7 +146,7 @@ test('a lead conversation hides the usage captions but keeps the reply stamps', 
     { who: 'system', kind: 'usage', usage: { outputTokens: 100 } },
   ] }
   const { Feed, TurnUsage } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const render = (lead, round) => Feed({ profile: { id: 'p', lead: lead || undefined }, session: { id: 's' }, work: { active: false },
     round: round ? { profiles: [], teams: [], work: {}, onOpen: () => {} } : undefined })
@@ -163,7 +169,7 @@ test('legacy turns show a timestamp only after their last parent reply and hide 
     { who: 'agent', kind: 'text', text: 'new answer', at: 60 },
     { who: 'agent', kind: 'text', text: 'child answer', at: 70, parentCallId: 'call' },
   ] }
-  const { Feed } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const { Feed } = await loadClient('feed.js', { stubs: { 'live.js': liveStub(feed) } })
   for (const active of [true, false]) {
     const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active } })
     const replies = nodes(tree).filter(node => node.props.className === 'nodo-reply')
@@ -192,8 +198,9 @@ test('interleaved and concurrent tool results stay at their arrival positions, a
 })
 
 test('a run of retry announcements folds into one row that ticks to the newest count and keeps it through the end state', async () => {
+  const live = []
   const { transcriptRows, Feed } = await loadClient('feed.js', {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub({ get lines() { return live } }) },
   })
   const retry = (phase, extra = {}) => ({ who: 'system', kind: 'lifecycle', event: 'retry', turnId: 't', phase, ...extra })
   const start = (attempt, wait, extra = {}) => retry('start', { text: `第 ${attempt}/10 次，等待 ${wait} 秒`, ...extra })
@@ -215,10 +222,10 @@ test('a run of retry announcements folds into one row that ticks to the newest c
   assert.equal(claude[0].item.phase, 'end')
   assert.equal(transcriptRows([start(1, 2), { ...start(2, 3), turnId: 'u' }]).length, 2,
     'retries of different turns stay their own rows')
-  const feed = { key: 'p:s', error: '', lines: JSON.parse(JSON.stringify([
+  live.push(...JSON.parse(JSON.stringify([
     start(1, 2), start(2, 3),
     retry('end', { entityId: 'retry-1' }), retry('end', { entityId: 'retry-2' }),
-  ])) }
+  ])))
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
   const notes = nodes(tree).filter(node => node.props.className === 'nodo-note' && String(node.children[0]).startsWith('重试'))
   assert.equal(notes.length, 1)
@@ -232,7 +239,7 @@ test('a message completed between polls animates when new, while loaded history 
   ] }
   const { Feed, StreamingText } = await loadClient(['feed.js', 'streaming-text.tsx'], {
     globals: { Date: class extends Date { static now() { return 200 } } },
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const before = JSON.stringify(feed.lines)
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false, timeline: true } })
@@ -262,7 +269,7 @@ test('nonempty file summaries stay at their turn position while empty summaries 
     { who: 'agent', kind: 'changes', text: 'legacy summary must stay hidden' },
   ] }
   const { Feed, ProcessGroup, StreamRecordCard } = await loadClient(['feed.js', 'stream-records.js'], {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] },
+    stubs: { 'live.js': liveStub(feed) },
   })
   const before = JSON.stringify(feed.lines)
   for (const active of [false, true]) {
@@ -294,7 +301,7 @@ test('a user message sent with session references shows the referenced replies u
     { who: 'user', text: 'use the review', references: [{ id: 'r1', source: { profileName: '大肥鱼', sessionName: '审查' }, messages: [{ text: 'reviewed reply' }] }] },
     { who: 'user', text: 'plain task' },
   ] }
-  const { Feed } = await loadClient('feed.js', { react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const { Feed } = await loadClient('feed.js', { stubs: { 'live.js': liveStub(feed) } })
   const tree = Feed({ profile: { id: 'p' }, session: { id: 's' }, work: { active: false } })
   const history = nodes(tree).filter(node => node.props?.className === 'nodo-reference-history')
   assert.equal(history.length, 1)

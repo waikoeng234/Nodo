@@ -3,10 +3,18 @@ import assert from 'node:assert/strict'
 import { loadClient } from './helpers/client-module.js'
 
 const plain = value => JSON.parse(JSON.stringify(value))
+
+// Feed reads its lines from the shared store; tests seed it with this stub.
+const liveStub = feed => ({
+  transcriptOf: key => feed.lines, transcriptError: () => feed.error ?? '',
+  pullTranscript: async () => {}, watchTranscript: () => () => {}, subscribeStore: () => () => {}, getStoreVersion: () => 0,
+})
 const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(nodes) : !('type' in node) || !('props' in node) ? []
   : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
 const text = node => nodes(node).flatMap(item => item.children ?? []).filter(child => typeof child === 'string').join('|')
 const tick = () => new Promise(resolve => setImmediate(resolve))
+// What the host's transcript endpoint answers a first, position-less pull.
+const fullAnswer = lines => ({ full: true, token: 't', base: 1, dirty: 0, lines: lines.map((line, index) => ({ n: index + 1, line })) })
 
 test('roundLines turns the lead transcript into a chat of speaker rows, delegation chips and one message per executor', async () => {
   const { roundLines } = await loadClient('round.js')
@@ -208,7 +216,7 @@ test('a live executor message keeps its latest four entries — text, thinking a
     { who: 'user', kind: 'text', text: '上一轮因临时故障中断。请检查已完成的工作，从中断处继续完成原任务。', origin: { kind: 'retry' } },
     { who: 'agent', kind: 'text', text: 'Now editing', at: 3 },
     tool('c7', 'start')]
-  const { RoundMember, ProcessRow, host } = await loadClient(['round.js', 'feed.js'], { call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return lines } })
+  const { RoundMember, ProcessRow, host } = await loadClient(['round.js', 'feed.js'], { call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return fullAnswer(lines) } })
   const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const tools = () => {
@@ -219,7 +227,7 @@ test('a live executor message keeps its latest four entries — text, thinking a
   assert.equal(tools(), false, 'nothing shows before the transcript arrives')
   host.effects.at(-1)()
   for (let at = 0; at < 5; at += 1) await tick()
-  assert.deepEqual(plain(calls), [{ endpoint: 'transcript', payload: { profile: 'tester', session: 'e2' } }])
+  assert.deepEqual(plain(calls), [{ endpoint: 'transcript', payload: { profile: 'tester', session: 'e2', since: {} } }])
   round.work.e2.buffer = 'Writing the patch now'
   const rows = tools().children
   assert.equal(rows.length, 5, 'six committed entries keep only the latest four, plus the streaming reply')
@@ -244,7 +252,7 @@ test('an executor message shows its own file-changes card and skips legacy or em
     changes(2),
     { who: 'agent', kind: 'changes', text: 'legacy summary stays hidden' },
     { who: 'agent', kind: 'text', text: 'Done', at: 4 }]
-  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => fullAnswer(lines) })
   const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const tools = () => {
@@ -268,7 +276,7 @@ test('a reported executor message keeps its own file-changes card under the repo
   const lines = [{ who: 'user', kind: 'text', text: 'Task', at: 1 },
     { who: 'agent', kind: 'text', text: 'Fixed it', at: 2 },
     { who: 'agent', kind: 'changes', at: 3, presentation }]
-  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => fullAnswer(lines) })
   const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false, report: 'Fixed the login bug\nDetails', at: 9 }
   const body = () => nodes(RoundMember({ step, round })).find(node => node.props.className === 'nodo-round-body')
@@ -292,7 +300,7 @@ test('a reported executor message keeps its own file-changes card under the repo
 test('a reported executor message without saved changes shows no card', async () => {
   const lines = [{ who: 'user', kind: 'text', text: 'Task', at: 1 },
     { who: 'agent', kind: 'text', text: 'Fixed it', at: 2 }]
-  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => fullAnswer(lines) })
   const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false, report: 'Fixed the login bug', at: 9 }
   const changesNode = () => {
@@ -316,7 +324,7 @@ test('the changes card keeps its slot when continuation rows crowd the delegatio
     { who: 'agent', kind: 'changes', at: 3, presentation },
     { who: 'user', kind: 'text', text: '继续', origin: { kind: 'retry' }, at: 4 },
     { who: 'agent', kind: 'text', text: 'Verifying', at: 5 }, tool('c1', 'end'), tool('c2', 'end'), tool('c3', 'end'), tool('c4', 'end')]
-  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => lines })
+  const { RoundMember, StreamRecordCard, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => fullAnswer(lines) })
   const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], work: { e2: { active: true, since: Date.now() } }, onOpen: () => {} }
   const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
   const tools = () => {
@@ -337,7 +345,7 @@ test('the changes card keeps its slot when continuation rows crowd the delegatio
 test('an open executor transcript message streams until its message or turn settles', async () => {
   const lines = [{ who: 'user', kind: 'text', text: 'Task' },
     { who: 'agent', kind: 'text', text: 'Implementing the filter', open: true, timeline: true }]
-  const { RoundMember, host } = await loadClient('round.js', { call: async () => lines })
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => fullAnswer(lines) })
   const step = { session: 'e1', profile: 'coder', type: 'feature' }
   const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: true } }, onOpen() {} }
   const render = () => {
@@ -365,7 +373,7 @@ test('automatic continuation tools stay in their delegation window', async () =>
     { who: 'user', origin: { kind: 'retry' }, at: 12 }, tool('Continued reused task', 13),
     { who: 'user', at: 20 }, tool('Later task', 21),
   ]
-  const { RoundMember, host } = await loadClient('round.js', { call: async () => lines })
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => fullAnswer(lines) })
   const step = { session: 'e1', profile: 'coder', type: 'feature', at: 2 }
   const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: true } }, onOpen() {} }
   const tools = () => {
@@ -391,7 +399,7 @@ test('executor tool records remain visible after interruption and stay within th
     { who: 'user', at: 1 }, { who: 'agent', kind: 'tool', name: 'Bash', callId: 'old', phase: 'end', brief: 'Saved progress', at: 3 },
     { who: 'user', at: 10 }, { who: 'agent', kind: 'tool', name: 'Bash', callId: 'new', phase: 'end', brief: 'Revised task', at: 11 },
   ]
-  const { RoundMember, host } = await loadClient('round.js', { call: async () => lines })
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => fullAnswer(lines) })
   const step = { session: 'e1', profile: 'coder', type: 'feature', at: 2, ended: 'interrupted' }
   const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: false } }, onOpen() {} }
   const tools = () => {
@@ -415,8 +423,7 @@ test('the round feed draws the lead\'s speaker rows and executor messages, and t
     { who: 'agent', kind: 'text', text: 'On it\n```nodo\n{}\n```', at: 2, reply: true },
     { who: 'system', kind: 'note', text: '已派给 Coder', delegation: { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false }, at: 3 },
   ] }
-  const { Feed, RoundSpeaker, RoundChip, RoundMember, MessageTime } = await loadClient(['feed.js', 'round.js'], {
-    react: { useState: initial => [initial?.lines ? feed : initial, () => {}] } })
+  const { Feed, RoundSpeaker, RoundChip, RoundMember, MessageTime } = await loadClient(['feed.js', 'round.js'], { stubs: { 'live.js': liveStub(feed) } })
   const profile = { id: 'lead', name: 'Lead', lead: true }
   const round = { profiles: [profile, { id: 'coder', name: 'Coder' }], teams: [], work: {}, onOpen() {} }
   const tree = nodes(Feed({ profile, session: { id: 'l1' }, work: { active: true, since: 7, buffer: 'Next step' }, round }))

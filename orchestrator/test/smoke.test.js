@@ -49,7 +49,7 @@ const boot = (home) => {
     if (answer?.ok !== true) throw new Error(`${endpoint}: ${answer?.error?.code} ${answer?.error?.message}`)
     return answer.value
   }
-  return { api, post, routes, dispose: () => { for (const disposer of disposers) disposer() }, home }
+  return { api, post, routes, dispose: () => Promise.all(disposers.splice(0).reverse().map(disposer => disposer())), home }
 }
 
 const withPlugin = async (run) => {
@@ -58,7 +58,7 @@ const withPlugin = async (run) => {
   try {
     await run(plugin)
   } finally {
-    plugin.dispose()
+    await plugin.dispose()
     rmSync(home, { recursive: true, force: true })
   }
 }
@@ -107,7 +107,7 @@ test('dispatch: a turn runs, its reply lands in the transcript, and the state go
     const line = await until(async () =>
       (await api('transcript', { profile: profile.id })).find(entry => entry.who === 'agent' && entry.kind === 'text'))
     assert.match(line.text, /Echo on/)
-    await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active === false ? true : undefined)
+    await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active !== true ? true : undefined)
   })
 })
 
@@ -119,7 +119,7 @@ test('approval card: deny stops the turn', async () => {
     const card = await until(async () => (await api('state', { since: -1 })).approvals[0])
     assert.equal(card.kind, 'permission')
     await api('approval-answer', { id: card.id, decision: 'deny' })
-    await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active === false ? true : undefined)
+    await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active !== true ? true : undefined)
     const lines = await api('transcript', { profile: profile.id })
     assert.ok(!lines.some(entry => entry.who === 'agent' && entry.kind === 'text' && entry.text.includes('Approved path')), 'denied turn must not reach the post-approval text')
     assert.deepEqual((await api('state', { since: -1 })).approvals, [])
@@ -153,7 +153,7 @@ test('dispatch: a refused steer queues the message and it runs after the turn', 
     assert.equal(second.mode, 'queued')
     await until(async () => {
       const state = await api('state', { since: -1 })
-      return state.work[profile.id]?.active === false && state.work[profile.id]?.queued === 0 ? true : undefined
+      return state.work[profile.id]?.active !== true && (state.work[profile.id]?.queued ?? 0) === 0 ? true : undefined
     })
     const lines = await api('transcript', { profile: profile.id })
     const userTexts = lines.filter(entry => entry.who === 'user').map(entry => entry.text)

@@ -36,7 +36,7 @@ export function validateBin(bin) {
 // really claude.exe or claude.cmd. npm also leaves an extensionless sh shim in the
 // same directory that cannot be spawned, so the bare name is probed last.
 const windowsExtensions = ['.exe', '.cmd', '.bat'];
-export function findExecutable(command, { path = process.env.PATH ?? '', home = homedir(), defaults = [join(home, '.local/bin'), '/usr/local/bin', '/opt/homebrew/bin'], extra = [], platform = process.platform } = {}) {
+export function findExecutable(command, { path = process.env.PATH ?? '', home = homedir(), platform = process.platform, defaults = [join(home, '.local/bin'), ...(platform === 'win32' ? [] : ['/usr/local/bin', '/opt/homebrew/bin'])], extra = [] } = {}) {
     const bin = validateBin(command);
     if (!bin)
         return undefined;

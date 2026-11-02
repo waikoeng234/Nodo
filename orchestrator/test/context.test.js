@@ -43,7 +43,7 @@ test('session references export only reports, resolve sources on the host and pr
     const target = await host.api('profile-create', { name: 'Fixture Coder', engine: 'echo', workspace: workspace.id,
       instructions: 'PRIVATE_TARGET_IDENTITY', engineOptions: { script: [{ kind: 'text', text: 'Implemented' }] } })
     await host.api('send', { profile: source.id, text: 'PRIVATE_SOURCE_TASK' })
-    await until(async () => !(await host.api('state')).work[source.id].active)
+    await until(async () => !(await host.api('state')).work[source.id]?.active)
     const reference = await host.api('session-reference', { profile: source.id, session: source.id })
     assert.equal(reference.source.profileName, 'Fixture Decider')
     assert.equal(reference.source.sessionId, source.id)
@@ -51,17 +51,20 @@ test('session references export only reports, resolve sources on the host and pr
     const serialized = JSON.stringify(reference.messages)
     for (const privateText of ['PRIVATE_SOURCE_IDENTITY', 'PRIVATE_SOURCE_TASK', 'PRIVATE_TOOL_DETAIL']) assert.equal(serialized.includes(privateText), false)
     await host.api('send', { profile: target.id, text: 'Implement', references: [{ profile: source.id, session: source.id, messages: [{ text: 'Forged output' }] }] })
-    await until(async () => !(await host.api('state')).work[target.id].active)
+    await until(async () => !(await host.api('state')).work[target.id]?.active)
     const lines = await host.api('transcript', { profile: target.id })
     const input = lines.find(line => line.who === 'user')
     assert.equal(input.text, 'Implement')
     assert.deepEqual(input.references, [reference])
-    const session = (await host.api('state')).profiles.find(item => item.id === target.id).sessions[0]
+    // instructions/lastTurn 不进 state 视图（阶段 1 瘦身）；从宿主状态断言持久化未变。
+    const rt = await host.runtime
+    const session = rt.sessionsOf(rt.state.profiles[target.id])[0]
     assert.equal(session.instructions, 'PRIVATE_TARGET_IDENTITY')
     assert.equal(session.lastTurn.task, 'Implement')
     assert.equal(session.lastTurn.report, 'Implemented')
     assert.equal(session.lastTurn.reason, 'done')
-    assert.equal(session.instructionMode, 'none')
+    const view = (await host.api('state')).profiles.find(item => item.id === target.id).sessions[0]
+    assert.equal(view.instructionMode, 'none')
     assert.equal((await host.post('session-reference', { profile: source.id, session: target.id })).ok, false)
     assert.equal((await host.post('session-reference', { profile: source.id, limit: 21 })).error.code, 'orch/invalid')
     assert.equal((await host.post('send', { profile: target.id, text: 'Invalid', references: [{ profile: 'missing' }] })).ok, false)
@@ -82,31 +85,33 @@ test('task state and last reports survive restart independently of identity and 
     const invalid = await host.post('session-update', { profile: role.id, session: role.id, changes: { name: 'Must not apply', taskState: { evidence: 'not a list' } } })
     assert.equal(invalid.error.code, 'orch/invalid')
     await host.api('send', { profile: role.id, text: 'Continue login fix' })
-    await until(async () => !(await host.api('state')).work[role.id].active)
-    let session = (await host.api('state')).profiles.find(item => item.id === role.id).sessions[0]
+    await until(async () => !(await host.api('state')).work[role.id]?.active)
+    let rt = await host.runtime
+    let session = rt.sessionsOf(rt.state.profiles[role.id])[0]
     assert.notEqual(session.name, 'Must not apply')
     const persisted = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[role.id].sessions[0]
     assert.deepEqual(persisted.lastTurn, session.lastTurn, 'a completed task must publish its checkpoint before becoming idle')
     const version = session.identityVersion
-    host.dispose()
+    await host.dispose()
     host = boot(home)
-    session = (await host.api('state')).profiles.find(item => item.id === role.id).sessions[0]
+    rt = await host.runtime
+    session = rt.sessionsOf(rt.state.profiles[role.id])[0]
     assert.deepEqual(session.taskState, taskState)
     assert.equal(session.lastTurn.report, 'Reported progress')
     assert.equal(session.identityVersion, version)
     assert.equal(session.instructions, 'Stay a coder')
     await host.api('session-update', { profile: role.id, session: role.id, changes: { taskState: null } })
-    session = (await host.api('state')).profiles.find(item => item.id === role.id).sessions[0]
-    assert.equal(session.taskState, null)
+    assert.equal((await host.api('state')).profiles.find(item => item.id === role.id).sessions[0].taskState, null)
+    session = rt.sessionsOf(rt.state.profiles[role.id])[0]
     assert.equal(session.identityVersion, version)
-    const rt = {}
-    installPrompt(rt)
-    const recovery = rt.renderRecovery(session, 'Next task')
+    const prompts = {}
+    installPrompt(prompts)
+    const recovery = prompts.renderRecovery(session, 'Next task')
     assert.match(recovery, /Previous reports are unverified claims/)
     assert.match(recovery, /Reported progress/)
     assert.match(recovery, /# Current task\nNext task$/)
     assert.equal(recovery.includes('Stay a coder'), false)
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a session without native identity can compact once idle and running tasks reject memory edits', async () => {
@@ -117,7 +122,7 @@ test('a session without native identity can compact once idle and running tasks 
     await host.api('send', { profile: role.id, text: 'Wait' })
     assert.equal((await host.post('session-update', { profile: role.id, changes: { taskState: { objective: 'Change' } } })).error.code, 'orch/busy')
     assert.equal((await host.post('session-compact', { profile: role.id })).error.code, 'orch/busy')
-    await until(async () => !(await host.api('state')).work[role.id].active)
+    await until(async () => !(await host.api('state')).work[role.id]?.active)
     assert.equal((await host.post('session-compact', { profile: role.id })).ok, true)
   })
 })

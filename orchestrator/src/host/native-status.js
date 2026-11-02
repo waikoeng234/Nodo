@@ -86,6 +86,7 @@ export function install(rt) {
     const entry = entryOf(session.id)
     entry.pending?.push(event)
     fold(entry.state, event)
+    rt.notifyLive?.()
     if (event.type === 'turn/end') for (const close of [...entry.requests.values()]) close()
   })
   // Observe the answerer chain without claiming or answering its requests.
@@ -95,9 +96,10 @@ export function install(rt) {
       if (!bound(id)) return next()
       const entry = entryOf(id)
       const token = Symbol(status)
-      const close = () => { entry.requests.delete(token); request.signal?.removeEventListener('abort', close) }
+      const close = () => { entry.requests.delete(token); request.signal?.removeEventListener('abort', close); rt.notifyLive?.() }
       close.status = status
       entry.requests.set(token, close)
+      rt.notifyLive?.()
       if (request.signal?.aborted) close()
       else request.signal?.addEventListener('abort', close, { once: true })
       try { return await next() }
@@ -109,6 +111,7 @@ export function install(rt) {
     if (!entry) return
     for (const close of [...entry.requests.values()]) close()
     if (entry.state.turn !== null) { entry.state.turn = null; entry.state.status = 'stopped' }
+    rt.notifyLive?.()
   })
 
   const refreshNativeStatus = async () => {
