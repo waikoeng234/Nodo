@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDriver } from '../agent-drivers/dist/index.js'
+import { probeModels } from './probe-models.mjs'
 
 const TASK = 'Create a file named nodo-plan-probe.txt in the current directory containing the word hello. Use your file writing tool now.'
 const FILE = 'nodo-plan-probe.txt'
@@ -31,12 +32,7 @@ async function probe(engine) {
     events.push(event)
     if (event.type === 'request/opened') driver?.respondToRequest(event.id, { decision: 'deny' }).catch(() => {})
   }
-  // zcode's account (subscription) provider is fail-closed to externally
-  // spawned app-servers, so the probe pins the personal custom provider.
-  // opencode keeps its own default; a privacy-gate refusal is reported as-is.
-  const pinned = { zcode: process.env.ZCODE_PROBE_MODEL ?? 'bigmodel-api$GLM-5.3-Flash' }
-  const model = pinned[engine]
-  driver = createDriver(engine, { cwd: workspace, ...(model ? { model } : {}), permission: 'plan', onEvent })
+  driver = createDriver(engine, { cwd: workspace, ...probeModels[engine], permission: 'plan', onEvent })
   try {
     await driver.sendTurn(TASK)
     await until(() => events.find(event => event.type === 'turn/end'), 300000)
