@@ -464,8 +464,11 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             // The autonomy tier rides the thread params: the sandbox bounds what the
             // engine may touch at all, `never` approval is what makes the top tier full.
             const extras = {
-                ...(leadMcpServers?.length ? { config: Object.fromEntries(leadMcpServers.map(({ name, command, args, env }) => [`mcp_servers.${name}`, {
-                            command, args, env: Object.fromEntries(env.map(({ name, value }) => [name, value])),
+                // The shared daemon keeps the environment it started with, so the HTTP
+                // token rides this thread's config instead of an env var.
+                ...(leadMcpServers?.length ? { config: Object.fromEntries(leadMcpServers.map(server => [`mcp_servers.${server.name}`, {
+                            ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
+                                : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
                             enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(tool => [tool, { approval_mode: 'approve' }])),
                         }])) } : {}),
                 ...(permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access', approvalPolicy: 'never' }

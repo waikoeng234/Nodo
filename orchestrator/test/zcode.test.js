@@ -7,6 +7,7 @@ import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEn
 import { findZcodeExecutable, launchZcode } from '../agent-drivers/dist/zcode/index.js'
 import { zcodeProviderEnv } from '../agent-drivers/dist/zcode/native.js'
 import { withHost, boot, until } from './helpers/host.js'
+import { install as installMcp } from '../src/host/mcp.js'
 
 const withFixture = async run => {
   const cwd = mkdtempSync(join(tmpdir(), 'orch-zcode-fixture-'))
@@ -178,31 +179,38 @@ test('host recreates a missing blank ZCode runtime without replacing its session
     const profile = await host.api('profile-create', { name: 'Blank ZCode role', instructions: 'BOUND_EMPTY_ROLE', engine: 'zcode', workspace: workspace.id, permission: 'plan', engineOptions: { bin } })
     const session = await host.api('session-create', { profile: profile.id, workspace: workspace.id })
     await until(() => JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).profiles[profile.id].sessions.find(item => item.id === session.id)?.driverSessionId)
-    host.dispose()
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       await reopened.api('send', { profile: profile.id, session: session.id, text: 'FIRST_REAL_TASK' })
-      await until(async () => !(await reopened.api('state')).work[session.id].active)
-      const saved = (await reopened.api('state')).profiles.find(item => item.id === profile.id).sessions.find(item => item.id === session.id)
+      await until(async () => !(await reopened.api('state')).work[session.id]?.active)
+      // instructions/lastTurn 不进 state 视图（阶段 1 瘦身）；从宿主状态断言。
+      const rt = await reopened.runtime
+      const saved = rt.sessionsOf(rt.state.profiles[profile.id]).find(item => item.id === session.id)
       assert.equal(saved.instructions, 'BOUND_EMPTY_ROLE')
       assert.equal(saved.identityVersion, session.identityVersion)
       assert.equal(saved.lastTurn.reason, 'done')
       assert.equal(saved.lastTurn.task, 'FIRST_REAL_TASK')
+      const view = (await reopened.api('state')).profiles.find(item => item.id === profile.id).sessions.find(item => item.id === session.id)
+      assert.equal(view.identityVersion, session.identityVersion)
       const requests = readFileSync(join(cwd, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
       assert.deepEqual(requests.map(entry => entry.method), ['session/create', 'session/resume', 'session/create'])
       assert.equal(requests[2].params.mode, 'plan')
-      assert.deepEqual(requests[2].params.mcpServers, requests[0].params.mcpServers)
-    } finally { reopened.dispose() }
+      const mount = ({ url, headers, ...server }) => server
+      assert.deepEqual(requests[2].params.mcpServers.map(mount), requests[0].params.mcpServers.map(mount))
+      assert.deepEqual(requests[2].params.mcpServers.map(mount), [{ name: 'nodo_role', type: 'http', isolation: 'session' }])
+    } finally { await reopened.dispose() }
     writeFileSync(join(cwd, 'zcode-empty'), '')
     const nonempty = boot(host.home)
     try {
       await nonempty.api('send', { profile: profile.id, session: session.id, text: 'SECOND_TASK' })
-      await until(async () => !(await nonempty.api('state')).work[session.id].active)
-      const saved = (await nonempty.api('state')).profiles.find(item => item.id === profile.id).sessions.find(item => item.id === session.id)
+      await until(async () => !(await nonempty.api('state')).work[session.id]?.active)
+      const rt2 = await nonempty.runtime
+      const saved = rt2.sessionsOf(rt2.state.profiles[profile.id]).find(item => item.id === session.id)
       assert.equal(saved.lastTurn.reason, 'error', 'a missing nonempty session must not become a new conversation')
       const requests = readFileSync(join(cwd, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
       assert.equal(requests.filter(entry => entry.method === 'session/create').length, 2)
-    } finally { nonempty.dispose() }
+    } finally { await nonempty.dispose() }
   }))
 })
 
@@ -212,13 +220,13 @@ test('host uses the discovered ZCode role tool schema from the first task throug
     const workspace = await host.api('workspace-create', { name: 'Role tool identity', cwd })
     const profile = await host.api('profile-create', { name: 'Role tool coder', instructions: 'ROLE_SCHEMA_ONLY', engine: 'zcode', workspace: workspace.id, engineOptions: { bin } })
     await host.api('send', { profile: profile.id, text: 'FIRST_TASK' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     await host.api('session-compact', { profile: profile.id })
-    host.dispose()
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       await reopened.api('send', { profile: profile.id, text: 'RESUMED_TASK' })
-      await until(async () => !(await reopened.api('state')).work[profile.id].active)
+      await until(async () => !(await reopened.api('state')).work[profile.id]?.active)
       const saved = (await reopened.api('state')).profiles.find(item => item.id === profile.id).sessions[0]
       assert.equal(saved.instructionMode, 'native')
       assert.equal(saved.instructionTarget, 'tool-schema')
@@ -227,9 +235,8 @@ test('host uses the discovered ZCode role tool schema from the first task throug
       assert.ok(tasks[1].content.endsWith('RESUMED_TASK'))
       assert.ok(tasks.every(item => !item.content.includes('ROLE_SCHEMA_ONLY')))
       const entries = readFileSync(join(cwd, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
-      const paths = entries.map(item => item.params.mcpServers[0].env.find(item => item.name === 'NODO_ROLE_FILE').value)
-      assert.equal(paths[0], paths[1], 'a resumed session reuses the shared complete identity version')
-    } finally { reopened.dispose() }
+      assert.deepEqual(entries.map(item => item.params.mcpServers.map(server => server.type)), [['http'], ['http']])
+    } finally { await reopened.dispose() }
   }))
 })
 
@@ -238,7 +245,7 @@ test('a ZCode role without native identity records the fallback reason in its tr
     const workspace = await host.api('workspace-create', { name: 'Fallback reason', cwd })
     const profile = await host.api('profile-create', { name: 'Fallback reason', instructions: 'ROLE', engine: 'zcode', workspace: workspace.id, engineOptions: { bin } })
     await host.api('send', { profile: profile.id, text: 'FIRST_TASK' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     const note = (await host.api('transcript', { profile: profile.id })).find(item => item.kind === 'note' && item.text.includes('不带角色身份'))
     assert.match(note.text, /版本未经验证/)
   }))
@@ -290,6 +297,24 @@ test('ZCode binds role MCP to create and resume, keeping message identity fallba
       assert.equal(JSON.stringify(server.env).includes(instructions), false)
       assert.equal(JSON.stringify(server.args).includes(instructions), false)
     }
+  })
+})
+
+test('ZCode mounts the role over the host HTTP endpoint and confirms its tool catalog', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const disposers = [], rt = { ctx: { effect(fn) { disposers.push(fn()) } }, warn() {} }
+    installMcp(rt)
+    const driver = createDriver('zcode', { bin, cwd, instructions: 'Bound coder identity', serveMcp: rt.serveMcp, env: { FIXTURE_VERSION: '0.16.9' } })
+    try {
+      await driver.openSession()
+      assert.equal(driver.instructionMode, 'native')
+      const [entry] = readFileSync(join(cwd, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+      const [server] = entry.params.mcpServers
+      assert.deepEqual(Object.keys(server).sort(), ['headers', 'isolation', 'name', 'type', 'url'])
+      assert.equal(server.type, 'http')
+      assert.equal(server.isolation, 'session')
+      assert.match(server.headers[0].value, /^Bearer [a-f0-9]{64}$/)
+    } finally { driver.dispose(); for (const fn of disposers) fn() }
   })
 })
 
@@ -557,7 +582,7 @@ test('ZCode permissions and questions round-trip through the host', async () => 
       assert.equal(card.kind, 'permission')
       assert.equal(card.tool, 'Bash')
       await host.api('approval-answer', { id: card.id, decision })
-      await until(async () => !(await host.api('state')).work[profile.id].active)
+      await until(async () => !(await host.api('state')).work[profile.id]?.active)
       const transcript = await host.api('transcript', { profile: profile.id })
       assert.ok(transcript.some(line => line.text === reply))
       assert.equal((await host.api('state')).approvals.length, 0)
@@ -570,7 +595,7 @@ test('ZCode permissions and questions round-trip through the host', async () => 
     assert.equal(bad.ok, false)
     assert.equal((await host.api('state')).approvals.length, 1, 'failed answer must keep the card open')
     await host.api('approval-answer', { id: question.id, decision: 'answer', value: 'blue' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.ok((await host.api('transcript', { profile: profile.id })).some(line => line.text === 'Answered blue'))
     await host.api('send', { profile: profile.id, text: 'ASK_MULTI' })
     const multi = await until(async () => (await host.api('state')).approvals[0])
@@ -579,20 +604,20 @@ test('ZCode permissions and questions round-trip through the host', async () => 
       { id: 'q1', question: 'Pick a size?', header: 'Size', options: [{ label: 'Big' }] },
     ])
     await host.api('approval-answer', { id: multi.id, decision: 'answer', value: JSON.stringify({ q0: 'Blue', q1: 'Big' }) })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     assert.ok((await host.api('transcript', { profile: profile.id })).some(line => line.text === 'Answered Blue/Big'))
     await host.api('send', { profile: profile.id, text: 'ASK_PERMISSION' })
     await until(async () => (await host.api('state')).approvals[0])
     await host.api('interrupt', { profile: profile.id })
     assert.equal((await host.api('state')).approvals.length, 0)
-    host.dispose()
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       assert.equal((await reopened.api('state')).profiles.find(item => item.id === profile.id).driverSessionId, 'fixture-zcode-session')
       await reopened.api('send', { profile: profile.id, text: 'AFTER_RESTART' })
-      await until(async () => !(await reopened.api('state')).work[profile.id].active)
+      await until(async () => !(await reopened.api('state')).work[profile.id]?.active)
       assert.ok(readFileSync(join(cwd, 'session-ledger'), 'utf8').includes('session/resume'))
-    } finally { reopened.dispose() }
+    } finally { await reopened.dispose() }
   })
   )
 })

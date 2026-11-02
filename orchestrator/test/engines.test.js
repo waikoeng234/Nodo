@@ -49,6 +49,21 @@ test('Codex lead mounts are thread scoped on start and resume in every permissio
   })
 })
 
+test('Codex mounts an HTTP lead with the token in this thread\'s config headers', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const leadMcpServers = [{ name: 'nodo_lead', url: 'http://127.0.0.1:4100/mcp', token: 'http-token' }]
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, leadMcpServers, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LEAD_TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.deepEqual(thread.params.config, { 'mcp_servers.nodo_lead': { url: 'http://127.0.0.1:4100/mcp', http_headers: { Authorization: 'Bearer http-token' },
+      enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])) } })
+  })
+})
+
 test('Codex refuses unsupported thread config without dropping the lead mount', async () => {
   for (const driverSessionId of [undefined, 'fixture-thread']) await withFixture(async ({ bin, cwd }) => {
     const driver = createDriver('codex', { bin, cwd, driverSessionId, instructions: 'Lead rules',
@@ -62,7 +77,7 @@ test('Codex refuses unsupported thread config without dropping the lead mount', 
   })
 })
 
-test('Nodo Codex leads receive only token file paths and workers receive no thread config', async () => {
+test('Nodo Codex leads mount the host MCP endpoint and workers receive no thread config', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const host = boot(join(cwd, 'plugin'))
     try {
@@ -72,21 +87,21 @@ test('Nodo Codex leads receive only token file paths and workers receive no thre
       const tokens = []
       for (const role of [lead, worker]) {
         await host.api('send', { profile: role.id, text: 'TASK' })
-        await until(async () => !(await host.api('state')).work[role.id].active)
+        await until(async () => !(await host.api('state')).work[role.id]?.active)
         const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
         const thread = requests.filter(item => item.method === 'thread/start').at(-1)
         if (role.lead) {
-          const env = thread.params.config['mcp_servers.nodo_lead'].env
-          assert.equal(env.NODO_LEAD_TOKEN, undefined)
-          tokens.push(readFileSync(env.NODO_LEAD_TOKEN_FILE, 'utf8'))
+          const mount = thread.params.config['mcp_servers.nodo_lead']
+          assert.match(mount.url, /^http:\/\/127\.0\.0\.1:\d+\/mcp$/)
+          assert.equal(mount.env, undefined)
+          tokens.push(mount.http_headers.Authorization.slice('Bearer '.length))
         } else assert.equal(Object.hasOwn(thread.params, 'config'), false)
       }
-      const raw = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8')
       for (const token of tokens) {
-        assert.equal(raw.includes(token), false)
+        assert.match(token, /^[a-f0-9]{64}$/)
         assert.equal(JSON.stringify(await host.api('transcript', { profile: lead.id })).includes(token), false)
       }
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -98,7 +113,7 @@ test('Codex source messages and interleaved results survive the host transcript 
       const workspace = await host.api('workspace-create', { name: 'Timeline', cwd })
       const role = await host.api('profile-create', { name: 'Timeline', engine: 'codex', workspace: workspace.id, engineOptions: { bin } })
       await host.api('send', { profile: role.id, text: 'TIMELINE' })
-      await until(async () => !(await host.api('state')).work[role.id].active)
+      await until(async () => !(await host.api('state')).work[role.id]?.active)
       const project = lines => lines.filter(line => line.who === 'agent' && ['text', 'thinking', 'tool'].includes(line.kind))
         .map(line => [line.kind, line.messageId ?? line.callId, line.channel ?? line.phase, line.text ?? line.output ?? line.input])
       const before = await host.api('transcript', { profile: role.id })
@@ -109,11 +124,11 @@ test('Codex source messages and interleaved results survive the host transcript 
       ]
       assert.deepEqual(project(before), expected)
       assert.equal(before.filter(line => line.reply).length, 1)
-      assert.equal((await host.api('state')).profiles[0].sessions[0].lastTurn.report, 'Final answer')
-      host.dispose()
+      assert.equal((await (await host.runtime)).sessionsOf((await host.runtime).state.profiles[role.id])[0].lastTurn.report, 'Final answer')
+      await host.dispose()
       host = boot(folder)
       assert.deepEqual(project(await host.api('transcript', { profile: role.id })), expected)
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -151,13 +166,13 @@ test('Codex installs identity on start and resume while every task stays free of
         try { return readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').includes('"method":"turn/start"') } catch { return false }
       })
       assert.equal((await host.api('send', { profile: role.id, text: 'change focus' })).mode, 'steered')
-      await until(async () => !(await host.api('state')).work[role.id].active)
+      await until(async () => !(await host.api('state')).work[role.id]?.active)
       await host.api('send', { profile: role.id, text: 'SECOND' })
-      await until(async () => !(await host.api('state')).work[role.id].active)
-      host.dispose()
+      await until(async () => !(await host.api('state')).work[role.id]?.active)
+      await host.dispose()
       host = boot(join(cwd, 'plugin'))
       await host.api('send', { profile: role.id, text: 'RESTORED' })
-      await until(async () => !(await host.api('state')).work[role.id].active)
+      await until(async () => !(await host.api('state')).work[role.id]?.active)
       const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
       const start = requests.find(item => item.method === 'thread/start')
       const resume = requests.find(item => item.method === 'thread/resume')
@@ -174,7 +189,7 @@ test('Codex installs identity on start and resume while every task stays free of
       assert.match(turns[2].params.input[0].text, /# Current task\nRESTORED$/)
       assert.ok(turns.every(item => !item.params.input[0].text.includes('TAIL_NATIVE_RULE')))
       assert.deepEqual((await host.api('transcript', { profile: role.id })).filter(item => item.who === 'user').map(item => item.text), ['WAIT', 'change focus', 'SECOND', 'RESTORED'])
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -333,14 +348,14 @@ test('host compaction selects the requested conversation, queues tasks and resto
       const second = await host.api('session-create', { profile: role.id, workspace: secondWorkspace.id, lazy: true })
       for (const session of [first, second]) {
         await host.api('send', { profile: role.id, session: session.id, text: 'FIRST' })
-        await until(async () => !(await host.api('state')).work[session.id].active)
+        await until(async () => !(await host.api('state')).work[session.id]?.active)
       }
       await host.api('session-update', { profile: role.id, session: second.id, changes: { taskState: { objective: 'Continue the fix', evidence: ['test/login.test.js'] } } })
       const compaction = host.api('session-compact', { profile: role.id, session: second.id })
       assert.equal((await host.api('send', { profile: role.id, session: second.id, text: 'SECOND' })).mode, 'queued')
       await compaction
-      assert.equal((await host.api('state')).work[second.id].active, true)
-      await until(async () => !(await host.api('state')).work[second.id].active)
+      assert.equal((await host.api('state')).work[second.id]?.active, true)
+      await until(async () => !(await host.api('state')).work[second.id]?.active)
       const requestsAt = dir => readFileSync(join(dir, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
       assert.equal(requestsAt(cwd).some(item => item.method === 'thread/compact/start'), false)
       const requests = requestsAt(join(cwd, 'second'))
@@ -351,7 +366,7 @@ test('host compaction selects the requested conversation, queues tasks and resto
       assert.match(restored, /test\/login.test.js/)
       assert.match(restored, /# Current task\nSECOND$/)
       assert.equal(restored.includes('COMPACT_IDENTITY'), false)
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -381,7 +396,7 @@ test('configuration validates combined values atomically and survives a host res
     const saved = await host.api('profile-update', { id: coder.id, changes: { model: 'test-model', instructions: 'Test instructions', engineOptions: { bin: '/missing/codex' } } })
     assert.equal(saved.model, 'test-model')
     assert.equal(saved.instructions, 'Test instructions')
-    host.dispose()
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       const value = (await reopened.api('state')).profiles.find(item => item.id === coder.id)
@@ -389,7 +404,7 @@ test('configuration validates combined values atomically and survives a host res
       assert.equal(value.workspaceId, workspace.id)
       assert.equal(value.cwd, host.home)
       assert.equal(value.instructions, 'Test instructions')
-    } finally { reopened.dispose() }
+    } finally { await reopened.dispose() }
   })
 })
 
@@ -402,7 +417,7 @@ test('editing a busy profile is refused without interrupting its task', async ()
     assert.equal(result.error.code, 'orch/busy')
     assert.equal((await api('state')).profiles.find(item => item.id === profile.id).name, 'Busy')
     assert.equal((await post('profile-delete', { id: profile.id })).error.code, 'orch/busy')
-    assert.equal((await api('state')).work[profile.id].active, true)
+    assert.equal((await api('state')).work[profile.id]?.active, true)
   })
 })
 
@@ -428,11 +443,11 @@ test('engine defaults persist, validate atomically, and leave existing role conf
     assert.equal((await host.post('profile-update', { id: other.id, changes: { engine: 'codex' } })).error.code, 'orch/invalid',
       'engine defaults reach a role only at creation; the engine is fixed afterwards')
     assert.equal((await host.api('state')).profiles.find(item => item.id === other.id).engine, 'echo')
-    host.dispose()
+    await host.dispose()
     const reopened = boot(host.home)
     try {
       assert.deepEqual((await reopened.api('state')).prefs.engineConfigs.codex, { model: 'new-model', engineOptions: { bin: '/new/codex' } })
-    } finally { reopened.dispose() }
+    } finally { await reopened.dispose() }
   })
 })
 
@@ -633,7 +648,7 @@ test('session activity timestamps and role deletion cover every conversation', a
     assert.deepEqual(profile.sessions, [], 'a fresh role shows no session until one is created')
     const session = await api('session-create', { profile: profile.id })
     await api('send', { profile: profile.id, session: session.id, text: 'timestamp' })
-    await until(async () => !(await api('state')).work[session.id].active)
+    await until(async () => !(await api('state')).work[session.id]?.active)
     const lines = await api('transcript', { profile: profile.id, session: session.id })
     const value = (await api('state')).profiles.find(item => item.id === profile.id)
     assert.equal(value.sessions.find(item => item.id === session.id).updatedAt, lines.at(-1).at)
@@ -644,7 +659,7 @@ test('session activity timestamps and role deletion cover every conversation', a
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.ok(saved.profiles[profile.id].deletedAt)
     assert.equal(saved.profiles[profile.id].activeSessionId, undefined)
-    assert.deepEqual(JSON.parse(readFileSync(join(home, 'transcripts', `${session.id}.json`), 'utf8')).slice(0, lines.length), lines)
+    assert.deepEqual(readFileSync(join(home, 'transcripts', `${session.id}.jsonl`), 'utf8').trim().split('\n').map(JSON.parse).slice(0, lines.length), lines)
     assert.ok(saved.profiles[profile.id].sessions.every(item => item.archivedAt))
   })
 })
@@ -743,10 +758,10 @@ for (const format of [undefined, 3]) test(`a catalog cached with format ${format
       const listed = (await host.api('engine-catalog')).find(item => item.id === 'codex')
       assert.deepEqual(listed.catalog.models.map(model => model.id), ['fixture-model', 'other-model'], 'the fresh scan is served')
       assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).engineCatalogs.codex.format, scanned.format, 'the format is what the file keeps')
-      host.dispose()
+      await host.dispose()
       host = boot(home)
       assert.deepEqual((await host.api('engine-catalog')).find(item => item.id === 'codex').catalog, scanned, 'a current catalog survives restart')
-    } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+    } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
   })
 })
 
@@ -781,7 +796,7 @@ test('legacy default thinking choices follow the engine after loading and saving
       const draft = await host.api('session-create', { profile: profile.id, workspace: 'workspace', lazy: true })
       assert.equal(draft.thinking, undefined, 'new sessions do not inherit the legacy marker')
       await host.api('send', { profile: profile.id, session: 'default', text: 'EFFORT' })
-      await until(async () => !(await host.api('state')).work.default.active)
+      await until(async () => (await host.api('state')).work.default?.active !== true)
       const transcript = await host.api('transcript', { profile: profile.id, session: 'default' })
       assert.equal(transcript[0].text, 'Previous task')
       assert.ok(transcript.some(line => line.text === 'Effort none'), 'the driver receives no explicit effort')
@@ -790,10 +805,10 @@ test('legacy default thinking choices follow the engine after loading and saving
       assert.equal(saved.profiles.role.thinking, undefined)
       assert.equal(saved.profiles.role.sessions.find(item => item.id === 'default').thinking, undefined)
       assert.equal(saved.profiles.implicit.thinking, undefined)
-      host.dispose()
+      await host.dispose()
       host = boot(home)
       assert.equal((await host.api('state')).profiles.find(item => item.id === 'role').sessions.find(item => item.id === 'high').thinking, 'high')
-    } finally { host.dispose() }
+    } finally { await host.dispose() }
   })
 })
 
@@ -939,7 +954,7 @@ test('Codex approvals and multi-question answers round-trip through the host', a
     const card = await until(async () => (await api('state')).approvals[0])
     assert.equal(card.kind, 'permission')
     await api('approval-answer', { id: card.id, decision: 'allow' })
-    await until(async () => !(await api('state')).work[profile.id].active)
+    await until(async () => !(await api('state')).work[profile.id]?.active)
     assert.ok((await api('transcript', { profile: profile.id })).some(line => line.text === 'Approved'))
     await api('send', { profile: profile.id, text: 'ASK_QUESTIONS' })
     const question = await until(async () => (await api('state')).approvals[0])
@@ -947,7 +962,7 @@ test('Codex approvals and multi-question answers round-trip through the host', a
     assert.equal(bad.ok, false)
     assert.equal((await api('state')).approvals.length, 1, 'failed answer must keep the card open')
     await api('approval-answer', { id: question.id, decision: 'answer', value: JSON.stringify({ q1: 'one', q2: 'two' }) })
-    await until(async () => !(await api('state')).work[profile.id].active)
+    await until(async () => !(await api('state')).work[profile.id]?.active)
     assert.ok((await api('transcript', { profile: profile.id })).some(line => line.text === 'Answered q1,q2'))
     assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).profiles[profile.id].driverSessionId, 'fixture-thread')
   }))

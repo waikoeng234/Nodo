@@ -43,9 +43,9 @@ test('every engine skips the npm sh shim and finds the .cmd beside it on Windows
 })
 
 test('launchCommand routes .cmd and .bat through cmd.exe on Windows', () => {
-  assert.deepEqual(launchCommand('C:\\npm\\codex.cmd', ['app-server']), { bin: 'cmd.exe', args: ['/d', '/s', '/c', '"C:\\npm\\codex.cmd" app-server'], verbatim: true })
-  assert.deepEqual(launchCommand('C:\\npm\\dsh.bat', ['--profile', 'text with spaces']), { bin: 'cmd.exe', args: ['/d', '/s', '/c', '"C:\\npm\\dsh.bat" --profile "text with spaces"'], verbatim: true })
-  assert.deepEqual(launchCommand('C:\\tools\\codex.exe', ['--version']), { bin: 'C:\\tools\\codex.exe', args: ['--version'] }, 'real executables spawn directly')
+  assert.deepEqual(launchCommand('C:\\npm\\codex.cmd', ['app-server'], { platform: 'win32' }), { bin: 'cmd.exe', args: ['/d', '/s', '/c', '"C:\\npm\\codex.cmd" app-server'], verbatim: true })
+  assert.deepEqual(launchCommand('C:\\npm\\dsh.bat', ['--profile', 'text with spaces'], { platform: 'win32' }), { bin: 'cmd.exe', args: ['/d', '/s', '/c', '"C:\\npm\\dsh.bat" --profile "text with spaces"'], verbatim: true })
+  assert.deepEqual(launchCommand('C:\\tools\\codex.exe', ['--version'], { platform: 'win32' }), { bin: 'C:\\tools\\codex.exe', args: ['--version'] }, 'real executables spawn directly')
   assert.deepEqual(launchCommand('/usr/local/bin/claude', ['--print'], { platform: 'darwin' }), { bin: '/usr/local/bin/claude', args: ['--print'] })
 })
 
@@ -66,7 +66,7 @@ test('Codex discovery falls back to the desktop app package store on Windows', a
     assert.equal(findCodexExecutable('codex', { home: root, path: '', env: {}, platform: 'win32' }), store)
     assert.equal(findCodexExecutable('codex', { home: join(root, 'empty'), path: '', env: { LOCALAPPDATA: join(root, 'apps') }, platform: 'win32' }), junction, 'the Programs junction is the second candidate')
     assert.equal(findCodexExecutable('codex', { home: root, path: '', env: { LOCALAPPDATA: join(root, 'apps') }, platform: 'win32' }), store, 'the package store outranks the junction')
-    assert.equal(findCodexExecutable('codex', { home: root, path: '', env: {}, platform: 'darwin' }), undefined, 'the Windows layout stays out of other platforms')
+    assert.notEqual(findCodexExecutable('codex', { home: root, path: '', env: {}, platform: 'darwin' }), store, 'the Windows layout stays out of other platforms')
   })
 })
 

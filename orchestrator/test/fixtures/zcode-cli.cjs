@@ -223,9 +223,18 @@ createInterface({ input: process.stdin }).on('line', line => {
     return
   }
   const { id, method, params = {} } = message
+  const listHttpTools = async ({ url, headers }) => {
+    const base = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...Object.fromEntries(headers.map(item => [item.name, item.value])) }
+    const post = async (body, extra = {}) => { const response = await fetch(url, { method: 'POST', headers: { ...base, ...extra }, body: JSON.stringify(body) }); await response.text(); return response }
+    const init = await post({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'zcode-fixture', version: '1' } } })
+    const session = { 'mcp-session-id': init.headers.get('mcp-session-id') }
+    await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, session)
+    await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, session)
+  }
   if (['session/create', 'session/resume'].includes(method) && params.mcpServers) {
     appendFileSync(join(process.cwd(), 'zcode-mcp-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
     if (!process.env.FIXTURE_SKIP_ROLE_CATALOG) for (const spec of params.mcpServers) {
+      if (spec.type === 'http') { void listHttpTools(spec); continue }
       const env = Object.fromEntries(spec.env.map(item => [item.name, item.value]))
       if (env.NODO_ROLE_READY_FILE) writeFileSync(env.NODO_ROLE_READY_FILE, JSON.stringify({ version: createHash('sha256').update(readFileSync(env.NODO_ROLE_FILE)).digest('hex') }))
     }

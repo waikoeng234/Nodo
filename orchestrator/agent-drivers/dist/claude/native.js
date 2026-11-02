@@ -7,14 +7,17 @@ import { LEAD_TOOLS } from '../lead-mcp.js';
 // replayed user frames (they carry tool results), and prompts routed to us over
 // the control channel (--permission-prompt-tool=stdio is the value the Agent SDK
 // itself passes; the space-separated spelling does not arm the dispatcher).
-// The CLI environment passes socket and token file paths to the MCP child.
-// The token value stays out of the environment, argv and config JSON.
+// The CLI environment passes socket and token file paths to the MCP child, or
+// the HTTP token that the config's header expands; the token value stays out
+// of argv and config JSON.
 export function leadMcpEnv(servers) {
-    return Object.fromEntries((servers ?? []).flatMap(({ env }) => env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])));
+    return Object.fromEntries((servers ?? []).flatMap(server => 'url' in server ? [['NODO_LEAD_TOKEN', server.token]]
+        : server.env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])));
 }
-const leadMcpConfig = (servers) => JSON.stringify({ mcpServers: Object.fromEntries(servers.map(({ name, command, args, env }) => [name, {
-            command, args, env: Object.fromEntries(env.filter(({ name }) => !name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])),
-        }])) });
+const leadMcpConfig = (servers) => JSON.stringify({ mcpServers: Object.fromEntries(servers.map(server => [server.name, 'url' in server
+            ? { type: 'http', url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
+            : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])) },
+    ])) });
 export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers } = {}) {
     const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => LEAD_TOOLS.map(tool => `mcp__${name}__${tool}`)) : [];
     return [

@@ -3,10 +3,10 @@
 // side writes user frames, control_requests and control_responses.
 import { connectStreamJson } from '../stream-json.js'
 import type { PermissionMode } from '../spi.js'
-import type { RoleMcpServer } from '../role-mcp.js'
+import type { McpMount } from '../role-mcp.js'
 import { LEAD_TOOLS } from '../lead-mcp.js'
 
-export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; leadMcpServers?: RoleMcpServer[] }
+export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; leadMcpServers?: McpMount[] }
 export type ClaudeConnectOptions<Frame = unknown, Request = unknown> = Omit<import('../stream-json.js').StreamJsonOptions<Frame, Request>, 'name'>
 export type ClaudeConnection = import('../stream-json.js').StreamJsonConnection
 
@@ -15,15 +15,18 @@ export type ClaudeConnection = import('../stream-json.js').StreamJsonConnection
 // the control channel (--permission-prompt-tool=stdio is the value the Agent SDK
 // itself passes; the space-separated spelling does not arm the dispatcher).
 
-// The CLI environment passes socket and token file paths to the MCP child.
-// The token value stays out of the environment, argv and config JSON.
-export function leadMcpEnv(servers?: RoleMcpServer[]) {
-  return Object.fromEntries((servers ?? []).flatMap(({ env }) => env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])))
+// The CLI environment passes socket and token file paths to the MCP child, or
+// the HTTP token that the config's header expands; the token value stays out
+// of argv and config JSON.
+export function leadMcpEnv(servers?: McpMount[]) {
+  return Object.fromEntries((servers ?? []).flatMap(server => 'url' in server ? [['NODO_LEAD_TOKEN', server.token]]
+    : server.env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])))
 }
 
-const leadMcpConfig = (servers: RoleMcpServer[]) => JSON.stringify({ mcpServers: Object.fromEntries(servers.map(({ name, command, args, env }) => [name, {
-  command, args, env: Object.fromEntries(env.filter(({ name }) => !name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])),
-}])) })
+const leadMcpConfig = (servers: McpMount[]) => JSON.stringify({ mcpServers: Object.fromEntries(servers.map(server => [server.name, 'url' in server
+  ? { type: 'http', url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
+  : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])) },
+])) })
 
 export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers }: ClaudeArgsOptions = {}) {
   const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => LEAD_TOOLS.map(tool => `mcp__${name}__${tool}`)) : []
