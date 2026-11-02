@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-nodo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Nodo: dispatch tasks 1:1 to local coding CLIs through extensible agent-drivers; artifacts are the handoff medium",
   "keywords": [
     "dsh-plugin",
