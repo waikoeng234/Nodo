@@ -59,7 +59,7 @@ export function install(rt) {
     await mkdir(cwd, { recursive: true })
     session.cwd = await realpath(cwd)
     session.workspaceRef ??= workspace?.id
-    await rt.save()
+    await rt.saveRuntime()
     return { ...profile, ...session, model: session.model, thinking: session.thinking, driverSessionId: session.driverSessionId, workspaceId: session.workspaceId, workspaceName: workspace?.name, name: session.profileName, sessionName: session.name, profileId: profile.id, workspaceKey: `${session.engine}:${session.cwd}` }
   }
   // A new conversation starts from the role card's model, thinking and permission.
@@ -114,7 +114,6 @@ export function install(rt) {
     snapshotIdentity(profile, session)
     profile.sessions.push(session)
     if (activate) profile.activeSessionId = session.id
-    rt.transcriptOf(session.id)
     await rt.save()
     if (!lazy) {
       const driver = await rt.ensureDriver(await prepareConversation(session.id))
@@ -212,8 +211,8 @@ export function install(rt) {
   }
   // Native sends never cross dispatch, so the first user/message event on the
   // host session names the plugin record here, and its native twin follows.
-  // Every send stamps the rail's session time and saves: the state revision is
-  // what makes the client's next poll re-sort the list.
+  // Every send stamps the rail's session time and saves: the structure version
+  // is what makes the client's next poll re-sort the list.
   const messageText = data => {
     const content = data?.content
     return typeof content === 'string' ? content
@@ -238,11 +237,12 @@ export function install(rt) {
     const found = conversationOf(id)
     if (!found) return
     const { profile, session } = conversation(found.profile.id, id)
+    if ((!event.sessionId || event.sessionId === session.driverSessionId) && (!event.workspaceId || event.workspaceId === session.workspaceId)) return
     if (event.sessionId) session.driverSessionId = event.sessionId
     if (event.workspaceId) session.workspaceId = event.workspaceId
     // Keep the legacy first-session pointer available to existing clients.
     if (session.id === profile.id && event.sessionId) profile.driverSessionId = event.sessionId
-    await rt.save()
+    await (session.engine === 'dsh' ? rt.save() : rt.saveRuntime())
   }
   Object.assign(rt, { snapshotIdentity, sessionsOf, sessionWorkspace, archiveDeletedSession, assertSessionWritable, conversationOf, conversation, prepareConversation, createSession, selectSession, openNativeSession, archiveSession, updateSession, turnTitle, titleSessionFromNative, saveSessionEvent })
 }

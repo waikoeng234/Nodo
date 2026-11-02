@@ -218,25 +218,25 @@ test('legacy API retains structured detail across archive, restart and role dele
     const workspace = await host.api('workspace-create', { name: 'Fixture', cwd: host.home })
     const profile = await host.api('profile-create', { name: 'Fixture', engine: 'stream-fixture', workspace: workspace.id })
     await host.api('send', { profile: profile.id, text: 'run' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     const lines = await host.api('transcript', { profile: profile.id })
     const ref = lines.find(line => line.phase === 'end').presentation.details.ref
     const session = (await host.api('state')).profiles.find(p => p.id === profile.id).activeSessionId
     assert.equal((await host.api('stream-detail', { profile: profile.id, session, ref })).body.outputText, 'retained output')
     await host.api('send', { profile: profile.id, session, text: 'UNCONFIRMED' })
-    await until(async () => !(await host.api('state')).work[session].active)
+    await until(async () => !(await host.api('state')).work[session]?.active)
     const partial = (await host.api('transcript', { profile: profile.id, session })).findLast(line => line.phase === 'end')
     assert.equal(partial.presentation.status, 'unknown')
     assert.equal(partial.presentation.capture, 'partial')
     assert.equal(partial.presentation.details.state, 'stored')
     await host.api('session-archive', { profile: profile.id, session, archived: true })
-    host.dispose()
+    await host.dispose()
     const restored = boot(host.home)
     try {
       assert.equal((await restored.api('stream-detail', { profile: profile.id, session, ref })).body.outputText, 'retained output')
       await restored.api('profile-delete', { id: profile.id })
       assert.equal((await restored.api('stream-detail', { profile: profile.id, session, ref })).body.outputText, 'retained output')
-    } finally { restored.dispose() }
+    } finally { await restored.dispose() }
   })
 })
 
@@ -304,9 +304,9 @@ test('legacy host shows tool updates before the tool ends and keeps the final li
     })
     const live = (await host.api('transcript', { profile: profile.id })).find(item => item.callId === 'live' && item.phase === 'start')
     assert.deepEqual(live.progress, { elapsedMs: 1200 })
-    assert.equal((await host.api('state')).work[profile.id].active, true, 'the tool is still running while its output is visible')
+    assert.equal((await host.api('state')).work[profile.id]?.active, true, 'the tool is still running while its output is visible')
     gate.resolve()
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     const lines = await host.api('transcript', { profile: profile.id })
     assert.equal(lines.find(item => item.callId === 'live' && item.phase === 'end').output, 'final output')
   })
@@ -507,7 +507,7 @@ test('legacy transcript, saved detail and attachment route expose a confirmed to
     const workspace = await host.api('workspace-create', { name: 'Media', cwd: host.home })
     const profile = await host.api('profile-create', { name: 'Media', engine: 'media-fixture', workspace: workspace.id })
     await host.api('send', { profile: profile.id, text: 'show' })
-    await until(async () => !(await host.api('state')).work[profile.id].active)
+    await until(async () => !(await host.api('state')).work[profile.id]?.active)
     const lines = await host.api('transcript', { profile: profile.id })
     const end = lines.find(line => line.kind === 'tool' && line.phase === 'end')
     assert.equal(end.output, '图片如下')
@@ -521,7 +521,7 @@ test('legacy transcript, saved detail and attachment route expose a confirmed to
     assert.equal(detail.body.resources[0].ref.id, ref.id)
     assert.doesNotMatch(JSON.stringify(detail), /iVBORw0KGgo/)
     assert.doesNotMatch(await readFile(join(host.home, 'state.json'), 'utf8'), /iVBORw0KGgo/)
-    host.dispose()
+    await host.dispose()
     const restored = boot(host.home)
     try {
       const replayed = await restored.api('transcript', { profile: profile.id })
@@ -529,7 +529,7 @@ test('legacy transcript, saved detail and attachment route expose a confirmed to
       assert.equal(again.presentation.body.resources[0].ref.id, ref.id)
       assert.deepEqual(await restored.api('attachment', { id: ref.id, mediaType: ref.mediaType }), { mediaType: 'image/png', data: PNG })
       assert.equal((await restored.api('stream-detail', { profile: profile.id, session, ref: again.presentation.details.ref })).body.outputText, '图片如下')
-    } finally { restored.dispose() }
+    } finally { await restored.dispose() }
   }, { attachments: { validateImage: async () => {} } })
 })
 

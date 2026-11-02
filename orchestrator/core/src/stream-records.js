@@ -304,7 +304,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
         await atomicWrite(file, JSON.stringify(record), 0o600)
         index()[ref] = { ref, profileId: found.profile.id, conversationId, runId: record.runId, entityId: record.entityId,
           revision: record.revision, bytes: size, hash, sourceHash }
-        try { await rt.save() } catch (error) { delete index()[ref]; throw error }
+        try { await rt.save(true) } catch (error) { delete index()[ref]; throw error }
         return previewRecord(record, { state: record.reason === 'source-limit' ? 'truncated' : 'stored', ref })
       } catch {
         await unlink(file).catch(() => {})

@@ -4,7 +4,7 @@
 // `timing` where the engine's host already times turns); the rest is measured
 // here from the event stream and the host clock, because no engine protocol
 // reports a first-token latency. One JSON-plain record per session id, kept in
-// state.json next to the transcripts so the figures survive a restart.
+// activity.json next to the transcript index so the figures survive a restart.
 const FIELDS = Object.freeze([
   'turns', 'steps',
   'llmMs', 'toolMs', 'ttftMs', 'ttftSteps', 'decodeMs', 'decodeTokens',
@@ -100,7 +100,7 @@ export function install(rt) {
       // The context figures are the newest request's, so they replace the old ones.
       for (const key of ['contextUsed', 'contextSize']) if (isNumber(usage[key])) record[key] = usage[key]
     }
-    void rt.save().catch(() => {})
+    void rt.save(true).catch(() => {})
   }
 
   /** What the client polls: one small record per session that has run a turn. */

@@ -25,8 +25,9 @@ for (const version of [1, 2]) test(`startup removes retired data from v${version
     assert.equal(Object.hasOwn(saved, 'workflows'), false)
     assert.equal(saved.version, 3)
     assert.equal(Object.hasOwn(saved, 'transcripts'), false)
-    assert.deepEqual(saved.transcriptIndex, { session: { lines: 1, at: 0 } })
-    assert.deepEqual(JSON.parse(readFileSync(join(home, 'transcripts', 'session.json'), 'utf8')), state.transcripts.session)
+    assert.equal(Object.hasOwn(saved, 'transcriptIndex'), false)
+    assert.deepEqual(JSON.parse(readFileSync(join(home, 'activity.json'), 'utf8')).transcriptIndex, { session: { lines: 1, at: 0 } })
+    assert.deepEqual(readFileSync(join(home, 'transcripts', 'session.jsonl'), 'utf8').trim().split('\n').map(JSON.parse), state.transcripts.session)
     assert.deepEqual(rt.transcriptOf('session'), state.transcripts.session)
     assert.deepEqual(JSON.parse(readFileSync(join(home, `state.v${version}.json`), 'utf8')), state)
     assert.deepEqual(saved.workspaces, state.workspaces)
@@ -40,11 +41,11 @@ for (const version of [1, 2]) test(`startup removes retired data from v${version
     for (const endpoint of ['workflow-create', 'workflow-update', 'workflow-delete', 'workflow-run', 'run-list', 'run-get', 'run-cancel', 'run-reconcile']) {
       assert.equal((await host.post(endpoint, {})).error.code, 'orch/not-found', endpoint)
     }
-    host.dispose()
+    await host.dispose()
     host = boot(home)
     await host.runtime
     assert.deepEqual(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')), saved, 'restart does not write again')
-  } finally { host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a reader leaves retired data on disk until it takes the state lock', async () => {
@@ -53,7 +54,7 @@ test('a reader leaves retired data on disk until it takes the state lock', async
     await writer.save()
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     saved.workflows = { old: {} }
-    dispose()
+    await dispose()
     writeFileSync(join(home, 'state.json'), JSON.stringify(saved))
     writeFileSync(join(home, 'state.lock'), JSON.stringify({ host: 'fixture-other-host', token: 'fixture' }))
     mkdirSync(join(home, 'runs'))
@@ -70,7 +71,7 @@ test('a reader leaves retired data on disk until it takes the state lock', async
       assert.equal(rt.readOnly(), undefined)
       assert.equal(existsSync(join(home, 'runs')), false)
       assert.equal(Object.hasOwn(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')), 'workflows'), false)
-    } finally { reader.dispose() }
+    } finally { await reader.dispose() }
   })
 })
 
@@ -104,7 +105,7 @@ test('saves made before a write starts share it, and a change during a write lan
   })
 })
 
-test('transcripts are saved in their own files and only appended ones stay loaded', async () => {
+test('transcripts migrate to JSONL, preserve broken files and release persisted rows', async () => {
   await withHost(async ({ runtime, home }) => {
     const rt = await runtime
     const folder = join(home, 'transcripts')
@@ -114,16 +115,18 @@ test('transcripts are saved in their own files and only appended ones stay loade
     const line = rt.appendLine('kept', { who: 'user', text: 'hello' })
     assert.deepEqual(rt.transcriptOf('read'), [{ who: 'user', text: 'old', at: 5 }])
     assert.deepEqual(rt.transcriptOf('broken'), [])
-    assert.equal(existsSync(join(folder, 'broken.json')), false, 'an unreadable transcript is moved aside')
+    assert.equal(readFileSync(join(folder, 'broken.json'), 'utf8'), 'not json', 'an unreadable legacy transcript stays unchanged')
     await rt.save()
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.equal(Object.hasOwn(saved, 'transcripts'), false)
-    assert.deepEqual(saved.transcriptIndex.kept, { lines: 1, at: line.at })
-    assert.deepEqual(JSON.parse(readFileSync(join(folder, 'kept.json'), 'utf8')), [line])
-    assert.deepEqual(Object.keys(rt.state.transcripts), ['kept'])
+    assert.equal(Object.hasOwn(saved, 'transcriptIndex'), false)
+    assert.deepEqual(JSON.parse(readFileSync(join(home, 'activity.json'), 'utf8')).transcriptIndex.kept, { lines: 1, at: line.at })
+    assert.deepEqual(readFileSync(join(folder, 'kept.jsonl'), 'utf8').trim().split('\n').map(JSON.parse), [line])
+    assert.ok(Object.values(rt.state.transcripts).every(lines => lines.length === 0))
     assert.deepEqual(rt.transcriptInfo('read'), { lines: 1, at: 5 })
-    line.text = 'changed after append'
+    assert.equal(existsSync(join(folder, 'read.json.bak')), true)
+    const next = rt.appendLine('kept', { who: 'agent', text: 'new row' })
     await rt.save()
-    assert.equal(JSON.parse(readFileSync(join(folder, 'kept.json'), 'utf8'))[0].text, 'changed after append')
+    assert.deepEqual(readFileSync(join(folder, 'kept.jsonl'), 'utf8').trim().split('\n').map(JSON.parse), [line, next])
   })
 })

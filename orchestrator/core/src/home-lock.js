@@ -16,7 +16,7 @@ const processAlive = (pid) => {
   }
 }
 
-export function homeLock(path, { staleMs = 60_000, beatMs = 15_000, host = hostname(), pid = process.pid, boot = Date.now() - uptime() * 1000, isAlive = processAlive, now = Date.now } = {}) {
+export function homeLock(path, { staleMs = 60_000, beatMs = 15_000, host = hostname(), pid = process.pid, boot = Date.now() - uptime() * 1000, isAlive = processAlive, now = Date.now, watched = () => false } = {}) {
   const token = randomUUID()
   let beating
   // The lock file's mtime and when this process first saw it.
@@ -50,7 +50,17 @@ export function homeLock(path, { staleMs = 60_000, beatMs = 15_000, host = hostn
   // Boot times derived from whole-second uptimes differ slightly between processes.
   const sameBoot = record => record.boot === undefined || Math.abs(record.boot - boot) < staleMs
   const held = record => (record?.host === host ? record.pid !== pid && sameBoot(record) && isAlive(record.pid) : fresh())
-  const owns = () => parse(text())?.token === token
+  // While the caller watches the lock file (and calls revalidate on changes),
+  // ownership is answered from memory; the beat rereads the file as a backstop.
+  // `strict` always rereads, for checks right before a write.
+  let mine = false
+  const owns = (strict = false) => {
+    if (mine && ((!strict && watched()) || parse(text())?.token === token)) return true
+    if (mine) stopBeating()
+    mine = false
+    return false
+  }
+  const revalidate = () => { if (mine) owns(true) }
   const remove = (file = path) => {
     try { rmSync(file, { force: true }) } catch {}
   }
@@ -67,7 +77,7 @@ export function homeLock(path, { staleMs = 60_000, beatMs = 15_000, host = hostn
     beating = undefined
   }
   const beat = () => {
-    if (!owns()) return stopBeating()
+    if (!owns(true)) return
     const time = new Date(now())
     try { utimesSync(path, time, time) } catch {}
   }
@@ -78,6 +88,7 @@ export function homeLock(path, { staleMs = 60_000, beatMs = 15_000, host = hostn
       if (error.code === 'EEXIST') return false
       throw error
     }
+    mine = true
     stopBeating()
     beating = setInterval(beat, beatMs)
     beating.unref?.()
@@ -100,8 +111,9 @@ export function homeLock(path, { staleMs = 60_000, beatMs = 15_000, host = hostn
 
   function release() {
     stopBeating()
-    if (owns()) remove()
+    if (owns(true)) remove()
+    mine = false
   }
 
-  return { claim, owns, release }
+  return { claim, owns, release, revalidate }
 }

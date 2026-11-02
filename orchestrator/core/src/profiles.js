@@ -294,7 +294,7 @@ export function install(rt) {
       sessions: rt.sessionsOf(profile)
         .filter(session => session.archivedAt || session.id !== profile.id || used)
         .filter(session => session.archivedAt || !session.draftedAt || session.briefSent || session.id === profile.activeSessionId)
-        .map(({ reportQueue, ...session }) => ({ ...session, workspaceRef: rt.sessionWorkspace(profile, session)?.id,
+        .map(({ reportQueue, lastTurn, instructions, ...session }) => ({ ...session, workspaceRef: rt.sessionWorkspace(profile, session)?.id,
           // The rail's session time is its latest activity — the dispatch
           // transcript's last line, the native twin's last turn, or a native
           // send stamp — falling back to when the session was created.
