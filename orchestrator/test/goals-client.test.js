@@ -89,3 +89,12 @@ test('approval cards name their task on the first line and stay plain without on
     detail: { questions: [{ id: 'a', header: '确认', question: '继续？', options: [{ label: '好' }] }] } } }))
   assert.equal(ask.find(node => node.props.className === 'nodo-question-eyebrow').children[0], 'Fix login')
 })
+
+test('the question card ignores the Enter that confirms an IME composition', async () => {
+  const loaded = await loadClient('run-cards.js')
+  const field = () => nodes(loaded.ApprovalCard({ card: { id: 'q', kind: 'question', reason: '问题' } })).find(node => node.type === 'textarea')
+  const press = extra => { let handled = false; loaded.host.reset(); field().props.onKeyDown({ key: 'Enter', nativeEvent: {}, preventDefault() { handled = true }, ...extra }); return handled }
+  assert.equal(press({ nativeEvent: { isComposing: true } }), false)
+  assert.equal(press({ keyCode: 229 }), false)
+  assert.equal(press({}), true)
+})
