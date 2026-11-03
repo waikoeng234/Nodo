@@ -1947,7 +1947,7 @@ test('the composer add menu offers the native sections and inserts text picks in
     },
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
-      if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }, { id: 'demo:make', prefix: '$' }] }
+      if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }, { id: 'demo:make', prefix: '$' }, { id: 'compact' }] }
       if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, goals: true, permissionModes: ['plan', 'workspace', 'full'] } },
         { id: 'pi', capabilities: { permissionModes: ['plan', 'full'] } }]
     },
@@ -1966,6 +1966,7 @@ test('the composer add menu offers the native sections and inserts text picks in
   assert.equal(open.props.portal, undefined, 'the card stays in the composer card so it can pin itself above it')
   assert.equal(open.props.listClassName, 'nodo-add')
   assert.deepEqual([...open.props.items].map(item => item.id), ['add-title', 'file', 'goal', 'plan', 'cmd-title', 'compact', 'cmd:deploy', 'cmd:demo:make'], 'the native sections with the scanned rows')
+  assert.ok([...render({ onCompact: undefined }).props.items].some(item => item.id === 'cmd:compact'), 'the agent\'s own compact stays when the host compact row is absent')
   const withReferences = render({ onReference: () => requested.push('reference') })
   assert.ok(withReferences.props.items.some(item => item.id === 'reference'))
   withReferences.props.onSelect('reference')

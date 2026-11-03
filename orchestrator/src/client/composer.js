@@ -268,7 +268,8 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
   const row = addRow
   const engine = (catalog ?? []).find(item => item.id === profile.engine)
   const modes = engine?.capabilities?.permissionModes ?? []
-  const commands = scan?.commands ?? []
+  const hostCompact = onCompact && engine?.capabilities?.compact === true
+  const commands = (scan?.commands ?? []).filter(command => !(hostCompact && command.id === 'compact'))
   // The draft keeps typing while the menu is up, so the text after the trigger
   // narrows the command rows (compact among them); with nothing scanned the
   // scan state still speaks, and a query matching nothing says so.
@@ -281,7 +282,7 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
   ]
   const candidates = [
     ...(query === '' ? [] : actions),
-    ...(onCompact && engine?.capabilities?.compact === true ? [{ id: 'compact', icon: h(IconCompactOutlineRegular), label: row('压缩', 'compact', '压缩以上对话内容') }] : []),
+    ...(hostCompact ? [{ id: 'compact', icon: h(IconCompactOutlineRegular), label: row('压缩', 'compact', '压缩以上对话内容') }] : []),
     ...commands.map(command => ({ id: `cmd:${command.id}`, label: row(command.id, scopeLabel[command.scope] ?? '', command.description) })),
   ]
   const matched = query === '' ? candidates
