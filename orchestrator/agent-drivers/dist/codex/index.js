@@ -660,11 +660,12 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             running.unconfirmed = true; end('interrupted'); const current = peer; peer = null; current?.dispose(); },
     };
 }
-// The composer's /-menu inventory: the custom prompts and the installed plugin
-// skills the CLI resolves, the latter by their plain names from each plugin's
-// newest cached version.
-export async function scanCodexCommands({ engineOptions = {} } = {}) {
-    validateCodexOptions(engineOptions);
+// The composer's /-menu inventory: the custom prompts, plus the enabled skills
+// app-server's skills/list reports for the workspace. A CLI that cannot be
+// reached falls back to the installed plugin skills by their plain names from
+// each plugin's newest cached version.
+export async function scanCodexCommands({ engineOptions = {}, cwd } = {}) {
+    const options = validateCodexOptions(engineOptions);
     const found = collector();
     const home = process.env.CODEX_HOME || join(homedir(), '.codex');
     let entries;
@@ -677,6 +678,22 @@ export async function scanCodexCommands({ engineOptions = {} } = {}) {
     for (const entry of entries)
         if (entry.isFile() && entry.name.endsWith('.md'))
             found.add(join(home, 'prompts', entry.name), entry.name.replace(/\.md$/, ''));
+    const executable = findCodexExecutable(options.bin ?? 'codex');
+    const peer = executable ? await connectCodex({ executable, socket: options.socket, start: true }).catch(() => null) : null;
+    if (peer) {
+        try {
+            await initialize(peer);
+            const listed = await peer.request('skills/list', cwd ? { cwds: [cwd] } : {});
+            const skills = listed.data.flatMap(entry => entry.skills).filter(skill => skill.enabled).map(skill => ({ id: skill.name, description: skill.description.slice(0, 200), path: skill.path,
+                scope: skill.pluginId ? 'plugin' : skill.scope === 'repo' ? 'project' : 'global', prefix: '$' }));
+            if (skills.length)
+                return { source: 'Codex app-server skills/list', commands: [...found.list().commands, ...skills] };
+        }
+        catch { }
+        finally {
+            peer.dispose();
+        }
+    }
     const scanSkills = (dir) => {
         for (const path of listDirs(dir))
             found.add(join(path, 'SKILL.md'), basename(path), undefined, 'plugin');

@@ -14,6 +14,11 @@ const fixtureModels = [
   { value: 'sonnet', resolvedModel: 'claude-sonnet-9-9', displayName: 'Sonnet 9.9', description: 'Fixture sonnet', supportedEffortLevels: ['medium'] },
   { value: 'claude-haiku-4-5', resolvedModel: 'claude-haiku-4-5', displayName: 'Haiku 4.5', description: 'Fixture haiku' },
 ]
+const fixtureCommands = [
+  { name: 'compact', description: 'Clear conversation history but keep a summary', argumentHint: '<optional custom summarization instructions>' },
+  { name: 'design-sync', description: 'Push a design system. '.repeat(12), argumentHint: '', builtin: true },
+  { name: 'demo:make', description: 'Plugin skill', argumentHint: '' },
+]
 let turn = 0
 const send = frame => process.stdout.write(JSON.stringify(frame) + '\n')
 const delta = (id, text) => send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } }, session_id: session })
@@ -66,7 +71,7 @@ const receive = line => {
       if (process.env.CLAUDE_FIXTURE_INTERRUPT_SILENT) return
       control(frame.request_id, { still_queued: [] }); send({ type: 'result', subtype: 'error_during_execution', is_error: true, session_id: session })
     }
-    else control(frame.request_id, process.env.CLAUDE_FIXTURE_NO_MODELS ? { commands: [] } : { commands: [], models: fixtureModels })
+    else control(frame.request_id, process.env.CLAUDE_FIXTURE_NO_MODELS ? { commands: [] } : { commands: fixtureCommands, models: fixtureModels })
     return
   }
   if (frame.type !== 'user') return

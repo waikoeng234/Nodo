@@ -78,6 +78,14 @@ const receive = line => {
         defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high', description: 'high' }] },
     ], nextCursor: null } }); return
   }
+  if (method === 'skills/list') {
+    send({ id, result: { data: [{ cwd: params.cwds?.[0] ?? process.cwd(), errors: [], skills: [
+      { name: 'coord', description: 'Orchestrate work', path: '/skills/coord/SKILL.md', scope: 'user', enabled: true, pluginId: null },
+      { name: 'demo:remotion-create', description: 'Create a new Remotion video', path: '/plugins/demo/SKILL.md', scope: 'user', enabled: true, pluginId: 'demo@officials' },
+      { name: 'local', description: 'Repo skill', path: '/repo/.agents/skills/local/SKILL.md', scope: 'repo', enabled: true, pluginId: null },
+      { name: 'off', description: 'Disabled skill', path: '/skills/off/SKILL.md', scope: 'user', enabled: false, pluginId: null },
+    ] }] } }); return
+  }
   if (method === 'project/list') { send({ id, result: { data: [] } }); return }
   if (method === 'project/create') { send({ id, result: { project: { id: 'fixture-project' } } }); return }
   if (['thread/metadata/update', 'thread/name/set'].includes(method)) { send({ id, result: {} }); return }

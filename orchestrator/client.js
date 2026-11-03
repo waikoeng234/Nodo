@@ -14842,14 +14842,15 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     if (id === "compact") return act(onCompact);
     if (typeof id === "string" && id.startsWith("cmd:")) {
       close();
-      const line = `/${id.slice(4)} `;
+      const line = `${commands.find((command) => command.id === id.slice(4))?.prefix ?? "/"}${id.slice(4)} `;
       trigger === null ? onInsert(line) : onToken(line);
     }
   };
   const row = addRow;
   const engine = (catalog ?? []).find((item) => item.id === profile.engine);
   const modes = engine?.capabilities?.permissionModes ?? [];
-  const commands = scan?.commands ?? [];
+  const hostCompact = onCompact && engine?.capabilities?.compact === true;
+  const commands = (scan?.commands ?? []).filter((command) => !(hostCompact && command.id === "compact"));
   const query = trigger === null ? "" : trigger.query.trim().toLowerCase();
   const scopeLabel = { project: "\u9879\u76EE", plugin: "\u63D2\u4EF6" };
   const actions = [
@@ -14858,7 +14859,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
   ];
   const candidates = [
     ...query === "" ? [] : actions,
-    ...onCompact && engine?.capabilities?.compact === true ? [{ id: "compact", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompactOutlineRegular), label: row("\u538B\u7F29", "compact", "\u538B\u7F29\u4EE5\u4E0A\u5BF9\u8BDD\u5185\u5BB9") }] : [],
+    ...hostCompact ? [{ id: "compact", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompactOutlineRegular), label: row("\u538B\u7F29", "compact", "\u538B\u7F29\u4EE5\u4E0A\u5BF9\u8BDD\u5185\u5BB9") }] : [],
     ...commands.map((command) => ({ id: `cmd:${command.id}`, label: row(command.id, scopeLabel[command.scope] ?? "", command.description) }))
   ];
   const matched = query === "" ? candidates : candidates.filter((item) => (item.id.startsWith("cmd:") ? item.id.slice(4) : item.id).toLowerCase().includes(query));

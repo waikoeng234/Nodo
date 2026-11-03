@@ -27,7 +27,7 @@ export type EngineCheckResult = {
 
 export type EngineCommandInventory = {
   source?: string
-  commands: { id: string; description?: string; path?: string; scope?: string; origin?: string }[]
+  commands: { id: string; description?: string; path?: string; scope?: string; origin?: string; prefix?: string }[]
 }
 
 export type Usage = {

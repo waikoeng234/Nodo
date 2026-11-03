@@ -467,7 +467,7 @@ test('the command scan lists claude skills, namespaces plugin skills, and report
     const previous = process.env.CLAUDE_CONFIG_DIR
     process.env.CLAUDE_CONFIG_DIR = home
     try {
-      const scan = await scanEngineCommands('claude', { cwd: project })
+      const scan = await scanEngineCommands('claude', { cwd: project, engineOptions: { bin: join(home, 'missing-claude') } })
       assert.equal(scan.engine, 'claude')
       assert.equal(scan.source, 'Claude skills and commands')
       assert.deepEqual([...scan.commands.map(command => command.id)].sort(), ['deploy', 'documents:docx', 'local-skill', 'review'], 'a symlinked copy of a listed skill stays hidden')
@@ -525,7 +525,7 @@ test('zcode, codex and opencode scan their global skill and prompt locations', a
       assert.equal(zcode.commands.find(command => command.id === 'pack').description, 'Linked pack', 'a symlinked skill dir lists through its target')
       assert.equal(zcode.commands.find(command => command.id === 'demo:beta').scope, 'plugin')
       assert.equal(zcode.commands.find(command => command.id === 'demo:beta').origin, 'demo')
-      const codex = await scanEngineCommands('codex', {})
+      const codex = await scanEngineCommands('codex', { engineOptions: { bin: join(home, 'missing-codex') } })
       assert.equal(codex.source, 'Codex prompts and plugin skills')
       assert.deepEqual([...codex.commands.map(command => command.id)], ['review', 'remotion-create'], 'plugin skills carry plain names, newest version only')
       assert.equal(codex.commands.find(command => command.id === 'review').description, 'Review the diff')
@@ -683,6 +683,21 @@ test('scanning an engine lists its models with their thinking levels, and falls 
     assert.deepEqual(catalog.models.map(model => model.id), ['fixture-model', 'other-model'], 'hidden models stay out')
     assert.deepEqual(catalog.models[0].thinking.map(level => level.id), ['low', 'medium', 'high'])
     assert.equal(catalog.models[0].defaultThinking, 'medium')
+    const promptHome = mkdtempSync(join(tmpdir(), 'orch-codex-home-'))
+    mkdirSync(join(promptHome, 'prompts'))
+    writeFileSync(join(promptHome, 'prompts', 'review.md'), '---\ndescription: Review the diff\n---\nbody')
+    const previousHome = process.env.CODEX_HOME
+    process.env.CODEX_HOME = promptHome
+    try {
+      const commands = await scanEngineCommands('codex', { engineOptions: { bin }, cwd })
+      assert.equal(commands.source, 'Codex app-server skills/list')
+      assert.deepEqual(commands.commands.map(command => [command.id, command.scope, command.prefix]),
+        [['review', 'global', undefined], ['coord', 'global', '$'], ['demo:remotion-create', 'plugin', '$'], ['local', 'project', '$']], 'prompts stay; disabled skills stay out; skills are invoked with $')
+    } finally {
+      if (previousHome === undefined) delete process.env.CODEX_HOME
+      else process.env.CODEX_HOME = previousHome
+      rmSync(promptHome, { recursive: true, force: true })
+    }
     assert.deepEqual((await scanEngine('echo', {})).models, [], 'an engine without discovery reports an empty list')
     assert.equal((await scanEngine('echo', {})).source, 'unsupported')
     // A CLI that cannot be reached: the CLI's own configuration answers instead.
@@ -1006,7 +1021,8 @@ test('Every engine declares commands exactly when it has a command scanner', asy
   delete process.env.DSH_AGENTS_HOME
   try {
     for (const item of engineCatalog()) {
-      const scan = await scanEngineCommands(item.id, {})
+      // A missing bin keeps the scanners that launch their CLI off the real one; the test echo driver takes no options.
+      const scan = await scanEngineCommands(item.id, item.id === 'echo' ? {} : { engineOptions: { bin: join(home, 'missing') } })
       assert.equal(scan.source !== 'unsupported', item.capabilities?.commands === true, `${item.id}: commands`)
     }
   } finally {

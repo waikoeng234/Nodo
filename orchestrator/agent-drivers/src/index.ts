@@ -27,11 +27,12 @@ export type EngineEntry = {
 }
 export type CatalogModel = { id: string; label?: string; group?: string; defaultThinking?: string; thinking?: { id: string; label?: string }[] }
 export type ModelCatalog = { engine: string; source: string; defaultModel?: string; models: CatalogModel[] }
-export type CatalogCommand = { id: string; description?: string; path?: string; scope?: 'global' | 'project' | 'plugin'; origin?: string }
+// `prefix` is the character the engine reads an invocation by; '/' when absent.
+export type CatalogCommand = { id: string; description?: string; path?: string; scope?: 'global' | 'project' | 'plugin'; origin?: string; prefix?: '$' }
 export type CommandCatalog = { engine: string; source: string; commands: CatalogCommand[] }
 type RawCatalog = { source?: unknown; defaultModel?: unknown; models?: unknown; commands?: unknown }
 type RawModel = { id?: unknown; label?: unknown; group?: unknown; defaultThinking?: unknown; thinking?: unknown }
-type RawCommand = { id?: unknown; description?: unknown; path?: unknown; origin?: unknown; scope?: unknown }
+type RawCommand = { id?: unknown; description?: unknown; path?: unknown; origin?: unknown; scope?: unknown; prefix?: unknown }
 
 const ENGINES: Record<string, EngineEntry> = {
   codex: { name: 'Codex', tests: ['engines'], create: createCodexDriver, info: codexInfo, validate: validateCodexOptions, check: checkCodex, scan: scanCodex, commands: scanCodexCommands },
@@ -176,7 +177,7 @@ function cleanCommands(engine: string, raw: unknown): CommandCatalog {
     const path = text(command?.path, 512)
     const origin = text(command?.origin, 100)
     const scope = (['global', 'project', 'plugin'] as readonly unknown[]).includes(command?.scope) ? command.scope as CatalogCommand['scope'] : undefined
-    return [{ id, ...(description ? { description } : {}), ...(path ? { path } : {}), ...(scope ? { scope } : {}), ...(origin ? { origin } : {}) }]
+    return [{ id, ...(description ? { description } : {}), ...(path ? { path } : {}), ...(scope ? { scope } : {}), ...(origin ? { origin } : {}), ...(command?.prefix === '$' ? { prefix: '$' as const } : {}) }]
   })
   return { engine, source: text((raw as RawCatalog)?.source, 200) ?? 'unknown', commands }
 }

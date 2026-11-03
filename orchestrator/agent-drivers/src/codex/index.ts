@@ -45,6 +45,7 @@ type CodexModel = {
   supportedReasoningEfforts?: { reasoningEffort: string }[]
   isDefault?: boolean
 }
+type CodexSkill = { name: string; description: string; path: string; scope: string; enabled: boolean; pluginId: string | null }
 type ThreadResult = { thread: { id: string; projectId?: string } }
 type CodexQuestion = { id: string; question: string; options?: unknown }
 type CodexItem = {
@@ -609,16 +610,28 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
   }
 }
 
-// The composer's /-menu inventory: the custom prompts and the installed plugin
-// skills the CLI resolves, the latter by their plain names from each plugin's
-// newest cached version.
-export async function scanCodexCommands({ engineOptions = {} }: CodexOptions = {}) {
-  validateCodexOptions(engineOptions)
+// The composer's /-menu inventory: the custom prompts, plus the enabled skills
+// app-server's skills/list reports for the workspace. A CLI that cannot be
+// reached falls back to the installed plugin skills by their plain names from
+// each plugin's newest cached version.
+export async function scanCodexCommands({ engineOptions = {}, cwd }: CodexOptions = {}) {
+  const options = validateCodexOptions(engineOptions)
   const found = collector()
   const home = process.env.CODEX_HOME || join(homedir(), '.codex')
   let entries: Dirent[]
   try { entries = readdirSync(join(home, 'prompts'), { withFileTypes: true }) } catch { entries = [] }
   for (const entry of entries) if (entry.isFile() && entry.name.endsWith('.md')) found.add(join(home, 'prompts', entry.name), entry.name.replace(/\.md$/, ''))
+  const executable = findCodexExecutable(options.bin ?? 'codex')
+  const peer = executable ? await connectCodex({ executable, socket: options.socket, start: true }).catch(() => null) : null
+  if (peer) {
+    try {
+      await initialize(peer)
+      const listed = await peer.request<{ data: { skills: CodexSkill[] }[] }>('skills/list', cwd ? { cwds: [cwd] } : {})
+      const skills = listed.data.flatMap(entry => entry.skills).filter(skill => skill.enabled).map(skill => ({ id: skill.name, description: skill.description.slice(0, 200), path: skill.path,
+        scope: skill.pluginId ? 'plugin' : skill.scope === 'repo' ? 'project' : 'global', prefix: '$' }))
+      if (skills.length) return { source: 'Codex app-server skills/list', commands: [...found.list().commands, ...skills] }
+    } catch { } finally { peer.dispose() }
+  }
   const scanSkills = (dir: string) => {
     for (const path of listDirs(dir)) found.add(join(path, 'SKILL.md'), basename(path), undefined, 'plugin')
   }
