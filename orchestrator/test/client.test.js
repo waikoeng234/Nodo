@@ -1947,7 +1947,7 @@ test('the composer add menu offers the native sections and inserts text picks in
     },
     async call(endpoint, payload) {
       requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
-      if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }] }
+      if (endpoint === 'engine-commands') return { source: 'Claude skills and commands', commands: [{ id: 'deploy', description: 'Ship the build' }, { id: 'demo:make', prefix: '$' }] }
       if (endpoint === 'engine-catalog') return [{ id: 'claude', capabilities: { commands: true, compact: true, goals: true, permissionModes: ['plan', 'workspace', 'full'] } },
         { id: 'pi', capabilities: { permissionModes: ['plan', 'full'] } }]
     },
@@ -1965,7 +1965,7 @@ test('the composer add menu offers the native sections and inserts text picks in
   assert.equal(open.props.open, true)
   assert.equal(open.props.portal, undefined, 'the card stays in the composer card so it can pin itself above it')
   assert.equal(open.props.listClassName, 'nodo-add')
-  assert.deepEqual([...open.props.items].map(item => item.id), ['add-title', 'file', 'goal', 'plan', 'cmd-title', 'compact', 'cmd:deploy'], 'the native sections with the scanned rows')
+  assert.deepEqual([...open.props.items].map(item => item.id), ['add-title', 'file', 'goal', 'plan', 'cmd-title', 'compact', 'cmd:deploy', 'cmd:demo:make'], 'the native sections with the scanned rows')
   const withReferences = render({ onReference: () => requested.push('reference') })
   assert.ok(withReferences.props.items.some(item => item.id === 'reference'))
   withReferences.props.onSelect('reference')
@@ -1975,7 +1975,8 @@ test('the composer add menu offers the native sections and inserts text picks in
   assert.deepEqual([...inserted], [], 'compact never inserts text')
   const reopened = render()
   reopened.props.onSelect('cmd:deploy')
-  assert.deepEqual([...inserted], ['/deploy '])
+  reopened.props.onSelect('cmd:demo:make')
+  assert.deepEqual([...inserted], ['/deploy ', '$demo:make '], 'a command carries the character its engine reads it by')
   reopened.props.onSelect('plan')
   assert.deepEqual([...changed.map(change => ({ ...change }))], [{ permission: 'plan' }])
   const asked = render()
@@ -2005,7 +2006,7 @@ test('the composer add menu offers the native sections and inserts text picks in
   effects.at(-1)?.()
   const pane = render({ trigger: { char: '$', start: 4, query: '' } })
   assert.equal(pane.props.open, true)
-  assert.deepEqual([...pane.props.items].map(item => item.id), ['cmd-title', 'compact', 'cmd:deploy'], 'the dollar token opens the commands pane alone')
+  assert.deepEqual([...pane.props.items].map(item => item.id), ['cmd-title', 'compact', 'cmd:deploy', 'cmd:demo:make'], 'the dollar token opens the commands pane alone')
   pane.props.onSelect('cmd:deploy')
   assert.deepEqual([...tokened], ['/deploy '], 'a pick from a typed token replaces the token in the draft')
   const referenced = render({ onReference: () => requested.push('reference'), trigger: { char: '/', start: 0, query: '' } })

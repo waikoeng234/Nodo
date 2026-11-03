@@ -50,6 +50,8 @@ reference implementation.
   `model/list` supplies the model catalog and each model's reasoning efforts,
   which `turn/start` then applies as `effort`; when the CLI cannot be reached the
   scan reads `model` / `model_reasoning_effort` from `~/.codex/config.toml`.
+  `skills/list` supplies the enabled skills for the command menu, plugin skills
+  under their `plugin:skill` names.
 - `dsh` — inside Desktop/Web, uses the host's `workspaceRegistry` and
   `sessionController`, reusing the native agent and its writer. Standalone ACP
   is retained for direct-driver tests and explicitly configured non-native hosts.
@@ -59,7 +61,8 @@ reference implementation.
   created here are native and resumable there. See
   [ZCode setup and behavior](src/zcode/README.md).
 
-- `claude` — owns Claude Code's stream-JSON protocol and control requests.
+- `claude` — owns Claude Code's stream-JSON protocol and control requests; models
+  and slash commands, built-ins included, come from the initialize response.
 - `qoder` — Qoder CLI over the same stream-JSON control protocol (wire 1.5.0),
   without partial messages or steering; models and slash commands come from the
   initialize response and sessions live in the shared Qoder store the desktop

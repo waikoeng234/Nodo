@@ -14842,7 +14842,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     if (id === "compact") return act(onCompact);
     if (typeof id === "string" && id.startsWith("cmd:")) {
       close();
-      const line = `/${id.slice(4)} `;
+      const line = `${commands.find((command) => command.id === id.slice(4))?.prefix ?? "/"}${id.slice(4)} `;
       trigger === null ? onInsert(line) : onToken(line);
     }
   };

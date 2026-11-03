@@ -1,7 +1,7 @@
 // Shared inventory for the composer's /-menu: markdown skill and prompt files
-// found by scanning each engine's documented global locations. There is no
-// protocol listing, so `source` names what answered and an empty scan stays an
-// honest empty list.
+// found by scanning each engine's documented global locations, for engines or
+// fallbacks without a protocol listing. `source` names what answered and an
+// empty scan stays an honest empty list.
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 const frontmatter = (path) => {

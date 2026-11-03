@@ -79,8 +79,10 @@ export function handshakeClaude({ executable, cwd, env }) {
                 onRequest: frame => { if (peer)
                     peer.write({ type: 'control_response', response: { subtype: 'success', request_id: frame.request_id, response: { behavior: 'deny', message: 'No active turn' } } }); },
                 onFrame: frame => {
-                    if (frame.type === 'control_response' && frame.response?.request_id === 'orch-check')
-                        settle(resolve, { peer: peer, models: Array.isArray(frame.response.response?.models) ? frame.response.response.models : [] });
+                    if (frame.type === 'control_response' && frame.response?.request_id === 'orch-check') {
+                        const response = frame.response.response;
+                        settle(resolve, { peer: peer, models: Array.isArray(response?.models) ? response.models : [], commands: Array.isArray(response?.commands) ? response.commands : [] });
+                    }
                 } });
             peer.write({ type: 'control_request', request_id: 'orch-check', request: { subtype: 'initialize' } });
         }
@@ -131,13 +133,26 @@ export async function scanClaude({ engineOptions = {}, cwd } = {}) {
     return probed.length ? { ...settings, source: 'Claude Code initialize response', models: probed } : fallback;
 }
 // The composer's /-menu inventory: what the CLI would resolve from a prompt's
-// slash line. There is no protocol listing, so this is a static scan of the
-// documented locations — the workspace's project-level .claude, the user's
-// skills and commands, and installed plugin caches (whose skills carry the
-// plugin's name prefix). The frontmatter description rides along when present;
-// `source` names what answered, so the UI can be honest about the method.
+// slash line. The initialize response lists the commands available in this
+// mode, built-ins included; a CLI that does not answer with them falls back to
+// a static scan of the documented locations — the workspace's project-level
+// .claude, the user's skills and commands, and installed plugin caches (whose
+// skills carry the plugin's name prefix). `source` names what answered, so the
+// UI can be honest about the method.
 export async function scanClaudeCommands({ engineOptions = {}, cwd } = {}) {
-    validateClaudeOptions(engineOptions);
+    const options = validateClaudeOptions(engineOptions);
+    const executable = findExecutable(options.bin ?? 'claude');
+    if (executable) {
+        try {
+            const peek = await handshakeClaude({ executable, cwd });
+            peek.peer.dispose();
+            const commands = peek.commands.flatMap(command => typeof command?.name === 'string'
+                ? [{ id: command.name, ...(typeof command.description === 'string' ? { description: command.description.slice(0, 200) } : {}) }] : []);
+            if (commands.length)
+                return { source: 'Claude Code initialize response', commands };
+        }
+        catch { }
+    }
     const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const found = collector();
     const scanSkills = (dir, owner, scope) => {

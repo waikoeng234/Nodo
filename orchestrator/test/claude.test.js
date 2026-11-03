@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createDriver, checkEngine, scanEngine, validateEngineOptions } from '../agent-drivers/dist/index.js'
+import { createDriver, checkEngine, scanEngine, scanEngineCommands, validateEngineOptions } from '../agent-drivers/dist/index.js'
 import { until, withHost } from './helpers/host.js'
 
 const withFixture = async (run) => {
@@ -423,7 +423,12 @@ test('Claude environment check uses the stream handshake; the catalog reads the 
       assert.equal(catalog.models[0].label, 'Opus 9.9')
       assert.deepEqual(catalog.models[0].thinking.map(level => level.id), ['low', 'high'])
       assert.equal(catalog.models[2].thinking, undefined)
+      const commands = await scanEngineCommands('claude', { engineOptions: { bin }, cwd })
+      assert.equal(commands.source, 'Claude Code initialize response')
+      assert.deepEqual(commands.commands.map(command => command.id), ['compact', 'design-sync'])
+      assert.equal(commands.commands[1].description.length, 200)
       process.env.CLAUDE_FIXTURE_NO_MODELS = '1'
+      assert.equal((await scanEngineCommands('claude', { engineOptions: { bin }, cwd })).source, 'Claude skills and commands')
       const fallback = await scanEngine('claude', { engineOptions: { bin } })
       assert.equal(fallback.source, 'Claude settings.json')
       assert.equal(fallback.defaultModel, 'sonnet')

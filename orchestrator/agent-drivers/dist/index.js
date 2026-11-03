@@ -148,7 +148,7 @@ function cleanCommands(engine, raw) {
         const path = text(command?.path, 512);
         const origin = text(command?.origin, 100);
         const scope = ['global', 'project', 'plugin'].includes(command?.scope) ? command.scope : undefined;
-        return [{ id, ...(description ? { description } : {}), ...(path ? { path } : {}), ...(scope ? { scope } : {}), ...(origin ? { origin } : {}) }];
+        return [{ id, ...(description ? { description } : {}), ...(path ? { path } : {}), ...(scope ? { scope } : {}), ...(origin ? { origin } : {}), ...(command?.prefix === '$' ? { prefix: '$' } : {}) }];
     });
     return { engine, source: text(raw?.source, 200) ?? 'unknown', commands };
 }
