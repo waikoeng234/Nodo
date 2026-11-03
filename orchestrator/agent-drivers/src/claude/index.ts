@@ -190,16 +190,6 @@ export async function scanClaude({ engineOptions = {}, cwd }: EngineScanOptions 
 // UI can be honest about the method.
 export async function scanClaudeCommands({ engineOptions = {}, cwd }: EngineScanOptions = {}): Promise<EngineCommandInventory> {
   const options = validateClaudeOptions(engineOptions)
-  const executable = findExecutable(options.bin ?? 'claude')
-  if (executable) {
-    try {
-      const peek = await handshakeClaude({ executable, cwd })
-      peek.peer.dispose()
-      const commands = peek.commands.flatMap(command => typeof command?.name === 'string'
-        ? [{ id: command.name, ...(typeof command.description === 'string' ? { description: command.description.slice(0, 200) } : {}) }] : [])
-      if (commands.length) return { source: 'Claude Code initialize response', commands }
-    } catch { }
-  }
   const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
   const found = collector()
   const scanSkills = (dir: string, owner: string | undefined, scope: string) => {
@@ -234,7 +224,20 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd }: EngineScan
   walk(join(cwd ?? '.', '.claude'), 1, undefined, 'project')
   walk(config, 0, undefined, 'global')
   walk(join(config, 'plugins'), 5, undefined, 'plugin')
-  return found.list('Claude skills and commands')
+  const disk = found.list('Claude skills and commands')
+  const executable = findExecutable(options.bin ?? 'claude')
+  if (executable) {
+    try {
+      const peek = await handshakeClaude({ executable, cwd })
+      peek.peer.dispose()
+      const known = new Map(disk.commands.map(command => [command.id, command]))
+      const commands = peek.commands.flatMap(command => typeof command?.name === 'string'
+        ? [{ ...(known.get(command.name) ?? (command.name.includes(':') ? { scope: 'plugin' } : {})), id: command.name,
+          ...(typeof command.description === 'string' ? { description: command.description.slice(0, 200) } : {}) }] : [])
+      if (commands.length) return { source: 'Claude Code initialize response', commands }
+    } catch { }
+  }
+  return disk
 }
 
 // Anthropic's usage counts the uncached prompt in `input_tokens` and the two

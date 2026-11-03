@@ -17,6 +17,7 @@ const fixtureModels = [
 const fixtureCommands = [
   { name: 'compact', description: 'Clear conversation history but keep a summary', argumentHint: '<optional custom summarization instructions>' },
   { name: 'design-sync', description: 'Push a design system. '.repeat(12), argumentHint: '', builtin: true },
+  { name: 'demo:make', description: 'Plugin skill', argumentHint: '' },
 ]
 let turn = 0
 const send = frame => process.stdout.write(JSON.stringify(frame) + '\n')

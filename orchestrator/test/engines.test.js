@@ -1021,7 +1021,8 @@ test('Every engine declares commands exactly when it has a command scanner', asy
   delete process.env.DSH_AGENTS_HOME
   try {
     for (const item of engineCatalog()) {
-      const scan = await scanEngineCommands(item.id, {})
+      // A missing bin keeps the scanners that launch their CLI off the real one; the test echo driver takes no options.
+      const scan = await scanEngineCommands(item.id, item.id === 'echo' ? {} : { engineOptions: { bin: join(home, 'missing') } })
       assert.equal(scan.source !== 'unsupported', item.capabilities?.commands === true, `${item.id}: commands`)
     }
   } finally {
