@@ -48,7 +48,8 @@ async function mount() {
   const render = work => {
     cursor = 0
     view.work = work ? { s1: work } : {}
-    return conversationOf(loaded.NodoPage())
+    const conversation = conversationOf(loaded.NodoPage())
+    return Array.from(conversation.children).find(node => node?.props?.className === 'nodo-body').children[0]
   }
   return { loaded, render }
 }
