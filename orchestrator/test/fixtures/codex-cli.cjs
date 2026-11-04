@@ -100,6 +100,9 @@ const receive = line => {
         : process.env.CODEX_FIXTURE_REJECT_INSTRUCTIONS === 'other-field' ? { code: -32602, message: 'unknown field `sandbox`' }
         : { code: -32000, message: 'Authentication failed' } }); return
     }
+    if (method === 'thread/resume' && process.env.CODEX_FIXTURE_RESUME_ERROR) {
+      send({ id, error: { code: -32600, message: process.env.CODEX_FIXTURE_RESUME_ERROR.replace('{id}', params.threadId) } }); return
+    }
     if (!params.cwd) { send({ id, error: { message: 'cwd missing' } }); return }
     thread = params.threadId ?? 'fixture-thread'
     send({ id, result: { thread: { id: thread } } }); return

@@ -334,6 +334,16 @@ export function install(rt) {
 
   const sinkTurnEnd = (profileId, st, event) => {
     if ((!st.active && !st.starting) || st.finishing || foreign(st, event)) return
+    if (event.reason === 'error' && event.errorKind === 'resume-failed' && st.resume && rt.conversationOf(profileId)?.session.driverSessionId) {
+      const resume = st.resume
+      st.resume = null
+      clearTimeout(st.cancelTimer)
+      st.cancelTimer = null
+      disarmIdle(st)
+      resume()
+      return
+    }
+    st.resume = null
     clearTimeout(st.cancelTimer)
     st.cancelTimer = null
     st.finishing = true
@@ -465,7 +475,8 @@ export function install(rt) {
     st.watched = true
     rt.statsRound(profileId)
     armIdle(profileId, st)
-    void (async () => {
+    let recoverySession
+    const run = async () => {
       if (!rt.conversationOf(profileId)) {
         driverSink(profileId, { type: 'turn/end', reason: 'error', error: 'the profile is gone' })
         return
@@ -481,12 +492,16 @@ export function install(rt) {
         restoreContext = !driver.hasSession()
         await driver.openSession()
       } catch (error) {
-        driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error) })
+        driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
         return
       }
       // The turn may have been interrupted while the engine was still spawning.
-      if (!st.starting || st.seq !== seq) return settle(st, seq, { reason: 'interrupted' })
+      if (!st.starting || st.seq !== seq) {
+        if (recoverySession) { delete recoverySession.restoreContext; await rt.saveRuntime() }
+        return settle(st, seq, { reason: 'interrupted' })
+      }
       if (st.cancelTimer !== null || st.finishing) {
+        if (recoverySession) delete recoverySession.restoreContext
         st.cancelledStart = st.turnId === null
         driverSink(profileId, { type: 'turn/end', reason: 'interrupted' })
         return
@@ -517,9 +532,27 @@ export function install(rt) {
         // Once sendTurn is called the engine may already be working, so this end is unconfirmed;
         // an end the engine already reported stands.
         if (sent && (st.seq !== seq || (!st.active && !st.starting))) return
-        driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), ...(sent ? { unconfirmed: true } : {}) })
+        driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind, ...(sent ? { unconfirmed: true } : {}) })
       }
-    })()
+    }
+    st.resume = () => {
+      const { profile, session } = rt.conversationOf(profileId)
+      const previousId = session.driverSessionId
+      delete session.driverSessionId
+      if (session.id === profile.id) delete profile.driverSessionId
+      if (!session.restoreContext) recoverySession = session
+      session.restoreContext = true
+      st.finishing = true
+      rt.releaseDriver(profileId)
+      st.finishing = false
+      st.active = false
+      st.starting = true
+      st.turnId = null
+      const text = leadModeOf(profile, session) ? '已更换后台上下文：旧引擎历史不再带入，任务与结果经 nodo_board 接续。' : '已更换后台上下文：旧引擎历史不再带入。'
+      void Promise.resolve(rt.sessionNote?.(profileId, `${text}（原引擎会话：${previousId}）`)).then(run)
+        .catch(error => driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error) }))
+    }
+    void run()
   }
 
   // One message to one profile. Returns how it was placed ('turn' | 'steered' |

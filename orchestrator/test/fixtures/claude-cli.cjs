@@ -7,6 +7,11 @@ if (process.argv.includes('--version')) { console.log('claude-cli fixture'); pro
 const arg = name => { const at = process.argv.indexOf(name); return at === -1 ? undefined : process.argv[at + 1] }
 const list = name => { const at = process.argv.indexOf(name); if (at === -1) return undefined; const out = []; for (const value of process.argv.slice(at + 1)) { if (value.startsWith('--')) break; out.push(value) } return out }
 const session = 'fixture-claude-session'
+const resumeResult = arg('--resume') && process.env.CLAUDE_FIXTURE_RESUME_ERROR && process.env.CLAUDE_FIXTURE_RESUME_RESULT
+if (arg('--resume') && process.env.CLAUDE_FIXTURE_RESUME_ERROR && !resumeResult) {
+  process.stderr.write(process.env.CLAUDE_FIXTURE_RESUME_ERROR.replace('{id}', arg('--resume')) + '\n')
+  process.exit(Number(process.env.CLAUDE_FIXTURE_RESUME_EXIT) || 1)
+}
 // The initialize control response's model table, in the shape the real CLI
 // writes: alias value, resolved versioned id, display name, per-model efforts.
 const fixtureModels = [
@@ -39,7 +44,7 @@ const toolResult = (id, name, isError) => send({ type: 'user', message: { role: 
 const control = (id, response) => send({ type: 'control_response', response: { subtype: 'success', request_id: id, response } })
 const init = () => send({ type: 'system', subtype: 'init', session_id: session, claude_code_version: '9.9.9-fixture', model: arg('--model') ?? 'fixture-model', permissionMode: 'default', tools: [], mcp_servers: [], slash_commands: [],
   capabilities: process.env.CLAUDE_FIXTURE_STEERING ? ['request_marker_lists_v1', 'interrupt_cancel_queued_v1', 'interrupt_send_now_v1'] : [] })
-let initialized = !process.env.CLAUDE_FIXTURE_DELAY_INIT
+let initialized = !process.env.CLAUDE_FIXTURE_DELAY_INIT && !resumeResult
 if (process.env.CLAUDE_FIXTURE_NOISE) send({ type: 'future_frame', session_id: session })
 if (initialized) init()
 log({ spawn: process.argv.slice(1), instructions: arg('--append-system-prompt'), effort: arg('--effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume'), mcpConfig: arg('--mcp-config'), allowedTools: list('--allowedTools'), leadSocketEnv: process.env.NODO_LEAD_SOCKET, leadTokenEnv: process.env.NODO_LEAD_TOKEN, leadTokenFileEnv: process.env.NODO_LEAD_TOKEN_FILE })
@@ -75,9 +80,16 @@ const receive = line => {
     return
   }
   if (frame.type !== 'user') return
+  if (resumeResult) {
+    const error = process.env.CLAUDE_FIXTURE_RESUME_ERROR.replace('{id}', arg('--resume'))
+    send({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, session_id: arg('--resume'), errors: [error] })
+    process.stderr.write(error + '\n')
+    process.exit(1)
+  }
   if (!initialized) { initialized = true; init() }
   const text = frame.message?.content?.find(block => block.type === 'text')?.text ?? ''
   log({ user: text })
+  if (text === 'EXIT') process.exit(1)
   if (frame.priority) {
     log({ steer: text, priority: frame.priority, uuid: frame.uuid })
     if (!['now', 'later'].includes(frame.priority) || !frame.uuid) process.exit(8)

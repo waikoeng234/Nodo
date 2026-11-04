@@ -16,6 +16,42 @@ const withFixture = async (run) => {
   try { await run({ bin, cwd: dir }) } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 
+test('Codex classifies only missing threads on thread/resume, including the instruction fallback', async () => {
+  for (const [message, expected] of [
+    ['no rollout found for thread id {id}', 'resume-failed'],
+    ['no rollout found for thread with id {id}', 'resume-failed'],
+    ['thread not found: {id}', 'resume-failed'],
+    ['resume diagnostic: no rollout found for thread with id {id}; closing', 'resume-failed'],
+    ['resume diagnostic: thread not found: {id}; closing', 'resume-failed'],
+    ['Authentication failed', undefined],
+    ['Network connection failed', undefined],
+    ['thread not found: other-thread', undefined],
+  ]) for (const fallback of [false, true]) await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, driverSessionId: 'missing-thread', instructions: 'Role rules',
+      env: { CODEX_FIXTURE_RESUME_ERROR: message, ...(fallback ? { CODEX_FIXTURE_REJECT_INSTRUCTIONS: 'unsupported' } : {}) } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.errorKind, expected)
+        assert.equal(error.message, message.replace('{id}', 'missing-thread'))
+        return true
+      })
+    } finally { driver.dispose() }
+  })
+})
+
+test('Claude and Codex spawn failures do not become missing resume errors', async () => {
+  for (const engine of ['claude', 'codex']) await withFixture(async ({ bin, cwd }) => {
+    writeFileSync(bin, '#!/nodo-missing-interpreter\n')
+    const driver = createDriver(engine, { bin, cwd, driverSessionId: 'missing-session' })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.errorKind, undefined)
+        return true
+      })
+    } finally { driver.dispose() }
+  })
+})
+
 test('Codex lead mounts are thread scoped on start and resume in every permission tier', async () => {
   for (const permission of ['plan', 'workspace', 'full']) await withFixture(async ({ bin, cwd }) => {
     const token = 'fixture-file-only-credential'
