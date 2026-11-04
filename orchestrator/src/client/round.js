@@ -1,6 +1,6 @@
 import {
-  h, Fragment, useState, useEffect, useSyncExternalStore, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
-  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular,
+  h, Fragment, useState, useEffect, useSyncExternalStore, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel, sessionTime,
+  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular, IconEditOutlineRegular,
 } from './ui-shared.js'
 import { transcriptOf, watchTranscript, subscribeStore, getStoreVersion } from './live.js'
 import { RoleAvatar } from './avatar.tsx'
@@ -36,7 +36,9 @@ export function roundLines(lines, leadRunning = false) {
     if (line.who === 'user') flush()
     const mark = line.delegation
     if (mark && !mark.ended) {
-      const step = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at }
+      const step = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at,
+        ...(mark.branch ? { branch: mark.branch } : {}),
+        ...(mark.taskId ? { taskId: mark.taskId, executionId: mark.executionId } : {}) }
       if (mark.deferred) step.deferred = true
       steps.set(mark.session, step)
       members.push(step)
@@ -45,17 +47,18 @@ export function roundLines(lines, leadRunning = false) {
     }
     const step = steps.get(mark?.session ?? line.origin?.session)
     if (mark?.ended && step) {
-      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {})
+      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {}, mark.stoppedBy ? { stoppedBy: mark.stoppedBy } : {})
       flush()
       continue
     }
     if (line.origin?.kind === 'report' && step) {
       delete step.ended
       delete step.unconfirmed
+      delete step.stoppedBy
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
       flush()
     }
-    if (line.origin) continue
+    if (line.origin && !(line.who === 'user' && line.origin.kind === 'task')) continue
     const text = line.who === 'agent' && line.kind === 'text' ? stripNodo(line.text) : null
     if (text === '') continue
     out.push(text === null ? line : { ...line, text })
@@ -78,6 +81,19 @@ const reportParts = text => {
   return { summary: at < 0 ? '' : plainLine(lines[at]), rest: lines.slice(at + 1).join('\n').trim() }
 }
 const roleOf = (round, id) => round.profiles.find(role => role.id === id) ?? { id, name: id }
+
+const TASK_TONES = { 进行中: 'accent', 待验收: 'accent', 等待用户: 'caution', 受阻: 'caution', 未确认: 'caution' }
+// Task views carry no executions; the newest execution's status travels as
+// latestExecutionStatus instead.
+const taskWord = (task, work, unconfirmed = false) => {
+  if (!task) return ''
+  if (task.status === 'done') return '已完成'
+  if (task.status === 'review') return '待验收'
+  if (task.status === 'stopped') return '已停止'
+  if (task.status === 'blocked') return unconfirmed || task.latestExecutionStatus === 'unconfirmed' ? '未确认' : '受阻'
+  if (work?.status === 'waiting-approval' || work?.status === 'waiting-question') return '等待用户'
+  return work?.active || task.latestExecutionStatus === 'running' ? '进行中' : task.status === 'open' ? '待执行' : ''
+}
 
 // A type name comes from the round lead's team first — the same id may carry
 // different names per team — then any team that knows it; an unknown id names
@@ -130,6 +146,29 @@ function RoundChanges({ step }) {
     toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, timeline: true }))
 }
 
+function RoundTask({ step }) {
+  const [detail, setDetail] = useState(null)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    let live = true
+    setError('')
+    call('task-get', { taskId: step.taskId }).then(task => { if (live) setDetail(task) })
+      .catch(failure => { if (live) setError(failure.message || '任务详情读取失败') })
+    return () => { live = false }
+  }, [step.taskId, attempt])
+  const acceptance = detail?.acceptances?.at(-1)
+  const execution = detail?.executions?.find(item => item.id === step.executionId) ?? detail?.executions?.at(-1)
+  const reason = acceptance?.reason ?? (detail?.status === 'blocked' || ['failed', 'unconfirmed'].includes(execution?.status ?? '') ? execution?.reason : null)
+  if (error) return h('div', { className: 'nodo-round-task-error' },
+    h('p', { className: 'nodo-round-quiet', role: 'status' }, error),
+    h(Button, { variant: 'outline', size: 'sm', onClick: () => setAttempt(value => value + 1) }, '重试'))
+  if (!detail) return h('p', { className: 'nodo-round-quiet', role: 'status' }, '加载中…')
+  return h(Fragment, null,
+    h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: detail.brief, labels: MARKDOWN_LABELS })),
+    reason && h('p', { className: 'nodo-round-quiet' }, acceptance ? `${reason} · 依据 ${acceptance.references.length} 项` : reason))
+}
+
 export function RoundSpeaker({ role, running }) {
   return h('div', { className: 'nodo-round-speaker' },
     h(RoleAvatar, { profile: role, size: 28, running }), h('span', { className: 'nodo-round-role' }, role.name))
@@ -145,9 +184,12 @@ export function RoundMember({ step, round }) {
   const role = roleOf(round, step.profile)
   const work = round.work?.[step.session]
   const live = !step.report && !step.ended && work?.active === true
+  const task = round.tasks?.find(item => item.id === step.taskId)
+  const word = taskWord(task, work, step.unconfirmed === true)
   const label = work?.retryWaiting ? '等待自动继续' : work?.suspect ? workLabel(work) : ''
   const [open, setOpen] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const stopping = work?.stopping === true || confirming
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!live) return
@@ -164,23 +206,32 @@ export function RoundMember({ step, round }) {
         h('span', { className: 'nodo-round-role' }, role.name),
         tag(typeName(round, step.type)),
         step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
+        step.branch && tag('隔离'),
+        // An ended card says it once: the ending text replaces the task-level word.
+        !step.ended && word ? tag(word, TASK_TONES[word]) : null,
         live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: workDot(work), size: 7 }), label ? `${label} · ` : null, runDuration(now - (work.since ?? now)))
-          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }), step.unconfirmed ? '结果未确认' : step.ended === 'cancelled' ? '已取消' : step.ended === 'interrupted' ? '已中断' : '已结束')
+          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }),
+              step.unconfirmed ? '结果未确认'
+                : step.stoppedBy && (step.ended === 'cancelled' || step.ended === 'interrupted') ? '已停止'
+                : step.ended === 'cancelled' ? '已取消' : step.ended === 'interrupted' ? '已中断' : '已结束')
             : step.report ? h(MessageTime, { at: step.at }) : h('span', { className: 'nodo-round-status' }, '未回报'),
         live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
-          onClick: () => { setStopping(true); void round.onStop(step).finally(() => setStopping(false)) } },
+          onClick: () => { setConfirming(true); void round.onStop(step).finally(() => setConfirming(false)) } },
           h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'currentColor', 'aria-hidden': true }, h('rect', { width: 10, height: 10, rx: 2 })), stopping ? '停止中…' : '停止'),
+        step.taskId && round.onSupplement && h('button', { type: 'button', className: 'nodo-round-open', 'aria-label': `补充 ${task?.title ?? role.name}`,
+          onClick: () => round.onSupplement(step) }, h(IconEditOutlineRegular, { size: 14 }), '补充'),
         h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
           h(IconRightUpOutlineRegular, { size: 14 }), '查看会话')),
       step.report ? h(Fragment, null,
-        rest
+        rest || step.taskId
           ? h('button', { type: 'button', className: 'nodo-round-summary', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
             h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
           : h('p', { className: 'nodo-round-summary' }, summary),
         h(RoundChanges, { step }))
         : h(RoundTools, { step, work }),
       !step.report && step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
-      open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))))
+      open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
+      open && step.taskId && h(RoundTask, { step })))
 }
 
 export function RoundFaces({ roles }) {
@@ -188,17 +239,38 @@ export function RoundFaces({ roles }) {
     roles.map(role => h(RoleAvatar, { key: role.id, profile: role, size: 20 })))
 }
 
-export function RoundMenu({ members, work, onOpen }) {
+export function RoundMenu({ members, work, struct, workspace, onOpen }) {
   const [open, setOpen] = useState(false)
+  const [latest, setLatest] = useState(new Map())
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    call('task-list', { workspace }).then(list => {
+      if (!live) return
+      const newest = new Map()
+      for (const task of list ?? []) for (const execution of task.executions ?? []) {
+        const held = newest.get(execution.sessionId)
+        if (held && held.createdAt >= execution.createdAt) continue
+        newest.set(execution.sessionId, { title: task.title, task, createdAt: execution.createdAt,
+          at: Math.max(execution.endedAt ?? 0, execution.startedAt ?? 0, execution.createdAt ?? 0) || undefined })
+      }
+      setLatest(newest)
+    }).catch(() => {})
+    return () => { live = false }
+  }, [open, struct])
   return h(Menu, {
     open, onClose: () => setOpen(false), portal: true, align: 'end',
     items: members.map(({ role, session }) => {
         const status = workLabel(work?.[session.id])
+        const hit = latest.get(session.id)
+        const idle = taskWord(hit?.task, work?.[session.id])
         return { id: session.id, icon: h(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
           label: h('span', { className: 'nodo-round-menu-item' },
-            h('span', { className: 'nodo-round-role' }, role.name),
-            h('span', { className: 'nodo-round-title' }, session.name),
-            status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[session.id]), size: 8 }), status) : null) }
+            h('span', { className: 'nodo-round-title' }, hit?.title ?? session.name),
+            h('span', { className: 'nodo-round-menu-meta' },
+              [role.name, sessionTime(hit?.at ?? session.updatedAt)].filter(Boolean).join(' · '),
+              status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[session.id]), size: 8 }), status)
+                : idle ? h('span', null, idle) : null)) }
       }),
     onSelect: id => {
       setOpen(false)

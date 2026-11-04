@@ -2,7 +2,7 @@
 // home, and served back by id. The transcript keeps only the references, so
 // state.json never grows with image bytes.
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, sep } from 'node:path'
 import { IMAGE_BYTES_MAX, IMAGES_MAX, FILE_BYTES_MAX, FILES_MAX } from './constants.js'
 import { materializeResources, projectContent } from './resources.js'
@@ -63,8 +63,9 @@ export function install(rt) {
     const extension = EXTENSIONS.get(image.mediaType), name = fileName(image.name || 'image')
     return { name: name.toLowerCase().endsWith(`.${extension}`) ? name : `${name}.${extension}`, bytes: Buffer.from(image.data, 'base64') }
   }), cwd)
-  const place = async (entries, cwd) => {
-    if (!entries.length) return []
+  // The staged folder sits in the workspace's ignored `.nodo` segment; both
+  // byte entries and existing paths stage through it.
+  const stagedFolder = async cwd => {
     await mkdir(cwd, { recursive: true })
     const root = await realpath(cwd)
     let base = root
@@ -76,10 +77,23 @@ export function install(rt) {
       if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) throw invalid('Attachment directory must stay inside its workspace')
       if (segment === '.nodo') await ignoreFolder(base)
     }
-    const folder = await mkdtemp(join(base, 'task-'))
+    return mkdtemp(join(base, 'task-'))
+  }
+  const place = async (entries, cwd) => {
+    if (!entries.length) return []
+    const folder = await stagedFolder(cwd)
     return Promise.all(entries.map(async (file, index) => {
       const destination = join(folder, `${index + 1}-${file.name}`)
       await writeFile(destination, file.bytes, { flag: 'wx', mode: 0o600 })
+      return destination
+    }))
+  }
+  const placeCopies = async (paths, cwd) => {
+    if (!paths?.length) return []
+    const folder = await stagedFolder(cwd)
+    return Promise.all(paths.map(async path => {
+      const destination = join(folder, basename(path))
+      await copyFile(path, destination)
       return destination
     }))
   }
@@ -137,5 +151,5 @@ export function install(rt) {
     return saved
   }
 
-  Object.assign(rt, { admitImages, saveImages, imageOf, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, saveReplyImages })
+  Object.assign(rt, { admitImages, saveImages, imageOf, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, placeCopies, saveReplyImages })
 }

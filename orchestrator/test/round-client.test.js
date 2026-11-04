@@ -118,16 +118,17 @@ test('a supplemental report clears interrupted and unconfirmed round status', as
   const { roundLines, RoundMember, host } = await loadClient('round.js')
   const lines = [
     { delegation: { session: 'executor', profile: 'worker', type: 'feature' } },
-    { delegation: { session: 'executor', ended: 'interrupted', unconfirmed: true } },
+    { delegation: { session: 'executor', ended: 'interrupted', stoppedBy: 'user', unconfirmed: true } },
     { origin: { kind: 'report', session: 'executor' }, references: [{ messages: [{ text: 'Recovered successfully' }] }] },
   ]
   const step = roundLines(lines).find(line => line.kind === 'member').step
   assert.equal(step.ended, undefined)
   assert.equal(step.unconfirmed, undefined)
+  assert.equal(step.stoppedBy, undefined)
   assert.equal(step.report, 'Recovered successfully')
   host.reset()
   const shown = nodes(RoundMember({ step, round: { profiles: [{ id: 'worker', name: 'Worker' }], teams: [], work: {} } }))
-  assert.doesNotMatch(text(shown), /已中断|结果未确认/)
+  assert.doesNotMatch(text(shown), /已中断|已停止|结果未确认/)
 })
 
 test('an executor message shows its role, tags and state, expands the rest of its report and opens its session', async () => {
@@ -142,6 +143,8 @@ test('an executor message shows its role, tags and state, expands the rest of it
   const done = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: true, at: 9, report: '## Fixed the refresh race\n- Changed auth.js' }
   const head = tree => text(tree.find(node => node.props.className === 'nodo-round-head'))
   assert.equal(head(view(done)), 'Coder|修复|难题|续用|查看会话')
+  const isolated = view({ ...done, branch: 'nodo/task-isolated' })
+  assert.equal(text(isolated.find(node => node.props.className === 'nodo-tag' && text(node) === '隔离')), '隔离')
   assert.equal(view(done).find(node => node.type === MessageTime).props.at, 9)
   const summary = () => view(done).find(node => node.props.className === 'nodo-round-summary')
   assert.equal(summary().type, 'button')
@@ -163,6 +166,9 @@ test('an executor message shows its role, tags and state, expands the rest of it
   assert.equal(text(ended.find(node => node.props.className === 'nodo-round-quiet')), '没有回报主控，可查看会话了解进度。')
   assert.equal(head(view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done' })), 'Tester|测试|已结束|查看会话')
   assert.equal(head(view({ session: 'e6', profile: 'tester', type: 'test', ended: 'cancelled' })), 'Tester|测试|已取消|查看会话')
+  assert.equal(head(view({ session: 'e7', profile: 'tester', type: 'test', ended: 'interrupted', stoppedBy: 'user' })), 'Tester|测试|已停止|查看会话')
+  assert.equal(head(view({ session: 'e8', profile: 'tester', type: 'test', ended: 'cancelled', stoppedBy: 'lead' })), 'Tester|测试|已停止|查看会话')
+  assert.equal(head(view({ session: 'e9', profile: 'tester', type: 'test', ended: 'error' })), 'Tester|测试|已结束|查看会话')
   const stopped = []
   round.onStop = async step => { stopped.push(step.session) }
   round.work.e2.suspect = true
@@ -186,9 +192,194 @@ test('an executor message shows its role, tags and state, expands the rest of it
   cancel.props.onClick()
   await tick()
   assert.deepEqual(stopped, ['e2', 'e2'], 'a waiting member cancels on its own')
+  delete round.work.e2.retryWaiting
+  round.work.e2.stopping = true
+  const holding = view({ session: 'e2', profile: 'tester', type: 'test' })
+  const hold = holding.find(node => node.props['aria-label'] === '停止 Tester')
+  assert.equal(hold.props.disabled, true, 'a stop signalled by the snapshot disables the button after a reload')
+  assert.equal(text(hold), '停止中…')
+  delete round.work.e2.stopping
   assert.equal(view({ ...done }).find(node => node.props['aria-label'] === '停止 Coder'), undefined, 'a reported member has nothing to stop')
   delete round.onStop
   assert.equal(head(view({ session: 'e4', profile: 'tester', type: 'test', hard: false, reused: false })), 'Tester|测试|未回报|查看会话')
+})
+
+test('delegation marks carry the task identity into member steps, old marks stay bare', async () => {
+  const { roundLines } = await loadClient('round.js')
+  const lines = [
+    { who: 'system', kind: 'note', text: '已派给 Coder',
+      delegation: { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false, taskId: 't1', executionId: 'x1', branch: 'nodo/task-isolated' }, at: 1 },
+    { who: 'system', kind: 'note', text: '已派给 Tester', delegation: { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }, at: 2 },
+  ]
+  const steps = plain(roundLines(lines)).filter(line => line.kind === 'member').map(line => line.step)
+  assert.deepEqual(steps, [
+    { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false, taskId: 't1', executionId: 'x1', branch: 'nodo/task-isolated', at: 1 },
+    { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false, at: 2 },
+  ])
+})
+
+test('a stop mark carries its initiator into the step and keeps engine endings on the old wording', async () => {
+  const { roundLines, RoundMember, host } = await loadClient('round.js')
+  const stepOf = mark => plain(roundLines([
+    { who: 'system', kind: 'note', text: '已派给 Coder', delegation: { session: 'e1', profile: 'coder', type: 'bug-fix' }, at: 1 },
+    { who: 'system', kind: 'note', text: '执行未完成', delegation: { session: 'e1', ...mark }, at: 2 },
+  ])).find(line => line.kind === 'member').step
+  const step = stepOf({ ended: 'interrupted', stoppedBy: 'user' })
+  assert.equal(step.stoppedBy, 'user')
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], teams: [], work: {} }
+  const word = () => { host.reset(); return text(nodes(RoundMember({ step, round }))) }
+  assert.match(word(), /已停止/)
+  step.ended = 'cancelled'
+  assert.match(word(), /已停止/, 'a cancelled stop reads the same way')
+  step.ended = 'error'
+  delete step.stoppedBy
+  assert.match(word(), /已结束/, 'an engine error keeps its own wording')
+  step.ended = 'interrupted'
+  assert.match(word(), /已中断/, 'an interruption without a stop initiator stays 已中断')
+})
+
+test('an ended member card drops the task word so the ending text stands alone', async () => {
+  const { RoundMember, host } = await loadClient('round.js')
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], teams: [], tasks: [{ id: 't1', status: 'stopped' }], work: {}, onOpen: () => {} }
+  const render = step => { host.reset(); return nodes(RoundMember({ step, round })) }
+  const head = step => render(step).find(node => node.props.className === 'nodo-round-head')
+  const tags = step => nodes(head(step)).filter(node => node.props.className === 'nodo-tag').map(node => node.children[0])
+  const stopped = { session: 'e1', profile: 'coder', type: 'bug-fix', taskId: 't1', ended: 'interrupted', stoppedBy: 'user' }
+  assert.deepEqual(tags(stopped), ['bug-fix'], 'the stopped task word yields to the ending text')
+  assert.equal(text(head(stopped)).split('已停止').length - 1, 1, '已停止 appears once')
+  const cancelled = { ...stopped, ended: 'cancelled', stoppedBy: undefined }
+  assert.match(text(head(cancelled)), /已取消/, 'a cancelled stop without an initiator says 已取消')
+  assert.ok(!text(head(cancelled)).includes('已停止'), 'the task-level word never contradicts the ending')
+  assert.deepEqual(tags({ session: 'e1', profile: 'coder', type: 'bug-fix', taskId: 't1', hard: true }), ['bug-fix', '难题', '已停止'],
+    'a card without an ending keeps the task-level word')
+})
+
+test('a member card tags its task with the status word derived from task, execution and approval', async () => {
+  const { RoundMember, host } = await loadClient('round.js')
+  const tasks = {
+    open: { id: 't-open', status: 'open' }, review: { id: 't-review', status: 'review' },
+    blocked: { id: 't-blocked', status: 'blocked' }, done: { id: 't-done', status: 'done' }, stopped: { id: 't-stopped', status: 'stopped' },
+  }
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], teams: [], tasks: Object.values(tasks), work: {}, onOpen: () => {} }
+  const card = (task, extra = {}) => {
+    round.work = extra.work ?? {}
+    host.reset()
+    return nodes(RoundMember({ step: { session: 'e1', profile: 'coder', type: 'bug-fix', taskId: task.id, ...extra.step }, round }))
+  }
+  const tags = tree => nodes(tree.find(node => node.props.className === 'nodo-round-head'))
+    .filter(node => node.props.className === 'nodo-tag').map(node => [node.children[0], node.props['data-tone']])
+  assert.deepEqual(tags(card({ ...tasks.open, id: 'missing' })), [['bug-fix', undefined]], 'a step outside the task view keeps its old head')
+  assert.deepEqual(tags(card(tasks.open, { work: { e1: { active: true, since: Date.now() } } })), [['bug-fix', undefined], ['进行中', 'accent']])
+  assert.deepEqual(tags(card(tasks.open, { work: { e1: { active: true, status: 'waiting-approval' } } })), [['bug-fix', undefined], ['等待用户', 'caution']])
+  assert.deepEqual(tags(card(tasks.open)), [['bug-fix', undefined], ['待执行', undefined]])
+  assert.deepEqual(tags(card(tasks.review)), [['bug-fix', undefined], ['待验收', 'accent']])
+  assert.deepEqual(tags(card(tasks.blocked)), [['bug-fix', undefined], ['受阻', 'caution']])
+  assert.deepEqual(tags(card(tasks.blocked, { step: { unconfirmed: true } })), [['bug-fix', undefined], ['未确认', 'caution']])
+  // RoundMember reads the task from the round view, so the field-bearing object goes into round.tasks directly.
+  const withViewTask = (task, extra = {}) => {
+    round.work = extra.work ?? {}
+    host.reset()
+    return tags(nodes(RoundMember({ step: { session: 'e1', profile: 'coder', type: 'bug-fix', taskId: task.id, ...extra.step }, round: { ...round, tasks: [task] } })))
+  }
+  assert.deepEqual(withViewTask({ ...tasks.blocked, latestExecutionStatus: 'unconfirmed' }), [['bug-fix', undefined], ['未确认', 'caution']],
+    'a blocked task whose newest execution is unconfirmed says 未确认 without reading executions')
+  assert.deepEqual(withViewTask({ ...tasks.open, latestExecutionStatus: 'running' }), [['bug-fix', undefined], ['进行中', 'accent']],
+    'an idle task whose newest execution is running says 进行中')
+  assert.deepEqual(tags(card(tasks.done)), [['bug-fix', undefined], ['已完成', undefined]])
+  assert.deepEqual(tags(card(tasks.stopped)), [['bug-fix', undefined], ['已停止', undefined]])
+  assert.equal(tags(card({ status: 'open' }))[1], undefined, 'a card without taskId shows no task tag')
+})
+
+test('a member card with a task offers to supplement it, gated by the writable conversation', async () => {
+  const { RoundMember, host } = await loadClient('round.js')
+  const steps = []
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], teams: [], tasks: [{ id: 't1', title: 'Fix login', status: 'open' }], work: {}, onOpen: () => {},
+    onSupplement: step => steps.push(step) }
+  const words = step => { host.reset(); return nodes(RoundMember({ step, round })).filter(node => node.type === 'button')
+    .map(node => node.children.filter(child => typeof child === 'string').join('')) }
+  const step = { session: 'e1', profile: 'coder', type: 'bug-fix', taskId: 't1' }
+  assert.deepEqual(words(step), ['补充', '查看会话'])
+  const supplement = nodes(RoundMember({ step, round })).find(node => node.type === 'button' && node.children.includes('补充'))
+  supplement.props.onClick()
+  assert.deepEqual(steps, [step])
+  assert.deepEqual(words({ session: 'e2', profile: 'coder', type: 'bug-fix' }), ['查看会话'], 'a card without a task offers no supplement')
+  delete round.onSupplement
+  assert.deepEqual(words(step), ['查看会话'], 'a read-only conversation offers no supplement')
+})
+
+test('an expanded member loads its task on demand and retries a failed task-get', async () => {
+  const calls = []
+  let fail = true
+  const task = { id: 't1', title: 'T', status: 'review', brief: 'Fix the login race\nwith care',
+    acceptances: [{ reason: '验证通过', references: ['r1', 'r2'], executionIds: ['x1'], createdAt: 1 }],
+    executions: [{ id: 'x1', taskId: 't1', profileId: 'coder', sessionId: 'e1', type: 'bug-fix', hard: false, status: 'done',
+      reason: 'done', report: 'r', references: [], startedAt: 1, endedAt: 2, createdAt: 1 }] }
+  const { RoundMember, host } = await loadClient('round.js', { uiShared: {
+    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); if (fail) throw new Error('boom')
+      return endpoint === 'task-get' ? task : undefined } } })
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], teams: [], work: {}, onOpen: () => {} }
+  const step = { session: 'e1', profile: 'coder', type: 'bug-fix', taskId: 't1', executionId: 'x1', report: 'All green', at: 9 }
+  const member = () => { host.reset(); return nodes(RoundMember({ step, round })) }
+  const detail = () => {
+    const node = member().find(item => item.props.step === step && item.type !== RoundMember && item.type.name === 'RoundTask')
+    return node.type(node.props)
+  }
+  member()
+  assert.deepEqual(calls, [], 'a collapsed card asks for nothing')
+  const summary = () => member().find(node => node.props.className === 'nodo-round-summary')
+  assert.equal(summary().type, 'button', 'a task card expands even a one-line report')
+  summary().props.onClick()
+  detail()
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(plain(calls), [{ endpoint: 'task-get', payload: { taskId: 't1' } }])
+  const errorRow = detail()
+  assert.equal(text(errorRow), 'boom|重试')
+  errorRow.children[1].props.onClick()
+  fail = false
+  detail()
+  host.effects.at(-1)()
+  await tick()
+  assert.equal(calls.length, 2, 'retry asks again for the task')
+  const shown = nodes(detail())
+  const reports = shown.filter(node => node.props.className === 'nodo-round-report')
+  assert.equal(reports.at(-1).children[0].props.text, task.brief, 'the brief renders as markdown')
+  assert.ok(text(shown).includes('验证通过 · 依据 2 项'), 'the acceptance conclusion carries its reference count')
+})
+
+test('the session menu shows the idle task word and keeps a running session\'s state', async () => {
+  const tasks = [
+    { id: 't1', title: 'Review', status: 'review', executions: [{ sessionId: 'e1', createdAt: 10 }] },
+    { id: 't2', title: 'Unconfirmed', status: 'blocked', latestExecutionStatus: 'unconfirmed', executions: [{ sessionId: 'e2', createdAt: 10, status: 'unconfirmed' }] },
+    { id: 't3', title: 'Failed', status: 'blocked', executions: [{ sessionId: 'e3', createdAt: 10, status: 'failed' }] },
+    { id: 't4', title: 'Done', status: 'done', executions: [{ sessionId: 'e4', createdAt: 10 }] },
+    { id: 't5', title: 'Stopped', status: 'stopped', executions: [{ sessionId: 'e5', createdAt: 10 }] },
+    { id: 't6', title: 'Running', status: 'open', latestExecutionStatus: 'running', executions: [{ sessionId: 'e6', createdAt: 10, status: 'running' }] },
+    { id: 't7', title: 'Queued', status: 'open', executions: [{ sessionId: 'e7', createdAt: 10, status: 'queued' }] },
+  ]
+  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+    call: async endpoint => endpoint === 'task-list' ? tasks : undefined,
+    sessionTime: () => '', workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
+  } })
+  const members = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}`, updatedAt: 7 } }))
+  host.cells[0] = true
+  const label = id => {
+    host.reset()
+    const items = nodes(RoundMenu({ members, work: { e8: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} })).find(node => node.type === 'Menu').props.items
+    return text(items.find(item => item.id === id).label)
+  }
+  label('e1')
+  host.effects.at(-1)()
+  await tick()
+  assert.equal(label('e1'), 'Review|Coder|待验收')
+  assert.equal(label('e2'), 'Unconfirmed|Coder|未确认', 'a blocked task with an unconfirmed execution says 未确认')
+  assert.equal(label('e3'), 'Failed|Coder|受阻')
+  assert.equal(label('e4'), 'Done|Coder|已完成')
+  assert.equal(label('e5'), 'Stopped|Coder|已停止')
+  assert.equal(label('e6'), 'Running|Coder|进行中')
+  assert.equal(label('e7'), 'Queued|Coder|待执行')
+  assert.equal(label('e8'), 'S8|Coder|运行中', 'a running session keeps its running state')
+  assert.equal(label('e9'), 'S9|Coder', 'a session without a task stays blank')
 })
 
 test('a delegation chip names its executor, and the faces stack lists every role of the round', async () => {
@@ -560,8 +751,8 @@ test('the roster puts roles with a state first by latest change, then leads, the
   assert.deepEqual(calls, ['new', 't1', 't3', 't3'], 'a lead-less team row opens its config like its edit button')
 })
 
-async function mount(viewName = 'team', restored) {
-  const slots = [], calls = []
+async function mount(viewName = 'team', restored, feed = null) {
+  const slots = [], calls = [], storage = {}
   let cursor = 0
   let navigation = restored ?? { view: viewName, profile: 'lead', workspace: 'w', sessions: { 'w:lead': 'l1' } }
   const lead = { id: 'lead', name: 'Lead', lead: true, engine: 'codex', workspaceId: 'w', sessions: [{ id: 'l1', name: 'Fix login', workspaceRef: 'w' }] }
@@ -574,12 +765,13 @@ async function mount(viewName = 'team', restored) {
     teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
   const space = { active: true, legacy: true }
   const loaded = await loadClient(['page.js', 'round.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
+    ...(feed ? { stubs: { 'live.js': liveStub(feed) } } : {}),
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),
       readNavigation: () => navigation, subscribeNavigation() {}, setNavigation: update => { navigation = update(navigation) },
       nativeSpace: { subscribe() {}, getSnapshot: () => space, showLegacy() {} },
       readNativeSession: () => null, subscribeNativeSession() {}, completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
-      workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing', workKind: () => 'run', WorkDot: 'WorkDot',
+      workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing', workKind: () => 'run', WorkDot: 'WorkDot', sessionTime: () => '',
       call: async (endpoint, payload) => { calls.push({ endpoint, payload }) },
     },
     react: {
@@ -592,8 +784,8 @@ async function mount(viewName = 'team', restored) {
       useEffect() {},
     },
     globals: { document: { visibilityState: 'visible', hasFocus: () => true }, localStorage: {
-      getItem: key => key === 'nodo.navigation' ? JSON.stringify(navigation) : null,
-      setItem: (key, value) => { if (key === 'nodo.navigation') navigation = JSON.parse(value) },
+      getItem: key => key === 'nodo.navigation' ? JSON.stringify(navigation) : storage[key] ?? null,
+      setItem: (key, value) => { if (key === 'nodo.navigation') navigation = JSON.parse(value); else storage[key] = value },
     } },
   })
   const render = () => { cursor = 0; return nodes(loaded.NodoPage({ contentOnly: true })) }
@@ -612,18 +804,88 @@ test('a lead session opens as its round: chat feed, faces, session menu and roun
   assert.equal(menu.onRaw, undefined)
   const items = nodes(loaded.RoundMenu({ ...find(loaded.RoundMenu) })).find(node => node.type === 'Menu').props.items
   assert.deepEqual(plain(items.map(item => item.id)), ['e1', 'e2'])
-  assert.equal(text(items[0].label), 'Coder|First|运行中')
-  assert.equal(text(items[1].label), 'Coder|Second')
+  assert.equal(text(items[0].label), 'First|Coder|运行中')
+  assert.equal(text(items[1].label), 'Second|Coder')
 })
 
-test('the round stop interrupts the running executor and a draft still sends to the lead', async () => {
-  const { loaded, calls, find } = await mount()
+test('the round menu scopes its task list to the lead session workspace, not the display anchor', async () => {
+  const h = await mount()
+  h.view.workspaces.push({ id: 'tw', name: 'nodo/task-x', worktree: { branch: 'nodo/task-x', project: 'w' } })
+  h.view.profiles[0].sessions[0].workspaceRef = 'tw'
+  assert.equal(h.find(h.loaded.RoundMenu).workspace, 'tw', 'the menu asks for tasks where the lead session lives')
+})
+
+test('the session menu titles each executor with its latest task and keeps the role, time and state on the second line', async () => {
+  const calls = []
+  const tasks = [
+    { id: 't1', title: 'First task', executions: [{ sessionId: 'e1', createdAt: 10, startedAt: 20, endedAt: 30 }] },
+    { id: 't2', title: 'Reused task', executions: [{ sessionId: 'e1', createdAt: 100, startedAt: 140, endedAt: 300 }] },
+    { id: 't3', title: 'Newest task', executions: [{ sessionId: 'e1', createdAt: 200, startedAt: 250, endedAt: null }] },
+    { id: 't4', title: 'Queued task', executions: [{ sessionId: 'e3', createdAt: 500, startedAt: null, endedAt: null }] },
+  ]
+  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'task-list' ? tasks : undefined },
+    sessionTime: at => ({ 7: '5分钟前', 250: '刚刚', 500: '3秒前' })[at] ?? '',
+    workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
+  } })
+  const members = [
+    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'First', updatedAt: 7 } },
+    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e2', name: 'Legacy', updatedAt: 7 } },
+    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e3', name: 'Fresh', updatedAt: 7 } },
+  ]
+  host.cells[0] = true
+  const label = id => {
+    host.reset()
+    const items = nodes(RoundMenu({ members, work: { e1: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} })).find(node => node.type === 'Menu').props.items
+    return text(items.find(item => item.id === id).label)
+  }
+  assert.equal(label('e1'), 'First|Coder · 5分钟前|运行中', 'a session keeps its own row until the task list answers')
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(plain(calls), [{ endpoint: 'task-list', payload: { workspace: 'w1' } }])
+  assert.equal(label('e1'), 'Newest task|Coder · 刚刚|运行中', 'a reused session takes its newest execution, and the time comes from that execution alone')
+  assert.equal(label('e2'), 'Legacy|Coder · 5分钟前', 'a session without executions keeps its name and its own time')
+  assert.equal(label('e3'), 'Queued task|Coder · 3秒前', 'a queued execution dates itself from creation')
+})
+
+test('the session menu asks for tasks only while it is open, scoped to its workspace', async () => {
+  const calls = []
+  const tasks = [{ id: 't1', title: 'First task', executions: [{ sessionId: 'e1', createdAt: 10, startedAt: null, endedAt: null }] }]
+  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'task-list' ? tasks : undefined },
+    sessionTime: at => ({ 10: '刚刚' })[at] ?? '',
+    workLabel: () => '', workDot: () => 'ongoing',
+  } })
+  const members = [{ role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'First', updatedAt: 7 } }]
+  const items = () => {
+    host.reset()
+    return nodes(RoundMenu({ members, work: {}, struct: 1, workspace: 'w1', onOpen() {} })).find(node => node.type === 'Menu').props.items
+  }
+  items()
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(calls, [], 'a closed menu asks for nothing')
+  host.cells[0] = true
+  items()
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(plain(calls), [{ endpoint: 'task-list', payload: { workspace: 'w1' } }])
+  assert.equal(text(items().find(item => item.id === 'e1').label), 'First task|Coder · 刚刚', 'the open menu titles each session with its task')
+  host.cells[0] = false
+  items()
+  host.effects.at(-1)()
+  assert.equal(calls.length, 1, 'closing sends nothing further')
+})
+
+test('the team stop interrupts only the lead and a draft still sends to the lead', async () => {
+  const { loaded, calls, find, view } = await mount()
+  view.work.l1 = { active: true }
   const composer = find(loaded.Composer)
-  assert.equal(composer.running, false)
-  assert.equal(composer.stoppable, true)
+  assert.equal(composer.running, true)
   composer.onStop()
   await tick()
-  assert.deepEqual(plain(calls.filter(call => call.endpoint === 'interrupt')), [{ endpoint: 'interrupt', payload: { profile: 'coder', session: 'e1' } }])
+  assert.deepEqual(plain(calls.filter(call => call.endpoint === 'interrupt')), [{ endpoint: 'interrupt', payload: { profile: 'lead', session: 'l1' } }],
+    'the running member keeps running; the stop names the lead session alone')
   const { Composer } = await loadClient('composer.js')
   const all = tree => !tree || typeof tree !== 'object' ? [] : [tree, ...[...(tree.children ?? []), tree.props?.children].flat(Infinity).flatMap(all)]
   let stops = 0
@@ -634,7 +896,54 @@ test('the round stop interrupts the running executor and a draft still sends to 
   const stop = empty.find(node => node.props.className === 'nodo-send')
   assert.equal(stop.props['aria-label'], '停止生成')
   stop.props.onClick()
+  const idle = all(Composer({ value: '', images: [], running: false, onSend() {}, onStop: () => stops++ }))
+  assert.equal(idle.some(node => node.props.className === 'nodo-pending-stop'), false, 'a not-stoppable composer draws no stop button')
+  assert.equal(idle.find(node => node.props.className === 'nodo-send').props['aria-label'], '发送消息')
   assert.equal(stops, 2)
+})
+
+test('an idle lead with running members shows the task count and no composer stop', async () => {
+  const { loaded, find, render, view } = await mount()
+  assert.equal(find(loaded.Composer).running, false)
+  assert.equal(find(loaded.Composer).stoppable, undefined, 'the composer falls back to the idle lead: no stop')
+  const count = () => { const dock = render().find(node => node.props?.className === 'nodo-running-dock')
+    return dock && nodes(dock).find(node => node.type === loaded.TaskCountLine) }
+  assert.equal(find(loaded.RunningLine), undefined, 'the idle lead draws no running line')
+  assert.equal(count().props.count, 1, 'the running member counts while the lead idles')
+  assert.equal(text(count().type(count().props)), '1 个任务执行中')
+  view.work.e2 = { active: true }
+  assert.equal(count().props.count, 2, 'parallel members each count')
+  delete view.work.e2
+  assert.equal(count().props.count, 1)
+  view.work.e1 = { active: false }
+  assert.equal(count(), undefined, 'no dock once no member is active')
+})
+
+test('two parallel member cards stop and end independently', async () => {
+  const feed = { lines: [
+    { who: 'user', kind: 'text', text: 'Ship both', at: 1 },
+    { who: 'system', kind: 'note', text: '已派给 Coder', delegation: { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false }, at: 2 },
+    { who: 'system', kind: 'note', text: '已派给 Tester', delegation: { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }, at: 3 },
+  ] }
+  const stopped = []
+  const { Feed, RoundMember, host } = await loadClient(['feed.js', 'round.js'], { stubs: { 'live.js': liveStub(feed) } })
+  const lead = { id: 'lead', name: 'Lead', lead: true }
+  const round = { profiles: [lead, { id: 'coder', name: 'Coder' }, { id: 'tester', name: 'Tester' }], teams: [],
+    work: { e1: { active: true, since: 1000 }, e2: { active: true, since: 2000 } }, onOpen() {}, onStop: async step => { stopped.push(step.session) } }
+  const cards = () => { host.reset(); return nodes(Feed({ profile: lead, session: { id: 'l1' }, work: { active: false }, round }))
+    .filter(node => node.type === RoundMember) }
+  assert.deepEqual(cards().map(node => node.props.step.session), ['e1', 'e2'])
+  const rendered = index => nodes(cards()[index].type(cards()[index].props))
+  rendered(0).find(node => node.props['aria-label'] === '停止 Coder').props.onClick()
+  await tick()
+  assert.deepEqual(stopped, ['e1'], 'one card stops its own session')
+  feed.lines.push({ who: 'system', kind: 'note', text: '执行未完成', delegation: { session: 'e1', ended: 'interrupted', stoppedBy: 'user' }, at: 4 })
+  const after = cards()
+  assert.equal(after[0].props.step.ended, 'interrupted')
+  const other = rendered(1)
+  assert.equal(after[1].props.step.ended, undefined)
+  assert.equal(other.some(node => node.props['data-state'] === 'live'), true, 'the parallel member still reads live')
+  assert.equal(other.some(node => node.props['aria-label'] === '停止 Tester'), true, 'the parallel member keeps its own stop')
 })
 
 test('an executor session opened from the round links back to its lead session', async () => {
@@ -775,4 +1084,38 @@ test('the dock new-session button locks only on the roles page or a Team without
   assert.equal(dock({ view: 'roles', content: null }).props.disabled, true, 'the roles page keeps the dock locked')
   view.profiles[0].lead = false
   assert.equal(dock({ view: 'team' }).props.disabled, true, 'a Team without usable lead roles keeps the dock locked')
+})
+
+test('supplementing scopes the conversation to a task: chip, taskId on send, queue title and approval title', async () => {
+  const feed = { error: '', lines: [
+    { who: 'system', kind: 'note', text: '已派给 Coder', delegation: { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false, taskId: 't1', executionId: 'x1' }, at: 3 } ] }
+  const { loaded, view, calls, find, render } = await mount('team', null, feed)
+  view.tasks = [{ id: 't1', title: 'Fix login', status: 'open' }, { id: 't2', title: 'Other task', status: 'open' }]
+  view.approvals = [{ id: 'a1', profileId: 'e1', taskId: 't1' }]
+  view.work.l1 = { active: false, pending: [{ seq: 5, text: 'Queued', images: [], sending: false, taskId: 't1' }] }
+  const composer = () => find(loaded.Composer)
+  assert.equal(composer().taskScope, undefined, 'no scope before supplementing')
+  find(loaded.Feed).round.onSupplement({ taskId: 't1' })
+  assert.equal(composer().taskScope, 'Fix login')
+  assert.deepEqual(plain(composer().pending), [{ seq: 5, text: 'Queued', images: [], sending: false, taskId: 't1', taskTitle: 'Fix login' }],
+    'a queued supplement names its task')
+  assert.equal(find(loaded.ApprovalCard).card.taskTitle, 'Fix login', 'the approval card carries its task title')
+  find(loaded.Feed).round.onOpen('e1')
+  await tick()
+  assert.equal(composer().taskScope, undefined, 'another session carries no scope')
+  render().find(node => node.props.className === 'nodo-crumb nodo-crumb-link').props.onClick()
+  await tick()
+  assert.equal(composer().taskScope, 'Fix login', 'returning restores the session scope')
+  composer().onChange('Plus one')
+  composer().onSend()
+  await tick(); await tick()
+  assert.deepEqual(plain(calls.find(call => call.endpoint === 'send').payload),
+    { profile: 'lead', session: 'l1', text: 'Plus one', images: [], mode: 'queue', taskId: 't1' })
+  composer().onRemoveTaskScope()
+  assert.equal(composer().taskScope, undefined, 'the chip removes the scope')
+  composer().onChange('Plain')
+  composer().onSend()
+  await tick(); await tick()
+  assert.deepEqual(plain(calls.filter(call => call.endpoint === 'send').at(-1).payload),
+    { profile: 'lead', session: 'l1', text: 'Plain', images: [], mode: 'queue' })
 })

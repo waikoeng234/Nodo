@@ -10,7 +10,7 @@ const harness = answer => {
   const redact = redactor([{ name: 'FIXTURE', value: 'fake-sensitive-fixture' }])
   const rt = {
     ctx: { effect: effect => { cleanup = effect() } },
-    state: { profiles: {} }, sessionsOf: () => [], conversationOf: () => ({ profile: { name: 'Fixture' } }),
+    state: { profiles: {}, executions: {}, tasks: {} }, sessionsOf: () => [], conversationOf: () => ({ profile: { name: 'Fixture' } }),
     redactDeepSecrets: value => redactDeep(value, redact),
     appendLine: (_id, line) => { lines.push(line); return line },
     save: async () => { saved.push(JSON.parse(JSON.stringify(lines))) },

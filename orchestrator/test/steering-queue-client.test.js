@@ -68,7 +68,7 @@ test('the conversation sends in queue mode and restores edited text and images w
   const composer = () => nodes(render()).find(node => node.type === loaded.Composer).props
   const tick = () => new Promise(resolve => setImmediate(resolve))
   composer().onChange('Draft')
-  assert.equal(composer().pending, pending)
+  assert.deepEqual(composer().pending, pending)
   composer().onQueueAction(2, 'edit')
   await tick()
   assert.equal(composer().value, 'Queued\n\nDraft')
@@ -82,4 +82,13 @@ test('the conversation sends in queue mode and restores edited text and images w
   composer().onQueueAction(2, 'send')
   await tick()
   assert.ok(nodes(render()).some(node => node.props.role === 'alert' && node.children.includes('当前无法插入本轮，消息仍在排队')))
+})
+
+test('a queued task supplement names its task beside the draft; plain messages stay unchanged', async () => {
+  const { PendingMessages } = await loadClient('composer.js')
+  const shown = items => nodes(PendingMessages({ items, disabled: false, onAction() {} }))
+    .find(node => node.props.className === 'nodo-pending-text').children
+    .map(child => typeof child === 'object' ? child.children[0] : child)
+  assert.deepEqual(shown([{ seq: 3, text: 'Look', images: [], sending: false, taskTitle: 'Fix login' }]), ['Look', ' · Fix login'])
+  assert.deepEqual(shown([{ seq: 4, text: 'Bare', images: [], sending: false }]), ['Bare'])
 })

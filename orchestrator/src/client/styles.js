@@ -313,7 +313,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-round-body{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--dsh-content-font-size,14px);line-height:22px}
 .nodo-round-role{flex:none;font-weight:500}
 .nodo-round-speaker>.nodo-round-role,.nodo-round-head>.nodo-round-role{font-weight:600}
-.nodo-round-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}
+.nodo-round-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px}
 .nodo-tag{--nodo-tag-tone:var(--dsw-alias-label-secondary);display:inline-block;flex:none;max-width:100%;height:20px;padding:0 7px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover);color:var(--nodo-tag-tone);font-size:12px;font-weight:400;line-height:20px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nodo-tag[data-tone]{background:color-mix(in srgb,var(--nodo-tag-tone) 10%,transparent)}
 .nodo-tag[data-tone=accent]{--nodo-tag-tone:var(--dsw-alias-state-business-primary)}
@@ -331,12 +331,15 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-round-summary:focus-visible,.nodo-round-open:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-round-quiet{margin:0;color:var(--dsw-alias-label-tertiary)}
 .nodo-round-report{min-width:0;color:var(--dsw-alias-label-secondary)}
+.nodo-round-task-error{display:flex;align-items:center;gap:8px}
 .nodo-round-tools{display:flex;flex-direction:column;gap:2px;min-width:0}
 .nodo-round-tools>:first-child:nth-last-child(5){opacity:.4}
 .nodo-round-tools>:nth-child(2):nth-last-child(4){opacity:.7}
 .nodo-round-text{max-height:88px;overflow:hidden}
 .nodo-round-chip{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;height:24px;padding:0 8px 0 6px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px}
-.nodo-round-menu-item{display:flex;align-items:center;gap:8px;min-width:0}
+.nodo-round-menu-item{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
+.nodo-round-menu-meta{display:flex;align-items:center;gap:8px;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-round-menu-meta .nodo-row-running{line-height:18px}
 .nodo-ok{color:var(--dsw-alias-state-success-primary)}.nodo-bad{color:var(--dsw-alias-state-error-primary)}
 .nodo-error-line{margin:8px 0;color:var(--dsw-alias-state-error-primary);white-space:pre-wrap}
 .nodo-note{color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(18px + var(--dsh-content-font-delta-secondary,0px))}
@@ -414,6 +417,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-approval-card{box-sizing:border-box;width:100%;max-width:var(--dsh-chat-content-width,748px);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);overflow:hidden}
 .nodo-approval-strip{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:18px}
 .nodo-approval-from{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.nodo-approval-task{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-approval-from>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-approval-body{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;max-height:var(--dsh-composer-text-max-height,336px);padding:12px 16px 0;overflow-y:auto;outline:none}
 .nodo-approval-headline{margin:0;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px;text-wrap:pretty}
@@ -471,6 +475,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-mode-chip:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
 .nodo-mode-chip:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px;max-height:90px;overflow:auto}
+.nodo-composer-files .nodo-task-scope{max-width:280px;padding:5px 7px;overflow:hidden;color:var(--dsw-alias-label-secondary);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
 .nodo-composer-file>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

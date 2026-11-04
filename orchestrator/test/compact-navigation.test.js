@@ -53,7 +53,7 @@ async function mount(pendingEndpoint = 'session-compact', engine = 'zcode', side
     },
   })
   const render = () => { cursor = 0; return nodes(loaded.NodoPage({ sidebarOnly })) }
-  return { loaded, view, role, calls, requests, opened, render, space: () => space,
+  return { loaded, view, role, calls, requests, opened, render, space: () => space, setNavigation: next => { navigation = next },
     composer: () => render().find(node => node.type === loaded.Composer).props,
     rail: () => render().find(node => node.type === loaded.Rail).props,
     // Rail state lives past the page's own slots so repeated rail renders keep it.
@@ -277,6 +277,14 @@ test('opening a bound running native conversation uses its existing window immed
   h.requests.get('b').resolve()
   await tick()
   assert.deepEqual(h.opened, ['native-b'])
+})
+
+test('an archived worktree session anchors the rail at its project', async () => {
+  const h = await mount()
+  h.view.workspaces.push({ id: 'wt', name: 'branch', worktree: { branch: 'feat', project: 'workspace' } })
+  h.role.sessions.push({ id: 'arch', name: 'old work', workspaceRef: 'wt', archivedAt: 1 })
+  h.setNavigation({ archivedSession: 'arch', profile: 'role', workspace: 'wt' })
+  assert.equal(h.rail().workspace.id, 'workspace', 'the archived session highlights its project, not its worktree')
 })
 
 test('the Team rail lists only Team-mode lead sessions; the session rail keeps every session', async () => {

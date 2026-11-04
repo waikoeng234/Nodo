@@ -4,7 +4,7 @@ import {
 } from './ui-shared.js'
 import { RolePicker } from './role-seat.js'
 import { Rail } from './session-rail.tsx'
-import { RunningLine } from './running.js'
+import { RunningLine, TaskCountLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
 import { roundIndex, RoundMenu, RoundFaces } from './round.js'
@@ -14,12 +14,17 @@ import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDelete
 import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
 import { leadModeOf } from '../../core/shared/lead.js'
 import { nativeIdOf } from '../../core/shared/session.js'
+import { projectAnchorOf } from '../../core/shared/workspaces.js'
 
 // Unsent drafts outlive the page: text is kept in localStorage across reloads,
-// pasted images (too large for storage) in memory across remounts.
+// pasted images (too large for storage) in memory across remounts. A session's
+// task scope (which task the next messages supplement) persists the same way.
 export let heldImages = {}
 export const readDrafts = () => {
   try { return JSON.parse(localStorage.getItem('nodo.drafts')) ?? {} } catch { return {} }
+}
+const readScopes = () => {
+  try { return JSON.parse(localStorage.getItem('nodo.taskScope')) ?? {} } catch { return {} }
 }
 
 let navigationSnapshot
@@ -40,7 +45,7 @@ export const nativeRole = profile => profile?.engine === 'dsh'
 export const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   if (!profile || !workspace) return
   const sessions = profile.sessions.filter(item => !item.archivedAt
-    && (item.workspaceRef ?? workspaces.find(workspace => workspace.cwd === item.cwd)?.id ?? profile.workspaceId) === workspace.id)
+    && projectAnchorOf(workspaces, item.workspaceRef ?? workspaces.find(workspace => workspace.cwd === item.cwd)?.id ?? profile.workspaceId) === workspace.id)
   return sessions.find(item => item.id === selected)
     ?? sessions.find(item => item.id === profile.activeSessionId)
     ?? sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0]
@@ -144,13 +149,17 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const [sessionDialog, setSessionDialog] = useState(null)
   const [drafts, setDrafts] = useState(readDrafts)
   const [pastedImages, setPastedImages] = useState(() => heldImages)
+  const [scopes, setScopes] = useState(readScopes)
   useEffect(() => { localStorage.setItem('nodo.drafts', JSON.stringify(drafts)) }, [drafts])
+  useEffect(() => { localStorage.setItem('nodo.taskScope', JSON.stringify(scopes)) }, [scopes])
   useEffect(() => { heldImages = pastedImages }, [pastedImages])
-  // Deleting a role drops its sessions' drafts here, before the next edit
-  // mirrors the in-memory copy back to storage.
+  // Deleting a role drops its sessions' drafts and task scopes here, before the
+  // next edit mirrors the in-memory copy back to storage.
   useEffect(() => {
-    const remove = ids => setDrafts(current =>
-      Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))))
+    const remove = ids => {
+      setDrafts(current => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))))
+      setScopes(current => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))))
+    }
     return registerDraftRemover(remove)
   }, [])
   const [goalOpen, setGoalOpen] = useState(false)
@@ -177,13 +186,14 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const profiles = view?.profiles.filter(item => !item.deletedAt && (!team || (item.lead === true && item.engine !== 'dsh'))) ?? []
   const profile = archived?.role ?? profiles.find(item => item.id === navigation.profile) ?? profiles[0] ?? null
   const workspaces = view?.workspaces ?? []
-  const workspace = archived ? workspaces.find(item => item.id === archived.session.workspaceRef) ?? null
-    : workspaces.find(item => item.id === navigation.workspace) ?? workspaces[0] ?? null
+  const workspace = archived ? workspaces.find(item => item.id === projectAnchorOf(workspaces, archived.session.workspaceRef)) ?? null
+    : workspaces.find(item => item.id === projectAnchorOf(workspaces, navigation.workspace)) ?? workspaces[0] ?? null
   const navigationKey = `${workspace?.id}:${profile?.id}`
   const session = archived?.session ?? sessionForWorkspace(team && profile ? { ...profile, sessions: profile.sessions.filter(item => leadSession(profile, item)) } : profile,
     workspace, workspaces, navigation.sessions?.[navigationKey])
   const sessionId = session?.id
   const draftKey = sessionId ?? `new:${navigationKey}`
+  const scopeTask = view?.tasks?.find(item => item.id === scopes[draftKey])
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId)
   const setSessionBusy = value => setPending(current => value ? [...current, draftKey] : current.filter(key => key !== draftKey))
   const readOnly = view !== null && view.readOnly != null
@@ -193,13 +203,13 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const rounds = view ? roundIndex(view) : null
   const members = (team && sessionId && rounds?.members.get(sessionId)) || []
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
+  const activeTasks = members.filter(item => view.work[item.session.id]?.active === true).length
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd
   useLayoutEffect(() => {
     if (sidebarOnly || !space.active || !space.legacy || editing) return
     if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...(conversationReadOnly ? { readOnly: true } : {}) })
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...(readOnly ? { readOnly: true } : {}) })
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing])
-  const roundLive = [{ role: profile, session }, ...members].filter(item => team && view?.work[item.session?.id]?.active === true)
   // The composer shows the conversation's own choices: a session runs the model,
   // thinking and tier it was opened or last tuned with, the card only backs them.
   // leadMode rides along so the composer gates plan by the session's mode — the
@@ -208,6 +218,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const composerProfile = profile && session
     ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal }
     : profile?.lead === true ? { ...profile, leadMode: team } : profile
+  // The composer reads the session's own directory, a worktree included.
+  const sessionWorkspace = session ? workspaces.find(item => item.id === session.workspaceRef) ?? workspace : workspace
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession
     ? view?.profiles.flatMap(role => role.sessions).find(item => nativeIdOf(item) === currentNativeSession) : null
   const viewedWork = view?.work[viewed?.id]
@@ -342,6 +354,16 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     const value = current[draftKey] ?? ''
     return { ...current, [draftKey]: value === '' || /\s$/.test(value) ? `${value}${insertion}` : `${value} ${insertion}` }
   })
+  const [focusTick, setFocusTick] = useState(0)
+  const supplement = step => {
+    setScopes(current => ({ ...current, [draftKey]: step.taskId }))
+    setFocusTick(value => value + 1)
+  }
+  const removeScope = () => setScopes(current => {
+    const next = { ...current }
+    delete next[draftKey]
+    return next
+  })
   const send = async () => {
     const text = (drafts[draftKey] ?? '').trim()
     const images = pastedImages[draftKey] ?? []
@@ -351,7 +373,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     await attempt(trackSelection(true), async () => {
       const id = sessionId ?? (await call('session-create', { profile: profile.id, workspace: workspace.id, lazy: true, team })).id
       const payload = images.map(image => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }))
-      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue' })
+      await call('send', { profile: profile.id, session: id, text, images: payload, mode: 'queue', ...(scopeTask ? { taskId: scopeTask.id } : {}) })
       if (current()) setSentTick(tick => tick + 1)
       setDrafts(current => current[draftKey]?.trim() === text ? { ...current, [draftKey]: '' } : current)
       setPastedImages(current => current[draftKey] === images ? { ...current, [draftKey]: [] } : current)
@@ -380,13 +402,13 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     })
     setSessionBusy(false)
   }
+  // The team page's stop names the lead session alone: dispatched tasks keep
+  // running, and each member card stops its own execution.
   const interrupt = async () => {
     if (!profile || sessionBusy || conversationReadOnly) return
     setSessionBusy(true)
     await attempt(trackSelection(true), async () => {
-      for (const [id, target] of team ? roundLive.map(item => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
-        await call('interrupt', { profile: id, session: target })
-      }
+      await call('interrupt', { profile: profile.id, session: sessionId })
       await refresh(false)
     })
     setSessionBusy(false)
@@ -432,21 +454,28 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
           session?.name ?? workspace?.name ?? profile.name),
         members.length > 0 && h(RoundFaces, { roles: [...new Map([profile, ...members.map(item => item.role)].map(role => [role.id, role])).values()] }),
         h('span', { className: 'nodo-head-actions' },
-          members.length > 0 && h(RoundMenu, { members, work: view.work, onOpen: openSession })))),
+          members.length > 0 && h(RoundMenu, { members, work: view.work, struct: view.struct, workspace: sessionWorkspace?.id, onOpen: openSession })))),
     h(Feed, { key: `${team}:${sessionId}`, profile, session, work, sentTick,
-      round: team ? { profiles: view.profiles, teams: view.teams, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember } : undefined }),
-    work?.active === true && h('div', { className: 'nodo-running-dock' },
-      h(RunningLine, { key: sessionId, since: work.since, work })),
+      round: team ? { profiles: view.profiles, teams: view.teams, tasks: view.tasks, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember,
+        onSupplement: conversationReadOnly ? undefined : supplement } : undefined }),
+    (work?.active === true || activeTasks > 0) && h('div', { className: 'nodo-running-dock' },
+      work?.active === true && h(RunningLine, { key: sessionId, since: work.since, work }),
+      activeTasks > 0 && h(TaskCountLine, { count: activeTasks })),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
-      || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id, card, refresh, readOnly,
+      || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id,
+      card: card.taskId ? { ...card, taskTitle: view.tasks?.find(task => task.id === card.taskId)?.title } : card, refresh, readOnly,
       from: members.find(item => item.session.id === card.profileId) })),
     !archivedConversation && h(Composer, {
-      profile: composerProfile, workspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,
-      stoppable: team ? roundLive.length > 0 : undefined, stopLabel: roundLive.length > 1 ? `停止全部 ${roundLive.length} 个` : undefined, busy: sessionBusy, readOnly: readOnly || !workspace,
+      profile: composerProfile, workspace: sessionWorkspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,
+      busy: sessionBusy, readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
-      pending: work?.pending ?? [], onQueueAction: (seq, action) => void queueAction(seq, action),
+      pending: work?.pending?.some(item => item.taskId)
+        ? work.pending.map(item => item.taskId ? { ...item, taskTitle: view.tasks?.find(task => task.id === item.taskId)?.title } : item)
+        : work?.pending,
+      onQueueAction: (seq, action) => void queueAction(seq, action),
+      taskScope: scopeTask?.title, onRemoveTaskScope: removeScope, focusTick,
       onInsert: insertDraft,
       onGoal: sessionId ? () => setGoalOpen(true) : undefined, onCompact: () => void compactSession(),
       onModelChange: changes => void updateEngineChoice(changes),

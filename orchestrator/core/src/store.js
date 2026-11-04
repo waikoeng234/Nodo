@@ -8,9 +8,9 @@ import { failure } from './errors.js'
 import { homeLock } from './home-lock.js'
 import { createTranscripts } from './transcripts.js'
 
-const SECTIONS = ['workspaces', 'profiles', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
+const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
-const blank = () => ({ version: 3, workspaces: {}, profiles: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
+const blank = () => ({ version: 4, workspaces: {}, profiles: {}, tasks: {}, executions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
 const STAMP_MS = 1000
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -128,7 +128,7 @@ export function install(rt) {
       else warn('nodo: unreadable state %s: %s; backup failed: %s', statePath, error, blocked)
       return undefined
     }
-    blocked = [1, 2, 3].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
+    blocked = [1, 2, 3, 4].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
     if (blocked !== undefined) return undefined
     legacyState = ['transcriptIndex', 'stats', 'streamDetails'].some(key => Object.hasOwn(saved, key))
     retiredState = ['adapterSessions', 'streamDetails'].some(key => Object.hasOwn(saved, key))
@@ -147,6 +147,22 @@ export function install(rt) {
     delete state.revision
     delete state.adapterSessions
     for (const key of SECTIONS) if (!isRecord(state[key])) state[key] = {}
+    let invalidStatus = false
+    for (const task of Object.values(state.tasks)) {
+      if (!Array.isArray(task.acceptances)) task.acceptances = []
+      if (!['open', 'review', 'blocked', 'done', 'stopped'].includes(task.status)) {
+        task.status = 'blocked'
+        invalidStatus = true
+      }
+    }
+    for (const execution of Object.values(state.executions)) {
+      if (!Array.isArray(execution.references)) execution.references = []
+      if (!['queued', 'running', 'done', 'failed', 'interrupted', 'cancelled', 'unconfirmed'].includes(execution.status)) {
+        execution.status = 'unconfirmed'
+        invalidStatus = true
+      }
+    }
+    if (invalidStatus) warn('nodo: invalid task or execution status; tasks are blocked and executions are unconfirmed')
     transcripts.reset()
     structureDirty = false
     activityDirty = false
@@ -155,7 +171,7 @@ export function install(rt) {
     activity += 1
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
-    state.version = 3
+    state.version = 4
     for (const profile of Object.values(state.profiles)) {
       if (!rt.listEngines().includes(profile.engine)) continue
       const modes = rt.enginePermissionModes(profile.engine)
@@ -201,10 +217,10 @@ export function install(rt) {
     adopt(saved)
     if (readOnly() === undefined) {
       await rm(join(home, 'runs'), { recursive: true, force: true })
-      if (saved && saved.version !== 3) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
+      if (saved && saved.version !== 4) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
       const retired = saved && retiredState
       if (retired) await copyFile(statePath, join(home, 'state.retired.json.bak'))
-      if (saved && (saved.version !== 3 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
+      if (saved && (saved.version !== 4 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
     }
     rt.recoverLeadDelegations?.()
   }
@@ -348,6 +364,15 @@ export function install(rt) {
     }
     return flush(force)
   }
+  const saveStrict = async () => {
+    const assertWritable = () => {
+      if (stopped) throw failure('Nodo store is closed', 'orch/refused')
+      if (!writable()) throw failure(readOnly(), 'orch/read-only')
+    }
+    assertWritable()
+    await save(false, true)
+    assertWritable()
+  }
 
   ctx.effect(() => async () => {
     stopped = true
@@ -360,7 +385,7 @@ export function install(rt) {
     } finally { lock.release() }
   }, 'nodo: state lock')
 
-  Object.assign(rt, { state, load, save, refresh, readOnly,
+  Object.assign(rt, { state, load, save, saveStrict, refresh, readOnly,
     saveRuntime: force => { structureDirty = true; return save(true, force) },
     notifyLive, subscribeLive: listener => { listeners.add(listener); return () => listeners.delete(listener) },
     transcriptOf: transcripts.linesOf, appendLine: transcripts.append, touchLine: transcripts.touch,

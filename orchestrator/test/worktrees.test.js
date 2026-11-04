@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { withHost } from './helpers/host.js'
+import { until, withHost } from './helpers/host.js'
 
 const git = (repo, args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
 
@@ -40,7 +40,7 @@ test('worktree refs and creation are host-level and engine-neutral', async () =>
     assert.equal(created.workspace.name, 'Task A')
     assert.equal(created.workspace.cwd, realpathSync(join(repo, '.nodo', 'worktrees', 'nodo', 'test')))
     assert.deepEqual(created.workspace.worktree, {
-      repositoryRoot: refs.repositoryRoot, branch: 'nodo/test', baseCommit: created.workspace.worktree.baseCommit, mode: 'new',
+      repositoryRoot: refs.repositoryRoot, branch: 'nodo/test', baseCommit: created.workspace.worktree.baseCommit, mode: 'new', sourceWorkspaceRef: workspace.id,
     })
     assert.equal(created.worktree.path, created.workspace.cwd)
     assert.equal(readFileSync(join(created.workspace.cwd, 'README.md'), 'utf8'), 'base\n')
@@ -152,5 +152,150 @@ test('a workspace inside an existing linked worktree still pools under the main 
     const created = await api('worktree-create', { workspace: workspace.id, branch: 'nodo/nested' })
     assert.equal(created.workspace.cwd.startsWith(join(realpathSync(repo), '.nodo', 'worktrees')), true)
     assert.equal(created.worktree.baseCommit, git(repo, ['rev-parse', 'side']), 'HEAD means the calling worktree\'s HEAD')
+  })
+})
+
+test('task worktrees branch from the source HEAD and removeWorktree undoes them fully', async () => {
+  await withHost(async ({ api, home, runtime }) => {
+    const repo = makeRepo(home)
+    const workspace = await api('workspace-create', { name: 'Repo', cwd: repo })
+    const rt = await runtime
+    const created = await rt.createTaskWorktree({ workspaceRef: workspace.id })
+    const branch = created.workspace.worktree.branch
+    assert.match(branch, /^nodo\/task-[0-9a-f]{8}$/)
+    assert.equal(created.workspace.cwd, realpathSync(join(repo, '.nodo', 'worktrees', 'nodo', branch.slice('nodo/'.length))))
+    assert.deepEqual(created.workspace.worktree, {
+      repositoryRoot: realpathSync(repo), branch, baseCommit: git(repo, ['rev-parse', 'HEAD']), mode: 'new', sourceWorkspaceRef: workspace.id,
+    })
+    assert.equal(created.worktree.path, created.workspace.cwd)
+    assert.equal(readFileSync(join(created.workspace.cwd, 'README.md'), 'utf8'), 'base\n')
+    assert.ok(git(repo, ['worktree', 'list', '--porcelain']).includes(created.workspace.cwd))
+
+    const role = await api('profile-create', { name: 'Worktree worker', engine: 'echo' })
+    const shared = await api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const isolated = await api('session-create', { profile: role.id, workspace: created.workspace.id, lazy: true })
+
+    await rt.removeWorktree(created.workspace.id)
+    const archived = rt.conversationOf(isolated.id).session
+    assert.ok(archived.archivedAt)
+    assert.equal(archived.cwd, created.workspace.cwd)
+    assert.equal(archived.workspaceName, created.workspace.name)
+    assert.equal(rt.conversationOf(shared.id).session.archivedAt, undefined)
+    assert.equal(rt.state.profiles[role.id].activeSessionId, shared.id)
+    assert.equal(git(repo, ['worktree', 'list', '--porcelain']).includes(created.workspace.cwd), false)
+    assert.throws(() => git(repo, ['rev-parse', '--verify', `refs/heads/${branch}`]), 'the generated branch is deleted')
+    const state = await api('state')
+    assert.equal(state.workspaces.find(item => item.id === created.workspace.id), undefined)
+    assert.equal(readFileSync(join(repo, '.nodo', 'worktrees', '.gitignore'), 'utf8'), '*\n', 'the pool .gitignore survives removal')
+  })
+})
+
+test('worktrees display under their source project; legacy records resolve through the repository root', async () => {
+  await withHost(async ({ api, home, runtime }) => {
+    const repo = makeRepo(home)
+    const workspace = await api('workspace-create', { name: 'Repo', cwd: repo })
+    const rt = await runtime
+    const manual = await api('worktree-create', { workspace: workspace.id, branch: 'nodo/manual' })
+    const nested = await api('worktree-create', { workspace: manual.workspace.id, branch: 'nodo/nested' })
+    let state = await api('state')
+    assert.equal(state.workspaces.find(item => item.id === manual.workspace.id).worktree.project, workspace.id)
+    assert.equal(state.workspaces.find(item => item.id === nested.workspace.id).worktree.project, workspace.id,
+      'a worktree cut from a worktree anchors at the top project')
+
+    // Records saved before the source id existed resolve through the repository
+    // root, covering the symlinked-path mismatch the root's realpath settles.
+    for (const id of [manual.workspace.id, nested.workspace.id]) delete rt.state.workspaces[id].worktree.sourceWorkspaceRef
+    state = await api('state')
+    assert.equal(state.workspaces.find(item => item.id === manual.workspace.id).worktree.project, workspace.id,
+      'a legacy record matches its repository root against the project directory')
+    assert.equal(state.workspaces.find(item => item.id === nested.workspace.id).worktree.project, workspace.id)
+
+    // A dangling source id falls back the same way; nothing matching leaves the
+    // worktree — and any chain through it — its own project again.
+    rt.state.workspaces[manual.workspace.id].worktree.sourceWorkspaceRef = 'gone'
+    rt.state.workspaces[nested.workspace.id].worktree.sourceWorkspaceRef = manual.workspace.id
+    state = await api('state')
+    assert.equal(state.workspaces.find(item => item.id === manual.workspace.id).worktree.project, workspace.id)
+    rt.state.workspaces[manual.workspace.id].worktree.repositoryRoot = join(home, 'moved-away')
+    state = await api('state')
+    assert.equal(state.workspaces.find(item => item.id === manual.workspace.id).worktree.project, null)
+    assert.equal(state.workspaces.find(item => item.id === nested.workspace.id).worktree.project, null)
+
+    // The fallback reads the one realpath table a view builds, not the filesystem.
+    rt.state.workspaces[manual.workspace.id].worktree.repositoryRoot = workspace.cwd
+    const record = rt.state.workspaces[manual.workspace.id]
+    assert.equal(rt.worktreeProjectOf(record, new Map([[workspace.id, [workspace.cwd, workspace.cwd]]])), workspace.id,
+      'the per-view realpath table drives the fallback')
+    assert.equal(rt.worktreeProjectOf(record, new Map()), null, 'an empty table leaves the worktree unowned')
+  })
+})
+
+test('deleting a project takes its worktrees: refused while their sessions run, archived when idle', async () => {
+  await withHost(async ({ api, home, runtime }) => {
+    const repo = makeRepo(home)
+    const workspace = await api('workspace-create', { name: 'Repo', cwd: repo })
+    const manual = await api('worktree-create', { workspace: workspace.id, branch: 'nodo/manual' })
+    await runtime
+    const role = await api('profile-create', { name: 'Worker', engine: 'echo', engineOptions: { script: [{ kind: 'ask' }] } })
+    const shared = await api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+    const isolated = await api('session-create', { profile: role.id, workspace: manual.workspace.id, lazy: true })
+    await api('send', { profile: role.id, session: isolated.id, text: 'Wait for permission' })
+    await until(async () => (await api('state')).approvals.length > 0)
+    await assert.rejects(api('workspace-delete', { id: workspace.id }), error => error.code === 'orch/busy',
+      'a running worktree session blocks its project')
+    await assert.rejects(api('workspace-delete', { id: manual.workspace.id }), error => error.code === 'orch/busy',
+      'the running session blocks its own worktree too')
+    await api('interrupt', { profile: role.id, session: isolated.id })
+    await until(async () => !(await api('state')).work[isolated.id]?.active)
+    assert.equal(await api('workspace-delete', { id: workspace.id }), true)
+    const state = await api('state')
+    assert.equal(state.workspaces.some(item => [workspace.id, manual.workspace.id].includes(item.id)), false,
+      'the project and its worktree records are both gone')
+    const profile = state.profiles.find(item => item.id === role.id)
+    assert.ok(profile.sessions.find(item => item.id === isolated.id).archivedAt, 'the worktree session is archived with its project')
+    assert.ok(profile.sessions.find(item => item.id === shared.id).archivedAt)
+    assert.equal(profile.workspaceId, undefined)
+    assert.ok(git(repo, ['worktree', 'list', '--porcelain']).includes(manual.workspace.cwd), 'the checkout itself is kept')
+  })
+})
+
+test('task worktree rollback warnings do not replace the creation error', async () => {
+  await withHost(async ({ api, home, runtime }) => {
+    const repo = makeRepo(home)
+    const workspace = await api('workspace-create', { name: 'Repo', cwd: repo })
+    const rt = await runtime
+    const create = rt.createWorkspace, save = rt.save
+    const originalError = new Error('Registration failed')
+    const warnings = []
+    rt.warn = (...args) => warnings.push(args.join(' '))
+    rt.createWorkspace = async () => { throw originalError }
+    rt.save = async () => { throw new Error('Rollback save failed') }
+    try {
+      await assert.rejects(rt.createTaskWorktree({ workspaceRef: workspace.id }), error => error === originalError)
+      assert.ok(warnings.some(message => message.includes('worktree rollback failed') && message.includes('Rollback save failed')))
+      assert.equal(git(repo, ['branch', '--list', 'nodo/task-*']), '')
+    } finally { rt.createWorkspace = create; rt.save = save }
+  })
+})
+
+for (const phase of ['registration', 'save']) test(`task worktree ${phase} failure rolls back the checkout and branch`, async () => {
+  await withHost(async ({ api, home, runtime }) => {
+    const repo = makeRepo(home)
+    const workspace = await api('workspace-create', { name: 'Repo', cwd: repo })
+    const rt = await runtime
+    const method = phase === 'registration' ? 'createWorkspace' : 'save'
+    const original = rt[method]
+    let destination
+    rt[method] = async (...args) => {
+      destination ??= args[0]?.cwd ?? Object.values(rt.state.workspaces).find(item => item.worktree)?.cwd
+      throw new Error(`${phase} failed`)
+    }
+    await assert.rejects(rt.createTaskWorktree({ workspaceRef: workspace.id }), new RegExp(`${phase} failed`))
+    rt[method] = original
+    assert.ok(destination)
+    assert.equal(existsSync(destination), false)
+    assert.equal(git(repo, ['branch', '--list', 'nodo/task-*']), '')
+    assert.equal(git(repo, ['worktree', 'list', '--porcelain']).includes(destination), false)
+    assert.equal(Object.values(rt.state.workspaces).some(item => item.cwd === destination), false)
   })
 })

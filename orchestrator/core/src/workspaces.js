@@ -6,7 +6,7 @@
 //   { id, name, cwd, createdAt, updatedAt }
 import { randomUUID } from 'node:crypto'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { readdirSync } from 'node:fs'
+import { readdirSync, realpathSync } from 'node:fs'
 import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { validateWorkspace } from '../../agent-drivers/dist/cli.js'
 import { IMAGE_BYTES_MAX, NAME_MAX } from './constants.js'
@@ -82,27 +82,59 @@ export function install(rt) {
     await rt.load()
     const workspace = state.workspaces[String(id ?? '')]
     if (workspace === undefined) throw failure('No such workspace', 'orch/not-found')
-    const profiles = profilesIn(workspace)
+    // A project takes its worktrees with it; a worktree alone deletes alone.
+    const realpaths = projectRealpaths()
+    const removals = [workspace.id, ...Object.values(state.workspaces).filter(item => item.worktree !== undefined
+      && item.id !== workspace.id && worktreeProjectOf(item, realpaths) === workspace.id).map(item => item.id)]
+    const inScope = ref => removals.includes(ref)
+    const profiles = Object.values(state.profiles).filter(profile => profile.workspaceId === workspace.id
+      || rt.sessionsOf(profile).some(session => inScope(rt.sessionWorkspace(profile, session)?.id)))
     const refuseBusy = () => {
       const work = rt.workView()
-      if (profilesIn(workspace).some(profile => rt.sessionsOf(profile).some(session => rt.sessionWorkspace(profile, session)?.id === workspace.id
+      if (profiles.some(profile => rt.sessionsOf(profile).some(session => inScope(rt.sessionWorkspace(profile, session)?.id)
         && work[session.id]?.active))) throw failure('请先停止或完成此工作区中正在运行的任务，再删除工作区', 'orch/busy')
     }
     refuseBusy()
-    const rollback = await rt.archiveHostSessions?.(profiles.flatMap(profile => rt.sessionsOf(profile).filter(session => rt.sessionWorkspace(profile, session)?.id === workspace.id)))
+    const rollback = await rt.archiveHostSessions?.(profiles.flatMap(profile => rt.sessionsOf(profile).filter(session => inScope(rt.sessionWorkspace(profile, session)?.id))))
     try { refuseBusy() } catch (error) { await rollback?.(error); throw error }
     for (const profile of profiles) {
       profile.sessions ??= rt.sessionsOf(profile)
       for (const session of profile.sessions) {
-        if (rt.sessionWorkspace(profile, session)?.id !== workspace.id) continue
+        if (!inScope(rt.sessionWorkspace(profile, session)?.id)) continue
         rt.archiveDeletedSession(profile, session)
       }
       if (profile.sessions.some(session => session.id === profile.activeSessionId && session.archivedAt)) profile.activeSessionId = profile.sessions.find(session => !session.archivedAt)?.id
       if (profile.workspaceId === workspace.id) delete profile.workspaceId
     }
-    delete state.workspaces[workspace.id]
+    for (const ref of removals) delete state.workspaces[ref]
     await rt.save()
     return true
+  }
+
+  // One realpath per project; legacy worktree records resolve their owner
+  // through this table.
+  const projectRealpaths = () => {
+    const paths = new Map()
+    for (const item of Object.values(state.workspaces)) {
+      if (item.worktree !== undefined) continue
+      let real = item.cwd
+      try { real = realpathSync(item.cwd) } catch {}
+      paths.set(item.id, [item.cwd, real])
+    }
+    return paths
+  }
+  const worktreeProjectOf = (workspace, realpaths = projectRealpaths()) => {
+    let current = workspace
+    while (current?.worktree) {
+      const source = state.workspaces[current.worktree.sourceWorkspaceRef ?? '']
+      if (source === undefined) break
+      if (source.worktree === undefined) return source.id
+      current = source
+    }
+    if (current?.worktree === undefined) return current?.id ?? null
+    const root = current.worktree.repositoryRoot
+    for (const [id, paths] of realpaths) if (paths.includes(root)) return id
+    return null
   }
 
   const findWorkspace = (ref) => {
@@ -220,6 +252,11 @@ export function install(rt) {
 
   Object.assign(rt, {
     createWorkspace, updateWorkspace, deleteWorkspace, findWorkspace, workspaceOf, workspaceFiles, workspaceDir, workspaceFile, cleanWorkspaceName: cleanName,
-    workspacesView: () => Object.values(state.workspaces).map(workspace => ({ ...workspace })),
+    worktreeProjectOf,
+    workspacesView: () => {
+      const realpaths = projectRealpaths()
+      return Object.values(state.workspaces).map(workspace => ({ ...workspace,
+        ...(workspace.worktree === undefined ? {} : { worktree: { ...workspace.worktree, project: worktreeProjectOf(workspace, realpaths) } }) }))
+    },
   })
 }

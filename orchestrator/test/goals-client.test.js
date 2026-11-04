@@ -77,3 +77,15 @@ test('ExitPlanMode approval cards render plan text from both native input shapes
     assert.deepEqual(tree.find(node => node.props.className === 'nodo-approval-plan').children, ['# Plan\nRun tests'])
   }
 })
+
+test('approval cards name their task on the first line and stay plain without one', async () => {
+  const loaded = await loadClient('run-cards.js')
+  const strip = card => { loaded.host.reset(); return nodes(loaded.ApprovalCard({ card })).find(node => node.props.className === 'nodo-approval-strip') }
+  assert.ok(strip({ id: 'p1', tool: 'bash', kind: 'permission', taskTitle: 'Fix login' }).children
+    .some(child => child.props?.className === 'nodo-approval-task' && child.children[0] === 'Fix login'))
+  assert.equal(nodes(loaded.ApprovalCard({ card: { id: 'p2', tool: 'bash', kind: 'permission' } }))
+    .some(node => node.props.className === 'nodo-approval-task'), false, 'a card without a task keeps its plain first line')
+  const ask = nodes(loaded.ApprovalCard({ card: { id: 'q1', kind: 'question', taskTitle: 'Fix login',
+    detail: { questions: [{ id: 'a', header: '确认', question: '继续？', options: [{ label: '好' }] }] } } }))
+  assert.equal(ask.find(node => node.props.className === 'nodo-question-eyebrow').children[0], 'Fix login')
+})

@@ -152,6 +152,9 @@ export function install(rt) {
       if (session.workspaceRef && !rt.state.workspaces[session.workspaceRef]) throw failure('This conversation is read-only', 'orch/refused')
     }
     if (archived && rt.workView?.()[session.id]?.active) throw failure('Stop or finish the running task before archiving this session', 'orch/busy')
+    if (archived && session.reportQueue?.length) throw failure('该主控会话还有未送出的执行报告，先接收报告再归档', 'orch/busy')
+    if (archived && Object.values(rt.state.executions).some(item => ['queued', 'running'].includes(item.status)
+      && rt.state.tasks[item.taskId]?.coordinatorSessionId === session.id)) throw failure('该主控会话名下还有排队或执行中的派活，等待其结束或停止后再归档', 'orch/busy')
     if (archived) session.archivedAt = Date.now()
     else delete session.archivedAt
     if (archived && profile.activeSessionId === session.id) profile.activeSessionId = profile.sessions.find(item => item.id !== session.id && !item.archivedAt)?.id

@@ -39,7 +39,9 @@ const harness = (extra = {}) => {
     leadDelegations: (id, session) => { calls.push(['delegations', id, session]); return '| 派活 | secret-value |' },
     leadRoles: id => { calls.push(['roles', id]); return '| 角色 |' },
     leadDispatch: { delegate: async (id, args) => { calls.push(['delegate', id, args]); return { session: 'work', role: 'Worker', type: args.type, hard: args.hard, reused: false } },
-      interrupt: async (id, session) => ({ session, ended: 'interrupted', lastOutput: 'secret-value' }) }, ...extra }
+      interrupt: async (id, args) => ({ ...args, ended: 'interrupted', lastOutput: 'secret-value' }) },
+    leadTasks: (id, taskId) => { calls.push(['tasks', id, taskId]); return { taskId } },
+    leadTask: (id, args) => { calls.push(['task', id, args]); return args }, ...extra }
   install(rt)
   return { rt, home, owner, calls, dispose() { for (const fn of disposers) fn(); rmSync(home, { recursive: true, force: true }) } }
 }
@@ -91,7 +93,7 @@ test('lead token files rotate at a fixed private path and running MCP reads each
   } finally { await client.close(); h.dispose() }
 })
 
-test('lead MCP authenticates, forwards three tools and returns sanitized MCP errors', async () => {
+test('lead MCP authenticates, forwards task tools and returns sanitized MCP errors', async () => {
   const h = harness(), client = new Client({ name: 'test', version: '1' })
   try {
     assert.equal(await h.rt.issueLeadMcp('worker'), undefined)
@@ -103,12 +105,23 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     assert.equal(JSON.stringify(spec).includes(token), false)
     await client.connect(new StdioClientTransport({ command: spec.command, args: spec.args, env, stderr: 'pipe' }))
     const { tools } = await client.listTools()
-    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt'])
+    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt', 'nodo_task'])
     assert.equal(tools[0].annotations.readOnlyHint, true)
     assert.deepEqual(tools[1].inputSchema.required, ['type', 'hard', 'task'])
     assert.match(tools[1].description, /本轮正常结束后发送/)
     assert.match(tools[1].description, /停止或出错则取消/)
-    assert.deepEqual(tools[2].inputSchema.required, ['session'])
+    assert.match(tools[1].description, /同一批文件、需要隔离时用 worktree/)
+    assert.match(tools[1].description, /有先后顺序要求的改动不要并行/)
+    assert.match(tools[1].description, /上下文要写全/)
+    assert.match(tools[1].description, /Nodo 不会自动合并/)
+    assert.equal(tools[1].inputSchema.properties.worktree.type, 'boolean')
+    assert.deepEqual(tools[2].inputSchema.oneOf, [{ required: ['executionId'] }, { required: ['session'] }])
+    assert.deepEqual(tools[3].inputSchema.oneOf, [
+      { properties: { action: { const: 'complete' } }, required: ['reason', 'references'] },
+      { properties: { action: { const: 'reopen' } } },
+      { properties: { action: { const: 'revise' } }, anyOf: [{ required: ['title'] }, { required: ['brief'] }] },
+    ])
+    assert.deepEqual(tools[3].inputSchema.properties.action.enum, ['complete', 'reopen', 'revise'])
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
     assert.match(board.content[0].text, /派活/)
     assert.doesNotMatch(board.content[0].text, /secret-value|角色/)
@@ -116,16 +129,29 @@ test('lead MCP authenticates, forwards three tools and returns sanitized MCP err
     await client.callTool({ name: 'nodo_board', arguments: { table: 'roles' } })
     await client.callTool({ name: 'nodo_board', arguments: { session: 'older' } })
     assert.deepEqual(h.calls[2], ['delegations', 'lead', 'older'])
-    const args = { type: 'feature', hard: false, task: 'Complete task' }
+    const args = { type: 'feature', hard: false, task: 'Complete task', worktree: true }
     const receipt = await client.callTool({ name: 'nodo_delegate', arguments: args })
     assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, reused: false })
+    assert.deepEqual(h.calls.at(-1), ['delegate', 'lead', args])
     const stopped = await client.callTool({ name: 'nodo_interrupt', arguments: { session: 'work' } })
     assert.deepEqual(JSON.parse(stopped.content[0].text), { session: 'work', ended: 'interrupted', lastOutput: '[redacted]' })
+    assert.equal((await client.callTool({ name: 'nodo_interrupt', arguments: { executionId: 'execution' } })).isError, undefined)
+    await client.callTool({ name: 'nodo_board', arguments: { table: 'tasks', taskId: 'task' } })
+    assert.deepEqual(h.calls.at(-1), ['tasks', 'lead', 'task'])
+    const acceptance = { taskId: 'task', action: 'complete', reason: 'Verified', references: ['ref'] }
+    await client.callTool({ name: 'nodo_task', arguments: acceptance })
+    assert.deepEqual(h.calls.at(-1), ['task', 'lead', acceptance])
+    const revision = { taskId: 'task', action: 'revise', title: 'Renamed', brief: 'Revised' }
+    await client.callTool({ name: 'nodo_task', arguments: revision })
+    assert.deepEqual(h.calls.at(-1), ['task', 'lead', revision])
     for (const request of [
       { name: 'unknown' }, { name: 'nodo_board', arguments: { table: 'bad' } },
       { name: 'nodo_board', arguments: { leadSession: 'forged' } }, { name: 'nodo_interrupt', arguments: {} },
       { name: 'nodo_board', arguments: { session: 3 } }, { name: 'nodo_board', token: 'forged' },
       { name: 'nodo_board', arguments: { table: 'roles', session: 'work' } },
+      { name: 'nodo_interrupt', arguments: { session: 'work', executionId: 'execution' } },
+      { name: 'nodo_board', arguments: { table: 'roles', taskId: 'task' } },
+      { name: 'nodo_task', arguments: { taskId: 'task', action: 'revise', title: 'T', status: 'done' } },
     ]) assert.equal((await rpc(spec, request)).isError, true)
     h.rt.leadDispatch.delegate = async () => { throw new Error('预算已用尽') }
     assert.match((await client.callTool({ name: 'nodo_delegate', arguments: args })).content[0].text, /预算/)

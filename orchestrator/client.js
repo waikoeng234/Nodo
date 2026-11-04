@@ -9420,6 +9420,12 @@ var subscribeStore = (listener) => {
 };
 var getStoreVersion = () => storeVersion;
 
+// core/shared/workspaces.js
+var projectAnchorOf = (workspaces, workspaceId) => {
+  const found = workspaces.find((item) => item.id === workspaceId);
+  return found?.worktree?.project || workspaceId;
+};
+
 // src/client/ui-shared.js
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 
@@ -9524,7 +9530,7 @@ var workspaceIdOf = (view2, role, session) => session.workspaceRef ?? view2.work
 var roleStateOf = (profile, view2, workspace) => {
   const live = runningOf(profile, view2.work);
   if (live.active) return live;
-  const visible = (profile.sessions ?? []).filter((session) => !session.archivedAt && workspaceIdOf(view2, profile, session) === workspace?.id);
+  const visible = (profile.sessions ?? []).filter((session) => !session.archivedAt && projectAnchorOf(view2.workspaces, workspaceIdOf(view2, profile, session)) === workspace?.id);
   return { ...runningOf({ ...profile, sessions: visible }, view2.work), queued: live.queued };
 };
 var TIME_WORDS = { now: "\u521A\u521A", minutes: "{n}\u5206\u949F", hours: "{n}\u5C0F\u65F6", days: "{n}\u5929", months: "{n}\u4E2A\u6708", years: "{n}\u5E74", ago: "{t}\u524D" };
@@ -12363,7 +12369,7 @@ function createSessionReferences(ctx, space) {
         if (!live) return;
         setView(value);
         const current = value.profiles.flatMap((profile) => profile.sessions).find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === target);
-        setWorkspace(workspaceId ?? current?.workspaceRef ?? "");
+        setWorkspace(workspaceId ?? projectAnchorOf(value.workspaces, current?.workspaceRef) ?? "");
       }).catch((failure) => {
         if (live) setError(failure.message);
       });
@@ -12416,7 +12422,7 @@ function createSessionReferences(ctx, space) {
         setBusy(false);
       }
     };
-    const rows = view2?.profiles.flatMap((profile) => profile.sessions.filter((session) => !session.archivedAt && (target === void 0 || (session.engine === "dsh" ? session.driverSessionId : void 0) !== target)).map((session) => ({ profile, session }))).filter((row) => (!workspace || row.session.workspaceRef === workspace) && (!role || row.profile.id === role) && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a, b2) => b2.session.updatedAt - a.session.updatedAt) ?? [];
+    const rows = view2?.profiles.flatMap((profile) => profile.sessions.filter((session) => !session.archivedAt && (target === void 0 || (session.engine === "dsh" ? session.driverSessionId : void 0) !== target)).map((session) => ({ profile, session }))).filter((row) => (!workspace || projectAnchorOf(view2.workspaces, row.session.workspaceRef) === workspace) && (!role || row.profile.id === role) && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a, b2) => b2.session.updatedAt - a.session.updatedAt) ?? [];
     return (0, import_react.createElement)(
       import_dsh_client_ui_primitives.Modal,
       {
@@ -12446,7 +12452,7 @@ function createSessionReferences(ctx, space) {
               "select",
               { value: workspace, "aria-label": "\u6765\u6E90\u9879\u76EE", onChange: (event) => setWorkspace(event.target.value) },
               (0, import_react.createElement)("option", { value: "" }, "\u5168\u90E8\u9879\u76EE"),
-              ...(view2?.workspaces ?? []).map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.name))
+              ...(view2?.workspaces ?? []).filter((item) => item.worktree?.project == null).map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id }, item.name))
             ),
             (0, import_react.createElement)(
               "select",
@@ -13651,6 +13657,14 @@ function RunningLine({ since, engine, work }) {
     )
   );
 }
+function TaskCountLine({ count }) {
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-running", style: { "--nodo-running-tint": RUNNING_COLORS[0].color } },
+    (0, import_react.createElement)("span", { className: "nodo-running-divider", "aria-hidden": true }),
+    (0, import_react.createElement)("span", { className: "nodo-running-line", role: "status" }, `${count} \u4E2A\u4EFB\u52A1\u6267\u884C\u4E2D`)
+  );
+}
 var RUNNING_CSS = `
 [data-conversation-content]:has([data-nodo-native-running]) [data-chat-running]{display:none}
 .nodo-running-dock{flex:none;padding:0 calc(var(--dsh-composer-side-clearance,16px) + 16px) 8px}
@@ -13700,7 +13714,16 @@ function roundLines(lines, leadRunning = false) {
     if (line.who === "user") flush();
     const mark = line.delegation;
     if (mark && !mark.ended) {
-      const step2 = { session: mark.session, profile: mark.profile, type: mark.type, hard: mark.hard, reused: mark.reused, at: line.at };
+      const step2 = {
+        session: mark.session,
+        profile: mark.profile,
+        type: mark.type,
+        hard: mark.hard,
+        reused: mark.reused,
+        at: line.at,
+        ...mark.branch ? { branch: mark.branch } : {},
+        ...mark.taskId ? { taskId: mark.taskId, executionId: mark.executionId } : {}
+      };
       if (mark.deferred) step2.deferred = true;
       steps.set(mark.session, step2);
       members.push(step2);
@@ -13709,17 +13732,18 @@ function roundLines(lines, leadRunning = false) {
     }
     const step = steps.get(mark?.session ?? line.origin?.session);
     if (mark?.ended && step) {
-      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {});
+      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {}, mark.stoppedBy ? { stoppedBy: mark.stoppedBy } : {});
       flush();
       continue;
     }
     if (line.origin?.kind === "report" && step) {
       delete step.ended;
       delete step.unconfirmed;
+      delete step.stoppedBy;
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
       flush();
     }
-    if (line.origin) continue;
+    if (line.origin && !(line.who === "user" && line.origin.kind === "task")) continue;
     const text = line.who === "agent" && line.kind === "text" ? stripNodo(line.text) : null;
     if (text === "") continue;
     out.push(text === null ? line : { ...line, text });
@@ -13744,6 +13768,16 @@ var reportParts = (text) => {
   return { summary: at2 < 0 ? "" : plainLine(lines[at2]), rest: lines.slice(at2 + 1).join("\n").trim() };
 };
 var roleOf = (round, id) => round.profiles.find((role) => role.id === id) ?? { id, name: id };
+var TASK_TONES = { \u8FDB\u884C\u4E2D: "accent", \u5F85\u9A8C\u6536: "accent", \u7B49\u5F85\u7528\u6237: "caution", \u53D7\u963B: "caution", \u672A\u786E\u8BA4: "caution" };
+var taskWord = (task, work, unconfirmed = false) => {
+  if (!task) return "";
+  if (task.status === "done") return "\u5DF2\u5B8C\u6210";
+  if (task.status === "review") return "\u5F85\u9A8C\u6536";
+  if (task.status === "stopped") return "\u5DF2\u505C\u6B62";
+  if (task.status === "blocked") return unconfirmed || task.latestExecutionStatus === "unconfirmed" ? "\u672A\u786E\u8BA4" : "\u53D7\u963B";
+  if (work?.status === "waiting-approval" || work?.status === "waiting-question") return "\u7B49\u5F85\u7528\u6237";
+  return work?.active || task.latestExecutionStatus === "running" ? "\u8FDB\u884C\u4E2D" : task.status === "open" ? "\u5F85\u6267\u884C" : "";
+};
 var typeName = (round, id) => (round.teams?.find((team) => team.lead === round.leadId)?.types ?? []).find((item) => item.id === id)?.name ?? (round.teams ?? []).flatMap((team) => team.types ?? []).find((item) => item.id === id)?.name ?? id;
 var delegationRows = (lines, step) => {
   const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
@@ -13790,6 +13824,39 @@ function RoundChanges({ step }) {
     toolRow(row, { profile: { id: step.profile }, session: { id: step.session }, timeline: true })
   );
 }
+function RoundTask({ step }) {
+  const [detail, setDetail] = (0, import_react.useState)(null);
+  const [error2, setError] = (0, import_react.useState)("");
+  const [attempt, setAttempt] = (0, import_react.useState)(0);
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    setError("");
+    call2("task-get", { taskId: step.taskId }).then((task) => {
+      if (live) setDetail(task);
+    }).catch((failure) => {
+      if (live) setError(failure.message || "\u4EFB\u52A1\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25");
+    });
+    return () => {
+      live = false;
+    };
+  }, [step.taskId, attempt]);
+  const acceptance = detail?.acceptances?.at(-1);
+  const execution = detail?.executions?.find((item) => item.id === step.executionId) ?? detail?.executions?.at(-1);
+  const reason = acceptance?.reason ?? (detail?.status === "blocked" || ["failed", "unconfirmed"].includes(execution?.status ?? "") ? execution?.reason : null);
+  if (error2) return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-round-task-error" },
+    (0, import_react.createElement)("p", { className: "nodo-round-quiet", role: "status" }, error2),
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")
+  );
+  if (!detail) return (0, import_react.createElement)("p", { className: "nodo-round-quiet", role: "status" }, "\u52A0\u8F7D\u4E2D\u2026");
+  return (0, import_react.createElement)(
+    import_react.Fragment,
+    null,
+    (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: detail.brief, labels: MARKDOWN_LABELS })),
+    reason && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, acceptance ? `${reason} \xB7 \u4F9D\u636E ${acceptance.references.length} \u9879` : reason)
+  );
+}
 function RoundSpeaker({ role, running }) {
   return (0, import_react.createElement)(
     "div",
@@ -13811,9 +13878,12 @@ function RoundMember({ step, round }) {
   const role = roleOf(round, step.profile);
   const work = round.work?.[step.session];
   const live = !step.report && !step.ended && work?.active === true;
+  const task = round.tasks?.find((item) => item.id === step.taskId);
+  const word = taskWord(task, work, step.unconfirmed === true);
   const label = work?.retryWaiting ? "\u7B49\u5F85\u81EA\u52A8\u7EE7\u7EED" : work?.suspect ? workLabel(work) : "";
   const [open, setOpen] = (0, import_react.useState)(false);
-  const [stopping, setStopping] = (0, import_react.useState)(false);
+  const [confirming, setConfirming] = (0, import_react.useState)(false);
+  const stopping = work?.stopping === true || confirming;
   const [now, setNow] = (0, import_react.useState)(() => Date.now());
   (0, import_react.useEffect)(() => {
     if (!live) return;
@@ -13837,7 +13907,15 @@ function RoundMember({ step, round }) {
         tag(typeName(round, step.type)),
         step.hard && tag("\u96BE\u9898", "caution"),
         step.reused && tag("\u7EED\u7528", "accent"),
-        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "ended" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }), step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.ended === "cancelled" ? "\u5DF2\u53D6\u6D88" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F") : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
+        step.branch && tag("\u9694\u79BB"),
+        // An ended card says it once: the ending text replaces the task-level word.
+        !step.ended && word ? tag(word, TASK_TONES[word]) : null,
+        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)(
+          "span",
+          { className: "nodo-round-status", "data-state": "ended" },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }),
+          step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.stoppedBy && (step.ended === "cancelled" || step.ended === "interrupted") ? "\u5DF2\u505C\u6B62" : step.ended === "cancelled" ? "\u5DF2\u53D6\u6D88" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F"
+        ) : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
         live && round.onStop && (0, import_react.createElement)(
           "button",
           {
@@ -13846,13 +13924,19 @@ function RoundMember({ step, round }) {
             disabled: stopping,
             "aria-label": `\u505C\u6B62 ${role.name}`,
             onClick: () => {
-              setStopping(true);
-              void round.onStop(step).finally(() => setStopping(false));
+              setConfirming(true);
+              void round.onStop(step).finally(() => setConfirming(false));
             }
           },
           (0, import_react.createElement)("svg", { width: 10, height: 10, viewBox: "0 0 10 10", fill: "currentColor", "aria-hidden": true }, (0, import_react.createElement)("rect", { width: 10, height: 10, rx: 2 })),
           stopping ? "\u505C\u6B62\u4E2D\u2026" : "\u505C\u6B62"
         ),
+        step.taskId && round.onSupplement && (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-round-open",
+          "aria-label": `\u8865\u5145 ${task?.title ?? role.name}`,
+          onClick: () => round.onSupplement(step)
+        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 14 }), "\u8865\u5145"),
         (0, import_react.createElement)(
           "button",
           { type: "button", className: "nodo-round-open", onClick: () => round.onOpen(step.session) },
@@ -13863,7 +13947,7 @@ function RoundMember({ step, round }) {
       step.report ? (0, import_react.createElement)(
         import_react.Fragment,
         null,
-        rest ? (0, import_react.createElement)(
+        rest || step.taskId ? (0, import_react.createElement)(
           "button",
           { type: "button", className: "nodo-round-summary", "aria-expanded": open, onClick: () => setOpen((value) => !value) },
           (0, import_react.createElement)("span", null, summary),
@@ -13872,7 +13956,8 @@ function RoundMember({ step, round }) {
         (0, import_react.createElement)(RoundChanges, { step })
       ) : (0, import_react.createElement)(RoundTools, { step, work }),
       !step.report && step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),
-      open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS }))
+      open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
+      open && step.taskId && (0, import_react.createElement)(RoundTask, { step })
     )
   );
 }
@@ -13883,8 +13968,32 @@ function RoundFaces({ roles }) {
     roles.map((role) => (0, import_react.createElement)(RoleAvatar, { key: role.id, profile: role, size: 20 }))
   );
 }
-function RoundMenu({ members, work, onOpen }) {
+function RoundMenu({ members, work, struct, workspace, onOpen }) {
   const [open, setOpen] = (0, import_react.useState)(false);
+  const [latest, setLatest] = (0, import_react.useState)(/* @__PURE__ */ new Map());
+  (0, import_react.useEffect)(() => {
+    if (!open) return;
+    let live = true;
+    call2("task-list", { workspace }).then((list) => {
+      if (!live) return;
+      const newest = /* @__PURE__ */ new Map();
+      for (const task of list ?? []) for (const execution of task.executions ?? []) {
+        const held = newest.get(execution.sessionId);
+        if (held && held.createdAt >= execution.createdAt) continue;
+        newest.set(execution.sessionId, {
+          title: task.title,
+          task,
+          createdAt: execution.createdAt,
+          at: Math.max(execution.endedAt ?? 0, execution.startedAt ?? 0, execution.createdAt ?? 0) || void 0
+        });
+      }
+      setLatest(newest);
+    }).catch(() => {
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, struct]);
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
     open,
     onClose: () => setOpen(false),
@@ -13892,15 +14001,21 @@ function RoundMenu({ members, work, onOpen }) {
     align: "end",
     items: members.map(({ role, session }) => {
       const status2 = workLabel(work?.[session.id]);
+      const hit = latest.get(session.id);
+      const idle = taskWord(hit?.task, work?.[session.id]);
       return {
         id: session.id,
         icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
         label: (0, import_react.createElement)(
           "span",
           { className: "nodo-round-menu-item" },
-          (0, import_react.createElement)("span", { className: "nodo-round-role" }, role.name),
-          (0, import_react.createElement)("span", { className: "nodo-round-title" }, session.name),
-          status2 ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status2) : null
+          (0, import_react.createElement)("span", { className: "nodo-round-title" }, hit?.title ?? session.name),
+          (0, import_react.createElement)(
+            "span",
+            { className: "nodo-round-menu-meta" },
+            [role.name, sessionTime(hit?.at ?? session.updatedAt)].filter(Boolean).join(" \xB7 "),
+            status2 ? (0, import_react.createElement)("span", { className: "nodo-row-running" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work[session.id]), size: 8 }), status2) : idle ? (0, import_react.createElement)("span", null, idle) : null
+          )
         )
       };
     }),
@@ -14051,11 +14166,10 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
   const busyNow = readOnly || busy;
   const team = navigation?.view === "team";
   const rounds = roundIndex(view2);
-  const sessions = view2.profiles.flatMap((role) => role.sessions.map((session) => ({
-    role,
-    session,
-    workspaceId: workspaceIdOf(view2, role, session)
-  })));
+  const sessions = view2.profiles.flatMap((role) => role.sessions.map((session) => {
+    const workspaceId = workspaceIdOf(view2, role, session);
+    return { role, session, workspaceId, projectId: projectAnchorOf(view2.workspaces, workspaceId) };
+  }));
   const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh" && session.leadMode !== false;
   const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
   const rowOf = (role, session) => {
@@ -14077,14 +14191,14 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
   const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
   const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
   const draftProfile = roles.find((role) => role.id === draft?.profile);
-  const ordered = [...view2.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0));
+  const ordered = [...view2.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0)).filter((item) => item.worktree?.project == null);
   const scopeOf = (item) => {
     const archived = archives[item.id] ?? "hide";
     return { archived, filtering: !!filterRole || archived === "only" };
   };
   const entriesOf = (item) => {
     const { archived } = scopeOf(item);
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt)).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
+    return sessions.filter(({ role, session, projectId }) => !role.deletedAt && projectId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt)).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
   };
   const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
   const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
@@ -14101,7 +14215,7 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
     },
     icon
   ));
-  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.workspaceId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view2.work[entry.session.id]?.active);
+  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.projectId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view2.work[entry.session.id]?.active);
   const toggle = (key, open, Glyph, title, tip, live) => {
     const waiting = live.some((entry) => workKind(view2.work[entry.session.id]) === "wait");
     return /* @__PURE__ */ (0, import_react.createElement)(
@@ -14156,6 +14270,7 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
     const pending = draftIn(item);
     if (filtering && !entries.length && !pending && archived !== "only") return null;
     const open = opened[item.id] ?? (filtering || item.id === workspace?.id);
+    const worktrees = view2.workspaces.filter((other) => other.worktree?.project === item.id);
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
       item.id,
       open,
@@ -14178,6 +14293,13 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
             icon: id === "hide" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
           })),
           ...item.worktree ? [] : [{ id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), disabled: busyNow }],
+          ...worktrees.map((other) => ({
+            id: `worktree-delete:${other.id}`,
+            label: `\u5220\u9664\u5DE5\u4F5C\u6811\u201C${other.name}\u201D`,
+            icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null),
+            danger: true,
+            disabled: busyNow
+          })),
           { id: "rename", label: "\u91CD\u547D\u540D", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busyNow },
           { id: "delete", label: "\u5220\u9664\u9879\u76EE", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, null), danger: true, disabled: busyNow }
         ],
@@ -14185,6 +14307,7 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
           setMenuOpen(null);
           if (id.startsWith("archived:")) setArchives((current) => ({ ...current, [item.id]: id.slice("archived:".length) }));
           else if (id === "worktree") onNewWorktree(item);
+          else if (id.startsWith("worktree-delete:")) onDeleteWorkspace(worktrees.find((other) => other.id === id.slice("worktree-delete:".length)));
           else if (id === "rename") onRenameWorkspace(item);
           else if (id === "delete") onDeleteWorkspace(item);
         },
@@ -14286,7 +14409,7 @@ function Rail({ view: view2, profile, workspace, sessionId, editing, draft, draf
   const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
   const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
   const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view2.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
-    const project = view2.workspaces.find((item) => item.id === workspaceId), row = rowOf(role, session);
+    const project = view2.workspaces.find((item) => item.id === projectAnchorOf(view2.workspaces, workspaceId)), row = rowOf(role, session);
     return {
       id: session.id,
       role,
@@ -14517,6 +14640,7 @@ function PendingMessages({ items, disabled, onAction }) {
         "span",
         { className: "nodo-pending-text", title: item.text },
         item.text || "\u56FE\u7247\u6D88\u606F",
+        item.taskTitle && (0, import_react.createElement)("span", { className: "nodo-pending-images" }, ` \xB7 ${item.taskTitle}`),
         item.images.length > 0 && (0, import_react.createElement)("span", { className: "nodo-pending-images" }, ` \xB7 ${item.images.length} \u5F20\u56FE\u7247`)
       ),
       (0, import_react.createElement)(
@@ -14533,7 +14657,7 @@ function PendingMessages({ items, disabled, onAction }) {
     ))
   );
 }
-function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = "\u505C\u6B62\u751F\u6210", busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
+function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = "\u505C\u6B62\u751F\u6210", busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, taskScope, onRemoveTaskScope, focusTick, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
   const box = (0, import_react.useRef)(null);
   const card = (0, import_react.useRef)(null);
   const picker = (0, import_react.useRef)(null);
@@ -14582,6 +14706,9 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
       mutation.disconnect();
     };
   }, []);
+  (0, import_react.useEffect)(() => {
+    if (focusTick) box.current?.focus({ preventScroll: true });
+  }, [focusTick]);
   const mention = mentionOf(value);
   const trigger = triggerOf(value);
   const [dismissed, setDismissed] = (0, import_react.useState)(null);
@@ -14676,6 +14803,16 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
       (0, import_react.createElement)("button", { type: "button", disabled: readOnly || busy, onClick: () => onReference(item) }, item.label),
       (0, import_react.createElement)("button", { type: "button", disabled: readOnly || busy, "aria-label": `\u79FB\u9664\u5F15\u7528 ${item.label}`, onClick: () => onRemoveReference(item.id) }, "\xD7")
     ))),
+    taskScope && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-composer-files", "aria-label": "\u672C\u6B21\u6D88\u606F\u4EFB\u52A1\u8303\u56F4" },
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-reference-tag" },
+        (0, import_react.createElement)("span", { className: "nodo-task-scope", title: taskScope }, taskScope),
+        (0, import_react.createElement)("button", { type: "button", disabled: readOnly || busy, "aria-label": `\u79FB\u9664\u4EFB\u52A1\u8303\u56F4 ${taskScope}`, onClick: onRemoveTaskScope }, "\xD7")
+      )
+    ),
     onAttachFiles && (0, import_react.createElement)("input", {
       ref: picker,
       type: "file",
@@ -15195,7 +15332,8 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
           "div",
           { className: "nodo-approval-strip", role: "alert" },
           (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: busy ? "ongoing" : "warning" }),
-          from ? "\u7B49\u5F85\u5BA1\u6279 \xB7" : "\u7B49\u5F85\u5BA1\u6279",
+          from || card.taskTitle ? "\u7B49\u5F85\u5BA1\u6279 \xB7" : "\u7B49\u5F85\u5BA1\u6279",
+          card.taskTitle && (0, import_react.createElement)("span", { className: "nodo-approval-task" }, card.taskTitle),
           from && (0, import_react.createElement)(
             "span",
             { className: "nodo-approval-from" },
@@ -15232,7 +15370,7 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
         (0, import_react.createElement)(
           "div",
           null,
-          (0, import_react.createElement)("div", { className: "nodo-question-eyebrow", role: "alert" }, question.header ?? "\u7B49\u5F85\u56DE\u7B54"),
+          (0, import_react.createElement)("div", { className: "nodo-question-eyebrow", role: "alert" }, card.taskTitle ?? question.header ?? "\u7B49\u5F85\u56DE\u7B54"),
           (0, import_react.createElement)("h2", { className: "nodo-question-title", id: `nodo-question-${card.id}` }, question.question)
         )
       ),
@@ -16084,7 +16222,6 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
       },
       closeLabel: "\u5173\u95ED",
       title: "\u65B0\u5EFA\u5DE5\u4F5C\u6811",
-      description: "\u4ECE\u5F53\u524D\u9879\u76EE\u521B\u5EFA\u72EC\u7ACB\u68C0\u51FA\uFF0C\u5E76\u4F5C\u4E3A\u65B0\u7684\u9879\u76EE\u7EE7\u7EED\u5DE5\u4F5C\u3002",
       className: "nodo-dialog",
       footer: [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
@@ -16094,7 +16231,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
           form: WORKTREE_FORM,
           variant: "primary",
           disabled: !canSubmit
-        }, busy ? "\u521B\u5EFA\u4E2D\u2026" : openSession && profile != null ? "\u521B\u5EFA\u5E76\u6253\u5F00" : "\u521B\u5EFA\u9879\u76EE")
+        }, busy ? "\u521B\u5EFA\u4E2D\u2026" : openSession && profile != null ? "\u521B\u5EFA\u5E76\u6253\u5F00" : "\u521B\u5EFA\u5DE5\u4F5C\u6811")
       ]
     },
     (0, import_react.createElement)(
@@ -16365,6 +16502,7 @@ function SessionRenameDialog({ session, onCancel, onSaved }) {
 function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   const [busy, setBusy] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
+  const worktree = workspace.worktree !== void 0;
   const remove = async () => {
     setBusy(true);
     setError("");
@@ -16383,14 +16521,14 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
         if (!busy) onCancel();
       },
       closeLabel: "\u5173\u95ED",
-      title: "\u5220\u9664\u9879\u76EE",
-      description: workspace.worktree ? `\u5C06\u5220\u9664\u9879\u76EE\u201C${workspace.name}\u201D\uFF0C\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u89D2\u8272\u3001\u5DE5\u4F5C\u6811\u76EE\u5F55\u548C\u5206\u652F\u4F1A\u4FDD\u7559\uFF1B\u76F8\u5173\u4EFB\u52A1\u9700\u5148\u7ED3\u675F\u3002` : `\u5C06\u5220\u9664\u9879\u76EE\u201C${workspace.name}\u201D\uFF0C\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u89D2\u8272\u548C\u76EE\u5F55\u6587\u4EF6\u4F1A\u4FDD\u7559\uFF1B\u76F8\u5173\u4EFB\u52A1\u9700\u5148\u7ED3\u675F\u3002`,
+      title: worktree ? "\u5220\u9664\u5DE5\u4F5C\u6811" : "\u5220\u9664\u9879\u76EE",
+      description: worktree ? `\u5C06\u5220\u9664\u5DE5\u4F5C\u6811\u201C${workspace.name}\u201D\uFF0C\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u89D2\u8272\u3001\u5DE5\u4F5C\u6811\u76EE\u5F55\u548C\u5206\u652F\u4F1A\u4FDD\u7559\uFF1B\u76F8\u5173\u4EFB\u52A1\u9700\u5148\u7ED3\u675F\u3002` : `\u5C06\u5220\u9664\u9879\u76EE\u201C${workspace.name}\u201D\uFF0C\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u5F52\u6863\uFF0C\u53EF\u5728\u300C\u5DF2\u79FB\u9664\u300D\u4E2D\u67E5\u770B\u3002\u89D2\u8272\u548C\u76EE\u5F55\u6587\u4EF6\u4F1A\u4FDD\u7559\uFF1B\u76F8\u5173\u4EFB\u52A1\u9700\u5148\u7ED3\u675F\u3002`,
       footer: [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: onCancel }, "\u53D6\u6D88"),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "delete", variant: "outline", className: "nodo-dialog-danger", disabled: busy, onClick: () => void remove() }, "\u5220\u9664\u9879\u76EE")
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "delete", variant: "outline", className: "nodo-dialog-danger", disabled: busy, onClick: () => void remove() }, worktree ? "\u5220\u9664\u5DE5\u4F5C\u6811" : "\u5220\u9664\u9879\u76EE")
       ]
     },
-    busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, "\u6B63\u5728\u5220\u9664\u9879\u76EE\u2026"),
+    busy && (0, import_react.createElement)("div", { className: "nodo-dialog-status", role: "status" }, worktree ? "\u6B63\u5728\u5220\u9664\u5DE5\u4F5C\u6811\u2026" : "\u6B63\u5728\u5220\u9664\u9879\u76EE\u2026"),
     error2 !== "" && (0, import_react.createElement)("div", { className: "nodo-dialog-error", role: "alert" }, error2)
   );
 }
@@ -17631,6 +17769,13 @@ var readDrafts = () => {
     return {};
   }
 };
+var readScopes = () => {
+  try {
+    return JSON.parse(localStorage.getItem("nodo.taskScope")) ?? {};
+  } catch {
+    return {};
+  }
+};
 var navigationSnapshot;
 var navigationListeners = /* @__PURE__ */ new Set();
 var readNavigation = () => {
@@ -17658,7 +17803,7 @@ var setNavigation = (update) => {
 var nativeRole = (profile) => profile?.engine === "dsh";
 var sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   if (!profile || !workspace) return;
-  const sessions = profile.sessions.filter((item) => !item.archivedAt && (item.workspaceRef ?? workspaces.find((workspace2) => workspace2.cwd === item.cwd)?.id ?? profile.workspaceId) === workspace.id);
+  const sessions = profile.sessions.filter((item) => !item.archivedAt && projectAnchorOf(workspaces, item.workspaceRef ?? workspaces.find((workspace2) => workspace2.cwd === item.cwd)?.id ?? profile.workspaceId) === workspace.id);
   return sessions.find((item) => item.id === selected) ?? sessions.find((item) => item.id === profile.activeSessionId) ?? sessions.sort((a, b2) => (b2.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
 };
 var selectSession = async (role, id, project, page) => {
@@ -17759,14 +17904,21 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const [sessionDialog, setSessionDialog] = (0, import_react.useState)(null);
   const [drafts, setDrafts] = (0, import_react.useState)(readDrafts);
   const [pastedImages, setPastedImages] = (0, import_react.useState)(() => heldImages);
+  const [scopes, setScopes] = (0, import_react.useState)(readScopes);
   (0, import_react.useEffect)(() => {
     localStorage.setItem("nodo.drafts", JSON.stringify(drafts));
   }, [drafts]);
   (0, import_react.useEffect)(() => {
+    localStorage.setItem("nodo.taskScope", JSON.stringify(scopes));
+  }, [scopes]);
+  (0, import_react.useEffect)(() => {
     heldImages = pastedImages;
   }, [pastedImages]);
   (0, import_react.useEffect)(() => {
-    const remove = (ids) => setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
+    const remove = (ids) => {
+      setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
+      setScopes((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
+    };
     return registerDraftRemover(remove);
   }, []);
   const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
@@ -17786,7 +17938,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const profiles = view2?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
   const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
   const workspaces = view2?.workspaces ?? [];
-  const workspace = archived ? workspaces.find((item) => item.id === archived.session.workspaceRef) ?? null : workspaces.find((item) => item.id === navigation.workspace) ?? workspaces[0] ?? null;
+  const workspace = archived ? workspaces.find((item) => item.id === projectAnchorOf(workspaces, archived.session.workspaceRef)) ?? null : workspaces.find((item) => item.id === projectAnchorOf(workspaces, navigation.workspace)) ?? workspaces[0] ?? null;
   const navigationKey = `${workspace?.id}:${profile?.id}`;
   const session = archived?.session ?? sessionForWorkspace(
     team && profile ? { ...profile, sessions: profile.sessions.filter((item) => leadSession(profile, item)) } : profile,
@@ -17796,6 +17948,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   );
   const sessionId = session?.id;
   const draftKey = sessionId ?? `new:${navigationKey}`;
+  const scopeTask = view2?.tasks?.find((item) => item.id === scopes[draftKey]);
   const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
   const setSessionBusy = (value) => setPending((current) => value ? [...current, draftKey] : current.filter((key) => key !== draftKey));
   const readOnly = view2 !== null && view2.readOnly != null;
@@ -17805,14 +17958,15 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const rounds = view2 ? roundIndex(view2) : null;
   const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
+  const activeTasks = members.filter((item) => view2.work[item.session.id]?.active === true).length;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
   (0, import_react.useLayoutEffect)(() => {
     if (sidebarOnly || !space.active || !space.legacy || editing) return;
     if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
     if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
   }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
-  const roundLive = [{ role: profile, session }, ...members].filter((item) => team && view2?.work[item.session?.id]?.active === true);
   const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
+  const sessionWorkspace = session ? workspaces.find((item) => item.id === session.workspaceRef) ?? workspace : workspace;
   const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view2?.profiles.flatMap((role) => role.sessions).find((item) => nativeIdOf(item) === currentNativeSession) : null;
   const viewedWork = view2?.work[viewed?.id];
   (0, import_react.useEffect)(() => {
@@ -17971,6 +18125,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     const value = current[draftKey] ?? "";
     return { ...current, [draftKey]: value === "" || /\s$/.test(value) ? `${value}${insertion}` : `${value} ${insertion}` };
   });
+  const [focusTick, setFocusTick] = (0, import_react.useState)(0);
+  const supplement = (step) => {
+    setScopes((current) => ({ ...current, [draftKey]: step.taskId }));
+    setFocusTick((value) => value + 1);
+  };
+  const removeScope = () => setScopes((current) => {
+    const next = { ...current };
+    delete next[draftKey];
+    return next;
+  });
   const send = async () => {
     const text = (drafts[draftKey] ?? "").trim();
     const images = pastedImages[draftKey] ?? [];
@@ -17980,7 +18144,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     await attempt(trackSelection(true), async () => {
       const id = sessionId ?? (await call2("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
       const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }));
-      await call2("send", { profile: profile.id, session: id, text, images: payload, mode: "queue" });
+      await call2("send", { profile: profile.id, session: id, text, images: payload, mode: "queue", ...scopeTask ? { taskId: scopeTask.id } : {} });
       if (current()) setSentTick((tick) => tick + 1);
       setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
       setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
@@ -18014,9 +18178,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (!profile || sessionBusy || conversationReadOnly) return;
     setSessionBusy(true);
     await attempt(trackSelection(true), async () => {
-      for (const [id, target] of team ? roundLive.map((item) => [item.role.id, item.session.id]) : [[profile.id, sessionId]]) {
-        await call2("interrupt", { profile: id, session: target });
-      }
+      await call2("interrupt", { profile: profile.id, session: sessionId });
       await refresh(false);
     });
     setSessionBusy(false);
@@ -18084,7 +18246,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         (0, import_react.createElement)(
           "span",
           { className: "nodo-head-actions" },
-          members.length > 0 && (0, import_react.createElement)(RoundMenu, { members, work: view2.work, onOpen: openSession })
+          members.length > 0 && (0, import_react.createElement)(RoundMenu, { members, work: view2.work, struct: view2.struct, workspace: sessionWorkspace?.id, onOpen: openSession })
         )
       )
     ),
@@ -18094,28 +18256,36 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       session,
       work,
       sentTick,
-      round: team ? { profiles: view2.profiles, teams: view2.teams, leadId: profile.id, work: view2.work, onOpen: openSession, onStop: conversationReadOnly ? void 0 : stopMember } : void 0
+      round: team ? {
+        profiles: view2.profiles,
+        teams: view2.teams,
+        tasks: view2.tasks,
+        leadId: profile.id,
+        work: view2.work,
+        onOpen: openSession,
+        onStop: conversationReadOnly ? void 0 : stopMember,
+        onSupplement: conversationReadOnly ? void 0 : supplement
+      } : void 0
     }),
-    work?.active === true && (0, import_react.createElement)(
+    (work?.active === true || activeTasks > 0) && (0, import_react.createElement)(
       "div",
       { className: "nodo-running-dock" },
-      (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work })
+      work?.active === true && (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work }),
+      activeTasks > 0 && (0, import_react.createElement)(TaskCountLine, { count: activeTasks })
     ),
     ...(!archivedConversation ? view2.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
       key: card.id,
-      card,
+      card: card.taskId ? { ...card, taskTitle: view2.tasks?.find((task) => task.id === card.taskId)?.title } : card,
       refresh,
       readOnly,
       from: members.find((item) => item.session.id === card.profileId)
     })),
     !archivedConversation && (0, import_react.createElement)(Composer, {
       profile: composerProfile,
-      workspace,
+      workspace: sessionWorkspace,
       value: drafts[draftKey] ?? "",
       images: pastedImages[draftKey] ?? [],
       running: work?.active === true,
-      stoppable: team ? roundLive.length > 0 : void 0,
-      stopLabel: roundLive.length > 1 ? `\u505C\u6B62\u5168\u90E8 ${roundLive.length} \u4E2A` : void 0,
       busy: sessionBusy,
       readOnly: readOnly || !workspace,
       modelDisabled: sessionBusy || readOnly,
@@ -18124,8 +18294,11 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       onStop: () => void interrupt(),
       onAttach: attach,
       onRemoveImage: removeImage,
-      pending: work?.pending ?? [],
+      pending: work?.pending?.some((item) => item.taskId) ? work.pending.map((item) => item.taskId ? { ...item, taskTitle: view2.tasks?.find((task) => task.id === item.taskId)?.title } : item) : work?.pending,
       onQueueAction: (seq, action) => void queueAction(seq, action),
+      taskScope: scopeTask?.title,
+      onRemoveTaskScope: removeScope,
+      focusTick,
       onInsert: insertDraft,
       onGoal: sessionId ? () => setGoalOpen(true) : void 0,
       onCompact: () => void compactSession(),
@@ -20400,7 +20573,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-round-body{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--dsh-content-font-size,14px);line-height:22px}
 .nodo-round-role{flex:none;font-weight:500}
 .nodo-round-speaker>.nodo-round-role,.nodo-round-head>.nodo-round-role{font-weight:600}
-.nodo-round-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}
+.nodo-round-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px}
 .nodo-tag{--nodo-tag-tone:var(--dsw-alias-label-secondary);display:inline-block;flex:none;max-width:100%;height:20px;padding:0 7px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover);color:var(--nodo-tag-tone);font-size:12px;font-weight:400;line-height:20px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nodo-tag[data-tone]{background:color-mix(in srgb,var(--nodo-tag-tone) 10%,transparent)}
 .nodo-tag[data-tone=accent]{--nodo-tag-tone:var(--dsw-alias-state-business-primary)}
@@ -20418,12 +20591,15 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-round-summary:focus-visible,.nodo-round-open:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-round-quiet{margin:0;color:var(--dsw-alias-label-tertiary)}
 .nodo-round-report{min-width:0;color:var(--dsw-alias-label-secondary)}
+.nodo-round-task-error{display:flex;align-items:center;gap:8px}
 .nodo-round-tools{display:flex;flex-direction:column;gap:2px;min-width:0}
 .nodo-round-tools>:first-child:nth-last-child(5){opacity:.4}
 .nodo-round-tools>:nth-child(2):nth-last-child(4){opacity:.7}
 .nodo-round-text{max-height:88px;overflow:hidden}
 .nodo-round-chip{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;height:24px;padding:0 8px 0 6px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:24px}
-.nodo-round-menu-item{display:flex;align-items:center;gap:8px;min-width:0}
+.nodo-round-menu-item{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
+.nodo-round-menu-meta{display:flex;align-items:center;gap:8px;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-round-menu-meta .nodo-row-running{line-height:18px}
 .nodo-ok{color:var(--dsw-alias-state-success-primary)}.nodo-bad{color:var(--dsw-alias-state-error-primary)}
 .nodo-error-line{margin:8px 0;color:var(--dsw-alias-state-error-primary);white-space:pre-wrap}
 .nodo-note{color:var(--dsw-alias-label-tertiary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(18px + var(--dsh-content-font-delta-secondary,0px))}
@@ -20501,6 +20677,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-approval-card{box-sizing:border-box;width:100%;max-width:var(--dsh-chat-content-width,748px);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);overflow:hidden}
 .nodo-approval-strip{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:18px}
 .nodo-approval-from{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.nodo-approval-task{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-approval-from>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-approval-body{box-sizing:border-box;display:flex;flex-direction:column;gap:6px;max-height:var(--dsh-composer-text-max-height,336px);padding:12px 16px 0;overflow-y:auto;outline:none}
 .nodo-approval-headline{margin:0;color:var(--dsw-alias-label-primary);font-size:15px;font-weight:500;line-height:24px;text-wrap:pretty}
@@ -20558,6 +20735,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-mode-chip:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
 .nodo-mode-chip:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}
 .nodo-composer-files{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px;max-height:90px;overflow:auto}
+.nodo-composer-files .nodo-task-scope{max-width:280px;padding:5px 7px;overflow:hidden;color:var(--dsw-alias-label-secondary);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .nodo-user-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
 .nodo-composer-file{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:4px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);font-size:12px}
 .nodo-composer-file>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
