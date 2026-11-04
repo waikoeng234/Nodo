@@ -1150,7 +1150,11 @@ test('shared lead rules ride the identity on native channels and every brief oth
     assert.ok(rt.leadBrief(rt.findProfile(lead.id), conversation).includes(leadRules))
     const brief = rt.leadBrief(rt.findProfile(lead.id), native)
     assert.equal(brief, '')
-    assert.equal(leadRules.split('\n').length, 6)
+    assert.equal(leadRules.split('\n').length, 7)
+    assert.match(leadRules, /3–6 child tasks linked by parentId/)
+    assert.match(leadRules, /use existing acceptance rules to decide whether an independent review is needed, without repeating completed reviews/)
+    assert.match(leadRules, /express ordering with dependsOn/)
+    assert.match(leadRules, /reopen it before reworking any child/)
   }
 }))
 

@@ -25,6 +25,110 @@ const accepted = async rt => {
   return { task, execution: await rt.acceptExecution(task.id, route) }
 }
 
+test('task relationships stay within the coordinator and revise can replace or clear them', async () => {
+  const rt = fixture()
+  const parent = await rt.createTask(scope), dependency = await rt.createTask(scope)
+  const empty = await rt.createTask({ ...scope, dependsOn: [] })
+  assert.equal(Object.hasOwn(empty, 'dependsOn'), false)
+  assert.equal(Object.hasOwn(rt.state.tasks[empty.id], 'dependsOn'), false)
+  rt.state.tasks.foreign = { ...parent, id: 'foreign', coordinatorSessionId: 'other-lead' }
+  const child = await rt.createTask({ ...scope, parentId: parent.id, dependsOn: [dependency.id] })
+  assert.equal(child.parentId, parent.id)
+  assert.deepEqual(child.dependsOn, [dependency.id])
+  const before = structuredClone(rt.state.tasks)
+  for (const id of ['missing', 'foreign']) for (const changes of [{ parentId: id }, { dependsOn: [id] }]) {
+    await assert.rejects(rt.createTask({ ...scope, ...changes }), { code: 'orch/invalid', message: '关联任务不存在或不属于本主控会话' })
+    await assert.rejects(rt.reviseTask(child.id, changes), { code: 'orch/invalid' })
+  }
+  await assert.rejects(rt.reviseTask(child.id, { status: 'done', dependsOn: [] }), { code: 'orch/invalid' })
+  assert.deepEqual(rt.state.tasks, before)
+  const revised = await rt.reviseTask(child.id, { parentId: dependency.id, dependsOn: [parent.id] })
+  assert.equal(revised.parentId, dependency.id)
+  assert.deepEqual(revised.dependsOn, [parent.id])
+  revised.dependsOn.push('changed')
+  assert.deepEqual((await rt.taskView(child.id)).dependsOn, [parent.id])
+  const cleared = await rt.reviseTask(child.id, { parentId: '', dependsOn: [] })
+  assert.equal(Object.hasOwn(cleared, 'parentId'), false)
+  assert.equal(Object.hasOwn(cleared, 'dependsOn'), false)
+  assert.equal(Object.hasOwn(rt.state.tasks[child.id], 'dependsOn'), false)
+})
+
+test('revise rejects self references, parent loops and dependencies on children or descendants', async () => {
+  const rt = fixture()
+  const parent = await rt.createTask(scope)
+  const child = await rt.createTask({ ...scope, parentId: parent.id })
+  const grandchild = await rt.createTask({ ...scope, parentId: child.id })
+  const before = structuredClone(rt.state.tasks)
+  for (const changes of [{ parentId: parent.id }, { dependsOn: [parent.id] }]) {
+    await assert.rejects(rt.reviseTask(parent.id, changes), { code: 'orch/invalid', message: '任务不能以自己为父任务或依赖任务' })
+  }
+  for (const id of [child.id, grandchild.id]) {
+    await assert.rejects(rt.reviseTask(parent.id, { parentId: id }), { code: 'orch/invalid', message: '父子关系成环' })
+    await assert.rejects(rt.reviseTask(parent.id, { dependsOn: [id] }), { code: 'orch/invalid', message: '任务不能依赖自己的子孙任务' })
+  }
+  assert.deepEqual(rt.state.tasks, before)
+})
+
+test('create and revise terminate and reject an existing cyclic parent chain', async () => {
+  const rt = fixture()
+  const first = await rt.createTask(scope)
+  const second = await rt.createTask({ ...scope, parentId: first.id })
+  const other = await rt.createTask(scope)
+  rt.state.tasks[first.id].parentId = second.id
+  const before = structuredClone(rt.state.tasks)
+  await assert.rejects(rt.createTask({ ...scope, parentId: first.id }), { code: 'orch/invalid', message: '父子关系成环' })
+  await assert.rejects(rt.createTask({ ...scope, dependsOn: [second.id] }), { code: 'orch/invalid', message: '父子关系成环' })
+  await assert.rejects(rt.reviseTask(other.id, { parentId: first.id }), { code: 'orch/invalid', message: '父子关系成环' })
+  assert.deepEqual(rt.state.tasks, before)
+})
+
+test('create and revise reject attaching to a done parent until it is reopened', async () => {
+  const rt = fixture()
+  const { task: parent, execution } = await accepted(rt)
+  await rt.startExecution(execution.id)
+  await rt.finishExecution(execution.id, result)
+  await rt.completeTask(parent.id, { reason: 'Checked', references: result.references })
+  const child = await rt.createTask(scope)
+  const before = structuredClone(rt.state.tasks)
+  await assert.rejects(rt.createTask({ ...scope, parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收，请先 reopen 父任务' })
+  await assert.rejects(rt.reviseTask(child.id, { parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收，请先 reopen 父任务' })
+  assert.deepEqual(rt.state.tasks, before)
+  await rt.reopenTask(parent.id)
+  assert.equal((await rt.reviseTask(child.id, { parentId: parent.id })).parentId, parent.id)
+  assert.equal((await rt.createTask({ ...scope, parentId: parent.id })).parentId, parent.id)
+})
+
+test('parent acceptance requires all children done and still needs its own execution evidence', async () => {
+  const rt = fixture()
+  const parent = await rt.createTask(scope)
+  const child = await rt.createTask({ ...scope, parentId: parent.id })
+  await assert.rejects(rt.completeTask(parent.id, { reason: 'Too early', references: ['child-result'] }),
+    { code: 'orch/invalid', message: '还有 1 个子任务未验收，先完成它们再验收本任务' })
+  const childExecution = await rt.acceptExecution(child.id, route)
+  await rt.startExecution(childExecution.id)
+  await rt.finishExecution(childExecution.id, result)
+  await rt.completeTask(child.id, { reason: 'Checked child', references: result.references })
+  await assert.rejects(rt.completeTask(parent.id, { reason: 'No integration', references: result.references }),
+    { code: 'orch/invalid', message: 'Acceptance evidence must reference task execution results' })
+  const integration = await rt.acceptExecution(parent.id, route)
+  await rt.startExecution(integration.id)
+  await rt.finishExecution(integration.id, { report: 'Integrated', references: ['integration'] })
+  const acceptance = { reason: 'Verified integration', references: ['integration'] }
+  const sibling = await rt.createTask({ ...scope, parentId: parent.id })
+  await rt.reopenTask(child.id)
+  await assert.rejects(rt.completeTask(parent.id, acceptance), { code: 'orch/invalid', message: '还有 2 个子任务未验收，先完成它们再验收本任务' })
+  await rt.completeTask(child.id, { reason: 'Checked again', references: result.references })
+  const siblingExecution = await rt.acceptExecution(sibling.id, route)
+  await rt.startExecution(siblingExecution.id)
+  await rt.finishExecution(siblingExecution.id, result)
+  await assert.rejects(rt.completeTask(parent.id, acceptance), { code: 'orch/invalid', message: '还有 1 个子任务未验收，先完成它们再验收本任务' })
+  await rt.completeTask(sibling.id, { reason: 'Checked sibling', references: result.references })
+  rt.state.tasks.foreign = { ...sibling, id: 'foreign', coordinatorSessionId: 'another-lead', status: 'open' }
+  assert.equal((await rt.completeTask(parent.id, acceptance)).status, 'done')
+  await rt.reopenTask(child.id)
+  assert.equal((await rt.taskView(parent.id)).status, 'done', 'reopening a child never propagates status')
+})
+
 test('accept, start, waiting, finish, rework, complete and reopen follow the task lifecycle', async () => {
   const rt = fixture()
   const { task, execution } = await accepted(rt)

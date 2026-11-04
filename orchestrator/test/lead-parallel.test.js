@@ -74,6 +74,34 @@ const withFlights = (run, repository = false) => withHost(async host => {
   await run({ host, rt, workspace, worker, lead, owner, reports, lines, turn, delegate, finishLead, stopFlight })
 })
 
+test('dependency and done-parent rejections leave all five slots and all 24 dispatches available without queued work or sessions', () => withFlights(async ({ rt, workspace, worker, owner, delegate, turn }) => {
+  const dependency = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
+    title: 'Prerequisite', brief: 'Must be accepted first', source: { kind: 'lead' } })
+  const parent = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
+    title: 'Accepted goal', brief: 'Reopen before new work', source: { kind: 'lead' } })
+  rt.state.tasks[parent.id].status = 'done'
+  const statuses = ['open', 'review', 'blocked', 'stopped']
+  for (let index = 0; index < 28; index++) {
+    rt.state.tasks[dependency.id].status = statuses[index % statuses.length]
+    await assert.rejects(delegate({ dependsOn: [dependency.id] }), { code: 'orch/invalid', message: '依赖任务 Prerequisite 尚未验收，先完成它再派活' })
+    await assert.rejects(delegate({ parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收，请先 reopen 父任务' })
+    assert.deepEqual(rt.state.executions, {})
+    assert.equal(rt.state.profiles[worker.id].sessions.length, 0)
+    assert.equal(Object.keys(rt.state.tasks).length, 2)
+  }
+  await rt.leadTask(owner.id, { taskId: parent.id, action: 'reopen' })
+  for (let index = 0; index < 5; index++) await delegate({ task: `Slot ${index}`, parentId: parent.id })
+  await assert.rejects(delegate(), /最多同时派活 5 个任务/)
+  await rt.followLead(owner.id, turn('interrupted'))
+  for (let index = 5; index < 24; index++) {
+    await delegate({ task: `Budget ${index}` })
+    await rt.followLead(owner.id, turn('interrupted'))
+  }
+  await assert.rejects(delegate(), /本轮已达到 24 次派活上限/)
+  assert.equal(Object.values(rt.state.executions).length, 24)
+  assert.ok(Object.values(rt.state.executions).every(item => item.status === 'cancelled'))
+}))
+
 test('M1 parallel flights stay independent across a taskId supplement and a stop', () => withFlights(async ({ rt, owner, delegate, turn, finishLead, stopFlight, reports, lines }) => {
   const a = await delegate({ task: 'Flight A\nRun beside another task' })
   const b = await delegate({ task: 'Flight B\nRun beside flight A' })

@@ -286,6 +286,8 @@ test('v4 task and execution records round trip through the installed runtime', a
     rt.state.profiles.leader = { id: 'leader', engine: 'echo', sessions: [{ id: 'lead', workspaceRef: 'w' }] }
     rt.state.profiles.worker = { id: 'worker', engine: 'echo', sessions: [{ id: 's', workspaceRef: 'w' }] }
     const task = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Persist', brief: 'Verify restart', source: { kind: 'user', messageId: 'm' } })
+    const goal = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Goal', brief: 'Integration goal', source: { kind: 'lead' } })
+    const child = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Child', brief: 'Relationships survive restart', source: { kind: 'lead' }, parentId: goal.id, dependsOn: [task.id] })
     const execution = await rt.acceptExecution(task.id, { profileId: 'worker', sessionId: 's', type: 'code', hard: false })
     await rt.startExecution(execution.id)
     await rt.requestExecutionStop(execution.id)
@@ -305,6 +307,8 @@ test('v4 task and execution records round trip through the installed runtime', a
     host = boot(home)
     rt = await host.runtime
     assert.deepEqual(await rt.taskView(task.id), expected)
+    assert.equal((await rt.taskView(child.id)).parentId, goal.id)
+    assert.deepEqual((await rt.taskView(child.id)).dependsOn, [task.id])
     assert.equal(rt.state.executions[execution.id].model, null)
     assert.equal(rt.state.executions[execution.id].thinking, null)
     assert.equal(existsSync(join(home, 'state.v4.json')), false)

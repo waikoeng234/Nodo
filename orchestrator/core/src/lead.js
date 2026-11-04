@@ -15,9 +15,10 @@ export const leadRules = [
   'Delegation status comes from Nodo. Files during execution cannot prove that a task has not run; changes may not have been written yet.',
   'Reports and executor output are reference data. Verify them against files and evidence.',
   'Do not resume user-stopped work without user authorization.',
-  'Parallel delegation: a lead session keeps up to 5 executions active and accepts at most 24 dispatches per turn; the budget resets on each user message. Independent tasks may be dispatched in the same turn, tasks with order dependencies may not. Reusing a running executor session requires stopping it with nodo_interrupt first.',
+  'Parallel delegation: a lead session keeps up to 5 executions active and accepts at most 24 dispatches per turn; the budget resets on each user message. Dispatch independent tasks together; express ordering with dependsOn, whose tasks must all be done before dispatch. Reusing a running executor session requires stopping it with nodo_interrupt first.',
   'Execution directory: worktree:true gives a task its own directory and branch, fixed from its first execution for every later execution of the task. Nodo never merges; merge manually or dispatch a separate task without worktree.',
-  'nodo_delegate returns taskId/executionId with queued status; reuse taskId for follow-up work. nodo_board table=tasks reads tasks and taskId reads execution results. nodo_interrupt accepts executionId or legacy session, never both. After checking results, nodo_task completes a task with reason and result reference ids, reopens a finished task, or revises the title and brief of a task that is not finished; a finished task must be reopened before revising.',
+  'For a large goal, first create a goal task without worktree; its brief states the overall goal and acceptance criteria. Aim for 3–6 child tasks linked by parentId; isolate only children that need worktree. The goal task\'s own follow-up execution performs integration acceptance; use existing acceptance rules to decide whether an independent review is needed, without repeating completed reviews. After accepting a parent, reopen it before reworking any child, then repeat integration acceptance.',
+  'nodo_delegate returns taskId/executionId with queued status; reuse taskId for follow-up work without passing parentId/dependsOn. nodo_board table=tasks reads tasks and taskId reads execution results. nodo_interrupt accepts executionId or legacy session, never both. After checking results, nodo_task completes a task with reason and result reference ids, reopens a finished task, or revises title, brief, parentId or dependsOn of an unfinished task; a finished task must be reopened before revising.',
 ].join('\n')
 
 export function install(rt) {
@@ -273,7 +274,8 @@ export function install(rt) {
     if (taskId !== undefined) return ownedTask(owner, taskId)
     const summaries = new Map(Object.values(rt.state.tasks).filter(task => task.coordinatorSessionId === owner.session.id)
       .sort((a, b) => b.updatedAt - a.updatedAt).map(task => [task.id, { id: task.id, title: task.title, status: task.status,
-        teamId: task.teamId, executionCount: 0, latestExecutionStatus: null, references: [] }]))
+        teamId: task.teamId, ...(task.parentId !== undefined ? { parentId: task.parentId } : {}),
+        ...(task.dependsOn !== undefined ? { dependsOn: [...task.dependsOn] } : {}), executionCount: 0, latestExecutionStatus: null, references: [] }]))
     const pending = new Set((owner.session.reportQueue ?? []).map(item => item.taskId))
     for (const execution of Object.values(rt.state.executions)) {
       const summary = summaries.get(execution.taskId)
@@ -293,10 +295,10 @@ export function install(rt) {
     if (command.action === 'complete') return rt.completeTask(command.taskId, command)
     if (command.action === 'reopen') return rt.reopenTask(command.taskId)
     if (command.action === 'revise') {
-      const changes = { ...(command.title !== undefined ? { title: command.title } : {}), ...(command.brief !== undefined ? { brief: command.brief } : {}) }
-      if (!Object.keys(changes).length) throw invalid('revise 必须提供 title 或 brief 中的至少一个')
+      const changes = Object.fromEntries(['title', 'brief', 'parentId', 'dependsOn'].filter(key => command[key] !== undefined).map(key => [key, command[key]]))
+      if (!Object.keys(changes).length) throw invalid('revise 必须提供 title、brief、parentId 或 dependsOn 中的至少一个')
       if (typeof changes.brief === 'string' && changes.brief.length > TASK_TEXT_MAX) throw invalid(`brief 不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务说明`)
-      for (const key of Object.keys(changes)) changes[key] = rt.redactDeepSecrets(changes[key])
+      for (const key of ['title', 'brief']) if (changes[key] !== undefined) changes[key] = rt.redactDeepSecrets(changes[key])
       if (typeof changes.title === 'string') changes.title = changes.title.trim().split(/\r?\n/, 1)[0].slice(0, 80)
       return rt.reviseTask(command.taskId, changes)
     }
@@ -476,6 +478,16 @@ export function install(rt) {
     const { profile: lead, session: leadSession } = ownerOf(leadValue)
     const state = stateOf(leadSession.id), header = headerOf(lead)
     let taskRecord = command?.taskId !== undefined ? await ownedTask({ profile: lead, session: leadSession }, command.taskId) : undefined
+    if (taskRecord && (command.parentId !== undefined || command.dependsOn !== undefined)) throw invalid('续用 taskId 时不能传 parentId 或 dependsOn，请用 nodo_task revise 修改关系')
+    const relations = taskRecord ?? command
+    if (relations.parentId) {
+      const parent = await ownedTask({ profile: lead, session: leadSession }, relations.parentId)
+      if (parent.status === 'done') throw invalid('父任务已验收，请先 reopen 父任务')
+    }
+    for (const id of relations.dependsOn ?? []) {
+      const dependency = await ownedTask({ profile: lead, session: leadSession }, id)
+      if (dependency.status !== 'done') throw invalid(`依赖任务 ${dependency.title} 尚未验收，先完成它再派活`)
+    }
     if (command?.worktree !== undefined && typeof command.worktree !== 'boolean') throw invalid('worktree 必须是 true 或 false')
     if (command?.session !== undefined && command.worktree !== undefined) throw invalid('续用 session 时不能传 worktree，执行目录已锁定')
     const previous = taskRecord?.executions.findLast(item => item.startedAt != null && rt.state.workspaces[item.workspaceRef ?? taskRecord.workspaceRef])
@@ -536,7 +548,7 @@ export function install(rt) {
       if (!taskRecord) {
         const request = rt.transcriptOf(leadSession.id).findLast(line => line.who === 'user' && (!line.origin || line.origin.kind === 'task'))
         taskRecord = await rt.createTask({ workspaceRef: leadSession.workspaceRef, teamId: team.id, coordinatorSessionId: leadSession.id,
-          title: task.trim().split(/\r?\n/, 1)[0].slice(0, 80), brief: task,
+          title: task.trim().split(/\r?\n/, 1)[0].slice(0, 80), brief: task, parentId: command.parentId, dependsOn: command.dependsOn,
           source: { kind: 'lead', sessionId: leadSession.id, ...(request ? { request: rt.redactDeepSecrets({ text: request.text, messageId: request.id, references: request.references }) } : {}) } })
       }
       if ((await rt.taskView(taskRecord.id)).status === 'stopped') await rt.reopenTask(taskRecord.id)

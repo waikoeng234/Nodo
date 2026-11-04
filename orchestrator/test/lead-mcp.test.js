@@ -111,15 +111,19 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     assert.match(tools[1].description, /本轮正常结束后发送/)
     assert.match(tools[1].description, /停止或出错则取消/)
     assert.match(tools[1].description, /同一批文件、需要隔离时用 worktree/)
-    assert.match(tools[1].description, /有先后顺序要求的改动不要并行/)
+    assert.match(tools[1].description, /有先后顺序要求用 dependsOn，依赖未验收时拒绝派活/)
     assert.match(tools[1].description, /上下文要写全/)
     assert.match(tools[1].description, /Nodo 不会自动合并/)
     assert.equal(tools[1].inputSchema.properties.worktree.type, 'boolean')
+    for (const tool of [tools[1], tools[3]]) {
+      assert.equal(tool.inputSchema.properties.parentId.type, 'string')
+      assert.deepEqual(tool.inputSchema.properties.dependsOn.items, { type: 'string', minLength: 1 })
+    }
     assert.deepEqual(tools[2].inputSchema.oneOf, [{ required: ['executionId'] }, { required: ['session'] }])
     assert.deepEqual(tools[3].inputSchema.oneOf, [
       { properties: { action: { const: 'complete' } }, required: ['reason', 'references'] },
       { properties: { action: { const: 'reopen' } } },
-      { properties: { action: { const: 'revise' } }, anyOf: [{ required: ['title'] }, { required: ['brief'] }] },
+      { properties: { action: { const: 'revise' } }, anyOf: [{ required: ['title'] }, { required: ['brief'] }, { required: ['parentId'] }, { required: ['dependsOn'] }] },
     ])
     assert.deepEqual(tools[3].inputSchema.properties.action.enum, ['complete', 'reopen', 'revise'])
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
@@ -129,7 +133,7 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     await client.callTool({ name: 'nodo_board', arguments: { table: 'roles' } })
     await client.callTool({ name: 'nodo_board', arguments: { session: 'older' } })
     assert.deepEqual(h.calls[2], ['delegations', 'lead', 'older'])
-    const args = { type: 'feature', hard: false, task: 'Complete task', worktree: true }
+    const args = { type: 'feature', hard: false, task: 'Complete task', worktree: true, parentId: 'goal', dependsOn: ['investigation'] }
     const receipt = await client.callTool({ name: 'nodo_delegate', arguments: args })
     assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, reused: false })
     assert.deepEqual(h.calls.at(-1), ['delegate', 'lead', args])
@@ -141,7 +145,7 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     const acceptance = { taskId: 'task', action: 'complete', reason: 'Verified', references: ['ref'] }
     await client.callTool({ name: 'nodo_task', arguments: acceptance })
     assert.deepEqual(h.calls.at(-1), ['task', 'lead', acceptance])
-    const revision = { taskId: 'task', action: 'revise', title: 'Renamed', brief: 'Revised' }
+    const revision = { taskId: 'task', action: 'revise', title: 'Renamed', brief: 'Revised', parentId: '', dependsOn: [] }
     await client.callTool({ name: 'nodo_task', arguments: revision })
     assert.deepEqual(h.calls.at(-1), ['task', 'lead', revision])
     for (const request of [
@@ -153,6 +157,21 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
       { name: 'nodo_board', arguments: { table: 'roles', taskId: 'task' } },
       { name: 'nodo_task', arguments: { taskId: 'task', action: 'revise', title: 'T', status: 'done' } },
     ]) assert.equal((await rpc(spec, request)).isError, true)
+    for (const name of ['nodo_delegate', 'nodo_task']) for (const changes of [
+      { parentId: 2 }, { parentId: null }, { parentId: ' ' }, { dependsOn: 'task' }, { dependsOn: null },
+      { dependsOn: [2] }, { dependsOn: [''] }, { dependsOn: [' '] }, { dependsOn: ['ok', null] },
+    ]) {
+      const before = h.calls.length
+      const response = await rpc(spec, { name, arguments: { ...(name === 'nodo_delegate' ? args : revision), ...changes } })
+      assert.equal(response.isError, true)
+      assert.equal(h.calls.length, before, 'invalid relationship types never reach the internal handler')
+    }
+    const emptyParent = await rpc(spec, { name: 'nodo_delegate', arguments: { ...args, parentId: '' } })
+    assert.equal(emptyParent.isError, true)
+    assert.equal(emptyParent.content[0].text, 'parentId 必须是非空字符串')
+    const badRevisionParent = await rpc(spec, { name: 'nodo_task', arguments: { ...revision, parentId: 2 } })
+    assert.equal(badRevisionParent.isError, true)
+    assert.equal(badRevisionParent.content[0].text, 'parentId 必须是非空字符串；revise 可用空字符串清空')
     h.rt.leadDispatch.delegate = async () => { throw new Error('预算已用尽') }
     assert.match((await client.callTool({ name: 'nodo_delegate', arguments: args })).content[0].text, /预算/)
     h.rt.leadRoles = () => token

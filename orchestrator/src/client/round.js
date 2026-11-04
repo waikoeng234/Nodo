@@ -185,6 +185,7 @@ export function RoundMember({ step, round }) {
   const work = round.work?.[step.session]
   const live = !step.report && !step.ended && work?.active === true
   const task = round.tasks?.find(item => item.id === step.taskId)
+  const parent = task?.parentId && round.tasks?.find(item => item.id === task.parentId)
   const word = taskWord(task, work, step.unconfirmed === true)
   const label = work?.retryWaiting ? '等待自动继续' : work?.suspect ? workLabel(work) : ''
   const [open, setOpen] = useState(false)
@@ -205,6 +206,7 @@ export function RoundMember({ step, round }) {
       h('div', { className: 'nodo-round-head' },
         h('span', { className: 'nodo-round-role' }, role.name),
         tag(typeName(round, step.type)),
+        parent && tag(parent.title),
         step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
         step.branch && tag('隔离'),
         // An ended card says it once: the ending text replaces the task-level word.
@@ -258,6 +260,7 @@ export function RoundMenu({ members, work, struct, workspace, onOpen }) {
     }).catch(() => {})
     return () => { live = false }
   }, [open, struct])
+  const listed = new Set(members.map(({ session }) => latest.get(session.id)?.task.id))
   return h(Menu, {
     open, onClose: () => setOpen(false), portal: true, align: 'end',
     items: members.map(({ role, session }) => {
@@ -265,7 +268,7 @@ export function RoundMenu({ members, work, struct, workspace, onOpen }) {
         const hit = latest.get(session.id)
         const idle = taskWord(hit?.task, work?.[session.id])
         return { id: session.id, icon: h(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
-          label: h('span', { className: 'nodo-round-menu-item' },
+          label: h('span', { className: 'nodo-round-menu-item', style: hit?.task.parentId && listed.has(hit.task.parentId) ? { paddingInlineStart: 16 } : undefined },
             h('span', { className: 'nodo-round-title' }, hit?.title ?? session.name),
             h('span', { className: 'nodo-round-menu-meta' },
               [role.name, sessionTime(hit?.at ?? session.updatedAt)].filter(Boolean).join(' · '),
