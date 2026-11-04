@@ -162,6 +162,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     }
     return registerDraftRemover(remove)
   }, [])
+  const [opened, setOpened] = useState([])
   const [goalOpen, setGoalOpen] = useState(false)
   // The statistics line under the composer opens its own dialog.
   const [statsOpen, setStatsOpen] = useState(false)
@@ -203,6 +204,9 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const rounds = view ? roundIndex(view) : null
   const members = (team && sessionId && rounds?.members.get(sessionId)) || []
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
+  const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : undefined)
+  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter(item => item.session.id === sessionId || opened.includes(item.session.id))] : []
+  const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map(item => item.role)] : []
   const activeTasks = members.filter(item => view.work[item.session.id]?.active === true).length
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd
   useLayoutEffect(() => {
@@ -428,6 +432,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   }
 
   const openSession = id => {
+    setOpened(current => current.includes(id) ? current : [...current, id])
     const role = view.profiles.find(item => item.sessions.some(entry => entry.id === id))
     if (role) {
       setNavigation(current => ({ ...current, view: 'sessions' }))
@@ -444,15 +449,24 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     // row and one hairline closing the block.
     h('header', { className: 'nodo-head' },
       h('div', { className: 'nodo-title-row' },
-        leadEntry && h('button', { type: 'button', className: 'nodo-crumb nodo-crumb-link', title: leadEntry.session.name,
-          onClick: () => {
-            setNavigation(current => ({ ...current, view: 'team' }))
-            void select(leadEntry.role, leadEntry.session.id, workspaces.find(item => item.id === leadEntry.session.workspaceRef))
-          } }, leadEntry.session.name),
-        leadEntry && h('span', { className: 'nodo-crumb-sep', 'aria-hidden': true }, '›'),
-        h('span', { className: 'nodo-crumb', title: session?.name ?? workspace?.name ?? profile.name },
+        ...tabs.map(({ role, session: entry }) => {
+          const open = () => {
+            if (entry.id === lead.session.id) setNavigation(current => ({ ...current, view: 'team' }))
+            void select(role, entry.id, workspaces.find(item => item.id === entry.workspaceRef))
+          }
+          const close = event => {
+            event.stopPropagation()
+            setOpened(current => current.filter(id => id !== entry.id))
+            if (entry.id === sessionId) { setNavigation(current => ({ ...current, view: 'team' })); void select(lead.role, lead.session.id, workspaces.find(item => item.id === lead.session.workspaceRef)) }
+          }
+          return h('span', { key: entry.id, className: 'nodo-tab', 'data-current': entry.id === sessionId || undefined },
+            h('button', { type: 'button', className: entry.id === sessionId ? 'nodo-crumb' : 'nodo-crumb nodo-crumb-link', title: entry.name, onClick: open },
+              h(RoundFaces, { roles: entry.id === lead.session.id ? [...new Map(tabRoles.map(item => [item.id, item])).values()] : [role] }),
+              h('span', { className: 'nodo-crumb-text' }, entry.name)),
+            entry.id !== lead.session.id && h('button', { type: 'button', className: 'nodo-tab-close', 'aria-label': '关闭', onClick: close }, '×'))
+        }),
+        tabs.length === 0 && h('span', { className: 'nodo-crumb', title: session?.name ?? workspace?.name ?? profile.name },
           session?.name ?? workspace?.name ?? profile.name),
-        members.length > 0 && h(RoundFaces, { roles: [...new Map([profile, ...members.map(item => item.role)].map(role => [role.id, role])).values()] }),
         h('span', { className: 'nodo-head-actions' },
           members.length > 0 && h(RoundMenu, { members, work: view.work, struct: view.struct, workspace: sessionWorkspace?.id, onOpen: openSession })))),
     h(Feed, { key: `${team}:${sessionId}`, profile, session, work, sentTick,

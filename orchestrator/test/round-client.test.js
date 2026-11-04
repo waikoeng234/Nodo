@@ -997,7 +997,7 @@ test('an executor session opened from the round links back to its lead session',
   assert.equal(find(loaded.Feed).round, undefined)
   assert.equal(navigation().view, 'sessions')
   const back = render().find(node => node.props.className === 'nodo-crumb nodo-crumb-link')
-  assert.equal(back.children[0], 'Fix login')
+  assert.equal(back.children[1].children[0], 'Fix login')
   back.props.onClick()
   await tick()
   assert.deepEqual(plain(calls.at(-1)), { endpoint: 'session-select', payload: { profile: 'lead', session: 'l1' } })

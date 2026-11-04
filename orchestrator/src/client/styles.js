@@ -236,11 +236,16 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 /* Host conversation header geometry: 20px inline start, a 30px title row inside
    the window-chrome band, then a hairline. */
 .nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--nodo-top-clearance,0px);padding:10px 50px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
-.nodo-title-row{display:flex;align-items:center;gap:8px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
-.nodo-crumb{min-width:0;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
-.nodo-crumb-link{flex:none;max-width:40%;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
+.nodo-title-row{display:flex;align-items:center;gap:4px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
+.nodo-crumb{min-width:0;max-width:160px;flex:0 1 auto;padding:4px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
+.nodo-crumb-link{border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
 .nodo-crumb-link:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-crumb-sep{flex:none;color:var(--dsw-alias-label-tertiary);font-size:14px;line-height:22px}
+.nodo-tab{display:flex;align-items:center;min-width:0;border-radius:var(--dsw-radius-md)}
+.nodo-tab[data-current]{--nodo-tab-bg:var(--dsw-alias-interactive-bg-hover);background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-tab .nodo-crumb{display:flex;align-items:center;gap:8px;border:0;background:transparent;font-family:inherit;cursor:pointer}
+.nodo-crumb-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nodo-tab-close{flex:none;width:18px;height:18px;margin-right:6px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;line-height:18px;cursor:pointer}
+.nodo-tab-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-head-actions{display:flex;align-items:center;flex:none;margin-left:auto}
 .nodo-head-actions>*{display:flex;align-items:center}
 /* The kit has no right-panel icon; the native rightbar mirrors the left one on
@@ -302,7 +307,9 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-browser-toolbar input{width:100%;height:28px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);color:inherit;font:inherit}
 .nodo-browser-toolbar input:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
 .nodo-browser-frame{display:flex;flex:1;width:100%;min-width:0;min-height:0;border:0;background:var(--dsw-alias-bg-base)}
-.nodo-round-faces{display:inline-flex;flex:none;gap:2px}
+.nodo-round-faces{display:inline-flex;flex:none}
+.nodo-round-faces>*+*{margin-left:-8px}
+.nodo-round-faces>*{border-radius:6px;box-shadow:0 0 0 1.5px var(--nodo-tab-bg,var(--dsw-alias-bg-base))}
 .nodo-feed-inner[data-round]>:not(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-left:40px}
 .nodo-feed-inner[data-round]>*+:is(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-top:18px}
 .nodo-feed-inner[data-round]>.nodo-round-speaker+*{margin-top:4px}

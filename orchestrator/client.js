@@ -17924,6 +17924,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     };
     return registerDraftRemover(remove);
   }, []);
+  const [opened, setOpened] = (0, import_react.useState)([]);
   const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
   const [statsOpen, setStatsOpen] = (0, import_react.useState)(false);
   const [onboardDone, setOnboardDone] = (0, import_react.useState)(false);
@@ -17961,6 +17962,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const rounds = view2 ? roundIndex(view2) : null;
   const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
+  const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : void 0);
+  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => item.session.id === sessionId || opened.includes(item.session.id))] : [];
+  const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map((item) => item.role)] : [];
   const activeTasks = members.filter((item) => view2.work[item.session.id]?.active === true).length;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
   (0, import_react.useLayoutEffect)(() => {
@@ -18050,10 +18054,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     try {
       let sessionId2;
       if (nativeRole(profile) && openNativeSession) {
-        const opened = await call2("session-open", { profile: profile.id, workspace: created.workspace.id });
-        sessionId2 = opened.conversationId;
+        const opened2 = await call2("session-open", { profile: profile.id, workspace: created.workspace.id });
+        sessionId2 = opened2.conversationId;
         if (created.sessionName !== "") await call2("session-update", { profile: profile.id, session: sessionId2, changes: { name: created.sessionName } });
-        openNativeSession(opened.sessionId);
+        openNativeSession(opened2.sessionId);
       } else {
         const saved = await call2("session-create", {
           profile: profile.id,
@@ -18208,6 +18212,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setCompacting((current) => current.filter((id) => id !== sessionId));
   };
   const openSession = (id) => {
+    setOpened((current) => current.includes(id) ? current : [...current, id]);
     const role = view2.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
     if (role) {
       setNavigation((current) => ({ ...current, view: "sessions" }));
@@ -18230,22 +18235,36 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       (0, import_react.createElement)(
         "div",
         { className: "nodo-title-row" },
-        leadEntry && (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-crumb nodo-crumb-link",
-          title: leadEntry.session.name,
-          onClick: () => {
-            setNavigation((current) => ({ ...current, view: "team" }));
-            void select(leadEntry.role, leadEntry.session.id, workspaces.find((item) => item.id === leadEntry.session.workspaceRef));
-          }
-        }, leadEntry.session.name),
-        leadEntry && (0, import_react.createElement)("span", { className: "nodo-crumb-sep", "aria-hidden": true }, "\u203A"),
-        (0, import_react.createElement)(
+        ...tabs.map(({ role, session: entry }) => {
+          const open = () => {
+            if (entry.id === lead.session.id) setNavigation((current) => ({ ...current, view: "team" }));
+            void select(role, entry.id, workspaces.find((item) => item.id === entry.workspaceRef));
+          };
+          const close = (event) => {
+            event.stopPropagation();
+            setOpened((current) => current.filter((id) => id !== entry.id));
+            if (entry.id === sessionId) {
+              setNavigation((current) => ({ ...current, view: "team" }));
+              void select(lead.role, lead.session.id, workspaces.find((item) => item.id === lead.session.workspaceRef));
+            }
+          };
+          return (0, import_react.createElement)(
+            "span",
+            { key: entry.id, className: "nodo-tab", "data-current": entry.id === sessionId || void 0 },
+            (0, import_react.createElement)(
+              "button",
+              { type: "button", className: entry.id === sessionId ? "nodo-crumb" : "nodo-crumb nodo-crumb-link", title: entry.name, onClick: open },
+              (0, import_react.createElement)(RoundFaces, { roles: entry.id === lead.session.id ? [...new Map(tabRoles.map((item) => [item.id, item])).values()] : [role] }),
+              (0, import_react.createElement)("span", { className: "nodo-crumb-text" }, entry.name)
+            ),
+            entry.id !== lead.session.id && (0, import_react.createElement)("button", { type: "button", className: "nodo-tab-close", "aria-label": "\u5173\u95ED", onClick: close }, "\xD7")
+          );
+        }),
+        tabs.length === 0 && (0, import_react.createElement)(
           "span",
           { className: "nodo-crumb", title: session?.name ?? workspace?.name ?? profile.name },
           session?.name ?? workspace?.name ?? profile.name
         ),
-        members.length > 0 && (0, import_react.createElement)(RoundFaces, { roles: [...new Map([profile, ...members.map((item) => item.role)].map((role) => [role.id, role])).values()] }),
         (0, import_react.createElement)(
           "span",
           { className: "nodo-head-actions" },
@@ -20499,11 +20518,16 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 /* Host conversation header geometry: 20px inline start, a 30px title row inside
    the window-chrome band, then a hairline. */
 .nodo-head{box-sizing:border-box;display:flex;flex-direction:column;flex:none;min-height:var(--nodo-top-clearance,0px);padding:10px 50px 0 20px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
-.nodo-title-row{display:flex;align-items:center;gap:8px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
-.nodo-crumb{min-width:0;padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
-.nodo-crumb-link{flex:none;max-width:40%;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
+.nodo-title-row{display:flex;align-items:center;gap:4px;min-width:0;min-height:30px;padding-inline-start:max(0px,calc(var(--dsh-frame-leading-clearance,0px) - 20px))}
+.nodo-crumb{min-width:0;max-width:160px;flex:0 1 auto;padding:4px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
+.nodo-crumb-link{border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;cursor:pointer}
 .nodo-crumb-link:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-crumb-sep{flex:none;color:var(--dsw-alias-label-tertiary);font-size:14px;line-height:22px}
+.nodo-tab{display:flex;align-items:center;min-width:0;border-radius:var(--dsw-radius-md)}
+.nodo-tab[data-current]{--nodo-tab-bg:var(--dsw-alias-interactive-bg-hover);background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-tab .nodo-crumb{display:flex;align-items:center;gap:8px;border:0;background:transparent;font-family:inherit;cursor:pointer}
+.nodo-crumb-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nodo-tab-close{flex:none;width:18px;height:18px;margin-right:6px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;line-height:18px;cursor:pointer}
+.nodo-tab-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-head-actions{display:flex;align-items:center;flex:none;margin-left:auto}
 .nodo-head-actions>*{display:flex;align-items:center}
 /* The kit has no right-panel icon; the native rightbar mirrors the left one on
@@ -20565,7 +20589,9 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-browser-toolbar input{width:100%;height:28px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);color:inherit;font:inherit}
 .nodo-browser-toolbar input:focus-visible{outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:-1px}
 .nodo-browser-frame{display:flex;flex:1;width:100%;min-width:0;min-height:0;border:0;background:var(--dsw-alias-bg-base)}
-.nodo-round-faces{display:inline-flex;flex:none;gap:2px}
+.nodo-round-faces{display:inline-flex;flex:none}
+.nodo-round-faces>*+*{margin-left:-8px}
+.nodo-round-faces>*{border-radius:6px;box-shadow:0 0 0 1.5px var(--nodo-tab-bg,var(--dsw-alias-bg-base))}
 .nodo-feed-inner[data-round]>:not(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-left:40px}
 .nodo-feed-inner[data-round]>*+:is(.nodo-user,.nodo-round-speaker,.nodo-round-member){margin-top:18px}
 .nodo-feed-inner[data-round]>.nodo-round-speaker+*{margin-top:4px}
