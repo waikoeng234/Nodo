@@ -77,7 +77,7 @@ flowchart LR
 
 - 各 Agent 在模型、思考档位、图片、附件等方面能力不同，Nodo 只接入 Agent 实际提供的部分。
 - 主控目前只支持 Claude Code 和 Codex。
-- 主控同时最多派 5 个活，每轮最多派 24 个；有先后依赖的改动不要并行派，会改同一批文件的任务用 `worktree:true` 隔离，Nodo 不自动合并。
+- 主控同时最多派 5 个活，每轮最多派 24 个；子任务用 `parentId` 归属目标（父任务已验收时先 reopen），有先后依赖用 `dependsOn`（全部验收为 done 后才能派活）；会改同一批文件的任务用 `worktree:true` 隔离，Nodo 不自动合并。
 - 只在你发消息后行动，不会监听群聊、PR、CI 等外部事件，也不会主动开工。
 - 没给任务类型配置承接角色时，主控无法派活，会说明缺口并停下。
 - ZCode 无法直接调用订阅服务：需要在 coding plan 内创建 API key，再在 ZCode 里添加自定义供应商并填入该 key，才能识别到 ZCode 模型。

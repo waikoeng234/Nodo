@@ -21,4 +21,6 @@ test('the role dialog offers identity presets with limits and deliverables', () 
     assert.match(preset.instructions, new RegExp(`你是 ${preset.name}`))
     for (const section of [/边界：/, /交付：/]) assert.match(preset.instructions, section)
   }
+  const lead = presets.find(preset => preset.name === 'leader').instructions
+  for (const phrase of ['不开 worktree 的目标任务', '3–6 个子任务', 'parentId', 'dependsOn', '自己的后续执行负责集成验收', '按既有规则判断是否需要独立审查，不重复派', '先 reopen 父任务']) assert.ok(lead.includes(phrase), phrase)
 })

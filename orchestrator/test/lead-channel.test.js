@@ -23,13 +23,17 @@ test('task board returns bounded summaries, retaining active executions and pend
   }
   for (const [index, status] of [[0, 'running'], [1, 'queued'], [2, 'unconfirmed']]) rt.state.executions[`task-${index}`].status = status
   owner.reportQueue = [{ taskId: 'task-3' }]
+  rt.state.tasks['task-19'].parentId = 'task-18'
+  rt.state.tasks['task-19'].dependsOn = ['task-17']
   rt.state.executions.followup = { id: 'followup', taskId: 'task-19', sessionId: 'another', status: 'done', references: ['ref-19', 'new-ref'] }
   rt.state.tasks.foreign = { id: 'foreign', coordinatorSessionId: 'another-lead', updatedAt: 100 }
   rt.taskView = async () => { throw new Error('List must not load full task views') }
   const rows = await rt.leadTasks(owner.id)
   assert.equal(rows.length, 14)
   assert.deepEqual(new Set(rows.map(row => row.id)), new Set([0, 1, 2, 3, ...Array.from({ length: 10 }, (_, index) => index + 10)].map(index => `task-${index}`)))
-  assert.deepEqual(rows[0], { id: 'task-19', title: 'Task 19', status: 'review', teamId: 'team', executionCount: 2, latestExecutionStatus: 'done', references: ['ref-19', 'new-ref'] })
+  assert.deepEqual(rows[0], { id: 'task-19', title: 'Task 19', status: 'review', teamId: 'team', parentId: 'task-18', dependsOn: ['task-17'], executionCount: 2, latestExecutionStatus: 'done', references: ['ref-19', 'new-ref'] })
+  rows[0].dependsOn.push('changed')
+  assert.deepEqual(rt.state.tasks['task-19'].dependsOn, ['task-17'])
   assert.ok(rows.every(row => !('brief' in row) && !('executions' in row) && !('report' in row)))
   const detail = { ...rt.state.tasks['task-19'], executions: [rt.state.executions.followup] }
   rt.taskView = async () => detail

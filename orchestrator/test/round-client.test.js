@@ -16,6 +16,48 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 // What the host's transcript endpoint answers a first, position-less pull.
 const fullAnswer = lines => ({ full: true, token: 't', base: 1, dirty: 0, lines: lines.map((line, index) => ({ n: index + 1, line })) })
 
+test('execution cards show the parent title from existing task data', async () => {
+  const calls = []
+  const { RoundMember, host } = await loadClient('round.js', { call: (...args) => { calls.push(args) } })
+  const step = { session: 's', profile: 'worker', type: 'feature', taskId: 'child', report: 'Done' }
+  const parent = { id: 'parent', title: 'Ship the goal', status: 'open' }
+  const child = { id: 'child', title: 'Build a part', status: 'review', parentId: parent.id }
+  const round = { profiles: [{ id: 'worker', name: 'Worker' }], tasks: [parent, child], onOpen() {} }
+  const tags = () => {
+    host.reset()
+    return nodes(RoundMember({ step, round })).filter(node => node.props.className === 'nodo-tag').map(text)
+  }
+  assert.ok(tags().includes('Ship the goal'))
+  child.parentId = undefined
+  assert.ok(!tags().includes('Ship the goal'))
+  child.parentId = 'missing'
+  assert.ok(!tags().includes('missing'))
+  assert.deepEqual(calls, [], 'the chip requires no new requests')
+})
+
+test('round menu indents a child one level only when its parent is in the menu', async () => {
+  const tasks = [
+    { id: 'parent', title: 'Goal', executions: [{ sessionId: 'p', createdAt: 1 }] },
+    { id: 'child', title: 'Part', parentId: 'parent', executions: [{ sessionId: 'c', createdAt: 2 }] },
+    { id: 'orphan', title: 'Another part', parentId: 'absent', executions: [{ sessionId: 'o', createdAt: 3 }] },
+  ]
+  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+    call: async () => tasks, sessionTime: () => '', workLabel: () => '', workDot: () => 'idle',
+  } })
+  let members = ['p', 'c', 'o'].map(id => ({ role: { id: 'worker', name: 'Worker' }, session: { id, name: id } }))
+  const items = () => {
+    host.reset()
+    return nodes(RoundMenu({ members, work: {}, struct: 1, workspace: 'w', onOpen() {} })).find(node => node.type === 'Menu').props.items
+  }
+  host.cells[0] = true
+  items()
+  host.effects.at(-1)()
+  await tick()
+  assert.deepEqual(plain(items().map(item => item.label.props.style ?? null)), [null, { paddingInlineStart: 16 }, null])
+  members = members.filter(item => item.session.id !== 'p')
+  assert.ok(items().every(item => item.label.props.style === undefined), 'a parent outside the menu causes no indent')
+})
+
 test('roundLines turns the lead transcript into a chat of speaker rows, delegation chips and one message per executor', async () => {
   const { roundLines } = await loadClient('round.js')
   const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: true, reused: false, deferred: true }

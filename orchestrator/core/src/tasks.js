@@ -57,18 +57,36 @@ export function install(rt) {
     if (!team) throw invalid('Task team is unavailable')
     return team
   }
-  const createTask = async ({ workspaceRef, teamId, coordinatorSessionId, title, brief, source }) => {
+  const checkRelations = (task, changes) => {
+    for (const id of [...(changes.parentId ? [changes.parentId] : []), ...(changes.dependsOn ?? [])]) {
+      if (id === task.id) throw invalid('任务不能以自己为父任务或依赖任务')
+      const related = state.tasks[id]
+      if (!related || related.coordinatorSessionId !== task.coordinatorSessionId) throw invalid('关联任务不存在或不属于本主控会话')
+    }
+    if (changes.parentId && state.tasks[changes.parentId].status === 'done') throw invalid('父任务已验收，请先 reopen 父任务')
+    const parentId = changes.parentId ?? task.parentId
+    for (const id of [parentId, ...(changes.dependsOn ?? task.dependsOn ?? [])]) {
+      const visited = new Set([task.id])
+      for (let ancestor = id; ancestor; ancestor = state.tasks[ancestor]?.parentId) {
+        if (visited.has(ancestor)) throw invalid(ancestor === task.id && id !== parentId ? '任务不能依赖自己的子孙任务' : '父子关系成环')
+        visited.add(ancestor)
+      }
+    }
+  }
+  const createTask = async ({ workspaceRef, teamId, coordinatorSessionId, title, brief, source, parentId, dependsOn }) => {
     await writable()
     if (!source || typeof source !== 'object' || Array.isArray(source)) throw invalid('source must be an object')
     let origin
     try { origin = structuredClone(source) } catch { throw invalid('source must be cloneable') }
     const task = { id: randomUUID(), workspaceRef: text(workspaceRef, 'workspaceRef'), teamId: text(teamId, 'teamId'),
       coordinatorSessionId: text(coordinatorSessionId, 'coordinatorSessionId'), title: text(title, 'title'), brief: text(brief, 'brief'),
-      source: origin, status: 'open', createdAt: Date.now(), updatedAt: Date.now(), acceptances: [] }
+      source: origin, status: 'open', createdAt: Date.now(), updatedAt: Date.now(), acceptances: [],
+      ...(parentId ? { parentId } : {}), ...(dependsOn?.length ? { dependsOn: [...dependsOn] } : {}) }
     const team = liveScope(task)
     const owner = rt.conversationOf(coordinatorSessionId)
     if (!owner || owner.profile.id !== team.lead || rt.sessionWorkspace(owner.profile, owner.session)?.id !== workspaceRef) throw invalid('Coordinator must belong to the task workspace and team lead')
     rt.assertSessionWritable(owner.profile, owner.session)
+    checkRelations(task, task)
     state.tasks[task.id] = task
     return saveTask(task)
   }
@@ -78,9 +96,13 @@ export function install(rt) {
     const task = taskOf(id)
     liveScope(task)
     taskStatus(task, ['open', 'review', 'blocked'])
-    if (Object.keys(changes).some(key => !['title', 'brief'].includes(key))) throw invalid('Only title and brief may be revised')
-    const next = Object.fromEntries(Object.entries(changes).map(([key, value]) => [key, text(value, key)]))
+    if (Object.keys(changes).some(key => !['title', 'brief', 'parentId', 'dependsOn'].includes(key))) throw invalid('Only title, brief, parentId and dependsOn may be revised')
+    checkRelations(task, changes)
+    const next = Object.fromEntries(Object.entries(changes).map(([key, value]) => [key,
+      key === 'dependsOn' ? [...value] : key === 'parentId' ? value : text(value, key)]))
     Object.assign(task, next, { updatedAt: Date.now() })
+    if (!task.parentId) delete task.parentId
+    if (!task.dependsOn?.length) delete task.dependsOn
     return saveTask(task)
   }
   const acceptExecution = async (taskId, { profileId, sessionId, type, hard, model, thinking, workspaceRef: executionRef }) => {
@@ -152,6 +174,8 @@ export function install(rt) {
     const task = taskOf(id)
     liveScope(task)
     taskStatus(task, ['open', 'review', 'blocked'])
+    const unfinished = Object.values(state.tasks).filter(child => child.coordinatorSessionId === task.coordinatorSessionId && child.parentId === id && child.status !== 'done').length
+    if (unfinished) throw invalid(`还有 ${unfinished} 个子任务未验收，先完成它们再验收本任务`)
     const executions = executionsOf(id)
     const evidence = referencesOf(references)
     text(reason, 'reason')

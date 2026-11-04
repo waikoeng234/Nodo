@@ -59,6 +59,101 @@ const withTasks = (run, repository = false) => withHost(async host => {
   finally { for (const value of clients) await value.close(); for (const binding of bindings) binding.revoke() }
 })
 
+test('relationship ownership, revise and reuse preserve the task graph', () => withTasks(async ({ host, rt, workspace, lead, owner, other, client, call, finish }) => {
+  await host.api('send', { profile: lead.id, session: owner.id, text: 'Build the goal' })
+  await until(() => !rt.workView()[owner.id]?.active)
+  const primary = await client(owner)
+  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, title: 'Goal', brief: 'Integrate', source: { kind: 'lead' } }
+  const parent = await rt.createTask(scope)
+  const dependency = await call(primary, 'nodo_delegate', { ...command, task: 'Investigate' })
+  await finish(dependency)
+  const child = await rt.createTask({ ...scope, title: 'Child', parentId: parent.id, dependsOn: [dependency.taskId] })
+  const foreign = await rt.createTask({ ...scope, coordinatorSessionId: other.id })
+  const before = [Object.keys(rt.state.executions).length, rt.conversationOf(dependency.session).profile.sessions.length]
+  for (const related of ['missing', foreign.id]) for (const relation of [{ parentId: related }, { dependsOn: [related] }]) {
+    assert.equal((await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, ...relation } })).isError, true)
+    assert.equal((await primary.callTool({ name: 'nodo_task', arguments: { taskId: child.id, action: 'revise', ...relation } })).isError, true)
+  }
+  for (const relation of [{ parentId: parent.id }, { dependsOn: [dependency.taskId] }]) {
+    const rejected = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, taskId: child.id, ...relation } })
+    assert.equal(rejected.isError, true)
+    assert.equal(rejected.content[0].text, '续用 taskId 时不能传 parentId 或 dependsOn，请用 nodo_task revise 修改关系')
+  }
+  const blocked = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, taskId: child.id } })
+  assert.equal(blocked.isError, true)
+  assert.equal(blocked.content[0].text, '依赖任务 Investigate 尚未验收，先完成它再派活')
+  assert.deepEqual([Object.keys(rt.state.executions).length, rt.conversationOf(dependency.session).profile.sessions.length], before)
+  await call(primary, 'nodo_task', { taskId: dependency.taskId, action: 'complete', reason: 'Checked', references: rt.state.executions[dependency.executionId].references })
+  const allowed = await call(primary, 'nodo_delegate', { ...command, taskId: child.id })
+  assert.equal(allowed.status, 'queued', 'completing A and dispatching B in the same turn is allowed')
+  const linked = await call(primary, 'nodo_delegate', { ...command, parentId: parent.id, dependsOn: [dependency.taskId] })
+  const summary = (await call(primary, 'nodo_board', { table: 'tasks' })).find(item => item.id === linked.taskId)
+  assert.equal(summary.parentId, parent.id)
+  assert.deepEqual(summary.dependsOn, [dependency.taskId])
+  const reparent = { taskId: child.id, action: 'revise', parentId: dependency.taskId, dependsOn: [parent.id] }
+  const rejected = await primary.callTool({ name: 'nodo_task', arguments: reparent })
+  assert.equal(rejected.isError, true)
+  assert.equal(rejected.content[0].text, '父任务已验收，请先 reopen 父任务')
+  await call(primary, 'nodo_task', { taskId: dependency.taskId, action: 'reopen' })
+  const revised = await call(primary, 'nodo_task', reparent)
+  assert.equal(revised.parentId, dependency.taskId)
+  assert.deepEqual(revised.dependsOn, [parent.id])
+  const cleared = await call(primary, 'nodo_task', { taskId: child.id, action: 'revise', parentId: '', dependsOn: [] })
+  assert.equal(Object.hasOwn(cleared, 'parentId'), false)
+  assert.equal(Object.hasOwn(cleared, 'dependsOn'), false)
+  await rt.followLead(owner.id, turn('interrupted'))
+}))
+
+test('lead acceptance requires children done and reopening a child leaves the accepted parent done', () => withTasks(async ({ host, rt, lead, owner, client, call, finish }) => {
+  await host.api('send', { profile: lead.id, session: owner.id, text: 'Build the goal' })
+  await until(() => !rt.workView()[owner.id]?.active)
+  const primary = await client(owner)
+  const parent = await call(primary, 'nodo_delegate', { ...command, task: 'Goal integration' })
+  await finish(parent)
+  const child = await call(primary, 'nodo_delegate', { ...command, parentId: parent.taskId })
+  await finish(child)
+  const accept = receipt => ({ taskId: receipt.taskId, action: 'complete', reason: 'Verified', references: rt.state.executions[receipt.executionId].references })
+  const rejected = await primary.callTool({ name: 'nodo_task', arguments: accept(parent) })
+  assert.equal(rejected.isError, true)
+  assert.equal(rejected.content[0].text, '还有 1 个子任务未验收，先完成它们再验收本任务')
+  await call(primary, 'nodo_task', accept(child))
+  await call(primary, 'nodo_task', accept(parent))
+  await call(primary, 'nodo_task', { taskId: child.taskId, action: 'reopen' })
+  assert.equal(rt.state.tasks[parent.taskId].status, 'done')
+  assert.equal(rt.state.tasks[child.taskId].status, 'open')
+  const before = [Object.keys(rt.state.executions).length, rt.conversationOf(child.session).profile.sessions.length]
+  const refused = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, parentId: parent.taskId } })
+  assert.equal(refused.isError, true)
+  assert.equal(refused.content[0].text, '父任务已验收，请先 reopen 父任务')
+  assert.deepEqual([Object.keys(rt.state.executions).length, rt.conversationOf(child.session).profile.sessions.length], before)
+  await call(primary, 'nodo_task', { taskId: parent.taskId, action: 'reopen' })
+  assert.equal((await call(primary, 'nodo_delegate', { ...command, parentId: parent.taskId })).status, 'queued')
+  await rt.followLead(owner.id, turn('interrupted'))
+}))
+
+test('delegate rejects an existing cyclic parent chain and revise rejects self references without creating resources', () => withTasks(async ({ rt, workspace, worker, owner, client, call }) => {
+  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, title: 'Goal', brief: 'Integrate', source: { kind: 'lead' } }
+  const parent = await rt.createTask(scope)
+  const child = await rt.createTask({ ...scope, parentId: parent.id })
+  const primary = await client(owner)
+  for (const changes of [{ parentId: parent.id }, { dependsOn: [parent.id] }]) {
+    const response = await primary.callTool({ name: 'nodo_task', arguments: { taskId: parent.id, action: 'revise', ...changes } })
+    assert.equal(response.isError, true)
+    assert.equal(response.content[0].text, '任务不能以自己为父任务或依赖任务')
+  }
+  rt.state.tasks[parent.id].parentId = child.id
+  const before = structuredClone(rt.state.tasks)
+  const response = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, parentId: parent.id } })
+  assert.equal(response.isError, true)
+  assert.equal(response.content[0].text, '父子关系成环')
+  assert.deepEqual(rt.state.tasks, before)
+  assert.deepEqual(rt.state.executions, {})
+  assert.equal(rt.state.profiles[worker.id].sessions.length, 0)
+  await call(primary, 'nodo_task', { taskId: parent.id, action: 'revise', parentId: '' })
+  assert.equal((await call(primary, 'nodo_delegate', { ...command, parentId: parent.id })).status, 'queued')
+  await rt.followLead(owner.id, turn('interrupted'))
+}))
+
 test('isolated delegation locks its directory, copies attachments and reports its branch', () => withTasks(async ({ host, rt, workspace, worker, owner, client, call, finish }) => {
   rt.state.profiles[worker.id].engine = 'worktree-fixture'
   const alias = join(host.home, 'repo-alias')
@@ -372,7 +467,7 @@ test('task revise updates title or brief and refuses foreign, finished, oversize
   assert.equal(rt.state.tasks[first.taskId].title, 'Renamed goal')
   const empty = await primary.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise' } })
   assert.equal(empty.isError, true)
-  assert.match(empty.content[0].text, /title 或 brief/)
+  assert.equal(empty.content[0].text, 'revise 必须提供 title、brief、parentId 或 dependsOn 中的至少一个')
   const oversized = await primary.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise', brief: 'x'.repeat(TASK_TEXT_MAX + 1) } })
   assert.equal(oversized.isError, true)
   assert.match(oversized.content[0].text, /不能超过/)
