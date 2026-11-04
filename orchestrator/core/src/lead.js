@@ -689,6 +689,7 @@ export function install(rt) {
   }, 'nodo: lead retry timers')
 
   Object.assign(rt, {
+    sessionNote: note,
     ownedTask,
     delegationSummary, delegationState, leadSnapshot, leadDelegations, leadRoles, leadTasks, leadTask,
     leadDispatch: { delegate: async (session, command) => (await delegate(session, command)).receipt, interrupt: interruptDelegation },

@@ -16,6 +16,94 @@ const withFixture = async (run) => {
 
 const deltas = events => events.filter(event => event.type === 'delta').map(event => event.text).join('')
 
+test('Claude classifies only a missing resumed conversation before init', async () => {
+  for (const [message, expected] of [
+    ['No conversation found with session ID: {id}', 'resume-failed'],
+    ['Authentication failed', undefined],
+    ['Network connection failed', undefined],
+    ['Failed to resume session: permission denied', undefined],
+    ['No conversation found with session ID: other-session', undefined],
+  ]) await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, driverSessionId: 'missing-session',
+      env: { CLAUDE_FIXTURE_RESUME_ERROR: message }, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('Continue')
+      const end = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(end.reason, 'error')
+      assert.equal(end.errorKind, expected)
+      assert.equal(end.error, `Claude CLI exited (1): ${message.replace('{id}', 'missing-session')}`)
+      assert.equal(events.some(event => event.type === 'session' && event.state === 'ready'), false)
+    } finally { driver.dispose() }
+  })
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, driverSessionId: 'existing-session', onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn(`RESULT ${JSON.stringify({ subtype: 'error_during_execution', errors: ['No conversation found with session ID: existing-session'] })}`)
+      assert.equal((await until(() => events.find(event => event.type === 'turn/end'))).errorKind, undefined)
+      events.length = 0
+      await driver.sendTurn(`RESULT ${JSON.stringify({ subtype: 'error_during_execution', errors: ['No conversation found with session ID: fixture-claude-session'] })}`)
+      const end = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(end.reason, 'error')
+      assert.equal(end.errorKind, undefined)
+    } finally { driver.dispose() }
+  })
+})
+
+test('Claude also classifies a missing conversation when the same driver reboots with its learned session id', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('claude', { bin, cwd, env: { CLAUDE_FIXTURE_RESUME_ERROR: 'No conversation found with session ID: {id}' }, onEvent: event => events.push(event) })
+  try {
+    await driver.sendTurn('EXIT')
+    assert.equal((await until(() => events.find(event => event.type === 'turn/end'))).errorKind, undefined)
+    events.length = 0
+    await driver.sendTurn('Continue')
+    assert.equal((await until(() => events.find(event => event.type === 'turn/end'))).errorKind, 'resume-failed')
+  } finally { driver.dispose() }
+}))
+
+test('Claude classifies a missing resume from a result error before close', async () => {
+  for (const [message, expected] of [
+    ['No conversation found with session ID: {id}', 'resume-failed'],
+    ['No conversation found with session ID: other-session', undefined],
+    ['Authentication failed', undefined],
+    ['Network connection failed', undefined],
+  ]) await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, driverSessionId: 'missing-session',
+      env: { CLAUDE_FIXTURE_RESUME_ERROR: message, CLAUDE_FIXTURE_RESUME_RESULT: '1' }, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('Continue')
+      const end = await until(() => events.find(event => event.type === 'turn/end'))
+      await until(() => events.some(event => event.type === 'session' && event.state === 'closed'))
+      assert.equal(end.reason, 'error')
+      assert.equal(end.error, message.replace('{id}', 'missing-session'))
+      assert.equal(end.errorKind, expected)
+      assert.equal(end.retryable, undefined)
+      assert.equal(events.filter(event => event.type === 'turn/end').length, 1)
+      assert.equal(events.some(event => event.type === 'session' && event.state === 'ready'), false)
+    } finally { driver.dispose() }
+  })
+})
+
+test('Claude classifies a missing resumed conversation amid truncated multiline stderr with a non-1 exit', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('claude', { bin, cwd, driverSessionId: 'missing-session',
+    env: { CLAUDE_FIXTURE_RESUME_ERROR: `startup-begin\n${'startup diagnostic\n'.repeat(30)}No conversation found with session ID: {id}\nclosing diagnostic`, CLAUDE_FIXTURE_RESUME_EXIT: '7' },
+    onEvent: event => events.push(event) })
+  try {
+    await driver.sendTurn('Continue')
+    const end = await until(() => events.find(event => event.type === 'turn/end'))
+    assert.equal(end.reason, 'error')
+    assert.equal(end.errorKind, 'resume-failed')
+    assert.ok(end.error.startsWith('Claude CLI exited (7): '))
+    assert.ok(end.error.includes('No conversation found with session ID: missing-session closing diagnostic'))
+    assert.equal(end.error.includes('startup-begin'), false)
+    assert.equal(events.some(event => event.type === 'session' && event.state === 'ready'), false)
+  } finally { driver.dispose() }
+}))
+
 test('Claude success results and goal-like prose do not become goal lifecycle events', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

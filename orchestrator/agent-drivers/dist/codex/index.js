@@ -425,6 +425,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         if (ready)
             return ready;
         let connection;
+        let resuming = false;
         const pending = (async () => {
             if (disposed)
                 throw new Error('Codex driver disposed');
@@ -476,6 +477,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 ...(instructions ? { developerInstructions: `${instructions}\n\n${QUESTION_ROUTING}` } : {}),
             };
             let result;
+            resuming = !!threadId;
             try {
                 result = await peer.request(method, { ...params, ...extras });
                 instructionMode = instructions ? 'native' : 'none';
@@ -488,6 +490,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 result = await peer.request(method, { ...params, ...fallback });
                 instructionMode = 'none';
             }
+            resuming = false;
             threadId = result.thread.id;
             if (result.thread.projectId !== workspaceId)
                 await peer.request('thread/metadata/update', { threadId, projectId: workspaceId });
@@ -498,6 +501,8 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             connected = true;
             emit({ type: 'session', state: 'ready', sessionId: threadId, workspaceId });
         })().catch(error => {
+            if (resuming && [`no rollout found for thread id ${threadId}`, `no rollout found for thread with id ${threadId}`, `thread not found: ${threadId}`].some(phrase => error.message.includes(phrase)))
+                Object.assign(error, { errorKind: 'resume-failed' });
             if (peer === connection) {
                 peer = null;
                 connected = false;

@@ -7,6 +7,17 @@ import { install as installPrompt } from '../core/src/prompt.js'
 import { TASK_TEXT_MAX } from '../core/src/constants.js'
 import { boot, until, withHost } from './helpers/host.js'
 
+test('recovery directs only lead-mode sessions to the active delegation board, even without saved task data', () => {
+  for (const [lead, leadMode, expected] of [[true, undefined, true], [true, false, false], [false, undefined, false]]) {
+    const rt = { conversationOf: () => ({ profile: { lead } }) }
+    installPrompt(rt)
+    const recovery = rt.renderRecovery({ id: 'session', leadMode, restoreContext: true }, 'Continue')
+    assert.equal(recovery.includes('Check nodo_board / <nodo-status> for active delegations before continuing.'), expected)
+    assert.ok(recovery.endsWith('Continue'))
+    assert.equal(rt.renderRecovery({ id: 'session', leadMode }, 'First task'), 'First task')
+  }
+})
+
 test('reference envelopes preserve hostile text as data and keep the current assignment outside it', () => {
   const rt = {}
   installPrompt(rt)

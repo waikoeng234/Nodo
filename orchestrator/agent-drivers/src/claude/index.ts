@@ -252,6 +252,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
   let peer: ClaudeConnection | null = null
   let ready: Promise<void> | null = null
   let sessionId = driverSessionId
+  let resuming = false
   let connected = false
   let disposed = false
   let sequence = 0
@@ -275,7 +276,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     turn.settle?.()
     closeRequests()
     if (turn.changes) emit(turn.changes.snapshot(turn.id))
-    emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) })
+    emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(turn.errorKind === 'resume-failed' ? { errorKind: 'resume-failed' } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) })
   }
   const control = (request: { subtype: string; cancel_queued?: boolean }) => new Promise<unknown>((resolve, reject) => {
     const request_id = `orch-${++controlSeq}`
@@ -308,6 +309,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         coverage.setIdentity({ transport: 'stream-json', cliVersion: frame.claude_code_version })
       }
       if (frame.subtype === 'init' && typeof frame.session_id === 'string' && frame.session_id !== '') {
+        resuming = false
         sessionId = frame.session_id
         connected = true
         emit({ type: 'session', state: 'ready', sessionId })
@@ -512,6 +514,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       if (!turn.interrupting && turn.steers.size > 0) { turn.usage = usage; turn.sawText = false; return }
       const retryable = turn.errorKind !== undefined ? ['overloaded', 'server_error'].includes(turn.errorKind)
         : typeof frame.api_error_status === 'number' && (frame.api_error_status === 408 || frame.api_error_status >= 500 && frame.api_error_status < 600)
+      if (reason === 'error' && resuming && error?.includes(`No conversation found with session ID: ${sessionId}`)) turn.errorKind = 'resume-failed'
       end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, retryable)
     }
   }
@@ -535,13 +538,17 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       const executable = findExecutable(bin)
       if (!executable) throw new Error('Claude Code executable not found. Install Claude Code or edit the profile CLI path.')
       emit({ type: 'session', state: 'starting' })
+      resuming = !!sessionId
       connection = connectClaude<ClaudeFrame, ClaudeRequest>({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
         onFrame: receive, onRequest: ask,
         onClose(error) {
           if (peer !== connection) return
           peer = null; ready = null; connected = false; canSteer = false
           closeRequests()
-          if (running?.started) end('error', error.message)
+          if (running?.started) {
+            if (resuming && error.message.includes(`No conversation found with session ID: ${sessionId}`)) running.errorKind = 'resume-failed'
+            end('error', error.message)
+          }
           emit({ type: 'session', state: 'closed' })
         } })
       if (disposed) { connection.dispose(); throw new Error('Claude driver disposed') }

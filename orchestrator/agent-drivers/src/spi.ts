@@ -92,7 +92,7 @@ export type DriverEvent =
       name?: string; title?: string; detail?: string; parentId?: string; childId?: string; toolCallId?: string; isError?: boolean }
   | { type: 'lifecycle'; turnId?: string; kind: 'compaction' | 'retry'; phase: 'start' | 'end';
       entityId?: string; detail?: string; isError?: boolean; cancelled?: boolean }
-  | { type: 'turn/end'; turnId: string; reason: 'done' | 'interrupted' | 'error'; text?: string; error?: unknown; usage?: Usage; timing?: Timing; unconfirmed?: boolean; retryable?: true }
+  | { type: 'turn/end'; turnId: string; reason: 'done' | 'interrupted' | 'error'; text?: string; error?: unknown; errorKind?: 'resume-failed'; usage?: Usage; timing?: Timing; unconfirmed?: boolean; retryable?: true }
   | { type: 'request/opened'; id: string; kind: 'permission' | 'question'; tool?: string; reason?: string; options?: unknown; detail?: unknown }
   | { type: 'request/closed'; id: string }
 
