@@ -1948,7 +1948,7 @@ test('manual recovery explains the team limit and can send after one flight ends
   const running = []
   for (let index = 0; index < 5; index++) running.push(await h.delegate())
   await assert.rejects(h.input(recovered.work), {
-    code: 'orch/invalid', message: '此团队已有 5 个任务在执行，请等一个结束后再发送',
+    code: 'orch/invalid', message: '此主控会话已有 5 个任务在执行，请等一个结束后再发送',
   })
   assert.equal(recovered.driver.calls.length, 1)
   assert.equal(h.rt.delegationSummary(recovered.work).status, 'failed')

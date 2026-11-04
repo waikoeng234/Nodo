@@ -68,16 +68,22 @@ test('cancelling a question whose engine is gone settles without an unhandled re
   } finally { process.off('unhandledRejection', record) }
 })
 
-test('cards carry the latest execution per session as taskId, and nothing without one', async () => {
+test('cards carry a taskId only while the session has a pending execution', async () => {
   const { rt } = harness(async () => true)
   rt.state.executions = {
     old: { id: 'old', taskId: 't1', sessionId: 'e1', status: 'done' },
     new: { id: 'new', taskId: 't2', sessionId: 'e1', status: 'running' },
+    ended: { id: 'ended', taskId: 't3', sessionId: 'e2', status: 'done' },
+    held: { id: 'held', taskId: 't4', sessionId: 'e3', status: 'unconfirmed' },
   }
   rt.openApproval('e1', { id: 'run', kind: 'permission' })
+  rt.openApproval('e2', { id: 'ended', kind: 'permission' })
+  rt.openApproval('e3', { id: 'held', kind: 'question' })
   rt.openApproval('idle', { id: 'bare', kind: 'permission' })
   assert.deepEqual(rt.approvalsView().map(card => ({ id: card.id, ...(card.taskId ? { taskId: card.taskId } : {}) })), [
     { id: 'run', taskId: 't2' },
+    { id: 'ended' },
+    { id: 'held', taskId: 't4' },
     { id: 'bare' },
   ])
 })

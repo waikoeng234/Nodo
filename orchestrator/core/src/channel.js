@@ -24,18 +24,24 @@ export function install(rt) {
   // What a new view carries. Secret values never leave the host; profiles carry
   // only the names of the keys they may use. `struct` moves only when the saved
   // shape changes; `activity` also moves while turns run.
-  const view = () => ({
-    struct: rt.versions().struct,
-    activity: rt.versions().activity,
-    probe: state.probe,
-    workspaces: rt.workspacesView(),
-    profiles: rt.profilesView(),
-    secrets: rt.secretsView(),
-    teams: rt.teams(),
-    tasks: rt.redactDeepSecrets(Object.values(state.tasks).map(({ brief, source, acceptances, ...task }) => task)),
-    prefs: state.prefs,
-    readOnly: rt.readOnly() ?? null,
-  })
+  const view = () => {
+    // The state view strips executions; each task keeps its newest one's status
+    // so cards can tell 未确认 from 受阻 without a task-get round trip.
+    const latest = new Map(Object.values(state.executions).map(execution => [execution.taskId, execution.status]))
+    return {
+      struct: rt.versions().struct,
+      activity: rt.versions().activity,
+      probe: state.probe,
+      workspaces: rt.workspacesView(),
+      profiles: rt.profilesView(),
+      secrets: rt.secretsView(),
+      teams: rt.teams(),
+      tasks: rt.redactDeepSecrets(Object.values(state.tasks).map(({ brief, source, acceptances, ...task }) => ({
+        ...task, latestExecutionStatus: latest.get(task.id) ?? null }))),
+      prefs: state.prefs,
+      readOnly: rt.readOnly() ?? null,
+    }
+  }
   // Sent with every state answer, current or not: work, cards and counters move
   // between revisions.
   const live = async () => ({

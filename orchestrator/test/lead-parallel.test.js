@@ -167,9 +167,10 @@ test('M3 an engine failure among five active flights frees its slot while the ot
   await until(() => flights.every(flight => rt.driverOf(flight.session)?.active))
   const drivers = Object.fromEntries(flights.map(flight => [flight.executionId, rt.driverOf(flight.session)]))
   drivers[flights[0].executionId].finish('error', 'Engine crashed')
-  await until(() => rt.state.executions[flights[0].executionId].status === 'failed')
+  // The report is attached after the status settles.
+  await until(() => typeof rt.state.executions[flights[0].executionId].report === 'string')
+  assert.equal(rt.state.executions[flights[0].executionId].status, 'failed')
   assert.equal(rt.state.executions[flights[0].executionId].reason, 'error')
-  assert.equal(typeof rt.state.executions[flights[0].executionId].report, 'string')
   const sixth = await delegate({ task: 'Flight six' })
   assert.equal(sixth.status, 'queued', 'the failed flight released its active slot')
   assert.equal(rt.state.executions[flights[1].executionId].status, 'running', 'the sibling flight keeps running')
@@ -192,11 +193,14 @@ test('M4 results finishing during a lead round queue up and flush once in FIFO o
   const b = await delegate({ task: 'Report B' })
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.driverOf(a.session)?.active && rt.driverOf(b.session)?.active)
-  rt.driverOf(a.session).finish('done', 'A finished during the round')
-  rt.driverOf(b.session).finish('done', 'B finished during the round')
+  // The user round already runs when the executions end, so both results queue behind it;
+  // freezing the first result pins the FIFO order before the second one enters the queue.
   await host.api('send', { profile: lead.id, session: owner.id, text: 'Busy round' })
   const leadDriver = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
   const queue = () => rt.conversationOf(owner.id).session.reportQueue
+  rt.driverOf(a.session).finish('done', 'A finished during the round')
+  await until(() => queue()?.[0]?.session === a.session && queue()[0].referenceId)
+  rt.driverOf(b.session).finish('done', 'B finished during the round')
   await until(() => queue()?.length === 2)
   assert.deepEqual(queue().map(item => item.session), [a.session, b.session])
   assert.equal(reports(owner.id).length, 0, 'queued reports do not interrupt the running round')
@@ -229,7 +233,9 @@ test('M5 the sixth active dispatch is refused in Chinese and accepted after one 
   await rt.followLead(owner.id, turn('done'))
   await until(() => flights.every(flight => rt.driverOf(flight.session)?.active))
   rt.driverOf(flights[0].session).finish('done', 'First finished')
-  await until(() => rt.state.executions[flights[0].executionId].status === 'done')
+  // The end save settles before the slot is released; the report snapshot is attached after that.
+  await until(() => typeof rt.state.executions[flights[0].executionId].report === 'string')
+  assert.equal(rt.state.executions[flights[0].executionId].status, 'done')
   const sixth = await delegate({ task: 'Flight six' })
   assert.equal(sixth.status, 'queued', 'a finished flight frees a slot for the next dispatch')
   await assert.rejects(delegate({ task: 'Flight seven' }), /最多同时派活 5 个任务/)

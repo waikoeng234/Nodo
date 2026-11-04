@@ -13774,9 +13774,9 @@ var taskWord = (task, work, unconfirmed = false) => {
   if (task.status === "done") return "\u5DF2\u5B8C\u6210";
   if (task.status === "review") return "\u5F85\u9A8C\u6536";
   if (task.status === "stopped") return "\u5DF2\u505C\u6B62";
-  if (task.status === "blocked") return unconfirmed || task.executions?.some((execution) => execution.status === "unconfirmed") ? "\u672A\u786E\u8BA4" : "\u53D7\u963B";
+  if (task.status === "blocked") return unconfirmed || task.latestExecutionStatus === "unconfirmed" ? "\u672A\u786E\u8BA4" : "\u53D7\u963B";
   if (work?.status === "waiting-approval" || work?.status === "waiting-question") return "\u7B49\u5F85\u7528\u6237";
-  return work?.active || task.executions?.some((execution) => execution.status === "running") ? "\u8FDB\u884C\u4E2D" : task.status === "open" ? "\u5F85\u6267\u884C" : "";
+  return work?.active || task.latestExecutionStatus === "running" ? "\u8FDB\u884C\u4E2D" : task.status === "open" ? "\u5F85\u6267\u884C" : "";
 };
 var typeName = (round, id) => (round.teams?.find((team) => team.lead === round.leadId)?.types ?? []).find((item) => item.id === id)?.name ?? (round.teams ?? []).flatMap((team) => team.types ?? []).find((item) => item.id === id)?.name ?? id;
 var delegationRows = (lines, step) => {

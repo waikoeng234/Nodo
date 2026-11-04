@@ -99,6 +99,8 @@ test('isolated delegation locks its directory, copies attachments and reports it
   assert.equal(readFileSync(copied, 'utf8'), 'task context')
   assert.deepEqual(sent[5].files.paths, [copied])
   assert.ok(rt.driverOf(first.session).calls[0].includes(copied))
+  assert.equal(readFileSync(join(isolated.cwd, '.nodo', '.gitignore'), 'utf8'), '*\n', 'the task worktree carries the ignored input folder')
+  assert.equal(git(isolated.cwd, 'status', '--porcelain'), '', 'the copied attachment stays invisible to git status')
   assert.ok(sent[1].endsWith(`执行目录：${isolated.cwd}\n分支：${isolated.worktree.branch}\n基准 commit：${isolated.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`))
   await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: false }), /执行目录不一致/)
   for (const worktree of [true, false]) await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, session: first.session, worktree }), /续用 session 时不能传 worktree/)

@@ -40,7 +40,7 @@ export function install(rt) {
   }
   const executionsOf = id => Object.values(state.executions).filter(execution => execution.taskId === id)
   const executionView = execution => structuredClone({ ...execution, ...(stopping.has(execution.id) ? { stopping: true } : {}) })
-  const view = task => ({ ...structuredClone(task), executions: executionsOf(task.id).map(executionView) })
+  const view = task => ({ ...structuredClone(task), latestExecutionStatus: executionsOf(task.id).at(-1)?.status ?? null, executions: executionsOf(task.id).map(executionView) })
   const writable = async () => {
     await rt.load()
     const reason = rt.readOnly()

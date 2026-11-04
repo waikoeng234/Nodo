@@ -94,8 +94,9 @@ export function install(rt) {
     const latest = new Map(Object.values(rt.state.executions).map(execution => [execution.sessionId, execution]))
     return [...pending.values()].map(({ id, profileId, name, kind, tool, reason, detail, at, answer }) => {
       const execution = latest.get(profileId)
+      const active = execution && ['queued', 'running', 'unconfirmed'].includes(execution.status)
       return { id, profileId, name, kind, tool, reason, detail, at, open: typeof answer === 'function',
-        ...(execution ? { taskId: execution.taskId } : {}) }
+        ...(active ? { taskId: execution.taskId } : {}) }
     })
   }
 

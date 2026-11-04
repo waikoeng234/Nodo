@@ -4,8 +4,6 @@ import { route } from '../shared/route.js'
 import { leadModeOf } from '../shared/lead.js'
 import { invalid } from './errors.js'
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, mkdtemp } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 
 const UNREPORTED_GONE = '未回报主控：主控会话不存在。'
 const MAX_ACTIVE_FLIGHTS = 5
@@ -555,18 +553,9 @@ export function install(rt) {
         delete flight.dispatch
         let following
         try {
-          let folder
-          if (worktree && attached.length) {
-            const inputs = join(workspace.cwd, '.nodo', 'workflow-inputs')
-            await mkdir(inputs, { recursive: true })
-            folder = await mkdtemp(join(inputs, 'task-'))
-          }
-          const paths = []
-          for (const path of attached) {
-            const destination = folder ? join(folder, basename(path)) : path
-            if (folder) await copyFile(path, destination)
-            paths.push(destination)
-          }
+          // Worktree tasks receive fresh copies inside their own ignored input
+          // folder; a shared task reuses the paths the lead already holds.
+          const paths = worktree && attached.length ? await rt.placeCopies(attached, workspace.cwd) : attached
           await rt.startExecution(execution.id)
           const sent = await rt.send(target.id, header + task + instruction, session.id, [], [], { exclusive: true, files: { paths }, origin: { kind: 'delegation', ...executionIds(execution) } })
           following = track(lead, leadSession, session, flight, sent, header)
@@ -620,7 +609,7 @@ export function install(rt) {
     if (flight) {
       cancelLeadRetry(session.id, true)
       state.flights.delete(session.id)
-    } else assertFlightCapacity(state, `此团队已有 ${MAX_ACTIVE_FLIGHTS} 个任务在执行，请等一个结束后再发送`)
+    } else assertFlightCapacity(state, `此主控会话已有 ${MAX_ACTIVE_FLIGHTS} 个任务在执行，请等一个结束后再发送`)
     state.reserved++
     try {
       if (!source.pendingReport || source.pendingReport.ready) source.pendingReport = { id: randomUUID() }

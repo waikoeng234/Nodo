@@ -83,14 +83,16 @@ const reportParts = text => {
 const roleOf = (round, id) => round.profiles.find(role => role.id === id) ?? { id, name: id }
 
 const TASK_TONES = { 进行中: 'accent', 待验收: 'accent', 等待用户: 'caution', 受阻: 'caution', 未确认: 'caution' }
+// Task views carry no executions; the newest execution's status travels as
+// latestExecutionStatus instead.
 const taskWord = (task, work, unconfirmed = false) => {
   if (!task) return ''
   if (task.status === 'done') return '已完成'
   if (task.status === 'review') return '待验收'
   if (task.status === 'stopped') return '已停止'
-  if (task.status === 'blocked') return unconfirmed || task.executions?.some(execution => execution.status === 'unconfirmed') ? '未确认' : '受阻'
+  if (task.status === 'blocked') return unconfirmed || task.latestExecutionStatus === 'unconfirmed' ? '未确认' : '受阻'
   if (work?.status === 'waiting-approval' || work?.status === 'waiting-question') return '等待用户'
-  return work?.active || task.executions?.some(execution => execution.status === 'running') ? '进行中' : task.status === 'open' ? '待执行' : ''
+  return work?.active || task.latestExecutionStatus === 'running' ? '进行中' : task.status === 'open' ? '待执行' : ''
 }
 
 // A type name comes from the round lead's team first — the same id may carry

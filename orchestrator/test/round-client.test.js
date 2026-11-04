@@ -275,6 +275,16 @@ test('a member card tags its task with the status word derived from task, execut
   assert.deepEqual(tags(card(tasks.review)), [['bug-fix', undefined], ['待验收', 'accent']])
   assert.deepEqual(tags(card(tasks.blocked)), [['bug-fix', undefined], ['受阻', 'caution']])
   assert.deepEqual(tags(card(tasks.blocked, { step: { unconfirmed: true } })), [['bug-fix', undefined], ['未确认', 'caution']])
+  // RoundMember reads the task from the round view, so the field-bearing object goes into round.tasks directly.
+  const withViewTask = (task, extra = {}) => {
+    round.work = extra.work ?? {}
+    host.reset()
+    return tags(nodes(RoundMember({ step: { session: 'e1', profile: 'coder', type: 'bug-fix', taskId: task.id, ...extra.step }, round: { ...round, tasks: [task] } })))
+  }
+  assert.deepEqual(withViewTask({ ...tasks.blocked, latestExecutionStatus: 'unconfirmed' }), [['bug-fix', undefined], ['未确认', 'caution']],
+    'a blocked task whose newest execution is unconfirmed says 未确认 without reading executions')
+  assert.deepEqual(withViewTask({ ...tasks.open, latestExecutionStatus: 'running' }), [['bug-fix', undefined], ['进行中', 'accent']],
+    'an idle task whose newest execution is running says 进行中')
   assert.deepEqual(tags(card(tasks.done)), [['bug-fix', undefined], ['已完成', undefined]])
   assert.deepEqual(tags(card(tasks.stopped)), [['bug-fix', undefined], ['已停止', undefined]])
   assert.equal(tags(card({ status: 'open' }))[1], undefined, 'a card without taskId shows no task tag')
@@ -340,11 +350,11 @@ test('an expanded member loads its task on demand and retries a failed task-get'
 test('the session menu shows the idle task word and keeps a running session\'s state', async () => {
   const tasks = [
     { id: 't1', title: 'Review', status: 'review', executions: [{ sessionId: 'e1', createdAt: 10 }] },
-    { id: 't2', title: 'Unconfirmed', status: 'blocked', executions: [{ sessionId: 'e2', createdAt: 10, status: 'unconfirmed' }] },
+    { id: 't2', title: 'Unconfirmed', status: 'blocked', latestExecutionStatus: 'unconfirmed', executions: [{ sessionId: 'e2', createdAt: 10, status: 'unconfirmed' }] },
     { id: 't3', title: 'Failed', status: 'blocked', executions: [{ sessionId: 'e3', createdAt: 10, status: 'failed' }] },
     { id: 't4', title: 'Done', status: 'done', executions: [{ sessionId: 'e4', createdAt: 10 }] },
     { id: 't5', title: 'Stopped', status: 'stopped', executions: [{ sessionId: 'e5', createdAt: 10 }] },
-    { id: 't6', title: 'Running', status: 'open', executions: [{ sessionId: 'e6', createdAt: 10, status: 'running' }] },
+    { id: 't6', title: 'Running', status: 'open', latestExecutionStatus: 'running', executions: [{ sessionId: 'e6', createdAt: 10, status: 'running' }] },
     { id: 't7', title: 'Queued', status: 'open', executions: [{ sessionId: 'e7', createdAt: 10, status: 'queued' }] },
   ]
   const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
