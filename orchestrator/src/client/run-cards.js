@@ -100,7 +100,7 @@ export function ApprovalCard({ card, refresh, readOnly, from }) {
           className: 'nodo-question-answer', rows: 1, disabled: blocked, value: draft,
           'aria-label': question.header ?? question.question, placeholder: '输入你的答案',
           onChange: event => { setError(''); pick(event.target.value) },
-          onKeyDown: event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); next() } },
+          onKeyDown: event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); next() } },
         })),
       h('footer', { className: 'nodo-question-foot' },
         questions.length > 1 && h('div', { className: 'nodo-question-pager' },
