@@ -29,19 +29,24 @@ const load = async answers => {
 test('one fallback poll timer serves every subscriber, and only structure changes fetch a full view', async () => {
   timers.length = 0
   const { subscribeLive, getLive } = await load([
-    () => ({ struct: 1, activity: 0, work: {}, profiles: [] }),
+    () => ({ struct: 1, activity: 0, work: {}, profiles: [], tasks: [{ id: 'task', status: 'open' }] }),
     () => ({ struct: 1, activity: 0, unchanged: true, work: { s: { active: true } }, approvals: [], stats: {} }),
-    () => ({ struct: 2, activity: 5, work: {}, profiles: [] }),
+    () => ({ struct: 2, activity: 5, work: {}, profiles: [], tasks: [{ id: 'task', status: 'review' }] }),
   ])
   const stopA = subscribeLive(() => {})
   const stopB = subscribeLive(() => {})
   await flush()
+  assert.equal(getLive().tasks[0].status, 'open')
   assert.equal(timers.filter(timer => timer.ms === 1200).length, 1, 'two subscribers share one fallback poll timer')
   // 手动走一拍定时器：unchanged 应答合并 live 数据、结构版本不动。
   timers.find(timer => timer.ms === 1200).run()
   await flush()
   assert.equal(getLive().struct, 1)
   assert.deepEqual(getLive().work.s, { active: true })
+  assert.equal(getLive().tasks[0].status, 'open')
+  timers.find(timer => timer.ms === 400).run()
+  await flush()
+  assert.equal(getLive().tasks[0].status, 'review')
   assert.ok(timers.length >= 1, 'the timer reschedules itself')
   stopA(); stopB()
   assert.equal(timers.length, 0)

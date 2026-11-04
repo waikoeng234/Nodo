@@ -23,7 +23,7 @@ for (const version of [1, 2]) test(`startup removes retired data from v${version
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.equal(Object.hasOwn(rt.state, 'workflows'), false)
     assert.equal(Object.hasOwn(saved, 'workflows'), false)
-    assert.equal(saved.version, 3)
+    assert.equal(saved.version, 4)
     assert.equal(Object.hasOwn(saved, 'transcripts'), false)
     assert.equal(Object.hasOwn(saved, 'transcriptIndex'), false)
     assert.deepEqual(JSON.parse(readFileSync(join(home, 'activity.json'), 'utf8')).transcriptIndex, { session: { lines: 1, at: 0 } })

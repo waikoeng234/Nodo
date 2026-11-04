@@ -77,7 +77,7 @@ For more detail, see the [architecture guide](docs/architecture.md).
 
 - Agents differ in models, thinking levels, images, attachments, and more. Nodo only integrates what an Agent actually provides.
 - Only Claude Code and Codex can currently lead.
-- The lead dispatches one task at a time and may dispatch the next only after the report returns; parallel dispatch is not supported yet.
+- The lead keeps at most 5 tasks running in parallel and accepts at most 24 dispatches per turn; changes with order dependencies should be dispatched sequentially, and tasks editing the same files take `worktree:true` for isolation — Nodo never merges automatically.
 - Nodo acts only after you send a message. It does not watch chats, pull requests, or CI for external events, and it does not start work on its own.
 - If a task type has no assigned role, the lead cannot dispatch it; it states the gap and stops.
 - ZCode cannot call its subscription service directly. Create an API key under your coding plan, add a custom provider in ZCode with that key, and ZCode models will then be detected.

@@ -365,13 +365,16 @@ test('a role without a conversation in the workspace offers no goal entry', asyn
 
 test('role selection restores a conversation within the current workspace', async () => {
   const { sessionForWorkspace: choose } = await loadClient('page.js')
-  const workspaces = [{ id: 'main', cwd: '/main' }, { id: 'branch', cwd: '/branch' }]
+  const workspaces = [{ id: 'main', cwd: '/main' }, { id: 'branch', cwd: '/branch' },
+    { id: 'wt', cwd: '/wt', worktree: { branch: 'feat', project: 'main' } }]
   const profile = { id: 'role', workspaceId: 'main', activeSessionId: 'main-active', sessions: [
     { id: 'main-active', workspaceRef: 'main', updatedAt: 100 },
     { id: 'old', workspaceRef: 'branch', updatedAt: 1 },
     { id: 'latest', cwd: '/branch', updatedAt: 2 },
     { id: 'archived', workspaceRef: 'branch', updatedAt: 200, archivedAt: 1 },
     { id: 'compat', updatedAt: 0 },
+    { id: 'isolated', workspaceRef: 'wt', updatedAt: 3 },
+    { id: 'cwd-in-worktree', cwd: '/wt', updatedAt: 2 },
   ] }
   assert.equal(choose(profile, workspaces[1], workspaces, 'old').id, 'old')
   assert.equal(choose(profile, workspaces[1], workspaces).id, 'latest')
@@ -379,6 +382,9 @@ test('role selection restores a conversation within the current workspace', asyn
   profile.activeSessionId = 'old'
   assert.equal(choose(profile, workspaces[1], workspaces).id, 'old')
   assert.equal(choose(profile, workspaces[0], workspaces, 'compat').id, 'compat')
+  assert.equal(choose(profile, workspaces[0], workspaces, 'isolated').id, 'isolated', 'a worktree session belongs to its project')
+  assert.equal(choose(profile, workspaces[0], workspaces, 'cwd-in-worktree').id, 'cwd-in-worktree', 'a worktree cwd anchors at its project too')
+  assert.equal(choose(profile, workspaces[0], workspaces).id, 'main-active')
   assert.equal(choose(profile, { id: 'empty' }, workspaces), undefined)
   assert.equal(choose(null, workspaces[1], workspaces), undefined)
   assert.equal(choose(profile, null, workspaces), undefined)
@@ -1438,6 +1444,61 @@ test('the project tree adds projects at its root and creates worktrees from the 
   assert.match(source, /mode: 'existing'/, 'the dialog sends the existing-branch mode')
 })
 
+test('worktree sessions group under their owning project, which lists their removal', async () => {
+  const { Rail, SessionRow, host } = await loadRail({ useState: initial => [initial, () => {}] })
+  const project = { id: 'p', name: 'bot', cwd: '/bot', createdAt: 1 }
+  const manual = { id: 'mw', name: 'feature', cwd: '/repo/.nodo/worktrees/feature', worktree: { branch: 'feature', project: 'p' }, createdAt: 2 }
+  const task = { id: 'tw', name: 'nodo/task-ab12', cwd: '/repo/.nodo/worktrees/nodo/task-ab12', worktree: { branch: 'nodo/task-ab12', project: 'p' }, createdAt: 3 }
+  const view = { workspaces: [project, manual, task], work: {}, profiles: [
+    { id: 'role', name: 'Coder', sessions: [
+      { id: 'home', name: '项目会话', workspaceRef: 'p', updatedAt: 3 },
+      { id: 'branch', name: '分支会话', workspaceRef: 'mw', updatedAt: 2 },
+      { id: 'tasked', name: '隔离执行', workspaceRef: 'tw', updatedAt: 1, source: { kind: 'lead', leadSessionId: 'home' } },
+    ] },
+  ] }
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const deleted = []
+  const render = () => { host.reset(); return nodes(Rail({ view, workspace: project, sessionId: 'branch', onSelect() {}, onSelectSession() {},
+    onNewSession() {}, onDeleteWorkspace: item => deleted.push(item.id) })) }
+  const nodeIds = tree => tree.filter(node => node.props?.className === 'nodo-tree-node').map(node => node.props.key)
+  const rowIds = tree => tree.filter(node => node.type === SessionRow).map(node => node.props.session.id)
+  let tree = render()
+  assert.deepEqual(nodeIds(tree), ['p'], 'worktrees with a project are not nodes of their own')
+  assert.deepEqual(rowIds(tree), ['home', 'branch', 'tasked'], 'manual and task worktree sessions list under the project, newest first')
+  assert.deepEqual(tree.filter(node => node.type === SessionRow).map(node => node.props.current), [false, true, false])
+  const menu = tree.find(node => node.type === 'Menu' && node.props.items?.some(item => item.id.startsWith('worktree-delete:')))
+  assert.deepEqual([...menu.props.items].filter(item => item.id.startsWith('worktree-delete:')).map(item => item.id),
+    ['worktree-delete:mw', 'worktree-delete:tw'], 'the project menu lists each worktree for removal')
+  menu.props.onSelect('worktree-delete:tw')
+  assert.deepEqual(deleted, ['tw'])
+  delete manual.worktree.project
+  delete task.worktree.project
+  tree = render()
+  assert.deepEqual(nodeIds(tree), ['tw', 'mw', 'p'], 'an unresolvable worktree shows as its own project again')
+  assert.deepEqual(rowIds(tree), ['home'], 'only the open project lists its rows')
+})
+
+test('the team view keeps worktree executors folded into their lead row', async () => {
+  const { Rail, SessionRow, host } = await loadRail({ useState: initial => [initial, () => {}] })
+  const project = { id: 'p', name: 'bot', cwd: '/bot', createdAt: 1 }
+  const task = { id: 'tw', name: 'nodo/task-ab12', cwd: '/tw', worktree: { branch: 'nodo/task-ab12', project: 'p' }, createdAt: 2 }
+  const view = { workspaces: [project, task], work: {}, profiles: [
+    { id: 'lead', name: 'Lead', lead: true, engine: 'codex', sessions: [{ id: 'l1', name: 'Task', workspaceRef: 'p', updatedAt: 1 }] },
+    { id: 'coder', name: 'Coder', sessions: [
+      { id: 'e1', name: '隔离执行', workspaceRef: 'tw', updatedAt: 5, source: { kind: 'lead', leadSessionId: 'l1' } },
+      { id: 'lost', name: '无主执行', workspaceRef: 'tw', updatedAt: 4, source: { kind: 'lead', leadSessionId: 'gone' } },
+    ] },
+  ] }
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const rows = navigation => { host.reset(); return nodes(Rail({ view, workspace: project, sessionId: 'l1', navigation, onSelect() {}, onSelectSession() {} }))
+    .filter(node => node.type === SessionRow).map(node => node.props) }
+  assert.deepEqual(rows(null).map(row => row.session.id), ['e1', 'lost', 'l1'], 'home lists worktree executors under the project')
+  const team = rows({ view: 'team' })
+  assert.deepEqual(team.map(row => row.session.id), ['l1'], 'the team view lists the lead row alone')
+  assert.equal(team[0].session.updatedAt, 5, 'the lead row still aggregates the worktree executor')
+  assert.deepEqual(rows(null).filter(row => row.current).map(row => row.session.id), ['l1'])
+})
+
 test('the worktree dialog selects a free existing branch or creates a new one', async () => {
   let cursor = 0
   const calls = []
@@ -1482,6 +1543,28 @@ test('the worktree dialog selects a free existing branch or creates a new one', 
   await tree.find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
   assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1))), { endpoint: 'worktree-create',
     payload: { workspace: 'w', mode: 'new', branch: 'nodo/test', from: 'main' } })
+
+  slots[11] = false
+  slots[12] = false
+  tree = render()
+  assert.deepEqual([...tree.find(node => node.type === 'Modal').props.footer].filter(node => node.type === 'Button').map(node => node.children[0]),
+    ['取消', '创建工作树'], 'the dialog button no longer claims to create a project')
+})
+
+test('the delete dialog names its object a worktree or a project', async () => {
+  const { WorkspaceDeleteDialog, host } = await loadClient('workspace-dialogs.js', {
+    react: { useState: initial => [initial, () => {}] },
+  })
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const modal = workspace => { host.reset(); return nodes(WorkspaceDeleteDialog({ workspace, onCancel() {}, onDeleted: async () => {} })).find(node => node.type === 'Modal') }
+  const project = modal({ id: 'p', name: 'bot', cwd: '/bot' })
+  assert.equal(project.props.title, '删除项目')
+  assert.match(project.props.description, /将删除项目“bot”/)
+  assert.deepEqual([...project.props.footer].map(node => node.children[0]), ['取消', '删除项目'])
+  const worktree = modal({ id: 'w', name: 'feat', cwd: '/wt', worktree: { branch: 'feat' } })
+  assert.equal(worktree.props.title, '删除工作树')
+  assert.match(worktree.props.description, /将删除工作树“feat”/)
+  assert.deepEqual([...worktree.props.footer].map(node => node.children[0]), ['取消', '删除工作树'])
 })
 
 test('the project dialog picks a folder in the dropzone and falls back to a path input', async () => {

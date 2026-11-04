@@ -15,10 +15,11 @@ import {
 import { RoleAvatar } from './avatar.tsx'
 import { SearchDialog } from './search-dialog.tsx'
 import { roundIndex } from './round.js'
+import { projectAnchorOf } from '../../core/shared/workspaces.js'
 
 export interface RailSession { id: string; name: string; createdAt?: number; source?: { kind?: string; leadSessionId?: string }; leadMode?: boolean; archivedAt?: number; draftedAt?: number; briefSent?: boolean; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; workspaceName?: string; profileName?: string; cwd?: string }
 export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; lead?: boolean; sessions: RailSession[] }
-export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string } }
+export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string; project?: string | null } }
 export interface RailView { teams?: { id: string; name: string; lead: string | null }[]; profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
 export type RailNavigation = { view: 'roles'; content: ReactNode } | { view: 'team'; content?: never }
 type Archived = keyof typeof ARCHIVED_VIEWS
@@ -141,8 +142,10 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const busyNow = readOnly || busy
   const team = navigation?.view === 'team'
   const rounds = roundIndex(view)
-  const sessions = view.profiles.flatMap(role => role.sessions.map(session => ({ role, session,
-    workspaceId: workspaceIdOf(view, role, session) })))
+  const sessions = view.profiles.flatMap(role => role.sessions.map(session => {
+    const workspaceId = workspaceIdOf(view, role, session)
+    return { role, session, workspaceId, projectId: projectAnchorOf(view.workspaces, workspaceId) }
+  }))
   const visibleSession = (role: RailRole, session: RailSession) => !team || (role.lead === true && (session.engine ?? role.engine) !== 'dsh' && session.leadMode !== false)
   const groupOf = (role: RailRole, session: RailSession): { role: RailRole; session: RailSession }[] => [{ role, session }, ...(team ? rounds.members.get(session.id) ?? [] : [])]
   const rowOf = (role: RailRole, session: RailSession) => {
@@ -168,13 +171,14 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const draftProfile = roles.find(role => role.id === draft?.profile)
   type Entry = (typeof sessions)[number]
   const ordered = [...view.workspaces].reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .filter(item => item.worktree?.project == null)
   const scopeOf = (item: RailWorkspace) => {
     const archived = archives[item.id] ?? 'hide'
     return { archived, filtering: !!filterRole || archived === 'only' }
   }
   const entriesOf = (item: RailWorkspace) => {
     const { archived } = scopeOf(item)
-    return sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && workspaceId === item.id && visibleSession(role, session)
+    return sessions.filter(({ role, session, projectId }) => !role.deletedAt && projectId === item.id && visibleSession(role, session)
       && (!filterRole || groupOf(role, session).some(entry => entry.role === filterRole))
       && (archived === 'all' || (archived === 'only') === !!session.archivedAt))
       .sort((a, b) => (Number(!!b.session.pinnedAt) - Number(!!a.session.pinnedAt))
@@ -191,7 +195,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         onClick={event => { event.stopPropagation(); onClick() }}>{icon}</button>
     </Tooltip>
   )
-  const liveIn = (items: RailWorkspace[]) => sessions.filter(entry => items.some(other => other.id === entry.workspaceId)
+  const liveIn = (items: RailWorkspace[]) => sessions.filter(entry => items.some(other => other.id === entry.projectId)
     && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view.work[entry.session.id]?.active)
   const toggle = (key: string, open: boolean, Glyph: typeof IconBranchOutlineRegular | null, title: string, tip: string | undefined, live: Entry[]) => {
     const waiting = live.some(entry => workKind(view.work[entry.session.id]) === 'wait')
@@ -235,6 +239,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
     const pending = draftIn(item)
     if (filtering && !entries.length && !pending && archived !== 'only') return null
     const open = opened[item.id] ?? (filtering || item.id === workspace?.id)
+    const worktrees = view.workspaces.filter(other => other.worktree?.project === item.id)
     return (
       <div key={item.id} className="nodo-tree-node">
         <div className="nodo-project" data-menu={menuOpen === item.id ? 'open' : undefined}>
@@ -248,6 +253,8 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
                 ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({ id: `archived:${id}`, label,
                   icon: id === 'hide' ? <IconArchiveOffOutlineRegular /> : <IconArchiveOutlineRegular /> })),
                 ...(item.worktree ? [] : [{ id: 'worktree', label: '创建工作树…', icon: <IconBranchOutlineRegular />, disabled: busyNow }]),
+                ...worktrees.map(other => ({ id: `worktree-delete:${other.id}`, label: `删除工作树“${other.name}”`,
+                  icon: <IconBranchOutlineRegular />, danger: true, disabled: busyNow })),
                 { id: 'rename', label: '重命名', icon: <IconEditOutlineRegular />, disabled: busyNow },
                 { id: 'delete', label: '删除项目', icon: <IconTrashOutlineRegular />, danger: true, disabled: busyNow },
               ]}
@@ -255,6 +262,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
                 setMenuOpen(null)
                 if (id.startsWith('archived:')) setArchives(current => ({ ...current, [item.id]: id.slice('archived:'.length) as Archived }))
                 else if (id === 'worktree') onNewWorktree(item)
+                else if (id.startsWith('worktree-delete:')) onDeleteWorkspace(worktrees.find(other => other.id === id.slice('worktree-delete:'.length))!)
                 else if (id === 'rename') onRenameWorkspace(item)
                 else if (id === 'delete') onDeleteWorkspace(item)
               }}
@@ -325,7 +333,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
   const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session)
     && view.workspaces.some(item => item.id === workspaceId))
     .map(({ role, session, workspaceId }) => {
-      const project = view.workspaces.find(item => item.id === workspaceId) as RailWorkspace, row = rowOf(role, session)
+      const project = view.workspaces.find(item => item.id === projectAnchorOf(view.workspaces, workspaceId)) as RailWorkspace, row = rowOf(role, session)
       return { id: session.id, role, name: session.name, project, updatedAt: row.session.updatedAt, work: row.work,
         terms: [...groupOf(role, session).flatMap(entry => [entry.role.name, entry.session.name]), session.engine, project.name],
         pick: () => onSelectSession(role, session.id, project) }

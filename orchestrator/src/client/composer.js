@@ -42,6 +42,7 @@ export function PendingMessages({ items, disabled, onAction }) {
   return items.length > 0 && h('div', { className: 'nodo-pending', 'aria-label': '待发消息' },
     items.map((item, index) => h('div', { key: item.seq, className: 'nodo-pending-item' },
       h('span', { className: 'nodo-pending-text', title: item.text }, item.text || '图片消息',
+        item.taskTitle && h('span', { className: 'nodo-pending-images' }, ` · ${item.taskTitle}`),
         item.images.length > 0 && h('span', { className: 'nodo-pending-images' }, ` · ${item.images.length} 张图片`)),
       h('span', { className: 'nodo-pending-actions' },
         ...[['edit', '编辑'], ['send', '立即发送'], ['delete', '删除']].map(([action, label]) => h('button', {
@@ -50,7 +51,7 @@ export function PendingMessages({ items, disabled, onAction }) {
         }, label))))))
 }
 
-export function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = '停止生成', busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = '停止生成', busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, taskScope, onRemoveTaskScope, focusTick, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
@@ -99,6 +100,7 @@ export function Composer({ profile, workspace, value, images, running, stoppable
     measure()
     return () => { resize.disconnect(); mutation.disconnect() }
   }, [])
+  useEffect(() => { if (focusTick) box.current?.focus({ preventScroll: true }) }, [focusTick])
   // The file card follows the '@' being typed: the text after it is the search,
   // Enter takes the first match and Escape leaves the typed text as it is.
   const mention = mentionOf(value)
@@ -162,6 +164,10 @@ export function Composer({ profile, workspace, value, images, running, stoppable
   references.length > 0 && h('div', { className: 'nodo-composer-files', 'aria-label': '本次消息引用' }, references.map(item => h('span', { key: item.id, className: 'nodo-reference-tag' },
     h('button', { type: 'button', disabled: readOnly || busy, onClick: () => onReference(item) }, item.label),
     h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除引用 ${item.label}`, onClick: () => onRemoveReference(item.id) }, '×')))),
+  taskScope && h('div', { className: 'nodo-composer-files', 'aria-label': '本次消息任务范围' },
+    h('span', { className: 'nodo-reference-tag' },
+      h('span', { className: 'nodo-task-scope', title: taskScope }, taskScope),
+      h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除任务范围 ${taskScope}`, onClick: onRemoveTaskScope }, '×'))),
   onAttachFiles && h('input', { ref: picker, type: 'file', multiple: true, hidden: true, disabled: readOnly || busy, 'aria-label': '上传图片或文件',
     onChange: event => { const picked = Array.from(event.target.files); event.target.value = ''; if (picked.length && !readOnly && !busy) onAttachFiles(picked) } }),
   (attachedFiles.length > 0 || images.length > 0) && h(ComposerAttachments, { 'aria-label': '本次消息附件' },

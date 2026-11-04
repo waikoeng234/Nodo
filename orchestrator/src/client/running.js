@@ -91,6 +91,14 @@ export function RunningLine({ since, engine, work }) {
         style: { '--nodo-running-stagger': `${120 + index * 170}ms` } })))))
 }
 
+// The team page's count of dispatched tasks still in flight; it shares the
+// running line's shell so the two read as one status block.
+export function TaskCountLine({ count }) {
+  return h('div', { className: 'nodo-running', style: { '--nodo-running-tint': RUNNING_COLORS[0].color } },
+    h('span', { className: 'nodo-running-divider', 'aria-hidden': true }),
+    h('span', { className: 'nodo-running-line', role: 'status' }, `${count} 个任务执行中`))
+}
+
 export const RUNNING_CSS = `
 [data-conversation-content]:has([data-nodo-native-running]) [data-chat-running]{display:none}
 .nodo-running-dock{flex:none;padding:0 calc(var(--dsh-composer-side-clearance,16px) + 16px) 8px}

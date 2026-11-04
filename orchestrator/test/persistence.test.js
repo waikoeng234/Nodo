@@ -275,3 +275,171 @@ test('an answer acknowledged after turn completion is persisted before its reque
     assert.equal(answer.cancelled, undefined)
   })
 })
+
+test('v4 task and execution records round trip through the installed runtime', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-tasks-'))
+  let host = boot(home)
+  try {
+    let rt = await host.runtime
+    rt.state.workspaces.w = { id: 'w', cwd: home }
+    rt.state.prefs.teams = [{ id: 't', lead: 'leader', members: ['worker'] }]
+    rt.state.profiles.leader = { id: 'leader', engine: 'echo', sessions: [{ id: 'lead', workspaceRef: 'w' }] }
+    rt.state.profiles.worker = { id: 'worker', engine: 'echo', sessions: [{ id: 's', workspaceRef: 'w' }] }
+    const task = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Persist', brief: 'Verify restart', source: { kind: 'user', messageId: 'm' } })
+    const execution = await rt.acceptExecution(task.id, { profileId: 'worker', sessionId: 's', type: 'code', hard: false })
+    await rt.startExecution(execution.id)
+    await rt.requestExecutionStop(execution.id)
+    await rt.saveStrict()
+    let saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    assert.equal(saved.version, 4)
+    assert.equal(saved.executions[execution.id].status, 'running')
+    assert.equal(saved.executions[execution.id].model, null)
+    assert.equal(saved.executions[execution.id].thinking, null)
+    assert.equal(Object.hasOwn(saved.executions[execution.id], 'stopping'), false)
+    await rt.finishExecution(execution.id, { report: 'Verified', references: ['ref'] })
+    await rt.completeTask(task.id, { reason: 'Accepted', references: ['ref'] })
+    const expected = await rt.taskView(task.id)
+    saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    assert.equal(saved.tasks[task.id].status, 'done', 'the operation returns after writing')
+    await host.dispose()
+    host = boot(home)
+    rt = await host.runtime
+    assert.deepEqual(await rt.taskView(task.id), expected)
+    assert.equal(rt.state.executions[execution.id].model, null)
+    assert.equal(rt.state.executions[execution.id].thinking, null)
+    assert.equal(existsSync(join(home, 'state.v4.json')), false)
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+for (const version of [1, 2, 3]) test(`v${version} upgrades to v4 with an exact backup and empty task containers`, async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-task-migration-'))
+  const source = JSON.stringify({ version, profiles: {}, prefs: { marker: 'keep' } }, null, 2)
+  writeFileSync(join(home, 'state.json'), source)
+  const host = boot(home)
+  try {
+    const rt = await host.runtime
+    assert.equal(readFileSync(join(home, `state.v${version}.json`), 'utf8'), source)
+    const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    assert.equal(saved.version, 4)
+    assert.deepEqual(saved.tasks, {})
+    assert.deepEqual(saved.executions, {})
+    assert.equal(rt.state.prefs.marker, 'keep')
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('task containers use existing record validation on load', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-task-containers-'))
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ version: 4, tasks: [], executions: null }))
+  const host = boot(home)
+  try {
+    const rt = await host.runtime
+    assert.deepEqual(rt.state.tasks, {})
+    assert.deepEqual(rt.state.executions, {})
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('v4 loading defaults record fields and conservatively normalizes invalid statuses once', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-task-records-'))
+  const task = { id: 'task', workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Loaded', brief: 'Verify defaults', source: { kind: 'user' }, status: 'invalid', marker: 'preserve' }
+  const execution = { id: 'execution', taskId: task.id, profileId: 'worker', sessionId: 's', status: 'stopping', marker: 'preserve' }
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ version: 4,
+    tasks: { task, other: { ...task, id: 'other', status: 'open' }, history: { ...task, id: 'history', status: 'done' } },
+    executions: { execution, history: { ...execution, id: 'history', taskId: 'history', status: 'done' } },
+    workspaces: { w: { id: 'w', cwd: home } }, prefs: { teams: [{ id: 't', lead: 'leader', members: ['worker'] }] },
+    profiles: { leader: { id: 'leader', engine: 'echo', sessions: [{ id: 'lead', workspaceRef: 'w' }] },
+      worker: { id: 'worker', engine: 'echo', sessions: [{ id: 's', workspaceRef: 'w' }, { id: 's2', workspaceRef: 'w' }] } } }))
+  const warnings = []
+  let host = boot(home, { logger: { warn: (...args) => warnings.push(args) } })
+  try {
+    let rt = await host.runtime
+    await rt.load()
+    assert.equal(warnings.filter(args => String(args[1]).includes('invalid task or execution status')).length, 1)
+    assert.equal(rt.state.tasks.task.status, 'blocked')
+    assert.equal(rt.state.tasks.task.marker, 'preserve')
+    assert.deepEqual(rt.state.tasks.task.acceptances, [])
+    assert.equal(rt.state.executions.execution.status, 'unconfirmed')
+    assert.equal(rt.state.executions.execution.marker, 'preserve')
+    assert.deepEqual(rt.state.executions.execution.references, [])
+    assert.equal(rt.state.tasks.history.status, 'done')
+    assert.deepEqual(rt.state.tasks.history.acceptances, [])
+    assert.equal(rt.state.executions.history.status, 'done')
+    assert.deepEqual(rt.state.executions.history.references, [])
+    const route = { profileId: 'worker', sessionId: 's', type: 'code', hard: false }
+    await assert.rejects(rt.acceptExecution('task', { ...route, sessionId: 's2' }), { code: 'orch/busy' })
+    await assert.rejects(rt.acceptExecution('other', route), { code: 'orch/busy' })
+    await rt.recordExecutionResult('execution', { report: 'Recovered', references: ['ref'] })
+    await rt.finishExecution('execution')
+    const done = await rt.completeTask('task', { reason: 'Checked', references: ['ref'] })
+    assert.equal(done.acceptances.length, 1)
+    await host.dispose()
+    warnings.length = 0
+    host = boot(home, { logger: { warn: (...args) => warnings.push(args) } })
+    rt = await host.runtime
+    assert.equal(warnings.filter(args => String(args[1]).includes('invalid task or execution status')).length, 0)
+    assert.equal(rt.state.tasks.task.status, 'done')
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('newer state blocks strict saves and ordinary saves leave the file untouched', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-future-state-'))
+  const source = JSON.stringify({ version: 5, tasks: { future: { keep: true } } })
+  writeFileSync(join(home, 'state.json'), source)
+  const host = boot(home)
+  try {
+    const rt = await host.runtime
+    assert.ok(rt.readOnly())
+    await assert.rejects(rt.saveStrict(), { code: 'orch/read-only' })
+    await assert.doesNotReject(rt.save())
+    assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), source)
+    assert.equal(existsSync(join(home, 'state.v5.json')), false)
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('strict save rejects a reader and a closed store', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-strict-reader-'))
+  const source = JSON.stringify({ version: 4 })
+  writeFileSync(join(home, 'state.json'), source)
+  writeFileSync(join(home, 'state.lock'), JSON.stringify({ host: 'fixture-other-host', token: 'fixture' }))
+  const host = boot(home)
+  try {
+    const rt = await host.runtime
+    await assert.rejects(rt.saveStrict(), { code: 'orch/read-only' })
+    await assert.doesNotReject(rt.save())
+    assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), source)
+    await host.dispose()
+    await assert.rejects(rt.saveStrict(), { code: 'orch/refused' })
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('strict save flushes while running and propagates write failure, retaining data for retry', async () => {
+  await withHost(async ({ runtime, home }) => {
+    const rt = await runtime
+    await until(() => rt.state.probe)
+    await rt.saveStrict()
+    rt.driverSink('s', { type: 'turn/start', turnId: 't' })
+    rt.state.prefs.marker = 'strict-running'
+    await rt.saveStrict()
+    assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).prefs.marker, 'strict-running')
+    rmSync(join(home, 'state.json'))
+    mkdirSync(join(home, 'state.json'))
+    rt.state.prefs.marker = 'retry'
+    await assert.rejects(rt.saveStrict(), error => ['EISDIR', 'EPERM', 'EEXIST'].includes(error.code))
+    assert.equal(rt.state.prefs.marker, 'retry')
+    rmSync(join(home, 'state.json'), { recursive: true })
+    await rt.saveStrict()
+    assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).prefs.marker, 'retry')
+  })
+})
+
+test('strict save propagates lock loss without overwriting the last saved state', async () => {
+  await withHost(async ({ runtime, home }) => {
+    const rt = await runtime
+    await until(() => rt.state.probe)
+    await rt.saveStrict()
+    const saved = readFileSync(join(home, 'state.json'), 'utf8')
+    writeFileSync(join(home, 'state.lock'), JSON.stringify({ host: 'fixture-other-host', token: 'fixture' }))
+    rt.state.prefs.marker = 'cannot-write'
+    await assert.rejects(rt.saveStrict(), { code: 'ELOCKLOST' })
+    assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), saved)
+  })
+})

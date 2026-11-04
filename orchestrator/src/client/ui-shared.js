@@ -7,6 +7,7 @@
 // light, dark and any font-size setting.
 import { createElement as h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore } from 'react'
 import { subscribeLive, getLive, liveError, refreshLive } from './live.js'
+import { projectAnchorOf } from '../../core/shared/workspaces.js'
 /** @typedef {import('react').ReactNode} ReactNode */
 // The shell seeds this UI kit in the same module table as React, so the panel
 // reuses the host's own controls, rows, markdown renderer and icon artwork (the
@@ -182,7 +183,8 @@ export const workspaceIdOf = (view, role, session) => session.workspaceRef ?? vi
 export const roleStateOf = (profile, view, workspace) => {
   const live = runningOf(profile, view.work)
   if (live.active) return live
-  const visible = (profile.sessions ?? []).filter(session => !session.archivedAt && workspaceIdOf(view, profile, session) === workspace?.id)
+  const visible = (profile.sessions ?? []).filter(session => !session.archivedAt
+    && projectAnchorOf(view.workspaces, workspaceIdOf(view, profile, session)) === workspace?.id)
   return { ...runningOf({ ...profile, sessions: visible }, view.work), queued: live.queued }
 }
 

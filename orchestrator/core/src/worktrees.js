@@ -4,10 +4,11 @@
 // reused: it changes the calling agent's directory and is invisible to the
 // external engines.
 import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdir, lstat, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { invalid } from './errors.js'
+import { failure, invalid } from './errors.js'
 
 const execFileAsync = promisify(execFile)
 const REFS_MAX = 200
@@ -166,7 +167,7 @@ export function install(rt) {
     }
   }
 
-  const create = async ({ workspace, branch: rawBranch, from, name, mode: rawMode } = {}) => {
+  const create = async ({ workspace, branch: rawBranch, from, name, mode: rawMode } = {}, { rollbackOnFailure = false } = {}) => {
     await rt.load()
     const target = rt.findWorkspace(workspace)
     if (target === undefined) throw invalid('选择有效的工作区')
@@ -205,21 +206,48 @@ export function install(rt) {
     await git(root, ['-c', `core.hooksPath=${HOOKS_OFF}`, '-c', 'core.fsmonitor=false',
       'worktree', 'add', '--no-checkout', ...(mode === 'existing' ? [] : ['-b', branch]), '--', destination,
       mode === 'existing' ? branch : baseCommit])
+    let checkedOut = false
     try {
       await git(destination, ['reset', '--hard', '--no-recurse-submodules', baseCommit],
         { env: await filterEnv(root) })
+      checkedOut = true
+      // The source id groups this checkout under its project on the rail.
+      const source = rt.worktreeProjectOf(target)
+      const worktree = source == null ? { repositoryRoot: root, branch, baseCommit, mode }
+        : { repositoryRoot: root, branch, baseCommit, mode, sourceWorkspaceRef: source }
+      const created = await rt.createWorkspace({ name: workspaceName, cwd: destination, worktree })
+      return { workspace: created, worktree: { ...worktree, path: destination } }
     } catch (error) {
-      throw invalid(`${error.message}；工作树 ${destination} 已创建但未完成检出`)
+      if (rollbackOnFailure) {
+        try {
+          await git(root, ['worktree', 'remove', '--force', destination])
+          await git(root, ['branch', '-D', branch])
+          for (const workspace of Object.values(rt.state.workspaces)) if (workspace.cwd === destination) delete rt.state.workspaces[workspace.id]
+          await rt.save()
+        } catch (cleanupError) { rt.warn('nodo: worktree rollback failed (%s): %s', destination, rt.redactDeepSecrets(String(cleanupError.message ?? cleanupError))) }
+        throw error
+      }
+      throw invalid(checkedOut ? `${error.message}；工作树已创建：${destination}` : `${error.message}；工作树 ${destination} 已创建但未完成检出`)
     }
-    const worktree = { repositoryRoot: root, branch, baseCommit, mode }
-    let created
-    try {
-      created = await rt.createWorkspace({ name: workspaceName, cwd: destination, worktree })
-    } catch (error) {
-      throw invalid(`${error.message}；工作树已创建：${destination}`)
-    }
-    return { workspace: created, worktree: { ...worktree, path: destination } }
   }
 
-  Object.assign(rt, { worktreeRefs: refs, createWorktree: create })
+  const createTaskWorktree = async ({ workspaceRef } = {}) => {
+    const target = rt.findWorkspace(workspaceRef)
+    if (target === undefined) throw invalid('选择有效的工作区')
+    return create({ workspace: target.id, branch: `nodo/task-${randomUUID().slice(0, 8)}`, from: 'HEAD' }, { rollbackOnFailure: true })
+  }
+
+  // The caller must ensure this worktree has never received execution input.
+  const removeWorktree = async workspaceId => {
+    await rt.load()
+    const workspace = rt.state.workspaces[String(workspaceId ?? '')]
+    if (workspace === undefined) throw failure('No such workspace', 'orch/not-found')
+    const { repositoryRoot: root, branch } = workspace.worktree ?? {}
+    if (root === undefined || branch === undefined) throw invalid('该工作区不是 Git 工作树')
+    await git(root, ['worktree', 'remove', '--force', workspace.cwd])
+    await git(root, ['branch', '-D', branch])
+    await rt.deleteWorkspace(workspace.id)
+  }
+
+  Object.assign(rt, { worktreeRefs: refs, createWorktree: create, createTaskWorktree, removeWorktree })
 }

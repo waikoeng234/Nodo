@@ -156,14 +156,13 @@ export function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
   return h(Modal, {
     open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭',
     title: '新建工作树',
-    description: '从当前项目创建独立检出，并作为新的项目继续工作。',
     className: 'nodo-dialog',
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
       h(Button, {
         key: 'save', type: 'submit', form: WORKTREE_FORM, variant: 'primary',
         disabled: !canSubmit,
-      }, busy ? '创建中…' : openSession && profile != null ? '创建并打开' : '创建项目'),
+      }, busy ? '创建中…' : openSession && profile != null ? '创建并打开' : '创建工作树'),
     ],
   },
   h('form', { id: WORKTREE_FORM, className: 'nodo-dialog-fields', onSubmit: submit, 'aria-label': '新建工作树' },
@@ -313,21 +312,22 @@ export function SessionRenameDialog({ session, onCancel, onSaved }) {
 export function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const worktree = workspace.worktree !== undefined
   const remove = async () => {
     setBusy(true)
     setError('')
     try { await onDeleted(workspace.id) } catch (failure) { setError(failure.message); setBusy(false) }
   }
   return h(Modal, {
-    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: '删除项目',
-    description: workspace.worktree
-      ? `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色、工作树目录和分支会保留；相关任务需先结束。`
+    open: true, onClose: () => { if (!busy) onCancel() }, closeLabel: '关闭', title: worktree ? '删除工作树' : '删除项目',
+    description: worktree
+      ? `将删除工作树“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色、工作树目录和分支会保留；相关任务需先结束。`
       : `将删除项目“${workspace.name}”，会话会自动归档，可在「已移除」中查看。角色和目录文件会保留；相关任务需先结束。`,
     footer: [
       h(Button, { key: 'cancel', variant: 'outline', disabled: busy, onClick: onCancel }, '取消'),
-      h(Button, { key: 'delete', variant: 'outline', className: 'nodo-dialog-danger', disabled: busy, onClick: () => void remove() }, '删除项目'),
+      h(Button, { key: 'delete', variant: 'outline', className: 'nodo-dialog-danger', disabled: busy, onClick: () => void remove() }, worktree ? '删除工作树' : '删除项目'),
     ],
   },
-  busy && h('div', { className: 'nodo-dialog-status', role: 'status' }, '正在删除项目…'),
+  busy && h('div', { className: 'nodo-dialog-status', role: 'status' }, worktree ? '正在删除工作树…' : '正在删除项目…'),
   error !== '' && h('div', { className: 'nodo-dialog-error', role: 'alert' }, error))
 }

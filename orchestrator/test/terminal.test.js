@@ -37,7 +37,7 @@ function setup(subprocess = provider()) {
     ctx: { inject(deps, run) { bindings.push({ deps, run }); if (subprocess) disposers.push(run({ subprocess })) },
       effect(run) { disposers.push(run()) }, connection: { fetch: { register(route) { routes.push(route); return () => {} } } } },
     state: { workspaces: { main: { id: 'main', cwd: '/workspace' }, branch: { id: 'branch', cwd: '/worktree' } },
-      profiles: { role: { id: 'role', sessions: [{ id: 'first', cwd: '/worktree' }, { id: 'second' }] } } },
+      profiles: { role: { id: 'role', sessions: [{ id: 'first', cwd: '/worktree' }, { id: 'second' }] } }, tasks: {}, executions: {} },
     save: async () => {}, refresh: async () => {}, readOnly: () => undefined,
     sessionWorkspace: () => ({ cwd: '/workspace' }), handle: async () => ({ ok: true, value: {} }),
   }

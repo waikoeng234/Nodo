@@ -89,8 +89,15 @@ export function install(rt) {
     }
   }
 
-  const approvalsView = () => [...pending.values()].map(({ id, profileId, name, kind, tool, reason, detail, at, answer }) =>
-    ({ id, profileId, name, kind, tool, reason, detail, at, open: typeof answer === 'function' }))
+  const approvalsView = () => {
+    if (!pending.size) return []
+    const latest = new Map(Object.values(rt.state.executions).map(execution => [execution.sessionId, execution]))
+    return [...pending.values()].map(({ id, profileId, name, kind, tool, reason, detail, at, answer }) => {
+      const execution = latest.get(profileId)
+      return { id, profileId, name, kind, tool, reason, detail, at, open: typeof answer === 'function',
+        ...(execution ? { taskId: execution.taskId } : {}) }
+    })
+  }
 
   const closeApproval = id => {
     pending.delete(id)

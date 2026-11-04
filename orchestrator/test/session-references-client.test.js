@@ -117,6 +117,56 @@ test('the reference dialog narrows source sessions by the picked role', async ()
   assert.deepEqual(rows(render()), ['贼 coder · 删除新会话', '大肥鱼 · 读当前任务'])
 })
 
+// The scope names projects only: worktree sessions answer to their project, and
+// the default scope follows the target session's project through the anchor.
+test('the reference dialog scopes worktree sessions under their project and lists projects only', async () => {
+  const states = [], pending = []
+  let cursor = 0
+  const view = { workspaces: [
+    { id: 'w', name: 'bot' },
+    { id: 'tw', name: 'nodo/task-1', worktree: { branch: 'nodo/task-1', project: 'w' } },
+    { id: 'orphan', name: 'feat', worktree: { branch: 'feat' } },
+  ], profiles: [{ id: 'coder', name: 'Coder', sessions: [
+    { id: 'current', name: '本会话', engine: 'dsh', workspaceRef: 'tw', driverSessionId: 'native-1', updatedAt: 4 },
+    { id: 'home', name: '项目会话', workspaceRef: 'w', updatedAt: 3 },
+    { id: 'branch', name: '分支会话', workspaceRef: 'tw', updatedAt: 2 },
+  ] }] }
+  const { createSessionReferences } = await loadClient('session-references.js', {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter(Boolean) }),
+    react: {
+      useState: initial => { const at = cursor++; if (!(at in states)) states[at] = initial; return [states[at], value => { states[at] = value }] },
+      useEffect: effect => { pending.push(effect) },
+    },
+    primitives: { Modal: 'Modal', Button: 'Button', Input: 'Input', MarkdownText: 'MarkdownText' },
+    call: async endpoint => { assert.equal(endpoint, 'state'); return view },
+  })
+  const context = { ReferenceDialog: createSessionReferences({}, { getSnapshot: () => ({ active: true }), subscribe: () => () => {} }).ReferenceDialog }
+  const nodes = node => !node || typeof node !== 'object' ? []
+    : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
+  const props = { target: 'native-1', snapshot: null, inputActions: {}, onClose: () => {} }
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const render = () => { cursor = 0; return nodes(context.ReferenceDialog(props)) }
+  const runEffects = async () => {
+    cursor = 0
+    context.ReferenceDialog(props)
+    pending.splice(0).forEach(effect => effect())
+    await tick(); await tick()
+  }
+  await runEffects()
+  const projectSelect = tree => tree.find(node => node.type === 'select' && node.props['aria-label'] === '来源项目')
+  const options = tree => Array.from(projectSelect(tree).children, option => option.children[0])
+  const rows = tree => tree.filter(node => node.props?.className === 'nodo-reference-row').map(node => node.children[0].children[0])
+  let tree = render()
+  assert.deepEqual(options(tree), ['全部项目', 'bot', 'feat'], 'the scope lists projects; anchored worktrees stay out')
+  assert.deepEqual(rows(tree), ['Coder · 项目会话', 'Coder · 分支会话'],
+    'the default scope follows the target session through its project anchor')
+  projectSelect(tree).props.onChange({ target: { value: 'orphan' } })
+  tree = render()
+  assert.deepEqual(rows(tree), [], 'an orphan worktree scope lists only its own sessions')
+  projectSelect(tree).props.onChange({ target: { value: '' } })
+  assert.deepEqual(rows(render()), ['Coder · 项目会话', 'Coder · 分支会话'], '全部项目 keeps the target session itself out of the list')
+})
+
 test('an unbound draft can select a legacy reply without accessing a native input', async () => {
   const states = [], effects = new Map(), requests = [], picked = []
   let cursor = 0, pending = [], closed = 0

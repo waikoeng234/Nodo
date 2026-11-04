@@ -19,18 +19,24 @@ export function install(rt) {
   const handle = async request => {
     const id = caller(request.token), args = request.arguments ?? {}
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是对象')
-    const allowed = { nodo_board: ['table', 'session'], nodo_delegate: ['type', 'hard', 'task', 'session'], nodo_interrupt: ['session'] }[request.name]
+    const allowed = { nodo_board: ['table', 'session', 'taskId'], nodo_delegate: ['type', 'hard', 'task', 'session', 'taskId', 'worktree'], nodo_interrupt: ['session', 'executionId'], nodo_task: ['taskId', 'action', 'reason', 'references', 'title', 'brief'] }[request.name]
     if (!allowed) throw new Error('未知主控工具')
     if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error('包含不支持的参数')
-    if (args.session !== undefined && (typeof args.session !== 'string' || !args.session.trim())) throw new Error('session 必须是非空字符串')
+    for (const key of ['session', 'taskId', 'executionId']) if (args[key] !== undefined && (typeof args[key] !== 'string' || !args[key].trim())) throw new Error(`${key} 必须是非空字符串`)
     if (request.name === 'nodo_board') {
-      if (args.table !== undefined && !['roles', 'delegations'].includes(args.table)) throw new Error('table 必须是 roles 或 delegations')
+      if (args.table !== undefined && !['roles', 'delegations', 'tasks'].includes(args.table)) throw new Error('table 必须是 roles、delegations 或 tasks')
+      if (args.taskId !== undefined && args.table !== undefined && args.table !== 'tasks') throw new Error('taskId 只能查询 tasks')
+      if (args.table === 'tasks' || args.taskId !== undefined) {
+        if (args.session !== undefined) throw new Error('tasks 不能同时指定 session')
+        return rt.leadTasks(id, args.taskId)
+      }
       if (args.table === 'roles' && args.session !== undefined) throw new Error('roles 表不能同时指定 session')
       return args.table === 'roles' ? rt.leadRoles(id) : rt.leadDelegations(id, args.session)
     }
     if (request.name === 'nodo_delegate') return rt.leadDispatch.delegate(id, args)
-    if (!args.session) throw new Error('session 必须是非空字符串')
-    return rt.leadDispatch.interrupt(id, args.session)
+    if (request.name === 'nodo_task') return rt.leadTask(id, args)
+    if ((args.session !== undefined) === (args.executionId !== undefined)) throw new Error('session 和 executionId 必须且只能指定一个')
+    return rt.leadDispatch.interrupt(id, args)
   }
   const answer = async request => {
     let result

@@ -360,8 +360,8 @@ export function install(rt) {
     const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
     const reply = replyLines.find(line => line.reply)
     const session = rt.conversationOf?.(profileId)?.session
-    rt.leadEnded?.(profileId, event)
     const replyId = session?.engine === 'dsh' ? reply?.messageId : reply ? (reply.replyId ??= randomUUID()) : undefined
+    rt.leadEnded?.(profileId, { ...event, replyId })?.catch(error => rt.warn('nodo: late execution result failed (%s): %s', profileId, error.message ?? error))
     const flushed = st.messages.text()
     rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
     st.task = null
@@ -587,7 +587,7 @@ export function install(rt) {
     if (cancelled?.()) throw failure('Send cancelled', 'orch/cancelled')
     refuseBusy()
     const st = stateOf(profileId)
-    const leadFlight = userInput ? rt.prepareLeadInput?.(session) : undefined
+    const leadFlight = userInput ? await rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
     const leadMode = leadModeOf(profile, session)
     if (userInput && leadMode) rt.resetLeadBudget?.(session.id)
@@ -673,13 +673,15 @@ export function install(rt) {
       return [profileId, {
         active: st.active || st.starting || st.finishing || rt.isCompacting(profileId),
         suspect: st.suspect,
+        stopping: st.cancelTimer !== null || rt.executionStopping?.(profileId) === true,
         tool: st.toolOpen,
         since: st.startedAt,
         buffer: buffer === '' ? null : clip(rt.redactDeepSecrets(buffer), 4000, 'live reply'),
         timeline: st.messages != null,
         queued: st.queued.length,
         pending: st.queued.filter(item => item.pendingLine).map(item => ({ seq: item.seq,
-          text: rt.redactDeepSecrets(item.task), images: item.pendingLine.images ?? [], sending: item.sending === true })),
+          text: rt.redactDeepSecrets(item.task), images: item.pendingLine.images ?? [], sending: item.sending === true,
+          ...(item.pendingLine.origin?.taskId ? { taskId: item.pendingLine.origin.taskId } : {}) })),
       }]
     }))
     for (const profile of Object.values(rt.state.profiles)) {

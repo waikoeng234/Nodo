@@ -1,4 +1,5 @@
 import { h, Fragment, useState, useEffect, useSyncExternalStore, call, MARKDOWN_LABELS, IconLinkOutlineRegular, Modal, Button, Input, MarkdownText } from './ui-shared.js'
+import { projectAnchorOf } from '../../core/shared/workspaces.js'
 
 export const referenceHistory = references => h('details', { className: 'nodo-reference-history' },
   h('summary', null, `查看本条消息的引用（${references.length}）`),
@@ -59,7 +60,7 @@ export function createSessionReferences(ctx, space) {
         if (!live) return
         setView(value)
         const current = value.profiles.flatMap(profile => profile.sessions).find(session => (session.engine === 'dsh' ? session.driverSessionId : undefined) === target)
-        setWorkspace(workspaceId ?? current?.workspaceRef ?? '')
+        setWorkspace(workspaceId ?? projectAnchorOf(value.workspaces, current?.workspaceRef) ?? '')
       }).catch(failure => { if (live) setError(failure.message) })
       return () => { live = false }
     }, [target, draft, snapshot?.id, workspaceId])
@@ -93,7 +94,8 @@ export function createSessionReferences(ctx, space) {
     }
     const rows = view?.profiles.flatMap(profile => profile.sessions.filter(session => !session.archivedAt
       && (target === undefined || (session.engine === 'dsh' ? session.driverSessionId : undefined) !== target))
-      .map(session => ({ profile, session }))).filter(row => (!workspace || row.session.workspaceRef === workspace) && (!role || row.profile.id === role)
+      .map(session => ({ profile, session }))).filter(row => (!workspace || projectAnchorOf(view.workspaces, row.session.workspaceRef) === workspace)
+        && (!role || row.profile.id === role)
         && `${row.profile.name} ${row.session.name}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
       .sort((a, b) => b.session.updatedAt - a.session.updatedAt) ?? []
     return h(Modal, { open: true, onClose, title: snapshot ? '查看会话引用' : '引用会话', closeLabel: '关闭',
@@ -104,7 +106,8 @@ export function createSessionReferences(ctx, space) {
         !snapshot && h('section', { className: 'nodo-reference-sources', 'aria-label': '来源会话' },
           h('div', { className: 'nodo-reference-scope' },
             h('select', { value: workspace, 'aria-label': '来源项目', onChange: event => setWorkspace(event.target.value) },
-              h('option', { value: '' }, '全部项目'), ...(view?.workspaces ?? []).map(item => h('option', { key: item.id, value: item.id }, item.name))),
+              h('option', { value: '' }, '全部项目'),
+              ...(view?.workspaces ?? []).filter(item => item.worktree?.project == null).map(item => h('option', { key: item.id, value: item.id }, item.name))),
             h('select', { value: role, 'aria-label': '来源角色', onChange: event => setRole(event.target.value) },
               h('option', { value: '' }, '全部角色'), ...(view?.profiles ?? []).filter(item => !item.deletedAt).map(item => h('option', { key: item.id, value: item.id }, item.name)))),
           h(Input, { type: 'search', value: query, 'data-modal-autofocus': true, placeholder: '搜索角色或会话…', 'aria-label': '搜索来源会话', onChange: event => setQuery(event.target.value) }),

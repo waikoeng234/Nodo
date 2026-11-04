@@ -5,7 +5,7 @@ import { install } from '../core/src/approvals.js'
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const harness = answerRequest => {
   const rearmed = []
-  const rt = { conversationOf: () => ({ profile: { name: 'Rho' } }), answerRequest, rearmIdle: id => rearmed.push(id) }
+  const rt = { state: { executions: {}, tasks: {} }, conversationOf: () => ({ profile: { name: 'Rho' } }), answerRequest, rearmIdle: id => rearmed.push(id) }
   install(rt)
   return { rt, rearmed }
 }
@@ -66,4 +66,18 @@ test('cancelling a question whose engine is gone settles without an unhandled re
     assert.deepEqual(unhandled, [])
     assert.deepEqual(rt.approvalsView(), [])
   } finally { process.off('unhandledRejection', record) }
+})
+
+test('cards carry the latest execution per session as taskId, and nothing without one', async () => {
+  const { rt } = harness(async () => true)
+  rt.state.executions = {
+    old: { id: 'old', taskId: 't1', sessionId: 'e1', status: 'done' },
+    new: { id: 'new', taskId: 't2', sessionId: 'e1', status: 'running' },
+  }
+  rt.openApproval('e1', { id: 'run', kind: 'permission' })
+  rt.openApproval('idle', { id: 'bare', kind: 'permission' })
+  assert.deepEqual(rt.approvalsView().map(card => ({ id: card.id, ...(card.taskId ? { taskId: card.taskId } : {}) })), [
+    { id: 'run', taskId: 't2' },
+    { id: 'bare' },
+  ])
 })

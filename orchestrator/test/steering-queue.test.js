@@ -127,3 +127,35 @@ test('interrupt cancels pending input even if a late steering receipt arrives', 
   assert.equal(h.driver.calls.length, 1)
   assert.ok(!(await h.lines()).some(line => line.text === 'Cancelled'))
 }))
+
+test('interrupt marks the live work as stopping until the turn settles', () => withQueue(async h => {
+  const interruptTurn = h.driver.interruptTurn
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  h.driver.interruptTurn = async () => { await gate; return interruptTurn.call(h.driver) }
+  try {
+    const stopping = h.host.api('interrupt', { profile: h.role.id })
+    await until(async () => (await h.work()).stopping === true)
+    release()
+    await stopping
+    assert.equal((await h.work()).stopping ?? false, false, 'the flag clears once the turn ends')
+  } finally { release(); h.driver.interruptTurn = interruptTurn }
+}))
+
+test('a task supplement queues with its origin, edits clean, and sends the scope line to the engine only', () => withQueue(async h => {
+  const task = { id: 'task-scope', workspaceRef: h.workspace.id, teamId: 'team', coordinatorSessionId: h.role.id,
+    title: 'Scope task', brief: 'Original goal', source: { kind: 'lead', sessionId: h.role.id }, status: 'open', createdAt: 1, updatedAt: 1, acceptances: [] }
+  h.rt.state.tasks[task.id] = task
+  const now = await h.enqueue('Now', { taskId: task.id })
+  assert.deepEqual((await h.work()).pending.map(item => [item.text, item.taskId]), [['Now', task.id]])
+  assert.equal((await h.action(now.seq, 'send')).mode, 'steered')
+  assert.equal(h.driver.guides[0], `补充任务 ${task.id} · Scope task\n\nNow`)
+  const said = (await h.lines()).find(line => line.text === 'Now')
+  assert.equal(said.origin.taskId, task.id)
+  assert.equal(said.text.includes('补充任务'), false)
+  const later = await h.enqueue('Later', { taskId: task.id })
+  assert.deepEqual(await h.action(later.seq, 'edit'), { text: 'Later', images: [] })
+  assert.equal((await h.work()).pending?.length ?? 0, 0)
+  await assert.rejects(h.enqueue('Denied', { taskId: 'missing' }))
+  assert.equal(h.driver.calls.length, 1)
+}))
