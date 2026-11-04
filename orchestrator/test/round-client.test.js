@@ -11,6 +11,8 @@ const liveStub = feed => ({
 })
 const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(nodes) : !('type' in node) || !('props' in node) ? []
   : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
+const menuItems = tree => nodes(tree).filter(node => node.props?.className === 'nodo-team-row').map(node => ({ id: node.props['data-session'], label: node.children[1] }))
+const openPanel = async ({ render }) => { render().find(node => node.props?.['aria-label'] === '摘要面板').props.onClick(); await tick() }
 const text = node => nodes(node).flatMap(item => item.children ?? []).filter(child => typeof child === 'string').join('|')
 const tick = () => new Promise(resolve => setImmediate(resolve))
 // What the host's transcript endpoint answers a first, position-less pull.
@@ -41,15 +43,14 @@ test('round menu indents a child one level only when its parent is in the menu',
     { id: 'child', title: 'Part', parentId: 'parent', executions: [{ sessionId: 'c', createdAt: 2 }] },
     { id: 'orphan', title: 'Another part', parentId: 'absent', executions: [{ sessionId: 'o', createdAt: 3 }] },
   ]
-  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
     call: async () => tasks, sessionTime: () => '', workLabel: () => '', workDot: () => 'idle',
   } })
   let members = ['p', 'c', 'o'].map(id => ({ role: { id: 'worker', name: 'Worker' }, session: { id, name: id } }))
   const items = () => {
     host.reset()
-    return nodes(RoundMenu({ members, work: {}, struct: 1, workspace: 'w', onOpen() {} })).find(node => node.type === 'Menu').props.items
+    return menuItems(RoundTeam({ members, work: {}, struct: 1, workspace: 'w', onOpen() {} }))
   }
-  host.cells[0] = true
   items()
   host.effects.at(-1)()
   await tick()
@@ -399,15 +400,14 @@ test('the session menu shows the idle task word and keeps a running session\'s s
     { id: 't6', title: 'Running', status: 'open', latestExecutionStatus: 'running', executions: [{ sessionId: 'e6', createdAt: 10, status: 'running' }] },
     { id: 't7', title: 'Queued', status: 'open', executions: [{ sessionId: 'e7', createdAt: 10, status: 'queued' }] },
   ]
-  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
     call: async endpoint => endpoint === 'task-list' ? tasks : undefined,
     sessionTime: () => '', workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
   } })
   const members = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}`, updatedAt: 7 } }))
-  host.cells[0] = true
   const label = id => {
     host.reset()
-    const items = nodes(RoundMenu({ members, work: { e8: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} })).find(node => node.type === 'Menu').props.items
+    const items = menuItems(RoundTeam({ members, work: { e8: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} }))
     return text(items.find(item => item.id === id).label)
   }
   label('e1')
@@ -806,7 +806,7 @@ async function mount(viewName = 'team', restored, feed = null) {
     stats: { l1: { turns: 2, steps: 4, inputTokens: 100, outputTokens: 50 }, e1: { turns: 1, steps: 2, inputTokens: 20, outputTokens: 10 } },
     teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
   const space = { active: true, legacy: true }
-  const loaded = await loadClient(['page.js', 'round.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
+  const loaded = await loadClient(['page.js', 'round.js', 'session-panel.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
     ...(feed ? { stubs: { 'live.js': liveStub(feed) } } : {}),
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),
@@ -838,23 +838,24 @@ test('a lead session opens as its round: chat feed, faces, session menu and roun
   const { loaded, view, render, find } = await mount()
   assert.equal(typeof find(loaded.Feed).round.onOpen, 'function')
   assert.equal(find(loaded.Feed).round.work, view.work)
-  const menu = find(loaded.RoundMenu)
+  await openPanel({ render })
+  const menu = find(loaded.SessionPanel).team
   assert.deepEqual(plain(menu.members.map(item => item.session.id)), ['e1', 'e2'])
   assert.deepEqual(plain(render().filter(node => node.type === loaded.ApprovalCard).map(node => node.props.card.id)), ['a1'])
   assert.equal(find(loaded.RunningLine), undefined, 'the running line belongs to the lead\'s own run')
   assert.deepEqual(plain(find(loaded.RoundFaces).roles.map(role => role.id)), ['lead', 'coder'])
-  assert.equal(menu.onRaw, undefined)
-  const items = nodes(loaded.RoundMenu({ ...find(loaded.RoundMenu) })).find(node => node.type === 'Menu').props.items
-  assert.deepEqual(plain(items.map(item => item.id)), ['e1', 'e2'])
-  assert.equal(text(items[0].label), 'First|Coder|运行中')
-  assert.equal(text(items[1].label), 'Second|Coder')
+  const items = menuItems(loaded.RoundTeam({ ...menu }))
+  assert.deepEqual(plain(items.map(item => item.id)), ['l1', 'e1', 'e2'], 'the lead heads the list')
+  assert.equal(text(items[1].label), 'First|Coder|运行中')
+  assert.equal(text(items[2].label), 'Second|Coder')
 })
 
 test('the round menu scopes its task list to the lead session workspace, not the display anchor', async () => {
   const h = await mount()
   h.view.workspaces.push({ id: 'tw', name: 'nodo/task-x', worktree: { branch: 'nodo/task-x', project: 'w' } })
   h.view.profiles[0].sessions[0].workspaceRef = 'tw'
-  assert.equal(h.find(h.loaded.RoundMenu).workspace, 'tw', 'the menu asks for tasks where the lead session lives')
+  await openPanel(h)
+  assert.equal(h.find(h.loaded.SessionPanel).workspace, 'tw', 'the menu asks for tasks where the lead session lives')
 })
 
 test('the session menu titles each executor with its latest task and keeps the role, time and state on the second line', async () => {
@@ -865,7 +866,7 @@ test('the session menu titles each executor with its latest task and keeps the r
     { id: 't3', title: 'Newest task', executions: [{ sessionId: 'e1', createdAt: 200, startedAt: 250, endedAt: null }] },
     { id: 't4', title: 'Queued task', executions: [{ sessionId: 'e3', createdAt: 500, startedAt: null, endedAt: null }] },
   ]
-  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
     call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'task-list' ? tasks : undefined },
     sessionTime: at => ({ 7: '5分钟前', 250: '刚刚', 500: '3秒前' })[at] ?? '',
     workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
@@ -875,10 +876,9 @@ test('the session menu titles each executor with its latest task and keeps the r
     { role: { id: 'coder', name: 'Coder' }, session: { id: 'e2', name: 'Legacy', updatedAt: 7 } },
     { role: { id: 'coder', name: 'Coder' }, session: { id: 'e3', name: 'Fresh', updatedAt: 7 } },
   ]
-  host.cells[0] = true
   const label = id => {
     host.reset()
-    const items = nodes(RoundMenu({ members, work: { e1: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} })).find(node => node.type === 'Menu').props.items
+    const items = menuItems(RoundTeam({ members, work: { e1: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} }))
     return text(items.find(item => item.id === id).label)
   }
   assert.equal(label('e1'), 'First|Coder · 5分钟前|运行中', 'a session keeps its own row until the task list answers')
@@ -890,10 +890,10 @@ test('the session menu titles each executor with its latest task and keeps the r
   assert.equal(label('e3'), 'Queued task|Coder · 3秒前', 'a queued execution dates itself from creation')
 })
 
-test('the session menu asks for tasks only while it is open, scoped to its workspace', async () => {
+test('the team list asks for tasks scoped to its workspace and titles each session with its task', async () => {
   const calls = []
   const tasks = [{ id: 't1', title: 'First task', executions: [{ sessionId: 'e1', createdAt: 10, startedAt: null, endedAt: null }] }]
-  const { RoundMenu, host } = await loadClient('round.js', { uiShared: {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
     call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'task-list' ? tasks : undefined },
     sessionTime: at => ({ 10: '刚刚' })[at] ?? '',
     workLabel: () => '', workDot: () => 'ongoing',
@@ -901,22 +901,45 @@ test('the session menu asks for tasks only while it is open, scoped to its works
   const members = [{ role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'First', updatedAt: 7 } }]
   const items = () => {
     host.reset()
-    return nodes(RoundMenu({ members, work: {}, struct: 1, workspace: 'w1', onOpen() {} })).find(node => node.type === 'Menu').props.items
+    return menuItems(RoundTeam({ members, work: {}, struct: 1, workspace: 'w1', onOpen() {} }))
   }
   items()
   host.effects.at(-1)()
   await tick()
-  assert.deepEqual(calls, [], 'a closed menu asks for nothing')
-  host.cells[0] = true
-  items()
-  host.effects.at(-1)()
-  await tick()
   assert.deepEqual(plain(calls), [{ endpoint: 'task-list', payload: { workspace: 'w1' } }])
-  assert.equal(text(items().find(item => item.id === 'e1').label), 'First task|Coder · 刚刚', 'the open menu titles each session with its task')
-  host.cells[0] = false
-  items()
-  host.effects.at(-1)()
-  assert.equal(calls.length, 1, 'closing sends nothing further')
+  assert.equal(text(items().find(item => item.id === 'e1').label), 'First task|Coder · 刚刚', 'the list titles each session with its task')
+})
+
+test('the team list folds to its header and keeps the list scrollable inside a bounded card', async () => {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { call: async () => [], sessionTime: () => '', workLabel: () => '', workDot: () => 'idle' } })
+  const members = [1, 2, 3].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}` } }))
+  const render = () => { host.reset(); return RoundTeam({ members, work: {}, struct: 1, workspace: 'w', onOpen() {} }) }
+  assert.equal(menuItems(render()).length, 3)
+  assert.ok(nodes(render()).some(node => node.props?.className === 'nodo-team-list'))
+  const fold = nodes(render()).find(node => node.props?.['aria-expanded'] === true)
+  host.cells[1] = true
+  assert.equal(menuItems(render()).length, 0)
+  assert.equal(nodes(render()).find(node => node.props?.['aria-expanded'] !== undefined).props['aria-expanded'], false)
+  assert.equal(typeof fold.props.onClick, 'function')
+})
+
+test('artifacts collect workspace files its write/edit tools touched, reply links and attached images', async () => {
+  const { artifactsOf } = await loadClient('artifacts.js', { uiShared: { toolVariant: name => ({ Write: 'write', Edit: 'edit', Read: 'read' })[name] } })
+  const lines = [
+    { kind: 'tool', name: 'Write', phase: 'start', input: { file_path: '/ws/a.txt', content: 'x' } },
+    { kind: 'tool', name: 'Edit', phase: 'start', callId: 'c1', input: { file_path: '/ws/src/b.js', old_string: 'a', new_string: 'b' } },
+    { kind: 'tool', name: 'Edit', phase: 'end', callId: 'c1', input: { file_path: '/ws/src/b.js', old_string: 'a', new_string: 'b' } },
+    { kind: 'tool', name: 'Edit', phase: 'end', callId: 'c2', input: { file_path: '/ws/src/b.js', old_string: 'b', new_string: 'c' } },
+    { kind: 'tool', name: 'Read', input: { file_path: '/ws/c.js' } },
+    { kind: 'tool', name: 'Write', input: { file_path: '/elsewhere/x.txt', content: 'x' } },
+    { who: 'agent', kind: 'text', text: 'See https://example.com/docs. and (https://a.dev/x) again https://a.dev/x', images: [{ id: 'i1', mediaType: 'image/png', name: 'p.png' }] },
+    { who: 'user', kind: 'text', text: 'https://user.example/ignored', images: [{ id: 'u1', mediaType: 'image/png' }] },
+  ]
+  const found = artifactsOf(lines, '/ws')
+  assert.deepEqual(plain(found.files.map(file => file.display)), ['a.txt', 'src/b.js'], 'one entry per file; reads and files outside the workspace are left out')
+  assert.deepEqual(plain(found.files.map(file => file.diffs.length)), [1, 2], 'every edit call of a file is kept once, not once per start and end line')
+  assert.deepEqual(plain(found.links), ['https://example.com/docs', 'https://a.dev/x'])
+  assert.deepEqual(plain(found.images.map(image => image.id)), ['i1'], 'only the model\'s images')
 })
 
 test('the team stop interrupts only the lead and a draft still sends to the lead', async () => {
@@ -1024,7 +1047,7 @@ test('home opens the lead raw transcript and stops only that session', async () 
   const { loaded, calls, find, view } = await mount('sessions')
   view.work.l1 = { active: true }
   assert.equal(find(loaded.Feed).round, undefined)
-  assert.equal(find(loaded.RoundMenu), undefined)
+  assert.equal(find(loaded.SessionPanel), undefined)
   assert.equal(find(loaded.RoundFaces), undefined)
   assert.equal(find(loaded.ApprovalCard), undefined, 'executor approvals belong in Team or the executor page')
   assert.equal(find(loaded.Composer).stoppable, undefined)
@@ -1034,9 +1057,10 @@ test('home opens the lead raw transcript and stops only that session', async () 
 })
 
 test('Team renders a round before dispatch and its menu opens members in home', async () => {
-  const { loaded, find, navigation } = await mount()
-  const menu = nodes(loaded.RoundMenu(find(loaded.RoundMenu))).find(node => node.type === 'Menu')
-  menu.props.onSelect('e1')
+  const harness = await mount()
+  const { loaded, find, navigation } = harness
+  await openPanel(harness)
+  find(loaded.SessionPanel).team.onOpen('e1')
   await tick()
   assert.equal(navigation().view, 'sessions')
   assert.equal(find(loaded.Feed).session.id, 'e1')
@@ -1044,7 +1068,8 @@ test('Team renders a round before dispatch and its menu opens members in home', 
   const fresh = await mount()
   fresh.view.profiles[1].sessions = []
   assert.ok(fresh.find(fresh.loaded.Feed).round)
-  assert.equal(fresh.find(fresh.loaded.RoundMenu), undefined)
+  await openPanel(fresh)
+  assert.equal(fresh.find(fresh.loaded.SessionPanel).team, undefined)
 })
 
 test('persisted navigation restores the selected home or Team conversation and accepts old navigation', async () => {

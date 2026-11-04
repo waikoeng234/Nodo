@@ -1,5 +1,5 @@
 import {
-  h, Fragment, useState, useEffect, useSyncExternalStore, call, Menu, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel, sessionTime,
+  h, Fragment, useState, useEffect, useSyncExternalStore, call, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel, sessionTime,
   IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular, IconEditOutlineRegular,
 } from './ui-shared.js'
 import { transcriptOf, watchTranscript, subscribeStore, getStoreVersion } from './live.js'
@@ -241,11 +241,10 @@ export function RoundFaces({ roles }) {
     roles.map(role => h(RoleAvatar, { key: role.id, profile: role, size: 20 })))
 }
 
-export function RoundMenu({ members, work, struct, workspace, onOpen }) {
-  const [open, setOpen] = useState(false)
+export function RoundTeam({ lead, members, work, struct, workspace, onOpen }) {
   const [latest, setLatest] = useState(new Map())
+  const [folded, setFolded] = useState(false)
   useEffect(() => {
-    if (!open) return
     let live = true
     call('task-list', { workspace }).then(list => {
       if (!live) return
@@ -259,27 +258,29 @@ export function RoundMenu({ members, work, struct, workspace, onOpen }) {
       setLatest(newest)
     }).catch(() => {})
     return () => { live = false }
-  }, [open, struct])
+  }, [struct, workspace])
   const listed = new Set(members.map(({ session }) => latest.get(session.id)?.task.id))
-  return h(Menu, {
-    open, onClose: () => setOpen(false), portal: true, align: 'end',
-    items: members.map(({ role, session }) => {
-        const status = workLabel(work?.[session.id])
+  const running = members.filter(({ session }) => work?.[session.id]?.active === true).length
+  const done = members.filter(({ session }) => latest.get(session.id)?.task.status === 'done').length
+  const row = (id, role, title, meta, state, indent) => h('button', { key: id, type: 'button', className: 'nodo-team-row', 'data-session': id, onClick: () => onOpen(id) },
+    h(RoleAvatar, { profile: role, size: 18, running: work?.[id]?.active === true }),
+    h('span', { className: 'nodo-round-menu-item', style: indent ? { paddingInlineStart: 16 } : undefined },
+      h('span', { className: 'nodo-round-title' }, title),
+      h('span', { className: 'nodo-round-menu-meta' }, meta, state)))
+  const stateOf = (id, word) => {
+    const status = workLabel(work?.[id])
+    return status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[id]), size: 8 }), status) : word ? h('span', null, word) : null
+  }
+  return h('div', { className: 'nodo-team' },
+    h('button', { type: 'button', className: 'nodo-panel-head nodo-panel-fold', 'aria-expanded': !folded, onClick: () => setFolded(value => !value) },
+      h('span', null, '团队'),
+      h('span', { className: 'nodo-panel-meta' }, `${running} 运行中 · ${done}/${members.length} 已完成`,
+        h(IconChevronDownOutlineRegular, { size: 14, style: folded ? { transform: 'rotate(-90deg)' } : undefined }))),
+    !folded && h('div', { className: 'nodo-team-list' },
+      lead && row(lead.session.id, lead.role, lead.role.name, 'Leader', stateOf(lead.session.id), false),
+      ...members.map(({ role, session }) => {
         const hit = latest.get(session.id)
-        const idle = taskWord(hit?.task, work?.[session.id])
-        return { id: session.id, icon: h(RoleAvatar, { profile: role, size: 18, running: work?.[session.id]?.active === true }),
-          label: h('span', { className: 'nodo-round-menu-item', style: hit?.task.parentId && listed.has(hit.task.parentId) ? { paddingInlineStart: 16 } : undefined },
-            h('span', { className: 'nodo-round-title' }, hit?.title ?? session.name),
-            h('span', { className: 'nodo-round-menu-meta' },
-              [role.name, sessionTime(hit?.at ?? session.updatedAt)].filter(Boolean).join(' · '),
-              status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[session.id]), size: 8 }), status)
-                : idle ? h('span', null, idle) : null)) }
-      }),
-    onSelect: id => {
-      setOpen(false)
-      onOpen(id)
-    },
-    anchor: h(Button, { variant: 'ghost', size: 'sm', 'aria-haspopup': 'menu', 'aria-expanded': open,
-      onClick: () => setOpen(value => !value) }, '查看会话', h(IconChevronDownOutlineRegular, { size: 14 })),
-  })
+        return row(session.id, role, hit?.title ?? session.name, [role.name, sessionTime(hit?.at ?? session.updatedAt)].filter(Boolean).join(' · '),
+          stateOf(session.id, taskWord(hit?.task, work?.[session.id])), !!hit?.task.parentId && listed.has(hit.task.parentId))
+      })))
 }

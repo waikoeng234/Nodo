@@ -167,6 +167,35 @@ export function install(rt) {
     }
   }
 
+  const gitStatus = async ({ workspace } = {}) => {
+    const target = rt.findWorkspace(workspace)
+    if (target === undefined) throw invalid('选择有效的工作区')
+    const inside = await git(target.cwd, ['rev-parse', '--is-inside-work-tree'], { allowExit: [0, 128] })
+    if (inside.code !== 0) return { git: false, cwd: target.cwd }
+    const files = (await git(target.cwd, ['status', '--porcelain'])).stdout.split('\n').filter(Boolean).length
+    const rows = (await git(target.cwd, ['diff', 'HEAD', '--numstat'], { allowExit: [0, 128] })).stdout.split('\n').filter(Boolean).map(line => line.split('\t'))
+    return { git: true, cwd: target.cwd, head: await headOf(target.cwd), files,
+      added: rows.reduce((sum, row) => sum + (Number(row[0]) || 0), 0), removed: rows.reduce((sum, row) => sum + (Number(row[1]) || 0), 0) }
+  }
+  const gitDiff = async ({ workspace, paths } = {}) => {
+    const target = rt.findWorkspace(workspace)
+    if (target === undefined) throw invalid('选择有效的工作区')
+    if (!Array.isArray(paths) || paths.length > 200 || paths.some(path => typeof path !== 'string' || path === '' || isAbsolute(path) || path.split(/[\\/]/).includes('..'))) throw invalid('文件路径无效')
+    const inside = await git(target.cwd, ['rev-parse', '--is-inside-work-tree'], { allowExit: [0, 128] })
+    if (inside.code !== 0 || paths.length === 0) return { patch: '' }
+    const tracked = new Set((await git(target.cwd, ['ls-files', '--', ...paths])).stdout.split('\n').filter(Boolean))
+    const parts = []
+    if (tracked.size > 0) parts.push((await git(target.cwd, ['diff', 'HEAD', '--relative', '--', ...tracked], { allowExit: [0, 1, 128] })).stdout)
+    for (const path of paths) if (!tracked.has(path)) parts.push((await git(target.cwd, ['diff', '--no-index', '--', '/dev/null', path], { allowExit: [0, 1] })).stdout)
+    return { patch: parts.join('') }
+  }
+  const switchBranch = async ({ workspace, branch } = {}) => {
+    const target = rt.findWorkspace(workspace)
+    if (target === undefined) throw invalid('选择有效的工作区')
+    await git(target.cwd, ['switch', cleanBranch(branch)])
+    return gitStatus({ workspace })
+  }
+
   const create = async ({ workspace, branch: rawBranch, from, name, mode: rawMode } = {}, { rollbackOnFailure = false } = {}) => {
     await rt.load()
     const target = rt.findWorkspace(workspace)
@@ -249,5 +278,5 @@ export function install(rt) {
     await rt.deleteWorkspace(workspace.id)
   }
 
-  Object.assign(rt, { worktreeRefs: refs, createWorktree: create, createTaskWorktree, removeWorktree })
+  Object.assign(rt, { workspaceGit: gitStatus, workspaceDiff: gitDiff, workspaceSwitch: switchBranch, worktreeRefs: refs, createWorktree: create, createTaskWorktree, removeWorktree })
 }

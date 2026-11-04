@@ -177,7 +177,7 @@ test('changes use one replaceable tab, retain files and browser neighbors, and f
   assert.deepEqual(plain(panel.getSnapshot().tabs.map(tab => tab.kind)), ['files'])
 })
 
-test('changes list shows every file and totals, opens detail, returns to list, and previews current files independently', async () => {
+test('changes show every file diff beside a directory tree of the changed files, select by tree click, and open files independently', async () => {
   const mounted = mountedTree()
   const loaded = await loadClient('right-panel.tsx', { react: mounted.react, call: unavailable })
   const panel = loaded.createRightPanel(host().ctx)
@@ -188,33 +188,35 @@ test('changes list shows every file and totals, opens detail, returns to list, a
   panel.openChanges(source)
   const render = () => mounted.render(() => ({ type: loaded.RightPanel, props: { panel, width: 320 }, children: [] }))
   let tree = render()
-  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-row').length, 5)
-  assert.ok(button(tree, '新增 5 行，删除 5 行'))
-  assert.equal(nodes(tree).find(node => node.props.className === 'nodo-changes-directory').children[0], 'deep/src/')
-  button(tree, '查看 deep/src/3.ts 的变更').props.onClick()
+  assert.deepEqual(plain(nodes(tree).filter(node => node.type === 'file-detail').map(node => node.props.path)), [0, 1, 2, 3, 4].map(index => `/workspace/deep/src/${index}.ts`), 'every file diff is stacked in the viewer')
+  assert.ok(nodes(tree).every(node => node.type !== 'file-detail' || node.props.panel === true))
+  assert.ok(button(tree, '新增 5 行，删除 5 行'), 'the tree header carries the totals')
+  const treeNode = (value, path) => nodes(value).find(node => node.props.className === 'nodo-changes-node' && node.props.title === path)
+  assert.equal(nodes(tree).filter(node => node.props['aria-expanded'] !== undefined && node.props.className === 'nodo-changes-node').length, 2, 'deep and src are nested folders')
+  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-node' && node.props.title).length, 5)
+  treeNode(tree, 'deep/src/3.ts').props.onClick()
   tree = render()
-  const detail = nodes(tree).find(node => node.type === 'file-detail')
-  assert.equal(detail.props.path, '/workspace/deep/src/3.ts')
-  assert.equal(detail.props.panel, true)
-  button(tree, '返回变更列表').props.onClick()
+  assert.equal(treeNode(tree, 'deep/src/3.ts').props['data-selected'], true)
+  assert.equal(nodes(tree).filter(node => node.props['data-selected']).length, 1)
+  nodes(tree).find(node => node.props['aria-label'] === '筛选文件').props.onChange({ target: { value: '1.ts' } })
   tree = render()
-  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-row').length, 5)
+  assert.deepEqual(plain(nodes(tree).filter(node => node.props.className === 'nodo-changes-node' && node.props.title).map(node => node.props.title)), ['deep/src/1.ts'], 'the filter narrows the tree only')
+  assert.equal(nodes(tree).filter(node => node.type === 'file-detail').length, 5)
   button(tree, '打开文件 deep/src/3.ts').props.onClick()
   assert.equal(panel.getSnapshot().active, 'files')
   assert.equal(panel.getSnapshot().selected, '/workspace/deep/src/3.ts')
   panel.selectTab('changes')
   panel.openChanges(source, '/workspace/deep/src/1.ts')
   tree = render()
-  assert.equal(nodes(tree).find(node => node.type === 'file-detail').props.path, '/workspace/deep/src/1.ts')
-  button(tree, '打开文件 deep/src/1.ts').props.onClick()
-  assert.equal(panel.getSnapshot().selected, '/workspace/deep/src/1.ts')
+  assert.equal(treeNode(tree, 'deep/src/1.ts').props['data-selected'], true, 'an initial path selects its file')
   mounted.dispose()
 })
 
-test('changes totals center their counts and only interactive list rows receive hover fill', async () => {
+test('changes lay the diffs beside a tree and only tree rows receive hover fill', async () => {
   const { CHANGES_PANEL_CSS } = await loadClient('changes-panel.tsx')
-  assert.match(CHANGES_PANEL_CSS, /\.nodo-changes-total>\.nodo-tag\{display:inline-flex;align-items:center;height:28px/)
-  assert.match(CHANGES_PANEL_CSS, /\.nodo-changes-list>\.nodo-changes-row:hover/)
+  assert.match(CHANGES_PANEL_CSS, /\.nodo-right-changes\{display:flex;flex:1;flex-direction:row/)
+  assert.match(CHANGES_PANEL_CSS, /\.nodo-changes-tree\{display:flex;flex:0 0 min\(280px,45%\)/)
+  assert.match(CHANGES_PANEL_CSS, /\.nodo-changes-node:hover,\.nodo-changes-node\[data-selected\]\{background/)
   assert.ok(!CHANGES_PANEL_CSS.includes('\n.nodo-changes-row:hover'))
 })
 
@@ -238,13 +240,13 @@ test('changes load full lists, show errors and retry, and ignore late answers af
   assert.equal(loads, 2)
   second.resolve(complete); await tick()
   tree = render()
-  assert.equal(nodes(tree).filter(node => node.props.className === 'nodo-changes-row').length, 2)
+  assert.equal(nodes(tree).filter(node => node.type === 'file-detail').length, 2)
   const late = Promise.withResolvers()
   panel.openChanges({ ...source, load: () => late.promise }); render()
   panel.openChanges(changesSource('/workspace/replacement.ts'))
   render(); late.resolve(complete); await tick()
-  assert.ok(button(render(), '查看 replacement.ts 的变更'))
-  assert.equal(button(render(), '查看 extra.ts 的变更'), undefined)
+  assert.ok(nodes(render()).some(node => node.type === 'file-detail' && node.props.path === '/workspace/replacement.ts'))
+  assert.equal(nodes(render()).some(node => node.type === 'file-detail' && node.props.path === '/workspace/extra.ts'), false)
   const closed = Promise.withResolvers()
   panel.openChanges({ ...source, load: () => closed.promise }); render()
   await panel.closeTab('changes'); render(); closed.resolve(complete); await tick()
@@ -1048,7 +1050,7 @@ test('the desktop content card shares the conversation frame geometry and concen
   assert.match(frame, /--nodo-card-radius:var\(--dsw-radius-lg\)/)
   assert.match(frame, /--nodo-card-edge:\.5px solid var\(--dsw-alias-border-l3\)/)
   assert.match(rule(`${mac}.nodo-right-panel`), /border:0;background:transparent/)
-  assert.match(rule(`${mac}:has(+ [data-rightbar-col])`), /margin:0 var\(--nodo-frame-gap\) 8px 0/)
+  assert.match(rule(`${mac}:has(+ [data-rightbar-col])`), /margin:0 calc\(var\(--nodo-frame-gap\) \/ 2\) 8px 0/)
   const content = rule(`${mac}.nodo-right-content`)
   assert.match(content, /margin:0 var\(--nodo-frame-gap\) var\(--nodo-frame-gap\) 0/)
   assert.match(content, /border:var\(--nodo-card-edge\);border-radius:var\(--nodo-card-radius\);background:var\(--dsw-alias-bg-base\)/)
@@ -1091,7 +1093,7 @@ test('the desktop rightbar stays separated from the conversation with rounded ca
   assert.doesNotMatch(CSS, /:has\(\+ \[data-rightbar-col\] \.nodo-right-panel:not\(\[hidden\]\)\)/, 'opening the rightbar does not remove the gap or flatten either card')
   assert.match(rule(`${mac}.nodo-right-content`), /margin:0 var\(--nodo-frame-gap\) var\(--nodo-frame-gap\) 0;border:var\(--nodo-card-edge\);border-radius:var\(--nodo-card-radius\)/)
   const column = `${mac}:has(+ [data-rightbar-col])`
-  assert.match(rule(column), /margin:0 var\(--nodo-frame-gap\) 8px 0/, 'the conversation keeps an 8px gap in both rightbar states')
+  assert.match(rule(column), /margin:0 calc\(var\(--nodo-frame-gap\) \/ 2\) 8px 0/, 'the conversation keeps a half frame gap to the rightbar in both rightbar states')
   assert.match(rule(`${column}::before,${column}::after`), /border-radius:0 var\(--nodo-card-radius\) var\(--nodo-card-radius\) 0/)
   assert.equal(rule(`${column}::after`), 'z-index:1;border:var(--nodo-card-edge);border-left:0', 'the conversation keeps its foreground right border')
   const collapsed = `${mac}[data-sidebar-collapsed]>:has(+ [data-rightbar-col])`
@@ -1145,6 +1147,28 @@ test('directory tree lazily loads each expanded level, caches expansion, marks t
   preview.props.onBack()
   assert.equal(dir().props['aria-expanded'], true)
   assert.equal(nodes(render()).some(node => node.type === loaded.FilePreview), false)
+  hooks.dispose()
+})
+
+test('the file tree sits beside the viewer, filters loaded entries and marks the open file', async () => {
+  const hooks = renderer()
+  const loaded = await loadClient('right-panel.tsx', { react: hooks.react, call: async (endpoint, payload) => payload.path === ''
+    ? { entries: [{ name: 'src', kind: 'dir' }, { name: 'note.txt', kind: 'file' }, { name: 'readme.md', kind: 'file' }] }
+    : endpoint === 'workspace-file' ? { text: 'x' } : { entries: [{ name: 'index.ts', kind: 'file' }] } })
+  const render = () => hooks.render(() => loaded.WorkspaceFiles({ target }))
+  render(); await tick()
+  let tree = render()
+  assert.match(JSON.stringify(tree), /打开的文件显示在这里/, 'no file open: the viewer column shows its empty state')
+  const titles = () => nodes(render()).filter(node => node.props.className === 'nodo-right-file').map(node => node.props.title)
+  assert.deepEqual(titles(), ['src', 'note.txt', 'readme.md'])
+  nodes(tree).find(node => node.props.title === 'src').props.onClick(); render(); await tick()
+  nodes(render()).find(node => node.props['aria-label'] === '筛选文件').props.onChange({ target: { value: 'index' } })
+  assert.deepEqual(titles(), ['src', 'src/index.ts'], 'a folder stays while a loaded child matches, and non-matching files drop out')
+  nodes(render()).find(node => node.props.title === 'src/index.ts').props.onClick()
+  tree = render()
+  assert.equal(nodes(tree).find(node => node.props.title === 'src/index.ts').props['data-selected'], true)
+  assert.ok(nodes(tree).some(node => node.type === loaded.FilePreview))
+  assert.equal(nodes(tree).some(node => node.props['aria-label'] === '返回文件树'), false)
   hooks.dispose()
 })
 
@@ -1360,7 +1384,7 @@ test('the page binds the displayed main session and releases the rightbar for na
       nativeSpace: { subscribe() {}, getSnapshot: () => space, showLegacy() {} },
       completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       subscribeNativeSession() {}, readNativeSession: () => null,
-      rightPanelService: { bind(value) {
+      rightPanelService: { subscribe: panel.subscribe, getSnapshot: panel.getSnapshot, bind(value) {
         bindings.push(value)
         const unbind = panel.bind(value)
         return () => { bindings.push(null); unbind() }

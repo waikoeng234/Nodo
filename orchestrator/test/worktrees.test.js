@@ -299,3 +299,43 @@ for (const phase of ['registration', 'save']) test(`task worktree ${phase} failu
     assert.equal(Object.values(rt.state.workspaces).some(item => item.cwd === destination), false)
   })
 })
+
+test('workspace git status reports the branch and diff size, and switching refuses unknown branches', async () => {
+  await withHost(async ({ api, home }) => {
+    const repo = makeRepo(home)
+    const workspace = await api('workspace-create', { name: 'Repo', cwd: repo })
+    assert.deepEqual(await api('workspace-git', { workspace: workspace.id }), {
+      git: true, cwd: workspace.cwd, head: { name: 'main', commit: git(repo, ['rev-parse', '--short', 'HEAD']) }, files: 0, added: 0, removed: 0 })
+    writeFileSync(join(repo, 'README.md'), 'base\nmore\nlines\n')
+    writeFileSync(join(repo, 'new.txt'), 'untracked\n')
+    const dirty = await api('workspace-git', { workspace: workspace.id })
+    assert.deepEqual([dirty.files, dirty.added, dirty.removed], [2, 2, 0])
+    const switched = await api('workspace-switch', { workspace: workspace.id, branch: 'feat/login' })
+    assert.equal(switched.head.name, 'feat/login')
+    assert.equal(git(repo, ['symbolic-ref', '--short', 'HEAD']), 'feat/login')
+    await assert.rejects(api('workspace-switch', { workspace: workspace.id, branch: 'missing' }), /Git 命令失败/)
+    const plain = await api('workspace-create', { name: 'Plain', cwd: home })
+    assert.equal((await api('workspace-git', { workspace: plain.id })).git, false)
+  })
+})
+
+test('workspace diff returns real patches for tracked and untracked files relative to the workspace and refuses unsafe paths', async () => {
+  await withHost(async ({ api, home }) => {
+    const repo = makeRepo(home)
+    mkdirSync(join(repo, 'sub'))
+    writeFileSync(join(repo, 'sub', 'a.txt'), 'one\ntwo\nthree\n')
+    git(repo, ['add', 'sub/a.txt'])
+    git(repo, ['commit', '-qm', 'sub'])
+    const workspace = await api('workspace-create', { name: 'Sub', cwd: join(repo, 'sub') })
+    writeFileSync(join(repo, 'sub', 'a.txt'), 'one\nTWO\nthree\n')
+    writeFileSync(join(repo, 'sub', 'new.txt'), 'fresh\n')
+    const { patch } = await api('workspace-diff', { workspace: workspace.id, paths: ['a.txt', 'new.txt'] })
+    assert.match(patch, /--- a\/a\.txt\n\+\+\+ b\/a\.txt\n@@ -1,3 \+1,3 @@/, 'tracked files diff against HEAD with paths relative to the workspace and real line numbers')
+    assert.match(patch, /-two\n\+TWO/)
+    assert.match(patch, /\+\+\+ b\/new\.txt[\s\S]*\+fresh/, 'an untracked file shows as an addition')
+    assert.equal((await api('workspace-diff', { workspace: workspace.id, paths: [] })).patch, '')
+    for (const paths of [['../x'], ['/etc/passwd'], ['']]) await assert.rejects(api('workspace-diff', { workspace: workspace.id, paths }), /文件路径无效/)
+    const plain = await api('workspace-create', { name: 'Plain', cwd: home })
+    assert.equal((await api('workspace-diff', { workspace: plain.id, paths: ['x'] })).patch, '')
+  })
+})
