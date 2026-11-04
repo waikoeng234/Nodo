@@ -2,7 +2,7 @@ import {
   h, Fragment, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore, call,
   Button, CodeBlock, MarkdownText, ImageLightbox, MARKDOWN_LABELS,
   IconPanelLeftOutlineRegular, IconFolderOpenOutlineRegular, IconFolderCloseRegular, IconApiOutlineRegular, IconCloseOutlineRegular, IconPlusOutlineRegular,
-  IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconChevronLeftOutlineRegular, IconGlobeOutlineRegular, IconCompareSplitOutlineRegular,
+  IconChevronRightOutlineRegular, IconChevronDownOutlineRegular, IconSearchOutlineRegular, IconGlobeOutlineRegular, IconCompareSplitOutlineRegular,
 } from './ui-shared.js'
 import { ChangesView } from './changes-panel.tsx'
 import type { ChangesSource } from './changes-panel.tsx'
@@ -289,6 +289,7 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
   const [directories, setDirectories] = useState<Record<string, Directory>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ '': true })
   const [localSelected, setLocalSelected] = useState('')
+  const [query, setQuery] = useState('')
   const selected = selection ?? localSelected, setSelected = onSelect ?? setLocalSelected
   const live = useRef(false)
   const pending = useRef(new Set<string>())
@@ -304,23 +305,27 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
       }).catch(() => { if (live.current) setDirectories(current => ({ ...current, [path]: { error: true } })) })
     }
   }, [expanded, directories, target])
-  const branch = (path: string, depth: number): ReturnType<typeof h> => {
+  const wanted = query.trim().toLowerCase()
+  const hit = (path: string, name: string, kind: Entry['kind']): boolean => name.toLowerCase().includes(wanted)
+    || kind === 'dir' && !!directories[path]?.entries?.some(entry => hit(`${path}/${entry.name}`, entry.name, entry.kind))
+  const branch = (path: string, depth: number, inside = false): ReturnType<typeof h> => {
     const directory = directories[path]
     if (!directory) return status('加载中…')
     if (directory.error) return status('目录不可用')
     return <Fragment>
-      {directory.entries?.map(entry => {
+      {directory.entries?.filter(entry => inside || !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map(entry => {
         const child = path ? `${path}/${entry.name}` : entry.name
         const isDir = entry.kind === 'dir'
+        const open = isDir && (!!expanded[child] || !!wanted && !!directories[child])
         return <div key={child}>
-          <button type="button" className="nodo-right-file" style={{ paddingInlineStart: 8 + depth * 14 }}
-            aria-expanded={isDir ? !!expanded[child] : undefined} title={child}
-            onClick={() => isDir ? setExpanded(current => ({ ...current, [child]: !current[child] })) : setSelected(child)}>
-            {isDir ? <>{expanded[child] ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}{expanded[child] ? <IconFolderOpenOutlineRegular size={14} /> : <IconFolderCloseRegular size={14} />}</>
+          <button type="button" className="nodo-right-file" style={{ paddingInlineStart: 8 + depth * 14 }} data-selected={child === selected || undefined}
+            aria-expanded={isDir ? open : undefined} title={child}
+            onClick={() => isDir ? setExpanded(current => ({ ...current, [child]: !open })) : setSelected(child)}>
+            {isDir ? <>{open ? <IconChevronDownOutlineRegular size={12} /> : <IconChevronRightOutlineRegular size={12} />}{open ? <IconFolderOpenOutlineRegular size={14} /> : <IconFolderCloseRegular size={14} />}</>
               : <span className="nodo-right-file-icon"><FileIcon name={entry.name} size={14} /></span>}
             <span>{entry.name}</span>
           </button>
-          {isDir && expanded[child] && branch(child, depth + 1)}
+          {open && branch(child, depth + 1, inside || isDir && !!wanted && entry.name.toLowerCase().includes(wanted))}
         </div>
       })}
       {directory.truncated && status('目录已截断')}
@@ -328,8 +333,15 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
     </Fragment>
   }
   return <div className="nodo-right-files">
-    <div className="nodo-right-directory" hidden={!!selected}>{branch('', 0)}</div>
-    {selected && <FilePreview key={selected} target={target} path={selected} onBack={() => setSelected('')} />}
+    <div className="nodo-right-viewer">
+      {selected ? <FilePreview key={selected} target={target} path={selected} onBack={() => setSelected('')} />
+        : <div className="nodo-right-empty"><IconFolderCloseRegular size={32} /><strong>打开的文件显示在这里</strong></div>}
+    </div>
+    <div className="nodo-right-tree">
+      <label className="nodo-right-filter"><IconSearchOutlineRegular size={14} />
+        <input type="text" aria-label="筛选文件" placeholder="筛选文件" value={query} onChange={event => setQuery(event.target.value)} /></label>
+      <div className="nodo-right-directory">{branch('', 0)}</div>
+    </div>
   </div>
 }
 
@@ -355,10 +367,10 @@ export function FilePreview({ target, path, onBack }: { target: Target; path: st
   const markdown = extension === 'md' && typeof content?.text === 'string'
   return <div className="nodo-right-preview">
     <div className="nodo-right-preview-head">
-      <Button variant="ghost" aria-label="返回文件树" onClick={onBack} icon={<IconChevronLeftOutlineRegular size={16} />} />
       <FileIcon name={path} size={14} />
       <span title={path}>{path}</span>
       {markdown && <Button variant="ghost" aria-pressed={source} onClick={() => setSource(value => !value)}>{source ? '预览' : '源码'}</Button>}
+      <Button variant="ghost" aria-label="关闭文件" onClick={onBack} icon={<IconCloseOutlineRegular size={14} />} />
     </div>
     <div className="nodo-right-preview-body">
       {content?.truncated && status('文件已截断')}
@@ -366,7 +378,7 @@ export function FilePreview({ target, path, onBack }: { target: Target; path: st
         : content.missing ? status('文件不存在') : content.binary ? status('二进制文件')
           : content.image ? imageError ? status('无法显示') : <button type="button" className="nodo-right-image" aria-label="放大图片" onClick={() => setLightbox(true)}><img src={content.image.dataUrl} alt={path} onError={() => setImageError(true)} /></button>
             : markdown && !source ? <MarkdownText text={content.text ?? ''} labels={MARKDOWN_LABELS} />
-              : <CodeBlock code={content.text ?? ''} lang={LANGUAGES[extension] ?? 'text'} copyLabel="复制" copiedLabel="已复制" />}
+              : <CodeBlock code={content.text ?? ''} lang={LANGUAGES[extension] ?? 'text'} wrap showHeader={false} />}
     </div>
     {lightbox && !imageError && content?.image && <ImageLightbox src={content.image.dataUrl} alt={path} labels={{ dialog: '图片预览', close: '关闭预览' }} onClose={() => setLightbox(false)} />}
   </div>

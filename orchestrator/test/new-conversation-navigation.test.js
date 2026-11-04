@@ -19,7 +19,7 @@ async function harness(engine, profile, workspace) {
   const shared = {
     nativeSpace: {},
     NewConversation: 'NewConversation',
-    rightPanelService: { bind: target => { bindings.push(clone(target)); return () => bindings.push(null) } },
+    rightPanelService: { subscribe() {}, getSnapshot: () => ({ expanded: false }), bind: target => { bindings.push(clone(target)); return () => bindings.push(null) } },
     useStateView: () => ({ view: views[instance], error: '', refresh: async () => {} }),
     subscribeNativeSession() {}, readNativeSession: () => selected,
     completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
