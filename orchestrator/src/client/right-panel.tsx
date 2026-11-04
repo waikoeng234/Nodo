@@ -308,12 +308,12 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
   const wanted = query.trim().toLowerCase()
   const hit = (path: string, name: string, kind: Entry['kind']): boolean => name.toLowerCase().includes(wanted)
     || kind === 'dir' && !!directories[path]?.entries?.some(entry => hit(`${path}/${entry.name}`, entry.name, entry.kind))
-  const branch = (path: string, depth: number): ReturnType<typeof h> => {
+  const branch = (path: string, depth: number, inside = false): ReturnType<typeof h> => {
     const directory = directories[path]
     if (!directory) return status('加载中…')
     if (directory.error) return status('目录不可用')
     return <Fragment>
-      {directory.entries?.filter(entry => !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map(entry => {
+      {directory.entries?.filter(entry => inside || !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map(entry => {
         const child = path ? `${path}/${entry.name}` : entry.name
         const isDir = entry.kind === 'dir'
         const open = isDir && (!!expanded[child] || !!wanted && !!directories[child])
@@ -325,7 +325,7 @@ export function WorkspaceFiles({ target, selected: selection, onSelect }: { targ
               : <span className="nodo-right-file-icon"><FileIcon name={entry.name} size={14} /></span>}
             <span>{entry.name}</span>
           </button>
-          {open && branch(child, depth + 1)}
+          {open && branch(child, depth + 1, inside || isDir && !!wanted && entry.name.toLowerCase().includes(wanted))}
         </div>
       })}
       {directory.truncated && status('目录已截断')}

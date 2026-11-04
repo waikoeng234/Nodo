@@ -15297,7 +15297,10 @@ function Environment({ workspace, cwd, struct }) {
   (0, import_react.useEffect)(() => {
     let live = true;
     call2("workspace-git", { workspace }).then((value) => {
-      if (live) setInfo(value);
+      if (live) {
+        setInfo(value);
+        setError("");
+      }
     }).catch((failure) => {
       if (live) setError(failure.message);
     });
@@ -15308,14 +15311,10 @@ function Environment({ workspace, cwd, struct }) {
   (0, import_react.useEffect)(() => {
     if (open) void call2("worktree-refs", { workspace }).then((value) => setBranches(value.branches)).catch(() => setBranches([]));
   }, [open]);
-  const switchTo = async (name) => {
+  const switchTo = (name) => {
     setOpen(false);
     setError("");
-    try {
-      setInfo(await call2("workspace-switch", { workspace, branch: name }));
-    } catch (failure) {
-      setError(failure.message);
-    }
+    call2("workspace-switch", { workspace, branch: name }).then(setInfo).catch((failure) => setError(failure.message));
   };
   const path = info?.cwd ?? cwd;
   return (0, import_react.createElement)(
@@ -15333,7 +15332,7 @@ function Environment({ workspace, cwd, struct }) {
         align: "start",
         selectedId: info.head.name,
         items: branches.map((branch) => ({ id: branch.name, label: branch.name, disabled: branch.checkedOutAt !== void 0 && branch.name !== info.head.name })),
-        onSelect: (name) => void switchTo(name),
+        onSelect: switchTo,
         anchor: (0, import_react.createElement)(
           "button",
           { type: "button", className: "nodo-env-branch", "aria-haspopup": "menu", "aria-expanded": open, title: "\u5207\u6362\u5206\u652F", onClick: () => setOpen((value) => !value) },
@@ -15342,7 +15341,7 @@ function Environment({ workspace, cwd, struct }) {
           (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
         )
       }),
-      (0, import_react.createElement)("span", { className: "nodo-env-counts", title: `${info.files} \u4E2A\u6587\u4EF6\u6709\u6539\u52A8` }, (0, import_react.createElement)(Counts, { value: { added: info.added, removed: info.removed } }))
+      (0, import_react.createElement)("span", { className: "nodo-env-counts", title: `${info.files} \u4E2A\u5DF2\u8DDF\u8E2A\u6587\u4EF6\u6709\u6539\u52A8` }, (0, import_react.createElement)(Counts, { value: { added: info.added, removed: info.removed } }))
     ),
     error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
   );
@@ -15416,8 +15415,8 @@ function SessionPanel({ workspace, cwd, team, struct, profile, session }) {
   return (0, import_react.createElement)(
     "aside",
     { className: "nodo-session-panel", "aria-label": "\u6458\u8981\u9762\u677F" },
-    (0, import_react.createElement)(Environment, { workspace, cwd, struct }),
-    team && (0, import_react.createElement)(RoundTeam, { ...team, struct, workspace }),
+    (0, import_react.createElement)(Environment, { key: workspace, workspace, cwd, struct }),
+    team && (0, import_react.createElement)(RoundTeam, { key: workspace, ...team, struct, workspace }),
     session && (0, import_react.createElement)(Artifacts, { workspace, profile, session, cwd })
   );
 }
@@ -18911,9 +18910,10 @@ function ChangesView({ source, initialPath = "", openFile }) {
     };
   }, [source, attempt]);
   const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(body), [body]);
+  const reveal = (path) => sections.current[path]?.scrollIntoView?.({ block: "start" });
   (0, import_react.useEffect)(() => {
-    if (selected && !busy) sections.current[selected]?.scrollIntoView?.({ block: "start" });
-  }, [selected, busy]);
+    if (selected && !busy) reveal(selected);
+  }, [busy]);
   const rows = files.map((entry) => ({ rel: relativeFile(entry.file.path, body.cwd), entry }));
   const wanted = query.trim().toLowerCase();
   const tree = treeOf(rows.filter(({ rel }) => !wanted || rel.toLowerCase().includes(wanted)));
@@ -18940,7 +18940,10 @@ function ChangesView({ source, initialPath = "", openFile }) {
       "data-selected": file.path === selected || void 0,
       style: { paddingInlineStart: 8 + depth * 14 },
       title: relativeFile(file.path, body.cwd),
-      onClick: () => setSelected(file.path)
+      onClick: () => {
+        setSelected(file.path);
+        reveal(file.path);
+      }
     },
     /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: file.name, size: 14 }),
     /* @__PURE__ */ (0, import_react.createElement)("span", null, file.name),
@@ -19723,11 +19726,11 @@ function WorkspaceFiles({ target, selected: selection, onSelect }) {
   }, [expanded, directories, target]);
   const wanted = query.trim().toLowerCase();
   const hit = (path, name, kind) => name.toLowerCase().includes(wanted) || kind === "dir" && !!directories[path]?.entries?.some((entry) => hit(`${path}/${entry.name}`, entry.name, entry.kind));
-  const branch = (path, depth) => {
+  const branch = (path, depth, inside = false) => {
     const directory = directories[path];
     if (!directory) return status("\u52A0\u8F7D\u4E2D\u2026");
     if (directory.error) return status("\u76EE\u5F55\u4E0D\u53EF\u7528");
-    return /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, directory.entries?.filter((entry) => !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map((entry) => {
+    return /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, directory.entries?.filter((entry) => inside || !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map((entry) => {
       const child = path ? `${path}/${entry.name}` : entry.name;
       const isDir = entry.kind === "dir";
       const open = isDir && (!!expanded[child] || !!wanted && !!directories[child]);
@@ -19744,7 +19747,7 @@ function WorkspaceFiles({ target, selected: selection, onSelect }) {
         },
         isDir ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, open ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }), open ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-right-file-icon" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: entry.name, size: 14 })),
         /* @__PURE__ */ (0, import_react.createElement)("span", null, entry.name)
-      ), open && branch(child, depth + 1));
+      ), open && branch(child, depth + 1, inside || isDir && !!wanted && entry.name.toLowerCase().includes(wanted)));
     }), directory.truncated && status("\u76EE\u5F55\u5DF2\u622A\u65AD"), directory.entries?.length === 0 && status("\u7A7A\u76EE\u5F55"));
   };
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-files" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-viewer" }, selected ? /* @__PURE__ */ (0, import_react.createElement)(FilePreview, { key: selected, target, path: selected, onBack: () => setSelected("") }) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-empty" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 32 }), /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u6253\u5F00\u7684\u6587\u4EF6\u663E\u793A\u5728\u8FD9\u91CC"))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-directory" }, branch("", 0))));

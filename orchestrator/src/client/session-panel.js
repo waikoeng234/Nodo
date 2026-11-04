@@ -13,16 +13,16 @@ function Environment({ workspace, cwd, struct }) {
   const [error, setError] = useState('')
   useEffect(() => {
     let live = true
-    call('workspace-git', { workspace }).then(value => { if (live) setInfo(value) }).catch(failure => { if (live) setError(failure.message) })
+    call('workspace-git', { workspace }).then(value => { if (live) { setInfo(value); setError('') } }).catch(failure => { if (live) setError(failure.message) })
     return () => { live = false }
   }, [workspace, struct])
   useEffect(() => {
     if (open) void call('worktree-refs', { workspace }).then(value => setBranches(value.branches)).catch(() => setBranches([]))
   }, [open])
-  const switchTo = async name => {
+  const switchTo = name => {
     setOpen(false)
     setError('')
-    try { setInfo(await call('workspace-switch', { workspace, branch: name })) } catch (failure) { setError(failure.message) }
+    call('workspace-switch', { workspace, branch: name }).then(setInfo).catch(failure => setError(failure.message))
   }
   const path = info?.cwd ?? cwd
   return h('div', { className: 'nodo-env' },
@@ -32,11 +32,11 @@ function Environment({ workspace, cwd, struct }) {
       h(Menu, {
         open, onClose: () => setOpen(false), portal: true, align: 'start', selectedId: info.head.name,
         items: branches.map(branch => ({ id: branch.name, label: branch.name, disabled: branch.checkedOutAt !== undefined && branch.name !== info.head.name })),
-        onSelect: name => void switchTo(name),
+        onSelect: switchTo,
         anchor: h('button', { type: 'button', className: 'nodo-env-branch', 'aria-haspopup': 'menu', 'aria-expanded': open, title: '切换分支', onClick: () => setOpen(value => !value) },
           h(IconBranchOutlineRegular, { size: 16 }), h('span', { className: 'nodo-env-text' }, info.head.name ?? `${info.head.commit ?? ''}（游离）`), h(IconChevronDownOutlineRegular, { size: 14 })),
       }),
-      h('span', { className: 'nodo-env-counts', title: `${info.files} 个文件有改动` }, h(Counts, { value: { added: info.added, removed: info.removed } }))),
+      h('span', { className: 'nodo-env-counts', title: `${info.files} 个已跟踪文件有改动` }, h(Counts, { value: { added: info.added, removed: info.removed } }))),
     error && h('p', { className: 'nodo-approval-error', role: 'alert' }, error))
 }
 
@@ -74,7 +74,7 @@ function Artifacts({ workspace, profile, session, cwd }) {
 
 export function SessionPanel({ workspace, cwd, team, struct, profile, session }) {
   return h('aside', { className: 'nodo-session-panel', 'aria-label': '摘要面板' },
-    h(Environment, { workspace, cwd, struct }),
-    team && h(RoundTeam, { ...team, struct, workspace }),
+    h(Environment, { key: workspace, workspace, cwd, struct }),
+    team && h(RoundTeam, { key: workspace, ...team, struct, workspace }),
     session && h(Artifacts, { workspace, profile, session, cwd }))
 }

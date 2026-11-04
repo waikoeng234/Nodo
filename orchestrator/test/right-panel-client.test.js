@@ -1164,6 +1164,8 @@ test('the file tree sits beside the viewer, filters loaded entries and marks the
   nodes(tree).find(node => node.props.title === 'src').props.onClick(); render(); await tick()
   nodes(render()).find(node => node.props['aria-label'] === '筛选文件').props.onChange({ target: { value: 'index' } })
   assert.deepEqual(titles(), ['src', 'src/index.ts'], 'a folder stays while a loaded child matches, and non-matching files drop out')
+  nodes(render()).find(node => node.props['aria-label'] === '筛选文件').props.onChange({ target: { value: 'src' } })
+  assert.deepEqual(titles(), ['src', 'src/index.ts'], 'a folder whose own name matches keeps all its children')
   nodes(render()).find(node => node.props.title === 'src/index.ts').props.onClick()
   tree = render()
   assert.equal(nodes(tree).find(node => node.props.title === 'src/index.ts').props['data-selected'], true)

@@ -48,7 +48,8 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
     return () => { live = false }
   }, [source, attempt])
   const { files, totals } = useMemo(() => summarizeChanges(body), [body])
-  useEffect(() => { if (selected && !busy) sections.current[selected]?.scrollIntoView?.({ block: 'start' }) }, [selected, busy])
+  const reveal = (path: string) => sections.current[path]?.scrollIntoView?.({ block: 'start' })
+  useEffect(() => { if (selected && !busy) reveal(selected) }, [busy])
   const rows = files.map(entry => ({ rel: relativeFile(entry.file.path, body.cwd), entry }))
   const wanted = query.trim().toLowerCase()
   const tree = treeOf(rows.filter(({ rel }) => !wanted || rel.toLowerCase().includes(wanted)))
@@ -64,7 +65,7 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
       </div>
     })}
     {dir.files.map(file => <button key={file.path} type="button" className="nodo-changes-node" data-selected={file.path === selected || undefined}
-      style={{ paddingInlineStart: 8 + depth * 14 }} title={relativeFile(file.path, body.cwd)} onClick={() => setSelected(file.path)}>
+      style={{ paddingInlineStart: 8 + depth * 14 }} title={relativeFile(file.path, body.cwd)} onClick={() => { setSelected(file.path); reveal(file.path) }}>
       <FileIcon name={file.name} size={14} /><span>{file.name}</span><Counts value={file.entry.counts} />
     </button>)}
   </>
