@@ -13,6 +13,8 @@ export interface ChangesSource {
   renderFile: (file: ChangedFileData, patch?: string, panel?: boolean) => ReactNode
 }
 
+// Diffs render in file order until this many changed lines are on screen; the rest wait behind an expand button.
+const RENDER_BUDGET = 2000
 type Entry = ReturnType<typeof summarizeChanges>['files'][number]
 type Dir = { dirs: Map<string, Dir>; files: { name: string; path: string; entry: Entry }[] }
 const treeOf = (entries: { rel: string; entry: Entry }[]) => {
@@ -34,6 +36,7 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
   const [selected, setSelected] = useState(initialPath)
   const [query, setQuery] = useState('')
   const [folded, setFolded] = useState<Record<string, boolean>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(!!source.load)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -69,8 +72,15 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
       <FileIcon name={file.name} size={14} /><span>{file.name}</span><Counts value={file.entry.counts} />
     </button>)}
   </>
+  let spent = 0
+  const within = new Set<string>()
+  for (const { entry } of rows) {
+    const size = entry.counts ? entry.counts.added + entry.counts.removed : 100
+    if (spent + size <= RENDER_BUDGET) { within.add(entry.file.path); spent += size }
+  }
   const section = ({ rel, entry }: { rel: string; entry: Entry }) => {
     const name = rel.slice(rel.lastIndexOf('/') + 1)
+    const shown = within.has(entry.file.path) || expanded[entry.file.path] || entry.file.path === selected
     return <section key={entry.file.path} className="nodo-changes-file-section" ref={element => { sections.current[entry.file.path] = element }}>
       <header className="nodo-changes-row-title">
         <FileIcon name={name} size={14} />
@@ -78,7 +88,8 @@ export function ChangesView({ source, initialPath = '', openFile }: { source: Ch
         <Counts value={entry.counts} />
         <Button variant="ghost" aria-label={`打开文件 ${rel}`} onClick={() => openFile(entry.file.path)} icon={<IconRightUpOutlineRegular size={16} />} />
       </header>
-      <div className="nodo-changes-diff">{source.renderFile(entry.file, entry.patch, true)}</div>
+      {shown ? <div className="nodo-changes-diff">{source.renderFile(entry.file, entry.patch, true)}</div>
+        : <div className="nodo-changes-collapsed"><Button variant="outline" size="sm" onClick={() => setExpanded(current => ({ ...current, [entry.file.path]: true }))}>展开 diff</Button></div>}
     </section>
   }
   const message = (text: ReactNode) => <p className="nodo-right-status" role="status">{text}</p>
@@ -107,6 +118,7 @@ export const CHANGES_PANEL_CSS = `
 .nodo-changes-viewer{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden}
 .nodo-changes-file-section{flex:none;min-width:0}
 .nodo-changes-diff{min-width:0;overflow-x:hidden}
+.nodo-changes-collapsed{padding:10px 12px}
 .nodo-changes-tree{display:flex;flex:0 0 min(280px,45%);flex-direction:column;min-width:0;min-height:0;border-left:.5px solid var(--dsw-alias-border-l3)}
 .nodo-changes-tree-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:10px 16px 4px;color:var(--dsw-alias-label-secondary);font-size:13px}
 .nodo-changes-nodes{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;padding:0 8px 12px}

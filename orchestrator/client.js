@@ -13980,10 +13980,12 @@ function RoundFaces({ roles }) {
     roles.map((role) => (0, import_react.createElement)(RoleAvatar, { key: role.id, profile: role, size: 20 }))
   );
 }
-function RoundTeam({ lead, members, work, struct, workspace, onOpen }) {
+function RoundTeam({ lead, members, work, tasks, workspace, onOpen }) {
   const [latest, setLatest] = (0, import_react.useState)(/* @__PURE__ */ new Map());
   const [folded, setFolded] = (0, import_react.useState)(false);
+  const stale = [(tasks ?? []).map((task) => `${task.id}:${task.status}:${task.latestExecutionStatus}`).join(), members.map(({ session }) => work?.[session.id]?.active === true).join()].join("|");
   (0, import_react.useEffect)(() => {
+    if (folded) return;
     let live = true;
     call2("task-list", { workspace }).then((list) => {
       if (!live) return;
@@ -14004,7 +14006,7 @@ function RoundTeam({ lead, members, work, struct, workspace, onOpen }) {
     return () => {
       live = false;
     };
-  }, [struct, workspace]);
+  }, [stale, workspace, folded]);
   const listed = new Set(members.map(({ session }) => latest.get(session.id)?.task.id));
   const running = members.filter(({ session }) => work?.[session.id]?.active === true).length;
   const done = members.filter(({ session }) => latest.get(session.id)?.task.status === "done").length;
@@ -15299,25 +15301,22 @@ function artifactsOf(lines, cwd) {
 }
 
 // src/client/session-panel.js
-function Environment({ workspace, cwd, struct }) {
+function Environment({ workspace, cwd, running }) {
   const [info, setInfo] = (0, import_react.useState)(null);
   const [branches, setBranches] = (0, import_react.useState)([]);
   const [open, setOpen] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
+  const load = () => call2("workspace-git", { workspace }).then((value) => {
+    setInfo(value);
+    setError("");
+  }).catch((failure) => setError(failure.message));
   (0, import_react.useEffect)(() => {
-    let live = true;
-    call2("workspace-git", { workspace }).then((value) => {
-      if (live) {
-        setInfo(value);
-        setError("");
-      }
-    }).catch((failure) => {
-      if (live) setError(failure.message);
-    });
-    return () => {
-      live = false;
-    };
-  }, [workspace, struct]);
+    void load();
+  }, [workspace, running]);
+  (0, import_react.useEffect)(() => {
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [workspace]);
   (0, import_react.useEffect)(() => {
     if (open) void call2("worktree-refs", { workspace }).then((value) => setBranches(value.branches)).catch(() => setBranches([]));
   }, [open]);
@@ -15421,12 +15420,12 @@ function Artifacts({ workspace, profile, session, cwd }) {
     )
   );
 }
-function SessionPanel({ workspace, cwd, team, struct, profile, session }) {
+function SessionPanel({ workspace, cwd, team, running, profile, session }) {
   return (0, import_react.createElement)(
     "aside",
     { className: "nodo-session-panel", "aria-label": "\u6458\u8981\u9762\u677F" },
-    (0, import_react.createElement)(Environment, { key: workspace, workspace, cwd, struct }),
-    team && (0, import_react.createElement)(RoundTeam, { key: workspace, ...team, struct, workspace }),
+    (0, import_react.createElement)(Environment, { key: workspace, workspace, cwd, running }),
+    team && (0, import_react.createElement)(RoundTeam, { key: workspace, ...team, workspace }),
     session && (0, import_react.createElement)(Artifacts, { workspace, profile, session, cwd })
   );
 }
@@ -18636,7 +18635,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
         { className: "nodo-title-row" },
         ...tabs.map(({ role, session: entry }) => {
           const open = () => {
-            if (entry.id === lead.session.id) setNavigation((current) => ({ ...current, view: "team" }));
+            setNavigation((current) => ({ ...current, view: entry.id === lead.session.id ? "team" : "sessions" }));
             void select(role, entry.id, workspaces.find((item) => item.id === entry.workspaceRef));
           };
           const close = (event) => {
@@ -18769,10 +18768,10 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       panelOpen && sessionWorkspace && (0, import_react.createElement)(SessionPanel, {
         workspace: sessionWorkspace.id,
         cwd: sessionWorkspace.cwd,
-        struct: view2.struct,
+        running: work?.active === true || activeTasks > 0,
         profile: profile.id,
         session: sessionId,
-        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view2.work, onOpen: openRound } : void 0
+        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view2.work, tasks: view2.tasks, onOpen: openRound } : void 0
       })
     )
   );
@@ -19110,6 +19109,7 @@ function createNativeSpace(ctx, Sidebar, SidebarControl) {
 }
 
 // src/client/changes-panel.tsx
+var RENDER_BUDGET = 2e3;
 var treeOf = (entries) => {
   const root = { dirs: /* @__PURE__ */ new Map(), files: [] };
   for (const { rel, entry } of entries) {
@@ -19128,6 +19128,7 @@ function ChangesView({ source, initialPath = "", openFile }) {
   const [selected, setSelected] = (0, import_react.useState)(initialPath);
   const [query, setQuery] = (0, import_react.useState)("");
   const [folded, setFolded] = (0, import_react.useState)({});
+  const [expanded, setExpanded] = (0, import_react.useState)({});
   const [busy, setBusy] = (0, import_react.useState)(!!source.load);
   const [error2, setError] = (0, import_react.useState)("");
   const [attempt, setAttempt] = (0, import_react.useState)(0);
@@ -19188,11 +19189,21 @@ function ChangesView({ source, initialPath = "", openFile }) {
     /* @__PURE__ */ (0, import_react.createElement)("span", null, file.name),
     /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: file.entry.counts })
   )));
+  let spent = 0;
+  const within = /* @__PURE__ */ new Set();
+  for (const { entry } of rows) {
+    const size = entry.counts ? entry.counts.added + entry.counts.removed : 100;
+    if (spent + size <= RENDER_BUDGET) {
+      within.add(entry.file.path);
+      spent += size;
+    }
+  }
   const section = ({ rel, entry }) => {
     const name = rel.slice(rel.lastIndexOf("/") + 1);
+    const shown = within.has(entry.file.path) || expanded[entry.file.path] || entry.file.path === selected;
     return /* @__PURE__ */ (0, import_react.createElement)("section", { key: entry.file.path, className: "nodo-changes-file-section", ref: (element) => {
       sections.current[entry.file.path] = element;
-    } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-changes-row-title" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: rel }, /* @__PURE__ */ (0, import_react.createElement)("strong", null, name)), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${rel}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff" }, source.renderFile(entry.file, entry.patch, true)));
+    } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-changes-row-title" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: rel }, /* @__PURE__ */ (0, import_react.createElement)("strong", null, name)), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${rel}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) })), shown ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff" }, source.renderFile(entry.file, entry.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-collapsed" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setExpanded((current) => ({ ...current, [entry.file.path]: true })) }, "\u5C55\u5F00 diff")));
   };
   const message = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-viewer" }, busy ? message("\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, message(error2), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, rows.map(section), files.length < body.fileCount && message(`\u4EC5\u4FDD\u5B58 ${files.length} / ${body.fileCount} \u4E2A\u6587\u4EF6`), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : message("\u65E0\u6587\u4EF6\u53D8\u66F4")))), files.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5DF2\u66F4\u6539\u7684\u6587\u4EF6"), totals && /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-nodes" }, branch(tree, "", 0))));
@@ -19202,6 +19213,7 @@ var CHANGES_PANEL_CSS = `
 .nodo-changes-viewer{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden}
 .nodo-changes-file-section{flex:none;min-width:0}
 .nodo-changes-diff{min-width:0;overflow-x:hidden}
+.nodo-changes-collapsed{padding:10px 12px}
 .nodo-changes-tree{display:flex;flex:0 0 min(280px,45%);flex-direction:column;min-width:0;min-height:0;border-left:.5px solid var(--dsw-alias-border-l3)}
 .nodo-changes-tree-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:10px 16px 4px;color:var(--dsw-alias-label-secondary);font-size:13px}
 .nodo-changes-nodes{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;padding:0 8px 12px}

@@ -460,7 +460,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       h('div', { className: 'nodo-title-row' },
         ...tabs.map(({ role, session: entry }) => {
           const open = () => {
-            if (entry.id === lead.session.id) setNavigation(current => ({ ...current, view: 'team' }))
+            setNavigation(current => ({ ...current, view: entry.id === lead.session.id ? 'team' : 'sessions' }))
             void select(role, entry.id, workspaces.find(item => item.id === entry.workspaceRef))
           }
           const close = event => {
@@ -516,8 +516,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     // before the session has any figure, so the input card never moves.
     h('div', { className: 'nodo-stats' },
       h(SessionStats, { stats: leadModeOf(profile, session) ? undefined : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) }))),
-      panelOpen && sessionWorkspace && h(SessionPanel, { workspace: sessionWorkspace.id, cwd: sessionWorkspace.cwd, struct: view.struct, profile: profile.id, session: sessionId,
-        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view.work, onOpen: openRound } : undefined })))
+      panelOpen && sessionWorkspace && h(SessionPanel, { workspace: sessionWorkspace.id, cwd: sessionWorkspace.cwd, running: work?.active === true || activeTasks > 0, profile: profile.id, session: sessionId,
+        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view.work, tasks: view.tasks, onOpen: openRound } : undefined })))
 
   const page = () => {
     if (profile && (workspace || session)) return conversation()
