@@ -241,9 +241,13 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     setNavigation(current => ({ ...current, profile: profile.id, workspace: workspace.id,
       sessions: { ...current.sessions, ...(sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {}) } }))
   }, [profile?.id, workspace?.id, sessionId, archivedConversation])
-  const remember = (roleId, projectId, id, archived = false) => setNavigation(current => ({ ...current, profile: roleId, workspace: projectId,
-    archivedSession: archived ? id : undefined,
-    sessions: { ...current.sessions, ...(id && !archived ? { [`${projectId}:${roleId}`]: id } : {}) } }))
+  // Readers anchor navigation.workspace to the project, so remember stores the anchor too, never a worktree ref.
+  const remember = (roleId, projectId, id, archived = false) => {
+    const anchor = projectAnchorOf(workspaces, projectId)
+    return setNavigation(current => ({ ...current, profile: roleId, workspace: anchor,
+      archivedSession: archived ? id : undefined,
+      sessions: { ...current.sessions, ...(id && !archived ? { [`${anchor}:${roleId}`]: id } : {}) } }))
+  }
   const trackSelection = (sameSession = false) => {
     const origin = nativeSpace.getSnapshot(), request = selection.current
     return () => {

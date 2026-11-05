@@ -452,6 +452,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-approval{display:flex;flex-direction:column;align-items:center;padding:8px calc(var(--dsh-composer-side-clearance,16px) + 16px) 12px}
 .nodo-approval-card{box-sizing:border-box;width:100%;max-width:var(--dsh-chat-content-width,748px);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);overflow:hidden}
 .nodo-approval-strip{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:18px}
+.nodo-approval-label{flex:none;white-space:nowrap}
 .nodo-approval-from{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .nodo-approval-task{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-approval-from>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

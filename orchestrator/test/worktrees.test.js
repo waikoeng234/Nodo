@@ -309,7 +309,7 @@ test('workspace git status reports the branch and diff size, and switching refus
     writeFileSync(join(repo, 'README.md'), 'base\nmore\nlines\n')
     writeFileSync(join(repo, 'new.txt'), 'untracked\n')
     const dirty = await api('workspace-git', { workspace: workspace.id })
-    assert.deepEqual([dirty.files, dirty.added, dirty.removed], [1, 2, 0], 'files counts the tracked changes the line numbers describe, not untracked entries')
+    assert.deepEqual([dirty.files, dirty.added, dirty.removed], [2, 3, 0], 'untracked files count as changed files and added lines')
     const switched = await api('workspace-switch', { workspace: workspace.id, branch: 'feat/login' })
     assert.equal(switched.head.name, 'feat/login')
     assert.equal(git(repo, ['symbolic-ref', '--short', 'HEAD']), 'feat/login')

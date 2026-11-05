@@ -2,10 +2,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { boot, until, withHost } from './helpers/host.js'
 import { IMAGE_BYTES_MAX } from '../core/src/constants.js'
+import { readImageFile } from '../core/src/image-files.js'
 
 test('workspace lifecycle: deletion keeps roles, conversation history and the directory', async () => {
   await withHost(async ({ api, post, home }) => {
@@ -357,4 +358,83 @@ test('workspace-file returns common images as data URLs through IMAGE_BYTES_MAX 
     writeFileSync(join(root, 'large.png'), Buffer.alloc(IMAGE_BYTES_MAX + 1))
     assert.deepEqual(await api('workspace-file', { profile: profile.id, path: 'large.png' }), { path: join(root, 'large.png'), binary: true })
   })
+})
+
+test('workspace-file previews out-of-workspace images through the attachment policy and keeps other escapes refused', async () => {
+  const bytes = Buffer.from([0x89, 0, 0x50, 0x4e, 0x47])
+  const fixture = mkdtempSync(join(tmpdir(), 'orch-outside-'))
+  const vault = mkdtempSync(join(tmpdir(), 'orch-vault-'))
+  writeFileSync(join(fixture, 'evidence.png'), bytes)
+  writeFileSync(join(fixture, 'note.txt'), 'text stays refused')
+  writeFileSync(join(vault, 'locked.png'), bytes)
+  chmodSync(join(vault, 'locked.png'), 0o000)
+  symlinkSync(join(vault, 'no-such-target.png'), join(vault, 'gone.png'))
+  try {
+    await withHost(async ({ api, post, home }) => {
+      const previous = process.env.DSH_HOME
+      process.env.DSH_HOME = realpathSync(home)
+      try {
+        mkdirSync(join(home, 'private'), { recursive: true })
+        writeFileSync(join(home, 'private', 'secret.png'), bytes)
+        symlinkSync(join(home, 'private', 'secret.png'), join(vault, 'leak.png'))
+        mkdirSync(join(home, 'ws'))
+        symlinkSync(join(fixture, 'evidence.png'), join(home, 'ws', 'toTmp.png'))
+        const workspace = await api('workspace-create', { name: 'Outside', cwd: join(home, 'ws') })
+        const role = await api('profile-create', { name: 'Viewer', engine: 'echo', workspace: workspace.id })
+        const session = await api('session-create', { profile: role.id, workspace: workspace.id, lazy: true })
+        const scope = { profile: role.id, session: session.id }
+        const read = await api('workspace-file', { ...scope, path: join(fixture, 'evidence.png') })
+        const direct = await readImageFile(join(fixture, 'evidence.png'), workspace.cwd)
+        assert.deepEqual(read.image, { mediaType: direct.mediaType, dataUrl: `data:${direct.mediaType};base64,${direct.data}` })
+        await assert.rejects(readImageFile(join(vault, 'leak.png'), workspace.cwd), /attachment-unavailable/)
+        assert.equal((await post('workspace-file', { ...scope, path: join(fixture, 'note.txt') })).error.code, 'orch/invalid')
+        assert.equal((await post('workspace-file', { ...scope, path: join(vault, 'leak.png') })).error.code, 'orch/invalid', 'images linked into the DSH home stay refused')
+        assert.equal((await post('workspace-file', { ...scope, path: join(vault, 'locked.png') })).error.code, 'orch/invalid', 'unreadable images stay refused')
+        assert.equal((await api('workspace-file', { ...scope, path: join(vault, 'gone.png') })).missing, true)
+        for (const path of ['toTmp.png', join(home, 'ws', 'toTmp.png')]) {
+          assert.equal((await post('workspace-file', { ...scope, path })).error.code, 'orch/invalid', 'in-workspace links into the tmp roots stay refused')
+        }
+      } finally {
+        if (previous === undefined) delete process.env.DSH_HOME
+        else process.env.DSH_HOME = previous
+      }
+    })
+  } finally { rmSync(fixture, { recursive: true, force: true }); rmSync(vault, { recursive: true, force: true }) }
+})
+
+test('workspace-file resolves paths spelled through a symlinked root for in-workspace files only', async () => {
+  const bytes = Buffer.from([0x89, 0, 0x50, 0x4e, 0x47])
+  const scenario = async (root, alias, spell, beyond) => {
+    await withHost(async ({ api, post }) => {
+      const workspace = await api('workspace-create', { name: 'Linked root', cwd: root })
+      const profile = await api('profile-create', { name: 'Viewer', engine: 'echo', workspace: workspace.id })
+      const read = await api('workspace-file', { profile: profile.id, path: spell(join(alias, 'in.png')) })
+      assert.deepEqual(read.image, { mediaType: 'image/png', dataUrl: `data:image/png;base64,${bytes.toString('base64')}` })
+      assert.equal((await api('workspace-file', { profile: profile.id, path: spell(join(alias, 'note.txt')) })).text, 'body')
+      const outside = await api('workspace-file', { profile: profile.id, path: spell(beyond) })
+      assert.deepEqual(outside.image, { mediaType: 'image/png', dataUrl: `data:image/png;base64,${bytes.toString('base64')}` })
+      assert.equal((await post('workspace-file', { profile: profile.id, path: spell(join(alias, '..', 'outside.txt')) })).error.code, 'orch/invalid')
+    })
+  }
+  if (realpathSync('/tmp') !== '/tmp') {
+    const base = mkdtempSync(join(realpathSync('/tmp'), 'orch-link-'))
+    const beyond = mkdtempSync(join(realpathSync('/tmp'), 'orch-beyond-'))
+    try {
+      writeFileSync(join(base, 'in.png'), bytes)
+      writeFileSync(join(base, 'note.txt'), 'body')
+      writeFileSync(join(beyond, 'evidence.png'), bytes)
+      await scenario(base, base, path => join('/tmp', relative(realpathSync('/tmp'), path)), join(beyond, 'evidence.png'))
+    } finally { rmSync(base, { recursive: true, force: true }); rmSync(beyond, { recursive: true, force: true }) }
+  }
+  const base = mkdtempSync(join(tmpdir(), 'orch-link-'))
+  try {
+    const ws = join(base, 'ws')
+    mkdirSync(ws)
+    writeFileSync(join(ws, 'in.png'), bytes)
+    writeFileSync(join(ws, 'note.txt'), 'body')
+    writeFileSync(join(base, 'evidence.png'), bytes)
+    writeFileSync(join(base, 'outside.txt'), 'out')
+    symlinkSync(ws, join(base, 'alias'))
+    await scenario(realpathSync(ws), join(base, 'alias'), path => path, join(base, 'evidence.png'))
+  } finally { rmSync(base, { recursive: true, force: true }) }
 })

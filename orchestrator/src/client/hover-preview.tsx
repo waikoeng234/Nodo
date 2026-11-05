@@ -118,8 +118,9 @@ export function HoverFilePreview({ preview, scope, path }: {
 
 // read/write/edit 工具行的文件标识：类型图标 + 文件名（点击在右栏打开）+ 灰色
 // 目录 + 增删行数；悬停弹出差异或文件预览。
-export function ToolFileChip({ file, onShow, onClose, onOpened }: {
+export function ToolFileChip({ file, onShow, onClose, onOpened, onOpenChanges }: {
   file: ToolFileChange
+  onOpenChanges?: () => void
   onShow: (row: HTMLElement) => void
   onClose: () => void
   onOpened: () => void
@@ -127,7 +128,8 @@ export function ToolFileChip({ file, onShow, onClose, onOpened }: {
   const target = rightPanelService?.getSnapshot().target
   const open = () => {
     if (!target) return false
-    rightPanelService?.openFile(file.path)
+    if (onOpenChanges) onOpenChanges()
+    else rightPanelService?.openFile(file.path)
     onOpened()
     return true
   }
