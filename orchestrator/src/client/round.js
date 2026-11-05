@@ -241,10 +241,14 @@ export function RoundFaces({ roles }) {
     roles.map(role => h(RoleAvatar, { key: role.id, profile: role, size: 20 })))
 }
 
-export function RoundTeam({ lead, members, work, struct, workspace, onOpen }) {
+export function RoundTeam({ lead, members, work, tasks, workspace, onOpen }) {
   const [latest, setLatest] = useState(new Map())
   const [folded, setFolded] = useState(false)
+  // Task statuses and which members run decide whether the list is stale;
+  // unrelated structure changes do not refetch, and a folded card never does.
+  const stale = [(tasks ?? []).map(task => `${task.id}:${task.status}:${task.latestExecutionStatus}`).join(), members.map(({ session }) => work?.[session.id]?.active === true).join()].join('|')
   useEffect(() => {
+    if (folded) return
     let live = true
     call('task-list', { workspace }).then(list => {
       if (!live) return
@@ -258,7 +262,7 @@ export function RoundTeam({ lead, members, work, struct, workspace, onOpen }) {
       setLatest(newest)
     }).catch(() => {})
     return () => { live = false }
-  }, [struct, workspace])
+  }, [stale, workspace, folded])
   const listed = new Set(members.map(({ session }) => latest.get(session.id)?.task.id))
   const running = members.filter(({ session }) => work?.[session.id]?.active === true).length
   const done = members.filter(({ session }) => latest.get(session.id)?.task.status === 'done').length
