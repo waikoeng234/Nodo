@@ -326,9 +326,15 @@ test('restart removes never-sent isolation but keeps a rework directory that ran
   const sent = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
   const kept = rt.findWorkspace(rt.state.executions[sent.executionId].workspaceRef)
   await finish(sent)
+  // finish's inactivity check can pass in the window before the report turn starts,
+  // so wait until that turn has run; its end would otherwise dispatch the rework
+  // before the state copy and recover it as unconfirmed instead of cancelled.
+  await until(() => rt.conversationOf(owner.id).session.lastTurn && !rt.workView()[owner.id]?.active)
   const rework = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: sent.taskId })
   const queued = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
   const removed = rt.findWorkspace(rt.state.executions[queued.executionId].workspaceRef)
+  assert.equal(rt.state.executions[rework.executionId].status, 'queued')
+  assert.equal(rt.state.executions[queued.executionId].status, 'queued')
   const directory = join(host.home, 'isolated-restart')
   mkdirSync(directory)
   copyFileSync(join(host.home, 'state.json'), join(directory, 'state.json'))
