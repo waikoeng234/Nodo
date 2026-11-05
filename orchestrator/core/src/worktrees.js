@@ -5,13 +5,15 @@
 // external engines.
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, lstat, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdir, lstat, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { failure, invalid } from './errors.js'
 
 const execFileAsync = promisify(execFile)
 const REFS_MAX = 200
+const UNTRACKED_READ_MAX = 200
+const UNTRACKED_BYTES_MAX = 1 << 20
 const GIT_SCRUB = [
   'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
   'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
@@ -173,8 +175,18 @@ export function install(rt) {
     const inside = await git(target.cwd, ['rev-parse', '--is-inside-work-tree'], { allowExit: [0, 128] })
     if (inside.code !== 0) return { git: false, cwd: target.cwd }
     const rows = (await git(target.cwd, ['diff', 'HEAD', '--numstat'], { allowExit: [0, 128] })).stdout.split('\n').filter(Boolean).map(line => line.split('\t'))
-    return { git: true, cwd: target.cwd, head: await headOf(target.cwd), files: rows.length,
-      added: rows.reduce((sum, row) => sum + (Number(row[0]) || 0), 0), removed: rows.reduce((sum, row) => sum + (Number(row[1]) || 0), 0) }
+    // Untracked files are new work too; only the first ones are read for line counts, so a huge untracked tree stays cheap.
+    const untracked = (await git(target.cwd, ['ls-files', '--others', '--exclude-standard', '-z', '--', ':/'])).stdout.split('\0').filter(Boolean)
+    const untrackedLines = await Promise.all(untracked.slice(0, UNTRACKED_READ_MAX).map(async path => {
+      const file = join(target.cwd, path)
+      const info = await lstat(file).catch(() => null)
+      if (!info?.isFile() || info.size > UNTRACKED_BYTES_MAX) return 0
+      const body = await readFile(file).catch(() => Buffer.alloc(0))
+      if (body.subarray(0, 8000).includes(0)) return 0
+      return body.toString('latin1').split('\n').length - (body.length === 0 || body.at(-1) === 10 ? 1 : 0)
+    }))
+    return { git: true, cwd: target.cwd, head: await headOf(target.cwd), files: rows.length + untracked.length,
+      added: rows.reduce((sum, row) => sum + (Number(row[0]) || 0), 0) + untrackedLines.reduce((sum, count) => sum + count, 0), removed: rows.reduce((sum, row) => sum + (Number(row[1]) || 0), 0) }
   }
   const gitDiff = async ({ workspace, paths } = {}) => {
     const target = rt.findWorkspace(workspace)

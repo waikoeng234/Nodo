@@ -183,11 +183,11 @@ test('the feed never marks a legacy call successful while its completion is miss
   assert.equal(nodes(Feed({ ...props, work: { active: true } })).find(node => node.type === ProcessRow).props.running, true)
 })
 
-test('edit rows carry the file chip with counts and hover diffs, and the filename opens the right panel', async () => {
-  const opened = []
+test('edit rows carry the file chip with counts and hover diffs, and the filename opens the changes tab', async () => {
+  const opened = [], changes = []
   const { ProcessRow, ToolCall, ToolFileChip, HoverPreview, CodeDiff, host } = await loadClient(
     ['feed.js', 'tool-call.tsx', 'code-diff.tsx', 'hover-preview.tsx'], {
-    uiShared: { rightPanelService: { subscribe() {}, getSnapshot: () => ({ target: { workspace: 'w' } }), openFile: path => opened.push(path) } },
+    uiShared: { rightPanelService: { subscribe() {}, getSnapshot: () => ({ target: { workspace: 'w' } }), openFile: path => opened.push(path), openChanges: (source, path) => changes.push({ source, path }) } },
   })
   const props = { kind: 'tool', title: '编辑', input: '{"file_path":"/ws/src/a.ts","old_string":"old\\n","new_string":"new\\n"}',
     file: { path: '/ws/src/a.ts', display: 'src/a.ts', name: 'a.ts', directory: 'src/', counts: { added: 1, removed: 1 },
@@ -225,7 +225,10 @@ test('edit rows carry the file chip with counts and hover diffs, and the filenam
   let propagated = false
   find(ToolFileChip(tree.props.queryNode.props), 'nodo-tool-call-file-name')
     .props.onClick({ stopPropagation() { propagated = true } })
-  assert.deepEqual(opened, ['/ws/src/a.ts'])
+  assert.deepEqual(opened, [], 'an edit row opens the changes tab, not the project file')
+  assert.equal(changes.length, 1)
+  assert.equal(changes[0].path, '/ws/src/a.ts')
+  assert.deepEqual(JSON.parse(JSON.stringify(changes[0].source.body.files)), [{ path: '/ws/src/a.ts', edits: [{ operation: 'update', oldText: 'old\n', newText: 'new\n' }] }])
   assert.equal(propagated, true, 'the filename click does not reach the row trigger')
 })
 
