@@ -10097,11 +10097,12 @@ function HoverFilePreview({ preview, scope, path }) {
   if (content.image) return /* @__PURE__ */ (0, import_react.createElement)("img", { className: "nodo-hover-file-image", src: content.image.dataUrl, alt: path });
   return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: (content.text ?? "").split("\n", 101).join("\n"), lang: path.split(".").at(-1)?.toLowerCase() ?? "", wrap: true, showHeader: false });
 }
-function ToolFileChip({ file, onShow, onClose, onOpened }) {
+function ToolFileChip({ file, onShow, onClose, onOpened, onOpenChanges }) {
   const target = rightPanelService?.getSnapshot().target;
   const open = () => {
     if (!target) return false;
-    rightPanelService?.openFile(file.path);
+    if (onOpenChanges) onOpenChanges();
+    else rightPanelService?.openFile(file.path);
     onOpened();
     return true;
   };
@@ -11837,8 +11838,29 @@ var STREAM_TERMINAL_LABELS = {
   expand: (n) => `\u5C55\u5F00\u5176\u4F59 ${n} \u884C`
 };
 var streamSize = (bytes) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+var changesBody = (files, cwd) => ({ scope: "edit-tools", coverage: "partial", cwd, fileCount: files.length, files: files.map((file) => ({ path: file.path, edits: file.diffs.map((diff) => ({
+  operation: diff.oldText == null && diff.patch === void 0 ? "add" : "update",
+  oldText: diff.oldText ?? null,
+  newText: diff.newText,
+  ...diff.patch ? { diffText: diff.patch } : {}
+})) })) });
+var showChanges = (body, path, { cwd, revision, load }) => rightPanelService.openChanges({
+  revision,
+  body,
+  load,
+  renderFile: (file, patch, panel) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, panel, inline: true, root: cwd, cycle: revision })
+}, path);
 var toolFileCards = (file, hover, scope) => ({
-  chip: (0, import_react.createElement)(ToolFileChip, { file, onShow: (row) => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }),
+  chip: (0, import_react.createElement)(ToolFileChip, {
+    file,
+    onShow: (row) => hover.show(file.path, row),
+    onClose: hover.close,
+    onOpened: hover.hide,
+    onOpenChanges: file.diffs.length > 0 ? () => {
+      const cwd = file.display === file.path ? void 0 : file.path.slice(0, -file.display.length - 1);
+      showChanges(changesBody([file], cwd), file.path, { cwd, revision: 0 });
+    } : void 0
+  }),
   preview: (0, import_react.createElement)(HoverPreview, {
     preview: hover,
     className: "nodo-hover-preview",
@@ -15340,43 +15362,72 @@ function Environment({ workspace, cwd, running }) {
           (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
         )
       }),
-      (0, import_react.createElement)("span", { className: "nodo-env-counts", title: `${info.files} \u4E2A\u5DF2\u8DDF\u8E2A\u6587\u4EF6\u6709\u6539\u52A8` }, (0, import_react.createElement)(Counts, { value: { added: info.added, removed: info.removed } }))
+      (0, import_react.createElement)("span", { className: "nodo-env-counts", title: `${info.files} \u4E2A\u6587\u4EF6\u6709\u6539\u52A8` }, (0, import_react.createElement)(Counts, { value: { added: info.added, removed: info.removed } }))
     ),
     error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
   );
 }
-function Artifacts({ workspace, profile, session, cwd }) {
+function Artifacts({ sources, running }) {
   const [folded, setFolded] = (0, import_react.useState)(false);
+  const [turnDiffs, setTurnDiffs] = (0, import_react.useState)({});
   (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
-  (0, import_react.useEffect)(() => watchTranscript(profile, session), [profile, session]);
-  const lines = transcriptOf(`${profile}:${session}`);
-  const { files, links, images } = (0, import_react.useMemo)(() => artifactsOf(lines, cwd), [lines, cwd]);
-  if (files.length + links.length + images.length === 0) return null;
-  const openChanges = (path) => {
-    const body = { scope: "edit-tools", coverage: "partial", cwd, fileCount: files.length, files: files.map((file) => ({ path: file.path, edits: file.diffs.map((diff) => ({
-      operation: diff.oldText == null && diff.patch === void 0 ? "add" : "update",
-      oldText: diff.oldText ?? null,
-      newText: diff.newText,
-      ...diff.patch ? { diffText: diff.patch } : {}
-    })) })) };
-    rightPanelService.openChanges({
-      revision: lines.length,
-      body,
-      renderFile: (file, patch, panel) => (0, import_react.createElement)(ChangedFile, { key: file.path, file, patch, panel, inline: true, root: cwd, cycle: lines.length }),
-      load: async () => {
-        const { patch } = await call2("workspace-diff", { workspace, paths: files.map((file) => file.display) }).catch(() => ({ patch: "" }));
-        return patch ? { ...body, turnDiff: patch } : body;
-      }
-    }, path);
-  };
+  const key = sources.map((item) => `${item.profile}:${item.session}`).join();
+  (0, import_react.useEffect)(() => {
+    const stops = sources.map((item) => watchTranscript(item.profile, item.session));
+    return () => stops.forEach((stop) => stop());
+  }, [key]);
+  const lists = sources.map((item) => transcriptOf(`${item.profile}:${item.session}`));
+  const gathered = (0, import_react.useRef)(null);
+  if (gathered.current?.key !== key || lists.some((lines, index) => lines !== gathered.current.lists[index])) {
+    const groups2 = /* @__PURE__ */ new Map(), links2 = /* @__PURE__ */ new Set(), images2 = /* @__PURE__ */ new Map();
+    sources.forEach((item, index) => {
+      const found = artifactsOf(lists[index], item.cwd);
+      const group = groups2.get(item.workspace) ?? { workspace: item.workspace, cwd: item.cwd, files: /* @__PURE__ */ new Map() };
+      groups2.set(item.workspace, group);
+      for (const file of found.files) group.files.set(file.display, { ...file, diffs: [...group.files.get(file.display)?.diffs ?? [], ...file.diffs] });
+      found.links.forEach((url) => links2.add(url));
+      found.images.forEach((image) => images2.set(image.id, image));
+    });
+    gathered.current = {
+      key,
+      lists,
+      links: [...links2],
+      images: [...images2.values()],
+      revision: lists.reduce((sum, lines) => sum + lines.length, 0),
+      groups: [...groups2.values()].map((group) => ({ ...group, files: [...group.files.values()] })).filter((group) => group.files.length > 0)
+    };
+  }
+  const { groups, links, images, revision } = gathered.current;
+  const pathsKey = groups.map((group) => `${group.workspace}\0${group.files.map((file) => file.display).join("\0")}`).join("\n");
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    for (const group of groups) void call2("workspace-diff", { workspace: group.workspace, paths: group.files.map((file) => file.display) }).then(({ patch }) => {
+      if (live) setTurnDiffs((current) => ({ ...current, [group.workspace]: patch }));
+    }).catch(() => {
+    });
+    return () => {
+      live = false;
+    };
+  }, [pathsKey, running]);
+  const shown = (0, import_react.useMemo)(() => groups.map((group) => {
+    const body = { ...changesBody(group.files, group.cwd), ...turnDiffs[group.workspace] && { turnDiff: turnDiffs[group.workspace] } };
+    return { ...group, body, counts: summarizeChanges(body).files.map((item) => item.counts) };
+  }), [groups, turnDiffs]);
+  const fileCount = groups.reduce((sum, group) => sum + group.files.length, 0);
+  if (fileCount + links.length + images.length === 0) return null;
+  const openChanges = (group, path) => showChanges(group.body, path, { cwd: group.cwd, revision, load: async () => {
+    const { patch } = await call2("workspace-diff", { workspace: group.workspace, paths: group.files.map((file) => file.display) }).catch(() => ({ patch: "" }));
+    return patch ? { ...group.body, turnDiff: patch } : group.body;
+  } });
   const reveal = () => {
     if (!rightPanelService.getSnapshot().expanded) rightPanelService.toggle();
   };
-  const row = (key, icon, label, title, onClick) => (0, import_react.createElement)(
+  const row = (key2, icon, label, title, onClick, count) => (0, import_react.createElement)(
     "button",
-    { key, type: "button", className: "nodo-team-row", title, onClick },
+    { key: key2, type: "button", className: "nodo-team-row", title, onClick },
     icon,
-    (0, import_react.createElement)("span", { className: "nodo-round-title" }, label)
+    (0, import_react.createElement)("span", { className: "nodo-round-title" }, label),
+    count && (0, import_react.createElement)("span", { className: "nodo-env-counts" }, (0, import_react.createElement)(Counts, { value: count }))
   );
   return (0, import_react.createElement)(
     "div",
@@ -15388,14 +15439,21 @@ function Artifacts({ workspace, profile, session, cwd }) {
       (0, import_react.createElement)(
         "span",
         { className: "nodo-panel-meta" },
-        [files.length && `${files.length} \u6587\u4EF6`, links.length && `${links.length} \u94FE\u63A5`, images.length && `${images.length} \u56FE\u7247`].filter(Boolean).join(" \xB7 "),
+        [fileCount && `${fileCount} \u6587\u4EF6`, links.length && `${links.length} \u94FE\u63A5`, images.length && `${images.length} \u56FE\u7247`].filter(Boolean).join(" \xB7 "),
         (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14, style: folded ? { transform: "rotate(-90deg)" } : void 0 })
       )
     ),
     !folded && (0, import_react.createElement)(
       "div",
       { className: "nodo-team-list" },
-      ...files.map((file) => row(`f:${file.display}`, (0, import_react.createElement)(FileIcon, { name: file.name, size: 16 }), file.display, file.display, () => openChanges(file.path))),
+      ...shown.flatMap((group) => group.files.map((file, index) => row(
+        `f:${group.workspace}:${file.display}`,
+        (0, import_react.createElement)(FileIcon, { name: file.name, size: 16 }),
+        file.display,
+        shown.length > 1 ? file.path : file.display,
+        () => openChanges(group, file.path),
+        group.counts[index]
+      ))),
       ...images.map((image) => row(
         `i:${image.id}`,
         (0, import_react.createElement)(FileIcon, { name: image.name ?? "image.png", size: 16 }),
@@ -15414,9 +15472,9 @@ function SessionPanel({ workspace, cwd, team, running, profile, session }) {
   return (0, import_react.createElement)(
     "aside",
     { className: "nodo-session-panel", "aria-label": "\u6458\u8981\u9762\u677F" },
-    (0, import_react.createElement)(Environment, { key: workspace, workspace, cwd, running }),
-    team && (0, import_react.createElement)(RoundTeam, { key: workspace, ...team, workspace }),
-    session && (0, import_react.createElement)(Artifacts, { workspace, profile, session, cwd })
+    (0, import_react.createElement)(Environment, { key: `env:${workspace}`, workspace, cwd, running }),
+    team && (0, import_react.createElement)(RoundTeam, { key: `team:${workspace}`, ...team, workspace }),
+    session && (0, import_react.createElement)(Artifacts, { running, sources: (team ? [team.lead, ...team.members] : [{ role: { id: profile }, session: { id: session, cwd, workspaceRef: workspace } }]).map((item) => ({ profile: item.role.id, session: item.session.id, cwd: item.session.cwd ?? cwd, workspace: item.session.workspaceRef ?? workspace })) })
   );
 }
 
@@ -15498,8 +15556,8 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
           "div",
           { className: "nodo-approval-strip", role: "alert" },
           (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: busy ? "ongoing" : "warning" }),
-          from || card.taskTitle ? "\u7B49\u5F85\u5BA1\u6279 \xB7" : "\u7B49\u5F85\u5BA1\u6279",
-          card.taskTitle && (0, import_react.createElement)("span", { className: "nodo-approval-task" }, card.taskTitle),
+          (0, import_react.createElement)("span", { className: "nodo-approval-label" }, from || card.taskTitle ? "\u7B49\u5F85\u5BA1\u6279 \xB7" : "\u7B49\u5F85\u5BA1\u6279"),
+          card.taskTitle && card.taskTitle !== from?.session.name && (0, import_react.createElement)("span", { className: "nodo-approval-task" }, card.taskTitle),
           from && (0, import_react.createElement)(
             "span",
             { className: "nodo-approval-from" },
@@ -18158,13 +18216,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
       sessions: { ...current.sessions, ...sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {} }
     }));
   }, [profile?.id, workspace?.id, sessionId, archivedConversation]);
-  const remember = (roleId, projectId, id, archived2 = false) => setNavigation((current) => ({
-    ...current,
-    profile: roleId,
-    workspace: projectId,
-    archivedSession: archived2 ? id : void 0,
-    sessions: { ...current.sessions, ...id && !archived2 ? { [`${projectId}:${roleId}`]: id } : {} }
-  }));
+  const remember = (roleId, projectId, id, archived2 = false) => {
+    const anchor = projectAnchorOf(workspaces, projectId);
+    return setNavigation((current) => ({
+      ...current,
+      profile: roleId,
+      workspace: anchor,
+      archivedSession: archived2 ? id : void 0,
+      sessions: { ...current.sessions, ...id && !archived2 ? { [`${anchor}:${roleId}`]: id } : {} }
+    }));
+  };
   const trackSelection = (sameSession = false) => {
     const origin = nativeSpace.getSnapshot(), request = selection.current;
     return () => {
@@ -21008,6 +21069,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-approval{display:flex;flex-direction:column;align-items:center;padding:8px calc(var(--dsh-composer-side-clearance,16px) + 16px) 12px}
 .nodo-approval-card{box-sizing:border-box;width:100%;max-width:var(--dsh-chat-content-width,748px);border:1px solid var(--dsw-alias-state-warn-secondary);border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);overflow:hidden}
 .nodo-approval-strip{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:13px;line-height:18px}
+.nodo-approval-label{flex:none;white-space:nowrap}
 .nodo-approval-from{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .nodo-approval-task{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-approval-from>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

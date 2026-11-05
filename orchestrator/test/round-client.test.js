@@ -793,7 +793,7 @@ test('the roster puts roles with a state first by latest change, then leads, the
   assert.deepEqual(calls, ['new', 't1', 't3', 't3'], 'a lead-less team row opens its config like its edit button')
 })
 
-async function mount(viewName = 'team', restored, feed = null) {
+async function mount(viewName = 'team', restored, feed = null, respond = null) {
   const slots = [], calls = [], storage = {}
   let cursor = 0
   let navigation = restored ?? { view: viewName, profile: 'lead', workspace: 'w', sessions: { 'w:lead': 'l1' } }
@@ -806,15 +806,15 @@ async function mount(viewName = 'team', restored, feed = null) {
     stats: { l1: { turns: 2, steps: 4, inputTokens: 100, outputTokens: 50 }, e1: { turns: 1, steps: 2, inputTokens: 20, outputTokens: 10 } },
     teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
   const space = { active: true, legacy: true }
-  const loaded = await loadClient(['page.js', 'round.js', 'session-panel.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
-    ...(feed ? { stubs: { 'live.js': liveStub(feed) } } : {}),
+  const loaded = await loadClient(['page.js', 'round.js', 'session-panel.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js', 'workspace-dialogs.js'], {
+    stubs: { 'session-rail.tsx': { Rail: props => ({ type: 'Rail', props }) }, ...(feed ? { 'live.js': liveStub(feed) } : {}) },
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),
       readNavigation: () => navigation, subscribeNavigation() {}, setNavigation: update => { navigation = update(navigation) },
       nativeSpace: { subscribe() {}, getSnapshot: () => space, showLegacy() {} },
       readNativeSession: () => null, subscribeNativeSession() {}, completionTracker: { subscribe() {}, getSnapshot: () => ({}) },
       workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing', workKind: () => 'run', WorkDot: 'WorkDot', sessionTime: () => '',
-      call: async (endpoint, payload) => { calls.push({ endpoint, payload }) },
+      call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return respond?.(endpoint, payload) },
     },
     react: {
       useState(initial) {
@@ -830,7 +830,7 @@ async function mount(viewName = 'team', restored, feed = null) {
       setItem: (key, value) => { if (key === 'nodo.navigation') navigation = JSON.parse(value); else storage[key] = value },
     } },
   })
-  const render = () => { cursor = 0; return nodes(loaded.NodoPage({ contentOnly: true })) }
+  const render = (options = { contentOnly: true }) => { cursor = 0; return nodes(loaded.NodoPage(options)) }
   return { loaded, view, calls, render, navigation: () => plain(navigation), find: type => render().find(node => node.type === type)?.props }
 }
 
@@ -1040,6 +1040,57 @@ test('an executor session opened from the round links back to its lead session',
   assert.equal(find(loaded.Feed).session.id, 'l1')
   assert.equal(navigation().view, 'team')
   assert.ok(find(loaded.Feed).round)
+})
+
+test('a worktree member session opens under its project anchor, and worktree creation keeps the composer in the worktree', async () => {
+  let view
+  const harness = await mount('team', { view: 'team', profile: 'lead', workspace: 'w', sessions: { 'w:lead': 'l1', 'w:coder': 'e0' } }, null,
+    async (endpoint, payload) => {
+      if (endpoint !== 'session-create') return undefined
+      view.profiles[0].sessions.push({ id: 'e9', name: 'Worktree work', workspaceRef: 'tw', createdAt: 4, source: { kind: 'lead', leadSessionId: 'l1' } })
+      return { id: payload.workspace === 'tw' ? 'e9' : undefined }
+    })
+  const { loaded, calls, render, find, navigation } = harness
+  view = harness.view
+  view.workspaces = [{ id: 'w', name: 'Project' }, { id: 'tw', name: 'Isolated', worktree: { project: 'w' } }]
+  view.profiles[1].sessions = [
+    { id: 'e3', name: 'Isolated', workspaceRef: 'tw', createdAt: 3, source: { kind: 'lead', leadSessionId: 'l1' } },
+    { id: 'e0', name: 'Old', workspaceRef: 'w', createdAt: 1, source: { kind: 'lead', leadSessionId: 'l0' } },
+  ]
+  // ① 查看会话 on the executor card lands on the isolated session, remembered at the anchor.
+  find(loaded.Feed).round.onOpen('e3')
+  await tick()
+  assert.deepEqual(plain(calls.at(-1)), { endpoint: 'session-select', payload: { profile: 'coder', session: 'e3' } })
+  assert.equal(find(loaded.Feed).session.id, 'e3', 'the isolated member session opens, not the old project session')
+  assert.equal(navigation().sessions['w:coder'], 'e3', 'the selection is remembered under the project anchor key')
+  assert.equal(navigation().workspace, 'w', 'navigation stores the project anchor, never the worktree')
+  assert.equal(render().find(node => node.props.className === 'nodo-crumb nodo-crumb-link').props.title, 'Fix login',
+    'the team tab still names the current lead session')
+  // ② the team tab returns to the lead session of the current round.
+  render().find(node => node.props.className === 'nodo-crumb nodo-crumb-link').props.onClick()
+  await tick()
+  assert.deepEqual(plain(calls.at(-1)), { endpoint: 'session-select', payload: { profile: 'lead', session: 'l1' } })
+  assert.equal(find(loaded.Feed).session.id, 'l1')
+  assert.equal(navigation().view, 'team')
+  // ③ closing the member tab goes back to the lead session too.
+  find(loaded.Feed).round.onOpen('e3')
+  await tick()
+  render().find(node => node.props.className === 'nodo-tab-close').props.onClick({ stopPropagation() {} })
+  await tick()
+  assert.equal(find(loaded.Feed).session.id, 'l1', 'closing the member tab returns to the lead session')
+  assert.equal(navigation().view, 'team')
+  // ④ WorktreeDialog's new session shows the new conversation while the composer stays in the worktree.
+  render({ contentOnly: false }).find(node => node.props?.onNewWorktree).props.onNewWorktree(view.workspaces[0])
+  render({ contentOnly: false }).find(node => node.type === loaded.WorktreeDialog).props
+    .onCreated({ workspace: view.workspaces[1], openSession: true, sessionName: '' })
+  await tick()
+  await tick()
+  assert.equal(calls.at(-1).endpoint, 'session-create')
+  assert.equal(calls.at(-1).payload.workspace, 'tw')
+  assert.equal(find(loaded.Feed).session.id, 'e9', 'the new worktree session opens')
+  assert.equal(find(loaded.Composer).workspace.id, 'tw', 'the composer keeps the worktree directory')
+  assert.equal(navigation().workspace, 'w', 'the worktree session still anchors navigation at the project')
+  assert.equal(navigation().sessions['w:lead'], 'e9')
 })
 
 test('a lead session draws no statistics and the dialog cannot follow onto it; an executor session keeps both', async () => {

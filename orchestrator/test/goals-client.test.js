@@ -85,6 +85,10 @@ test('approval cards name their task on the first line and stay plain without on
     .some(child => child.props?.className === 'nodo-approval-task' && child.children[0] === 'Fix login'))
   assert.equal(nodes(loaded.ApprovalCard({ card: { id: 'p2', tool: 'bash', kind: 'permission' } }))
     .some(node => node.props.className === 'nodo-approval-task'), false, 'a card without a task keeps its plain first line')
+  const from = { role: { name: 'research' }, session: { name: 'Fix login' } }
+  loaded.host.reset()
+  assert.equal(nodes(loaded.ApprovalCard({ card: { id: 'p3', tool: 'bash', kind: 'permission', taskTitle: 'Fix login' }, from }))
+    .some(node => node.props.className === 'nodo-approval-task'), false, 'a task title the session name already carries is not shown twice')
   const ask = nodes(loaded.ApprovalCard({ card: { id: 'q1', kind: 'question', taskTitle: 'Fix login',
     detail: { questions: [{ id: 'a', header: '确认', question: '继续？', options: [{ label: '好' }] }] } } }))
   assert.equal(ask.find(node => node.props.className === 'nodo-question-eyebrow').children[0], 'Fix login')

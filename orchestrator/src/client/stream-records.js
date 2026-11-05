@@ -1,4 +1,4 @@
-import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock, toolVariant } from './ui-shared.js'
+import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock, toolVariant, rightPanelService } from './ui-shared.js'
 import { TranscriptImage } from './feed.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { HoverPreview, HoverFilePreview, ToolFileChip, useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
@@ -20,10 +20,19 @@ const STREAM_CODE_LABELS = { copy: '复制', copied: '已复制' }
 const STREAM_TERMINAL_LABELS = { ...STREAM_CODE_LABELS, signal: value => `信号 ${value}`, exitCode: value => `退出码 ${value}`, noExitCode: '退出码未知',
   running: '运行中', failed: '失败', done: '已完成', noOutput: '无输出', collapseAria: '收起输出', expandAria: n => `展开其余 ${n} 行`, collapse: '收起', expand: n => `展开其余 ${n} 行` }
 const streamSize = bytes => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+// Files a session's write/edit tools touched, in the shape the right panel's changes tab reads.
+export const changesBody = (files, cwd) => ({ scope: 'edit-tools', coverage: 'partial', cwd, fileCount: files.length, files: files.map(file => ({ path: file.path, edits: file.diffs.map(diff => ({
+  operation: diff.oldText == null && diff.patch === undefined ? 'add' : 'update', oldText: diff.oldText ?? null, newText: diff.newText, ...(diff.patch ? { diffText: diff.patch } : {}) })) })) })
+export const showChanges = (body, path, { cwd, revision, load }) => rightPanelService.openChanges({ revision, body, load,
+  renderFile: (file, patch, panel) => h(ChangedFile, { key: file.path, file, patch, panel, inline: true, root: cwd, cycle: revision }) }, path)
 // The one file chip + hover-preview pair a read/write/edit tool row carries:
 // the chip rides the row's label, the preview hangs after the row.
 export const toolFileCards = (file, hover, scope) => ({
-  chip: h(ToolFileChip, { file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide }),
+  chip: h(ToolFileChip, { file, onShow: row => hover.show(file.path, row), onClose: hover.close, onOpened: hover.hide,
+    onOpenChanges: file.diffs.length > 0 ? () => {
+      const cwd = file.display === file.path ? undefined : file.path.slice(0, -file.display.length - 1)
+      showChanges(changesBody([file], cwd), file.path, { cwd, revision: 0 })
+    } : undefined }),
   preview: h(HoverPreview, { preview: hover, className: 'nodo-hover-preview',
     label: `${file.display} ${file.diffs.length > 0 ? '变更预览' : '文件预览'}`,
     children: file.diffs.length > 0 ? file.diffs.map((change, index) => h(CodeDiff, {

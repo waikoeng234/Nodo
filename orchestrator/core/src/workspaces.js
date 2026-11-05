@@ -10,6 +10,7 @@ import { readdirSync, realpathSync } from 'node:fs'
 import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { validateWorkspace } from '../../agent-drivers/dist/cli.js'
 import { IMAGE_BYTES_MAX, NAME_MAX } from './constants.js'
+import { readImageFile } from './image-files.js'
 import { normalize, unquote, uniqueName } from './text.js'
 import { failure, invalid } from './errors.js'
 import { nativeIdOf } from '../shared/session.js'
@@ -23,9 +24,12 @@ const FILE_VIEW_LIMIT = 512 * 1024
 const DIR_MAX = 1000
 const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
 
-const confine = (base, path) => {
+const inside = (base, path) => {
   const rest = relative(base, path)
-  if (rest === '..' || rest.startsWith(`..${sep}`) || isAbsolute(rest)) throw invalid('文件不在会话工作区内')
+  return rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
+}
+const confine = (base, path) => {
+  if (!inside(base, path)) throw invalid('文件不在会话工作区内')
 }
 const unreadable = error => {
   if (error.code === 'ENOENT') return null
@@ -169,7 +173,7 @@ export function install(rt) {
     return { files: found }
   }
 
-  const workspacePath = async ({ workspace, profile, session, target, path: wanted }, directory = false) => {
+  const sessionCwd = async ({ workspace, profile, session, target }) => {
     await rt.load()
     let found, cwd
     if (workspace !== undefined) {
@@ -183,15 +187,24 @@ export function install(rt) {
     } else {
       try { found = rt.conversation(profile, session) } catch { throw failure('No such session', 'orch/not-found') }
     }
-    if (found) cwd = found.session.cwd ?? rt.sessionWorkspace(found.profile, found.session)?.cwd
+    return found ? found.session.cwd ?? rt.sessionWorkspace(found.profile, found.session)?.cwd : cwd
+  }
+
+  const workspacePath = async ({ path: wanted, workspace, ...scope }, directory = false) => {
+    const cwd = await sessionCwd({ workspace, ...scope })
     if (!cwd || typeof wanted !== 'string' || (!directory && wanted === '') || wanted.includes('\0')) throw invalid('需要会话工作区内的文件路径')
     const root = resolve(cwd)
     const full = resolve(root, wanted)
     try { confine(root, full) } catch (error) {
-      if (workspace === undefined || !isAbsolute(wanted)) throw error
-      const actual = await realpath(root).catch(() => null)
-      if (!actual) throw error
-      confine(actual, full)
+      const real = isAbsolute(wanted) ? await realpath(full).catch(() => null) : null
+      const rootReal = await realpath(root).catch(() => null)
+      // An absolute path can spell the workspace root through a symlink (/tmp vs /private/tmp).
+      const reachable = real !== null && (inside(root, real) || (rootReal !== null && inside(rootReal, real)))
+      if (!reachable) {
+        if (workspace === undefined || !isAbsolute(wanted)) throw error
+        if (!rootReal) throw error
+        confine(rootReal, full)
+      }
     }
     // Symbolic links are followed only while they stay inside the workspace.
     const real = await realpath(full).catch(directory ? directoryUnreadable : unreadable)
@@ -220,9 +233,8 @@ export function install(rt) {
     return { entries: entries.slice(0, DIR_MAX), ...(entries.length > DIR_MAX ? { truncated: true } : {}) }
   }
 
-  // One bounded workspace-file read, constrained to the conversation's own
-  // workspace so a captured path cannot reach elsewhere.
-  const workspaceFile = async body => {
+  // One bounded read confined to the conversation's own workspace; the outer workspaceFile additionally serves attachment-policy images.
+  const readWorkspaceFile = async body => {
     const { full, real } = await workspacePath(body)
     if (real === null) return { path: full, missing: true }
     const info = await stat(real).catch(unreadable)
@@ -248,6 +260,27 @@ export function install(rt) {
       if (chunk.subarray(0, bytesRead).includes(0)) return { path: full, binary: true }
       return { path: full, text: rt.redactSecrets(chunk.subarray(0, Math.min(bytesRead, FILE_VIEW_LIMIT)).toString('utf8')), truncated: bytesRead > FILE_VIEW_LIMIT || undefined }
     } finally { await handle.close() }
+  }
+
+  // Stream tool rows reference images outside the workspace; image extensions
+  // fall back to the attachment read policy (cwd, tmp roots, generated images).
+  const workspaceFile = async body => {
+    try { return await readWorkspaceFile(body) } catch (error) {
+      const wanted = typeof body?.path === 'string' ? body.path : ''
+      if (error.message !== '文件不在会话工作区内' || !IMAGE_TYPES[extname(wanted).toLowerCase()]) throw error
+      const root = resolve(await sessionCwd(body))
+      const full = resolve(root, wanted)
+      if (inside(root, full)) throw error // escaped through a symlink after passing containment — keep it refused
+      const info = await stat(full).catch(unreadable)
+      if (!info?.isFile()) return { path: full, missing: true }
+      let image
+      try { image = await readImageFile(wanted, root) } catch (reason) {
+        if (reason.message === 'image-too-large') return { path: full, binary: true }
+        // OS error messages carry absolute paths; refuse without them.
+        throw invalid('文件不在会话工作区内')
+      }
+      return { path: full, image: { mediaType: image.mediaType, dataUrl: `data:${image.mediaType};base64,${image.data}` } }
+    }
   }
 
   Object.assign(rt, {
