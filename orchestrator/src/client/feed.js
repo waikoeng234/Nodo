@@ -266,7 +266,18 @@ export function ProcessGroup({ rows, running, depths = [], children = [] }) {
   return h(ToolTimeline, { steps, summary, streaming: running })
 }
 
-export function Feed({ profile, session, work, sentTick, round }) {
+// A decision answer is saved as raw values; it reads as each question with the
+// option or words the user chose.
+const decisionAnswerText = (item, decisions) => {
+  const decision = item.origin?.kind === 'decision-answer' && decisions?.find(entry => entry.id === item.origin.decisionId)
+  if (!decision?.answer) return
+  return decision.questions.map(question => {
+    const value = decision.answer.values[question.id]
+    return `${question.question}\n${question.options?.find(option => option.id === value?.optionId)?.label ?? value?.text ?? ''}`
+  }).join('\n\n')
+}
+
+export function Feed({ profile, session, work, sentTick, round, decisions }) {
   const [following, setFollowing] = useState(true)
   const [activeTurn, setActiveTurn] = useState(null)
   const key = `${profile.id}:${session?.id ?? ''}`
@@ -404,7 +415,7 @@ export function Feed({ profile, session, work, sentTick, round }) {
         h('div', { className: 'nodo-bubble' },
           item.files?.length > 0 && h('span', { className: 'nodo-user-files' }, item.files.map((file, at) => h('span', { key: file.id ?? at, className: 'nodo-composer-file' },
             h(IconPaperclipOutlineRegular, { size: 14 }), h('span', { title: file.name }, file.name)))),
-          item.images?.map(image => h(TranscriptImage, { key: image.id, image })), item.text),
+          item.images?.map(image => h(TranscriptImage, { key: image.id, image })), decisionAnswerText(item, decisions) ?? item.text),
         h(MessageTime, { at: item.at }),
         item.references?.length > 0 && referenceHistory(item.references))
     }

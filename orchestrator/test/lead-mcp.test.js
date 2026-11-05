@@ -6,6 +6,7 @@ import { join, dirname } from 'node:path'
 import { connect, createServer } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv'
 import { install } from '../core/src/lead-channel.js'
 import { install as installSecrets } from '../core/src/secrets.js'
 import { install as installDrivers } from '../core/src/drivers.js'
@@ -105,7 +106,21 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     assert.equal(JSON.stringify(spec).includes(token), false)
     await client.connect(new StdioClientTransport({ command: spec.command, args: spec.args, env, stderr: 'pipe' }))
     const { tools } = await client.listTools()
-    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt', 'nodo_task'])
+    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt', 'nodo_task', 'nodo_decision'])
+    assert.deepEqual(tools[4].inputSchema.required, ['questions', 'stopExecutionIds'])
+    assert.match(tools[4].description, /结束当前轮次/)
+    assert.match(tools[4].description, /不另发同一问题的原生问答/)
+    assert.match(tools[4].description, /失败时修正参数后重试/)
+    assert.match(tools[4].inputSchema.properties.references.description, /只接受本会话已有的引用 id.*附件.*board.*不是文件路径.*没有.*省略/)
+    assert.match(tools[4].description, /不按默认或推荐方案继续/)
+    assert.match(tools[4].description, /开放问题省略 options 和 recommendation，不造占位选项/)
+    for (const tool of [tools[0], tools[1]]) assert.match(tool.description, /派活前先判断是否缺少用户取舍或授权；缺少时.*nodo_decision/)
+    const validateDecision = new AjvJsonSchemaValidator().getValidator(tools[4].inputSchema)
+    const question = { id: 'scope', question: '需要支持哪些调用方？', whyUser: '当前用户指令没有说明新增支持范围' }
+    const decision = { questions: [question], stopExecutionIds: [] }
+    assert.equal(validateDecision(decision).valid, true, 'open questions may omit options')
+    assert.equal(validateDecision({ ...decision, questions: [{ ...question, options: [] }] }).valid, false)
+    assert.equal(validateDecision({ ...decision, questions: [{ ...question, options: [{ id: 'current', label: '现有调用方', consequence: '保持现有范围' }] }] }).valid, true)
     assert.equal(tools[0].annotations.readOnlyHint, true)
     assert.deepEqual(tools[1].inputSchema.required, ['type', 'hard', 'task'])
     assert.match(tools[1].description, /本轮正常结束后发送/)
@@ -124,8 +139,11 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
       { properties: { action: { const: 'complete' } }, required: ['reason', 'references'] },
       { properties: { action: { const: 'reopen' } } },
       { properties: { action: { const: 'revise' } }, anyOf: [{ required: ['title'] }, { required: ['brief'] }, { required: ['parentId'] }, { required: ['dependsOn'] }] },
+      { properties: { action: { const: 'review' } }, required: ['executionId', 'disposition', 'reason', 'basis'] },
     ])
-    assert.deepEqual(tools[3].inputSchema.properties.action.enum, ['complete', 'reopen', 'revise'])
+    assert.deepEqual(tools[3].inputSchema.properties.action.enum, ['complete', 'reopen', 'revise', 'review'])
+    assert.deepEqual(tools[3].inputSchema.properties.basis, { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 }, description: 'review：可追溯依据，记录适用用户要求、决定、规则或证据位置；是 leader 判断，不是系统证明。' })
+    assert.deepEqual(tools[0].inputSchema.properties.table.enum, ['roles', 'delegations', 'tasks', 'decisions'])
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
     assert.match(board.content[0].text, /派活/)
     assert.doesNotMatch(board.content[0].text, /secret-value|角色/)

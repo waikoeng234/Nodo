@@ -12990,7 +12990,16 @@ function ProcessGroup({ rows, running, depths = [], children = [] }) {
   });
   return (0, import_react.createElement)(ToolTimeline, { steps, summary, streaming: running });
 }
-function Feed({ profile, session, work, sentTick, round }) {
+var decisionAnswerText = (item, decisions) => {
+  const decision = item.origin?.kind === "decision-answer" && decisions?.find((entry) => entry.id === item.origin.decisionId);
+  if (!decision?.answer) return;
+  return decision.questions.map((question) => {
+    const value = decision.answer.values[question.id];
+    return `${question.question}
+${question.options?.find((option) => option.id === value?.optionId)?.label ?? value?.text ?? ""}`;
+  }).join("\n\n");
+};
+function Feed({ profile, session, work, sentTick, round, decisions }) {
   const [following, setFollowing] = (0, import_react.useState)(true);
   const [activeTurn, setActiveTurn] = (0, import_react.useState)(null);
   const key = `${profile.id}:${session?.id ?? ""}`;
@@ -13146,7 +13155,7 @@ function Feed({ profile, session, work, sentTick, round }) {
             (0, import_react.createElement)("span", { title: file.name }, file.name)
           ))),
           item.images?.map((image) => (0, import_react.createElement)(TranscriptImage, { key: image.id, image })),
-          item.text
+          decisionAnswerText(item, decisions) ?? item.text
         ),
         (0, import_react.createElement)(MessageTime, { at: item.at }),
         item.references?.length > 0 && referenceHistory(item.references)
@@ -13765,7 +13774,7 @@ function roundLines(lines, leadRunning = false) {
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
       flush();
     }
-    if (line.origin && !(line.who === "user" && line.origin.kind === "task")) continue;
+    if (line.origin && !(line.who === "user" && (line.origin.kind === "task" || line.origin.kind === "decision-answer")) && !(line.who === "system" && line.origin.kind === "decision-cancel")) continue;
     const text = line.who === "agent" && line.kind === "text" ? stripNodo(line.text) : null;
     if (text === "") continue;
     out.push(text === null ? line : { ...line, text });
@@ -13902,7 +13911,8 @@ function RoundMember({ step, round }) {
   const live = !step.report && !step.ended && work?.active === true;
   const task = round.tasks?.find((item) => item.id === step.taskId);
   const parent = task?.parentId && round.tasks?.find((item) => item.id === task.parentId);
-  const word = taskWord(task, work, step.unconfirmed === true);
+  const waiting = round.decisions?.some((decision) => (decision.status === "pending" || decision.status === "answered") && decision.taskIds.includes(step.taskId));
+  const word = waiting ? "\u7B49\u5F85\u7528\u6237" : taskWord(task, work, step.unconfirmed === true);
   const label = work?.retryWaiting ? "\u7B49\u5F85\u81EA\u52A8\u7EE7\u7EED" : work?.suspect ? workLabel(work) : "";
   const [open, setOpen] = (0, import_react.useState)(false);
   const [confirming, setConfirming] = (0, import_react.useState)(false);
@@ -15504,6 +15514,64 @@ var ENGINE_LOGO_CSS = `
 // src/client/run-cards.js
 var RECOMMENDED_LABEL = /\s*(?:\((?:recommended|推荐)\)|（(?:recommended|推荐)）)\s*$/i;
 var optionText = (label) => RECOMMENDED_LABEL.test(label) ? { text: label.replace(RECOMMENDED_LABEL, ""), recommended: true } : { text: label, recommended: false };
+var questionOption = ({ key, index, selected, disabled, onClick, label, recommended, line }, ...children) => (0, import_react.createElement)(
+  "button",
+  {
+    key,
+    type: "button",
+    role: "radio",
+    "aria-checked": selected,
+    className: "nodo-question-option",
+    "data-selected": selected ? "" : void 0,
+    disabled,
+    onClick
+  },
+  (0, import_react.createElement)("span", { className: "nodo-question-number", "aria-hidden": true }, index + 1),
+  (0, import_react.createElement)(
+    "span",
+    { className: "nodo-question-copy" },
+    (0, import_react.createElement)(
+      "span",
+      { className: "nodo-question-line" },
+      (0, import_react.createElement)("span", { className: "nodo-question-label" }, label),
+      recommended && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "accent" }, "\u63A8\u8350"),
+      line
+    ),
+    ...children
+  )
+);
+var questionAnswer = ({ key, value, disabled, label, placeholder, autoFocus, onChange, onEnter }) => (0, import_react.createElement)("textarea", {
+  key,
+  className: "nodo-question-answer",
+  rows: 1,
+  disabled,
+  value,
+  "aria-label": label,
+  placeholder,
+  autoFocus,
+  onChange: (event) => onChange(event.target.value),
+  onKeyDown: (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+      event.preventDefault();
+      onEnter();
+    }
+  }
+});
+var questionPager = ({ step, count, disabled, onBack, onNext }) => count > 1 && (0, import_react.createElement)(
+  "div",
+  { className: "nodo-question-pager" },
+  (0, import_react.createElement)(
+    "button",
+    { type: "button", className: "nodo-question-icon", "aria-label": "\u4E0A\u4E00\u9898", disabled: step === 0 || disabled, onClick: onBack },
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 })
+  ),
+  (0, import_react.createElement)("span", { className: "nodo-question-progress" }, `${step + 1} / ${count}`),
+  (0, import_react.createElement)(
+    "button",
+    { type: "button", className: "nodo-question-icon", "aria-label": "\u4E0B\u4E00\u9898", disabled: step === count - 1 || disabled, onClick: onNext },
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 })
+  )
+);
 function ApprovalCard({ card, refresh, readOnly, from }) {
   const questions = card.detail?.questions?.length ? card.detail.questions : [{ id: "answer", question: card.reason, options: (card.detail?.options ?? []).map((label) => ({ label })) }];
   const [step, setStep] = (0, import_react.useState)(0);
@@ -15606,85 +15674,241 @@ function ApprovalCard({ card, refresh, readOnly, from }) {
           { className: "nodo-question-options", role: "radiogroup", "aria-label": question.header ?? question.question },
           ...(question.options ?? []).map((option, index) => {
             const display = optionText(option.label);
-            return (0, import_react.createElement)(
-              "button",
-              {
-                key: `${option.label}-${index}`,
-                type: "button",
-                role: "radio",
-                "aria-checked": draft === option.label,
-                className: "nodo-question-option",
-                "data-selected": draft === option.label ? "" : void 0,
-                disabled: blocked,
-                onClick: () => {
-                  setError("");
-                  pick(option.label);
-                }
+            return questionOption({
+              key: `${option.label}-${index}`,
+              index,
+              selected: draft === option.label,
+              disabled: blocked,
+              onClick: () => {
+                setError("");
+                pick(option.label);
               },
-              (0, import_react.createElement)("span", { className: "nodo-question-number", "aria-hidden": true }, index + 1),
-              (0, import_react.createElement)(
-                "span",
-                { className: "nodo-question-copy" },
-                (0, import_react.createElement)(
-                  "span",
-                  { className: "nodo-question-line" },
-                  (0, import_react.createElement)("span", { className: "nodo-question-label" }, display.text),
-                  display.recommended && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "accent" }, "\u63A8\u8350"),
-                  option.description && (0, import_react.createElement)("span", { className: "nodo-question-description" }, option.description)
-                )
-              )
-            );
+              label: display.text,
+              recommended: display.recommended,
+              line: option.description && (0, import_react.createElement)("span", { className: "nodo-question-description" }, option.description)
+            });
           })
         ),
-        question.allowText !== false && card.detail?.allowText !== false && (0, import_react.createElement)("textarea", {
-          className: "nodo-question-answer",
-          rows: 1,
-          disabled: blocked,
+        question.allowText !== false && card.detail?.allowText !== false && questionAnswer({
           value: draft,
-          "aria-label": question.header ?? question.question,
+          disabled: blocked,
+          label: question.header ?? question.question,
           placeholder: "\u8F93\u5165\u4F60\u7684\u7B54\u6848",
-          onChange: (event) => {
+          onChange: (value) => {
             setError("");
-            pick(event.target.value);
+            pick(value);
           },
-          onKeyDown: (event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
-              event.preventDefault();
-              next();
-            }
-          }
+          onEnter: next
         })
       ),
       (0, import_react.createElement)(
         "footer",
         { className: "nodo-question-foot" },
-        questions.length > 1 && (0, import_react.createElement)(
-          "div",
-          { className: "nodo-question-pager" },
-          (0, import_react.createElement)("button", {
-            type: "button",
-            className: "nodo-question-icon",
-            "aria-label": "\u4E0A\u4E00\u9898",
-            disabled: step === 0 || blocked,
-            onClick: () => {
-              setError("");
-              setStep(step - 1);
-            }
-          }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 })),
-          (0, import_react.createElement)("span", { className: "nodo-question-progress" }, `${step + 1} / ${questions.length}`),
-          (0, import_react.createElement)("button", {
-            type: "button",
-            className: "nodo-question-icon",
-            "aria-label": "\u4E0B\u4E00\u9898",
-            disabled: last || blocked,
-            onClick: next
-          }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 }))
-        ),
+        questionPager({ step, count: questions.length, disabled: blocked, onBack: () => {
+          setError("");
+          setStep(step - 1);
+        }, onNext: next }),
         (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "status" }, error2),
         (0, import_react.createElement)(
           "div",
           { className: "nodo-question-actions" },
           (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: blocked, onClick: next }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : last ? "\u63D0\u4EA4" : "\u4E0B\u4E00\u9898")
+        )
+      )
+    )
+  );
+}
+var DECISION_DRAFTS = "nodo.decisionDrafts";
+var readDecisionDrafts = () => {
+  try {
+    return JSON.parse(localStorage.getItem(DECISION_DRAFTS)) ?? {};
+  } catch {
+    return {};
+  }
+};
+var writeDecisionDraft = (id, draft) => {
+  const { [id]: _old, ...rest } = readDecisionDrafts();
+  try {
+    localStorage.setItem(DECISION_DRAFTS, JSON.stringify(draft ? { ...rest, [id]: draft } : rest));
+  } catch {
+  }
+};
+var pruneDecisionDrafts = (decisions) => {
+  const drafts = readDecisionDrafts();
+  const stale = Object.keys(drafts).filter((id) => !decisions.some((decision) => decision.id === id && decision.status === "pending"));
+  if (stale.length > 0) try {
+    localStorage.setItem(DECISION_DRAFTS, JSON.stringify(Object.fromEntries(Object.entries(drafts).filter(([id]) => !stale.includes(id)))));
+  } catch {
+  }
+};
+var DECISION_HEAD = { pending: "\u7B49\u5F85\u7528\u6237\u51B3\u5B9A", answered: "\u7B54\u6848\u5DF2\u63D0\u4EA4 \xB7 \u7B49\u5F85\u4EA4\u63A5" };
+function DecisionCard({ decision, profileId, readOnly, refresh, profiles = [], tasks = [], work = {} }) {
+  const [saved] = (0, import_react.useState)(() => readDecisionDrafts()[decision.id] ?? { answers: {}, open: true, step: 0 });
+  const [answers, setAnswersState] = (0, import_react.useState)(saved.answers);
+  const [open, setOpenState] = (0, import_react.useState)(saved.open);
+  const [step, setStepState] = (0, import_react.useState)(saved.step);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [confirming, setConfirming] = (0, import_react.useState)(false);
+  const [feedback, setFeedback] = (0, import_react.useState)("");
+  const remember = (patch) => writeDecisionDraft(decision.id, { answers, open, step, ...patch });
+  const setAnswers = (next2) => {
+    setAnswersState(next2);
+    remember({ answers: next2 });
+  };
+  const setOpen = (next2) => {
+    setOpenState(next2);
+    remember({ open: next2 });
+  };
+  const setStep = (next2) => {
+    setFeedback("");
+    setStepState(next2);
+    remember({ step: next2 });
+  };
+  const pending = decision.status === "pending";
+  const values = pending ? answers : decision.answer?.values ?? {};
+  const blocked = busy || readOnly || !pending;
+  const answered = (question2) => values[question2.id]?.text?.trim() || question2.options?.some((option) => option.id === values[question2.id]?.optionId);
+  const complete = decision.questions.every(answered);
+  const act = async (endpoint, payload) => {
+    if (busy || readOnly) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      const result = await call2(endpoint, { profile: profileId, session: decision.coordinatorSessionId, decisionId: decision.id, ...payload });
+      if (result?.status !== (endpoint === "decision-answer" ? "answered" : "cancelled")) setFeedback(result?.message ?? "");
+      if (result?.status !== "pending") writeDecisionDraft(decision.id);
+    } catch (failure) {
+      setFeedback(failure.message);
+    }
+    setBusy(false);
+    setConfirming(false);
+    await refresh(true);
+  };
+  const roleName = (sessionId) => profiles.find((role) => role.sessions?.some((session) => session.id === sessionId));
+  const running = (decision.runningExecutions ?? []).map((execution) => ({
+    ...execution,
+    active: work[execution.sessionId]?.active ?? execution.active,
+    stopping: work[execution.sessionId]?.stopping ?? execution.stopping
+  })).filter((execution) => execution.active || execution.stopping);
+  const linked = decision.taskIds.map((id) => tasks.find((task) => task.id === id)).filter(Boolean);
+  const tag = (text, tone) => (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": tone }, text);
+  const count = decision.questions.length;
+  const at2 = Math.min(step, count - 1);
+  const last = at2 === count - 1;
+  const question = decision.questions[at2];
+  const value = values[question.id];
+  const choices = question.options ?? [];
+  const custom = value?.text !== void 0 || choices.length === 0;
+  const choose = (next2) => {
+    setFeedback("");
+    setAnswers({ ...answers, [question.id]: next2 });
+  };
+  const submit = () => void act("decision-answer", { answers: Object.fromEntries(decision.questions.map((item) => [item.id, values[item.id]])) });
+  const next = () => {
+    if (!pending) return setStep(at2 + 1);
+    if (!answered(question)) return setFeedback("\u8BF7\u5148\u5B8C\u6210\u8FD9\u9053\u95EE\u9898\u3002");
+    if (!last) setStep(at2 + 1);
+    else if (complete) submit();
+  };
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-question-frame" },
+    (0, import_react.createElement)(
+      "section",
+      { className: "nodo-question-card nodo-decision", "aria-labelledby": `nodo-decision-${decision.id}`, "aria-busy": busy ? "true" : void 0 },
+      (0, import_react.createElement)(
+        "header",
+        { className: "nodo-question-head" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-decision-heading" },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-decision-status", role: "status", id: `nodo-decision-${decision.id}` },
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: pending ? "warning" : "ongoing", size: 7 }),
+            decision.status === "answered" && decision.handoffStopped ? "\u7B54\u6848\u5DF2\u63D0\u4EA4 \xB7 \u4E3B\u63A7\u5DF2\u505C\u6B62" : DECISION_HEAD[decision.status]
+          ),
+          (linked.length > 0 || running.length > 0) && (0, import_react.createElement)(
+            "div",
+            { className: "nodo-decision-meta" },
+            ...linked.map((task) => (0, import_react.createElement)("span", { key: task.id, className: "nodo-tag", title: task.title }, task.title)),
+            ...running.map((execution) => {
+              const role = roleName(execution.sessionId);
+              const word = execution.stopping ? "\u505C\u6B62\u4E2D" : decision.stopExecutionIds.includes(execution.executionId) ? "\u505C\u6B62\u672A\u786E\u8BA4" : "\u8FD0\u884C\u4E2D";
+              return (0, import_react.createElement)(
+                "span",
+                { key: execution.executionId, className: "nodo-decision-run" },
+                role && (0, import_react.createElement)(RoleAvatar, { profile: role, size: 16 }),
+                tag(`${role?.name ?? execution.sessionId} \xB7 ${word}`, "caution")
+              );
+            })
+          )
+        ),
+        (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-question-icon nodo-decision-toggle",
+          "aria-expanded": open,
+          "aria-label": open ? "\u6536\u8D77" : "\u5C55\u5F00",
+          onClick: () => setOpen(!open)
+        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 16 }))
+      ),
+      open && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-question-body nodo-decision-body", role: "group", "aria-labelledby": `nodo-decision-q-${decision.id}` },
+        (0, import_react.createElement)("h2", { className: "nodo-question-title", id: `nodo-decision-q-${decision.id}` }, question.question),
+        (0, import_react.createElement)("p", { className: "nodo-decision-why" }, question.whyUser),
+        choices.length > 0 && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-question-options", role: "radiogroup", "aria-label": question.question },
+          ...choices.map((option, index) => {
+            const recommended = question.recommendation?.optionId === option.id;
+            return questionOption(
+              {
+                key: option.id,
+                index,
+                selected: value?.optionId === option.id,
+                disabled: blocked,
+                onClick: () => choose({ optionId: option.id }),
+                label: option.label,
+                recommended
+              },
+              (0, import_react.createElement)("span", { className: "nodo-decision-consequence" }, option.consequence),
+              recommended && (0, import_react.createElement)("span", { className: "nodo-decision-reason" }, question.recommendation.reason)
+            );
+          }),
+          questionOption({
+            key: "custom",
+            index: choices.length,
+            selected: custom,
+            disabled: blocked,
+            label: "\u81EA\u5B9A\u4E49\u56DE\u7B54",
+            onClick: () => choose({ text: value?.text ?? "" })
+          })
+        ),
+        custom && questionAnswer({
+          value: value?.text ?? "",
+          disabled: blocked,
+          label: `${question.question} \u81EA\u5B9A\u4E49\u56DE\u7B54`,
+          placeholder: "\u8F93\u5165\u4F60\u7684\u7B54\u6848",
+          key: question.id,
+          autoFocus: pending,
+          onChange: (text) => choose({ text }),
+          onEnter: next
+        })
+      ),
+      open && (0, import_react.createElement)(
+        "footer",
+        { className: "nodo-question-foot" },
+        questionPager({ step: at2, count, disabled: busy, onBack: () => setStep(at2 - 1), onNext: next }),
+        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "alert" }, feedback),
+        pending && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-question-actions" },
+          confirming ? [
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "back", variant: "outline", disabled: busy, onClick: () => setConfirming(false) }, "\u8FD4\u56DE"),
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "confirm", variant: "outline", className: "nodo-approval-reject", disabled: busy || readOnly, onClick: () => void act("decision-cancel", {}) }, "\u786E\u8BA4\u64A4\u9500")
+          ] : (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", className: "nodo-approval-reject", disabled: busy || readOnly, onClick: () => setConfirming(true) }, "\u64A4\u9500"),
+          !confirming && (last ? (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: busy || readOnly || !complete, onClick: submit }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u63D0\u4EA4") : (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: busy || readOnly, onClick: next }, "\u4E0B\u4E00\u9898"))
         )
       )
     )
@@ -18139,6 +18363,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     heldImages = pastedImages;
   }, [pastedImages]);
   (0, import_react.useEffect)(() => {
+    if (view2?.decisions) pruneDecisionDrafts(view2.decisions);
+  }, [view2?.decisions]);
+  (0, import_react.useEffect)(() => {
     const remove = (ids) => {
       setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
       setScopes((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
@@ -18529,10 +18756,12 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           session,
           work,
           sentTick,
+          decisions: view2.decisions,
           round: team ? {
             profiles: view2.profiles,
             teams: view2.teams,
             tasks: view2.tasks,
+            decisions: view2.decisions,
             leadId: profile.id,
             work: view2.work,
             onOpen: openSession,
@@ -18546,6 +18775,16 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           work?.active === true && (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work }),
           activeTasks > 0 && (0, import_react.createElement)(TaskCountLine, { count: activeTasks })
         ),
+        ...(!archivedConversation ? view2.decisions ?? [] : []).filter((decision) => decision.coordinatorSessionId === sessionId && (decision.status === "pending" || decision.status === "answered")).map((decision) => (0, import_react.createElement)(DecisionCard, {
+          key: decision.id,
+          decision,
+          profileId: profile.id,
+          readOnly,
+          refresh,
+          profiles: view2.profiles,
+          tasks: view2.tasks,
+          work: view2.work
+        })),
         ...(!archivedConversation ? view2.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
           key: card.id,
           card: card.taskId ? { ...card, taskTitle: view2.tasks?.find((task) => task.id === card.taskId)?.title } : card,
@@ -21107,6 +21346,18 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-question-icon:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}
 .nodo-question-feedback{flex:1;min-height:16px;margin:0;color:var(--dsw-alias-state-error-primary);text-align:right;font-size:12px;line-height:16px}
 .nodo-question-actions{display:flex;flex-shrink:0;align-items:center;gap:12px}
+.nodo-decision-heading{flex:1;min-width:0}
+.nodo-decision-status{display:flex;align-items:center;gap:6px;color:${WARN_INK};font-size:13px;font-weight:500;line-height:20px}
+.nodo-decision-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.nodo-decision-run{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%}
+.nodo-decision-toggle{flex:none}
+.nodo-decision-toggle svg{transition:transform .12s}
+.nodo-decision-toggle[aria-expanded=false] svg{transform:rotate(-90deg)}
+.nodo-decision-body{padding-top:16px}
+.nodo-decision-body>.nodo-question-title,.nodo-decision-why{padding:0 16px 0 24px}
+.nodo-decision-why{margin:2px 0 0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;text-wrap:pretty}
+.nodo-decision-consequence,.nodo-decision-reason{display:block;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-decision-reason{margin-top:4px;padding-left:8px;border-left:2px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-secondary);font-weight:500}
 .nodo-composer{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;flex:none;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 4px;padding-top:8px;border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-composer-scroll{max-height:var(--dsh-composer-text-max-height,336px);margin-right:4px;overflow-y:auto}
 .nodo-pending{display:flex;flex-direction:column;gap:4px;max-height:160px;margin:0 8px;padding-bottom:8px;overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l2)}

@@ -490,6 +490,18 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-question-icon:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}
 .nodo-question-feedback{flex:1;min-height:16px;margin:0;color:var(--dsw-alias-state-error-primary);text-align:right;font-size:12px;line-height:16px}
 .nodo-question-actions{display:flex;flex-shrink:0;align-items:center;gap:12px}
+.nodo-decision-heading{flex:1;min-width:0}
+.nodo-decision-status{display:flex;align-items:center;gap:6px;color:${WARN_INK};font-size:13px;font-weight:500;line-height:20px}
+.nodo-decision-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.nodo-decision-run{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%}
+.nodo-decision-toggle{flex:none}
+.nodo-decision-toggle svg{transition:transform .12s}
+.nodo-decision-toggle[aria-expanded=false] svg{transform:rotate(-90deg)}
+.nodo-decision-body{padding-top:16px}
+.nodo-decision-body>.nodo-question-title,.nodo-decision-why{padding:0 16px 0 24px}
+.nodo-decision-why{margin:2px 0 0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;text-wrap:pretty}
+.nodo-decision-consequence,.nodo-decision-reason{display:block;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+.nodo-decision-reason{margin-top:4px;padding-left:8px;border-left:2px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-secondary);font-weight:500}
 .nodo-composer{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;flex:none;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 4px;padding-top:8px;border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-composer-scroll{max-height:var(--dsh-composer-text-max-height,336px);margin-right:4px;overflow-y:auto}
 .nodo-pending{display:flex;flex-direction:column;gap:4px;max-height:160px;margin:0 8px;padding-bottom:8px;overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l2)}

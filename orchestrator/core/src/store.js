@@ -8,9 +8,9 @@ import { failure } from './errors.js'
 import { homeLock } from './home-lock.js'
 import { createTranscripts } from './transcripts.js'
 
-const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
+const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'decisions', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
-const blank = () => ({ version: 4, workspaces: {}, profiles: {}, tasks: {}, executions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
+const blank = () => ({ version: 4, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
 const STAMP_MS = 1000
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -223,6 +223,7 @@ export function install(rt) {
       if (saved && (saved.version !== 4 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
     }
     rt.recoverLeadDelegations?.()
+    rt.recoverDecisions?.()
   }
 
   // A failed load is tried again by the next caller.

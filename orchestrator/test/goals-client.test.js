@@ -102,3 +102,27 @@ test('the question card ignores the Enter that confirms an IME composition', asy
   assert.equal(press({ keyCode: 229 }), false)
   assert.equal(press({}), true)
 })
+
+test('a native question pages through its questions, keeps a separate answer field and sends the labels', async () => {
+  const sent = []
+  const loaded = await loadClient('run-cards.js', { call: async (endpoint, payload) => { sent.push({ endpoint, payload }) } })
+  const card = { id: 'q', kind: 'question', detail: { questions: [
+    { id: 'a', question: '继续？', options: [{ label: '好 (Recommended)', description: '直接继续' }, { label: '不' }] },
+    { id: 'b', question: '名字？' },
+  ] } }
+  const render = () => { loaded.host.reset(); return nodes(loaded.ApprovalCard({ card, refresh: async () => {} })) }
+  let tree = render()
+  const radios = tree.filter(node => node.props.role === 'radio')
+  assert.equal(radios.length, 2, 'no extra custom option row')
+  assert.ok(radios[0].children.flatMap(nodes).some(node => node.props['data-tone'] === 'accent'))
+  assert.equal(tree.filter(node => node.type === 'textarea').length, 1)
+  assert.equal(tree.find(node => node.props.className === 'nodo-question-progress').children[0], '1 / 2')
+  radios[0].props.onClick()
+  render().find(node => node.props['aria-label'] === '下一题').props.onClick()
+  tree = render()
+  assert.equal(tree.find(node => node.props.className === 'nodo-question-title').children[0], '名字？')
+  tree.find(node => node.type === 'textarea').props.onChange({ target: { value: 'Nodo' } })
+  render().find(node => node.type === 'Button').props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent, [{ endpoint: 'approval-answer', payload: { id: 'q', decision: 'answer', value: JSON.stringify({ a: '好 (Recommended)', b: 'Nodo' }) } }])
+})

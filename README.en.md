@@ -65,6 +65,7 @@ flowchart LR
 - **Roles**: the role summary is injected through the Agent's own system-prompt channel, once per conversation.
 - **Delegation**: the lead only classifies a task (type and whether it is hard). Who takes it is decided by your configuration in 任务分配 (task assignment), so the same input gives the same result.
 - **Reports**: the lead receives only conclusions and references. Intermediate steps stay in the executor conversation; open 查看会话 to read them.
+- **Decisions**: when a choice is yours to make — a public interface or compatibility change, added scope, or mutually exclusive options — the lead stops and asks in the team conversation instead of choosing. While a question is open the conversation dispatches nothing new, and the lead re-plans once you answer.
 
 For more detail, see the [architecture guide](docs/architecture.md).
 
@@ -78,6 +79,7 @@ For more detail, see the [architecture guide](docs/architecture.md).
 - Agents differ in models, thinking levels, images, attachments, and more. Nodo only integrates what an Agent actually provides.
 - Only Claude Code and Codex can currently lead.
 - The lead keeps at most 5 tasks running in parallel and accepts at most 24 dispatches per turn; child tasks use `parentId` to link to their goal (reopen an accepted parent first), and ordered tasks use `dependsOn` (all dependencies must be accepted as done before dispatch), and tasks editing the same files take `worktree:true` for isolation — Nodo never merges automatically.
+- The decision gate only blocks a lead on questions it actually raises: it can still miss a trade-off that is yours to make, or read existing authorization too generously. Confirm important trade-offs yourself.
 - Nodo acts only after you send a message. It does not watch chats, pull requests, or CI for external events, and it does not start work on its own.
 - If a task type has no assigned role, the lead cannot dispatch it; it states the gap and stops.
 - ZCode cannot call its subscription service directly. Create an API key under your coding plan, add a custom provider in ZCode with that key, and ZCode models will then be detected.
@@ -88,7 +90,7 @@ For more detail, see the [architecture guide](docs/architecture.md).
 
 **An Agent is not detected?** The host's `PATH` may differ from your terminal's. Enter the CLI's absolute path in the Agent settings.
 
-**The lead does not delegate?** Check in order: the team has a lead, the executor roles are in the team, the team has task types, and each type has an assigned role.
+**The lead does not delegate?** Check in order: the team has a lead, the executor roles are in the team, the team has task types, each type has an assigned role, and no decision in the conversation is still waiting for your answer.
 
 **Can I still read conversations after deleting a role or project?** Yes. They are archived and can be read in the sidebar's 已移除 (removed) section.
 
