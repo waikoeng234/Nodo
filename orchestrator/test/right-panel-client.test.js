@@ -220,6 +220,29 @@ test('changes lay the diffs beside a tree and only tree rows receive hover fill'
   assert.ok(!CHANGES_PANEL_CSS.includes('\n.nodo-changes-row:hover'))
 })
 
+test('changes render diffs within a line budget and collapse the rest until expanded or selected', async () => {
+  const mounted = mountedTree()
+  const loaded = await loadClient('right-panel.tsx', { react: mounted.react, call: unavailable })
+  const panel = loaded.createRightPanel(host().ctx)
+  panel.bind(target); await tick()
+  const big = `@@ -0,0 +1,1200 @@\n${'+x\n'.repeat(1200)}`
+  const source = changesSource()
+  source.body.files = ['a', 'b', 'c'].map(name => ({ path: `/workspace/${name}.ts`, edits: [{ operation: 'update', diffText: big }] }))
+  source.body.fileCount = 3
+  panel.openChanges(source)
+  const render = () => mounted.render(() => ({ type: loaded.RightPanel, props: { panel, width: 320 }, children: [] }))
+  const details = () => plain(nodes(render()).filter(node => node.type === 'file-detail').map(node => node.props.path))
+  const expand = () => nodes(render()).filter(node => node.type === 'Button' && node.children.includes('展开 diff'))
+  assert.deepEqual(details(), ['/workspace/a.ts'], 'the first 1200-line file fits the 2000-line budget, the next ones do not')
+  assert.equal(expand().length, 2)
+  expand()[0].props.onClick()
+  assert.deepEqual(details(), ['/workspace/a.ts', '/workspace/b.ts'])
+  nodes(render()).find(node => node.props.className === 'nodo-changes-node' && node.props.title === 'c.ts').props.onClick()
+  assert.equal(details().length, 3, 'selecting a file in the tree renders it')
+  assert.equal(expand().length, 0)
+  mounted.dispose()
+})
+
 test('changes load full lists, show errors and retry, and ignore late answers after replacement or close', async () => {
   const mounted = mountedTree(), first = Promise.withResolvers(), second = Promise.withResolvers()
   const loaded = await loadClient('right-panel.tsx', { react: mounted.react, call: unavailable })

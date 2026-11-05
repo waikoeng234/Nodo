@@ -6,16 +6,19 @@ import { ChangedFile } from './stream-records.js'
 import { Counts } from './file-changes-summary.tsx'
 import { RoundTeam } from './round.js'
 
-function Environment({ workspace, cwd, struct }) {
+function Environment({ workspace, cwd, running }) {
   const [info, setInfo] = useState(null)
   const [branches, setBranches] = useState([])
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+  const load = () => call('workspace-git', { workspace }).then(value => { setInfo(value); setError('') }).catch(failure => setError(failure.message))
+  // Files change while the session runs and when another program edits them, so
+  // the numbers refresh when a run starts or ends and when the window regains focus.
+  useEffect(() => { void load() }, [workspace, running])
   useEffect(() => {
-    let live = true
-    call('workspace-git', { workspace }).then(value => { if (live) { setInfo(value); setError('') } }).catch(failure => { if (live) setError(failure.message) })
-    return () => { live = false }
-  }, [workspace, struct])
+    window.addEventListener('focus', load)
+    return () => window.removeEventListener('focus', load)
+  }, [workspace])
   useEffect(() => {
     if (open) void call('worktree-refs', { workspace }).then(value => setBranches(value.branches)).catch(() => setBranches([]))
   }, [open])
@@ -72,9 +75,9 @@ function Artifacts({ workspace, profile, session, cwd }) {
       ...links.map(url => row(`l:${url}`, h(IconLinkOutlineRegular, { size: 16 }), url.replace(/^https?:\/\//, ''), url, () => { reveal(); rightPanelService.newBrowser(url) }))))
 }
 
-export function SessionPanel({ workspace, cwd, team, struct, profile, session }) {
+export function SessionPanel({ workspace, cwd, team, running, profile, session }) {
   return h('aside', { className: 'nodo-session-panel', 'aria-label': '摘要面板' },
-    h(Environment, { key: workspace, workspace, cwd, struct }),
-    team && h(RoundTeam, { key: workspace, ...team, struct, workspace }),
+    h(Environment, { key: workspace, workspace, cwd, running }),
+    team && h(RoundTeam, { key: workspace, ...team, workspace }),
     session && h(Artifacts, { workspace, profile, session, cwd }))
 }

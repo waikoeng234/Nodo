@@ -942,6 +942,19 @@ test('artifacts collect workspace files its write/edit tools touched, reply link
   assert.deepEqual(plain(found.images.map(image => image.id)), ['i1'], 'only the model\'s images')
 })
 
+test('a folded team card does not request the task list', async () => {
+  const calls = []
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { call: async (endpoint, payload) => { calls.push({ endpoint, ...payload }); return [] }, sessionTime: () => '', workLabel: () => '', workDot: () => 'idle' } })
+  const members = [{ role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'S1' } }]
+  const render = () => { host.reset(); return RoundTeam({ members, work: {}, tasks: [], workspace: 'w', onOpen() {} }) }
+  host.cells[1] = true
+  render(); host.effects.at(-1)()
+  assert.deepEqual(calls, [], 'folded: no request')
+  host.cells[1] = false
+  render(); host.effects.at(-1)()
+  assert.deepEqual(plain(calls), [{ endpoint: 'task-list', workspace: 'w' }])
+})
+
 test('the team stop interrupts only the lead and a draft still sends to the lead', async () => {
   const { loaded, calls, find, view } = await mount()
   view.work.l1 = { active: true }
