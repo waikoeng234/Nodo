@@ -58,7 +58,8 @@ export function roundLines(lines, leadRunning = false) {
       Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
       flush()
     }
-    if (line.origin && !(line.who === 'user' && line.origin.kind === 'task')) continue
+    if (line.origin && !(line.who === 'user' && (line.origin.kind === 'task' || line.origin.kind === 'decision-answer'))
+      && !(line.who === 'system' && line.origin.kind === 'decision-cancel')) continue
     const text = line.who === 'agent' && line.kind === 'text' ? stripNodo(line.text) : null
     if (text === '') continue
     out.push(text === null ? line : { ...line, text })
@@ -186,7 +187,8 @@ export function RoundMember({ step, round }) {
   const live = !step.report && !step.ended && work?.active === true
   const task = round.tasks?.find(item => item.id === step.taskId)
   const parent = task?.parentId && round.tasks?.find(item => item.id === task.parentId)
-  const word = taskWord(task, work, step.unconfirmed === true)
+  const waiting = round.decisions?.some(decision => (decision.status === 'pending' || decision.status === 'answered') && decision.taskIds.includes(step.taskId))
+  const word = waiting ? '等待用户' : taskWord(task, work, step.unconfirmed === true)
   const label = work?.retryWaiting ? '等待自动继续' : work?.suspect ? workLabel(work) : ''
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)

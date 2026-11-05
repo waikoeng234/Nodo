@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { failure, invalid } from './errors.js'
+import { TASK_TEXT_MAX } from './constants.js'
 
 const pending = execution => ['queued', 'running', 'unconfirmed'].includes(execution.status)
 const text = (value, name) => {
@@ -147,6 +148,7 @@ export function install(rt) {
     const late = execution.status === 'unconfirmed'
     const now = Date.now()
     Object.assign(execution, result, { status, reason, updatedAt: now, endedAt: now })
+    if (unsent) execution.startedAt = null
     stopping.delete(id)
     const task = taskOf(execution.taskId)
     if (!late && (status !== 'cancelled' || executionsOf(task.id).length === 1)) Object.assign(task, { status: taskState, updatedAt: now })
@@ -169,9 +171,26 @@ export function install(rt) {
     Object.assign(execution, result, { updatedAt: Date.now() })
     return saveExecution(execution)
   }
+  const deliveredReports = (taskId, executionId) => {
+    const execution = executionOf(executionId)
+    if (execution.taskId !== taskId || !execution.reports?.length) throw invalid('只能审阅该任务已投递的执行回报')
+    return execution.reports
+  }
+  const reviewReports = async (taskId, { executionId, disposition, reason, basis }) => {
+    await writable()
+    if (!['continue', 'investigate'].includes(disposition)) throw invalid('disposition 必须是 continue 或 investigate')
+    text(reason, 'reason')
+    if (reason.length > TASK_TEXT_MAX || !Array.isArray(basis) || !basis.length
+      || basis.some(value => typeof value !== 'string' || !value.trim() || value.length > TASK_TEXT_MAX)) throw invalid('reason 不得超长，basis 必须是非空文本数组且每项不超过文本上限')
+    const reports = deliveredReports(taskId, executionId)
+    for (const report of reports) if (!report.review) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now() })
+    return saveExecution(executionOf(executionId))
+  }
   const completeTask = async (id, { reason, references }) => {
     await writable()
     const task = taskOf(id)
+    await rt.decisionDeliveryReady?.(task.coordinatorSessionId)
+    rt.assertDecisionAcceptance?.(task)
     liveScope(task)
     taskStatus(task, ['open', 'review', 'blocked'])
     const unfinished = Object.values(state.tasks).filter(child => child.coordinatorSessionId === task.coordinatorSessionId && child.parentId === id && child.status !== 'done').length
@@ -197,13 +216,27 @@ export function install(rt) {
     return saveTask(task)
   }
 
-  Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask,
+  Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask, reviewReports,
+    deliveredReports,
+    registerDeliveredReport: async (item, deliveredAt) => {
+      const execution = executionOf(item.executionId)
+      execution.reports ??= []
+      if (execution.reports.some(report => report.id === item.id)) return
+      execution.reports.push({ id: item.id, deliveredAt, sessionId: item.session, summary: item.summary, status: item.status,
+        references: item.referenceId ? [item.referenceId] : [] })
+      await rt.saveStrict()
+    },
+    reportReviewBlockReason: id => {
+      const reports = Object.values(state.executions).filter(execution => state.tasks[execution.taskId]?.coordinatorSessionId === id)
+        .flatMap(execution => (execution.reports ?? []).filter(report => !report.review).map(report => ({ reportId: report.id, executionId: execution.id, taskId: execution.taskId })))
+      if (reports.length) return { code: 'orch/report-unreviewed', message: '有已投递的回报尚未审阅，请先用 nodo_task review 或 nodo_decision 处置。', reports }
+    },
     executionStopping: id => { for (const session of stopping.values()) if (session === id) return true; return false },
     finishExecution: (id, result) => endExecution(id, 'done', ['running', 'unconfirmed'], 'review', result),
     failExecution: (id, result) => endExecution(id, 'failed', ['queued', 'running', 'unconfirmed'], 'blocked', result),
     interruptExecution: (id, result) => endExecution(id, 'interrupted', ['running', 'unconfirmed'], 'stopped', result),
     cancelExecution: (id, result) => endExecution(id, 'cancelled', ['queued'], 'stopped', result),
-    // An unsent command can release its reservation even after losing the write lock.
-    cancelUnsentExecution: (id, result) => endExecution(id, 'cancelled', ['queued'], 'stopped', result, true),
+    // Caller confirms nothing was sent; cancellation can release the reservation even after lock loss.
+    cancelUnsentExecution: (id, result) => endExecution(id, 'cancelled', ['queued', 'running'], 'stopped', result, true),
     unconfirmExecution: (id, result) => endExecution(id, 'unconfirmed', ['queued', 'running'], 'blocked', result) })
 }

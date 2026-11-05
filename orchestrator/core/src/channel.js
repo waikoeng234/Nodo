@@ -36,6 +36,7 @@ export function install(rt) {
       profiles: rt.profilesView(),
       secrets: rt.secretsView(),
       teams: rt.teams(),
+      decisions: rt.decisionsView(),
       tasks: rt.redactDeepSecrets(Object.values(state.tasks).map(({ brief, source, acceptances, ...task }) => ({
         ...task, latestExecutionStatus: latest.get(task.id) ?? null }))),
       prefs: state.prefs,
@@ -53,7 +54,7 @@ export function install(rt) {
 
   // Endpoints a read-only host still serves. Cards are answered from this host's
   // memory, not the file, so a reading window keeps them.
-  const READS = new Set(['state', 'task-list', 'task-get', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-dir', 'workspace-file', 'worktree-refs', 'workspace-git', 'workspace-diff', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment'])
+  const READS = new Set(['state', 'task-list', 'task-get', 'decision-list', 'decision-get', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-dir', 'workspace-file', 'worktree-refs', 'workspace-git', 'workspace-diff', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment'])
 
   const resolveProfileRef = (ref) => {
     const profile = rt.findProfile(ref)
@@ -66,6 +67,16 @@ export function install(rt) {
     const readOnly = rt.readOnly()
     if (readOnly !== undefined && !READS.has(endpoint)) throw failure(readOnly, 'orch/read-only')
     switch (endpoint) {
+      case 'decision-list':
+      case 'decision-get':
+      case 'decision-answer':
+      case 'decision-cancel': {
+        const { session } = rt.conversation(resolveProfileRef(body.profile).id, body.session)
+        if (endpoint === 'decision-list') return rt.listDecisions(session.id)
+        if (endpoint === 'decision-get') return rt.getDecision(session.id, body.decisionId)
+        if (endpoint === 'decision-answer') return rt.answerDecision(session.id, body)
+        return rt.cancelDecision(session.id, body)
+      }
       case 'task-list': {
         const workspaceRef = body.workspace === undefined ? undefined : rt.findWorkspace(body.workspace)?.id ?? body.workspace
         return rt.redactDeepSecrets(await Promise.all(Object.values(state.tasks).filter(task => (workspaceRef === undefined || task.workspaceRef === workspaceRef)
@@ -221,6 +232,7 @@ export function install(rt) {
             ...(brief ? { brief } : {}) })
         if (leadMode) void rt.followLead(session.id, placed)
         else void rt.followLeadReport(session.id, placed, placed.leadFlight)
+        if (leadMode) await rt.resumeDecisionDelivery?.(session.id)
         void rt.flushLeadReports(session.id)
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
       }

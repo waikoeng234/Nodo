@@ -9,7 +9,7 @@ import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
 import { roundIndex, RoundFaces } from './round.js'
 import { SessionPanel } from './session-panel.js'
-import { ApprovalCard } from './run-cards.js'
+import { ApprovalCard, DecisionCard, pruneDecisionDrafts } from './run-cards.js'
 import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
 import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
@@ -154,6 +154,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   useEffect(() => { localStorage.setItem('nodo.drafts', JSON.stringify(drafts)) }, [drafts])
   useEffect(() => { localStorage.setItem('nodo.taskScope', JSON.stringify(scopes)) }, [scopes])
   useEffect(() => { heldImages = pastedImages }, [pastedImages])
+  useEffect(() => { if (view?.decisions) pruneDecisionDrafts(view.decisions) }, [view?.decisions])
   // Deleting a role drops its sessions' drafts and task scopes here, before the
   // next edit mirrors the in-memory copy back to storage.
   useEffect(() => {
@@ -481,12 +482,15 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
               icon: h(IconPanelLeftOutlineRegular, { size: 16, className: 'nodo-summary-glyph' }) }) })))),
     h('div', { className: 'nodo-body' },
     h('div', { className: 'nodo-body-main' },
-    h(Feed, { key: `${team}:${sessionId}`, profile, session, work, sentTick,
-      round: team ? { profiles: view.profiles, teams: view.teams, tasks: view.tasks, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember,
+    h(Feed, { key: `${team}:${sessionId}`, profile, session, work, sentTick, decisions: view.decisions,
+      round: team ? { profiles: view.profiles, teams: view.teams, tasks: view.tasks, decisions: view.decisions, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember,
         onSupplement: conversationReadOnly ? undefined : supplement } : undefined }),
     (work?.active === true || activeTasks > 0) && h('div', { className: 'nodo-running-dock' },
       work?.active === true && h(RunningLine, { key: sessionId, since: work.since, work }),
       activeTasks > 0 && h(TaskCountLine, { count: activeTasks })),
+    ...(!archivedConversation ? view.decisions ?? [] : []).filter(decision => decision.coordinatorSessionId === sessionId
+      && (decision.status === 'pending' || decision.status === 'answered')).map(decision => h(DecisionCard, { key: decision.id,
+      decision, profileId: profile.id, readOnly, refresh, profiles: view.profiles, tasks: view.tasks, work: view.work })),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
       || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id,
       card: card.taskId ? { ...card, taskTitle: view.tasks?.find(task => task.id === card.taskId)?.title } : card, refresh, readOnly,

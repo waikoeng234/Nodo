@@ -130,6 +130,7 @@ export function install(rt) {
     st.active = true
     st.starting = false
     st.turnId = event.turnId ?? null
+    if (st.decisionInput) rt.decisionInputStarted?.(profileId, st.decisionInput.origin, st.turnId, st.decisionInput.accepted)
     bindTurn(st, st.seq, st.turnId)
     st.buffer = ''
     st.messages = null
@@ -344,6 +345,7 @@ export function install(rt) {
       return
     }
     st.resume = null
+    if (event.reason === 'error' || event.reason === 'interrupted') st.decisionInput?.reject(failure('答案轮次尚未确认发送就已结束', 'orch/cancelled'))
     clearTimeout(st.cancelTimer)
     st.cancelTimer = null
     st.finishing = true
@@ -408,8 +410,9 @@ export function install(rt) {
       const final = typeof event.text === 'string' && event.text.trim() !== '' ? { final: event.text } : {}
       const reply = replyId ? { replyId } : {}
       const retryable = reason === 'error' && event.retryable === true ? { retryable: true } : {}
-      settle(st, seq, { reason, text: flushed !== '' ? flushed : final.final, ...final, ...unconfirmed, ...reply, ...retryable })
-      st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed, ...reply, ...retryable } }
+      const refusal = event.code === 'orch/decision-pending' ? { code: event.code } : {}
+      settle(st, seq, { reason, text: flushed !== '' ? flushed : final.final, ...final, ...unconfirmed, ...reply, ...retryable, ...refusal })
+      st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed, ...reply, ...retryable, ...refusal } }
       for (const joined of st.joined.splice(0)) settle(st, joined, st.ended.outcome)
       drain(profileId, st)
       void rt.flushLeadReports?.(profileId)
@@ -460,11 +463,17 @@ export function install(rt) {
     if (st.active || st.starting || st.finishing || rt.isCompacting(profileId) || st.queued.length === 0 || st.queued[0].sending) return
     const next = st.queued.shift()
     if (next.pendingLine) say(profileId, next.pendingLine)
-    startTurn(profileId, st, next.text, next.seq, next.images, next.task, next.onInput)
+    startTurn(profileId, st, next.text, next.seq, next.images, next.task, next.onInput, next.origin)
   }
 
-  const startTurn = (profileId, st, text, seq, images, task = text, onInput) => {
+  const startTurn = (profileId, st, text, seq, images, task = text, onInput, origin) => {
     onInput?.()
+    const decisionInput = origin?.kind === 'decision' ? { origin } : undefined
+    if (decisionInput) {
+      decisionInput.accepted = new Promise((resolve, reject) => { decisionInput.resolve = resolve; decisionInput.reject = reject })
+      void decisionInput.accepted.catch(() => {})
+    }
+    st.decisionInput = decisionInput
     st.seq = seq
     st.task = task
     st.starting = true
@@ -492,6 +501,7 @@ export function install(rt) {
         restoreContext = !driver.hasSession()
         await driver.openSession()
       } catch (error) {
+        decisionInput?.reject(error)
         driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
         return
       }
@@ -520,19 +530,24 @@ export function install(rt) {
         }
         session.instructionMode = instructionMode
         session.instructionTarget = instructionMode === 'native' ? driver.instructionTarget ?? 'engine' : undefined
+        if (origin?.kind === 'delegation' || origin?.kind === 'retry') rt.assertDecisionDispatch?.(session.source?.leadSessionId)
         const briefSent = session.briefSent
         if (!goalCommand) session.briefSent = true
         st.records = rt.newStreamRun?.(profileId)
         sent = true
         try { await (goalCommand ? driver.goals(text === '/goal clear' ? null : text.slice(6)) : driver.sendTurn(message, images)) }
         catch (error) { session.briefSent = briefSent; throw error }
+        decisionInput?.resolve()
         if (!goalCommand) session.restoreContext = false
         await (session.draftedAt ? rt.save() : rt.saveRuntime())
       } catch (error) {
+        decisionInput?.reject(error)
         // Once sendTurn is called the engine may already be working, so this end is unconfirmed;
         // an end the engine already reported stands.
         if (sent && (st.seq !== seq || (!st.active && !st.starting))) return
-        driverSink(profileId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind, ...(sent ? { unconfirmed: true } : {}) })
+        const decisionBlocked = !sent && error.code === 'orch/decision-pending'
+        driverSink(profileId, { type: 'turn/end', reason: decisionBlocked ? 'cancelled' : 'error', error: String(error?.message ?? error),
+          errorKind: error?.errorKind, ...(decisionBlocked ? { code: error.code } : {}), ...(sent ? { unconfirmed: true } : {}) })
       }
     }
     st.resume = () => {
@@ -634,7 +649,7 @@ export function install(rt) {
     if (!pendingLine) say(profileId, line)
     if (structureChanged) await rt.save()
     if (occupied(profileId, st)) {
-      const item = { text: input, task: text, images, seq, pendingLine, onInput, resolve: outcome => settle(st, seq, outcome) }
+      const item = { text: input, task: text, images, seq, pendingLine, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
       const outcome = queue ? null : await steer(profileId, st, item)
       if (outcome) return { mode: outcome, seq, completion, turn, leadFlight }
       st.queued.push(item)
@@ -642,7 +657,7 @@ export function install(rt) {
       drain(profileId, st)
       return { mode: 'queued', seq, completion, turn, leadFlight }
     }
-    startTurn(profileId, st, input, seq, images, text, onInput)
+    startTurn(profileId, st, input, seq, images, text, onInput, origin)
     return { mode: 'turn', seq, completion, turn, leadFlight }
   }
 
@@ -662,9 +677,10 @@ export function install(rt) {
     if (!occupied(profileId, st)) {
       st.queued.splice(st.queued.indexOf(item), 1)
       say(profileId, item.pendingLine)
-      startTurn(profileId, st, item.text, item.seq, item.images, item.task, item.onInput)
+      startTurn(profileId, st, item.text, item.seq, item.images, item.task, item.onInput, item.origin)
       return { mode: 'turn' }
     }
+    if (item.origin?.kind === 'decision') return { mode: 'queued' }
     item.sending = true
     try {
       const mode = occupied(profileId, st) ? await steer(profileId, st, item) : null
@@ -678,7 +694,8 @@ export function install(rt) {
 
   const interrupt = async (profileId, sessionId) => {
     profileId = rt.conversation(profileId, sessionId).session.id
-    if (rt.cancelLeadRetry?.(profileId)) return true
+    const decisionStopped = rt.stopDecisionDelivery?.(profileId)
+    if (rt.cancelLeadRetry?.(profileId)) { await decisionStopped; return true }
     const st = stateOf(profileId)
     for (const queued of st.queued) { queued.cancelled = true; queued.resolve({ reason: 'interrupted' }) }
     st.queued.length = 0
@@ -695,7 +712,7 @@ export function install(rt) {
       st.cancelTimer.unref?.()
     }
     const stopped = rt.interruptDriver(profileId)
-    await (ended ? Promise.race([stopped, ended]) : stopped)
+    await Promise.all([decisionStopped, ended ? Promise.race([stopped, ended]) : stopped])
     return true
   }
 

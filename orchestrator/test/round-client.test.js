@@ -96,6 +96,21 @@ test('roundLines turns the lead transcript into a chat of speaker rows, delegati
   assert.deepEqual(plain(roundLines(unmarked)).filter(line => line.kind !== 'speaker'), plain(unmarked))
 })
 
+test('roundLines keeps the decision-cancel note and still hides other system origin lines', async () => {
+  const { roundLines } = await loadClient('round.js')
+  const lines = [
+    { who: 'user', kind: 'text', text: 'Ship it', at: 1 },
+    { who: 'agent', kind: 'text', text: 'Waiting on you', at: 2 },
+    { who: 'system', kind: 'decision-delivery', origin: { kind: 'decision', decisionId: 'd1' }, at: 3 },
+    { who: 'system', kind: 'note', text: '已撤销决策「方向？」：未批准推荐方案，也不会恢复旧派活。', origin: { kind: 'decision-cancel', decisionId: 'd1' }, at: 4 },
+  ]
+  const shown = plain(roundLines(lines))
+  assert.deepEqual(shown.filter(line => line.origin).map(line => [line.kind, line.origin.kind, line.origin.decisionId]),
+    [['note', 'decision-cancel', 'd1']])
+  assert.deepEqual(shown.map(line => line.kind === 'speaker' ? line.kind : line.text),
+    ['Ship it', 'speaker', 'Waiting on you', '已撤销决策「方向？」：未批准推荐方案，也不会恢复旧派活。'])
+})
+
 test('accepted delegations keep chips in order and executors follow the completed lead turn', async () => {
   const { roundLines } = await loadClient('round.js')
   const coder = { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false }
@@ -833,6 +848,20 @@ async function mount(viewName = 'team', restored, feed = null) {
   const render = () => { cursor = 0; return nodes(loaded.NodoPage({ contentOnly: true })) }
   return { loaded, view, calls, render, navigation: () => plain(navigation), find: type => render().find(node => node.type === type)?.props }
 }
+
+test('a lead session shows its own open decision above the composer and none of another session', async () => {
+  const { loaded, view, render, find } = await mount()
+  const decision = (id, coordinatorSessionId, status) => ({ id, coordinatorSessionId, status, taskIds: [], stopExecutionIds: [], questions: [], runningExecutions: [] })
+  view.decisions = [decision('d1', 'l1', 'pending'), decision('d0', 'l1', 'delivered'), decision('d9', 'l1', 'cancelled'), decision('d2', 'other', 'pending')]
+  const cards = () => render().filter(node => node.type === loaded.DecisionCard).map(node => node.props)
+  assert.deepEqual(plain(cards().map(card => [card.decision.id, card.profileId])), [['d1', 'lead']])
+  assert.equal(find(loaded.Feed).decisions, view.decisions)
+  assert.equal(find(loaded.Feed).round.decisions, view.decisions)
+  view.decisions[0].status = 'answered'
+  assert.deepEqual(plain(cards().map(card => card.decision.id)), ['d1'], 'an answered decision keeps its card until hand-off')
+  view.decisions[0].status = 'delivered'
+  assert.deepEqual(cards(), [])
+})
 
 test('a lead session opens as its round: chat feed, faces, session menu and round approvals', async () => {
   const { loaded, view, render, find } = await mount()

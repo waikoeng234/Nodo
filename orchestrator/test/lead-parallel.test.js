@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { withHost, until } from './helpers/host.js'
+import { reviewDeliveredReports } from './helpers/report-review.js'
 
 // End-to-end acceptance matrix for S3 parallel delegation. The flight fixture
 // is a scripted driver whose turns only settle when the test calls finish(),
@@ -63,6 +64,7 @@ const withFlights = (run, repository = false) => withHost(async host => {
   const finishLead = async id => {
     const driver = await until(() => rt.driverOf(id)?.active && rt.driverOf(id))
     const count = driver.calls.length
+    await reviewDeliveredReports(rt, id)
     driver.finish('done', 'Reviewed')
     await until(() => !rt.workView()[id]?.active || driver.calls.length > count)
   }
@@ -199,6 +201,8 @@ test('M3 an engine failure among five active flights frees its slot while the ot
   await until(() => typeof rt.state.executions[flights[0].executionId].report === 'string')
   assert.equal(rt.state.executions[flights[0].executionId].status, 'failed')
   assert.equal(rt.state.executions[flights[0].executionId].reason, 'error')
+  await until(() => rt.state.executions[flights[0].executionId].reports?.length)
+  await reviewDeliveredReports(rt, owner.id)
   const sixth = await delegate({ task: 'Flight six' })
   assert.equal(sixth.status, 'queued', 'the failed flight released its active slot')
   assert.equal(rt.state.executions[flights[1].executionId].status, 'running', 'the sibling flight keeps running')
@@ -264,6 +268,8 @@ test('M5 the sixth active dispatch is refused in Chinese and accepted after one 
   // The end save settles before the slot is released; the report snapshot is attached after that.
   await until(() => typeof rt.state.executions[flights[0].executionId].report === 'string')
   assert.equal(rt.state.executions[flights[0].executionId].status, 'done')
+  await until(() => rt.state.executions[flights[0].executionId].reports?.length)
+  await reviewDeliveredReports(rt, owner.id)
   const sixth = await delegate({ task: 'Flight six' })
   assert.equal(sixth.status, 'queued', 'a finished flight frees a slot for the next dispatch')
   await assert.rejects(delegate({ task: 'Flight seven' }), /最多同时派活 5 个任务/)

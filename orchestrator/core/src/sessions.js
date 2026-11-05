@@ -147,6 +147,7 @@ export function install(rt) {
   // engine conversation; a running session must finish or be stopped first.
   const archiveSession = async (profileId, id, archived) => {
     const { profile, session } = conversation(profileId, id)
+    if (archived && rt.sessionBlockReason?.(session.id)) throw failure('该会话还有待处理的用户决策，请先回答或明确撤销。', 'orch/decision-pending')
     if (!archived) {
       assertSessionWritable(profile, { ...session, archivedAt: undefined })
       if (session.workspaceRef && !rt.state.workspaces[session.workspaceRef]) throw failure('This conversation is read-only', 'orch/refused')

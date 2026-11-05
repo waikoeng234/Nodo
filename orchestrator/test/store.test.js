@@ -1,9 +1,39 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { boot, until, withHost } from './helpers/host.js'
+
+test('decisions default empty for old state and survive save, reader refresh and state snapshots', () => withHost(async host => {
+  const rt = await host.runtime
+  assert.deepEqual(rt.state.decisions, {})
+  await rt.saveStrict()
+  const readerHome = join(host.home, 'reader')
+  mkdirSync(readerHome)
+  copyFileSync(join(host.home, 'state.json'), join(readerHome, 'state.json'))
+  writeFileSync(join(readerHome, 'state.lock'), JSON.stringify({ host: 'fixture-other-host', token: 'fixture' }))
+  const reader = boot(readerHome)
+  try {
+    const followed = await reader.runtime
+    assert.ok(followed.readOnly())
+    const decision = { id: 'decision', coordinatorSessionId: 'owner', taskIds: [], sourceExecutionIds: [], questions: [{ id: 'q', question: 'Keep?', whyUser: 'Preference' }],
+      references: [], stopExecutionIds: [], status: 'pending', createdAt: 1 }
+    rt.state.decisions.decision = decision
+    await rt.saveStrict()
+    copyFileSync(join(host.home, 'state.json'), join(readerHome, 'state.json'))
+    await until(async () => { await followed.refresh(); return followed.state.decisions.decision })
+    assert.deepEqual(followed.state.decisions.decision, decision)
+    assert.deepEqual(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).decisions.decision, decision)
+    assert.equal((await reader.api('state')).decisions[0].id, 'decision')
+    assert.equal((await host.api('state')).decisions[0].dispatchBlocked, true)
+  } finally { await reader.dispose() }
+  const directory = join(host.home, 'legacy-decision')
+  mkdirSync(directory)
+  writeFileSync(join(directory, 'state.json'), JSON.stringify({ version: 4 }))
+  const legacy = boot(directory)
+  try { assert.deepEqual((await legacy.runtime).state.decisions, {}) } finally { await legacy.dispose() }
+}))
 
 for (const version of [1, 2]) test(`startup removes retired data from v${version} while preserving conversations and workspace files`, async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-store-cleanup-'))

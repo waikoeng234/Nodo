@@ -9,6 +9,7 @@ import { withHost, until, boot } from './helpers/host.js'
 import { echoEntry, registerClaudeFixtureEngine } from './helpers/echo-driver.js'
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { TASK_TEXT_MAX } from '../core/src/constants.js'
+import { reviewDeliveredReports } from './helpers/report-review.js'
 
 registerClaudeFixtureEngine()
 registerEngine('worktree-fixture', { ...echoEntry, info: { ...echoEntry.info, id: 'worktree-fixture', name: 'Worktree fixture' }, create(options) {
@@ -54,6 +55,7 @@ const withTasks = (run, repository = false) => withHost(async host => {
     await rt.followLead(owner.id, turn('done'))
     await until(() => rt.state.executions[receipt.executionId].references.length && rt.transcriptOf(owner.id).some(line => line.origin?.executionId === receipt.executionId))
     await until(() => !rt.workView()[owner.id]?.active)
+    await reviewDeliveredReports(rt, owner.id)
   }
   try { await run({ host, rt, workspace, worker, lead, owner, other, client, call, finish }) }
   finally { for (const value of clients) await value.close(); for (const binding of bindings) binding.revoke() }
@@ -549,6 +551,7 @@ test('send failures and round cancellation preserve true execution status and re
   assert.equal(rt.state.executions[failed.executionId].status, 'failed')
   assert.equal(rt.state.tasks[failed.taskId].status, 'blocked')
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
+  await reviewDeliveredReports(rt, owner.id)
   const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: failed.taskId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
@@ -688,6 +691,7 @@ test('receipt failure after deferred dispatch starts leaves completion tracking 
   assert.equal(execution.status, 'done')
   assert.ok(execution.references.length)
   await until(() => !rt.workView()[owner.id]?.active)
+  await reviewDeliveredReports(rt, owner.id)
   const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: execution.taskId, session: execution.sessionId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
@@ -836,6 +840,7 @@ test('restart leaves persisted running executions unconfirmed without resending'
     assert.equal(recovered.state.tasks[receipt.taskId].status, 'blocked')
     assert.equal(recovered.driverOf(receipt.session), undefined)
     await until(() => recovered.state.executions[receipt.executionId].report && !recovered.workView()[owner.id]?.active && !recovered.conversationOf(owner.id).session.reportQueue)
+    await reviewDeliveredReports(recovered, owner.id)
     await assert.rejects(recovered.leadDispatch.delegate(owner.id, { ...command, taskId: receipt.taskId }), /pending execution/)
   } finally {
     await restarted.dispose()
