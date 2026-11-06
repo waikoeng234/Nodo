@@ -1,6 +1,26 @@
 import { randomUUID } from 'node:crypto'
 import { failure, invalid } from './errors.js'
-import { TASK_TEXT_MAX } from './constants.js'
+import { TASK_TEXT_MAX, RESULT_PREVIEW_MAX, RESULT_TEXT_MAX, RESULTS_TEXT_MAX } from './constants.js'
+
+const previewOf = value => value.trim().replace(/\s+/g, ' ').slice(0, RESULT_PREVIEW_MAX)
+export const executionResultOf = async (execution, rt) => {
+  if (execution.result) return execution.result
+  if (execution.result === null) return { text: '', completeness: 'unavailable', reason: 'not-archived', preview: '', length: 0 }
+  const coordinator = rt.state.tasks[execution.taskId].coordinatorSessionId
+  const owner = rt.conversationOf(coordinator)?.session
+  let body
+  for (const reference of execution.references) {
+    const snapshot = await rt.readReference({ id: reference, target: owner?.engine === 'dsh' ? owner.driverSessionId : coordinator }).catch(() => null)
+    if (snapshot) { body = snapshot.messages.map(message => message.text).join('\n'); break }
+  }
+  const reason = body !== undefined ? 'legacy-reference' : execution.report ? 'legacy-report' : 'legacy-unavailable'
+  body ??= execution.report ?? ''
+  return { text: body, completeness: body ? 'partial' : 'unavailable', reason, preview: previewOf(body), length: body.length }
+}
+export const executionResultView = async (execution, rt) => {
+  const { text, ...metadata } = await executionResultOf(execution, rt)
+  return { ...metadata, sourceId: `execution:${execution.id}:result` }
+}
 
 const pending = execution => ['queued', 'running', 'unconfirmed'].includes(execution.status)
 const text = (value, name) => {
@@ -40,8 +60,8 @@ export function install(rt) {
     return execution
   }
   const executionsOf = id => Object.values(state.executions).filter(execution => execution.taskId === id)
-  const executionView = execution => structuredClone({ ...execution, ...(stopping.has(execution.id) ? { stopping: true } : {}) })
-  const view = task => ({ ...structuredClone(task), latestExecutionStatus: executionsOf(task.id).at(-1)?.status ?? null, executions: executionsOf(task.id).map(executionView) })
+  const executionView = async execution => structuredClone({ ...execution, result: await executionResultView(execution, rt), ...(stopping.has(execution.id) ? { stopping: true } : {}) })
+  const view = async task => ({ ...structuredClone(task), latestExecutionStatus: executionsOf(task.id).at(-1)?.status ?? null, executions: await Promise.all(executionsOf(task.id).map(executionView)) })
   const writable = async () => {
     await rt.load()
     const reason = rt.readOnly()
@@ -49,6 +69,17 @@ export function install(rt) {
   }
   const saveTask = async task => { await rt.saveStrict(); return view(task) }
   const saveExecution = async execution => { await rt.saveStrict(); return executionView(execution) }
+  const archiveResult = (execution, input, status) => {
+    if (execution.result && !(execution.status === 'unconfirmed' && execution.result.completeness === 'unavailable'
+      && execution.result.reason === 'missing-final' && input.final?.trim())) return
+    const final = rt.redactDeepSecrets(input.final ?? '')
+    const remaining = RESULTS_TEXT_MAX - Object.values(state.executions).reduce((sum, item) => sum + (item.result?.text?.length ?? 0), 0)
+    const body = final.slice(0, Math.max(0, Math.min(RESULT_TEXT_MAX, remaining)))
+    const reason = !final.trim() ? 'missing-final' : body.length < final.length ? 'storage-limit'
+      : input.finalCapture === 'partial' || status !== 'done' ? 'capture-incomplete' : null
+    execution.result = { text: final.trim() ? body : '', completeness: !final.trim() || !body.length ? 'unavailable' : reason ? 'partial' : 'complete',
+      reason, preview: previewOf(body), length: final.trim() ? body.length : 0, originalLength: final.length }
+  }
   const taskStatus = (task, allowed) => {
     if (!allowed.includes(task.status)) throw invalid(`Task cannot transition from ${task.status}`)
   }
@@ -123,18 +154,22 @@ export function install(rt) {
     if (Object.values(state.executions).some(execution => pending(execution) && (execution.taskId === taskId || execution.sessionId === sessionId))) throw failure('Task or session already has a pending execution', 'orch/busy')
     const now = Date.now()
     const execution = { id: randomUUID(), taskId, profileId, sessionId, type, hard, model: model ?? null, thinking: thinking ?? null,
-      status: 'queued', createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [],
+      status: 'queued', createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
       // The execution workspace only earns a field when it diverges from the task's own.
       ...(workspaceRef === task.workspaceRef ? {} : { workspaceRef }) }
     state.executions[execution.id] = execution
     Object.assign(task, { status: 'open', updatedAt: now })
     return saveExecution(execution)
   }
-  const startExecution = async id => {
+  const startExecution = async (id, input) => {
     await writable()
     const execution = executionOf(id)
     if (execution.status !== 'queued') throw invalid(`Execution cannot start from ${execution.status}`)
     const now = Date.now()
+    if (input !== undefined) {
+      if (execution.inputContext !== undefined) throw invalid('Execution input context is already recorded')
+      execution.inputContext = rt.redactDeepSecrets(structuredClone(input))
+    }
     Object.assign(execution, { status: 'running', startedAt: now, updatedAt: now })
     Object.assign(taskOf(execution.taskId), { status: 'open', updatedAt: now })
     return saveExecution(execution)
@@ -147,6 +182,7 @@ export function install(rt) {
     const result = resultOf(input, execution)
     const late = execution.status === 'unconfirmed'
     const now = Date.now()
+    archiveResult(execution, input, status)
     Object.assign(execution, result, { status, reason, updatedAt: now, endedAt: now })
     if (unsent) execution.startedAt = null
     stopping.delete(id)
@@ -186,7 +222,7 @@ export function install(rt) {
     for (const report of reports) if (!report.review) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now() })
     return saveExecution(executionOf(executionId))
   }
-  const completeTask = async (id, { reason, references }) => {
+  const completeTask = async (id, { reason, references, executionIds, basis }) => {
     await writable()
     const task = taskOf(id)
     await rt.decisionDeliveryReady?.(task.coordinatorSessionId)
@@ -196,14 +232,25 @@ export function install(rt) {
     const unfinished = Object.values(state.tasks).filter(child => child.coordinatorSessionId === task.coordinatorSessionId && child.parentId === id && child.status !== 'done').length
     if (unfinished) throw invalid(`还有 ${unfinished} 个子任务未验收，先完成它们再验收本任务`)
     const executions = executionsOf(id)
-    const evidence = referencesOf(references)
     text(reason, 'reason')
     if (executions.some(pending)) throw invalid('Task still has a pending or unconfirmed execution')
-    const results = executions.filter(execution => execution.report || execution.references.length)
-    const known = new Set(results.flatMap(execution => execution.references))
-    if (!results.length || !evidence.length || evidence.some(ref => !known.has(ref))) throw invalid('Acceptance evidence must reference task execution results')
+    let evidence
+    if (references !== undefined) {
+      if (executionIds !== undefined || basis !== undefined) throw invalid('references cannot be mixed with executionIds or basis')
+      if (executions.some(execution => execution.result !== undefined && !execution.result?.reason?.startsWith('legacy-'))) throw invalid('New execution results require executionIds, reason and basis')
+      const refs = referencesOf(references)
+      const known = new Set(executions.flatMap(execution => execution.references))
+      if (!refs.length || refs.some(ref => !known.has(ref))) throw invalid('Acceptance evidence must reference task execution results')
+      evidence = { references: refs, executionIds: executions.filter(execution => execution.references.some(ref => refs.includes(ref))).map(execution => execution.id) }
+    } else {
+      if (!Array.isArray(executionIds) || !executionIds.length || executionIds.some(value => typeof value !== 'string' || !value.trim())) throw invalid('executionIds must be a non-empty list of execution ids')
+      if (reason.length > TASK_TEXT_MAX || !Array.isArray(basis) || !basis.length
+        || basis.some(value => typeof value !== 'string' || !value.trim() || value.length > TASK_TEXT_MAX)) throw invalid('reason 不得超长，basis 必须是非空文本数组且每项不超过文本上限')
+      if (executionIds.some(executionId => !executions.some(execution => execution.id === executionId && execution.result))) throw invalid('Acceptance executions must belong to this task and have archived results')
+      evidence = { executionIds: [...new Set(executionIds)], basis: [...basis] }
+    }
     const now = Date.now()
-    task.acceptances.push({ reason, references: evidence, executionIds: results.filter(execution => execution.references.some(ref => evidence.includes(ref))).map(execution => execution.id), createdAt: now })
+    task.acceptances.push(rt.redactDeepSecrets({ reason, ...evidence, createdAt: now }))
     Object.assign(task, { status: 'done', updatedAt: now })
     return saveTask(task)
   }

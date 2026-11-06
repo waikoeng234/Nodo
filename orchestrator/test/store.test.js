@@ -5,6 +5,46 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { boot, until, withHost } from './helpers/host.js'
 
+test('v4 upgrade preserves old result evidence and v5 archived results across saves and restart', () => withHost(async ({ home }) => {
+  const directory = join(home, 'result-upgrade')
+  mkdirSync(directory)
+  const legacy = { version: 4, tasks: { task: { id: 'task', status: 'done', acceptances: [{ references: ['reference'], reason: 'Accepted' }] } },
+    executions: { old: { id: 'old', taskId: 'task', status: 'done', report: 'old report', references: ['reference'] } } }
+  writeFileSync(join(directory, 'state.json'), JSON.stringify(legacy))
+  let host = boot(directory)
+  try {
+    const rt = await host.runtime
+    assert.deepEqual(JSON.parse(readFileSync(join(directory, 'state.v4.json'), 'utf8')), legacy)
+    assert.equal(rt.state.version, 5)
+    assert.deepEqual(rt.state.executions.old, legacy.executions.old)
+    assert.deepEqual(rt.state.tasks.task.acceptances, legacy.tasks.task.acceptances)
+    const result = { text: 'archived final\n🙂', preview: 'archived final 🙂', completeness: 'complete', reason: null, length: 17, originalLength: 17 }
+    rt.state.executions.new = { id: 'new', taskId: 'task', status: 'failed', references: [], result }
+    await rt.saveStrict()
+    await host.dispose()
+    host = boot(directory)
+    const restored = await host.runtime
+    assert.deepEqual(restored.state.executions.old, legacy.executions.old)
+    assert.deepEqual(restored.state.executions.new.result, result)
+    assert.equal(restored.state.executions.new.status, 'failed')
+  } finally { await host.dispose() }
+}))
+
+test('unknown storage versions block writes rather than silently dropping result fields', () => withHost(async ({ home }) => {
+  const directory = join(home, 'future-results')
+  mkdirSync(directory)
+  const original = JSON.stringify({ version: 6, executions: { result: { result: { text: 'future data' } } } })
+  writeFileSync(join(directory, 'state.json'), original)
+  const host = boot(directory)
+  try {
+    const rt = await host.runtime
+    assert.match(rt.readOnly(), /newer Nodo/)
+    await assert.rejects(rt.saveStrict(), { code: 'orch/read-only' })
+    await rt.save()
+    assert.equal(readFileSync(join(directory, 'state.json'), 'utf8'), original)
+  } finally { await host.dispose() }
+}))
+
 test('decisions default empty for old state and survive save, reader refresh and state snapshots', () => withHost(async host => {
   const rt = await host.runtime
   assert.deepEqual(rt.state.decisions, {})
@@ -53,7 +93,7 @@ for (const version of [1, 2]) test(`startup removes retired data from v${version
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.equal(Object.hasOwn(rt.state, 'workflows'), false)
     assert.equal(Object.hasOwn(saved, 'workflows'), false)
-    assert.equal(saved.version, 4)
+    assert.equal(saved.version, 5)
     assert.equal(Object.hasOwn(saved, 'transcripts'), false)
     assert.equal(Object.hasOwn(saved, 'transcriptIndex'), false)
     assert.deepEqual(JSON.parse(readFileSync(join(home, 'activity.json'), 'utf8')).transcriptIndex, { session: { lines: 1, at: 0 } })

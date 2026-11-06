@@ -189,6 +189,22 @@ test('a supplemental report clears interrupted and unconfirmed round status', as
   assert.doesNotMatch(text(shown), /已中断|已停止|结果未确认/)
 })
 
+test('a report without references shows the execution result preview instead of the routing envelope', async () => {
+  const { roundLines, RoundMember, host } = await loadClient('round.js')
+  const envelope = 'Report from Worker · Team (session e1, ended: done). Task: Implement and verify. Result: done. Reason: done.\nResult preview (not the full report): Implemented and verified\nCapture: complete; complete; 24 characters.\nResult sourceId: execution:x:result. Read with nodo_context read before review or acceptance.'
+  const lines = [
+    { delegation: { session: 'e1', profile: 'worker', type: 'feature', taskId: 't1', executionId: 'x' } },
+    { who: 'user', kind: 'text', text: envelope, at: 2,
+      origin: { kind: 'report', session: 'e1', reportId: 'r1', reviewRequired: true, taskId: 't1', executionId: 'x', preview: 'Implemented and verified' } },
+  ]
+  const step = roundLines(lines).find(line => line.kind === 'member').step
+  assert.equal(step.report, 'Implemented and verified')
+  const shown = nodes(RoundMember({ step, round: { profiles: [{ id: 'worker', name: 'Worker' }], teams: [], work: {} } }))
+  assert.doesNotMatch(text(shown), /Report from Worker|Result preview|sourceId/)
+  assert.match(text(shown), /Implemented and verified/)
+  host.reset()
+})
+
 test('an executor message shows its role, tags and state, expands the rest of its report and opens its session', async () => {
   const { RoundMember, MessageTime, host } = await loadClient(['round.js', 'feed.js'])
   const opened = []
@@ -365,11 +381,12 @@ test('a member card with a task offers to supplement it, gated by the writable c
   assert.deepEqual(words(step), ['查看会话'], 'a read-only conversation offers no supplement')
 })
 
-test('an expanded member loads its task on demand and retries a failed task-get', async () => {
+for (const evidence of [{ references: ['r1', 'r2'] }, { basis: ['src/login.js:12', 'node --test test/login.test.js'] }])
+test(`an expanded member loads its task on demand and retries a failed task-get (${Object.keys(evidence)[0]})`, async () => {
   const calls = []
   let fail = true
   const task = { id: 't1', title: 'T', status: 'review', brief: 'Fix the login race\nwith care',
-    acceptances: [{ reason: '验证通过', references: ['r1', 'r2'], executionIds: ['x1'], createdAt: 1 }],
+    acceptances: [{ reason: '验证通过', ...evidence, executionIds: ['x1'], createdAt: 1 }],
     executions: [{ id: 'x1', taskId: 't1', profileId: 'coder', sessionId: 'e1', type: 'bug-fix', hard: false, status: 'done',
       reason: 'done', report: 'r', references: [], startedAt: 1, endedAt: 2, createdAt: 1 }] }
   const { RoundMember, host } = await loadClient('round.js', { uiShared: {
@@ -402,7 +419,7 @@ test('an expanded member loads its task on demand and retries a failed task-get'
   const shown = nodes(detail())
   const reports = shown.filter(node => node.props.className === 'nodo-round-report')
   assert.equal(reports.at(-1).children[0].props.text, task.brief, 'the brief renders as markdown')
-  assert.ok(text(shown).includes('验证通过 · 依据 2 项'), 'the acceptance conclusion carries its reference count')
+  assert.ok(text(shown).includes('验证通过 · 依据 2 项'), 'the acceptance conclusion carries its evidence count')
 })
 
 test('the session menu shows the idle task word and keeps a running session\'s state', async () => {

@@ -217,8 +217,8 @@ test('delivered reports require review, queued reports allow parallel work, and 
   const first = await delegate()
   await rt.followLead(owner.id, turn())
   const executor = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
-  assert.match(executor.calls[0], /stop the affected work/)
-  assert.match(executor.calls[0], /result summary, evidence and decision items/)
+  assert.doesNotMatch(executor.calls[0], /authoriz/)
+  assert.match(executor.calls[0], /list it in the report with the possible approaches/)
   await api('send', { text: 'Plan parallel work' })
   const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
   executor.finish('error', false, true)
@@ -256,10 +256,10 @@ test('delivered reports require review, queued reports allow parallel work, and 
   await until(() => executor.active)
   executor.finish()
   await until(() => execution.reports.length === 2)
-  await rt.completeTask(first.taskId, { reason: 'Verified', references: execution.references })
+  await rt.completeTask(first.taskId, { reason: 'Verified', executionIds: [execution.id], basis: ['Verified result'] })
   assert.equal(execution.reports[1].review, undefined)
   await assert.rejects(delegate(), { code: 'orch/report-unreviewed' })
-  const investigation = { ...review, disposition: 'investigate', reason: 'Check the missing compatibility evidence before implementation', basis: [execution.reports[1].references[0]] }
+  const investigation = { ...review, disposition: 'investigate', reason: 'Check the missing compatibility evidence before implementation', basis: [`execution:${execution.id}:result`] }
   assert.equal((await primary.callTool({ name: 'nodo_task', arguments: investigation })).isError, undefined)
   assert.equal(rt.state.tasks[first.taskId].status, 'done', 'review of a supplement needs no reopen')
   assert.equal(execution.reports[0].review.disposition, 'continue')

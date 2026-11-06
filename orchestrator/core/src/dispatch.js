@@ -369,11 +369,13 @@ export function install(rt) {
       if (line) saveRecord(profileId, st, line, record)
     }
     const seq = st.seq
+    const finalText = typeof event.text === 'string' && event.text.trim() ? event.text : undefined
+    const final = finalText ? { final: finalText, ...(event.reason !== 'done' || event.unconfirmed ? { finalCapture: 'partial' } : {}) } : {}
     const replyLines = messagesOf(profileId, st).finish(event.reason, event.text)
     const reply = replyLines.find(line => line.reply)
     const session = rt.conversationOf?.(profileId)?.session
     const replyId = session?.engine === 'dsh' ? reply?.messageId : reply ? (reply.replyId ??= randomUUID()) : undefined
-    rt.leadEnded?.(profileId, { ...event, replyId })?.catch(error => rt.warn('nodo: late execution result failed (%s): %s', profileId, error.message ?? error))
+    rt.leadEnded?.(profileId, { ...event, ...final, replyId })?.catch(error => rt.warn('nodo: late execution result failed (%s): %s', profileId, error.message ?? error))
     const flushed = st.messages.text()
     rt.recordTaskOutcome(profileId, st.task, event.reason, event.text || flushed)
     st.task = null
@@ -407,7 +409,6 @@ export function install(rt) {
       st.startedAt = null
       const unconfirmed = event.unconfirmed === true ? { unconfirmed: true } : {}
       // `final` is the engine's own last message of the turn; `text` stays the whole turn.
-      const final = typeof event.text === 'string' && event.text.trim() !== '' ? { final: event.text } : {}
       const reply = replyId ? { replyId } : {}
       const retryable = reason === 'error' && event.retryable === true ? { retryable: true } : {}
       const refusal = event.code === 'orch/decision-pending' ? { code: event.code } : {}
@@ -595,7 +596,7 @@ export function install(rt) {
     } else settle(st, item.seq, st.ended?.seq === host ? st.ended.outcome : { reason: 'done' })
     return outcome
   }
-  const send = async (profileId, rawText, sessionId, rawImages, references = [], { exclusive = false, files, brief, queue = false, origin, cancelled, userInput = false } = {}) => {
+  const send = async (profileId, rawText, sessionId, rawImages, references = [], { exclusive = false, files, brief, queue = false, origin, cancelled, userInput = false, limit } = {}) => {
     const { profile, session } = rt.conversation(profileId, sessionId)
     let structureChanged = session.id === profile.id && !profile.driverSessionId && rt.transcriptInfo(session.id).lines === 0
     rt.assertSessionWritable?.(profile, session)
@@ -611,7 +612,8 @@ export function install(rt) {
     const refuseBusy = () => { if (exclusive && occupied(profileId, stateOf(profileId))) throw failure('The session is busy', 'orch/busy') }
     refuseBusy()
     const text = String(rawText ?? '').trim()
-    if (text.length > TASK_TEXT_MAX) throw invalid(`Task exceeds ${TASK_TEXT_MAX} characters`)
+    const textLimit = limit ?? TASK_TEXT_MAX
+    if (text.length > textLimit) throw invalid(`Task exceeds ${textLimit} characters`)
     const images = rt.admitImages(rawImages)
     if (text === '' && images.length === 0 && !files?.paths?.length) throw invalid('Nothing to send')
     if (!Array.isArray(references) || references.length > 4) throw invalid('Choose at most four reference sessions')

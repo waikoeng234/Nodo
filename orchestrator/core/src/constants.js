@@ -6,6 +6,19 @@ export const NAME_MAX = 40
 export const ROLE_MAX = 80
 export const INSTRUCTIONS_MAX = 8000
 export const TASK_TEXT_MAX = 32_000
+// Result sizes and context offsets count UTF-16 code units.
+export const RESULT_PREVIEW_MAX = 200
+export const RESULT_TEXT_MAX = 1_000_000
+export const RESULTS_TEXT_MAX = 16_000_000
+export const CONTEXT_PAGE_DEFAULT = 8_000
+export const CONTEXT_PAGE_MAX = 16_000
+export const CONTEXT_LIST_MAX = 50
+// Delegation input budget counts UTF-16 code units of the composed dispatch body
+// (running notes + task + required excerpts + background catalog), not tokens.
+export const INPUT_CONTEXT_MAX = 96_000
+// Context selection and background archive bounds for one delegation.
+export const CONTEXT_SELECT_MAX = 20
+export const BACKGROUND_TEXT_MAX = 4_000_000
 // The smallest per-image limit among the engines (Claude's API) bounds what is accepted.
 export const IMAGE_BYTES_MAX = 5 * 1024 * 1024
 export const IMAGES_MAX = 8

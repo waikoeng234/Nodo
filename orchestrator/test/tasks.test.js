@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { install } from '../core/src/tasks.js'
+import { install, executionResultView } from '../core/src/tasks.js'
 import { install as installTeams } from '../core/src/teams.js'
+import { install as installContext } from '../core/src/context.js'
+import { RESULT_PREVIEW_MAX, RESULT_TEXT_MAX, RESULTS_TEXT_MAX, CONTEXT_PAGE_MAX } from '../core/src/constants.js'
 
 const scope = { workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Build', brief: 'Build and verify', source: { kind: 'user', messageId: 'm' } }
 const route = { profileId: 'worker', sessionId: 's', type: 'code', hard: false, model: 'model', thinking: 'high' }
@@ -11,12 +13,14 @@ const fixture = () => {
     s: { profile: { id: 'worker' }, session: { id: 's', workspaceRef: 'w' } },
     s2: { profile: { id: 'worker' }, session: { id: 's2', workspaceRef: 'w' } },
     s3: { profile: { id: 'worker' }, session: { id: 's3', workspaceRef: 'w2' } } }
-  const rt = { state: { tasks: {}, executions: {}, profiles: { leader: sessions.lead.profile, worker: sessions.s.profile },
+  const rt = { state: { tasks: {}, executions: {}, decisions: {}, streamDetails: {}, profiles: { leader: sessions.lead.profile, worker: sessions.s.profile },
     workspaces: { w: { id: 'w' }, w2: { id: 'w2' } }, prefs: { teams: [{ id: 't', lead: 'leader', members: ['worker'] }] } },
     load: async () => {}, readOnly: () => undefined, saveStrict: async () => {}, notifyLive: () => {},
     conversationOf: id => sessions[id], sessionWorkspace: (_profile, session) => rt.state.workspaces[session.workspaceRef],
-    assertSessionWritable: () => {} }
+    transcriptOf: () => [], readStreamDetail: async () => { throw new Error('No tool details') },
+    assertSessionWritable: () => {}, redactDeepSecrets: value => value, readReference: async () => { throw new Error('No retained reference') } }
   installTeams(rt)
+  installContext(rt)
   install(rt)
   return rt
 }
@@ -24,6 +28,182 @@ const accepted = async rt => {
   const task = await rt.createTask(scope)
   return { task, execution: await rt.acceptExecution(task.id, route) }
 }
+
+test('results archive the redacted final once and default task views omit the body', async () => {
+  const rt = fixture(), { task, execution } = await accepted(rt)
+  rt.redactDeepSecrets = value => value.replaceAll('fixture-private', '[redacted]')
+  const final = 'Result fixture-private\n' + '正文🙂\n'.repeat(10000)
+  await rt.startExecution(execution.id)
+  const ended = await rt.finishExecution(execution.id, { final })
+  const saved = structuredClone(rt.state.executions[execution.id].result)
+  assert.equal(saved.text, final.replaceAll('fixture-private', '[redacted]'))
+  assert.equal(saved.completeness, 'complete')
+  assert.equal(saved.preview.length, RESULT_PREVIEW_MAX)
+  assert.equal(saved.originalLength, saved.text.length)
+  assert.equal(ended.result.text, undefined)
+  const view = await rt.taskView(task.id)
+  assert.deepEqual(view.executions[0].result, ended.result)
+  assert.equal(view.executions[0].result.sourceId, `execution:${execution.id}:result`)
+  await rt.recordExecutionResult(execution.id, { final: 'replacement', report: 'summary', references: ['ref'] })
+  assert.deepEqual(rt.state.executions[execution.id].result, saved)
+  let body = '', offset = 0
+  do {
+    const page = await rt.executionContext('lead', { action: 'read', sourceId: ended.result.sourceId, offset, limit: 777 })
+    body += page.text
+    offset = page.nextOffset
+    assert.equal(page.status, 'done')
+    assert.equal(page.length, saved.text.length)
+  } while (offset !== null)
+  assert.equal(body, saved.text)
+  const beyond = await rt.executionContext('lead', { action: 'read', sourceId: ended.result.sourceId, offset: saved.text.length + 1 })
+  assert.equal(beyond.text, '')
+  assert.equal(beyond.nextOffset, null)
+})
+
+test('failed, interrupted, unconfirmed and missing finals retain real execution status', async () => {
+  for (const [method, status, final] of [['failExecution', 'failed', '成功'], ['interruptExecution', 'interrupted', '成功'],
+    ['unconfirmExecution', 'unconfirmed', '成功'], ['finishExecution', 'done', undefined]]) {
+    const rt = fixture(), { execution } = await accepted(rt)
+    await rt.startExecution(execution.id)
+    await rt[method](execution.id, { final, reason: 'driver-reason', report: 'A summary is not a final reply' })
+    const read = await rt.executionContext('lead', { action: 'read', sourceId: `execution:${execution.id}:result` })
+    assert.equal(read.status, status)
+    assert.equal(read.executionReason, 'driver-reason')
+    assert.equal(read.text, final ?? '')
+    assert.equal(read.completeness, final ? 'partial' : 'unavailable')
+    assert.equal(read.reason, final ? 'capture-incomplete' : 'missing-final')
+    if (status === 'unconfirmed') {
+      const saved = structuredClone(rt.state.executions[execution.id].result)
+      await rt.finishExecution(execution.id, { final: 'Late reply' })
+      assert.deepEqual(rt.state.executions[execution.id].result, saved, 'late confirmation does not rewrite archived output')
+      assert.equal((await rt.executionContext('lead', { action: 'read', sourceId: read.sourceId })).status, 'done')
+    }
+  }
+  const rt = fixture(), { execution } = await accepted(rt)
+  await rt.startExecution(execution.id)
+  await rt.finishExecution(execution.id, { final: 'available fragment', finalCapture: 'partial' })
+  assert.equal(rt.state.executions[execution.id].result.completeness, 'partial')
+})
+
+test('late confirmation fills only an unavailable missing final when a final is provided', async () => {
+  for (const final of [undefined, 'Confirmed final']) {
+    const rt = fixture(), { execution } = await accepted(rt)
+    await rt.startExecution(execution.id)
+    await rt.unconfirmExecution(execution.id, { reason: 'cancel-timeout' })
+    const original = structuredClone(rt.state.executions[execution.id].result)
+    assert.equal(original.completeness, 'unavailable')
+    assert.equal(original.reason, 'missing-final')
+    await rt.finishExecution(execution.id, { final })
+    const saved = rt.state.executions[execution.id].result
+    if (final) {
+      assert.equal(saved.text, final)
+      assert.equal(saved.completeness, 'complete')
+      await rt.recordExecutionResult(execution.id, { final: 'replacement', report: 'Summary' })
+      assert.deepEqual(rt.state.executions[execution.id].result, saved)
+    } else assert.deepEqual(saved, original)
+  }
+  for (const result of [{ text: 'Original complete', completeness: 'complete', reason: null },
+    { text: 'Original partial', completeness: 'partial', reason: 'capture-incomplete' },
+    { text: '', completeness: 'unavailable', reason: 'storage-limit' }]) {
+    const rt = fixture(), { execution } = await accepted(rt)
+    await rt.startExecution(execution.id)
+    await rt.unconfirmExecution(execution.id)
+    Object.assign(rt.state.executions[execution.id].result, result)
+    const original = structuredClone(rt.state.executions[execution.id].result)
+    await rt.finishExecution(execution.id, { final: 'Cannot replace an archived result' })
+    assert.deepEqual(rt.state.executions[execution.id].result, original)
+  }
+})
+
+test('queued cancellation and confirmed-unsent cancellation archive readable results', async () => {
+  for (const [method, running] of [['cancelExecution', false], ['cancelUnsentExecution', false], ['cancelUnsentExecution', true]]) {
+    for (const final of [undefined, 'Cancelled with available output']) {
+      const rt = fixture(), { execution } = await accepted(rt)
+      if (running) await rt.startExecution(execution.id)
+      await rt[method](execution.id, { final, reason: 'not-sent' })
+      const read = await rt.executionContext('lead', { action: 'read', sourceId: `execution:${execution.id}:result` })
+      assert.equal(read.status, 'cancelled')
+      assert.equal(read.executionReason, 'not-sent')
+      assert.equal(read.text, final ?? '')
+      assert.equal(read.completeness, final ? 'partial' : 'unavailable')
+      assert.equal(read.reason, final ? 'capture-incomplete' : 'missing-final')
+      assert.equal(rt.state.executions[execution.id].startedAt, null)
+    }
+  }
+})
+
+test('per-result and aggregate storage limits retain a marked prefix without evicting older results', async () => {
+  const rt = fixture(), { execution } = await accepted(rt)
+  await rt.startExecution(execution.id)
+  await rt.finishExecution(execution.id, { final: 'x'.repeat(RESULT_TEXT_MAX + 1) })
+  const saved = rt.state.executions[execution.id].result
+  assert.equal(saved.text.length, RESULT_TEXT_MAX)
+  assert.equal(saved.originalLength, RESULT_TEXT_MAX + 1)
+  assert.equal(saved.reason, 'storage-limit')
+  assert.equal(saved.completeness, 'partial')
+  for (let index = 1; index < RESULTS_TEXT_MAX / RESULT_TEXT_MAX; index++) rt.state.executions[`quota-${index}`] = { result: { text: 'x'.repeat(RESULT_TEXT_MAX) } }
+  rt.state.executions['quota-1'].result.text = 'x'.repeat(RESULT_TEXT_MAX - 3)
+  const second = await rt.acceptExecution(execution.taskId, route)
+  await rt.startExecution(second.id)
+  await rt.finishExecution(second.id, { final: 'abcdef' })
+  assert.equal(rt.state.executions[second.id].result.text, 'abc')
+  assert.equal(rt.state.executions[second.id].result.reason, 'storage-limit')
+  const third = await rt.acceptExecution(execution.taskId, route)
+  await rt.startExecution(third.id)
+  await rt.finishExecution(third.id, { final: 'abcdef' })
+  assert.equal(rt.state.executions[third.id].result.completeness, 'unavailable')
+  assert.equal(rt.state.executions[third.id].result.reason, 'storage-limit')
+  assert.equal(rt.state.executions[execution.id].result, saved)
+})
+
+test('legacy snapshots and summaries are read without rewriting records or manufacturing missing originals', async () => {
+  const rt = fixture(), { execution } = await accepted(rt)
+  const legacy = rt.state.executions[execution.id]
+  Object.assign(legacy, { status: 'done', report: 'retained summary', references: ['lost', 'kept'] })
+  delete legacy.result
+  rt.readReference = async ({ id, target }) => {
+    assert.equal(target, 'lead')
+    if (id === 'lost') throw new Error('unavailable')
+    return { messages: [{ text: 'retained original' }] }
+  }
+  const args = { action: 'read', sourceId: `execution:${execution.id}:result` }
+  const check = async (reason, completeness, text) => {
+    const read = await rt.executionContext('lead', args)
+    const detail = (await rt.taskView(execution.taskId)).executions[0].result
+    const directory = (await rt.executionContext('lead', { action: 'list' })).items[0]
+    for (const metadata of [read, detail, directory, await executionResultView(legacy, rt)]) {
+      assert.equal(metadata.reason, reason)
+      assert.equal(metadata.completeness, completeness)
+    }
+    assert.equal(read.text, text)
+    assert.equal(detail.text, undefined)
+    assert.equal(directory.text, undefined)
+  }
+  const before = structuredClone(legacy)
+  await check('legacy-reference', 'partial', 'retained original')
+  assert.deepEqual(legacy, before)
+  legacy.references = ['lost']
+  await check('legacy-report', 'partial', 'retained summary')
+  legacy.report = null
+  await check('legacy-unavailable', 'unavailable', '')
+  legacy.references = []
+  await check('legacy-unavailable', 'unavailable', '')
+})
+
+test('context rejects invalid pagination and actions at the boundary', async () => {
+  const rt = fixture(), { execution } = await accepted(rt)
+  const args = { action: 'read', sourceId: `execution:${execution.id}:result` }
+  assert.equal((await rt.executionContext('lead', args)).reason, 'not-archived')
+  for (const extra of [{ offset: -1 }, { offset: 0.5 }, { offset: Number.MAX_SAFE_INTEGER + 1 }, { limit: 0 },
+    { limit: CONTEXT_PAGE_MAX + 1 }, { limit: '20' }, { sourceId: 'execution:invalid' }, { taskId: execution.taskId }]) {
+    await assert.rejects(rt.executionContext('lead', { ...args, ...extra }), { code: 'orch/invalid' })
+  }
+  for (const extra of [{ query: 'x'.repeat(201) }, { cursor: '-1' }, { cursor: '01' }, { cursor: '9007199254740992' }, { limit: 1 }]) {
+    await assert.rejects(rt.executionContext('lead', { action: 'list', ...extra }), { code: 'orch/invalid' })
+  }
+  await assert.rejects(rt.executionContext('lead', { action: 'write' }), { code: 'orch/invalid' })
+  await assert.rejects(rt.executionContext('s', args), { code: 'orch/invalid' })
+})
 
 test('task relationships stay within the coordinator and revise can replace or clear them', async () => {
   const rt = fixture()
@@ -87,7 +267,7 @@ test('create and revise reject attaching to a done parent until it is reopened',
   const { task: parent, execution } = await accepted(rt)
   await rt.startExecution(execution.id)
   await rt.finishExecution(execution.id, result)
-  await rt.completeTask(parent.id, { reason: 'Checked', references: result.references })
+  await rt.completeTask(parent.id, { reason: 'Checked', executionIds: [execution.id], basis: ['Verified result'] })
   const child = await rt.createTask(scope)
   const before = structuredClone(rt.state.tasks)
   await assert.rejects(rt.createTask({ ...scope, parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收，请先 reopen 父任务' })
@@ -107,22 +287,22 @@ test('parent acceptance requires all children done and still needs its own execu
   const childExecution = await rt.acceptExecution(child.id, route)
   await rt.startExecution(childExecution.id)
   await rt.finishExecution(childExecution.id, result)
-  await rt.completeTask(child.id, { reason: 'Checked child', references: result.references })
-  await assert.rejects(rt.completeTask(parent.id, { reason: 'No integration', references: result.references }),
-    { code: 'orch/invalid', message: 'Acceptance evidence must reference task execution results' })
+  await rt.completeTask(child.id, { reason: 'Checked child', executionIds: [childExecution.id], basis: ['Verified child'] })
+  await assert.rejects(rt.completeTask(parent.id, { reason: 'No integration', executionIds: [childExecution.id], basis: ['Child is not integration'] }),
+    { code: 'orch/invalid', message: 'Acceptance executions must belong to this task and have archived results' })
   const integration = await rt.acceptExecution(parent.id, route)
   await rt.startExecution(integration.id)
   await rt.finishExecution(integration.id, { report: 'Integrated', references: ['integration'] })
-  const acceptance = { reason: 'Verified integration', references: ['integration'] }
+  const acceptance = { reason: 'Verified integration', executionIds: [integration.id], basis: ['Verified integration'] }
   const sibling = await rt.createTask({ ...scope, parentId: parent.id })
   await rt.reopenTask(child.id)
   await assert.rejects(rt.completeTask(parent.id, acceptance), { code: 'orch/invalid', message: '还有 2 个子任务未验收，先完成它们再验收本任务' })
-  await rt.completeTask(child.id, { reason: 'Checked again', references: result.references })
+  await rt.completeTask(child.id, { reason: 'Checked again', executionIds: [childExecution.id], basis: ['Verified child again'] })
   const siblingExecution = await rt.acceptExecution(sibling.id, route)
   await rt.startExecution(siblingExecution.id)
   await rt.finishExecution(siblingExecution.id, result)
   await assert.rejects(rt.completeTask(parent.id, acceptance), { code: 'orch/invalid', message: '还有 1 个子任务未验收，先完成它们再验收本任务' })
-  await rt.completeTask(sibling.id, { reason: 'Checked sibling', references: result.references })
+  await rt.completeTask(sibling.id, { reason: 'Checked sibling', executionIds: [siblingExecution.id], basis: ['Verified sibling'] })
   rt.state.tasks.foreign = { ...sibling, id: 'foreign', coordinatorSessionId: 'another-lead', status: 'open' }
   assert.equal((await rt.completeTask(parent.id, acceptance)).status, 'done')
   await rt.reopenTask(child.id)
@@ -145,7 +325,7 @@ test('accept, start, waiting, finish, rework, complete and reopen follow the tas
   assert.equal((await rt.taskView(task.id)).status, 'open')
   await rt.startExecution(second.id)
   await rt.finishExecution(second.id, { report: 'Reworked', references: ['ref-2'] })
-  const done = await rt.completeTask(task.id, { reason: 'Verified', references: ['ref-2'] })
+  const done = await rt.completeTask(task.id, { reason: 'Verified', executionIds: [second.id], basis: ['Verified rework'] })
   assert.equal(done.status, 'done')
   assert.deepEqual(done.acceptances[0].executionIds, [second.id])
   assert.equal(done.executions[0].report, result.report)
@@ -259,16 +439,17 @@ test('an execution may bind its own workspace only when its session lives there'
 test('complete requires resolved execution results and linked evidence with a reason', async () => {
   const rt = fixture()
   const task = await rt.createTask(scope)
-  const acceptance = { reason: 'Verified', references: ['ref-1'] }
+  const acceptance = { reason: 'Verified', executionIds: ['missing'], basis: ['Verified result'] }
   await assert.rejects(rt.completeTask(task.id, acceptance), { code: 'orch/invalid' })
   const execution = await rt.acceptExecution(task.id, route)
+  acceptance.executionIds = [execution.id]
   await assert.rejects(rt.completeTask(task.id, acceptance), { code: 'orch/invalid' })
   await rt.startExecution(execution.id)
   await assert.rejects(rt.completeTask(task.id, acceptance), { code: 'orch/invalid' })
   await rt.unconfirmExecution(execution.id, result)
   await assert.rejects(rt.completeTask(task.id, acceptance), { code: 'orch/invalid' })
   await rt.finishExecution(execution.id)
-  for (const bad of [{ ...acceptance, reason: '' }, { ...acceptance, references: [] }, { ...acceptance, references: ['unrelated'] }]) {
+  for (const bad of [{ ...acceptance, reason: '' }, { ...acceptance, executionIds: [] }, { ...acceptance, executionIds: ['unrelated'] }, { ...acceptance, basis: [] }, { ...acceptance, basis: [' '] }]) {
     await assert.rejects(rt.completeTask(task.id, bad), { code: 'orch/invalid' })
   }
   assert.equal((await rt.completeTask(task.id, acceptance)).status, 'done')
@@ -307,7 +488,7 @@ test('late results only update the bound execution, including after reuse and ac
   assert.deepEqual(rt.state.executions[execution.id].references, ['ref-1', 'late-ref'])
   await rt.startExecution(next.id)
   await rt.finishExecution(next.id, result)
-  await rt.completeTask(task.id, { reason: 'Checked', references: ['ref-1'] })
+  await rt.completeTask(task.id, { reason: 'Checked', executionIds: [execution.id], basis: ['Verified result'] })
   const completed = structuredClone(rt.state.tasks[task.id])
   await rt.recordExecutionResult(execution.id, { report: 'Even later' })
   assert.deepEqual(rt.state.tasks[task.id], completed)
@@ -351,7 +532,7 @@ test('accept, complete and reopen validate every task source state', async () =>
       await rt.finishExecution(execution.id, result)
       rt.state.tasks[task.id].status = status
       const before = structuredClone(rt.state)
-      const input = method === 'acceptExecution' ? route : method === 'reviseTask' ? { title: 'Changed' } : { reason: 'Verified', references: ['ref-1'] }
+      const input = method === 'acceptExecution' ? route : method === 'reviseTask' ? { title: 'Changed' } : { reason: 'Verified', executionIds: [execution.id], basis: ['Verified result'] }
       if (allowed.includes(status)) await rt[method](task.id, input)
       else {
         await assert.rejects(rt[method](task.id, input), { code: 'orch/invalid' })
@@ -431,6 +612,7 @@ test('accepted reports and evidence remain linked when late results append refer
   await rt.startExecution(execution.id)
   await rt.unconfirmExecution(execution.id, result)
   await rt.finishExecution(execution.id, { report: 'Replacement', references: ['ref-1', 'ref-2', 'ref-2'] })
+  delete rt.state.executions[execution.id].result
   const done = await rt.completeTask(task.id, { reason: 'Checked', references: ['ref-1', 'ref-2'] })
   rt.state.executions[execution.id].references.push('ref-2')
   const late = await rt.recordExecutionResult(execution.id, { report: 'Another replacement', references: ['ref-2', 'ref-3', 'ref-3'] })
@@ -460,7 +642,7 @@ for (const [label, removeScope] of unavailableScopes) test(`${label} refuses tas
     const { task, execution } = await accepted(rt)
     await rt.startExecution(execution.id)
     await rt.finishExecution(execution.id, result)
-    if (method === 'reopenTask') await rt.completeTask(task.id, { reason: 'Checked', references: result.references })
+    if (method === 'reopenTask') await rt.completeTask(task.id, { reason: 'Checked', executionIds: [execution.id], basis: ['Verified result'] })
     removeScope(rt)
     const before = structuredClone(rt.state)
     const input = method === 'reviseTask' ? { title: 'Changed' }
@@ -495,4 +677,32 @@ test('failed acceptance saves retain the queued task and session reservations fo
   await assert.rejects(rt.acceptExecution(task.id, { ...route, sessionId: 's2' }), { code: 'orch/busy' })
   await assert.rejects(rt.acceptExecution(other.id, route), { code: 'orch/busy' })
   assert.equal(Object.keys(rt.state.executions).length, 1)
+})
+
+test('acceptance distinguishes archived executions, cross-task results and purely legacy references', async () => {
+  const rt = fixture(), { task, execution } = await accepted(rt)
+  await rt.startExecution(execution.id)
+  await rt.finishExecution(execution.id, { final: 'Verified result', references: ['manual-ref'] })
+  const acceptance = { executionIds: [execution.id], reason: 'Checked files and tests', basis: ['result paragraph and test command'] }
+  const foreign = await rt.createTask(scope)
+  await assert.rejects(rt.completeTask(foreign.id, acceptance), /belong to this task/)
+  for (const input of [{ reason: 'Checked', references: ['manual-ref'] }, { ...acceptance, references: ['manual-ref'] },
+    { reason: 'Checked', executionIds: [execution.id] }, { ...acceptance, basis: [' '] }]) {
+    await assert.rejects(rt.completeTask(task.id, input), { code: 'orch/invalid' })
+  }
+  const archived = rt.state.executions[execution.id].result
+  rt.state.executions[execution.id].result = null
+  await assert.rejects(rt.completeTask(task.id, acceptance), /archived results/)
+  rt.state.executions[execution.id].result = archived
+  assert.equal((await rt.completeTask(task.id, acceptance)).status, 'done')
+  await rt.reopenTask(task.id)
+  delete rt.state.executions[execution.id].result
+  const old = await rt.completeTask(task.id, { reason: 'Legacy acceptance', references: ['manual-ref'] })
+  assert.deepEqual(old.acceptances[1].references, ['manual-ref'])
+  assert.deepEqual(old.acceptances[0].basis, acceptance.basis)
+  await rt.reopenTask(task.id)
+  const next = await rt.acceptExecution(task.id, route)
+  await rt.startExecution(next.id)
+  await rt.finishExecution(next.id, { final: 'New result' })
+  await assert.rejects(rt.completeTask(task.id, { reason: 'Cannot bypass new result', references: ['manual-ref'] }), /New execution results/)
 })

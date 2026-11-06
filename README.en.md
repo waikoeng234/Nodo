@@ -17,7 +17,7 @@ When you use several AI coding tools at once, you jump between terminals, copy r
 Nodo is a plugin for DeepSeek Harness (dsh). It puts those Agents in **one window**:
 
 - **Each keeps its own setup**: every Agent still uses its own login, models, and tools. Nodo connects through each Agent's public interfaces and does not do the work for it.
-- **Someone dispatches**: set one **lead**. It classifies each task, then hands it to a role by the rules you configured, and the results return to the lead automatically, with no copying from you. The lead receives only conclusions and references, so execution details do not fill its context.
+- **Someone dispatches**: set one **lead**. It classifies each task, then hands it to a role by the rules you configured, and the results return to the lead automatically, with no copying from you. The lead receives only conclusions and a result preview, and reads the full result on demand, so execution details do not fill its context.
 - **Save cost**: hard work goes to a stronger model, routine work to a cheaper role.
 
 ## Three steps
@@ -64,7 +64,7 @@ flowchart LR
 - **Integration**: through each Agent's public interface (for example Codex app-server, Claude Code stream-JSON, OpenCode ACP).
 - **Roles**: the role summary is injected through the Agent's own system-prompt channel, once per conversation.
 - **Delegation**: the lead only classifies a task (type and whether it is hard). Who takes it is decided by your configuration in 任务分配 (task assignment), so the same input gives the same result.
-- **Reports**: the lead receives only conclusions and references. Intermediate steps stay in the executor conversation; open 查看会话 to read them.
+- **Reports**: the lead receives only conclusions and a result preview; full text is read on demand. Intermediate steps stay in the executor conversation; open 查看会话 to read them.
 - **Decisions**: when a choice is yours to make — a public interface or compatibility change, added scope, or mutually exclusive options — the lead stops and asks in the team conversation instead of choosing. While a question is open the conversation dispatches nothing new, and the lead re-plans once you answer.
 
 For more detail, see the [architecture guide](docs/architecture.md).

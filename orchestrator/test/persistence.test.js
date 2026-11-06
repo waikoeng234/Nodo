@@ -276,7 +276,7 @@ test('an answer acknowledged after turn completion is persisted before its reque
   })
 })
 
-test('v4 task and execution records round trip through the installed runtime', async () => {
+test('v5 task and execution records round trip through the installed runtime', async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-tasks-'))
   let host = boot(home)
   try {
@@ -293,29 +293,34 @@ test('v4 task and execution records round trip through the installed runtime', a
     await rt.requestExecutionStop(execution.id)
     await rt.saveStrict()
     let saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-    assert.equal(saved.version, 4)
+    assert.equal(saved.version, 5)
     assert.equal(saved.executions[execution.id].status, 'running')
     assert.equal(saved.executions[execution.id].model, null)
     assert.equal(saved.executions[execution.id].thinking, null)
     assert.equal(Object.hasOwn(saved.executions[execution.id], 'stopping'), false)
-    await rt.finishExecution(execution.id, { report: 'Verified', references: ['ref'] })
-    await rt.completeTask(task.id, { reason: 'Accepted', references: ['ref'] })
+    await rt.finishExecution(execution.id, { final: 'Verified final result', report: 'Verified', references: ['ref'] })
+    const acceptance = { reason: 'Accepted', executionIds: [execution.id], basis: ['Verified final result', 'Restart preserves task records'] }
+    await rt.completeTask(task.id, acceptance)
     const expected = await rt.taskView(task.id)
     saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.equal(saved.tasks[task.id].status, 'done', 'the operation returns after writing')
+    assert.deepEqual(saved.tasks[task.id].acceptances[0], { ...acceptance, createdAt: expected.acceptances[0].createdAt })
+    assert.equal(saved.executions[execution.id].result.text, 'Verified final result')
     await host.dispose()
     host = boot(home)
     rt = await host.runtime
     assert.deepEqual(await rt.taskView(task.id), expected)
+    assert.equal(rt.state.executions[execution.id].result.text, 'Verified final result')
+    assert.deepEqual(rt.state.executions[execution.id].references, ['ref'], 'existing references survive the new acceptance format')
     assert.equal((await rt.taskView(child.id)).parentId, goal.id)
     assert.deepEqual((await rt.taskView(child.id)).dependsOn, [task.id])
     assert.equal(rt.state.executions[execution.id].model, null)
     assert.equal(rt.state.executions[execution.id].thinking, null)
-    assert.equal(existsSync(join(home, 'state.v4.json')), false)
+    assert.equal(existsSync(join(home, 'state.v5.json')), false)
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
-for (const version of [1, 2, 3]) test(`v${version} upgrades to v4 with an exact backup and empty task containers`, async () => {
+for (const version of [1, 2, 3]) test(`v${version} upgrades to v5 with an exact backup and empty task containers`, async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-task-migration-'))
   const source = JSON.stringify({ version, profiles: {}, prefs: { marker: 'keep' } }, null, 2)
   writeFileSync(join(home, 'state.json'), source)
@@ -324,7 +329,7 @@ for (const version of [1, 2, 3]) test(`v${version} upgrades to v4 with an exact 
     const rt = await host.runtime
     assert.equal(readFileSync(join(home, `state.v${version}.json`), 'utf8'), source)
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-    assert.equal(saved.version, 4)
+    assert.equal(saved.version, 5)
     assert.deepEqual(saved.tasks, {})
     assert.deepEqual(saved.executions, {})
     assert.equal(rt.state.prefs.marker, 'keep')
@@ -372,21 +377,26 @@ test('v4 loading defaults record fields and conservatively normalizes invalid st
     await assert.rejects(rt.acceptExecution('task', { ...route, sessionId: 's2' }), { code: 'orch/busy' })
     await assert.rejects(rt.acceptExecution('other', route), { code: 'orch/busy' })
     await rt.recordExecutionResult('execution', { report: 'Recovered', references: ['ref'] })
-    await rt.finishExecution('execution')
-    const done = await rt.completeTask('task', { reason: 'Checked', references: ['ref'] })
+    await rt.finishExecution('execution', { final: 'Recovered final result' })
+    const acceptance = { reason: 'Checked', executionIds: ['execution'], basis: ['Recovered final result', 'Normalized statuses checked'] }
+    const done = await rt.completeTask('task', acceptance)
     assert.equal(done.acceptances.length, 1)
+    assert.deepEqual(done.acceptances[0], { ...acceptance, createdAt: done.acceptances[0].createdAt })
     await host.dispose()
     warnings.length = 0
     host = boot(home, { logger: { warn: (...args) => warnings.push(args) } })
     rt = await host.runtime
     assert.equal(warnings.filter(args => String(args[1]).includes('invalid task or execution status')).length, 0)
     assert.equal(rt.state.tasks.task.status, 'done')
+    assert.deepEqual(rt.state.tasks.task.acceptances, done.acceptances)
+    assert.equal(rt.state.executions.execution.result.text, 'Recovered final result')
+    assert.deepEqual(rt.state.executions.execution.references, ['ref'])
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('newer state blocks strict saves and ordinary saves leave the file untouched', async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-future-state-'))
-  const source = JSON.stringify({ version: 5, tasks: { future: { keep: true } } })
+  const source = JSON.stringify({ version: 6, tasks: { future: { keep: true } } })
   writeFileSync(join(home, 'state.json'), source)
   const host = boot(home)
   try {
@@ -395,7 +405,7 @@ test('newer state blocks strict saves and ordinary saves leave the file untouche
     await assert.rejects(rt.saveStrict(), { code: 'orch/read-only' })
     await assert.doesNotReject(rt.save())
     assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), source)
-    assert.equal(existsSync(join(home, 'state.v5.json')), false)
+    assert.equal(existsSync(join(home, 'state.v6.json')), false)
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 

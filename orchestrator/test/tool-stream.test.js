@@ -104,6 +104,43 @@ const harness = () => {
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
 
+test('result capture uses the full final before display clipping and excludes process and hidden text', async () => {
+  for (const reason of ['done', 'error', 'interrupted']) {
+    const { rt, lines, cleanup } = harness(), captured = []
+    rt.statsOutput = () => {}
+    rt.leadEnded = async (_id, result) => { captured.push(result) }
+    const final = 'Final report\n' + '正文🙂\n'.repeat(5000)
+    try {
+      rt.driverSink('profile', { type: 'turn/start', turnId: 't' })
+      rt.driverSink('profile', { type: 'text', turnId: 't', text: 'process text', channel: 'commentary' })
+      rt.driverSink('profile', { type: 'thinking', turnId: 't', text: 'hidden reasoning' })
+      rt.driverSink('profile', { type: 'text', turnId: 't', messageId: 'reply', blockIndex: 1, channel: 'final', text: final.slice(100) })
+      rt.driverSink('profile', { type: 'text', turnId: 't', messageId: 'reply', blockIndex: 0, channel: 'final', text: final.slice(0, 100) })
+      rt.driverSink('profile', { type: 'text', turnId: 't', parentCallId: 'child', text: 'child reply' })
+      rt.driverSink('profile', { type: 'turn/end', turnId: 't', reason, text: final })
+      await tick()
+      assert.equal(captured[0].final, final)
+      assert.equal(captured[0].finalCapture, reason === 'done' ? undefined : 'partial')
+      assert.ok(lines.filter(line => line.kind === 'text').every(line => line.text.length < 16100))
+    } finally { cleanup() }
+  }
+})
+
+test('a turn without a final does not turn commentary or thinking into a report', async () => {
+  const { rt, cleanup } = harness(), captured = []
+  rt.statsOutput = () => {}
+  rt.leadEnded = async (_id, result) => { captured.push(result) }
+  try {
+    rt.driverSink('profile', { type: 'turn/start', turnId: 't' })
+    rt.driverSink('profile', { type: 'text', turnId: 't', channel: 'commentary', text: 'Working on it' })
+    rt.driverSink('profile', { type: 'text', turnId: 't', text: 'unbounded text is not a confirmed final reply' })
+    rt.driverSink('profile', { type: 'thinking', turnId: 't', text: 'hidden' })
+    rt.driverSink('profile', { type: 'turn/end', turnId: 't', reason: 'error' })
+    await tick()
+    assert.equal(captured[0].final, undefined)
+  } finally { cleanup() }
+})
+
 test('tool updates merge into the running row without adding a tool or a line', async () => {
   const { rt, lines, stats, cleanup } = harness()
   try {

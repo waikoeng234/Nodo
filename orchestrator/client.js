@@ -13771,7 +13771,7 @@ function roundLines(lines, leadRunning = false) {
       delete step.ended;
       delete step.unconfirmed;
       delete step.stoppedBy;
-      Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at });
+      Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.origin?.preview ?? line.text, at: line.at });
       flush();
     }
     if (line.origin && !(line.who === "user" && (line.origin.kind === "task" || line.origin.kind === "decision-answer")) && !(line.who === "system" && line.origin.kind === "decision-cancel")) continue;
@@ -13885,7 +13885,7 @@ function RoundTask({ step }) {
     import_react.Fragment,
     null,
     (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: detail.brief, labels: MARKDOWN_LABELS })),
-    reason && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, acceptance ? `${reason} \xB7 \u4F9D\u636E ${acceptance.references.length} \u9879` : reason)
+    reason && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, acceptance ? `${reason} \xB7 \u4F9D\u636E ${(acceptance.basis ?? acceptance.references).length} \u9879` : reason)
   );
 }
 function RoundSpeaker({ role, running }) {
