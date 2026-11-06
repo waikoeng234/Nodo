@@ -1131,10 +1131,32 @@ test('the Windows titlebar matches the space chrome and the right header sits in
   const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
   assert.equal(rule(`${win} :has(> [data-rightbar-col])::before`), 'background:var(--nodo-chrome)', 'the titlebar strip shares the chrome tint behind the icon column')
   assert.match(rule(`${win} .nodo-space-sidebar .nodo-rail-body`), /padding-top:6px/)
-  assert.equal(rule(`${win} .nodo-right-panel`), 'margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)', 'the right card top stays level with the conversation card')
+  assert.equal(rule(`${win} .nodo-right-panel`), 'margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;height:auto;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)', 'the right card top stays level with the conversation card')
   assert.equal(rule(`${win} .nodo-right-content`), 'margin:0;border:0;border-radius:0;background:transparent', 'the panel becomes the card so its header sits inside like the conversation title')
   assert.match(rule(`${win} .nodo-right-head`), /padding-top:10px/, 'the header breathes inside the card')
-  assert.match(rule(`${win} .nodo-right-control`), /top:calc\(var\(--dsh-frame-chrome-top,0px\) \+ 8px\)/, 'the corner toggle lands inside the card')
+})
+
+test('the Windows titlebar hosts the header row and lines both toggles up with the caption buttons', async () => {
+  const { CSS } = await loadClient('styles.js')
+  const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
+  const control = rule('html[data-windows-titlebar] .nodo-right-control')
+  assert.equal(rule('html[data-windows-titlebar] .nodo-head'), 'display:contents', 'the header dissolves so its row can sit in the titlebar strip')
+  const row = rule('html[data-windows-titlebar] .nodo-title-row')
+  assert.match(row, /position:fixed;z-index:30/, 'the title, session tabs and summary toggle float out of the clipped column')
+  assert.match(row, /top:calc\(\(var\(--dsh-windows-titlebar-height,40px\) - 30px\) \/ 2\)/, 'the 30px row shares the caption buttons\' centreline')
+  assert.match(row, /left:var\(--nodo-main-left,320px\)/, 'the row aligns with the main conversation card\'s left edge')
+  assert.match(row, /padding-inline-start:12px/, 'the title keeps a small inline inset from the card edge')
+  assert.match(row, /right:calc\(var\(--nodo-caption-width,140px\) \+ 44px\)/, 'the row ends one 8px gap short of the summary toggle')
+  assert.match(row, /-webkit-app-region:drag/, 'the strip keeps dragging the window')
+  assert.match(rule('html[data-windows-titlebar] .nodo-title-row button'), /-webkit-app-region:no-drag/, 'tabs, crumbs and the summary toggle stay clickable')
+  assert.match(control, /top:calc\(\(var\(--dsh-windows-titlebar-height,40px\) - 28px\) \/ 2\)/, 'the rightbar toggle centres on the caption buttons')
+  assert.match(control, /right:calc\(var\(--nodo-caption-width,140px\) \+ 8px\)/, 'the rightbar toggle sits one 8px gap left of the minimize button')
+  assert.match(control, /height:28px/)
+  assert.equal(rule('html[data-windows-titlebar] .nodo-right-toggle'), 'width:28px;height:28px', 'both toggles match the caption-button metrics')
+  const collapsedRow = rule('html[data-windows-titlebar][data-nodo-space]:has([data-sidebar-collapsed=true]) .nodo-title-row')
+  assert.match(collapsedRow, /left:calc\(var\(--nodo-menu-end,182px\) \+ 8px\)/, 'with the sidebar collapsed the row keeps the toggle-menu-row 8px chain')
+  const closedCard = CSS.split('\n').find(line => line.startsWith('html[data-windows-titlebar][data-nodo-space] [data-rightbar-collapsed]') && line.includes('::before')) ?? ''
+  assert.match(closedCard, /right:calc\(var\(--nodo-frame-gap\) \/ 2\)/, 'without a rightbar track the card margin plus half the gap lands 8px from the window edge')
 })
 
 test('directory tree lazily loads each expanded level, caches expansion, marks truncation and returns from preview', async () => {
