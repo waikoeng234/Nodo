@@ -8,6 +8,8 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { install } from '../core/src/stats.js'
 import { until, withHost } from './helpers/host.js'
+import { echoEntry } from './helpers/echo-driver.js'
+import { registerEngine } from '../agent-drivers/dist/index.js'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -45,6 +47,27 @@ test('one round counts its steps, its decode bursts and its token buckets', asyn
   assert.equal(record.decodeTokens, 40, 'the output tokens pair with our own decode window')
   assert.equal(record.contextUsed, 1005)
   assert.equal(record.contextSize, 8000)
+})
+
+test('a turn\'s live usage shows on top of the closed totals and the end replaces it', () => {
+  const rt = recorder()
+  rt.statsRound('s1')
+  rt.statsEnd('s1', { inputTokens: 100, outputTokens: 10, contextUsed: 500, contextSize: 8000 })
+  rt.statsRound('s1')
+  rt.statsUsage('s1', { inputTokens: 30, outputTokens: 3, contextUsed: 700 })
+  rt.statsUsage('s1', { inputTokens: 60, outputTokens: 6, contextUsed: 900 })
+  const live = rt.statsView().s1
+  assert.deepEqual([live.inputTokens, live.outputTokens, live.contextUsed, live.contextSize, live.turns], [160, 16, 900, 8000, 1],
+    'the newest snapshot adds to the totals, its context replaces theirs, and the turn is not counted yet')
+  rt.statsEnd('s1', { inputTokens: 65, outputTokens: 7, contextUsed: 950 })
+  const closed = rt.statsView().s1
+  assert.deepEqual([closed.inputTokens, closed.outputTokens, closed.contextUsed, closed.turns], [165, 17, 950, 2], 'the end usage is the final word')
+
+  rt.statsRound('s2')
+  assert.equal(rt.statsUsage('s2', { inputTokens: 40, contextUsed: 400 }), true)
+  assert.equal(rt.statsUsage('s2', { inputTokens: 40, contextUsed: 400 }), false, 'a repeated snapshot changes nothing to push')
+  assert.equal(rt.statsView().s2.inputTokens, 40, 'a first turn shows before it ends')
+  assert.deepEqual(rt.statsLive('s2'), { inputTokens: 40, contextUsed: 400 })
 })
 
 test('an engine that reports its own timing replaces the measured wall times', async () => {
@@ -163,5 +186,32 @@ test('a finished turn lands one session record and the state answer carries it',
     assert.equal(record.decodeTokens, 0, 'so no speed figure is invented for it')
     assert.equal(record.inputTokens, 0, 'an engine that reports no usage leaves the buckets at zero')
     await until(async () => (await api('state', { since: -1 })).work[profile.id]?.active !== true ? true : undefined)
+  })
+})
+
+test('a live usage event reaches the state answer while the turn still runs', async () => {
+  let release
+  registerEngine('live-usage', { ...echoEntry, info: { ...echoEntry.info, id: 'live-usage', name: 'Live usage' }, create(options) {
+    return echoEntry.create({ ...options, onEvent: event => {
+      if (event.type !== 'turn/end') {
+        options.onEvent(event)
+        if (event.type === 'turn/start') options.onEvent({ type: 'usage', turnId: event.turnId, usage: { inputTokens: 40, contextUsed: 400, contextSize: 1000 } })
+        return
+      }
+      release = () => options.onEvent(event)
+    } })
+  } })
+  await withHost(async ({ api, home }) => {
+    const workspace = await api('workspace-create', { name: 'Main', cwd: join(home, 'ws') })
+    const profile = await api('profile-create', { name: 'Live', engine: 'live-usage', workspace: workspace.id })
+    await api('send', { profile: profile.id, text: 'do the thing' })
+    const live = await until(async () => (await api('state', { since: -1 })).stats?.[profile.id]?.contextUsed === 400 ? (await api('state', { since: -1 })).stats[profile.id] : undefined)
+    assert.deepEqual([live.turns, live.inputTokens, live.contextSize], [0, 40, 1000], 'the running turn shows its usage before it is counted')
+    await until(() => release)
+    release()
+    const closed = await until(async () => (await api('state', { since: -1 })).stats?.[profile.id]?.turns === 1 ? (await api('state', { since: -1 })).stats[profile.id] : undefined)
+    assert.deepEqual([closed.inputTokens, closed.contextUsed], [40, 400], 'an end without usage keeps the live figures')
+    const usage = (await api('transcript', { profile: profile.id })).filter(line => line.kind === 'usage').map(line => line.usage)
+    assert.deepEqual(usage, [{ inputTokens: 40, contextUsed: 400, contextSize: 1000 }], 'and the reply\'s own usage line agrees with the stats')
   })
 })

@@ -61,7 +61,7 @@ type QoderTool = { name: string; input?: QoderInput; parentCallId?: string }
 type QoderTurn = {
   id: string; started: boolean; tools: Map<string, QoderTool>; completedTools: Set<string>; messages: Set<string>; tasks: Map<string, boolean>
   interrupting: boolean; settle: (() => void) | null; changes?: FileChanges; done?: Promise<void>; interruption?: Promise<void>
-  compacting?: boolean; textEmitted?: boolean; contextUsed?: number; usage?: Usage; unconfirmed?: boolean
+  compacting?: boolean; textEmitted?: boolean; contextUsed?: number; usage?: Usage; requests?: Map<string, Usage>; unconfirmed?: boolean
 }
 type QoderControl = { turn: QoderTurn | null; resolve(value: unknown): void; reject(error: Error): void }
 
@@ -217,6 +217,11 @@ const qoderRatioTokens = (raw: QoderUsage | undefined, contextWindow: unknown) =
   && typeof contextWindow === 'number' && contextWindow > 0
     ? Math.round(raw.context_usage_ratio * contextWindow) : undefined
 
+// Routes billed in credits report every token counter as 0: not a count, so it stays out.
+const qoderUsage = (raw: QoderUsage | undefined) => qoderPromptTokens(raw) || raw?.output_tokens
+  ? usageOf({ inputTokens: raw?.input_tokens, outputTokens: raw?.output_tokens, cacheReadTokens: raw?.cache_read_input_tokens, cacheWriteTokens: raw?.cache_creation_input_tokens })
+  : undefined
+
 export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions }: QoderDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   let peer: QoderConnection | null = null
@@ -229,6 +234,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
   let running: QoderTurn | null = null
   const controls = new Map<string, QoderControl>()
   const requests = new Map<string, QoderRequest>()
+  let contextSize: number | undefined
   const coverage = createCoverage('qoder')
 
   const closeRequests = () => {
@@ -250,7 +256,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
       controls.delete(id)
       pending.reject(new Error('Qoder turn ended'))
     }
-    usage ??= turn.usage
+    usage ??= liveUsage(turn)
     turn.settle?.()
     closeRequests()
     if (turn.changes) emit(turn.changes.snapshot(turn.id))
@@ -272,6 +278,7 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
     if (!previous) emit({ type: 'tool', turnId: turn.id, callId: block.id, name: block.name ?? 'tool', phase: 'start', input: block.input,
       ...(parentCallId ? { parentCallId } : {}) })
   }
+  const liveUsage = (turn: QoderTurn) => usageOf({ ...[...turn.requests?.values() ?? []].reduce(addUsage, turn.usage), contextUsed: turn.contextUsed || undefined, contextSize })
   const receive = (frame: QoderFrame) => {
     if (frame.type === 'control_response') {
       const pending = controls.get(frame.response?.request_id)
@@ -343,8 +350,15 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
       return
     }
     if (frame.type === 'assistant') {
-      const used = qoderPromptTokens(frame.message?.usage)
+      // The session's context and the result's counts are the main conversation's; a subagent runs in its own.
+      const used = frame.parent_tool_use_id ? undefined : qoderPromptTokens(frame.message?.usage)
       if (used !== undefined) turn.contextUsed = used
+      const counted = frame.parent_tool_use_id ? undefined : qoderUsage(frame.message?.usage)
+      if (counted && frame.message?.id) {
+        turn.requests ??= new Map()
+        turn.requests.set(frame.message.id, counted)
+        emit({ type: 'usage', turnId: turn.id, usage: liveUsage(turn)! })
+      }
       const messageId = frame.message?.id
       const seen = messageId && turn.messages.has(messageId)
       for (const [index, block] of (Array.isArray(frame.message?.content) ? frame.message.content : []).entries()) {
@@ -371,18 +385,9 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
       const contextWindow = Object.values(frame.modelUsage ?? {})[0]?.contextWindow
       const prompt = qoderPromptTokens(frame.usage)
       const occupied = prompt || qoderRatioTokens(frame.usage, contextWindow)
-      // Routes billed in credits report every token counter and the window as 0: not a count, so they stay out.
-      const counted = Boolean(prompt) || Boolean(frame.usage?.output_tokens)
-      const usage = addUsage(turn.usage, usageOf({
-        ...(counted ? {
-          inputTokens: frame.usage?.input_tokens,
-          outputTokens: frame.usage?.output_tokens,
-          cacheReadTokens: frame.usage?.cache_read_input_tokens,
-          cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
-        } : {}),
-        contextUsed: turn.contextUsed || occupied,
-        contextSize: contextWindow || undefined,
-      }))
+      // A credit-billed route reports its window as 0 as well.
+      contextSize = contextWindow || contextSize
+      const usage = addUsage(turn.usage, usageOf({ ...qoderUsage(frame.usage), contextUsed: turn.contextUsed || occupied, contextSize }))
       end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, [10408, 10500, 10605].includes(Number(frame.error_code)))
     }
     // Frame types outside the declared union count by category only; the raw

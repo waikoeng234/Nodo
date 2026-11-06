@@ -30,6 +30,8 @@ test('Qoder adapter streams whole messages natively and resumes the same CLI ses
       assert.deepEqual(events.find(event => event.type === 'turn/end').usage,
         { inputTokens: 300, outputTokens: 90, cacheReadTokens: 900, cacheWriteTokens: 100, contextUsed: 1300, contextSize: 200000 },
         'the turn\'s buckets come from the result frame, the context from the last request and the routed window')
+      assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.usage),
+        [{ inputTokens: 300, outputTokens: 45, cacheReadTokens: 900, cacheWriteTokens: 100, contextUsed: 1300 }], 'each request shows as it lands')
       assert.equal(events.find(event => event.type === 'session' && event.state === 'ready').sessionId, 'fixture-qoder-session')
       assert.equal(driver.instructionMode, 'native')
 

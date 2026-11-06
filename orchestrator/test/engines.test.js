@@ -916,6 +916,8 @@ test('Codex RPC adapter streams one response, resumes, steers and interrupts', a
       assert.deepEqual(events.find(event => event.type === 'turn/end').usage,
         { inputTokens: 300, outputTokens: 45, cacheReadTokens: 900, cacheWriteTokens: 0, contextUsed: 1200, contextSize: 258400 },
         'Codex usage lands in disjoint buckets with the model context window')
+      assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.usage), [events.find(event => event.type === 'turn/end').usage],
+        'each token notification reports the turn so far')
       const sessionId = events.find(event => event.type === 'session' && event.sessionId).sessionId
       driver.dispose()
       events.length = 0

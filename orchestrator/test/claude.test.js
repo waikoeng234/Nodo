@@ -121,6 +121,41 @@ test('Claude success results and goal-like prose do not become goal lifecycle ev
   })
 })
 
+test('Claude reports each request\'s usage as it lands, before the result settles the turn', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LIVE')
+      const end = await until(() => events.find(event => event.type === 'turn/end'))
+      const live = events.filter(event => event.type === 'usage')
+      assert.ok(live.every(event => event.turnId === end.turnId) && events.indexOf(live.at(-1)) < events.indexOf(end))
+      assert.deepEqual(live.map(event => event.usage), [
+        { inputTokens: 300, outputTokens: 1, cacheReadTokens: 900, cacheWriteTokens: 100, contextUsed: 1300 },
+        { inputTokens: 300, outputTokens: 45, cacheReadTokens: 900, cacheWriteTokens: 100, contextUsed: 1300 },
+        { inputTokens: 305, outputTokens: 52, cacheReadTokens: 900, cacheWriteTokens: 2100, contextUsed: 1300 },
+        { inputTokens: 305, outputTokens: 52, cacheReadTokens: 900, cacheWriteTokens: 2100, contextUsed: 1300 },
+      ], 'the main request opens on its start and settles on an output-only delta despite an interleaved subagent stream; the subagent\'s repeated frame neither counts twice nor stands in for the session\'s context')
+      assert.deepEqual(end.usage, { inputTokens: 300, outputTokens: 90, cacheReadTokens: 900, cacheWriteTokens: 100, contextUsed: 1300, contextSize: 200000 },
+        'the result frame stays the final word')
+
+      events.length = 0
+      await driver.sendTurn('LIVE_EXIT')
+      const lost = await until(() => events.find(event => event.type === 'turn/end'))
+      assert.equal(lost.reason, 'error')
+      assert.deepEqual(lost.usage, events.filter(event => event.type === 'usage').at(-1).usage, 'a turn without a result ends on what it reported live')
+    } finally { driver.dispose() }
+    const resumed = createDriver('claude', { bin, cwd, driverSessionId: 'fixture-claude-session', onEvent: event => events.push(event) })
+    try {
+      events.length = 0
+      await resumed.sendTurn('LIVE')
+      assert.deepEqual((await until(() => events.find(event => event.type === 'turn/end'))).usage,
+        { inputTokens: 305, outputTokens: 97, cacheReadTokens: 900, cacheWriteTokens: 2100, contextUsed: 1300, contextSize: 200000 },
+        'without a modelUsage baseline the main conversation comes from the result and the subagents from what they streamed')
+    } finally { resumed.dispose() }
+  })
+})
+
 test('Claude counts subagent usage as the growth of the process-wide modelUsage', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

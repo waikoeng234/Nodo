@@ -40,6 +40,7 @@ Events use the factory callback. Optional fields remain absent when the source c
 | `plan` | `turnId`; whole-plan snapshot, optional text, steps and removal flag. |
 | `activity` | `turnId`, `entityId`, `phase`; source-declared member activity. |
 | `lifecycle` | Optional `turnId`, `kind: compaction / retry`, `phase: start / end`; optional error/cancellation. |
+| `usage` | `turnId`, `usage`; the turn's usage so far, sent as each model request's figures arrive. |
 | `turn/end` | `turnId`, `reason: done / interrupted / error`; optional final text, error, usage, timing, `unconfirmed` and `retryable: true`. |
 | `request/opened` | `id`, `kind: permission / question`; optional tool, reason, options and detail. |
 | `request/closed` | `id`; request already settled by the source. |
@@ -85,6 +86,8 @@ An unacknowledged stop may end locally with `unconfirmed: true`; the Agent may s
 ### Usage and timing
 
 Optional `usage` fields are `inputTokens` (uncached), `outputTokens` (including reasoning), `cacheReadTokens`, `cacheWriteTokens`, `contextUsed` and `contextSize`. The four token buckets are disjoint and additive. Context fields retain the latest model request's occupancy/window, not a sum. Unknown values stay absent; invalid, negative and non-finite values are dropped.
+
+A `usage` event carries the same shape for the turn so far; each one replaces the previous, and `turn/end.usage`, when present, is final. The host shows the latest one on top of the session totals while the turn runs, and keeps it when the turn ends without usage.
 
 Optional `timing` fields are `ttftMs`, `ttftSteps`, `llmMs`, `toolMs`, `decodeMs` and `decodeTokens`. Durations use milliseconds; step and token counts provide the denominators for averages and decoding speed.
 
@@ -336,7 +339,7 @@ It inherits existing Codex settings and requires an explicit working directory.
 | thinking | `item/reasoning/summaryTextDelta` / `textDelta`; completed reasoning `summary` / `content` arrays supply missing text without repeating streamed parts |
 | tool progress | `item/started` / `item/completed` for tool items; `item/commandExecution/outputDelta` appends output and `item/mcpToolCall/progress` updates the latest message |
 | `turn/end` | `turn/completed` status `completed` / `failed` / `interrupted`; `text` is the last completed `agentMessage` with phase `final_answer`, absent when none has that phase |
-| usage | `thread/tokenUsage/updated` `last`/`total` buckets (uncached input, cached input, cache write, output) plus `modelContextWindow`; one notification per model call, so a multi-request turn folds them |
+| usage | `thread/tokenUsage/updated` `last`/`total` buckets (uncached input, cached input, cache write, output) plus `modelContextWindow`; one notification per model call, so a multi-request turn folds them and reports each fold as a `usage` event |
 | permission | command/file approval server request; reply `accept` / `decline` |
 | question | `item/tool/requestUserInput`; reply an `answers` object per question id |
 | stale request | `serverRequest/resolved` closes the host card |
@@ -368,7 +371,7 @@ JSON-RPC). `--resume <session-id>` continues a stored session,
 | thinking / tool fallback | whole `assistant` content fills missing thinking text and tool calls; streamed tool JSON input and replayed results preserve input/output and call identity |
 | text fallback | whole `assistant` frame, and `result.result`, only when nothing streamed |
 | `turn/end` | `result` frame: `success`/`error_max_turns` → done, else interrupted (own interrupt) or error; after steering, wait for result `user_message_uuids`/`user_message_uuid` to cover injected input instead of ending on the preempted cycle; `text` is the last `result.result` |
-| usage | the turn's buckets come from the `result` frame's `usage` (uncached input, cache read/creation, output); the newest `assistant` frame's `message.usage` is the context occupancy and `modelUsage[].contextWindow` the window |
+| usage | the turn's buckets are the growth of the `result` frame's `modelUsage` sum since the previous result, which covers subagents; `modelUsage` is process-wide and a resumed process restores the session's earlier sum, so the first result after a resume falls back to `usage` for the main conversation plus what the subagents streamed. The newest main-conversation `assistant` frame's `message.usage` is the context occupancy (a subagent runs in its own context) and `modelUsage[].contextWindow` the window. While the turn runs, each main request's `message_start` and `message_delta` usage (merged, as some endpoints send only the output on the delta) and each subagent `assistant` frame's usage become `usage` events; a subagent's output and its last request reach the stream only partially, so its share is settled by the result |
 | permission | control_request `can_use_tool`; reply control_response `behavior: allow` (echoed `updatedInput`) / `deny` |
 | question | `can_use_tool` with `tool_name: "AskUserQuestion"`; allow with `updatedInput.answers` keyed by question text |
 
@@ -393,7 +396,7 @@ note the parameter is `configId`, and `session/set_model` does not exist).
 | delta / thinking | `session/update` `agent_message_chunk` / `agent_thought_chunk` |
 | tool progress | `session/update` `tool_call` / `tool_call_update`: included fields replace, statuses `pending`/`in_progress`/`completed`/`failed` |
 | `turn/end` | `session/prompt` response `stopReason`: `cancelled` → interrupted, `end_turn` → done, any other stop (limits, refusal, unknown) → error; `text` is the turn's last `agent_message_chunk` message by `messageId`, absent when any text chunk lacks one |
-| usage | `session/update` `usage_update` `{used,size}` is the context occupancy; the prompt response's `Usage` carries the buckets (`inputTokens`/`outputTokens`/`cachedReadTokens`/`cachedWriteTokens`), which the shared ACP core merges with it |
+| usage | `session/update` `usage_update` `{used,size}` is the context occupancy, reported as a `usage` event on each update; the prompt response's `Usage` carries the buckets (`inputTokens`/`outputTokens` plus `thoughtTokens`/`cachedReadTokens`/`cachedWriteTokens`), which the shared ACP core merges with it. CodeBuddy's prompt response has no `Usage`; each request's provider usage rides its `usage_update` `_meta.usage` (OpenAI-shaped, cache inside `prompt_tokens`) |
 | `interruptTurn` | `session/cancel` notification |
 | permission | server request `session/request_permission`; reply `{outcome:{outcome:"selected",optionId}}` (`once`/`always`) or cancelled |
 | question | server request `elicitation/create` (client capability `elicitation.form`); reply `accept` with content keyed by schema property, `*_custom` fields take free text |

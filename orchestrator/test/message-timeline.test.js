@@ -14,7 +14,7 @@ const harness = () => {
   const rt = {
     ctx: { effect: factory => { cleanup = factory() } },
     redactDeepSecrets: value => redactDeep(value, redact), redactHead: (text, max) => redact.head(text, max), save: async () => { saves.push(JSON.parse(JSON.stringify(lines))) },
-    statsOutput() {}, statsTool() {}, statsEnd() {}, isCompacting: () => false,
+    statsOutput() {}, statsTool() {}, statsEnd() {}, statsLive() {}, isCompacting: () => false,
     state: { profiles: {} }, sessionsOf: () => [], openApproval() {}, closeApproval() {},
     recordTaskOutcome: (_id, _task, reason, text) => reports.push({ reason, text }),
     saveReplyImages: async (_id, text) => { images.push(text); return [] },

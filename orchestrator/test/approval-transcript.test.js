@@ -15,7 +15,7 @@ const harness = answer => {
     appendLine: (_id, line) => { lines.push(line); return line },
     save: async () => { saved.push(JSON.parse(JSON.stringify(lines))) },
     answerRequest: (...args) => answer(rt, ...args),
-    statsOutput() {}, statsTool() {}, statsEnd() {}, recordTaskOutcome() {}, isCompacting: () => false,
+    statsOutput() {}, statsTool() {}, statsEnd() {}, statsLive() {}, recordTaskOutcome() {}, isCompacting: () => false,
   }
   rt.saveRuntime = () => rt.save()
   installDispatch(rt)

@@ -332,6 +332,8 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
                 cacheReadTokens: usage?.cacheRead, cacheWriteTokens: usage?.cacheWrite,
                 contextUsed: used, contextSize,
             }));
+            if (turn.usage)
+                emit({ type: 'usage', turnId: turn.id, usage: turn.usage });
             const text = textOf(message);
             if (text !== '') {
                 turn.lastText = text;

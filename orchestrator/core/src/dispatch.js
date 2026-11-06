@@ -389,10 +389,12 @@ export function install(rt) {
     if (event.reason === 'error' && typeof event.error === 'string') {
       say(profileId, { who: 'agent', kind: 'error', text: rt.redactDeepSecrets(String(event.error)).slice(0, 2000) })
     }
-    if (event.usage !== undefined) {
-      say(profileId, { who: 'system', kind: 'usage', usage: event.usage })
+    // An end without usage keeps the figures the turn reported live.
+    const usage = event.usage ?? rt.statsLive(profileId)
+    if (usage !== undefined) {
+      say(profileId, { who: 'system', kind: 'usage', usage })
     }
-    rt.statsEnd(profileId, event.usage, event.timing)
+    rt.statsEnd(profileId, usage, event.timing)
     closeMessages(st)
     disarmIdle(st)
     const finish = reason => {
@@ -431,6 +433,7 @@ export function install(rt) {
     thinking: sinkText, delta: sinkText, text: sinkText,
     changes: sinkChanges, plan: sinkPlan, activity: sinkActivity, lifecycle: sinkLifecycle, tool: sinkTool,
     'request/opened': sinkRequestOpened, 'request/closed': sinkRequestClosed, note: sinkNote, 'turn/end': sinkTurnEnd,
+    usage: (profileId, st, event) => { if (!foreign(st, event) && rt.statsUsage(profileId, event.usage)) rt.notifyLive?.() },
   }
   const driverSink = (profileId, event) => {
     const st = stateOf(profileId)

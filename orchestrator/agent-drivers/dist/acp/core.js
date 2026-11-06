@@ -239,8 +239,11 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                 emit({ type: 'tool', turnId: turn.id, callId: key, name, phase: 'end', input, output, isError: update.status === 'failed' });
             }
         }
-        if (update.sessionUpdate === 'usage_update')
+        if (update.sessionUpdate === 'usage_update') {
             turn.context = addUsage(turn.context, usageOf({ ...metaUsage(update._meta?.usage), contextUsed: update.used, contextSize: update.size }));
+            if (turn.context)
+                emit({ type: 'usage', turnId: turn.id, usage: turn.context });
+        }
         // Plan updates are whole-plan snapshots; a removed plan clears the row
         // instead of leaving stale steps behind.
         if (update.sessionUpdate === 'plan' && Array.isArray(update.entries)) {

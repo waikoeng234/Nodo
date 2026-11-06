@@ -377,6 +377,8 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 contextUsed: inputTokens + cacheReadTokens + cacheWriteTokens,
                 contextSize: params.tokenUsage?.modelContextWindow ?? undefined,
             }));
+            if (running.usage)
+                emit({ type: 'usage', turnId: running.id, usage: running.usage });
             return;
         }
         if (method === 'turn/completed' && running.started && params.turn?.id === running.id) {
