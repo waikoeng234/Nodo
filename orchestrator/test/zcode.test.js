@@ -675,13 +675,18 @@ test('ZCode executable discovery checks PATH first and then the app bundle', asy
   await withFixture(async ({ cwd, bin }) => {
     assert.equal(findZcodeExecutable(bin, { home: cwd, path: '' }), bin)
     assert.equal(findZcodeExecutable(join(cwd, 'missing'), { home: cwd, path: '' }), undefined)
-    const bundle = findZcodeExecutable('zcode', { home: cwd, path: '' })
+    const bundle = findZcodeExecutable('zcode', { home: cwd, path: '', query: () => '' })
     assert.ok(bundle === undefined || bundle.endsWith('zcode.cjs'))
     const installed = join(cwd, 'appdata', 'Programs', 'ZCode', 'resources', 'glm', 'zcode.cjs')
     const machine = join(cwd, 'pf', 'ZCode', 'resources', 'glm', 'zcode.cjs')
     for (const file of [installed, machine]) { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, ''); chmodSync(file, 0o755) }
     assert.equal(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'win32', env: { LOCALAPPDATA: join(cwd, 'appdata') } }), installed)
     assert.equal(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'win32', env: { ProgramFiles: join(cwd, 'pf') } }), machine)
+    const registered = join(cwd, 'reg', 'ZCode', 'resources', 'glm', 'zcode.cjs')
+    mkdirSync(dirname(registered), { recursive: true }); writeFileSync(registered, ''); chmodSync(registered, 0o755)
+    const query = () => `HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\zcode\n    InstallLocation    REG_SZ    ${join(cwd, 'reg', 'ZCode')}\\\n`
+    assert.equal(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'win32', env: {}, query }), registered, 'the uninstall registry is the last candidate')
+    assert.equal(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'win32', env: { LOCALAPPDATA: join(cwd, 'appdata') }, query }), installed, 'registry candidates come after the standard bundle dirs')
     assert.notEqual(findZcodeExecutable('zcode', { home: cwd, path: '', platform: 'darwin', env: { LOCALAPPDATA: cwd } }), installed, 'the Windows layout stays out of other platforms')
   })
 })

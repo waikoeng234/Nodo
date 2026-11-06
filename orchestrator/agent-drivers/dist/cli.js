@@ -1,7 +1,7 @@
 import { accessSync, constants, statSync } from 'node:fs';
 import { extname, isAbsolute, join, delimiter } from 'node:path';
 import { homedir } from 'node:os';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 const execute = promisify(execFile);
 export const invalidConfig = (message) => Object.assign(new Error(message), { code: 'orch/invalid' });
@@ -52,6 +52,67 @@ export function findExecutable(command, { path = process.env.PATH ?? '', home = 
             return false;
         }
     });
+}
+// Desktop apps registered for uninstall expose their install dir even when they
+// never touch PATH, so an installer may have put them on any drive or folder.
+const uninstallRoots = [
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+];
+// The first absolute Windows path in a registry value: quoted for uninstall
+// strings, whole for display icons, which may carry a ",0" icon index.
+const registryPath = (value) => {
+    const quoted = value.match(/"([^"]+)"/);
+    const text = (quoted ? quoted[1] : value.split(',')[0]).trim();
+    return /^[A-Za-z]:\\.+/.test(text) ? text : '';
+};
+export function registryProgramDirs(match, { platform = process.platform, query } = {}) {
+    if (platform !== 'win32')
+        return [];
+    const run = query ?? ((root, text) => {
+        try {
+            return execFileSync('reg', ['query', root, '/s', '/f', text, '/d'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+        }
+        catch {
+            return '';
+        }
+    });
+    const dirs = new Set();
+    let location = '', uninstall = '', icon = '';
+    const flush = () => {
+        // InstallLocation already names the directory; uninstall and icon values name
+        // files inside their directory, cut at the last backslash — never path.dirname,
+        // which only sees separators of the running platform.
+        const file = registryPath(uninstall) || registryPath(icon);
+        const cut = file.lastIndexOf('\\');
+        const value = (location || (cut >= 0 ? file.slice(0, cut) : '')).replace(/\\+$/, '');
+        if (value)
+            dirs.add(value);
+        location = uninstall = icon = '';
+    };
+    for (const root of uninstallRoots) {
+        for (const line of run(root, match).split(/\r?\n/)) {
+            if (/^HKEY_/i.test(line)) {
+                flush();
+                continue;
+            }
+            const at = line.indexOf('REG_SZ');
+            if (at < 0)
+                continue;
+            const name = line.slice(0, at).trim(), data = line.slice(at + 6).trim();
+            if (!data)
+                continue;
+            if (name === 'InstallLocation')
+                location = data;
+            else if (name === 'UninstallString')
+                uninstall = data;
+            else if (name === 'DisplayIcon')
+                icon = data;
+        }
+        flush();
+    }
+    return [...dirs];
 }
 // Node refuses to spawn .cmd/.bat shims directly (CVE-2024-27980); route them
 // through cmd.exe with the command quoted. An argument is quoted when it

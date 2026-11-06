@@ -1,7 +1,7 @@
 import { accessSync, constants, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { cliVersion, findExecutable, invalidConfig } from '../cli.js';
+import { cliVersion, findExecutable, invalidConfig, registryProgramDirs } from '../cli.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
 // The CLI ships inside the Desktop app bundle and is normally not on PATH;
 // the Windows installer puts it under the product directory.
@@ -15,11 +15,14 @@ const bundleCandidates = (home, env, platform) => [
         ...(env.ProgramFiles ? [join(env.ProgramFiles, 'ZCode/resources/glm/zcode.cjs')] : []),
     ] : []),
 ];
-export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH, env = process.env, platform = process.platform } = {}) {
+export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH, env = process.env, platform = process.platform, query } = {}) {
     const direct = findExecutable(bin, { home, path, platform });
     if (direct || bin !== 'zcode')
         return direct;
-    return bundleCandidates(home, env, platform).find(candidate => {
+    return [
+        ...bundleCandidates(home, env, platform),
+        ...registryProgramDirs('ZCode', { platform, query }).map(dir => join(dir, 'resources', 'glm', 'zcode.cjs')),
+    ].find(candidate => {
         try {
             accessSync(candidate, constants.X_OK);
             return statSync(candidate).isFile();

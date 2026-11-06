@@ -47,6 +47,50 @@ export function apply(ctx) {
     mark()
     return () => { stop(); dispose(); root.removeAttribute('data-nodo-space') }
   }, 'nodo: scrollbars')
+  // The Windows titlebar hosts the page's header row and panel toggles: the row
+  // aligns with the main conversation card's left edge and ends ahead of the
+  // native caption buttons, so both edges are measured — and once the sidebar
+  // collapses, the row clears the host's own menu, whose right edge is measured
+  // too. The card mounts a beat after each space publish, so the measurement
+  // chases it over a few frames; the observer then follows it as the sidebar or
+  // rightbar resize.
+  ctx.effect(() => {
+    const root = document.documentElement
+    if (typeof document.querySelector !== 'function' || typeof root.style?.setProperty !== 'function') return () => {}
+    const overlay = typeof navigator === 'undefined' ? null : navigator.windowControlsOverlay
+    const caption = () => {
+      const rect = overlay?.getTitlebarAreaRect?.()
+      if (rect) root.style.setProperty('--nodo-caption-width', `${Math.max(0, root.clientWidth - rect.right)}px`)
+    }
+    const menu = () => {
+      const host = document.querySelector('[data-windows-menu]')
+      if (host) root.style.setProperty('--nodo-menu-end', `${Math.ceil(host.getBoundingClientRect().right)}px`)
+    }
+    const measure = () => {
+      const main = document.querySelector('.nodo-main')
+      if (main) root.style.setProperty('--nodo-main-left', `${Math.round(main.getBoundingClientRect().left)}px`)
+      menu()
+    }
+    let observed = null
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+      const main = document.querySelector('.nodo-main')
+      if (main !== observed) { if (observed) observer.unobserve(observed); if (main) observer.observe(main); observed = main }
+      measure()
+    }) : null
+    let frame = 0, frames = 0
+    const chase = () => {
+      caption(); measure()
+      const main = document.querySelector('.nodo-main')
+      if (main && observer && main !== observed) { if (observed) observer.unobserve(observed); observer.observe(main); observed = main }
+      if (!main && ++frames < 120) frame = requestAnimationFrame(chase)
+    }
+    const follow = () => { frames = 0; chase() }
+    overlay?.addEventListener('geometrychange', caption)
+    caption()
+    const stopSpace = space.subscribe(follow)
+    follow()
+    return () => { stopSpace(); if (frame) cancelAnimationFrame(frame); overlay?.removeEventListener('geometrychange', caption); observer?.disconnect() }
+  }, 'nodo: titlebar metrics')
   ctx.slots.inject('conversation.input.dock', () => {
     const stops = [
       ctx.slots.register({ name: 'conversation.input.dock', id: 'nodo-running', order: -100 }, NativeRunningDock),

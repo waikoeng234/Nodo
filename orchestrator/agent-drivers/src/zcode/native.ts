@@ -1,10 +1,10 @@
 import { accessSync, constants, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { cliVersion, findExecutable, invalidConfig } from '../cli.js'
+import { cliVersion, findExecutable, invalidConfig, registryProgramDirs } from '../cli.js'
 import { jsonRpcProcess } from '../json-rpc-process.js'
 import type { JsonRpcPeer, JsonRpcProcessOptions } from '../json-rpc-process.js'
-import type { CliVersionOptions, FindExecutableOptions } from '../cli.js'
+import type { CliVersionOptions, FindExecutableOptions, RegistryQuery } from '../cli.js'
 
 export type ZcodeModelRoute = { providerId: string; modelId: string }
 type ModelInput = { providerId?: unknown; modelId?: unknown } | null
@@ -24,10 +24,13 @@ const bundleCandidates = (home: string, env: NodeJS.ProcessEnv, platform: string
   ] : []),
 ]
 
-export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH, env = process.env, platform = process.platform }: FindExecutableOptions & { env?: NodeJS.ProcessEnv; platform?: string } = {}) {
+export function findZcodeExecutable(bin = 'zcode', { home = homedir(), path = process.env.PATH, env = process.env, platform = process.platform, query }: FindExecutableOptions & { env?: NodeJS.ProcessEnv; platform?: string; query?: RegistryQuery } = {}) {
   const direct = findExecutable(bin, { home, path, platform })
   if (direct || bin !== 'zcode') return direct
-  return bundleCandidates(home, env, platform).find(candidate => {
+  return [
+    ...bundleCandidates(home, env, platform),
+    ...registryProgramDirs('ZCode', { platform, query }).map(dir => join(dir, 'resources', 'glm', 'zcode.cjs')),
+  ].find(candidate => {
     try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile() } catch { return false }
   })
 }

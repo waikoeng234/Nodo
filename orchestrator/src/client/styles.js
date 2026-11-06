@@ -77,9 +77,21 @@ html[data-windows-titlebar] .nodo-space-chrome{display:none}
    the columns; the rail tabs and the title row follow that line. */
 html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-body{padding-top:6px}
 html[data-windows-titlebar] .nodo-space-sidebar .nodo-rail-tabs{margin-top:-2px}
-html[data-windows-titlebar] .nodo-head{padding-top:4px}
+/* The Windows titlebar takes the page's own header over: the title, session
+   tabs and the summary toggle sit in the 40px strip, starting at the main
+   conversation card's left edge (measured in index.js), and the rightbar
+   toggle joins them ahead of the caption buttons — all on the caption
+   buttons' centreline with the same 8px spacing. The header keeps its
+   in-flow shape on every other platform. */
+html[data-windows-titlebar] .nodo-head{display:contents}
+html[data-windows-titlebar] .nodo-title-row{position:fixed;z-index:30;top:calc((var(--dsh-windows-titlebar-height,40px) - 30px) / 2);height:30px;min-height:0;left:var(--nodo-main-left,320px);padding-inline-start:12px;right:calc(var(--nodo-caption-width,140px) + 44px);-webkit-app-region:drag}
+/* With the sidebar collapsed the host strip chains the toggle, the app menu and
+   then the rest; the row follows that 8px chain instead of sliding under them. */
+html[data-windows-titlebar][data-nodo-space]:has([data-sidebar-collapsed=true]) .nodo-title-row{left:calc(var(--nodo-menu-end,182px) + 8px)}
+html[data-windows-titlebar] .nodo-title-row button{-webkit-app-region:no-drag}
 html[data-windows-titlebar] .nodo-right-head{padding-top:4px}
-html[data-windows-titlebar] .nodo-right-control{top:calc(var(--dsh-frame-chrome-top,0px) + 4px)}
+html[data-windows-titlebar] .nodo-right-control{top:calc((var(--dsh-windows-titlebar-height,40px) - 28px) / 2);right:calc(var(--nodo-caption-width,140px) + 8px);height:28px}
+html[data-windows-titlebar] .nodo-right-toggle{width:28px;height:28px}
 /* The desktop frame above is reused for the web view, which has no window chrome
    of its own: it reserves a 48px strip and puts the sidebar toggle in it. */
 ${FRAME_CSS}
@@ -90,13 +102,18 @@ html[data-nodo-space]:not([data-platform]) .nodo-space-chrome>*{display:none}
 ${FRAME_CSS.replaceAll('html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space]', 'html[data-nodo-space]:not([data-platform])')}
 /* The Windows host paints its titlebar strip in the sidebar fill; the space
    chrome tint matches the left icon column. The right panel carries its header
-   inside the card. */
+   inside the card. The open panel card hangs 8px over the centre column, so the
+   painted card insets 8px past the column's 4px margin to clear it; with no
+   track half the frame gap lands the card 8px from the window edge. */
 html[data-windows-titlebar][data-nodo-space] :has(> [data-rightbar-col])::before{background:var(--nodo-chrome)}
+html[data-windows-titlebar][data-nodo-space] :has(+ [data-rightbar-col])::before,html[data-windows-titlebar][data-nodo-space] :has(+ [data-rightbar-col])::after{right:var(--nodo-frame-gap)}
+html[data-windows-titlebar][data-nodo-space] [data-rightbar-collapsed] :has(+ [data-rightbar-col])::before,html[data-windows-titlebar][data-nodo-space] [data-rightbar-collapsed] :has(+ [data-rightbar-col])::after{right:calc(var(--nodo-frame-gap) / 2)}
 html[data-windows-titlebar][data-nodo-space] .nodo-space-sidebar .nodo-rail-body{padding-top:6px}
-html[data-windows-titlebar][data-nodo-space] .nodo-right-panel{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
+/* top/bottom/height would over-constrain the absolute panel and drop the
+   bottom margin. */
+html[data-windows-titlebar][data-nodo-space] .nodo-right-panel{margin:0 var(--nodo-frame-gap) var(--nodo-frame-gap) 0;height:auto;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius);background:var(--dsw-alias-bg-base)}
 html[data-windows-titlebar][data-nodo-space] .nodo-right-content{margin:0;border:0;border-radius:0;background:transparent}
 html[data-windows-titlebar][data-nodo-space] .nodo-right-head{padding-top:10px}
-html[data-windows-titlebar][data-nodo-space] .nodo-right-control{top:calc(var(--dsh-frame-chrome-top,0px) + 8px)}
 /* Only the page's own text nodes are reset; the host renderer keeps its own
    heading and paragraph rhythm inside .nodo-reply. */
 .nodo-page :is(.nodo-headline,.nodo-note,.nodo-error-line,.nodo-rail-empty,.nodo-feed-empty){margin:0}

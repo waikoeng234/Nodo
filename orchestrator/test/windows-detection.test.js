@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { cliVersion, findExecutable, launchCommand } from '../agent-drivers/dist/cli.js'
+import { cliVersion, findExecutable, launchCommand, registryProgramDirs } from '../agent-drivers/dist/cli.js'
 import { findCodexExecutable } from '../agent-drivers/dist/codex/index.js'
 import { findOpencodeExecutable } from '../agent-drivers/dist/opencode/index.js'
 import { findDshExecutable } from '../agent-drivers/dist/dsh/index.js'
@@ -55,6 +55,25 @@ test('cliVersion reads the version through a .cmd shim', { skip: process.platfor
     writeFileSync(shim, '@echo off\r\necho 1.2.3-fake\r\n')
     assert.equal(await cliVersion(shim), '1.2.3-fake')
   })
+})
+
+test('registryProgramDirs reads install dirs from uninstall entries', () => {
+  const query = root => root.startsWith('HKCU') ? [
+    'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\zcode',
+    '    DisplayName    REG_SZ    ZCode 3.17.1',
+    '    InstallLocation    REG_SZ    C:\\apps\\ZCode\\',
+    '',
+    'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\zcode2',
+    '    UninstallString    REG_SZ    "C:\\tools\\ZCode\\Uninstall ZCode.exe" /currentuser',
+    '',
+    'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\zcode3',
+    '    DisplayIcon    REG_SZ    C:\\store\\ZCode\\uninstall.exe,0',
+    '',
+    'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\broken',
+    '    DisplayName    REG_SZ    no path here',
+  ].join('\r\n') : ''
+  assert.deepEqual(registryProgramDirs('ZCode', { platform: 'win32', query }), ['C:\\apps\\ZCode', 'C:\\tools\\ZCode', 'C:\\store\\ZCode'])
+  assert.deepEqual(registryProgramDirs('ZCode', { platform: 'linux', query }), [], 'other platforms skip the registry')
 })
 
 test('Codex discovery falls back to the desktop app package store on Windows', async () => {

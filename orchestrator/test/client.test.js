@@ -93,7 +93,8 @@ test('client registers matching sidebar/main seats after the shell declares them
   assert.ok(css.includes('.nodo-rail'), 'the page owns a sidebar rail')
   assert.ok(css.includes('.nodo-composer'), 'the page owns a composer')
   assert.ok(css.includes('.nodo-welcome'), 'the native space owns its blank-session welcome')
-  assert.ok(!css.includes('position:fixed'))
+  assert.ok(css.split('\n').filter(line => line.includes('position:fixed')).every(line => line.startsWith('html[data-windows-titlebar]')),
+    'only the Windows titlebar strip may pin content; every platform keeps the page inside the frame layout')
   // The page may only style itself through the host theme: theme tokens carry
   // light/dark and every font-size setting, literals would freeze one theme.
   assert.match(css, /--dsw-specific-sidebar-fill/)
