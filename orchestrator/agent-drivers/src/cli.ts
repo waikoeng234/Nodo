@@ -1,5 +1,5 @@
 import { accessSync, constants, statSync } from 'node:fs'
-import { extname, isAbsolute, join, delimiter, dirname } from 'node:path'
+import { extname, isAbsolute, join, delimiter } from 'node:path'
 import { homedir } from 'node:os'
 import { execFile, execFileSync } from 'node:child_process'
 import type { ExecFileOptions } from 'node:child_process'
@@ -69,10 +69,13 @@ export function registryProgramDirs(match: string, { platform = process.platform
   const dirs = new Set<string>()
   let location = '', uninstall = '', icon = ''
   const flush = () => {
-    // InstallLocation already names the directory; uninstall and icon values name files inside it.
-    const value = (location || registryPath(uninstall) || registryPath(icon)).replace(/\\+$/, '')
-    const dir = location ? value : dirname(value)
-    if (/^[A-Za-z]:\\.+/.test(dir)) dirs.add(dir)
+    // InstallLocation already names the directory; uninstall and icon values name
+    // files inside their directory, cut at the last backslash — never path.dirname,
+    // which only sees separators of the running platform.
+    const file = registryPath(uninstall) || registryPath(icon)
+    const cut = file.lastIndexOf('\\')
+    const value = (location || (cut >= 0 ? file.slice(0, cut) : '')).replace(/\\+$/, '')
+    if (value) dirs.add(value)
     location = uninstall = icon = ''
   }
   for (const root of uninstallRoots) {
