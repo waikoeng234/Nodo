@@ -231,8 +231,8 @@ test('Qoder keeps a free route\'s occupancy separate from its reported token buc
         modelUsage: { qfmodel: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: 0, contextWindow: 400000 } },
       })}`)
       const end = await until(() => events.find(event => event.type === 'turn/end'))
-      assert.deepEqual(end.usage, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextUsed: 25454, contextSize: 400000 },
-        'the ratio estimates context occupancy and must never inflate cumulative token usage')
+      assert.deepEqual(end.usage, { contextUsed: 25454, contextSize: 400000 },
+        'all-zero counters are no count, and the ratio must never inflate cumulative token usage')
       events.length = 0
       await driver.sendTurn(`RESULT ${JSON.stringify({ subtype: 'success', usage: { context_usage_ratio: 0.063635 }, modelUsage: { qfmodel: { contextWindow: 400000 } } })}`)
       const unknown = await until(() => events.find(event => event.type === 'turn/end'))

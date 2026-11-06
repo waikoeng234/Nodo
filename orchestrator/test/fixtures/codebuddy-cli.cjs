@@ -33,12 +33,14 @@ const send = message => process.stdout.write(JSON.stringify(message) + '\n')
 const reply = (id, result) => send({ jsonrpc: '2.0', id, result })
 const update = payload => send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: session, update: payload } })
 const chunks = (text, messageId = 'm' + next) => update({ sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'text', text } })
-// The engine reports no token usage: a zeroed context ping and a bare result.
+// The result is bare: a request's provider usage rides its usage_update `_meta.usage`.
 const finish = (stopReason = 'end_turn') => {
   if (!prompt) return
   const { id } = prompt
   prompt = null
   update({ sessionUpdate: 'usage_update', used: 0, size: 0 })
+  update({ sessionUpdate: 'usage_update', used: 25542, size: 300000, _meta: { usage: { prompt_tokens: 25542, completion_tokens: 4, total_tokens: 25546,
+    prompt_tokens_details: { cached_tokens: 24320 }, prompt_cache_hit_tokens: 24320, prompt_cache_miss_tokens: 1222, prompt_cache_write_tokens: 0 } } })
   reply(id, { stopReason, userMessageId: 'u' + next })
 }
 const receive = line => {

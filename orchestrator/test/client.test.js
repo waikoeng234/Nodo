@@ -2624,6 +2624,8 @@ test('the statistics dialog lists the buckets, times and speed the session has',
     .flatMap(section => section.children.slice(1).filter(node => node?.props?.className === 'nodo-stats-row'))
   assert.ok(!hollowRows.some(row => row.children[0].children.includes('首 token 平均（TTFT）')),
     'steps without a measured span show no average instead of 0 ms')
+  assert.deepEqual(hollow.children[0].children.filter(node => node?.props?.className === 'nodo-stats-section').map(section => section.children[0].children.join('')), ['用时与速度'],
+    'an engine that reported no tokens shows no token section instead of zeros')
 })
 
 test('the reference dialog keeps its frame still and scrolls the reply pane', () => {

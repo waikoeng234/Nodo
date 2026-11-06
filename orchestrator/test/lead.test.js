@@ -253,19 +253,16 @@ test('lead delegates in its workspace, returns referenced reports and stops at 2
     const delivered = inputs.find(item => item.sessionId === work.id).text
     assert.match(delivered, /^Task from lead Lead\. Start your report with a one-line outcome summary, actual verification results and unresolved issues\./)
     assert.match(delivered, /Carry out the task as written\./)
+    assert.match(delivered, /List changed files once at the end with repo-root-relative paths, no absolute paths or Markdown links\./)
     assert.ok(delivered.includes(task))
-    if (index === 0) {
-      assert.ok(delivered.includes(`--- 来源 1：Please implement this（message:${conversation.id}:`), 'the user-triggered round inlines the owning user request')
-      assert.ok(delivered.indexOf(task) < delivered.indexOf('Please implement this'), 'required context comes after the task')
-    } else {
-      assert.equal(delivered.includes('--- 来源 1'), false, 'a report-triggered round never looks back to an earlier user message')
-    }
+    if (index === 0) assert.ok(delivered.includes(task), 'the task body still rides inline')
+    assert.equal(delivered.includes('--- 来源'), false, 'the default dispatch never inlines a user message')
     assert.equal(lines(work).find(line => line.who === 'user').text, delivered)
   }
   assert.equal(lines(conversation).filter(line => line.text?.startsWith('已受理 Worker ·')).length, 24)
   const reports = lines(conversation).filter(line => line.who === 'user' && line.origin?.kind === 'report')
   assert.equal(reports.length, 24)
-  assert.match(reports[0].text, new RegExp(`Report from Worker · Implement the task \\(session ${delegated[0].id}, ended: done\\)`))
+  assert.ok(reports[0].text.startsWith('Report from Worker · Implement the task\nStatus: done'))
   assert.equal(rt.state.executions[reports[0].origin.executionId].sessionId, delegated[0].id)
   assert.equal(reports[0].references, undefined)
   assert.equal(rt.state.executions[reports[0].origin.executionId].result.text, 'Changed src/task.js; verified task tests; nothing open.')
@@ -616,7 +613,7 @@ test('an executor idle warning keeps its delegation occupied and a late success 
     assert.equal(rt.workView()[work.id]?.suspect ?? false, false)
     const reports = lines(conversation).filter(line => line.origin?.kind === 'report')
     assert.equal(reports.length, 1)
-    assert.match(reports[0].text, /ended: done/)
+    assert.match(reports[0].text, /Status: done/)
     assert.equal(rt.state.executions[reports[0].origin.executionId].result.text, 'Late work completed')
     assert.ok(inputs.some(item => item.profileId === lead.id && item.text.includes('Late work completed')))
   } finally {
@@ -642,9 +639,9 @@ test('failed and unconfirmed executor results are delivered as notifications', (
   }
   const reports = lines(conversation).filter(line => line.origin?.kind === 'report')
   assert.equal(reports.length, 2)
-  assert.match(reports[0].text, /Result: failed. Reason: error/)
-  assert.match(reports[1].text, /Result: unconfirmed. Reason: done/)
-  assert.ok(reports.every(line => !line.references && line.text.includes(line.origin.session) && line.text.includes('Task: Implement the task')))
+  assert.match(reports[0].text, /Status: failed · error/)
+  assert.match(reports[1].text, /Status: unconfirmed · done/)
+  assert.ok(reports.every(line => !line.references && !line.text.includes(line.origin.session) && line.text.includes('Report from Worker · Implement the task')))
   const markers = lines(conversation).filter(line => line.delegation?.ended)
   assert.equal(markers.length, 2)
   assert.ok(markers.every(line => line.text === ''))
@@ -690,8 +687,8 @@ test('a new accepted user message resets the delegation budget of the running ch
 }))
 
 for (const [name, script, expected] of [
-  ['no completed reply', [], /unavailable; missing-final/],
-  ['oversized reply is archived whole without a reference', [{ kind: 'text', text: 'x'.repeat(TRANSCRIPT_TEXT_MAX + 1000) }], /Capture: complete/],
+  ['no completed reply', [], /Completeness: unavailable \(missing-final\)/],
+  ['oversized reply is archived whole without a reference', [{ kind: 'text', text: 'x'.repeat(TRANSCRIPT_TEXT_MAX + 1000) }], /Completeness: complete/],
 ]) test(`lead report fallback: ${name}`, () => withLead(async ({ rt, role, session, inputs, lines }) => {
   const worker = await role('Worker')
   rt.findProfile(worker.id).engineOptions.script = script
@@ -720,7 +717,7 @@ test('a delegated message at the text limit keeps the header in both engine inpu
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  const header = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\n\n'
+  const header = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\nList changed files once at the end with repo-root-relative paths, no absolute paths or Markdown links. Write the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.\n\n'
   const task = 'x'.repeat(TASK_TEXT_MAX - header.length)
   await toolTask(rt, conversation.id, delegateType('feature', false, task))
   const received = inputs.find(input => input.profileId === worker.id).text
@@ -772,7 +769,7 @@ test('fallback reports redact secrets before clipping at the transcript boundary
   rt.referenceReplies = async () => { throw new Error('Reference unavailable') }
   await toolTask(rt, conversation.id, delegateType('feature', false))
   const report = lines(conversation).find(line => line.who === 'user')
-  assert.match(report.text, /Result preview \(not the full report\)/)
+  assert.match(report.text, /Result preview:/)
   assert.equal(report.references, undefined)
   assert.ok(!report.text.includes(value.slice(0, 8)))
   assert.ok(!inputs.find(input => input.profileId === lead.id).text.includes(value.slice(0, 8)))
@@ -845,7 +842,7 @@ test('disabling lead mode during delegated work still returns the report and sto
   await pending
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   const report = lines(conversation).find(line => line.who === 'user' && line.origin?.kind === 'report')
-  assert.match(report.text, /ended: done/)
+  assert.match(report.text, /Status: done/)
   assert.equal(rt.state.executions[report.origin.executionId].result.text, 'Completed changes and tests')
 }))
 
@@ -867,7 +864,7 @@ test('a delegation to a dsh lead native session carries the result sourceId with
   assert.deepEqual(returned[4], [])
   const execution = rt.state.executions[returned[5].origin.executionId]
   assert.equal(execution.profileId, worker.id)
-  assert.ok(returned[1].includes(`execution:${execution.id}:result`))
+  assert.ok(returned[1].includes(`nodo_context read executionId ${execution.id}`))
 }))
 
 test('an empty legacy role board still lists task types and brief precedes tasks without entering task history', () => withLead(async ({ rt, role, session, inputs, lines }) => {
@@ -1015,7 +1012,7 @@ test('a lead can continue its own dispatched session instead of opening a new on
   assert.ok(lines(conversation).some(line => line.text === `继续受理 Worker · ${work.name}（功能 · 常规）`))
   assert.deepEqual(lines(conversation).filter(line => line.delegation).map(line => line.delegation.reused), [false, true])
   const report = lines(conversation).filter(line => line.who === 'user' && line.origin?.kind === 'report').at(-1)
-  assert.ok(report.text.startsWith(`Report from Worker · ${work.name} (session ${work.id}, ended: done).`))
+  assert.ok(report.text.startsWith(`Report from Worker · ${work.name}\nStatus: done`))
   assert.equal(rt.state.executions[report.origin.executionId].sessionId, work.id)
 }))
 
@@ -1175,7 +1172,10 @@ test('shared lead rules ride the identity on native channels and every brief oth
     assert.ok(rt.leadBrief(rt.findProfile(lead.id), conversation).includes(leadRules))
     const brief = rt.leadBrief(rt.findProfile(lead.id), native)
     assert.equal(brief, '')
-    assert.equal(leadRules.split('\n').length, 13)
+    assert.equal(leadRules.split('\n').length, 15)
+    assert.match(leadRules, /points out only the key entry files; do not enumerate file paths or long test lists/)
+    assert.match(leadRules, /not repeat what Nodo already attaches automatically: linked user decisions and dependency acceptance conclusions/)
+    assert.match(leadRules, /Write only this task's goal, scope, constraints and completion criteria/)
     assert.match(leadRules, /Executors do not judge authorization or whether the user must decide; you do/)
     assert.match(leadRules, /nodo_board only returns result previews.*nodo_context read.*nextOffset/)
     assert.match(leadRules, /Review every newly delivered report before delegating again/)
@@ -1317,7 +1317,7 @@ const withRecovery = run => {
     const task = await delegate()
     task.driver.finish('error', 'Original failed reply')
     const notification = await until(() => reports()[0])
-    assert.match(notification.text, /Result: failed/)
+    assert.match(notification.text, /Status: failed/)
     await finishLead()
     await task.following
     setupReports.add(notification.origin.reportId)
@@ -1512,7 +1512,7 @@ test('long task first lines are truncated in dispatch summaries, snapshots, boar
   }
   driver.finish('done')
   const report = await until(() => h.reports()[0])
-  assert.ok(report.text.includes(`Task: ${expected}.`))
+  assert.ok(report.text.startsWith(`Report from Worker · ${expected}\n`))
   assert.ok(!report.text.includes(firstLine))
   await h.finishLead()
   await following
@@ -1676,7 +1676,7 @@ test('restart notifications queue once across repeated recovery and restore and 
   h.rt.recoverLeadDelegations()
   h.rt.recoverLeadDelegations()
   await until(() => h.reports().length === 1)
-  assert.match(h.reports()[0].text, /Result: unconfirmed. Reason: restart/)
+  assert.match(h.reports()[0].text, /Status: unconfirmed · restart/)
   assert.equal(h.rt.workView()[task.work.id]?.active, true)
   await until(() => !task.work.source.pendingReport)
   await h.finishLead()
@@ -1814,7 +1814,7 @@ test('manual recovery reports and recovered notifications share FIFO delivery', 
   await h.finishLead()
   await until(() => h.reports().length === 2)
   assert.equal(h.reports()[1].origin.session, orphan.id)
-  assert.match(h.reports()[1].text, /Result: unconfirmed/)
+  assert.match(h.reports()[1].text, /Status: unconfirmed/)
   await h.finishLead()
   assert.equal(owner.reportQueue, undefined)
 }))
@@ -1865,7 +1865,7 @@ test('a Nodo manual recovery reports its exact reply once and the lead can deleg
   const report = await until(() => reports()[0])
   assert.match(report.text, /manually resumed/)
   assert.equal(rt.state.executions[report.origin.executionId].result.text, 'Recovered changes and verified tests')
-  assert.ok(report.text.includes(`execution:${report.origin.executionId}:result`))
+  assert.ok(report.text.includes(`nodo_context read executionId ${report.origin.executionId}`))
   await until(() => !work.source.pendingReport)
   await until(() => rt.driverOf(conversation.id)?.active)
   assert.doesNotMatch(rt.driverOf(conversation.id).calls[0], /last delegation/)
@@ -1896,7 +1896,7 @@ for (const [reason, unconfirmed] of [['error', false], ['interrupted', false], [
     const notified = unconfirmed || reason !== 'interrupted'
     if (notified) {
       await until(() => h.reports().length === 1)
-      assert.match(h.reports()[0].text, unconfirmed ? /Result: unconfirmed/ : /Result: failed/)
+      assert.match(h.reports()[0].text, unconfirmed ? /Status: unconfirmed/ : /Status: failed/)
       await h.finishLead()
     } else assert.equal(h.reports().length, 0)
     assert.equal(h.rt.leadRetryWaiting(work.id), false)
@@ -2103,7 +2103,7 @@ test('native executor completion freezes its message id rather than a newer nati
   ]) }) }
   driver.finish('done', 'Native round 2')
   await until(() => h.reports().length === 1)
-  assert.ok(h.reports()[0].text.includes(`execution:${h.reports()[0].origin.executionId}:result`))
+  assert.ok(h.reports()[0].text.includes(`nodo_context read executionId ${h.reports()[0].origin.executionId}`))
   assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Native round 2')
   await h.finishLead()
 }))
@@ -2182,7 +2182,7 @@ for (const reason of ['done', 'error']) test(`manual recovery waits for its last
   await until(() => !h.rt.workView()[work.id]?.active)
   if (reason === 'error') {
     await until(() => h.reports().length === 1)
-    assert.match(h.reports()[0].text, /Result: failed/)
+    assert.match(h.reports()[0].text, /Status: failed/)
     await h.finishLead()
     await h.input(work)
     driver.finish('done', 'Recovered after queued failure')
@@ -2259,7 +2259,7 @@ test('a manual recovery completion without replyId reports inline without a refe
   driver.finish('done', 'Exact recovered result without a reply id')
   const report = await until(() => h.reports()[0])
   assert.equal(report.references, undefined)
-  assert.match(report.text, /Result preview \(not the full report\)/)
+  assert.match(report.text, /Result preview:/)
   assert.equal(rt.state.executions[report.origin.executionId].result.text, 'Exact recovered result without a reply id')
   await h.finishLead()
   assert.equal(work.source.pendingReport, undefined)
@@ -2286,7 +2286,7 @@ test('a deferred reuse refused by independent work reports failure without claim
   await h.rt.followLead(h.conversation.id, completed('Dispatched'))
   await until(() => h.reports().length === 2)
   assert.equal(rt.delegationSummary(task.work).status, 'failed')
-  assert.match(h.reports()[1].text, /Result: failed/)
+  assert.match(h.reports()[1].text, /Status: failed/)
   assert.equal(h.reports()[1].references, undefined)
   await h.finishLead()
   task.driver.finish('done', 'Independent reply')
@@ -2340,7 +2340,7 @@ test('delivered unconfirmed failures suppress stale hints and refuse session reu
   const task = await h.delegate()
   task.driver.finish('error', 'Unconfirmed failure', true)
   await until(() => h.reports().length === 1)
-  assert.match(h.reports()[0].text, /Result: unconfirmed/)
+  assert.match(h.reports()[0].text, /Status: unconfirmed/)
   await h.finishLead()
   await task.following
   assert.doesNotMatch(h.rt.leadBrief(h.lead, h.conversation), /without a report/)
@@ -2857,7 +2857,7 @@ test('five automatic continuations exhaust the retry budget and deliver a final 
     mock.timers.tick(300_000)
     assert.equal(task.driver.calls.length, 6)
     assert.equal(task.work.source.pendingReport, undefined)
-    assert.match(h.reports()[0].text, /Result: failed/)
+    assert.match(h.reports()[0].text, /Status: failed/)
     assert.ok(h.lines(h.conversation).some(line => /自动继续已用尽（5\/5）/.test(line.text)))
     assert.equal(h.reports().length, 1)
   } finally { mock.timers.reset() }

@@ -121,6 +121,32 @@ test('Claude success results and goal-like prose do not become goal lifecycle ev
   })
 })
 
+test('Claude counts subagent usage as the growth of the process-wide modelUsage', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const main = { input_tokens: 4, output_tokens: 482, cache_read_input_tokens: 58152, cache_creation_input_tokens: 973 }
+    const run = async (driver, [inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens]) => {
+      events.length = 0
+      await driver.sendTurn(`RESULT ${JSON.stringify({ subtype: 'success', result: 'ok', usage: main,
+        modelUsage: { 'claude-haiku-5-5': { inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, contextWindow: 1000000 } } })}`)
+      const { contextSize, ...usage } = (await until(() => events.find(event => event.type === 'turn/end'))).usage
+      assert.equal(contextSize, 1000000)
+      return usage
+    }
+    let driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      assert.deepEqual(await run(driver, [10, 2048, 98500, 23264]), { inputTokens: 10, outputTokens: 2048, cacheReadTokens: 98500, cacheWriteTokens: 23264 },
+        'a fresh process counts from zero, subagents included')
+      assert.deepEqual(await run(driver, [15, 2100, 120000, 24000]), { inputTokens: 5, outputTokens: 52, cacheReadTokens: 21500, cacheWriteTokens: 736 })
+      driver.dispose()
+      driver = createDriver('claude', { bin, cwd, driverSessionId: 'fixture-claude-session', onEvent: event => events.push(event) })
+      assert.deepEqual(await run(driver, [20, 2200, 130000, 25000]), { inputTokens: 4, outputTokens: 482, cacheReadTokens: 58152, cacheWriteTokens: 973 },
+        'a resumed process restores the earlier sum, so its first turn falls back to the main conversation')
+      assert.deepEqual(await run(driver, [22, 2300, 140000, 25500]), { inputTokens: 2, outputTokens: 100, cacheReadTokens: 10000, cacheWriteTokens: 500 })
+    } finally { driver.dispose() }
+  })
+})
+
 test('Claude adapter streams one response natively and resumes the same CLI session', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

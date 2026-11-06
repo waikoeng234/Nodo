@@ -79,8 +79,18 @@ export function install(rt) {
       }
       case 'task-list': {
         const workspaceRef = body.workspace === undefined ? undefined : rt.findWorkspace(body.workspace)?.id ?? body.workspace
-        return rt.redactDeepSecrets(await Promise.all(Object.values(state.tasks).filter(task => (workspaceRef === undefined || task.workspaceRef === workspaceRef)
-          && (body.teamId === undefined || task.teamId === body.teamId)).map(task => rt.taskView(task.id))))
+        const executions = new Map()
+        for (const execution of Object.values(state.executions)) {
+          const list = executions.get(execution.taskId)
+          if (list) list.push(execution)
+          else executions.set(execution.taskId, [execution])
+        }
+        return rt.redactDeepSecrets(Object.values(state.tasks).filter(task => (workspaceRef === undefined || task.workspaceRef === workspaceRef)
+          && (body.teamId === undefined || task.teamId === body.teamId)).map(({ brief, source, acceptances, ...task }) => {
+          const list = executions.get(task.id) ?? []
+          return { ...task, latestExecutionStatus: list.at(-1)?.status ?? null,
+            executions: list.map(({ sessionId, createdAt, startedAt, endedAt }) => ({ sessionId, createdAt, startedAt, endedAt })) }
+        }))
       }
       case 'task-get': {
         const task = await rt.taskView(body.taskId)

@@ -109,15 +109,10 @@ export function install(rt) {
       status: 'pending', createdAt: Date.now(),
       ...(session.lastTurn?.reason === 'interrupted' && !rt.workView()[id]?.active ? { handoffStopped: true } : {}) }
     state.decisions[decision.id] = decision
-    const reports = executionIds.flatMap(executionId => {
-      const reports = state.executions[executionId].reports, pending = reports.filter(report => !report.review)
-      return pending.length ? pending : reports.slice(-1)
-    })
-    const previous = reports.map(report => report.review)
-    for (const report of reports) report.review = { ...report.review, disposition: 'ask', decisionId: decision.id, reviewedAt: decision.createdAt }
+    const rollbackAsk = rt.askReports(executionIds, decision)
     try { await rt.saveStrict() } catch (error) {
       delete state.decisions[decision.id]
-      reports.forEach((report, index) => { if (previous[index]) report.review = previous[index]; else delete report.review })
+      rollbackAsk()
       throw error
     }
     Object.assign(decision, await rt.pauseLeadForDecision(id, stopExecutionIds))

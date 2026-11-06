@@ -29,6 +29,7 @@ type ClaudeCommand = { name?: unknown; description?: unknown }
 type ClaudeInitialize = { models?: ClaudeModel[]; commands?: ClaudeCommand[] }
 type ClaudeHandshake = { peer: ClaudeConnection; models: ClaudeModel[]; commands: ClaudeCommand[] }
 type ClaudeUsage = { input_tokens?: unknown; output_tokens?: unknown; cache_read_input_tokens?: unknown; cache_creation_input_tokens?: unknown }
+type ClaudeModelUsage = { inputTokens?: unknown; outputTokens?: unknown; cacheReadInputTokens?: unknown; cacheCreationInputTokens?: unknown; contextWindow?: number }
 type ClaudeQuestion = { question: string; header: string; options?: unknown; multiSelect?: unknown }
 type ClaudeInput = { questions?: ClaudeQuestion[]; description?: string; command?: string }
 type ClaudeToolUse = { type: 'tool_use'; id: string; name?: string; input?: unknown }
@@ -66,7 +67,7 @@ type ClaudeFrame<Response = unknown> = { session_id?: unknown } & (
   | { type: 'user'; isReplay?: boolean; message?: { content?: ClaudeContent[] }; tool_use_result?: Parameters<typeof claudeFileChanges>[2] }
   | { type: 'assistant'; error?: string; message?: { id?: string; content?: ClaudeContent[]; usage?: ClaudeUsage }; parent_tool_use_id?: string | null }
   | { type: 'result'; subtype?: string; is_error?: boolean; api_error_status?: number | null; errors?: (string | { message?: string })[]; error?: { message?: string }
-      result?: unknown; modelUsage?: Record<string, { contextWindow?: number }>; usage?: ClaudeUsage
+      result?: unknown; modelUsage?: Record<string, ClaudeModelUsage>; usage?: ClaudeUsage
       user_message_uuids?: string[]; user_message_uuid?: string }
   | { type: 'stream_event'; event?: ClaudeStreamEvent; parent_tool_use_id?: string | null }
   | { type: 'tool_progress'; tool_use_id: string; parent_tool_use_id?: string | null; elapsed_time_seconds?: unknown }
@@ -247,12 +248,23 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd }: EngineScan
 const claudePromptTokens = (raw: ClaudeUsage | undefined) =>
   promptTokensOf([raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens])
 
+// The result frame's `usage` counts the main conversation only; `modelUsage`
+// sums every model the process called, subagents included, over the whole
+// process (a resumed process starts from the session's earlier sum).
+const CLAUDE_MODEL_BUCKETS = [['inputTokens', 'inputTokens'], ['outputTokens', 'outputTokens'], ['cacheReadTokens', 'cacheReadInputTokens'], ['cacheWriteTokens', 'cacheCreationInputTokens']] as const
+const claudeModelTotals = (raw: Record<string, ClaudeModelUsage> | undefined) => raw && usageOf(Object.values(raw).reduce<Record<string, number>>((sum, model) => {
+  for (const [key, field] of CLAUDE_MODEL_BUCKETS) if (typeof model?.[field] === 'number') sum[key] = (sum[key] ?? 0) + (model[field] as number)
+  return sum
+}, {}))
+
 export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers }: ClaudeDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   let peer: ClaudeConnection | null = null
   let ready: Promise<void> | null = null
   let sessionId = driverSessionId
   let resuming = false
+  // The process's `modelUsage` sum at the previous result; unknown after a resume until one arrives.
+  let modelTotals: Usage | undefined
   let connected = false
   let disposed = false
   let sequence = 0
@@ -502,11 +514,16 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         : undefined
       // A failed turn still owns its final text when nothing streamed.
       if (!turn.sawText && typeof frame.result === 'string' && frame.result !== '') emit({ type: 'text', turnId: turn.id, text: frame.result })
+      const totals = claudeModelTotals(frame.modelUsage)
+      const grown = totals && modelTotals ? Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, value - (modelTotals![key as keyof Usage] ?? 0)])) : undefined
+      modelTotals = totals ?? modelTotals
       const usage = addUsage(turn.usage, usageOf({
-        inputTokens: frame.usage?.input_tokens,
-        outputTokens: frame.usage?.output_tokens,
-        cacheReadTokens: frame.usage?.cache_read_input_tokens,
-        cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
+        ...(grown ?? {
+          inputTokens: frame.usage?.input_tokens,
+          outputTokens: frame.usage?.output_tokens,
+          cacheReadTokens: frame.usage?.cache_read_input_tokens,
+          cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
+        }),
         contextUsed: turn.contextUsed,
         contextSize: Object.values(frame.modelUsage ?? {})[0]?.contextWindow,
       }))
@@ -539,6 +556,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       if (!executable) throw new Error('Claude Code executable not found. Install Claude Code or edit the profile CLI path.')
       emit({ type: 'session', state: 'starting' })
       resuming = !!sessionId
+      modelTotals = sessionId ? undefined : {}
       connection = connectClaude<ClaudeFrame, ClaudeRequest>({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
         onFrame: receive, onRequest: ask,
         onClose(error) {

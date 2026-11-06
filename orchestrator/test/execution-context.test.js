@@ -69,10 +69,10 @@ test('reference failure leaves report, context read, review, Decision and comple
   const execution = rt.state.executions[receipt.executionId]
   await until(() => execution.reports?.length === 1)
   const report = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === execution.id)
-  assert.match(report.text, /Result preview \(not the full report\)/)
+  assert.match(report.text, /Result preview:/)
   assert.ok(report.text.includes(execution.result.preview))
   assert.equal(report.text.includes(final), false)
-  assert.ok(report.text.includes(`execution:${execution.id}:result`))
+  assert.ok(report.text.includes(`nodo_context read executionId ${execution.id}`))
   assert.equal(report.references, undefined)
   assert.deepEqual(execution.references, [])
   assert.equal(execution.result.text, final)
@@ -93,6 +93,13 @@ test('reference failure leaves report, context read, review, Decision and comple
     offset = page.nextOffset
   } while (offset !== null)
   assert.equal(body, final)
+  const firstPage = await call(client, 'nodo_context', { action: 'read', sourceId })
+  assert.deepEqual(await call(client, 'nodo_context', { action: 'read', executionId: receipt.executionId }), firstPage)
+  for (const args of [{ action: 'read' }, { action: 'read', sourceId, executionId: receipt.executionId }, { action: 'list', executionId: receipt.executionId }]) {
+    const refused = await client.callTool({ name: 'nodo_context', arguments: args })
+    assert.equal(refused.isError, true, JSON.stringify(args))
+    assert.match(refused.content[0].text, /只能指定一个|不接受/)
+  }
   const before = JSON.stringify(rt.state.executions)
   for (const args of [{ action: 'read', sourceId }, { action: 'list', taskId: receipt.taskId }]) {
     const denied = await outsider.callTool({ name: 'nodo_context', arguments: args })
