@@ -1,12 +1,13 @@
 import { accessSync, constants, statSync } from 'node:fs'
-import { extname, isAbsolute, join, delimiter } from 'node:path'
+import { extname, isAbsolute, join, delimiter, dirname } from 'node:path'
 import { homedir } from 'node:os'
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import type { ExecFileOptions } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execute = promisify(execFile)
 export type FindExecutableOptions = { path?: string; home?: string; defaults?: string[]; extra?: string[]; platform?: string }
+export type RegistryQuery = (root: string, match: string) => string
 export type CliVersionOptions = Omit<ExecFileOptions, 'encoding'> & { encoding?: BufferEncoding }
 export const invalidConfig = (message: string) => Object.assign(new Error(message), { code: 'orch/invalid' })
 
@@ -43,6 +44,51 @@ export function findExecutable(command: unknown, { path = process.env.PATH ?? ''
   return candidates.find(candidate => {
     try { accessSync(candidate, constants.X_OK); return statSync(candidate).isFile() } catch { return false }
   })
+}
+
+// Desktop apps registered for uninstall expose their install dir even when they
+// never touch PATH, so an installer may have put them on any drive or folder.
+const uninstallRoots = [
+  'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+]
+// The first absolute Windows path in a registry value: quoted for uninstall
+// strings, whole for display icons, which may carry a ",0" icon index.
+const registryPath = (value: string) => {
+  const quoted = value.match(/"([^"]+)"/)
+  const text = (quoted ? quoted[1] : value.split(',')[0]).trim()
+  return /^[A-Za-z]:\\.+/.test(text) ? text : ''
+}
+
+export function registryProgramDirs(match: string, { platform = process.platform, query }: { platform?: string; query?: RegistryQuery } = {}) {
+  if (platform !== 'win32') return []
+  const run = query ?? ((root, text) => {
+    try { return execFileSync('reg', ['query', root, '/s', '/f', text, '/d'], { encoding: 'utf8', timeout: 5000, windowsHide: true }) } catch { return '' }
+  })
+  const dirs = new Set<string>()
+  let location = '', uninstall = '', icon = ''
+  const flush = () => {
+    // InstallLocation already names the directory; uninstall and icon values name files inside it.
+    const value = (location || registryPath(uninstall) || registryPath(icon)).replace(/\\+$/, '')
+    const dir = location ? value : dirname(value)
+    if (/^[A-Za-z]:\\.+/.test(dir)) dirs.add(dir)
+    location = uninstall = icon = ''
+  }
+  for (const root of uninstallRoots) {
+    for (const line of run(root, match).split(/\r?\n/)) {
+      if (/^HKEY_/i.test(line)) { flush(); continue }
+      const at = line.indexOf('REG_SZ')
+      if (at < 0) continue
+      const name = line.slice(0, at).trim(), data = line.slice(at + 6).trim()
+      if (!data) continue
+      if (name === 'InstallLocation') location = data
+      else if (name === 'UninstallString') uninstall = data
+      else if (name === 'DisplayIcon') icon = data
+    }
+    flush()
+  }
+  return [...dirs]
 }
 
 // Node refuses to spawn .cmd/.bat shims directly (CVE-2024-27980); route them
