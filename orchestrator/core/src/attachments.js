@@ -151,5 +151,5 @@ export function install(rt) {
     return saved
   }
 
-  Object.assign(rt, { admitImages, saveImages, imageOf, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, placeCopies, saveReplyImages })
+  Object.assign(rt, { admitImages, saveImages, imageOf, cleanFileRefs, admitFiles, saveFiles, fileOf, materializeFiles, materializeImages, place, placeCopies, saveReplyImages })
 }

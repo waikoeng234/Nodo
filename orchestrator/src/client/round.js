@@ -55,7 +55,7 @@ export function roundLines(lines, leadRunning = false) {
       delete step.ended
       delete step.unconfirmed
       delete step.stoppedBy
-      Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.text, at: line.at })
+      Object.assign(step, { report: line.references?.[0]?.messages?.[0]?.text ?? line.origin?.preview ?? line.text, at: line.at })
       flush()
     }
     if (line.origin && !(line.who === 'user' && (line.origin.kind === 'task' || line.origin.kind === 'decision-answer'))
@@ -167,7 +167,7 @@ function RoundTask({ step }) {
   if (!detail) return h('p', { className: 'nodo-round-quiet', role: 'status' }, '加载中…')
   return h(Fragment, null,
     h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: detail.brief, labels: MARKDOWN_LABELS })),
-    reason && h('p', { className: 'nodo-round-quiet' }, acceptance ? `${reason} · 依据 ${acceptance.references.length} 项` : reason))
+    reason && h('p', { className: 'nodo-round-quiet' }, acceptance ? `${reason} · 依据 ${(acceptance.basis ?? acceptance.references).length} 项` : reason))
 }
 
 export function RoundSpeaker({ role, running }) {

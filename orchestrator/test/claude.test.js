@@ -314,8 +314,8 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
       assert.equal(JSON.stringify(config).includes('lead-token-secret'), false)
       assert.equal(JSON.stringify(config).includes(socket), false)
       assert.equal(JSON.stringify(config).includes(tokenFile), false)
-      assert.deepEqual(spawn.allowedTools, ['mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_delegate', 'mcp__nodo_lead__nodo_interrupt', 'mcp__nodo_lead__nodo_task', 'mcp__nodo_lead__nodo_decision'],
-        'exactly the five lead tools skip approval, nothing injectable')
+      assert.deepEqual(spawn.allowedTools, ['mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_delegate', 'mcp__nodo_lead__nodo_interrupt', 'mcp__nodo_lead__nodo_task', 'mcp__nodo_lead__nodo_decision', 'mcp__nodo_lead__nodo_context'],
+        'exactly the six lead tools skip approval, nothing injectable')
       assert.equal(spawn.leadSocketEnv, socket)
       assert.equal(spawn.leadTokenEnv, useFile ? undefined : 'lead-token-secret')
       assert.equal(spawn.leadTokenFileEnv, useFile ? tokenFile : undefined)

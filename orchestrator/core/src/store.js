@@ -10,7 +10,7 @@ import { createTranscripts } from './transcripts.js'
 
 const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'decisions', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
-const blank = () => ({ version: 4, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
+const blank = () => ({ version: 5, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
 const STAMP_MS = 1000
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -128,7 +128,7 @@ export function install(rt) {
       else warn('nodo: unreadable state %s: %s; backup failed: %s', statePath, error, blocked)
       return undefined
     }
-    blocked = [1, 2, 3, 4].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
+    blocked = [1, 2, 3, 4, 5].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
     if (blocked !== undefined) return undefined
     legacyState = ['transcriptIndex', 'stats', 'streamDetails'].some(key => Object.hasOwn(saved, key))
     retiredState = ['adapterSessions', 'streamDetails'].some(key => Object.hasOwn(saved, key))
@@ -171,7 +171,7 @@ export function install(rt) {
     activity += 1
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
-    state.version = 4
+    state.version = 5
     for (const profile of Object.values(state.profiles)) {
       if (!rt.listEngines().includes(profile.engine)) continue
       const modes = rt.enginePermissionModes(profile.engine)
@@ -217,10 +217,10 @@ export function install(rt) {
     adopt(saved)
     if (readOnly() === undefined) {
       await rm(join(home, 'runs'), { recursive: true, force: true })
-      if (saved && saved.version !== 4) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
+      if (saved && saved.version !== 5) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
       const retired = saved && retiredState
       if (retired) await copyFile(statePath, join(home, 'state.retired.json.bak'))
-      if (saved && (saved.version !== 4 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
+      if (saved && (saved.version !== 5 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
     }
     rt.recoverLeadDelegations?.()
     rt.recoverDecisions?.()

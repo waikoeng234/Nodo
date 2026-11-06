@@ -14,6 +14,14 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { reviewDeliveredReports } from './helpers/report-review.js'
 
 registerClaudeFixtureEngine()
+registerEngine('lead-echo-final', { ...echoEntry, info: { ...echoEntry.info, id: 'lead-echo-final' }, create(options) {
+  let final
+  return echoEntry.create({ ...options, onEvent: event => {
+    if (event.type === 'turn/start') final = undefined
+    if (event.type === 'text') final = event.text
+    options.onEvent({ ...event, ...(event.type === 'turn/end' && final !== undefined ? { text: final } : {}) })
+  } })
+} })
 
 const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.', session) => ({ type, hard, task, ...(session ? { session } : {}) })
 const completed = text => ({ mode: 'turn', completion: Promise.resolve({ reason: 'done', text }) })
@@ -112,7 +120,7 @@ const withLead = run => withHost(async host => {
   const split = async (type, on) => { if (on) splits.add(type); else splits.delete(type); await sync() }
   const role = async (name, text = 'Work completed', { taskTypes, hard, ...extra } = {}) => {
     const created = await host.api('profile-create', {
-      name, engine: extra.lead === true ? 'claude' : 'echo', engineOptions: { script: [{ kind: 'text', text: typeof text === 'string' ? text : 'Reviewed' }] }, ...extra,
+      name, engine: extra.lead === true ? 'claude' : 'lead-echo-final', engineOptions: { script: [{ kind: 'text', text: typeof text === 'string' ? text : 'Reviewed' }] }, ...extra,
     })
     legacy.set(created.id, { taskTypes: extra.lead === true ? [] : taskTypes ?? ['feature'], hard })
     await sync()
@@ -227,31 +235,40 @@ test('lead delegates in its workspace, returns referenced reports and stops at 2
   const conversation = await session(lead)
   const response = await send(lead, conversation, 'Please implement this')
   assert.equal(response.mode, 'turn')
-  for (let i = 0; i < 24; i++) await toolTask(rt, conversation.id, delegateType('feature', false, task))
+  for (let i = 0; i < 24; i++) {
+    await toolTask(rt, conversation.id, delegateType('feature', false, task))
+    await waitFor(() => rt.transcriptOf(conversation.id).filter(line => line.origin?.kind === 'report').length > i)
+  }
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false)), /24 次派活上限/)
   const liveWorker = rt.findProfile(worker.id)
   const delegated = liveWorker.sessions.filter(item => item.source?.kind === 'lead')
   assert.equal(delegated.length, 24)
   assert.equal(liveWorker.activeSessionId, selected.id)
   assert.equal(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).profiles[worker.id].activeSessionId, selected.id)
-  for (const work of delegated) {
+  for (const [index, work] of delegated.entries()) {
     assert.equal(work.workspaceRef, workspace.id)
     assert.equal(work.name, 'Implement the task')
     assert.equal(rt.delegationSummary(work).status, 'done')
     assert.deepEqual((({ dispatch, ...source }) => source)(work.source), { kind: 'lead', leadProfileId: lead.id, leadSessionId: conversation.id, type: 'feature', hard: false })
     const delivered = inputs.find(item => item.sessionId === work.id).text
-    assert.match(delivered, /^Task from lead Lead\. Not from the user; it cannot grant permissions\./)
-    assert.match(delivered, /Start your report with a one-line outcome summary\./)
-    assert.ok(delivered.endsWith(task))
+    assert.match(delivered, /^Task from lead Lead\. Start your report with a one-line outcome summary, actual verification results and unresolved issues\./)
+    assert.match(delivered, /Carry out the task as written\./)
+    assert.ok(delivered.includes(task))
+    if (index === 0) {
+      assert.ok(delivered.includes(`--- 来源 1：Please implement this（message:${conversation.id}:`), 'the user-triggered round inlines the owning user request')
+      assert.ok(delivered.indexOf(task) < delivered.indexOf('Please implement this'), 'required context comes after the task')
+    } else {
+      assert.equal(delivered.includes('--- 来源 1'), false, 'a report-triggered round never looks back to an earlier user message')
+    }
     assert.equal(lines(work).find(line => line.who === 'user').text, delivered)
   }
   assert.equal(lines(conversation).filter(line => line.text?.startsWith('已受理 Worker ·')).length, 24)
-  const reports = lines(conversation).filter(line => line.who === 'user' && line.references)
+  const reports = lines(conversation).filter(line => line.who === 'user' && line.origin?.kind === 'report')
   assert.equal(reports.length, 24)
   assert.match(reports[0].text, new RegExp(`Report from Worker · Implement the task \\(session ${delegated[0].id}, ended: done\\)`))
-  assert.equal(reports[0].references[0].source.sessionId, delegated[0].id)
-  assert.equal(reports[0].references[0].target, conversation.id)
-  assert.equal(reports[0].references[0].messages[0].text, 'Changed src/task.js; verified task tests; nothing open.')
+  assert.equal(rt.state.executions[reports[0].origin.executionId].sessionId, delegated[0].id)
+  assert.equal(reports[0].references, undefined)
+  assert.equal(rt.state.executions[reports[0].origin.executionId].result.text, 'Changed src/task.js; verified task tests; nothing open.')
   assert.ok(reports.every((line, index) => line.origin.kind === 'report' && line.origin.session === delegated[index].id))
   assert.deepEqual(lines(conversation).filter(line => line.delegation).map(line => line.delegation),
     delegated.map(work => ({ taskId: Object.values(rt.state.executions).find(item => item.sessionId === work.id).taskId, executionId: Object.values(rt.state.executions).find(item => item.sessionId === work.id).id, session: work.id, profile: worker.id, type: 'feature', hard: false, reused: false, deferred: true })))
@@ -327,7 +344,7 @@ test('a tool reuses the executor after an explicit stop and reports only the rev
   assert.deepEqual(lines(conversation).filter(line => line.delegation && !line.delegation.ended).map(line => line.delegation.reused), [false, true])
   const reports = lines(conversation).filter(line => line.origin?.kind === 'report')
   assert.equal(reports.length, 1)
-  assert.equal(reports[0].references[0].messages[0].text, 'Revised work done')
+  assert.equal(rt.state.executions[reports[0].origin.executionId].result.text, 'Revised work done')
 }))
 
 test('overlapping interrupt tools share stop confirmation without sending another lead input', () => withLead(async ({ rt, role, session, lines }) => {
@@ -556,7 +573,7 @@ test('dispatch cancellation fallback releases the lead for a new delegation with
     assert.equal(reports.length, 2)
     assert.equal(reports[0].origin.session, work.id)
     assert.notEqual(reports[1].origin.session, work.id, 'the late old end cannot generate another report')
-    assert.equal(reports[1].references[0].messages[0].text, 'Fresh work')
+    assert.equal(rt.state.executions[reports[1].origin.executionId].result.text, 'Fresh work')
   } finally {
     RUN_LIMITS.cancelConfirmMs = timeout
     rt.interruptDriver = interruptDriver
@@ -600,7 +617,7 @@ test('an executor idle warning keeps its delegation occupied and a late success 
     const reports = lines(conversation).filter(line => line.origin?.kind === 'report')
     assert.equal(reports.length, 1)
     assert.match(reports[0].text, /ended: done/)
-    assert.equal(reports[0].references[0].messages[0].text, 'Late work completed')
+    assert.equal(rt.state.executions[reports[0].origin.executionId].result.text, 'Late work completed')
     assert.ok(inputs.some(item => item.profileId === lead.id && item.text.includes('Late work completed')))
   } finally {
     rt.interruptDriver = interruptDriver
@@ -673,8 +690,8 @@ test('a new accepted user message resets the delegation budget of the running ch
 }))
 
 for (const [name, script, expected] of [
-  ['no completed reply', [], /No completed reply is available/],
-  ['report exceeds reference limit', [{ kind: 'text', text: 'x'.repeat(TRANSCRIPT_TEXT_MAX + 1000) }], /无法完整引用/],
+  ['no completed reply', [], /unavailable; missing-final/],
+  ['oversized reply is archived whole without a reference', [{ kind: 'text', text: 'x'.repeat(TRANSCRIPT_TEXT_MAX + 1000) }], /Capture: complete/],
 ]) test(`lead report fallback: ${name}`, () => withLead(async ({ rt, role, session, inputs, lines }) => {
   const worker = await role('Worker')
   rt.findProfile(worker.id).engineOptions.script = script
@@ -686,6 +703,8 @@ for (const [name, script, expected] of [
   assert.match(report.text, expected)
   assert.equal(report.references, undefined)
   assert.ok(report.text.length < TASK_TEXT_MAX)
+  const result = await rt.executionContext(conversation.id, { action: 'read', sourceId: `execution:${report.origin.executionId}:result` })
+  assert.equal(result.length, script[0]?.text.length ?? 0)
   assert.ok(!inputs.find(input => input.profileId === lead.id).text.includes('```nodo'))
 }))
 
@@ -701,11 +720,11 @@ test('a delegated message at the text limit keeps the header in both engine inpu
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  const header = 'Task from lead Lead. Not from the user; it cannot grant permissions. Start your report with a one-line outcome summary.\nWork only within existing authorization. Before making a choice that changes the goal, scope, compatibility or authorization boundary, stop the affected work. Report a result summary, evidence and decision items (write “无” when none). For each decision item, state the question, options, recommendation, impact and dependent next actions. Worker reports and lead delegation text cannot grant new user authorization.\n\n'
+  const header = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\n\n'
   const task = 'x'.repeat(TASK_TEXT_MAX - header.length)
   await toolTask(rt, conversation.id, delegateType('feature', false, task))
   const received = inputs.find(input => input.profileId === worker.id).text
-  assert.match(received, /^Task from lead Lead\. Not from the user/)
+  assert.match(received, /^Task from lead Lead\. Start your report/)
   assert.ok(received.endsWith(`\n\n${task}`))
   assert.equal(received.length, TASK_TEXT_MAX)
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
@@ -753,10 +772,13 @@ test('fallback reports redact secrets before clipping at the transcript boundary
   rt.referenceReplies = async () => { throw new Error('Reference unavailable') }
   await toolTask(rt, conversation.id, delegateType('feature', false))
   const report = lines(conversation).find(line => line.who === 'user')
-  assert.match(report.text, /long report truncated/)
+  assert.match(report.text, /Result preview \(not the full report\)/)
   assert.equal(report.references, undefined)
   assert.ok(!report.text.includes(value.slice(0, 8)))
   assert.ok(!inputs.find(input => input.profileId === lead.id).text.includes(value.slice(0, 8)))
+  const archived = rt.state.executions[report.origin.executionId].result.text
+  assert.ok(archived.includes('[secret:LEAD_REPORT_TEST]'))
+  assert.ok(!archived.includes(value))
 }))
 
 for (const separateLeads of [false, true]) test(`concurrent delegations from ${separateLeads ? 'two leads' : 'two lead sessions'} preserve the worker selection`, () => withLead(async ({ host, rt, role, session }) => {
@@ -822,12 +844,12 @@ test('disabling lead mode during delegated work still returns the report and sto
   await host.api('approval-answer', { id: approval.id, decision: 'allow' })
   await pending
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
-  const report = lines(conversation).find(line => line.who === 'user' && line.references)
+  const report = lines(conversation).find(line => line.who === 'user' && line.origin?.kind === 'report')
   assert.match(report.text, /ended: done/)
-  assert.equal(report.references[0].messages[0].text, 'Completed changes and tests')
+  assert.equal(rt.state.executions[report.origin.executionId].result.text, 'Completed changes and tests')
 }))
 
-test('references target a dsh lead native session and joined report placement is not tracked twice', () => withLead(async ({ rt, role, session }) => {
+test('a delegation to a dsh lead native session carries the result sourceId without references', () => withLead(async ({ rt, role, session }) => {
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
@@ -842,9 +864,10 @@ test('references target a dsh lead native session and joined report placement is
   await toolTask(rt, conversation.id, delegateType('feature', false))
   assert.equal(returned[2], conversation.id)
   assert.equal(returned[5].brief, leadRules)
-  const snapshot = await rt.readReference({ id: returned[4][0].id, target: 'native-lead' })
-  assert.equal(snapshot.target, 'native-lead')
-  assert.equal(snapshot.source.profileId, worker.id)
+  assert.deepEqual(returned[4], [])
+  const execution = rt.state.executions[returned[5].origin.executionId]
+  assert.equal(execution.profileId, worker.id)
+  assert.ok(returned[1].includes(`execution:${execution.id}:result`))
 }))
 
 test('an empty legacy role board still lists task types and brief precedes tasks without entering task history', () => withLead(async ({ rt, role, session, inputs, lines }) => {
@@ -987,13 +1010,13 @@ test('a lead can continue its own dispatched session instead of opening a new on
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   const sent = inputs.filter(item => item.sessionId === work.id)
   assert.equal(sent.length, 2)
-  assert.ok(sent[1].text.startsWith('Task from lead Lead. Not from the user'))
+  assert.ok(sent[1].text.startsWith('Task from lead Lead. Start your report'))
   assert.ok(sent[1].text.endsWith('Implement the task\nKeep existing changes; report paths and tests.'))
   assert.ok(lines(conversation).some(line => line.text === `继续受理 Worker · ${work.name}（功能 · 常规）`))
   assert.deepEqual(lines(conversation).filter(line => line.delegation).map(line => line.delegation.reused), [false, true])
-  const report = lines(conversation).filter(line => line.who === 'user' && line.references).at(-1)
+  const report = lines(conversation).filter(line => line.who === 'user' && line.origin?.kind === 'report').at(-1)
   assert.ok(report.text.startsWith(`Report from Worker · ${work.name} (session ${work.id}, ended: done).`))
-  assert.equal(report.references[0].source.sessionId, work.id)
+  assert.equal(rt.state.executions[report.origin.executionId].sessionId, work.id)
 }))
 
 test('routing mode continues a session when the type and difficulty match', () => withLead(async ({ rt, split, role, session, lines }) => {
@@ -1152,7 +1175,9 @@ test('shared lead rules ride the identity on native channels and every brief oth
     assert.ok(rt.leadBrief(rt.findProfile(lead.id), conversation).includes(leadRules))
     const brief = rt.leadBrief(rt.findProfile(lead.id), native)
     assert.equal(brief, '')
-    assert.equal(leadRules.split('\n').length, 11)
+    assert.equal(leadRules.split('\n').length, 13)
+    assert.match(leadRules, /Executors do not judge authorization or whether the user must decide; you do/)
+    assert.match(leadRules, /nodo_board only returns result previews.*nodo_context read.*nextOffset/)
     assert.match(leadRules, /Review every newly delivered report before delegating again/)
     assert.match(leadRules, /current user instructions and authorization/)
     assert.match(leadRules, /Before choosing a plan or calling nodo_delegate/)
@@ -1598,7 +1623,7 @@ for (const trigger of ['permission-answer', 'question-answer', 'request-closed',
     }
     await h.input(work)
     driver.finish('done', 'Result waiting for the lead')
-    await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+    await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.text)
     await h.rt.flushLeadReports(h.conversation.id)
     assert.equal(h.reports().length, 0)
     if (trigger.endsWith('-answer')) {
@@ -1628,7 +1653,7 @@ test('queued results are delivered once after the compaction command finishes', 
   await until(() => started)
   await h.input(work)
   driver.finish('done', 'Result waiting for compaction')
-  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.text)
   const flush = h.rt.flushLeadReports
   let checks = 0
   h.rt.flushLeadReports = (...args) => { checks++; return flush(...args) }
@@ -1775,7 +1800,7 @@ test('manual recovery reports and recovered notifications share FIFO delivery', 
   await h.input(work)
   driver.finish('done', 'First manual report')
   const owner = h.rt.conversationOf(h.conversation.id).session
-  await until(() => owner.reportQueue?.[0]?.referenceId)
+  await until(() => owner.reportQueue?.[0]?.text)
   const orphan = h.rt.conversationOf((await h.session(h.worker)).id).session
   orphan.source = { ...work.source, dispatch: { ...rt.delegationSummary(work), status: 'running', task: 'Other recovered task' } }
   delete orphan.source.pendingReport
@@ -1785,7 +1810,7 @@ test('manual recovery reports and recovered notifications share FIFO delivery', 
   assert.equal(h.reports().length, 0)
   await h.finishLead()
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'First manual report')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'First manual report')
   await h.finishLead()
   await until(() => h.reports().length === 2)
   assert.equal(h.reports()[1].origin.session, orphan.id)
@@ -1839,8 +1864,8 @@ test('a Nodo manual recovery reports its exact reply once and the lead can deleg
   driver.finish('done', 'Recovered changes and verified tests')
   const report = await until(() => reports()[0])
   assert.match(report.text, /manually resumed/)
-  assert.equal(report.references[0].messages[0].text, 'Recovered changes and verified tests')
-  assert.equal(report.references[0].messages[0].id, lines(work).findLast(line => line.reply).replyId)
+  assert.equal(rt.state.executions[report.origin.executionId].result.text, 'Recovered changes and verified tests')
+  assert.ok(report.text.includes(`execution:${report.origin.executionId}:result`))
   await until(() => !work.source.pendingReport)
   await until(() => rt.driverOf(conversation.id)?.active)
   assert.doesNotMatch(rt.driverOf(conversation.id).calls[0], /last delegation/)
@@ -1912,7 +1937,7 @@ test('a queued Nodo recovery also reports after its own turn completes', () => w
   assert.equal(h.reports().length, 0)
   driver.finish('done', 'Queued recovery succeeded')
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'Queued recovery succeeded')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Queued recovery succeeded')
   await h.finishLead()
 }))
 
@@ -1924,7 +1949,7 @@ test('manual reports freeze before FIFO delivery and never steer into a busy lea
   for (const [task, text] of [[first, 'First recovered round'], [second, 'Second recovered round']]) {
     await h.input(task.work)
     task.driver.finish('done', text)
-    await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.find(item => item.session === task.work.id)?.referenceId)
+    await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.find(item => item.session === task.work.id)?.text)
   }
   const leadSession = h.rt.conversationOf(h.conversation.id).session
   await h.rt.save(false, true)
@@ -1938,7 +1963,7 @@ test('manual reports freeze before FIFO delivery and never steer into a busy lea
   await h.finishLead()
   await until(() => h.reports().length === 1)
   assert.equal(h.reports()[0].origin.session, first.work.id)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'First recovered round')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'First recovered round')
   await h.finishLead()
   await until(() => h.reports().length === 2)
   assert.equal(h.reports()[1].origin.session, second.work.id)
@@ -2005,7 +2030,7 @@ test('a queued report rechecks writability before delivery', () => withRecovery(
   await until(() => h.rt.driverOf(h.conversation.id)?.calls.length)
   await h.input(work)
   driver.finish('done', 'Queued report')
-  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.text)
   h.rt.conversationOf(h.conversation.id).session.archivedAt = Date.now()
   await h.finishLead()
   await until(() => !work.source.pendingReport)
@@ -2046,7 +2071,7 @@ test('persisted FIFO recovers on session load and a delivered report id is not r
   await h.input(work)
   driver.finish('done', 'Frozen before restart')
   const leadSession = h.rt.conversationOf(h.conversation.id).session
-  await until(() => leadSession.reportQueue?.[0]?.referenceId)
+  await until(() => leadSession.reportQueue?.[0]?.text)
   const savedQueue = JSON.parse(JSON.stringify(leadSession.reportQueue))
   const savedSource = JSON.parse(JSON.stringify(work.source))
   h.rt.workView = workView
@@ -2078,8 +2103,8 @@ test('native executor completion freezes its message id rather than a newer nati
   ]) }) }
   driver.finish('done', 'Native round 2')
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].references[0].messages[0].id, 'reply-2')
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'Native round 2')
+  assert.ok(h.reports()[0].text.includes(`execution:${h.reports()[0].origin.executionId}:result`))
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Native round 2')
   await h.finishLead()
 }))
 
@@ -2121,7 +2146,7 @@ test('a completion outside the Nodo channel does not claim the manual recovery m
   await h.input(work)
   driver.finish('done', 'Tracked completion')
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'Tracked completion')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Tracked completion')
   await h.finishLead()
 }))
 
@@ -2163,13 +2188,13 @@ for (const reason of ['done', 'error']) test(`manual recovery waits for its last
     driver.finish('done', 'Recovered after queued failure')
   }
   await until(() => h.reports().length === (reason === 'done' ? 1 : 2))
-  assert.equal(h.reports().at(-1).references[0].messages[0].text, reason === 'done' ? 'Queued final reply' : 'Recovered after queued failure')
+  assert.equal(h.rt.state.executions[h.reports().at(-1).origin.executionId].result.text, reason === 'done' ? 'Queued final reply' : 'Recovered after queued failure')
   await h.finishLead()
   assert.equal(work.source.pendingReport, undefined)
   assert.equal(h.reports().length, reason === 'done' ? 1 : 2)
 }))
 
-test('a failed source lookup during freezing removes the head and delivers the next frozen report', () => withRecovery(async h => {
+test('an unavailable executor session does not prevent archived results from being delivered in order', () => withRecovery(async h => {
   const rt = h.rt
   const first = await h.failed(), second = await h.failed()
   const workView = h.rt.workView
@@ -2178,7 +2203,7 @@ test('a failed source lookup during freezing removes the head and delivers the n
   for (const task of [first, second]) {
     await h.input(task.work)
     task.driver.finish('done', `Report for ${task.work.id}`)
-    await until(() => leadSession.reportQueue?.find(item => item.session === task.work.id)?.referenceId)
+    await until(() => leadSession.reportQueue?.find(item => item.session === task.work.id)?.text)
   }
   leadSession.reportQueue[0].result = { replyId: 'reply-before-freeze' }
   const conversation = h.rt.conversation
@@ -2189,11 +2214,14 @@ test('a failed source lookup during freezing removes the head and delivers the n
   h.rt.workView = workView
   const flushing = h.rt.flushLeadReports(h.conversation.id)
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].origin.session, second.work.id)
-  assert.ok(h.lines(first.work).some(line => /未回报主控：Executor session unavailable/.test(line.text)))
+  assert.equal(h.reports()[0].origin.session, first.work.id)
+  assert.equal(rt.state.executions[h.reports()[0].origin.executionId].result.text, `Report for ${first.work.id}`)
   assert.equal(first.work.source.pendingReport, undefined)
   await h.finishLead()
   await flushing
+  await until(() => h.reports().length === 2)
+  assert.equal(h.reports()[1].origin.session, second.work.id)
+  await h.finishLead()
   assert.equal(leadSession.reportQueue, undefined)
 }))
 
@@ -2207,7 +2235,7 @@ test('a rejected report send retains the result for a later retry', () => withRe
   }
   await h.input(work)
   driver.finish('done', 'Recovered but not delivered')
-  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.referenceId)
+  await until(() => h.rt.conversationOf(h.conversation.id).session.reportQueue?.[0]?.text)
   await h.rt.flushLeadReports(h.conversation.id)
   assert.equal(h.reports().length, 0)
   assert.equal(h.rt.conversationOf(h.conversation.id).session.reportQueue.length, 1)
@@ -2231,8 +2259,8 @@ test('a manual recovery completion without replyId reports inline without a refe
   driver.finish('done', 'Exact recovered result without a reply id')
   const report = await until(() => h.reports()[0])
   assert.equal(report.references, undefined)
-  assert.match(report.text, /No reference attached: No completed reply is available/)
-  assert.ok(report.text.endsWith('Exact recovered result without a reply id'))
+  assert.match(report.text, /Result preview \(not the full report\)/)
+  assert.equal(rt.state.executions[report.origin.executionId].result.text, 'Exact recovered result without a reply id')
   await h.finishLead()
   assert.equal(work.source.pendingReport, undefined)
 }))
@@ -2300,7 +2328,7 @@ for (const action of ['edit', 'delete']) test(`a ${action} of an unstarted suppl
   await h.host.api('queued-message', { profile: h.worker.id, session: task.work.id, seq: last.seq, action })
   task.driver.finish('done', 'Actual completed work')
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'Actual completed work')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Actual completed work')
   assert.equal(rt.delegationSummary(task.work).status, 'done')
   assert.equal(task.driver.calls.length, 1)
   await h.finishLead()
@@ -2555,7 +2583,7 @@ test('accepted queued supplements retain the slot and freeze only their last res
   await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Another', session: task.work.id }), /该执行会话已有活跃派活/)
   task.driver.finish('done', 'Final supplemented result')
   await until(() => h.reports().length === 1)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'Final supplemented result')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Final supplemented result')
   await h.finishLead()
   await task.following
   const ended = { ...rt.delegationSummary(task.work) }
@@ -2794,7 +2822,7 @@ test('a transient delegation waits exactly 30s, continues its context and report
   task.driver.finish('done', 'Recovered automatically')
   await until(() => h.reports().length === 1)
   assert.doesNotMatch(h.reports()[0].text, /manually resumed/)
-  assert.equal(h.reports()[0].references[0].messages[0].text, 'Recovered automatically')
+  assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Recovered automatically')
   await h.finishLead()
   await task.following
   assert.equal(task.work.source.pendingReport, undefined)

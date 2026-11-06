@@ -8,3 +8,8 @@ export const LEAD_ENGINES = ['claude', 'codex']
 // hand — prepareConversation's profile+session spread — pass it as both args.
 export const leadModeOf = (profile, session) => profile?.lead === true && session?.leadMode !== false
 
+export const currentUserRequestOf = lines => {
+  const last = lines.findLast(line => line.who === 'user')
+  return last && (!last.origin || last.origin.kind === 'task') ? last : undefined
+}
+

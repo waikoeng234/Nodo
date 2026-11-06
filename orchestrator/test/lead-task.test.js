@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, copyFileSync, existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { readFileSync, copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { basename, join, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -12,6 +12,10 @@ import { TASK_TEXT_MAX } from '../core/src/constants.js'
 import { reviewDeliveredReports } from './helpers/report-review.js'
 
 registerClaudeFixtureEngine()
+registerEngine('final-fixture', { ...echoEntry, info: { ...echoEntry.info, id: 'final-fixture', name: 'Final fixture' }, create(options) {
+  return echoEntry.create({ ...options, onEvent: event => options.onEvent({ ...event,
+    ...(event.type === 'turn/end' && event.reason === 'done' ? { text: options.script?.findLast(step => step.kind === 'text')?.text ?? 'Implemented and verified' } : {}) }) })
+} })
 registerEngine('worktree-fixture', { ...echoEntry, info: { ...echoEntry.info, id: 'worktree-fixture', name: 'Worktree fixture' }, create(options) {
   const driver = echoEntry.create(options), send = driver.sendTurn
   return Object.assign(driver, { cwd: options.cwd, calls: [], sendTurn(text) { driver.calls.push(text); return send(text) } })
@@ -19,7 +23,7 @@ registerEngine('worktree-fixture', { ...echoEntry, info: { ...echoEntry.info, id
 const command = { type: 'feature', hard: false, task: 'Implement and verify\nPreserve existing changes.' }
 const turn = reason => ({ mode: 'turn', completion: Promise.resolve({ reason }) })
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-const withTasks = (run, repository = false) => withHost(async host => {
+const withTasks = (run, repository = false, workerEngine = 'echo') => withHost(async host => {
   const rt = await host.runtime
   const cwd = repository ? join(host.home, 'repo') : host.home
   if (repository) {
@@ -32,7 +36,7 @@ const withTasks = (run, repository = false) => withHost(async host => {
     git(cwd, 'commit', '-qm', 'base')
   }
   const workspace = await host.api('workspace-create', { name: 'Tasks', cwd })
-  const worker = await host.api('profile-create', { name: 'Worker', engine: 'echo', engineOptions: { script: [{ kind: 'text', text: 'Implemented and verified' }] } })
+  const worker = await host.api('profile-create', { name: 'Worker', engine: workerEngine, engineOptions: { script: [{ kind: 'text', text: 'Implemented and verified' }] } })
   const lead = await host.api('profile-create', { name: 'Lead', engine: 'claude', lead: true, engineOptions: { script: [] } })
   await rt.updateTeams([{ id: 'team', name: 'Team', lead: lead.id, members: [worker.id], types: [{ id: 'feature', name: 'Feature', when: '' }], assign: { feature: { normal: { profile: worker.id } } } }])
   const owner = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
@@ -53,13 +57,48 @@ const withTasks = (run, repository = false) => withHost(async host => {
   }
   const finish = async receipt => {
     await rt.followLead(owner.id, turn('done'))
-    await until(() => rt.state.executions[receipt.executionId].references.length && rt.transcriptOf(owner.id).some(line => line.origin?.executionId === receipt.executionId))
+    await until(() => rt.state.executions[receipt.executionId].result && rt.transcriptOf(owner.id).some(line => line.origin?.executionId === receipt.executionId))
     await until(() => !rt.workView()[owner.id]?.active)
     await reviewDeliveredReports(rt, owner.id)
   }
   try { await run({ host, rt, workspace, worker, lead, owner, other, client, call, finish }) }
   finally { for (const value of clients) await value.close(); for (const binding of bindings) binding.revoke() }
 })
+
+test('lead task delegation persists an actual final and exposes it through the result handle', () => withTasks(async ({ host, rt, lead, owner, client, call, finish }) => {
+  await host.api('send', { profile: lead.id, session: owner.id, text: 'Implement and verify' })
+  await until(() => !rt.workView()[owner.id]?.active)
+  const primary = await client(owner)
+  const receipt = await call(primary, 'nodo_delegate', command)
+  await finish(receipt)
+  const task = await call(primary, 'nodo_board', { taskId: receipt.taskId })
+  const result = task.executions[0].result
+  assert.equal(result.completeness, 'complete')
+  assert.equal(result.text, undefined)
+  const read = await call(primary, 'nodo_context', { action: 'read', sourceId: result.sourceId })
+  assert.equal(read.text, 'Implemented and verified')
+  assert.equal(read.status, 'done')
+  assert.equal(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[receipt.executionId].result.text, read.text)
+}, false, 'final-fixture'))
+
+test('driver final reaches late confirmation and fills a missing archived result', () => withTasks(async ({ host, rt, workspace, worker, owner }) => {
+  const session = await host.api('session-create', { profile: worker.id, workspace: workspace.id, lazy: true })
+  rt.conversationOf(session.id).session.source = { kind: 'lead', leadSessionId: owner.id, type: 'feature', hard: false }
+  const task = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
+    title: 'Recover final', brief: 'Recover final', source: { kind: 'user' } })
+  const execution = await rt.acceptExecution(task.id, { profileId: worker.id, sessionId: session.id, type: 'feature', hard: false })
+  await rt.startExecution(execution.id)
+  await rt.unconfirmExecution(execution.id, { reason: 'restart' })
+  assert.equal(rt.state.executions[execution.id].result.reason, 'missing-final')
+  rt.driverSink(session.id, { type: 'turn/start', turnId: 'confirmed' })
+  rt.driverSink(session.id, { type: 'text', turnId: 'confirmed', text: 'Late final with evidence' })
+  rt.driverSink(session.id, { type: 'turn/end', turnId: 'confirmed', reason: 'done', text: 'Late final with evidence' })
+  await until(() => rt.state.executions[execution.id].status === 'done' && rt.state.executions[execution.id].result.completeness === 'complete')
+  const result = await rt.executionContext(owner.id, { action: 'read', sourceId: `execution:${execution.id}:result` })
+  assert.equal(result.text, 'Late final with evidence')
+  assert.equal(result.status, 'done')
+  await until(() => !rt.workView()[session.id]?.active)
+}))
 
 test('relationship ownership, revise and reuse preserve the task graph', () => withTasks(async ({ host, rt, workspace, lead, owner, other, client, call, finish }) => {
   await host.api('send', { profile: lead.id, session: owner.id, text: 'Build the goal' })
@@ -85,7 +124,7 @@ test('relationship ownership, revise and reuse preserve the task graph', () => w
   assert.equal(blocked.isError, true)
   assert.equal(blocked.content[0].text, '依赖任务 Investigate 尚未验收，先完成它再派活')
   assert.deepEqual([Object.keys(rt.state.executions).length, rt.conversationOf(dependency.session).profile.sessions.length], before)
-  await call(primary, 'nodo_task', { taskId: dependency.taskId, action: 'complete', reason: 'Checked', references: rt.state.executions[dependency.executionId].references })
+  await call(primary, 'nodo_task', { taskId: dependency.taskId, action: 'complete', reason: 'Checked', executionIds: [dependency.executionId], basis: ['Verified dependency'] })
   const allowed = await call(primary, 'nodo_delegate', { ...command, taskId: child.id })
   assert.equal(allowed.status, 'queued', 'completing A and dispatching B in the same turn is allowed')
   const linked = await call(primary, 'nodo_delegate', { ...command, parentId: parent.id, dependsOn: [dependency.taskId] })
@@ -114,7 +153,7 @@ test('lead acceptance requires children done and reopening a child leaves the ac
   await finish(parent)
   const child = await call(primary, 'nodo_delegate', { ...command, parentId: parent.taskId })
   await finish(child)
-  const accept = receipt => ({ taskId: receipt.taskId, action: 'complete', reason: 'Verified', references: rt.state.executions[receipt.executionId].references })
+  const accept = receipt => ({ taskId: receipt.taskId, action: 'complete', reason: 'Verified', executionIds: [receipt.executionId], basis: ['Verified result'] })
   const rejected = await primary.callTool({ name: 'nodo_task', arguments: accept(parent) })
   assert.equal(rejected.isError, true)
   assert.equal(rejected.content[0].text, '还有 1 个子任务未验收，先完成它们再验收本任务')
@@ -198,7 +237,9 @@ test('isolated delegation locks its directory, copies attachments and reports it
   assert.ok(rt.driverOf(first.session).calls[0].includes(copied))
   assert.equal(readFileSync(join(isolated.cwd, '.nodo', '.gitignore'), 'utf8'), '*\n', 'the task worktree carries the ignored input folder')
   assert.equal(git(isolated.cwd, 'status', '--porcelain'), '', 'the copied attachment stays invisible to git status')
-  assert.ok(sent[1].endsWith(`执行目录：${isolated.cwd}\n分支：${isolated.worktree.branch}\n基准 commit：${isolated.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`))
+  const directoryNotes = `执行目录：${isolated.cwd}\n分支：${isolated.worktree.branch}\n基准 commit：${isolated.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`
+  assert.ok(sent[1].includes(directoryNotes), 'the running notes with the actual directory stay verbatim in the input')
+  assert.ok(sent[1].indexOf('执行目录：') < sent[1].indexOf('Implement and verify'), 'running notes come before the current task')
   await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: false }), /执行目录不一致/)
   for (const worktree of [true, false]) await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, session: first.session, worktree }), /续用 session 时不能传 worktree/)
   const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: true })
@@ -210,6 +251,35 @@ test('isolated delegation locks its directory, copies attachments and reports it
   assert.equal(rt.state.executions[reused.executionId].workspaceRef, isolated.id)
   await rt.followLead(owner.id, turn('interrupted'))
   assert.ok(existsSync(isolated.cwd))
+}, true))
+
+test('a worktree dispatch archives background files inside its own checkout and points the body at them', () => withTasks(async ({ rt, workspace, worker, owner, client, call, finish }) => {
+  rt.state.profiles[worker.id].engine = 'final-fixture'
+  const bootstrap = await client(owner)
+  const dependency = await call(bootstrap, 'nodo_delegate', { ...command, task: 'Investigate storage' })
+  await finish(dependency)
+  // The first lead-driver start rotates the MCP credential, so re-issue before the worktree dispatch.
+  const primary = await client(owner)
+  const text = rt.state.executions[dependency.executionId].result.text
+  const send = rt.send
+  let body
+  rt.send = async (...args) => {
+    if (args[5]?.origin?.kind === 'delegation') body = args[1]
+    return send(...args)
+  }
+  const receipt = await call(primary, 'nodo_delegate', { ...command, task: 'Rework in isolation', worktree: true,
+    context: { required: [], background: [`execution:${dependency.executionId}:result`] } })
+  const isolated = rt.findWorkspace(rt.state.executions[receipt.executionId].workspaceRef)
+  await finish(receipt)
+  const background = rt.state.executions[receipt.executionId].inputContext.background[0]
+  assert.equal(background.sourceId, `execution:${dependency.executionId}:result`)
+  assert.ok(realpathSync(background.path).startsWith(`${realpathSync(isolated.cwd)}${sep}`), 'the background file lands inside the worktree itself')
+  assert.ok(background.path.includes('.nodo/workflow-inputs'))
+  assert.equal(readFileSync(background.path, 'utf8'), text)
+  assert.ok(body.includes(background.path), 'the body points the executor at the worktree copy')
+  assert.equal(existsSync(join(workspace.cwd, '.nodo', 'workflow-inputs')), false, 'the main checkout receives no background copy')
+  assert.equal(git(isolated.cwd, 'status', '--porcelain'), '', 'the background file stays invisible to git status')
+  await rt.followLead(owner.id, turn('interrupted'))
 }, true))
 
 test('worktree validation rejects non-booleans and switching a started shared task to isolation', () => withTasks(async ({ rt, owner, client, call, finish }) => {
@@ -417,7 +487,9 @@ test('task tools close the loop, preserve three results on one session and enfor
     if (origin?.kind === 'report') {
       const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[origin.executionId]
       assert.ok(saved.report)
-      assert.ok(saved.references.includes(args[4][0].id))
+      assert.ok(saved.result)
+      assert.deepEqual(args[4], [])
+      assert.ok(args[1].includes(`execution:${origin.executionId}:result`))
     }
     return send(...args)
   }
@@ -444,12 +516,14 @@ test('task tools close the loop, preserve three results on one session and enfor
   assert.equal(rt.conversationOf(first.session).session.source.dispatch, undefined)
   const task = await call(primary, 'nodo_board', { taskId: first.taskId })
   assert.equal(task.executions.length, 3)
-  assert.equal(new Set(task.executions.flatMap(item => item.references)).size, 3)
+  assert.equal(new Set(task.executions.map(item => item.result.sourceId)).size, 3)
+  assert.deepEqual(task.executions.flatMap(item => item.references), [])
   assert.deepEqual(await call(primary, 'nodo_board', { table: 'tasks' }), [{ id: first.taskId, title: task.title,
-    status: 'review', teamId: 'team', executionCount: 3, latestExecutionStatus: 'done', references: task.executions.flatMap(item => item.references) }])
+    status: 'review', teamId: 'team', executionCount: 3, latestExecutionStatus: 'done', references: task.executions.flatMap(item => item.references),
+    latestResult: { sourceId: `execution:${task.executions.at(-1).id}:result`, completeness: 'unavailable', reason: 'missing-final', preview: '', length: 0, originalLength: 0 } }])
   assert.deepEqual(await call(foreign, 'nodo_board', { table: 'tasks' }), [])
   assert.ok(rt.transcriptOf(first.session).filter(line => line.origin?.kind === 'delegation').every(line => line.origin.taskId === first.taskId && line.origin.executionId))
-  const done = await call(primary, 'nodo_task', { taskId: first.taskId, action: 'complete', reason: 'Checked all results', references: task.executions.at(-1).references })
+  const done = await call(primary, 'nodo_task', { taskId: first.taskId, action: 'complete', reason: 'Checked all results', executionIds: task.executions.map(item => item.id), basis: ['Verified all three results'] })
   assert.equal(done.status, 'done')
   assert.equal((await call(primary, 'nodo_task', { taskId: first.taskId, action: 'reopen' })).status, 'open')
 }))
@@ -483,7 +557,7 @@ test('task revise updates title or brief and refuses foreign, finished, oversize
   const { profile: leadProfile, session: leadSession } = rt.conversationOf(owner.id)
   assert.match(rt.leadBrief(leadProfile, leadSession), /reopened before revising/)
   await finish(first)
-  await call(primary, 'nodo_task', { taskId: first.taskId, action: 'complete', reason: 'Checked all results', references: rt.state.executions[first.executionId].references })
+  await call(primary, 'nodo_task', { taskId: first.taskId, action: 'complete', reason: 'Checked all results', executionIds: [first.executionId], basis: ['Verified result'] })
   const finished = await primary.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise', title: 'After done' } })
   assert.equal(finished.isError, true)
   assert.match(finished.content[0].text, /Task cannot transition from done/)
@@ -590,7 +664,7 @@ test('a failed first send does not prevent the second flight from starting and r
   assert.deepEqual(sent, [first.session, second.session])
   assert.equal(rt.state.executions[first.executionId].status, 'failed')
   assert.equal(rt.state.executions[second.executionId].status, 'done')
-  assert.ok(rt.state.executions[second.executionId].references.length)
+  assert.ok(rt.state.executions[second.executionId].result)
   for (const item of [first, second]) assert.equal(rt.transcriptOf(owner.id).filter(line => line.origin?.executionId === item.executionId).length, 1)
   await until(() => !rt.workView()[owner.id]?.active)
 }))
@@ -695,7 +769,7 @@ test('receipt failure after deferred dispatch starts leaves completion tracking 
   await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /Receipt save failed after dispatch started/)
   await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.executionId === execution.id))
   assert.equal(execution.status, 'done')
-  assert.ok(execution.references.length)
+  assert.ok(execution.result)
   await until(() => !rt.workView()[owner.id]?.active)
   await reviewDeliveredReports(rt, owner.id)
   const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: execution.taskId, session: execution.sessionId })
@@ -703,7 +777,7 @@ test('receipt failure after deferred dispatch starts leaves completion tracking 
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
 
-for (const fallback of [false, true]) test(`execution records retain a short summary and report references (inline=${fallback})`, () => withTasks(async ({ host, rt, owner, lead, worker }) => {
+for (const fallback of [false, true]) test(`execution records retain full results with bounded previews (reference failure=${fallback})`, () => withTasks(async ({ host, rt, owner, lead, worker }) => {
   const text = 'Completed work. '.repeat(60) + 'UNIQUE_FULL_REPORT_TAIL'
   rt.state.profiles[worker.id].engineOptions.script = [{ kind: 'text', text }]
   if (fallback) rt.createReference = async () => { throw new Error('Reference unavailable') }
@@ -715,32 +789,32 @@ for (const fallback of [false, true]) test(`execution records retain a short sum
   const stored = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[receipt.executionId]
   assert.ok(stored.report.length <= 200)
   assert.equal(stored.report.includes('UNIQUE_FULL_REPORT_TAIL'), false)
-  if (fallback) {
-    assert.deepEqual(stored.references, [])
-    assert.ok(report.text.includes(text))
-  } else {
-    assert.deepEqual(stored.references, [report.references[0].id])
-    assert.equal(report.references[0].messages[0].text, text)
-  }
-}))
+  assert.deepEqual(stored.references, [])
+  assert.equal(report.references, undefined)
+  assert.equal(stored.result.text, text)
+  assert.equal(report.text.includes('UNIQUE_FULL_REPORT_TAIL'), false)
+  assert.match(report.text, /Result preview \(not the full report\)/)
+  const read = await rt.executionContext(owner.id, { action: 'read', sourceId: `execution:${receipt.executionId}:result` })
+  assert.equal(read.text, stored.result.text)
+}, false, 'final-fixture'))
 
 test('report delivery waits for execution evidence to save and retries without replacing results', () => withTasks(async ({ host, rt, lead, owner }) => {
   const receipt = await rt.leadDispatch.delegate(owner.id, command)
   const save = rt.saveStrict
   rt.saveStrict = async () => {
-    if (rt.state.executions[receipt.executionId].references.length) throw new Error('Evidence save failed')
+    if (rt.state.executions[receipt.executionId].result) throw new Error('Evidence save failed')
     return save()
   }
   await rt.followLead(owner.id, turn('done'))
-  await until(() => rt.conversationOf(owner.id).session.reportQueue?.[0]?.referenceId)
+  await until(() => rt.conversationOf(owner.id).session.reportQueue?.[0]?.executionId)
   assert.equal(rt.transcriptOf(owner.id).some(line => line.origin?.kind === 'report'), false)
-  const original = rt.state.executions[receipt.executionId].report
+  const original = structuredClone(rt.state.executions[receipt.executionId].result)
   rt.saveStrict = save
   await rt.flushLeadReports(owner.id)
   await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.executionId === receipt.executionId))
   const stored = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[receipt.executionId]
-  assert.equal(stored.report, original)
-  assert.ok(stored.references.length)
+  assert.deepEqual(stored.result, original)
+  assert.deepEqual(stored.references, [])
   assert.equal(rt.transcriptOf(owner.id).filter(line => line.origin?.executionId === receipt.executionId).length, 1)
   await until(() => !rt.workView()[owner.id]?.active)
 }))
@@ -752,13 +826,111 @@ test('late confirmed results append evidence to the original unconfirmed executi
   await rt.startExecution(execution.id)
   await rt.unconfirmExecution(execution.id, { reason: 'restart', report: 'Original unconfirmed report' })
   rt.appendLine(session.id, { who: 'agent', kind: 'text', text: 'Late completed result', reply: true, replyId: 'late-reply' })
-  await rt.leadEnded(session.id, { reason: 'done', text: 'Late completed result', replyId: 'late-reply' })
+  await rt.leadEnded(session.id, { reason: 'done', final: 'Late completed result', text: 'Late completed result', replyId: 'late-reply' })
   const result = (await rt.taskView(task.id)).executions[0]
   assert.equal(result.status, 'done')
   assert.equal(result.report, 'Original unconfirmed report')
-  assert.equal(result.references.length, 1)
-  assert.equal((await rt.readReference({ id: result.references[0], target: owner.id })).messages[0].text, 'Late completed result')
+  assert.deepEqual(result.references, [])
+  assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId: result.result.sourceId })).text, 'Late completed result')
   assert.equal((await rt.taskView(task.id)).status, 'blocked')
+}))
+
+test('delivery retries the same archived result and report id without rerunning the executor', () => withTasks(async ({ rt, owner, finish }) => {
+  const send = rt.send, attempts = []
+  let reject = true, runs = 0
+  rt.send = async (...args) => {
+    if (args[5]?.origin?.kind === 'delegation') runs++
+    if (args[5]?.origin?.kind === 'report') {
+      attempts.push({ id: args[5].origin.reportId, text: args[1] })
+      if (reject) throw new Error('Fixture report delivery failed')
+    }
+    return send(...args)
+  }
+  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  await rt.followLead(owner.id, turn('done'))
+  await until(() => attempts.length > 0)
+  const original = structuredClone(rt.state.executions[receipt.executionId].result)
+  assert.equal(rt.transcriptOf(owner.id).some(line => line.origin?.kind === 'report'), false)
+  reject = false
+  await rt.flushLeadReports(owner.id)
+  await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.kind === 'report'))
+  assert.equal(runs, 1)
+  assert.ok(attempts.length >= 2)
+  assert.ok(attempts.every(attempt => attempt.id === attempts[0].id && attempt.text === attempts[0].text))
+  assert.deepEqual(rt.state.executions[receipt.executionId].result, original)
+  await until(() => !rt.workView()[owner.id]?.active)
+}))
+
+test('pre-task legacy queues retain inline report bodies without creating references or claiming a result handle', () => withTasks(async ({ rt, owner, worker, workspace }) => {
+  const session = await rt.createSession(worker.id, 'Legacy executor', workspace.id, true, false, {})
+  const body = 'Legacy final reply and verification'
+  rt.createReference = async () => { throw new Error('No automatic references') }
+  rt.conversationOf(owner.id).session.reportQueue = [{ id: 'pre-task-report', profile: worker.id, session: session.id,
+    status: 'done', reason: 'done', result: { final: body } }]
+  await rt.flushLeadReports(owner.id)
+  const report = await until(() => rt.transcriptOf(owner.id).find(line => line.origin?.reportId === 'pre-task-report'))
+  assert.ok(report.text.endsWith(body))
+  assert.match(report.text, /no execution result handle available/)
+  assert.equal(report.references, undefined)
+  assert.deepEqual(rt.state.executions, {})
+  await until(() => !rt.workView()[owner.id]?.active)
+}))
+
+for (const format of ['body', 'reference', 'summary']) test(`restart converts a legacy ${format} queue before delivery and preserves acceptance history`, () => withTasks(async ({ host, rt, owner, finish }) => {
+  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  await finish(receipt)
+  const execution = rt.state.executions[receipt.executionId], session = rt.conversationOf(receipt.session).session
+  const legacyBody = 'Legacy final '.repeat(800)
+  rt.appendLine(session.id, { who: 'agent', kind: 'text', text: legacyBody, reply: true, replyId: 'legacy-final' })
+  const snapshot = await rt.createReference({ target: owner.id, profile: execution.profileId, session: session.id, messageId: 'legacy-final' })
+  execution.references = [snapshot.id]
+  execution.report = 'Legacy retained summary'
+  delete execution.result
+  const acceptance = { reason: 'Historical acceptance', references: [snapshot.id], executionIds: [execution.id], createdAt: 1 }
+  rt.state.tasks[receipt.taskId].acceptances.push(acceptance)
+  const queue = { id: `legacy-${format}`, profile: execution.profileId, session: session.id, taskId: execution.taskId, executionId: execution.id,
+    status: 'done', reason: 'done', ...(format === 'body' ? { result: { final: legacyBody, replyId: 'legacy-final' } }
+      : format === 'reference' ? { referenceId: snapshot.id, text: 'Read the referenced reply' } : { text: 'Legacy retained summary' }) }
+  if (format !== 'body') execution.references = []
+  rt.conversationOf(owner.id).session.reportQueue = [queue]
+  session.source.pendingReport = { id: queue.id, ready: true }
+  await rt.saveStrict()
+  const directory = join(host.home, `legacy-${format}`)
+  mkdirSync(directory)
+  copyFileSync(join(host.home, 'state.json'), join(directory, 'state.json'))
+  cpSync(join(host.home, 'references'), join(directory, 'references'), { recursive: true })
+  const persisted = []
+  const recorder = setInterval(() => { try { persisted.push(readFileSync(join(directory, 'state.json'), 'utf8')) } catch {} }, 5)
+  recorder.unref()
+  const restarted = boot(directory)
+  try {
+    const recovered = await restarted.runtime
+    recovered.createReference = async () => { throw new Error('Do not recreate legacy references') }
+    await until(() => recovered.state.executions[execution.id].reports?.some(report => report.id === queue.id))
+    clearInterval(recorder)
+    const converted = persisted.map(JSON.parse).filter(state => state.executions?.[execution.id]?.result)
+    assert.ok(converted.length > 0)
+    for (const state of converted) for (const profile of Object.values(state.profiles ?? {}))
+      for (const lead of profile.sessions ?? []) for (const item of lead.reportQueue ?? []) {
+        assert.equal(item.result, undefined)
+        assert.equal(item.referenceId, undefined)
+      }
+    const read = await recovered.executionContext(owner.id, { action: 'read', sourceId: `execution:${execution.id}:result`, limit: 16000 })
+    assert.equal(read.text, format === 'summary' ? 'Legacy retained summary' : legacyBody)
+    assert.equal(read.completeness, 'partial')
+    assert.match(read.reason, /^legacy-/)
+    const report = recovered.transcriptOf(owner.id).find(line => line.origin?.reportId === queue.id)
+    assert.equal(report.references, undefined)
+    assert.ok(report.text.includes(read.sourceId))
+    assert.ok(report.text.length < 2000)
+    assert.deepEqual(recovered.state.tasks[receipt.taskId].acceptances, [acceptance])
+    if (format !== 'summary') {
+      const done = await recovered.completeTask(receipt.taskId, { reason: 'Pure legacy acceptance', references: [snapshot.id] })
+      assert.equal(done.status, 'done')
+      assert.deepEqual(done.acceptances[0], acceptance)
+    }
+    await until(() => !recovered.workView()[owner.id]?.active)
+  } finally { await restarted.dispose() }
 }))
 
 test('interrupt validates exclusive arguments and resolves a reused session to its active execution', () => withTasks(async ({ rt, owner, client, call }) => {
@@ -853,6 +1025,65 @@ test('restart leaves persisted running executions unconfirmed without resending'
     await rt.failExecution(receipt.executionId, { reason: 'fixture-cleanup' })
     await rt.followLead(owner.id, turn('interrupted'))
   }
+}))
+
+test('interrupt closes a restarted unconfirmed execution so the task can be re-dispatched', () => withTasks(async ({ host, rt, owner }) => {
+  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  await rt.startExecution(receipt.executionId)
+  const directory = join(host.home, 'unconfirmed-restart')
+  mkdirSync(directory)
+  copyFileSync(join(host.home, 'state.json'), join(directory, 'state.json'))
+  const restarted = boot(directory)
+  try {
+    const recovered = await restarted.runtime
+    await recovered.load()
+    await until(() => recovered.state.executions[receipt.executionId].status === 'unconfirmed')
+    await until(() => recovered.state.executions[receipt.executionId].report
+      && !recovered.workView()[owner.id]?.active && !recovered.conversationOf(owner.id).session.reportQueue)
+    assert.equal(recovered.state.tasks[receipt.taskId].status, 'blocked')
+    const stopped = await recovered.leadDispatch.interrupt(owner.id, { executionId: receipt.executionId })
+    assert.equal(stopped.ended, 'interrupted')
+    assert.equal(stopped.taskId, receipt.taskId)
+    assert.equal(stopped.executionId, receipt.executionId)
+    assert.equal(stopped.unconfirmed, undefined)
+    assert.equal(recovered.state.executions[receipt.executionId].status, 'interrupted')
+    assert.equal(recovered.state.executions[receipt.executionId].reason, 'interrupted-lead')
+    assert.ok(recovered.transcriptOf(owner.id).some(line => line.delegation?.executionId === receipt.executionId
+      && line.delegation.ended === 'interrupted' && line.delegation.stoppedBy === 'lead'))
+    await reviewDeliveredReports(recovered, owner.id)
+    const next = await recovered.leadDispatch.delegate(owner.id, { ...command, taskId: receipt.taskId })
+    assert.equal(next.taskId, receipt.taskId)
+    assert.equal(next.status, 'queued')
+    await recovered.followLead(owner.id, turn('interrupted'))
+  } finally {
+    await restarted.dispose()
+    await rt.failExecution(receipt.executionId, { reason: 'fixture-cleanup' })
+    await rt.followLead(owner.id, turn('interrupted'))
+  }
+}))
+
+test("a foreign coordinator's unconfirmed execution still refuses interruption", () => withTasks(async ({ rt, workspace, worker, lead, owner, other }) => {
+  const task = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: other.id, title: 'Foreign', brief: 'Foreign', source: { kind: 'lead', sessionId: other.id } })
+  const executor = await rt.createSession(worker.id, 'Foreign executor', workspace.id, true, false, {}, { kind: 'lead', leadSessionId: other.id, leadProfileId: lead.id, type: 'feature', hard: false })
+  const execution = await rt.acceptExecution(task.id, { profileId: worker.id, sessionId: executor.id, type: 'feature', hard: false })
+  await rt.startExecution(execution.id)
+  await rt.unconfirmExecution(execution.id, { reason: 'restart' })
+  await assert.rejects(rt.leadDispatch.interrupt(owner.id, { executionId: execution.id }), /任务不属于本主控会话/)
+  assert.equal(rt.state.executions[execution.id].status, 'unconfirmed')
+}))
+
+test('a running execution with a flight still interrupts through the live stop path', () => withTasks(async ({ rt, worker, owner }) => {
+  rt.state.profiles[worker.id].engineOptions.script = [{ kind: 'wait', ms: 10_000 }]
+  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  await rt.followLead(owner.id, turn('done'))
+  await until(() => rt.workView()[receipt.session]?.active)
+  const stopped = await rt.leadDispatch.interrupt(owner.id, { executionId: receipt.executionId })
+  assert.equal(stopped.ended, 'interrupted')
+  assert.equal(stopped.unconfirmed, undefined)
+  assert.equal(rt.state.executions[receipt.executionId].status, 'interrupted')
+  assert.equal(rt.state.executions[receipt.executionId].reason, 'interrupted-lead')
+  assert.equal(rt.state.tasks[receipt.taskId].status, 'stopped')
+  await rt.followLead(owner.id, turn('interrupted'))
 }))
 
 test('send rejects supplements for a missing task or another coordinator session without writing', () => withTasks(async ({ host, rt, workspace, lead, owner, other }) => {

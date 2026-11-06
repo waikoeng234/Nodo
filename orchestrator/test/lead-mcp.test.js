@@ -47,6 +47,24 @@ const harness = (extra = {}) => {
   return { rt, home, owner, calls, dispose() { for (const fn of disposers) fn(); rmSync(home, { recursive: true, force: true }) } }
 }
 
+test('nodo_context reuses the lead credential and remains read-only while decision delivery is blocked', async () => {
+  const seen = [], h = harness({ executionContext: async (id, args) => { seen.push([id, args]); return { text: 'saved result' } },
+    decisionDeliveryReady: async () => { throw new Error('decision not delivered') } })
+  try {
+    assert.equal(await h.rt.issueLeadMcp('worker'), undefined)
+    const binding = await h.rt.issueLeadMcp('lead'), spec = binding.servers[0]
+    const args = { action: 'read', sourceId: 'execution:owned:result', offset: 0, limit: 30 }
+    const result = await rpc(spec, { name: 'nodo_context', arguments: args })
+    assert.equal(result.isError, undefined)
+    assert.deepEqual(seen, [['lead', args]])
+    assert.equal((await rpc(spec, { name: 'nodo_context', arguments: { ...args, token: 'fake' } })).isError, true)
+    assert.equal((await rpc(spec, { name: 'nodo_context', token: 'invalid', arguments: args })).isError, true)
+    binding.revoke()
+    assert.equal((await rpc(spec, { name: 'nodo_context', arguments: args })).isError, true)
+    assert.equal(seen.length, 1)
+  } finally { h.dispose() }
+})
+
 test('failed token file writes revoke the new token and preserve the old binding', async () => {
   const issued = [], h = harness({ retireValue: token => issued.push(token) })
   try {
@@ -106,7 +124,9 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     assert.equal(JSON.stringify(spec).includes(token), false)
     await client.connect(new StdioClientTransport({ command: spec.command, args: spec.args, env, stderr: 'pipe' }))
     const { tools } = await client.listTools()
-    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt', 'nodo_task', 'nodo_decision'])
+    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_delegate', 'nodo_interrupt', 'nodo_task', 'nodo_decision', 'nodo_context'])
+    assert.match(tools[0].description, /有界预览.*nodo_context read.*nextOffset/)
+    assert.match(tools[5].description, /legacy-reference.*legacy-report.*legacy-unavailable/)
     assert.deepEqual(tools[4].inputSchema.required, ['questions', 'stopExecutionIds'])
     assert.match(tools[4].description, /结束当前轮次/)
     assert.match(tools[4].description, /不另发同一问题的原生问答/)
@@ -136,13 +156,16 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     }
     assert.deepEqual(tools[2].inputSchema.oneOf, [{ required: ['executionId'] }, { required: ['session'] }])
     assert.deepEqual(tools[3].inputSchema.oneOf, [
-      { properties: { action: { const: 'complete' } }, required: ['reason', 'references'] },
+      { properties: { action: { const: 'complete' } }, required: ['reason'], oneOf: [
+        { required: ['executionIds', 'basis'], not: { required: ['references'] } },
+        { required: ['references'], not: { anyOf: [{ required: ['executionIds'] }, { required: ['basis'] }] } },
+      ] },
       { properties: { action: { const: 'reopen' } } },
       { properties: { action: { const: 'revise' } }, anyOf: [{ required: ['title'] }, { required: ['brief'] }, { required: ['parentId'] }, { required: ['dependsOn'] }] },
       { properties: { action: { const: 'review' } }, required: ['executionId', 'disposition', 'reason', 'basis'] },
     ])
     assert.deepEqual(tools[3].inputSchema.properties.action.enum, ['complete', 'reopen', 'revise', 'review'])
-    assert.deepEqual(tools[3].inputSchema.properties.basis, { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 }, description: 'review：可追溯依据，记录适用用户要求、决定、规则或证据位置；是 leader 判断，不是系统证明。' })
+    assert.deepEqual(tools[3].inputSchema.properties.basis, { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 }, description: 'review/complete：可追溯依据，记录适用用户要求、决定、结果段落、代码或验证位置；是 leader 判断，不是系统证明。' })
     assert.deepEqual(tools[0].inputSchema.properties.table.enum, ['roles', 'delegations', 'tasks', 'decisions'])
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
     assert.match(board.content[0].text, /派活/)
@@ -163,6 +186,10 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     const acceptance = { taskId: 'task', action: 'complete', reason: 'Verified', references: ['ref'] }
     await client.callTool({ name: 'nodo_task', arguments: acceptance })
     assert.deepEqual(h.calls.at(-1), ['task', 'lead', acceptance])
+    const archivedAcceptance = { taskId: 'task', action: 'complete', reason: 'Verified', executionIds: ['execution'], basis: ['file and test'] }
+    await client.callTool({ name: 'nodo_task', arguments: archivedAcceptance })
+    assert.deepEqual(h.calls.at(-1), ['task', 'lead', archivedAcceptance])
+    assert.deepEqual(tools[3].inputSchema.properties.executionIds, { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 }, description: 'complete：本任务已归档结果的执行 id，非空。' })
     const revision = { taskId: 'task', action: 'revise', title: 'Renamed', brief: 'Revised', parentId: '', dependsOn: [] }
     await client.callTool({ name: 'nodo_task', arguments: revision })
     assert.deepEqual(h.calls.at(-1), ['task', 'lead', revision])

@@ -9,7 +9,7 @@ const harness = () => {
   const rt = { state: { profiles: { leader: lead, worker }, tasks: {}, executions: {}, workspaces: {} },
     ctx: { effect() {} }, load: async () => {}, assertSessionWritable() {},
     conversationOf: id => id === owner.id ? { profile: lead, session: owner } : undefined,
-    redactDeepSecrets: value => value, workView: () => ({}) }
+    redactDeepSecrets: value => value, workView: () => ({}), readReference: async () => { throw new Error('Snapshot unavailable') } }
   install(rt)
   return { rt, owner, worker }
 }
@@ -31,13 +31,48 @@ test('task board returns bounded summaries, retaining active executions and pend
   const rows = await rt.leadTasks(owner.id)
   assert.equal(rows.length, 14)
   assert.deepEqual(new Set(rows.map(row => row.id)), new Set([0, 1, 2, 3, ...Array.from({ length: 10 }, (_, index) => index + 10)].map(index => `task-${index}`)))
-  assert.deepEqual(rows[0], { id: 'task-19', title: 'Task 19', status: 'review', teamId: 'team', parentId: 'task-18', dependsOn: ['task-17'], executionCount: 2, latestExecutionStatus: 'done', references: ['ref-19', 'new-ref'] })
+  assert.deepEqual(rows[0], { id: 'task-19', title: 'Task 19', status: 'review', teamId: 'team', parentId: 'task-18', dependsOn: ['task-17'], executionCount: 2, latestExecutionStatus: 'done', references: ['ref-19', 'new-ref'],
+    latestResult: { sourceId: 'execution:followup:result', completeness: 'unavailable', reason: 'legacy-unavailable', preview: '', length: 0 } })
   rows[0].dependsOn.push('changed')
   assert.deepEqual(rt.state.tasks['task-19'].dependsOn, ['task-17'])
   assert.ok(rows.every(row => !('brief' in row) && !('executions' in row) && !('report' in row)))
   const detail = { ...rt.state.tasks['task-19'], executions: [rt.state.executions.followup] }
   rt.taskView = async () => detail
   assert.deepEqual(await rt.leadTasks(owner.id, 'task-19'), detail)
+})
+
+test('task board exposes only the latest result preview and handle', async () => {
+  const { rt, owner } = harness()
+  rt.state.tasks.task = { id: 'task', title: 'Task', coordinatorSessionId: owner.id, updatedAt: 1 }
+  rt.state.executions.first = { id: 'first', taskId: 'task', status: 'done', references: [], result: { text: 'old body', preview: 'old preview' } }
+  rt.state.executions.second = { id: 'second', taskId: 'task', status: 'failed', references: [],
+    result: { text: 'long body'.repeat(10000), preview: 'short preview', completeness: 'partial', length: 90000, reason: 'capture-incomplete' } }
+  const [summary] = await rt.leadTasks(owner.id)
+  assert.equal(summary.latestResult.sourceId, 'execution:second:result')
+  assert.equal(summary.latestResult.preview, 'short preview')
+  assert.equal(summary.latestResult.text, undefined)
+  assert.equal(JSON.stringify(summary).includes('long body'), false)
+})
+
+test('legacy task board resolves retained snapshots, report summaries and missing originals consistently', async () => {
+  const { rt, owner } = harness()
+  rt.state.tasks.task = { id: 'task', title: 'Task', coordinatorSessionId: owner.id, updatedAt: 1 }
+  const execution = rt.state.executions.legacy = { id: 'legacy', taskId: 'task', status: 'done', references: ['old'], report: 'summary' }
+  rt.readReference = async () => ({ messages: [{ text: 'retained snapshot' }] })
+  let result = (await rt.leadTasks(owner.id))[0].latestResult
+  assert.equal(result.sourceId, 'execution:legacy:result')
+  assert.equal(result.reason, 'legacy-reference')
+  assert.equal(result.completeness, 'partial')
+  assert.equal(result.text, undefined)
+  rt.readReference = async () => { throw new Error('Snapshot unavailable') }
+  result = (await rt.leadTasks(owner.id))[0].latestResult
+  assert.equal(result.reason, 'legacy-report')
+  assert.equal(result.completeness, 'partial')
+  execution.report = null
+  result = (await rt.leadTasks(owner.id))[0].latestResult
+  assert.equal(result.reason, 'legacy-unavailable')
+  assert.equal(result.completeness, 'unavailable')
+  assert.equal(execution.result, undefined)
 })
 
 test('snapshots and delegation boards enumerate executions once for 2000 sessions', () => {
