@@ -222,6 +222,16 @@ export function install(rt) {
     for (const report of reports) if (!report.review) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now() })
     return saveExecution(executionOf(executionId))
   }
+  // The returned restore must run when the caller's save fails, so ask marks never land without their decision.
+  const askReports = (executionIds, decision) => {
+    const reports = executionIds.flatMap(executionId => {
+      const reports = executionOf(executionId).reports, pending = reports.filter(report => !report.review)
+      return pending.length ? pending : reports.slice(-1)
+    })
+    const previous = reports.map(report => report.review)
+    for (const report of reports) report.review = { ...report.review, disposition: 'ask', decisionId: decision.id, reviewedAt: decision.createdAt }
+    return () => reports.forEach((report, index) => { if (previous[index]) report.review = previous[index]; else delete report.review })
+  }
   const completeTask = async (id, { reason, references, executionIds, basis }) => {
     await writable()
     const task = taskOf(id)
@@ -263,7 +273,7 @@ export function install(rt) {
     return saveTask(task)
   }
 
-  Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask, reviewReports,
+  Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask, reviewReports, askReports,
     deliveredReports,
     registerDeliveredReport: async (item, deliveredAt) => {
       const execution = executionOf(item.executionId)

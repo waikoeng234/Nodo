@@ -315,6 +315,48 @@ test('decision ask links delivered sources atomically; board and snapshots stay 
   await delegate({ task: 'Replan within original authorization' })
 }))
 
+test('decision ask picks unreviewed reports first, else the newest, and restores exactly the pick on save failure', () => withDecisions(async ({ rt, owner, createTask }) => {
+  const task = await createTask()
+  const execution = { id: 'execution', taskId: task.id, profileId: 'worker', sessionId: 'worker-session', type: 'feature', hard: false,
+    status: 'done', createdAt: 1, updatedAt: 1, startedAt: 1, endedAt: 2, reason: 'done', report: null, references: [], result: null,
+    reports: [{ id: 'report-1', deliveredAt: 2, sessionId: 'worker-session', summary: 'First', status: 'done', references: [] },
+      { id: 'report-2', deliveredAt: 3, sessionId: 'worker-session', summary: 'Second', status: 'done', references: [] }] }
+  rt.state.executions[execution.id] = execution
+  await rt.leadTask(owner.id, { action: 'review', taskId: task.id, executionId: execution.id, disposition: 'continue', reason: 'Checked', basis: ['evidence'] })
+  delete execution.reports[0].review
+  const save = rt.saveStrict
+  rt.saveStrict = async () => { throw new Error('Fixture ask save failure') }
+  await assert.rejects(rt.createDecision(owner.id, { ...request, executionIds: [execution.id] }), /Fixture ask save failure/)
+  rt.saveStrict = save
+  assert.deepEqual(rt.state.decisions, {})
+  assert.equal(execution.reports[0].review, undefined, 'a failed save restores the earlier pick to unreviewed')
+  assert.equal(execution.reports[1].review.disposition, 'continue')
+  assert.deepEqual(execution.reports[1].review.basis, ['evidence'])
+  const first = await rt.createDecision(owner.id, { ...request, executionIds: [execution.id] })
+  assert.equal(execution.reports[0].review.disposition, 'ask', 'an unreviewed report is picked even when it is not the newest')
+  assert.equal(execution.reports[0].review.decisionId, first.decisionId)
+  assert.equal(execution.reports[1].review.disposition, 'continue', 'a reviewed newest report keeps its own review')
+  assert.equal(execution.reports[1].review.decisionId, undefined)
+  await rt.cancelDecision(owner.id, { decisionId: first.decisionId })
+  const second = await rt.createDecision(owner.id, { ...request, executionIds: [execution.id] })
+  assert.equal(execution.reports[0].review.decisionId, first.decisionId, 'the newest fallback touches no earlier report')
+  assert.equal(execution.reports[1].review.decisionId, second.decisionId)
+  assert.deepEqual(execution.reports[1].review.basis, ['evidence'], 'the fallback ask preserves the overwritten review fields')
+  await rt.cancelDecision(owner.id, { decisionId: second.decisionId })
+  rt.saveStrict = async () => { throw new Error('Fixture ask save failure') }
+  await assert.rejects(rt.createDecision(owner.id, { ...request, executionIds: [execution.id] }), /Fixture ask save failure/)
+  rt.saveStrict = save
+  assert.equal(rt.sessionBlockReason(owner.id), undefined, 'the failed decision leaves no unfinished record')
+  assert.equal(execution.reports[0].review.decisionId, first.decisionId)
+  assert.equal(execution.reports[1].review.decisionId, second.decisionId, 'a failed save restores the newest pick to its previous review')
+  delete execution.reports[0].review
+  delete execution.reports[1].review
+  const third = await rt.createDecision(owner.id, { ...request, executionIds: [execution.id] })
+  assert.deepEqual(execution.reports.map(report => [report.review.disposition, report.review.decisionId]),
+    [['ask', third.decisionId], ['ask', third.decisionId]], 'with no reviewed report every delivered report is marked')
+  await rt.cancelDecision(owner.id, { decisionId: third.decisionId })
+}))
+
 test('snapshot and state views cap finished decisions but always keep unfinished ones', () => withDecisions(async ({ rt, owner, other }) => {
   const cancelOne = async session => { const { decisionId } = await rt.createDecision(session, request); await rt.cancelDecision(session, { decisionId }) }
   for (let index = 0; index < 12; index++) await cancelOne(owner.id)

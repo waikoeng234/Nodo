@@ -131,6 +131,17 @@ const runTurn = text => {
     notify('model.streaming', { assistantMessageId: 'msg-1', delta: 'Counted', kind: 'text_delta', done: true })
     return setTimeout(() => finish('Counted', 'success', { input: 4000, output: 12, total: 4012, cache: { read: 3000, write: 100 } }), 30)
   }
+  // Two model requests: each reports its own usage on session.updated (the
+  // assistant message adds its window), turn.completed sums them.
+  if (text.includes('REQUESTS')) {
+    for (const [inputTokens, cacheReadTokens] of [[21983, 320], [23470, 22592]]) {
+      const usage = { inputTokens, outputTokens: 6, totalTokens: inputTokens + 6, cacheReadTokens, cacheWriteTokens: 0 }
+      notify('session.updated', { modelId: 'GLM-5.3-Flash', finishReason: 'stop', usage })
+      notify('session.updated', { content: [], contextWindow: 1000000, usage })
+    }
+    notify('model.streaming', { assistantMessageId: 'msg-1', delta: 'Requests', kind: 'text_delta', done: true })
+    return setTimeout(() => finish('Requests', 'success', { inputTokens: 45453, outputTokens: 12, totalTokens: 45465, cacheReadTokens: 22912, cacheWriteTokens: 0 }), 30)
+  }
   // A provider without per-turn cache buckets, only the session's cumulative
   // read, which each turn advances by 700 so the driver can differential it.
   if (text.includes('CUMULATIVE_CACHE')) {

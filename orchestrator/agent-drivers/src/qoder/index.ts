@@ -210,7 +210,7 @@ function qoderFileChanges(name: string, input: QoderInput | undefined, resultTex
 const qoderPromptTokens = (raw: QoderUsage | undefined) =>
   promptTokensOf([raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens])
 
-// A free route bills nothing, so its Anthropic counters all read 0 while the CLI still
+// A route billed in credits reports its Anthropic counters as 0 while the CLI still
 // reports the request's context occupancy as a ratio of the routed model's window.
 const qoderRatioTokens = (raw: QoderUsage | undefined, contextWindow: unknown) =>
   typeof raw?.context_usage_ratio === 'number' && raw.context_usage_ratio > 0
@@ -371,13 +371,17 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
       const contextWindow = Object.values(frame.modelUsage ?? {})[0]?.contextWindow
       const prompt = qoderPromptTokens(frame.usage)
       const occupied = prompt || qoderRatioTokens(frame.usage, contextWindow)
+      // Routes billed in credits report every token counter and the window as 0: not a count, so they stay out.
+      const counted = Boolean(prompt) || Boolean(frame.usage?.output_tokens)
       const usage = addUsage(turn.usage, usageOf({
-        inputTokens: frame.usage?.input_tokens,
-        outputTokens: frame.usage?.output_tokens,
-        cacheReadTokens: frame.usage?.cache_read_input_tokens,
-        cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
+        ...(counted ? {
+          inputTokens: frame.usage?.input_tokens,
+          outputTokens: frame.usage?.output_tokens,
+          cacheReadTokens: frame.usage?.cache_read_input_tokens,
+          cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
+        } : {}),
         contextUsed: turn.contextUsed || occupied,
-        contextSize: contextWindow,
+        contextSize: contextWindow || undefined,
       }))
       end(reason, error, usage, typeof frame.result === 'string' ? frame.result : undefined, [10408, 10500, 10605].includes(Number(frame.error_code)))
     }

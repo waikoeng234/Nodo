@@ -13541,7 +13541,7 @@ function StatsDialog({ stats, onClose }) {
     (0, import_react.createElement)(
       "div",
       { className: "nodo-dialog-fields" },
-      (0, import_react.createElement)(
+      billed + stats.outputTokens > 0 && (0, import_react.createElement)(
         "div",
         { className: "nodo-stats-section" },
         (0, import_react.createElement)("h3", { className: "nodo-stats-heading" }, "Token \u7528\u91CF"),

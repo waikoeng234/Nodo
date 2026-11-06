@@ -223,6 +223,16 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd } = {}) {
 // while one assistant frame is one request, so its prompt size is the context
 // occupancy. `modelUsage` carries the routed model's context window.
 const claudePromptTokens = (raw) => promptTokensOf([raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens]);
+// The result frame's `usage` counts the main conversation only; `modelUsage`
+// sums every model the process called, subagents included, over the whole
+// process (a resumed process starts from the session's earlier sum).
+const CLAUDE_MODEL_BUCKETS = [['inputTokens', 'inputTokens'], ['outputTokens', 'outputTokens'], ['cacheReadTokens', 'cacheReadInputTokens'], ['cacheWriteTokens', 'cacheCreationInputTokens']];
+const claudeModelTotals = (raw) => raw && usageOf(Object.values(raw).reduce((sum, model) => {
+    for (const [key, field] of CLAUDE_MODEL_BUCKETS)
+        if (typeof model?.[field] === 'number')
+            sum[key] = (sum[key] ?? 0) + model[field];
+    return sum;
+}, {}));
 export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
@@ -232,6 +242,8 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     let ready = null;
     let sessionId = driverSessionId;
     let resuming = false;
+    // The process's `modelUsage` sum at the previous result; unknown after a resume until one arrives.
+    let modelTotals;
     let connected = false;
     let disposed = false;
     let sequence = 0;
@@ -508,11 +520,16 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             // A failed turn still owns its final text when nothing streamed.
             if (!turn.sawText && typeof frame.result === 'string' && frame.result !== '')
                 emit({ type: 'text', turnId: turn.id, text: frame.result });
+            const totals = claudeModelTotals(frame.modelUsage);
+            const grown = totals && modelTotals ? Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, value - (modelTotals[key] ?? 0)])) : undefined;
+            modelTotals = totals ?? modelTotals;
             const usage = addUsage(turn.usage, usageOf({
-                inputTokens: frame.usage?.input_tokens,
-                outputTokens: frame.usage?.output_tokens,
-                cacheReadTokens: frame.usage?.cache_read_input_tokens,
-                cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
+                ...(grown ?? {
+                    inputTokens: frame.usage?.input_tokens,
+                    outputTokens: frame.usage?.output_tokens,
+                    cacheReadTokens: frame.usage?.cache_read_input_tokens,
+                    cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
+                }),
                 contextUsed: turn.contextUsed,
                 contextSize: Object.values(frame.modelUsage ?? {})[0]?.contextWindow,
             }));
@@ -556,6 +573,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
                 throw new Error('Claude Code executable not found. Install Claude Code or edit the profile CLI path.');
             emit({ type: 'session', state: 'starting' });
             resuming = !!sessionId;
+            modelTotals = sessionId ? undefined : {};
             connection = connectClaude({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
                 onFrame: receive, onRequest: ask,
                 onClose(error) {

@@ -287,6 +287,10 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         if (!running)
             return;
         const turn = running;
+        // Each model request's own usage, with the window it ran against, reaches
+        // session.updated; turn.completed only sums the turn's requests.
+        if (event.type === 'session.updated' && payload.usage)
+            turn.context = { used: zcodeUsage(payload, undefined, undefined)?.contextUsed, size: payload.contextWindow ?? turn.context?.size };
         if (event.type === 'turn.steerQueued' && turn.guides.has(payload.inputId ?? payload.queryId))
             turn.guideIds.set(payload.pendingInputId, payload.inputId ?? payload.queryId);
         if (event.type === 'turn.steerDrained') {
@@ -391,7 +395,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 emit({ type: 'text', turnId: turn.id, text: payload.response });
             turn.final = typeof payload.response === 'string' ? payload.response : undefined;
             turn.guides.delete(payload.inputId);
-            turn.usage = addUsage(turn.usage, zcodeUsage(payload, context, grewCacheRead(payload.cacheStats?.cacheReadTokens)));
+            turn.usage = addUsage(turn.usage, zcodeUsage(payload, turn.context ?? context, grewCacheRead(payload.cacheStats?.cacheReadTokens)));
             const error = reason === 'error' ? payload.error?.message ?? `ZCode turn ended: ${payload.resultType}` : undefined;
             if (reason === 'done' && turn.guides.size > 0) {
                 turn.finished = { reason, error };

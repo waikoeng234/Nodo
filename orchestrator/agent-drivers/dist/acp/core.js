@@ -33,16 +33,25 @@ const withRawText = (content, rawOutput) => {
     return [...content, text ? { type: 'text', text } : rawOutput];
 };
 // The end-turn ACP `Usage` object is an open RFD, and real agents report the
-// buckets disjoint: `inputTokens` is already the uncached prompt side.
+// buckets disjoint: `inputTokens` is already the uncached prompt side, and
+// `thoughtTokens` sits beside `outputTokens` rather than inside it.
 const acpUsage = (raw) => {
-    if (raw === null || typeof raw !== 'object')
-        return undefined;
+    const usage = objectOf(raw);
+    const thought = typeof usage.thoughtTokens === 'number' ? usage.thoughtTokens : 0;
     return usageOf({
-        inputTokens: raw.inputTokens,
-        outputTokens: raw.outputTokens,
-        cacheReadTokens: raw.cachedReadTokens,
-        cacheWriteTokens: raw.cachedWriteTokens,
+        inputTokens: usage.inputTokens,
+        outputTokens: typeof usage.outputTokens === 'number' ? usage.outputTokens + thought : undefined,
+        cacheReadTokens: usage.cachedReadTokens,
+        cacheWriteTokens: usage.cachedWriteTokens,
     });
+};
+const metaUsage = (raw) => {
+    const usage = objectOf(raw);
+    if (typeof usage.prompt_tokens !== 'number')
+        return {};
+    const cacheReadTokens = typeof usage.prompt_tokens_details?.cached_tokens === 'number' ? usage.prompt_tokens_details.cached_tokens : 0;
+    const cacheWriteTokens = typeof usage.prompt_cache_write_tokens === 'number' ? usage.prompt_cache_write_tokens : 0;
+    return { inputTokens: usage.prompt_tokens - cacheReadTokens - cacheWriteTokens, outputTokens: usage.completion_tokens, cacheReadTokens, cacheWriteTokens };
 };
 export async function initializeAcp(peer, clientCapabilities = {}, clientInfo) {
     const result = await peer.request('initialize', { protocolVersion: 1, clientCapabilities, ...(clientInfo ? { clientInfo } : {}) }, 30_000);
@@ -231,7 +240,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             }
         }
         if (update.sessionUpdate === 'usage_update')
-            turn.context = usageOf({ contextUsed: update.used, contextSize: update.size });
+            turn.context = addUsage(turn.context, usageOf({ ...metaUsage(update._meta?.usage), contextUsed: update.used, contextSize: update.size }));
         // Plan updates are whole-plan snapshots; a removed plan clears the row
         // instead of leaving stale steps behind.
         if (update.sessionUpdate === 'plan' && Array.isArray(update.entries)) {

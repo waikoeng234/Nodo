@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { copyFileSync, cpSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { boot, until, withHost } from './helpers/host.js'
@@ -107,7 +107,8 @@ test('explicit context inlines required material, archives background files and 
   const execution = rt.state.executions[receipt.executionId]
   const inputContext = execution.inputContext
   assert.ok(body.startsWith('Task from lead Lead.'), 'running notes open the dispatch body')
-  assert.ok(body.includes(requiredText) && body.includes(`（${resultSourceId}）`), 'the required source rides inline with its handle')
+  assert.ok(body.includes(requiredText), 'the required source rides inline')
+  assert.equal(body.includes(resultSourceId), false, 'the body carries no sourceId noise')
   assert.ok(body.indexOf('Implement and verify') < body.indexOf(requiredText), 'required content follows the current task')
   assert.ok(body.includes('## 必需上下文') && body.includes('## 背景材料'))
   assert.match(body, /Background material for this task is archived as files under \.nodo\/workflow-inputs\//)
@@ -116,8 +117,8 @@ test('explicit context inlines required material, archives background files and 
   const background = inputContext.background[0]
   assert.equal(background.sourceId, `decision:${decisionId}`)
   assert.equal(background.completeness, 'complete')
-  assert.ok(background.path.startsWith(realpathSync(workspace.cwd)) && background.path.includes('.nodo/workflow-inputs'))
-  assert.equal(readFileSync(background.path, 'utf8').includes('保留 30 天，脱敏后归档'), true, 'the executor can read the archived background file')
+  assert.ok(!isAbsolute(background.path) && background.path.includes('.nodo/workflow-inputs'), 'the catalog keeps one workspace-relative path')
+  assert.equal(readFileSync(join(realpathSync(workspace.cwd), background.path), 'utf8').includes('保留 30 天，脱敏后归档'), true, 'the executor can read the archived background file')
   assert.equal(inputContext.length, body.length)
   assert.equal(rt.driverOf(receipt.session).calls[0], body, 'the engine receives exactly the composed input')
   assert.equal(rt.transcriptOf(receipt.session).find(line => line.who === 'user' && line.origin?.kind === 'delegation').text, body)
@@ -165,8 +166,8 @@ test('delegation bodies between the plain send limit and the input budget reach 
   const wide = await call(primary, 'nodo_delegate', { type: 'feature', hard: false, task: 'x'.repeat(31_000) })
   await finish(wide)
   const wideBody = rt.transcriptOf(wide.session).find(line => line.who === 'user' && line.origin?.executionId === wide.executionId).text
-  assert.ok(wideBody.length > TASK_TEXT_MAX, 'a near-limit task plus the defaulted user request still exceeds the plain limit')
-  assert.ok(wideBody.includes('x'.repeat(31_000)) && wideBody.includes('K'.repeat(5000)))
+  assert.ok(wideBody.includes('x'.repeat(31_000)), 'a near-limit task reaches the executor whole')
+  assert.equal(wideBody.includes('K'.repeat(5000)), false, 'the default does not inline the latest user message')
 }))
 
 test('a stop during materialization cancels the dispatch without sending', () => withHandoff(async ({ host, rt, owner, client, call }) => {
@@ -193,40 +194,44 @@ test('a stop during materialization cancels the dispatch without sending', () =>
   await reviewDeliveredReports(rt, owner.id)
 }))
 
-test('default collection inlines the user request, applicable decisions and dependency acceptance, and archives dependency reports', () => withHandoff(async ({ host, rt, owner, client, call, finish }) => {
+test('default collection inlines applicable decisions and dependency acceptance, and archives the last accepted dependency report', () => withHandoff(async ({ host, rt, workspace, owner, client, call, finish }) => {
   await userRequest(host, rt, owner)
   const primary = await client()
   const dependency = await call(primary, 'nodo_delegate', { ...command, task: 'Investigate storage' })
   await finish(dependency)
-  await rt.completeTask(dependency.taskId, { reason: 'Dependency accepted after checking the archived result', executionIds: [dependency.executionId], basis: ['Verified dependency result'] })
+  rt.state.executions.revised = { id: 'revised', taskId: dependency.taskId, status: 'done', reason: 'done', references: [],
+    result: { text: 'Revised dependency report', completeness: 'complete', reason: null, preview: 'Revised dependency report', length: 25, originalLength: 25 } }
+  await rt.completeTask(dependency.taskId, { reason: 'Dependency accepted after checking the archived result', executionIds: [dependency.executionId, 'revised'], basis: ['Verified dependency result'] })
   const decisionId = await answerDecision(host, rt, owner, call, primary, dependency.taskId)
   const receipt = await call(primary, 'nodo_delegate', { ...command, task: 'Apply the agreed storage', dependsOn: [dependency.taskId] })
   await finish(receipt)
   const body = rt.transcriptOf(receipt.session).find(line => line.who === 'user' && line.origin?.executionId === receipt.executionId).text
   const result = rt.state.executions[dependency.executionId].result
-  assert.equal(body.includes(USER_REQUEST), false, 'a decision-answer round never falls back to an earlier user message')
+  assert.equal(body.includes(USER_REQUEST), false, 'no default round inlines a user message')
   assert.ok(body.includes('日志保留多久') && body.includes('保留 30 天，脱敏后归档'), 'the applicable decision is injected')
   assert.ok(body.includes('验收结论：Dependency accepted after checking the archived result'))
-  assert.ok(body.includes('仅结果预览') && body.includes(result.preview))
+  assert.equal(body.includes(result.preview), false, 'dependency results no longer ride inline as previews')
   assert.equal(body.includes('Report from Worker'), false, 'a delivered report never impersonates the user source')
   const inputContext = rt.state.executions[receipt.executionId].inputContext
-  const required = Object.fromEntries(inputContext.required.map(item => [item.sourceId.split(':')[0] + (item.previewOnly ? ':preview' : ''), item]))
+  const required = Object.fromEntries(inputContext.required.map(item => [item.sourceId.split(':')[0], item]))
   assert.equal(required.message, undefined, 'the decision-answer round injects no user message')
   assert.equal(required.decision.sourceId, `decision:${decisionId}`)
   assert.equal(required.task.sourceId, `task:${dependency.taskId}:acceptance`)
-  assert.equal(required['execution:preview'].sourceId, `execution:${dependency.executionId}:result`)
-  assert.equal(inputContext.background[0].sourceId, `execution:${dependency.executionId}:result`, 'the full dependency report is archived as background alongside the preview')
-  assert.equal(readFileSync(inputContext.background[0].path, 'utf8'), result.text)
+  assert.equal(required.execution, undefined, 'dependency results are no longer previewed as required entries')
+  assert.deepEqual(inputContext.background.map(entry => entry.sourceId), ['execution:revised:result'], 'only the last accepted execution is archived as background')
+  assert.ok(body.includes(inputContext.background[0].path), 'the body points at the archived background file')
+  assert.equal(readFileSync(join(realpathSync(workspace.cwd), inputContext.background[0].path), 'utf8'), 'Revised dependency report')
 }))
 
-test('default user request follows the triggering line and the owning task record', () => withHandoff(async ({ host, rt, owner, client, call, finish }) => {
+test('default dispatches never inline the user request', () => withHandoff(async ({ host, rt, owner, client, call, finish }) => {
   const bodyOf = receipt => rt.transcriptOf(receipt.session).find(line => line.who === 'user' && line.origin?.executionId === receipt.executionId).text
   await userRequest(host, rt, owner)
   const primary = await client()
   const first = await call(primary, 'nodo_delegate', { ...command, task: 'Investigate storage' })
   await finish(first)
-  assert.ok(bodyOf(first).includes(USER_REQUEST), 'a user-triggered round injects that user message')
-  assert.equal(rt.state.tasks[first.taskId].source.request.text, USER_REQUEST)
+  assert.equal(bodyOf(first).includes(USER_REQUEST), false, 'a user-triggered round no longer injects that user message')
+  assert.equal(rt.state.executions[first.executionId].inputContext.required.some(item => item.kind === 'message'), false)
+  assert.equal(rt.state.tasks[first.taskId].source.request, undefined)
   const second = await call(primary, 'nodo_delegate', { ...command, task: 'Follow up on the report' })
   await finish(second)
   assert.equal(bodyOf(second).includes(USER_REQUEST), false, 'a report-triggered round never looks back to the earlier user message')
@@ -235,11 +240,9 @@ test('default user request follows the triggering line and the owning task recor
   await until(() => !rt.workView()[owner.id]?.active)
   const third = await call(primary, 'nodo_delegate', { ...command, taskId: first.taskId, task: 'Continue the storage task' })
   await finish(third)
-  assert.ok(bodyOf(third).includes(USER_REQUEST), 'a continuation injects the request recorded at acceptance')
-  assert.equal(bodyOf(third).includes('Retune the storage engine for writes'), false, 'the continuation ignores the newer user message')
-  const required = rt.state.executions[third.executionId].inputContext.required
-  assert.deepEqual(required.map(item => [item.kind, item.role, item.completeness]), [['message', 'required', 'complete']])
-  assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId: required[0].sourceId })).text, USER_REQUEST)
+  assert.equal(bodyOf(third).includes(USER_REQUEST), false, 'a continuation no longer replays the request recorded at acceptance')
+  assert.equal(bodyOf(third).includes('Retune the storage engine for writes'), false, 'the continuation ignores the newer user message too')
+  assert.deepEqual(rt.state.executions[third.executionId].inputContext.required, [])
 }))
 
 test('unknown, unauthorized, cleaned and over-budget required sources are refused before any resource is allocated', () => withHandoff(async ({ host, rt, owner, other, worker, client, call, finish }) => {

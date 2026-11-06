@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
-import { basename } from 'node:path'
+import { realpathSync } from 'node:fs'
+import { relative } from 'node:path'
 import { INSTRUCTIONS_MAX, TRANSCRIPT_TEXT_MAX, CONTEXT_LIST_MAX, CONTEXT_PAGE_DEFAULT, CONTEXT_PAGE_MAX, INPUT_CONTEXT_MAX, RESULT_PREVIEW_MAX } from './constants.js'
 import { clip, toolText } from './text.js'
 import { transcriptReplies } from './session-references.js'
 import { failure, invalid } from './errors.js'
-import { leadModeOf, currentUserRequestOf } from '../shared/lead.js'
+import { leadModeOf } from '../shared/lead.js'
 import { nativeIdOf } from '../shared/session.js'
 import { executionResultOf, executionResultView } from './tasks.js'
 
@@ -157,7 +158,7 @@ export function install(rt) {
   const contextList = async (id, args) => {
     await leadScope(id)
     const state = rt.state
-    if (args.sourceId !== undefined || args.offset !== undefined || args.limit !== undefined) throw invalid('list 不接受 sourceId、offset 或 limit')
+    if (args.sourceId !== undefined || args.executionId !== undefined || args.offset !== undefined || args.limit !== undefined) throw invalid('list 不接受 sourceId、executionId、offset 或 limit')
     if (args.taskId !== undefined) ownedTaskOf(id, args.taskId)
     if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > RESULT_PREVIEW_MAX)) throw invalid('query 最多 200 字符')
     if (args.cursor !== undefined && (typeof args.cursor !== 'string' || !/^(0|[1-9]\d*)$/.test(args.cursor) || !Number.isSafeInteger(Number(args.cursor)))) throw invalid('无效 cursor')
@@ -212,9 +213,10 @@ export function install(rt) {
   const contextRead = async (id, args) => {
     await leadScope(id)
     if (args.taskId !== undefined || args.query !== undefined || args.cursor !== undefined) throw invalid('read 不接受 taskId、query 或 cursor')
+    if ((args.sourceId !== undefined) === (args.executionId !== undefined)) throw invalid('read 的 sourceId 和 executionId 必须且只能指定一个')
     const offset = args.offset ?? 0, limit = args.limit ?? CONTEXT_PAGE_DEFAULT
     if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > CONTEXT_PAGE_MAX) throw invalid('offset 必须是非负整数，limit 必须为 1–16000')
-    const found = await resolveContextSource(id, args.sourceId)
+    const found = await resolveContextSource(id, args.sourceId ?? `execution:${args.executionId}:result`)
     const { text, ...metadata } = found
     const end = Math.min(offset + limit, text.length)
     return { ...metadata, text: text.slice(offset, end), offset, nextOffset: end < text.length ? end : null }
@@ -247,14 +249,6 @@ export function install(rt) {
       .some(list => list.some(value => taskIds.includes(value))))
   const defaultDispatchContext = async (id, relations) => {
     const required = [], background = []
-    const stored = relations.taskId ? rt.state.tasks[relations.taskId]?.source?.request : undefined
-    if (stored && typeof stored.text === 'string' && stored.text.trim()) {
-      required.push(toSelection({ sourceId: messageSourceId(id, stored), kind: 'message',
-        description: shorten(stored.text, 120), completeness: 'complete', text: stored.text }, 'required'))
-    } else {
-      const request = currentUserRequestOf(rt.transcriptOf(id))
-      if (request && typeof request.text === 'string' && request.text.trim()) required.push(toSelection(await resolveContextSource(id, messageSourceId(id, request)), 'required'))
-    }
     const taskIds = [relations.taskId, relations.parentId, ...(relations.dependsOn ?? [])].filter(Boolean)
     for (const decision of linkedDecisions(id, taskIds)) required.push(toSelection(await resolveContextSource(id, `decision:${decision.id}`), 'required'))
     for (const taskId of relations.dependsOn ?? []) {
@@ -263,21 +257,11 @@ export function install(rt) {
       if (!task || !acceptance) continue
       required.push(toSelection(await resolveContextSource(id, `task:${taskId}:acceptance`), 'required'))
       const ended = Object.values(rt.state.executions).filter(execution => execution.taskId === taskId && !['queued', 'running'].includes(execution.status))
-      const ids = acceptance.executionIds?.length ? acceptance.executionIds : ended.slice(-1).map(execution => execution.id)
-      for (const executionId of ids) {
-        const execution = rt.state.executions[executionId]
-        if (!execution || execution.taskId !== taskId) continue
-        background.push(toSelection(await resolveContextSource(id, `execution:${executionId}:result`), 'background'))
-        const view = await executionResultView(execution, rt)
-        if (view.preview) required.push({ sourceId: view.sourceId, kind: 'execution', role: 'required',
-          description: `依赖任务「${shorten(task.title, 60)}」结果预览`, completeness: view.completeness,
-          ...(view.reason ? { reason: view.reason } : {}), text: view.preview, length: view.preview.length, previewOnly: true })
-      }
+      const [executionId] = acceptance.executionIds?.length ? acceptance.executionIds.slice(-1) : ended.slice(-1).map(execution => execution.id)
+      const execution = rt.state.executions[executionId]
+      if (execution?.taskId === taskId) background.push(toSelection(await resolveContextSource(id, `execution:${executionId}:result`), 'background'))
     }
-    // A preview-only required entry for one source must not drop the full
-    // background copy of the same source.
-    const full = new Set(required.filter(entry => !entry.previewOnly).map(entry => entry.sourceId))
-    return { required: dedupe(required), background: dedupe(background.filter(entry => !full.has(entry.sourceId))) }
+    return { required: dedupe(required), background: dedupe(background) }
   }
   const explicitDispatchContext = async (id, context) => {
     const required = [], background = []
@@ -302,8 +286,11 @@ export function install(rt) {
     const writable = background.filter(entry => entry.text.trim())
     const bodies = writable.map(entry => rt.redactDeepSecrets(entry.text))
     const paths = writable.length ? await rt.place(writable.map((entry, index) => ({ name: backgroundFileName(entry), bytes: Buffer.from(bodies[index], 'utf8') })), workspaceCwd) : []
+    // Materialized paths are realpath-based, so the relative form is computed
+    // from the resolved cwd; a same-directory relative path resolves the same
+    // through a symlinked cwd spelling.
     const catalog = writable.map((entry, index) => ({ sourceId: entry.sourceId, kind: entry.kind, description: entry.description,
-      completeness: entry.completeness, ...(entry.reason ? { reason: entry.reason } : {}), fileName: basename(paths[index]), path: paths[index],
+      completeness: entry.completeness, ...(entry.reason ? { reason: entry.reason } : {}), path: relative(realpathSync(workspaceCwd), paths[index]),
       bytes: Buffer.byteLength(bodies[index], 'utf8') }))
     const omitted = background.filter(entry => !entry.text.trim()).map(entry => ({ sourceId: entry.sourceId, kind: entry.kind,
       description: entry.description, reason: entry.reason ?? 'unavailable' }))

@@ -14,7 +14,7 @@ export function leadMcp(socket: string, token: string, tokenFile?: string): Role
 }
 
 const tools: Tool[] = [
-  { name: 'nodo_board', description: '选择角色和查看历史，默认返回派活表。派活前先判断是否缺少用户取舍或授权；缺少时用 nodo_decision。table=tasks 列出本主控未结束、待送报告及最近 10 项任务摘要，taskId 返回单个任务的说明和执行详情。执行结果只给有界预览和 sourceId，完整正文用 nodo_context read，按 nextOffset 继续读取。table=decisions 列出本会话决策，decisionId 读取问题、答案、来源及交接状态，不得跨会话。不要反复查表等待执行结束，结果会自动送来。',
+  { name: 'nodo_board', description: '选择角色和查看历史，默认返回派活表。派活前先判断是否缺少用户取舍或授权；缺少时用 nodo_decision。table=tasks 列出本主控未结束、待送报告及最近 10 项任务摘要，taskId 返回单个任务的说明和执行详情。执行结果只给有界预览，完整正文用 nodo_context read 传 executionId，按 nextOffset 继续读取。table=decisions 列出本会话决策，decisionId 读取问题、答案、来源及交接状态，不得跨会话。不要反复查表等待执行结束，结果会自动送来。',
     inputSchema: { type: 'object', properties: { table: { type: 'string', enum: ['roles', 'delegations', 'tasks', 'decisions'] }, session: { type: 'string' }, taskId: { type: 'string' }, decisionId: { type: 'string' } }, additionalProperties: false }, annotations: { readOnlyHint: true } },
   { name: 'nodo_delegate', description: '派活前先判断是否缺少用户取舍或授权；缺少时先用 nodo_decision，不替用户选方案。受理新任务或同任务后续执行，返回 taskId、executionId、session、role 和 queued 状态，本轮正常结束后发送。告诉用户已受理并结束本轮，结果会自动送来。本轮停止或出错则取消。多个任务会改同一批文件、需要隔离时用 worktree；有先后顺序要求用 dependsOn，依赖未验收时拒绝派活。执行者所需上下文要写全。Nodo 不会自动合并。执行结束后核对报告，用 nodo_task 验收。',
     inputSchema: { type: 'object', required: ['type', 'hard', 'task'], additionalProperties: false, properties: {
@@ -66,14 +66,15 @@ const tools: Tool[] = [
         } },
       } } },
     } } },
-  { name: 'nodo_context', description: '只读本主控团队会话及所属任务的既有材料：执行结果、用户决定、会话消息、工具记录和任务验收结论。list 返回最多 50 项描述、来源与完整性标记及 sourceId，可按 taskId 缩小范围、query 筛选，以 nextCursor 继续。read 按 sourceId 读取正文，用 nextOffset 分页；offset/limit 单位为 UTF-16，默认 8000、最多 16000。sourceId 格式：execution:<id>:result、decision:<id>、message:<sessionId>:<at>:<hash>、tool:<conversationId>:<ref>、task:<taskId>:acceptance。completeness 表示捕获完整性，执行条目的 status 是真实运行状态；已清理原文返回 unavailable，partial 不承诺补全，不得从摘要重造原文。旧快照标为 legacy-reference，旧摘要标为 legacy-report，均为 partial，不能当完整归档；两者都不可得时为 unavailable/legacy-unavailable。读取不会 review 或验收。',
+  { name: 'nodo_context', description: '只读本主控团队会话及所属任务的既有材料：执行结果、用户决定、会话消息、工具记录和任务验收结论。list 返回最多 50 项描述、来源与完整性标记及 sourceId，可按 taskId 缩小范围、query 筛选，以 nextCursor 继续。read 按 sourceId 读取正文，执行结果可直接传 executionId（与 sourceId 二选一），用 nextOffset 分页；offset/limit 单位为 UTF-16，默认 8000、最多 16000。sourceId 格式：execution:<id>:result、decision:<id>、message:<sessionId>:<at>:<hash>、tool:<conversationId>:<ref>、task:<taskId>:acceptance。completeness 表示捕获完整性，执行条目的 status 是真实运行状态；已清理原文返回 unavailable，partial 不承诺补全，不得从摘要重造原文。旧快照标为 legacy-reference，旧摘要标为 legacy-report，均为 partial，不能当完整归档；两者都不可得时为 unavailable/legacy-unavailable。读取不会 review 或验收。',
     inputSchema: { type: 'object', required: ['action'], oneOf: [
       { properties: { action: { const: 'list' } } },
       { properties: { action: { const: 'read' } }, required: ['sourceId'] },
+      { properties: { action: { const: 'read' } }, required: ['executionId'] },
     ], properties: {
       action: { type: 'string', enum: ['list', 'read'] }, taskId: { type: 'string', minLength: 1 },
       query: { type: 'string', maxLength: 200 }, cursor: { type: 'string', pattern: '^(0|[1-9][0-9]*)$' },
-      sourceId: { type: 'string', minLength: 1 },
+      sourceId: { type: 'string', minLength: 1 }, executionId: { type: 'string', minLength: 1 },
       offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 16000 },
     }, additionalProperties: false }, annotations: { readOnlyHint: true } },
 ]

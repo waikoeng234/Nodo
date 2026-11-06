@@ -41,7 +41,7 @@ const finish = (stopReason = 'end_turn') => {
   const { id } = prompt
   prompt = null
   update({ sessionUpdate: 'usage_update', used: 10, size: 100, cost: { amount: 0, currency: 'USD' } })
-  reply(id, { stopReason, usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 } })
+  reply(id, { stopReason, usage: { inputTokens: 1, outputTokens: 2, thoughtTokens: 4, totalTokens: 7 } })
 }
 const settle = (text, delay = 30) => {
   const timer = setTimeout(() => {

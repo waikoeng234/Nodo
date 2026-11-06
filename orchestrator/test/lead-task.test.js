@@ -273,9 +273,9 @@ test('a worktree dispatch archives background files inside its own checkout and 
   await finish(receipt)
   const background = rt.state.executions[receipt.executionId].inputContext.background[0]
   assert.equal(background.sourceId, `execution:${dependency.executionId}:result`)
-  assert.ok(realpathSync(background.path).startsWith(`${realpathSync(isolated.cwd)}${sep}`), 'the background file lands inside the worktree itself')
+  assert.ok(realpathSync(join(isolated.cwd, background.path)).startsWith(`${realpathSync(isolated.cwd)}${sep}`), 'the background file lands inside the worktree itself')
   assert.ok(background.path.includes('.nodo/workflow-inputs'))
-  assert.equal(readFileSync(background.path, 'utf8'), text)
+  assert.equal(readFileSync(join(isolated.cwd, background.path), 'utf8'), text)
   assert.ok(body.includes(background.path), 'the body points the executor at the worktree copy')
   assert.equal(existsSync(join(workspace.cwd, '.nodo', 'workflow-inputs')), false, 'the main checkout receives no background copy')
   assert.equal(git(isolated.cwd, 'status', '--porcelain'), '', 'the background file stays invisible to git status')
@@ -489,7 +489,7 @@ test('task tools close the loop, preserve three results on one session and enfor
       assert.ok(saved.report)
       assert.ok(saved.result)
       assert.deepEqual(args[4], [])
-      assert.ok(args[1].includes(`execution:${origin.executionId}:result`))
+      assert.ok(args[1].includes(`nodo_context read executionId ${origin.executionId}`))
     }
     return send(...args)
   }
@@ -497,7 +497,7 @@ test('task tools close the loop, preserve three results on one session and enfor
   assert.equal(first.status, 'queued')
   assert.equal(rt.driverOf(first.session), undefined)
   assert.equal(rt.conversationOf(first.session).session.source.dispatch, undefined)
-  assert.equal(rt.state.tasks[first.taskId].source.request.text, 'Original user request')
+  assert.deepEqual(rt.state.tasks[first.taskId].source, { kind: 'lead', sessionId: owner.id })
   assert.equal(rt.state.tasks[first.taskId].title, 'Implement and verify')
   for (const [name, args] of [
     ['nodo_delegate', { ...command, taskId: first.taskId }],
@@ -793,7 +793,7 @@ for (const fallback of [false, true]) test(`execution records retain full result
   assert.equal(report.references, undefined)
   assert.equal(stored.result.text, text)
   assert.equal(report.text.includes('UNIQUE_FULL_REPORT_TAIL'), false)
-  assert.match(report.text, /Result preview \(not the full report\)/)
+  assert.match(report.text, /Result preview:/)
   const read = await rt.executionContext(owner.id, { action: 'read', sourceId: `execution:${receipt.executionId}:result` })
   assert.equal(read.text, stored.result.text)
 }, false, 'final-fixture'))
@@ -921,7 +921,7 @@ for (const format of ['body', 'reference', 'summary']) test(`restart converts a 
     assert.match(read.reason, /^legacy-/)
     const report = recovered.transcriptOf(owner.id).find(line => line.origin?.reportId === queue.id)
     assert.equal(report.references, undefined)
-    assert.ok(report.text.includes(read.sourceId))
+    assert.ok(report.text.includes(`nodo_context read executionId ${execution.id}`))
     assert.ok(report.text.length < 2000)
     assert.deepEqual(recovered.state.tasks[receipt.taskId].acceptances, [acceptance])
     if (format !== 'summary') {
@@ -1109,21 +1109,6 @@ test('send rejects supplements for a missing task or another coordinator session
   assert.match(brief, /Delegation status comes from Nodo/)
 }))
 
-test('a task-origin supplement counts as the newest user request for a task created later', () => withTasks(async ({ host, rt, workspace, lead, owner }) => {
-  const old = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
-    title: 'Old task', brief: 'Old', source: { kind: 'lead', sessionId: owner.id } })
-  await host.api('send', { profile: lead.id, session: owner.id, text: 'First user request' })
-  await until(() => !rt.workView()[owner.id]?.active)
-  await host.api('send', { profile: lead.id, session: owner.id, text: 'Keep going on the old work', taskId: old.id })
-  await until(() => !rt.workView()[owner.id]?.active)
-  const fresh = await rt.leadDispatch.delegate(owner.id, command)
-  const request = rt.state.tasks[fresh.taskId].source.request
-  assert.equal(request.text, 'Keep going on the old work')
-  assert.equal(request.references, undefined)
-  await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'interrupted' }) })
-  assert.equal(rt.state.executions[fresh.executionId].status, 'cancelled')
-}))
-
 test('task reads include initial state, scoped lists, polling updates and live structure refreshes', () => withTasks(async ({ host, rt, owner, workspace, lead }) => {
   const initial = await host.api('state')
   assert.deepEqual(initial.tasks, [])
@@ -1159,4 +1144,43 @@ test('task reads include initial state, scoped lists, polling updates and live s
   } finally { rt.readOnly = readOnly }
   abort.abort()
   while (!(await reader.read()).done) {}
+}))
+
+test('task-list serves bounded card handles without result bodies or legacy reference reads', () => withTasks(async ({ host, rt, workspace, worker, owner }) => {
+  const secret = 'task-list-registered-value-'.repeat(4)
+  await host.api('secret-set', { name: 'TASK_LIST_SECRET', value: secret, purpose: 'test' })
+  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, source: { kind: 'user' } }
+  const parent = await rt.createTask({ ...scope, title: 'Parent', brief: 'Parent brief' })
+  const idle = await rt.createTask({ ...scope, title: 'Idle', brief: 'Idle brief' })
+  const masked = await rt.createTask({ ...scope, title: `Holds ${secret} inside`, brief: 'Masked brief' })
+  const executor = await host.api('session-create', { profile: worker.id, workspace: workspace.id, lazy: true })
+  const execution = await rt.acceptExecution(parent.id, { profileId: worker.id, sessionId: executor.id, type: 'feature', hard: false })
+  Object.assign(rt.state.executions[execution.id], { status: 'done', endedAt: 2,
+    report: 'LEGACY-REPORT '.repeat(2000), inputContext: { text: 'INPUT-CONTEXT '.repeat(2000) },
+    result: { text: 'RESULT-BODY '.repeat(2000), preview: 'Result preview', completeness: 'partial', length: 24_000, reason: 'storage-limit' },
+    reports: [{ id: 'report-1', deliveredAt: 2, sessionId: executor.id, summary: 'REPORT-SUMMARY '.repeat(2000), status: 'done', references: [] }] })
+  rt.state.executions.legacy = { id: 'legacy', taskId: parent.id, sessionId: 'legacy-session', type: 'feature', hard: false,
+    status: 'running', createdAt: 1, updatedAt: 1, startedAt: 1, endedAt: null, reason: 'running', report: 'LEGACY-REPORT body', references: ['legacy-ref'] }
+  const reads = []
+  const readReference = rt.readReference
+  rt.readReference = async input => { reads.push(input); return readReference(input) }
+  const list = await host.api('task-list', { workspace: workspace.id })
+  assert.deepEqual(reads, [], 'the list reads no legacy references')
+  assert.equal(list.length, 3)
+  const card = list.find(task => task.id === parent.id)
+  assert.equal(card.latestExecutionStatus, 'running', 'the newest inserted execution decides, not the first or the one with the largest createdAt')
+  assert.equal(list.find(task => task.id === idle.id).latestExecutionStatus, null)
+  assert.equal(rt.state.tasks[masked.id].title.includes(secret), true, 'the store keeps the raw value; only responses mask it')
+  const maskedCard = list.find(task => task.id === masked.id)
+  assert.equal(maskedCard.title.includes(secret), false)
+  assert.ok(maskedCard.title.includes('[secret:TASK_LIST_SECRET]'))
+  assert.ok(list.every(task => !('brief' in task) && !('source' in task) && !('acceptances' in task)))
+  assert.equal(card.executions.length, 2)
+  assert.deepEqual(card.executions.map(item => Object.keys(item).sort()),
+    [['createdAt', 'endedAt', 'sessionId', 'startedAt'], ['createdAt', 'endedAt', 'sessionId', 'startedAt']])
+  assert.deepEqual(card.executions.map(({ sessionId, createdAt, startedAt, endedAt }) => [sessionId, createdAt, startedAt, endedAt]),
+    [[executor.id, execution.createdAt, execution.startedAt, 2], ['legacy-session', 1, 1, null]])
+  const body = JSON.stringify(list)
+  for (const marker of ['RESULT-BODY', 'LEGACY-REPORT', 'INPUT-CONTEXT', 'REPORT-SUMMARY', 'Parent brief', secret]) assert.equal(body.includes(marker), false, marker)
+  assert.ok(body.length < 4000, `the list stays bounded regardless of archived bodies (${body.length} bytes)`)
 }))

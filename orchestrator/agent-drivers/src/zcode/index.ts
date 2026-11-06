@@ -54,7 +54,7 @@ type ZcodePayload = {
   delta?: string; response?: string; resultType?: string; message?: string; error?: { message?: string }
   result?: { success?: boolean; content?: unknown; error?: unknown }
   modifiedInput?: unknown; requestId?: RpcId; contextUsage?: ContextUsage
-  runtime?: { contextUsage?: ContextUsage }; cacheStats?: { cacheReadTokens?: unknown }
+  runtime?: { contextUsage?: ContextUsage }; cacheStats?: { cacheReadTokens?: unknown }; contextWindow?: number
   usage?: {
     inputTokens?: number; input?: number; outputTokens?: number; output?: number; totalTokens?: number; total?: number
     cacheReadTokens?: number; cacheWriteTokens?: number; cache?: { read?: number; write?: number }
@@ -78,7 +78,7 @@ type RunningTurn = {
   id: string; started: boolean; messages: Set<string | undefined>; tools: Set<string>; completedTools: Set<string>
   names: Map<string, string>; inputs: Map<string, unknown>; parents: Map<string, string>; parentEmitted: Set<string>
   guides: Set<string | undefined>; guideIds: Map<string | undefined, string | undefined>; sawText: boolean; settle: (() => void) | null
-  changes: FileChanges; usage?: Usage; final?: string; unconfirmed?: boolean; checking?: boolean; interrupting?: boolean
+  changes: FileChanges; usage?: Usage; context?: ContextUsage; final?: string; unconfirmed?: boolean; checking?: boolean; interrupting?: boolean
   lastEventAt: number; healthTimer?: ReturnType<typeof setInterval>; done?: Promise<void>; v4Inputs?: number
   finished?: { reason: 'done'; error?: string }
 }
@@ -322,6 +322,9 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     }
     if (!running) return
     const turn = running
+    // Each model request's own usage, with the window it ran against, reaches
+    // session.updated; turn.completed only sums the turn's requests.
+    if (event.type === 'session.updated' && payload.usage) turn.context = { used: zcodeUsage(payload, undefined, undefined)?.contextUsed, size: payload.contextWindow ?? turn.context?.size }
     if (event.type === 'turn.steerQueued' && turn.guides.has(payload.inputId ?? payload.queryId)) turn.guideIds.set(payload.pendingInputId, payload.inputId ?? payload.queryId)
     if (event.type === 'turn.steerDrained') {
       for (const inputId of payload.queryIds ?? []) turn.guides.delete(inputId)
@@ -404,7 +407,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       if (reason === 'done' && !turn.sawText && payload.response) emit({ type: 'text', turnId: turn.id, text: payload.response })
       turn.final = typeof payload.response === 'string' ? payload.response : undefined
       turn.guides.delete(payload.inputId)
-      turn.usage = addUsage(turn.usage, zcodeUsage(payload, context, grewCacheRead(payload.cacheStats?.cacheReadTokens)))
+      turn.usage = addUsage(turn.usage, zcodeUsage(payload, turn.context ?? context, grewCacheRead(payload.cacheStats?.cacheReadTokens)))
       const error = reason === 'error' ? payload.error?.message ?? `ZCode turn ended: ${payload.resultType}` : undefined
       if (reason === 'done' && turn.guides.size > 0) { turn.finished = { reason, error }; turn.sawText = false; return }
       end(reason, error, turn.usage)

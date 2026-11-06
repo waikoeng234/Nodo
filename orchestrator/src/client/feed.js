@@ -717,7 +717,7 @@ export function StatsDialog({ stats, onClose }) {
     footer: [h(Button, { key: 'close', variant: 'primary', onClick: onClose }, '关闭')],
   },
   h('div', { className: 'nodo-dialog-fields' },
-    h('div', { className: 'nodo-stats-section' },
+    billed + stats.outputTokens > 0 && h('div', { className: 'nodo-stats-section' },
       h('h3', { className: 'nodo-stats-heading' }, 'Token 用量'),
       row('未缓存输入', exactTokens(stats.inputTokens)),
       row('缓存读取', exactTokens(stats.cacheReadTokens)),

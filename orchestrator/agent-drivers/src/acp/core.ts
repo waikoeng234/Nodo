@@ -96,15 +96,29 @@ const withRawText = (content: unknown[], rawOutput: unknown) => {
 }
 
 // The end-turn ACP `Usage` object is an open RFD, and real agents report the
-// buckets disjoint: `inputTokens` is already the uncached prompt side.
+// buckets disjoint: `inputTokens` is already the uncached prompt side, and
+// `thoughtTokens` sits beside `outputTokens` rather than inside it.
 const acpUsage = (raw: unknown) => {
-  if (raw === null || typeof raw !== 'object') return undefined
+  const usage = objectOf<Record<string, unknown>>(raw)
+  const thought = typeof usage.thoughtTokens === 'number' ? usage.thoughtTokens : 0
   return usageOf({
-    inputTokens: (raw as Record<string, unknown>).inputTokens,
-    outputTokens: (raw as Record<string, unknown>).outputTokens,
-    cacheReadTokens: (raw as Record<string, unknown>).cachedReadTokens,
-    cacheWriteTokens: (raw as Record<string, unknown>).cachedWriteTokens,
+    inputTokens: usage.inputTokens,
+    outputTokens: typeof usage.outputTokens === 'number' ? usage.outputTokens + thought : undefined,
+    cacheReadTokens: usage.cachedReadTokens,
+    cacheWriteTokens: usage.cachedWriteTokens,
   })
+}
+
+// CodeBuddy's prompt result carries no usage; each model request's provider
+// usage rides its usage_update as `_meta.usage`, OpenAI-shaped with the cached
+// part inside `prompt_tokens`.
+type AcpMetaUsage = { prompt_tokens?: unknown; completion_tokens?: unknown; prompt_tokens_details?: { cached_tokens?: unknown }; prompt_cache_write_tokens?: unknown }
+const metaUsage = (raw: unknown) => {
+  const usage = objectOf<AcpMetaUsage>(raw)
+  if (typeof usage.prompt_tokens !== 'number') return {}
+  const cacheReadTokens = typeof usage.prompt_tokens_details?.cached_tokens === 'number' ? usage.prompt_tokens_details.cached_tokens : 0
+  const cacheWriteTokens = typeof usage.prompt_cache_write_tokens === 'number' ? usage.prompt_cache_write_tokens : 0
+  return { inputTokens: usage.prompt_tokens - cacheReadTokens - cacheWriteTokens, outputTokens: usage.completion_tokens, cacheReadTokens, cacheWriteTokens }
 }
 
 export async function initializeAcp(peer: JsonRpcPeer, clientCapabilities: Record<string, unknown> = {}, clientInfo?: { name: string; version?: string; title?: string }): Promise<AcpCapabilities> {
@@ -267,7 +281,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
         emit({ type: 'tool', turnId: turn.id, callId: key, name, phase: 'end', input, output, isError: update.status === 'failed' })
       }
     }
-    if (update.sessionUpdate === 'usage_update') turn.context = usageOf({ contextUsed: update.used, contextSize: update.size })
+    if (update.sessionUpdate === 'usage_update') turn.context = addUsage(turn.context, usageOf({ ...metaUsage(update._meta?.usage), contextUsed: update.used, contextSize: update.size }))
     // Plan updates are whole-plan snapshots; a removed plan clears the row
     // instead of leaving stale steps behind.
     if (update.sessionUpdate === 'plan' && Array.isArray(update.entries)) {

@@ -48,7 +48,8 @@ test('CodeBuddy declares the question capability, applies mode/model/thought and
       const end = await until(() => events.find(event => event.type === 'turn/end'))
       assert.equal(end.reason, 'done')
       assert.deepEqual(deltas(events), 'Hello world')
-      assert.deepEqual(end.usage, { contextUsed: 0, contextSize: 0 }, 'no token buckets exist to mirror')
+      assert.deepEqual(end.usage, { inputTokens: 1222, outputTokens: 4, cacheReadTokens: 24320, cacheWriteTokens: 0, contextUsed: 25542, contextSize: 300000 },
+        'the request usage in _meta has its cached part taken out of the prompt')
       driver.dispose()
       events.length = 0
       driver = createDriver('codebuddy', { bin, cwd, driverSessionId: 'fixture-cb-session', onEvent: event => events.push(event) })
