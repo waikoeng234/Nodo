@@ -94,7 +94,7 @@ const harness = () => {
     ctx: { effect: factory => { cleanup = factory() } },
     redactDeepSecrets: value => value, save: async () => {},
     statsTool: (_id, phase) => stats.push(phase),
-    statsEnd() {}, recordTaskOutcome() {}, isCompacting: () => false,
+    statsEnd() {}, statsLive() {}, recordTaskOutcome() {}, isCompacting: () => false,
     openApproval: (_id, event) => approvals.push(event), closeApproval: id => closed.push(id),
     appendLine: (_id, line) => { lines.push(line); return line },
   }

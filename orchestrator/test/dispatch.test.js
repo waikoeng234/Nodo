@@ -13,7 +13,7 @@ const harness = () => {
     redactDeepSecrets: value => value,
     appendLine: (_id, line) => { lines.push(line); return line },
     save: async () => {},
-    statsOutput() {}, statsTool() {}, statsEnd() {}, recordTaskOutcome() {}, isCompacting: () => false,
+    statsOutput() {}, statsTool() {}, statsEnd() {}, statsLive() {}, recordTaskOutcome() {}, isCompacting: () => false,
   }
   installDispatch(rt)
   return { rt, lines }

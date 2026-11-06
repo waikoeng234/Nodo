@@ -144,7 +144,7 @@ test('legacy final replies wait for saved image references before the turn settl
   const pending = new Promise(resolve => { release = resolve })
   const image = { id: 'fixture', mediaType: 'image/png' }
   const rt = { ctx: { effect: factory => effects.push(factory()) }, appendLine: (_id, line) => { lines.push(line); return line },
-    redactDeepSecrets: value => value, save: async () => {}, statsOutput() {}, statsEnd() {}, recordTaskOutcome() {}, isCompacting: () => false,
+    redactDeepSecrets: value => value, save: async () => {}, statsOutput() {}, statsEnd() {}, statsLive() {}, recordTaskOutcome() {}, isCompacting: () => false,
     saveReplyImages: async (_id, text) => { assert.equal(text, '![图](/tmp/shot.png)'); await pending; return [image] } }
   installDispatch(rt)
   try {
