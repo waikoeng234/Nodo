@@ -424,6 +424,7 @@ test('a host without the projection service falls back to the per-message usage'
   const end = events.find(event => event.type === 'turn/end')
   assert.deepEqual(end.usage, { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, contextUsed: 12 },
     'message usage is summed and the prompt side becomes the context occupancy')
+  assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.usage), [end.usage], 'each message reports the turn so far as it lands')
   assert.equal(end.timing, undefined, 'no projection means no wall times to report')
   driver.dispose()
 })

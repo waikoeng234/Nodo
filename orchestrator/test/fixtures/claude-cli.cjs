@@ -90,6 +90,11 @@ const receive = line => {
   const text = frame.message?.content?.find(block => block.type === 'text')?.text ?? ''
   log({ user: text })
   if (text === 'EXIT') process.exit(1)
+  if (text === 'LIVE_EXIT') {
+    send({ type: 'stream_event', session_id: session, event: { type: 'message_start', message: { id: 'main-x', usage: requestUsage } } })
+    setTimeout(() => process.exit(1), 50)
+    return
+  }
   if (frame.priority) {
     log({ steer: text, priority: frame.priority, uuid: frame.uuid })
     if (!['now', 'later'].includes(frame.priority) || !frame.uuid) process.exit(8)
@@ -184,6 +189,16 @@ const receive = line => {
   } else if (text.includes('WAIT')) setTimeout(() => say('Waited'), Number(process.env.CLAUDE_FIXTURE_WAIT_MS) || 200)
   else if (text.includes('EFFORT')) say(`Effort ${arg('--effort') ?? 'none'}`)
   else if (text.startsWith('RESULT ')) send({ type: 'result', session_id: session, ...JSON.parse(text.slice(7)) })
-  else say('Hello world')
+  // Live counts: the main request opens on message_start and settles on a
+  // message_delta that carries only the output (as some endpoints send it); a
+  // subagent's stream interleaves, and its request only rides its assistant
+  // frame (repeated per content block).
+  else if (text === 'LIVE') {
+    send({ type: 'stream_event', session_id: session, event: { type: 'message_start', message: { id: 'main-1', usage: { ...requestUsage, output_tokens: 1 } } } })
+    send({ type: 'stream_event', session_id: session, parent_tool_use_id: 'task-1', event: { type: 'message_start', message: { id: 'sub-1' } } })
+    send({ type: 'stream_event', session_id: session, event: { type: 'message_delta', usage: { output_tokens: 45 } } })
+    for (let i = 0; i < 2; i++) send({ type: 'assistant', parent_tool_use_id: 'task-1', message: { id: 'sub-1', role: 'assistant', content: [], usage: { input_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 2000, output_tokens: 7 } }, session_id: session })
+    say('Hello world')
+  } else say('Hello world')
 }
 createInterface({ input: process.stdin }).on('line', receive)

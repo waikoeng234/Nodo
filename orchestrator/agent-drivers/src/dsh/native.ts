@@ -206,6 +206,7 @@ export function createNativeDshDriver({ nativeHost: host, cwd, name, sessionName
           cacheReadTokens: usage.cacheReadTokens, cacheWriteTokens: usage.cacheWriteTokens,
           contextUsed: (usage.inputTokens ?? 0) + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0),
         }))
+        if (running.usage) emit({ type: 'usage', turnId: running.id, usage: running.usage })
       }
       const text = blocks.filter(block => block.type === 'text').map(block => block.text).join('')
       if (text) running.final = text

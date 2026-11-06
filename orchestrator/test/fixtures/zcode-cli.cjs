@@ -134,10 +134,11 @@ const runTurn = text => {
   // Two model requests: each reports its own usage on session.updated (the
   // assistant message adds its window), turn.completed sums them.
   if (text.includes('REQUESTS')) {
-    for (const [inputTokens, cacheReadTokens] of [[21983, 320], [23470, 22592]]) {
+    for (const [requestId, inputTokens, cacheReadTokens] of [['r1', 21983, 320], ['r2', 23470, 22592]]) {
       const usage = { inputTokens, outputTokens: 6, totalTokens: inputTokens + 6, cacheReadTokens, cacheWriteTokens: 0 }
-      notify('session.updated', { modelId: 'GLM-5.3-Flash', finishReason: 'stop', usage })
+      notify('session.updated', { requestId, modelId: 'GLM-5.3-Flash', finishReason: 'stop', usage })
       notify('session.updated', { content: [], contextWindow: 1000000, usage })
+      if (requestId === 'r1') notify('session.updated', { requestId, modelId: 'GLM-5.3-Flash', finishReason: 'stop', usage })
     }
     notify('model.streaming', { assistantMessageId: 'msg-1', delta: 'Requests', kind: 'text_delta', done: true })
     return setTimeout(() => finish('Requests', 'success', { inputTokens: 45453, outputTokens: 12, totalTokens: 45465, cacheReadTokens: 22912, cacheWriteTokens: 0 }), 30)

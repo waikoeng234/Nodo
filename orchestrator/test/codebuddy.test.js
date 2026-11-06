@@ -50,6 +50,7 @@ test('CodeBuddy declares the question capability, applies mode/model/thought and
       assert.deepEqual(deltas(events), 'Hello world')
       assert.deepEqual(end.usage, { inputTokens: 1222, outputTokens: 4, cacheReadTokens: 24320, cacheWriteTokens: 0, contextUsed: 25542, contextSize: 300000 },
         'the request usage in _meta has its cached part taken out of the prompt')
+      assert.deepEqual(events.filter(event => event.type === 'usage').at(-1).usage, end.usage, 'each request\'s usage shows as it lands')
       driver.dispose()
       events.length = 0
       driver = createDriver('codebuddy', { bin, cwd, driverSessionId: 'fixture-cb-session', onEvent: event => events.push(event) })

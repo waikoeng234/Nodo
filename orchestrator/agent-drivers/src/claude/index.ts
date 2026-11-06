@@ -41,11 +41,12 @@ type ClaudeRequest = { type: 'control_request'; request_id: string; request?: Cl
 type ClaudeDelta = { type: 'text_delta'; text?: string } | { type: 'thinking_delta'; thinking?: string }
   | { type: 'input_json_delta'; partial_json?: string } | { type: 'signature_delta'; signature?: string }
 type ClaudeStreamEvent =
-  | { type: 'message_start'; message?: { id?: string } }
+  | { type: 'message_start'; message?: { id?: string; usage?: ClaudeUsage } }
   | { type: 'content_block_start'; index: number; content_block?: ClaudeContent }
   | { type: 'content_block_delta'; index: number; delta?: ClaudeDelta }
   | { type: 'content_block_stop'; index: number }
-  | { type: 'message_delta' | 'message_stop' | 'ping' }
+  | { type: 'message_delta'; usage?: ClaudeUsage }
+  | { type: 'message_stop' | 'ping' }
 type ClaudeSystem = { type: 'system' } & (
   | { subtype: 'init'; capabilities?: string[]; claude_code_version: string }
   | { subtype: 'status'; status: string }
@@ -78,7 +79,8 @@ type ClaudeTurn = {
   id: string; started: boolean; tools: Map<string, ClaudeTool>; completedTools: Set<string>; blocks: Map<number, ClaudeBlock>
   thinking: Map<number | undefined, string>; texts: Map<number | undefined, string>; messages: Set<string>; steers: Set<string | undefined>; sawText: boolean
   interrupting: boolean; settle: (() => void) | null; changes?: FileChanges; done?: Promise<void>
-  compacting?: boolean; messageId?: string; contextUsed?: number; usage?: Usage; unconfirmed?: boolean; errorKind?: string
+  compacting?: boolean; messageId?: string; mainMessageId?: string; contextUsed?: number; usage?: Usage
+  requests?: Map<string, Usage>; subagents?: Map<string, Usage>; unconfirmed?: boolean; errorKind?: string
 }
 type ClaudeControl = { resolve(value: unknown): void; reject(error: Error): void }
 
@@ -247,6 +249,8 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd }: EngineScan
 // occupancy. `modelUsage` carries the routed model's context window.
 const claudePromptTokens = (raw: ClaudeUsage | undefined) =>
   promptTokensOf([raw?.input_tokens, raw?.cache_read_input_tokens, raw?.cache_creation_input_tokens])
+const claudeUsage = (raw: ClaudeUsage | undefined) => usageOf({ inputTokens: raw?.input_tokens, outputTokens: raw?.output_tokens,
+  cacheReadTokens: raw?.cache_read_input_tokens, cacheWriteTokens: raw?.cache_creation_input_tokens })
 
 // The result frame's `usage` counts the main conversation only; `modelUsage`
 // sums every model the process called, subagents included, over the whole
@@ -265,6 +269,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
   let resuming = false
   // The process's `modelUsage` sum at the previous result; unknown after a resume until one arrives.
   let modelTotals: Usage | undefined
+  let contextSize: number | undefined
   let connected = false
   let disposed = false
   let sequence = 0
@@ -283,8 +288,8 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     if (!running) return
     const turn = running
     running = null
-    // A steered turn keeps the usage its finished segments already reported.
-    usage ??= turn.usage
+    // Without a result, the turn's usage is what its finished segments and live requests reported.
+    usage ??= liveUsage(turn)
     turn.settle?.()
     closeRequests()
     if (turn.changes) emit(turn.changes.snapshot(turn.id))
@@ -305,6 +310,20 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       parentCallId: parentCallId ?? previous?.parentCallId })
     if (!previous) emit({ type: 'tool', turnId: turn.id, callId: block.id, name: block.name ?? 'tool', phase: 'start', input: block.input,
       ...(parentCallId ? { parentCallId } : {}) })
+  }
+  const liveUsage = (turn: ClaudeTurn) => usageOf({
+    ...[...turn.requests?.values() ?? [], ...turn.subagents?.values() ?? []].reduce(addUsage, turn.usage),
+    contextUsed: turn.contextUsed, contextSize,
+  })
+  // A main-conversation request's counts open on message_start and settle on its
+  // message_delta (some endpoints send only the output there); a subagent's ride
+  // its assistant frames alone, its output and last request partial until the result.
+  const requestUsage = (turn: ClaudeTurn, subagent: boolean, id: string | undefined, raw: ClaudeUsage | undefined) => {
+    const usage = claudeUsage(raw)
+    if (!id || !usage) return
+    const counted = subagent ? (turn.subagents ??= new Map()) : (turn.requests ??= new Map())
+    counted.set(id, { ...counted.get(id), ...usage })
+    emit({ type: 'usage', turnId: turn.id, usage: liveUsage(turn)! })
   }
   const receive = (frame: ClaudeFrame) => {
     if (frame.type === 'control_response') {
@@ -394,7 +413,13 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         turn.texts.clear()
         emit({ type: 'delta', turnId: turn.id, messageId: turn.messageId, text: '', boundary: 'start',
           ...(frame.parent_tool_use_id ? { parentCallId: frame.parent_tool_use_id } : {}) })
+        if (!frame.parent_tool_use_id) {
+          turn.mainMessageId = event.message?.id
+          turn.contextUsed = claudePromptTokens(event.message?.usage) ?? turn.contextUsed
+          requestUsage(turn, false, turn.mainMessageId, event.message?.usage)
+        }
       }
+      if (event.type === 'message_delta' && !frame.parent_tool_use_id) requestUsage(turn, false, turn.mainMessageId, event.usage)
       if (event.type === 'content_block_start' && (event.content_block?.type === 'text' || event.content_block?.type === 'thinking')) {
         const block = event.content_block
         const text = block.type === 'text' ? block.text : block.thinking
@@ -467,8 +492,10 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     }
     if (frame.type === 'assistant') {
       if (!frame.parent_tool_use_id) turn.errorKind = frame.error
-      const used = claudePromptTokens(frame.message?.usage)
+      // The session's context is the main conversation's; a subagent runs in its own.
+      const used = frame.parent_tool_use_id ? undefined : claudePromptTokens(frame.message?.usage)
       if (used !== undefined) turn.contextUsed = used
+      if (frame.parent_tool_use_id) requestUsage(turn, true, frame.message?.id, frame.message?.usage)
       const messageId = frame.message?.id
       const seen = messageId && turn.messages.has(messageId)
       for (const [index, block] of (Array.isArray(frame.message?.content) ? frame.message.content : []).entries()) {
@@ -517,16 +544,12 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
       const totals = claudeModelTotals(frame.modelUsage)
       const grown = totals && modelTotals ? Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, value - (modelTotals![key as keyof Usage] ?? 0)])) : undefined
       modelTotals = totals ?? modelTotals
-      const usage = addUsage(turn.usage, usageOf({
-        ...(grown ?? {
-          inputTokens: frame.usage?.input_tokens,
-          outputTokens: frame.usage?.output_tokens,
-          cacheReadTokens: frame.usage?.cache_read_input_tokens,
-          cacheWriteTokens: frame.usage?.cache_creation_input_tokens,
-        }),
-        contextUsed: turn.contextUsed,
-        contextSize: Object.values(frame.modelUsage ?? {})[0]?.contextWindow,
-      }))
+      contextSize = Object.values(frame.modelUsage ?? {})[0]?.contextWindow ?? contextSize
+      // Without a known baseline the main conversation is exact and the subagents only as live as they streamed.
+      const counted = grown ?? addUsage(claudeUsage(frame.usage), [...turn.subagents?.values() ?? []].reduce(addUsage, undefined))
+      const usage = addUsage(turn.usage, usageOf({ ...counted, contextUsed: turn.contextUsed, contextSize }))
+      turn.requests = undefined
+      turn.subagents = undefined
       for (const uuid of frame.user_message_uuids ?? [frame.user_message_uuid]) turn.steers.delete(uuid)
       if (!turn.interrupting && turn.steers.size > 0) { turn.usage = usage; turn.sawText = false; return }
       const retryable = turn.errorKind !== undefined ? ['overloaded', 'server_error'].includes(turn.errorKind)

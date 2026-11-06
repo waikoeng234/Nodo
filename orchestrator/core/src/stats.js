@@ -14,11 +14,18 @@ const FIELDS = Object.freeze([
 
 const empty = () => Object.fromEntries(FIELDS.map(key => [key, 0]))
 const isNumber = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
+// Token buckets add up; the context figures are the newest request's, so they replace the old ones.
+const fold = (record, usage) => {
+  for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens']) if (isNumber(usage?.[key])) record[key] += usage[key]
+  for (const key of ['contextUsed', 'contextSize']) if (isNumber(usage?.[key])) record[key] = usage[key]
+  return record
+}
 
 export function install(rt) {
   const { state } = rt
-  // The turn in flight: its start, its first output, the open decode burst and
-  // the open tool call. Nothing here is persisted — only the closed totals are.
+  // The turn in flight: its start, its first output, the open decode burst, the
+  // open tool call and its usage so far. Nothing here is persisted — only the
+  // closed totals are.
   const open = new Map()
 
   const recordOf = (sessionId) => (state.stats[sessionId] ??= empty())
@@ -32,7 +39,16 @@ export function install(rt) {
 
   /** A message became a turn: start the clock the engine's events are timed against. */
   const statsRound = (sessionId) => {
-    open.set(sessionId, { start: Date.now(), first: null, burstStart: null, burstEnd: null, burstMs: 0, toolStart: null, toolMs: 0 })
+    open.set(sessionId, { start: Date.now(), first: null, burstStart: null, burstEnd: null, burstMs: 0, toolStart: null, toolMs: 0, usage: undefined })
+  }
+
+  /** The turn's usage so far, shown on top of the closed totals until the turn ends; true when it changed. */
+  const statsUsage = (sessionId, usage) => {
+    const turn = open.get(sessionId)
+    if (turn === undefined || JSON.stringify(turn.usage) === JSON.stringify(usage)) return false
+    turn.usage = usage
+    recordOf(sessionId)
+    return true
   }
 
   /** Any output the engine produced (text, delta or reasoning) marks first token and decode. */
@@ -93,18 +109,12 @@ export function install(rt) {
       }
     }
     for (const key of ['llmMs', 'toolMs']) record[key] += isNumber(timing?.[key]) ? timing[key] : measured[key]
-    if (usage !== undefined) {
-      for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens']) {
-        if (isNumber(usage[key])) record[key] += usage[key]
-      }
-      // The context figures are the newest request's, so they replace the old ones.
-      for (const key of ['contextUsed', 'contextSize']) if (isNumber(usage[key])) record[key] = usage[key]
-    }
+    fold(record, usage)
     void rt.save(true).catch(() => {})
   }
 
-  /** What the client polls: one small record per session that has run a turn. */
-  const statsView = () => Object.fromEntries(Object.entries(state.stats).map(([sessionId, record]) => [sessionId, { ...record }]))
+  /** What the client polls: one small record per session that has run a turn, the turn in flight included. */
+  const statsView = () => Object.fromEntries(Object.entries(state.stats).map(([sessionId, record]) => [sessionId, fold({ ...record }, open.get(sessionId)?.usage)]))
 
-  Object.assign(rt, { statsRound, statsOutput, statsTool, statsEnd, statsView })
+  Object.assign(rt, { statsRound, statsOutput, statsTool, statsUsage, statsLive: sessionId => open.get(sessionId)?.usage, statsEnd, statsView })
 }

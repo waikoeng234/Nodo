@@ -501,6 +501,13 @@ test('ZCode driver streams replies, tracks tools and usage, resumes and refuses 
       const requests = await until(() => events.find(event => event.type === 'turn/end'))
       assert.deepEqual(requests.usage, { inputTokens: 22541, outputTokens: 12, cacheReadTokens: 22912, cacheWriteTokens: 0, contextUsed: 23470, contextSize: 1000000 },
         'the turn sums its requests while the context is the last request\'s prompt against its own window')
+      assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.usage), [
+        { inputTokens: 21663, outputTokens: 6, cacheReadTokens: 320, cacheWriteTokens: 0, contextUsed: 21983 },
+        { inputTokens: 21663, outputTokens: 6, cacheReadTokens: 320, cacheWriteTokens: 0, contextUsed: 21983, contextSize: 1000000 },
+        { inputTokens: 21663, outputTokens: 6, cacheReadTokens: 320, cacheWriteTokens: 0, contextUsed: 21983, contextSize: 1000000 },
+        { inputTokens: 22541, outputTokens: 12, cacheReadTokens: 22912, cacheWriteTokens: 0, contextUsed: 23470, contextSize: 1000000 },
+        { inputTokens: 22541, outputTokens: 12, cacheReadTokens: 22912, cacheWriteTokens: 0, contextUsed: 23470, contextSize: 1000000 },
+      ], 'each request counts once though its record is reported again, and the live figures end where the turn does')
 
       events.length = 0
       await driver.sendTurn('CUMULATIVE_CACHE')

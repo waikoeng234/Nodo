@@ -33,6 +33,8 @@ test('pi adapter streams real deltas and resumes the exact RPC session id', asyn
       assert.deepEqual(events.find(event => event.type === 'turn/end').usage,
         { inputTokens: 300, outputTokens: 45, cacheReadTokens: 900, cacheWriteTokens: 100, contextUsed: 1300, contextSize: 200000 },
         'per-request usage folds into the turn; the context window rides get_state')
+      assert.deepEqual(events.filter(event => event.type === 'usage').at(-1).usage, events.find(event => event.type === 'turn/end').usage,
+        'each finished message reports the turn so far')
 
       events.length = 0
       await driver.sendTurn('IMG', [{ mediaType: 'image/png', data: 'aGk=' }])

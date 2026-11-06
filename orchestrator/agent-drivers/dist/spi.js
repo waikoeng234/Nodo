@@ -69,6 +69,7 @@ export const DECISION = Object.freeze({
  *                         name?, title?, detail?, parentId?, childId?, toolCallId?, isError? }
  *   { type: 'lifecycle',  turnId?, kind: 'compaction' | 'retry', phase: 'start' | 'end',
  *                         entityId?, detail?, isError?, cancelled? }
+ *   { type: 'usage',      turnId, usage }                    // the turn's usage so far, see below
  *   { type: 'turn/end',   turnId, reason: 'done' | 'interrupted' | 'error',
  *                         text?, error?, usage?, timing?, unconfirmed?, retryable? }
  *                         // unconfirmed: the driver, or the host on its behalf, ended the
@@ -149,6 +150,10 @@ export const DECISION = Object.freeze({
  * two context fields are last-wins snapshots, not sums. Every field is optional
  * — an engine that cannot report a figure omits it, and the host then leaves
  * that part of its display out rather than showing a zero.
+ *
+ * A `usage` event carries the same shape for the turn so far, sent as each model
+ * request's figures arrive so the host can show them before the turn ends. Each
+ * one replaces the previous; `turn/end.usage`, when present, is the final word.
  *
  * `timing` carries the same idea for wall times, in milliseconds: an adapter
  * whose own host already times its turns reports them here, and the host then

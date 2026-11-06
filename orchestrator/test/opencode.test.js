@@ -112,6 +112,7 @@ test('OpenCode adapter streams chunks, applies model and effort through config o
       const end = events.find(event => event.type === 'turn/end')
       assert.equal(end.reason, 'done')
       assert.deepEqual(end.usage, { inputTokens: 1, outputTokens: 6, contextUsed: 10, contextSize: 100 }, 'thought tokens are output the total counts beside it')
+      assert.deepEqual(events.filter(event => event.type === 'usage').map(event => event.usage), [{ contextUsed: 10, contextSize: 100 }], 'the occupancy shows before the prompt result')
       assert.equal(events.find(event => event.type === 'session' && event.state === 'ready').sessionId, 'fixture-oc-session')
       driver.dispose()
       events.length = 0
