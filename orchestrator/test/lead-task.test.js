@@ -10,6 +10,7 @@ import { echoEntry, registerClaudeFixtureEngine } from './helpers/echo-driver.js
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { TASK_TEXT_MAX } from '../core/src/constants.js'
 import { reviewDeliveredReports } from './helpers/report-review.js'
+import { loadClient } from './helpers/client-module.js'
 
 registerClaudeFixtureEngine()
 registerEngine('final-fixture', { ...echoEntry, info: { ...echoEntry.info, id: 'final-fixture', name: 'Final fixture' }, create(options) {
@@ -1160,7 +1161,7 @@ test('task-list serves bounded card handles without result bodies or legacy refe
     result: { text: 'RESULT-BODY '.repeat(2000), preview: 'Result preview', completeness: 'partial', length: 24_000, reason: 'storage-limit' },
     reports: [{ id: 'report-1', deliveredAt: 2, sessionId: executor.id, summary: 'REPORT-SUMMARY '.repeat(2000), status: 'done', references: [] }] })
   rt.state.executions.legacy = { id: 'legacy', taskId: parent.id, sessionId: 'legacy-session', type: 'feature', hard: false,
-    status: 'running', createdAt: 1, updatedAt: 1, startedAt: 1, endedAt: null, reason: 'running', report: 'LEGACY-REPORT body', references: ['legacy-ref'] }
+    status: 'running', createdAt: 1, updatedAt: 1, startedAt: 1, endedAt: null, reason: `${secret} ${'r'.repeat(1000)}`, report: 'LEGACY-REPORT body', references: ['legacy-ref'] }
   const reads = []
   const readReference = rt.readReference
   rt.readReference = async input => { reads.push(input); return readReference(input) }
@@ -1177,10 +1178,40 @@ test('task-list serves bounded card handles without result bodies or legacy refe
   assert.ok(list.every(task => !('brief' in task) && !('source' in task) && !('acceptances' in task)))
   assert.equal(card.executions.length, 2)
   assert.deepEqual(card.executions.map(item => Object.keys(item).sort()),
-    [['createdAt', 'endedAt', 'sessionId', 'startedAt'], ['createdAt', 'endedAt', 'sessionId', 'startedAt']])
+    [['createdAt', 'endedAt', 'id', 'reason', 'sessionId', 'startedAt', 'status'], ['createdAt', 'endedAt', 'id', 'reason', 'sessionId', 'startedAt', 'status']])
+  assert.deepEqual(card.executions.map(item => item.id), [execution.id, 'legacy'])
+  assert.deepEqual(card.executions.map(item => item.status), ['done', 'running'])
+  assert.equal(card.executions[1].reason.length, 200)
+  assert.ok(card.executions[1].reason.startsWith('[secret:TASK_LIST_SECRET] '), 'reasons are redacted before truncation')
   assert.deepEqual(card.executions.map(({ sessionId, createdAt, startedAt, endedAt }) => [sessionId, createdAt, startedAt, endedAt]),
     [[executor.id, execution.createdAt, execution.startedAt, 2], ['legacy-session', 1, 1, null]])
   const body = JSON.stringify(list)
   for (const marker of ['RESULT-BODY', 'LEGACY-REPORT', 'INPUT-CONTEXT', 'REPORT-SUMMARY', 'Parent brief', secret]) assert.equal(body.includes(marker), false, marker)
   assert.ok(body.length < 4000, `the list stays bounded regardless of archived bodies (${body.length} bytes)`)
+}))
+
+test('the team tree reads queued, running and failed states from the task-list endpoint', () => withTasks(async ({ host, rt, workspace, worker, owner }) => {
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const task = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
+    title: 'Build', brief: 'Build and verify', source: { kind: 'user' } })
+  const session = await host.api('session-create', { profile: worker.id, workspace: workspace.id, lazy: true })
+  const execution = await rt.acceptExecution(task.id, { profileId: worker.id, sessionId: session.id, type: 'feature', hard: false })
+  const { RoundTeam, host: client } = await loadClient('round.js', { call: (endpoint, payload) => host.api(endpoint, payload) })
+  const render = () => {
+    client.reset()
+    return nodes(RoundTeam({ members: [{ role: worker, session }], workspace: workspace.id, work: {}, onOpen() {} }))
+  }
+  for (const [status, advance] of [['queued', async () => {}], ['running', () => rt.startExecution(execution.id)],
+    ['failed', () => rt.failExecution(execution.id, { reason: 'Build failed' })]]) {
+    await advance()
+    render()
+    client.effects.at(-1)()
+    await new Promise(resolve => setImmediate(resolve))
+    const shown = render()
+    assert.equal(shown.find(node => node.props?.['data-session'] === session.id).props['data-kind'], status)
+    if (status === 'failed') {
+      assert.ok(shown.some(node => node.props?.className === 'nodo-tree-alert'))
+      assert.equal(shown.find(node => node.props?.className === 'nodo-tree-note').children[0], 'Build failed')
+    }
+  }
 }))

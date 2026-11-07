@@ -89,8 +89,11 @@ export function install(rt) {
           && (body.teamId === undefined || task.teamId === body.teamId)).map(({ brief, source, acceptances, ...task }) => {
           const list = executions.get(task.id) ?? []
           return { ...task, latestExecutionStatus: list.at(-1)?.status ?? null,
-            executions: list.map(({ sessionId, createdAt, startedAt, endedAt }) => ({ sessionId, createdAt, startedAt, endedAt })) }
-        }))
+            executions: list.map(({ id, sessionId, createdAt, startedAt, endedAt, status, reason }) => ({ id, sessionId, createdAt, startedAt, endedAt, status, reason })) }
+        })).map(task => {
+          for (const execution of task.executions) execution.reason = execution.reason?.slice(0, 200) ?? null
+          return task
+        })
       }
       case 'task-get': {
         const task = await rt.taskView(body.taskId)
