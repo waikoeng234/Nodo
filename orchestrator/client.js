@@ -9168,6 +9168,34 @@ module.exports = __toCommonJS(index_exports);
 // src/client/ui-shared.js
 var import_react = require("react");
 
+// src/client/dsh-updates.js
+var installing = false;
+var stopUpdates = null;
+var consumers = /* @__PURE__ */ new Set();
+var updateInstalling = () => installing;
+var subscribeUpdatePause = (pause, resume) => {
+  const consumer = { pause, resume };
+  consumers.add(consumer);
+  if (!stopUpdates) {
+    const updates = globalThis.dshDesktop?.updates;
+    if (updates) stopUpdates = updates.subscribe((event) => {
+      const next = event.phase === "installing";
+      if (next === installing) return;
+      installing = next;
+      for (const other of consumers) (next ? other.pause : other.resume)();
+    });
+  }
+  if (installing) pause();
+  return () => {
+    consumers.delete(consumer);
+    if (consumers.size === 0) {
+      installing = false;
+      stopUpdates?.();
+      stopUpdates = null;
+    }
+  };
+};
+
 // src/client/live.js
 var ROUTE = "/api/nodo";
 var call = async (endpoint, payload) => {
@@ -9231,7 +9259,7 @@ var schedule = () => {
   }, busy ? 400 : 1200);
 };
 var connect = async () => {
-  if (!polling || view === null) return;
+  if (!polling || view === null || updateInstalling()) return;
   connection?.abort();
   const abort = connection = new AbortController();
   const watch = [...watched.values()].map(({ profileId: profile, sessionId: session }) => ({ profile, session, since: transcripts.get(keyOf(profile, session))?.positions }));
@@ -9303,10 +9331,20 @@ var restart = () => {
     void connect();
   });
 };
+var stopUpdatePause = null;
+var pauseStreams = () => {
+  clearTimeout(retry);
+  retry = null;
+  connection?.abort();
+  connection = null;
+  connected = false;
+  schedule();
+};
 var subscribeLive = (listener) => {
   listeners.add(listener);
   if (!polling) {
     polling = true;
+    stopUpdatePause = subscribeUpdatePause(pauseStreams, restart);
     void poll(true).then(() => {
       if (polling) {
         schedule();
@@ -9318,6 +9356,8 @@ var subscribeLive = (listener) => {
     listeners.delete(listener);
     if (listeners.size === 0) {
       polling = false;
+      stopUpdatePause?.();
+      stopUpdatePause = null;
       if (timer) clearTimeout(timer);
       timer = null;
       clearTimeout(retry);
@@ -19609,7 +19649,12 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
       let exited = false, seq = 0, writing = Promise.resolve();
       let frame, retry2, resizing = false, resizeFailures = 0;
       let applied2 = initialSize, desired;
-      const abort = new AbortController();
+      let abort = new AbortController();
+      let resume;
+      const stopPause = subscribeUpdatePause(() => {
+        abort.abort();
+        abort = new AbortController();
+      }, () => resume?.());
       const missing = (error2) => {
         if (!(error2 instanceof TerminalMissingError)) return false;
         exited = true;
@@ -19698,6 +19743,9 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
       const connect2 = async () => {
         let failures2 = 0;
         while (live && !exited) {
+          if (updateInstalling()) await new Promise((resolve) => {
+            resume = resolve;
+          });
           const before = seq;
           try {
             const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
@@ -19730,14 +19778,14 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
               reader.releaseLock();
             }
           } catch {
-            if (live) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
+            if (live && !updateInstalling()) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
           }
           if (seq > before) failures2 = 0;
-          if (live && !exited && ++failures2 > 5) {
+          if (live && !exited && !updateInstalling() && ++failures2 > 5) {
             setMessage("\u8FDE\u63A5\u5DF2\u4E2D\u65AD");
             break;
           }
-          if (live && !exited) await new Promise((resolve) => {
+          if (live && !exited && !updateInstalling()) await new Promise((resolve) => {
             const done = () => {
               clearTimeout(timer2);
               abort.signal.removeEventListener("abort", done);
@@ -19753,6 +19801,7 @@ function TerminalView({ id, target, initialSize, active, onGone }) {
       cleanup = () => {
         live = false;
         abort.abort();
+        stopPause();
         observer.disconnect();
         theme.disconnect();
         input.dispose();

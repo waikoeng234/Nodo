@@ -1,4 +1,5 @@
 // Every surface shares one stream and one copy of each conversation's rows.
+import { subscribeUpdatePause, updateInstalling } from './dsh-updates.js'
 
 const ROUTE = '/api/nodo'
 const call = async (endpoint, payload) => {
@@ -60,7 +61,7 @@ const schedule = () => {
 }
 
 const connect = async () => {
-  if (!polling || view === null) return
+  if (!polling || view === null || updateInstalling()) return
   connection?.abort()
   const abort = connection = new AbortController()
   const watch = [...watched.values()].map(({ profileId: profile, sessionId: session }) => ({ profile, session, since: transcripts.get(keyOf(profile, session))?.positions }))
@@ -118,16 +119,27 @@ const restart = () => {
   })
 }
 
+// dsh 更新加锁前断开流并停掉重连，轮询兜底继续；离开 installing 由 restart 重连。
+let stopUpdatePause = null
+const pauseStreams = () => {
+  clearTimeout(retry); retry = null
+  connection?.abort(); connection = null
+  connected = false
+  schedule()
+}
+
 export const subscribeLive = listener => {
   listeners.add(listener)
   if (!polling) {
     polling = true
+    stopUpdatePause = subscribeUpdatePause(pauseStreams, restart)
     void poll(true).then(() => { if (polling) { schedule(); void connect() } })
   }
   return () => {
     listeners.delete(listener)
     if (listeners.size === 0) {
       polling = false
+      stopUpdatePause?.(); stopUpdatePause = null
       if (timer) clearTimeout(timer)
       timer = null
       clearTimeout(retry); retry = null
