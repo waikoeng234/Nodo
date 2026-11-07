@@ -745,6 +745,27 @@ test('delegated tasks redact scoped secrets before reaching the executor engine 
   assert.equal(lines(work).find(line => line.who === 'user').text, received)
 }))
 
+test('a delegation title names the new task and executor session, redacted and cut to one line', () => withLead(async ({ host, rt, role, session, inputs }) => {
+  const value = 'lead-title-param-private-value'
+  const worker = await role('Worker')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  await host.api('secret-set', { name: 'LEAD_TITLE_PARAM', value, purpose: 'test', scope: [lead.id] })
+  const conversation = await session(lead)
+  for (const title of ['', '  ', 3]) {
+    await assert.rejects(rt.leadDispatch.delegate(conversation.id, { ...delegateType('feature', false), title }), /title 必须是非空字符串/)
+  }
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 0)
+  const brief = '1. 任务目标：实现团队运行树\n2. 完成标准：测试通过'
+  const receipt = await toolTask(rt, conversation.id, { ...delegateType('feature', false, brief), title: `  团队运行树 ${value}\n第二行` })
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  assert.equal(work.name, '团队运行树 [secret:LEAD_TITLE_PARAM]')
+  assert.equal(rt.state.tasks[receipt.taskId].title, work.name)
+  assert.equal(rt.state.tasks[receipt.taskId].brief, brief)
+  assert.ok(inputs.find(input => input.profileId === worker.id).text.endsWith(brief))
+  const long = await toolTask(rt, conversation.id, { ...delegateType('feature', false), title: 'x'.repeat(100) })
+  assert.equal(rt.state.tasks[long.taskId].title, 'x'.repeat(80))
+}))
+
 test('lead task limits apply before and after secret redaction', () => withLead(async ({ host, rt, role, session, inputs, lines }) => {
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
