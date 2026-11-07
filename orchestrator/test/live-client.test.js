@@ -80,6 +80,74 @@ test('fallback state merges runtime session metadata without needing a structure
   stop()
 })
 
+test('a dsh update install drops the stream, holds reconnects and keeps the fallback poll serving', async () => {
+  timers.length = 0
+  let installing = null, streams = 0
+  const { subscribeLive, getLive, liveError } = await loadClient('live.js', {
+    globals: { ...fakeTimers(), dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
+    call: endpoint => {
+      if (!endpoint) { streams++; throw new Error('stream disconnected') }
+      return { struct: 1, activity: 0, work: {}, profiles: [], tasks: [{ id: 'task', status: 'open' }] }
+    },
+  })
+  const stop = subscribeLive(() => {})
+  await flush()
+  assert.equal(streams, 1, 'the stream retry is pending')
+  const errorBefore = liveError()
+  installing?.({ phase: 'installing' })
+  await flush()
+  assert.equal(streams, 1, 'no reconnect is attempted while installing')
+  assert.ok(timers.find(timer => timer.ms === 1200), 'the fallback poll keeps running')
+  assert.equal(liveError(), errorBefore, 'pausing surfaces no new error')
+  timers.find(timer => timer.ms === 1200).run(); await flush()
+  assert.equal(getLive().tasks[0].status, 'open', 'polls still serve the view during the install')
+  assert.equal(streams, 1, 'the poll does not restart the stream while installing')
+  installing?.({ phase: 'ready' })
+  await flush()
+  assert.equal(streams, 2, 'leaving installing reconnects the stream')
+  assert.ok(timers.length >= 1, 'the reconnect reschedules its own retry')
+  stop()
+  assert.equal(timers.length, 0)
+  assert.equal(installing, null, 'unsubscribing releases the dshDesktop.updates listener')
+})
+
+test('an open live stream is aborted the moment dsh enters installing and reopens after it leaves', async () => {
+  timers.length = 0
+  let installing = null
+  const streams = []
+  const fetch = async (url, options) => {
+    if (String(url).includes('/live')) {
+      let rejectRead, cancelled = false
+      const pending = new Promise((resolve, reject) => { rejectRead = reject })
+      options.signal.addEventListener('abort', () => rejectRead(new Error('aborted')), { once: true })
+      const reader = { read: () => pending, cancel: async () => { cancelled = true }, releaseLock: () => {} }
+      streams.push({ signal: options.signal, get open() { return !options.signal.aborted && !cancelled } })
+      return { ok: true, body: { getReader: () => reader } }
+    }
+    return { json: async () => ({ ok: true, value: { struct: 1, activity: 0, work: {}, profiles: [] } }) }
+  }
+  const { subscribeLive, liveError } = await loadClient('live.js', {
+    globals: { ...fakeTimers(), fetch, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
+  })
+  const stop = subscribeLive(() => {})
+  await flush()
+  assert.equal(streams.length, 1, 'the stream is connected')
+  installing?.({ phase: 'installing' })
+  await flush()
+  assert.equal(streams[0].signal.aborted, true, 'the open request is aborted, not left hanging')
+  assert.equal(streams.filter(stream => stream.open).length, 0, 'no stream stays open while installing')
+  assert.equal(streams.length, 1, 'no reconnect fires while installing')
+  assert.equal(liveError(), '', 'the abort is not surfaced as an error')
+  assert.ok(timers.find(timer => timer.ms === 1200), 'the fallback poll takes over')
+  installing?.({ phase: 'idle' })
+  await flush()
+  assert.equal(streams.length, 2, 'leaving installing opens the stream again')
+  assert.equal(streams[1].open, true, 'the resumed stream is live')
+  stop()
+  assert.equal(timers.length, 0)
+  assert.equal(installing, null)
+})
+
 test('a transcript delta merges in place: unchanged lines keep their identity', async () => {
   const requests = []
   const first = { full: true, token: 't1', base: 1, dirty: 5, lines: [{ n: 1, line: { who: 'user', kind: 'text', text: 'one' } }, { n: 2, line: { who: 'agent', kind: 'text', text: 'two' } }] }

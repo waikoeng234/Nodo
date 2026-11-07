@@ -1,4 +1,5 @@
 import { h, useEffect, useLayoutEffect, useRef, useState } from './ui-shared.js'
+import { subscribeUpdatePause, updateInstalling } from './dsh-updates.js'
 
 export type TerminalTarget = { workspace: string; profile?: never; session?: never } | { profile: string; session: string; workspace?: never }
 export const terminalScope = (target: TerminalTarget): Record<string, string> => target.workspace !== undefined ? { workspace: target.workspace } : { profile: target.profile, session: target.session }
@@ -60,7 +61,10 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
       let exited = false, seq = 0, writing = Promise.resolve()
       let frame: number | undefined, retry: ReturnType<typeof setTimeout> | undefined, resizing = false, resizeFailures = 0
       let applied = initialSize, desired: TerminalSize | undefined
-      const abort = new AbortController()
+      let abort = new AbortController()
+      // dsh 更新加锁前断开输出流，离开 installing 后按 seq 续传恢复。
+      let resume: (() => void) | undefined
+      const stopPause = subscribeUpdatePause(() => { abort.abort(); abort = new AbortController() }, () => resume?.())
       const missing = (error: unknown) => {
         if (!(error instanceof TerminalMissingError)) return false
         exited = true; gone.current(); return true
@@ -134,6 +138,7 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
       const connect = async () => {
         let failures = 0
         while (live && !exited) {
+          if (updateInstalling()) await new Promise<void>(resolve => { resume = resolve })
           const before = seq
           try {
             const query = new URLSearchParams({ ...scope.current, id, since: String(seq) })
@@ -157,10 +162,10 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
                 }
               }
             } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
-          } catch { if (live) setMessage('连接中断，正在重连…') }
+          } catch { if (live && !updateInstalling()) setMessage('连接中断，正在重连…') }
           if (seq > before) failures = 0
-          if (live && !exited && ++failures > 5) { setMessage('连接已中断'); break }
-          if (live && !exited) await new Promise<void>(resolve => {
+          if (live && !exited && !updateInstalling() && ++failures > 5) { setMessage('连接已中断'); break }
+          if (live && !exited && !updateInstalling()) await new Promise<void>(resolve => {
             const done = () => { clearTimeout(timer); abort.signal.removeEventListener('abort', done); resolve() }
             const timer = setTimeout(done, 1000 * 2 ** (failures - 1))
             abort.signal.addEventListener('abort', done, { once: true })
@@ -170,7 +175,7 @@ export function TerminalView({ id, target, initialSize, active, onGone }: { id: 
       }
       void connect()
       cleanup = () => {
-        live = false; abort.abort(); observer.disconnect(); theme.disconnect(); input.dispose(); terminal.dispose()
+        live = false; abort.abort(); stopPause(); observer.disconnect(); theme.disconnect(); input.dispose(); terminal.dispose()
         if (frame !== undefined) cancelAnimationFrame(frame)
         clearTimeout(retry)
         resize.current = () => {}

@@ -806,7 +806,7 @@ test('leaving during terminal creation keeps it recoverable from the host and ne
 })
 
 async function terminalView({ get, post, initialSize } = {}) {
-  const hooks = renderer(), instances = [], requests = [], observers = [], themes = []
+  const hooks = renderer(), instances = [], requests = [], observers = [], themes = [], updates = new Set()
   const screen = { clientWidth: 300, clientHeight: 400 }
   const frames = new Map(), timers = new Map(), delays = []
   let controller, next = 0, size = { cols: 90, rows: 25 }, removed = 0
@@ -834,6 +834,7 @@ async function terminalView({ get, post, initialSize } = {}) {
       return { type, props: props ?? {}, children: children.flat().filter(Boolean) }
     },
     globals: { FakeTerminal, FakeFit, ResizeObserver: Observer, MutationObserver: Observer,
+      dshDesktop: { updates: { subscribe: listener => { updates.add(listener); return () => updates.delete(listener) } } },
       document: { documentElement: {} }, getComputedStyle: () => ({ getPropertyValue: name => { themes.push(name); return '#aaaaaa' } }),
       AbortController, TextDecoder, URLSearchParams, atob,
       requestAnimationFrame: run => { frames.set(++next, run); return next }, cancelAnimationFrame: id => frames.delete(id),
@@ -846,7 +847,7 @@ async function terminalView({ get, post, initialSize } = {}) {
           return { json: async () => ({ ok: true, value: null }) }
         }
         requests.push({ url })
-        if (get) return get(url)
+        if (get) return get(url, options)
         return new Response(new ReadableStream({ start(value) {
           controller = value
           options.signal.addEventListener('abort', () => { try { value.close() } catch {} }, { once: true })
@@ -858,7 +859,9 @@ async function terminalView({ get, post, initialSize } = {}) {
   const flush = async () => { await tick(); const runs = [...frames.values()]; frames.clear(); for (const run of runs) run(); await tick() }
   const retry = async () => { const [id, run] = timers.entries().next().value; timers.delete(id); run(); await tick() }
   return { hooks, instances, requests, observers, themes, screen, frames, timers, delays, render, flush, retry,
-    get controller() { return controller }, get removed() { return removed }, setSize: value => { size = value } }
+    emitPhase: phase => { for (const listener of [...updates]) listener({ phase }) },
+    get controller() { return controller }, get removed() { return removed }, setSize: value => { size = value },
+    get updateListeners() { return updates.size } }
 }
 
 test('xterm survives welcome and same-cwd session handoffs and uses the latest target for input and reconnect', async () => {
@@ -925,6 +928,45 @@ test('xterm fits, writes input, follows theme, survives tab switches and reconne
   assert.equal(terminal.inputDisposed, true)
   assert.ok(observers.every(observer => observer.disconnected))
   assert.equal(requests.some(item => item.op === 'close'), false, 'unmount disconnects the view and leaves the host terminal recoverable')
+})
+
+test('a dsh update install drops the terminal stream and resumes it by seq without replay', async () => {
+  const streams = [], encoder = new TextEncoder()
+  const f = await terminalView({ get: (url, options) => {
+    if (options.signal.aborted) throw new Error('aborted before connect', { name: 'AbortError' })
+    const stream = { url: String(url), signal: options.signal, chunks: [], waiters: [], closed: false,
+      emit(text) { const waiter = this.waiters.shift(); if (waiter) waiter.resolve({ value: encoder.encode(text), done: false }); else this.chunks.push(text) } }
+    options.signal.addEventListener('abort', () => { stream.closed = true; for (const waiter of stream.waiters.splice(0)) waiter.reject(new Error('aborted')) }, { once: true })
+    streams.push(stream)
+    return { ok: true, body: { getReader: () => ({ read: () => new Promise((resolve, reject) => {
+      if (stream.chunks.length) resolve({ value: encoder.encode(stream.chunks.shift()), done: false })
+      else stream.waiters.push({ resolve, reject })
+    }), cancel: async () => {}, releaseLock: () => {} }) } }
+  } })
+  try {
+    f.render(); await f.flush()
+    assert.equal(streams.length, 1)
+    assert.equal(f.updateListeners, 1, 'the view subscribes to dshDesktop.updates once')
+    streams[0].emit(JSON.stringify({ type: 'output', from: 0, seq: 3, data: Buffer.from('abc').toString('base64') }) + '\n')
+    await tick()
+    assert.deepEqual(f.instances[0].bytes, [...Buffer.from('abc')])
+    f.emitPhase('installing'); await tick(); await tick()
+    assert.equal(streams[0].signal.aborted, true, 'installing aborts the open request')
+    assert.equal(streams.length, 1, 'installing holds the stream: no reconnect fires')
+    assert.doesNotMatch(JSON.stringify(f.render()), /连接中断/, 'the hold stays silent')
+    f.emitPhase('ready'); await tick(); await tick()
+    assert.equal(streams.length, 2, 'leaving installing reconnects')
+    assert.equal(streams[1].signal.aborted, false, 'the resumed request uses a fresh signal')
+    assert.equal(new URL(streams[1].url, 'http://host').searchParams.get('since'), '3', 'the resume continues from the applied seq')
+    streams[1].emit([
+      { type: 'output', from: 0, seq: 3, data: Buffer.from('abc').toString('base64') },
+      { type: 'output', from: 3, seq: 4, data: Buffer.from('d').toString('base64') },
+    ].map(item => JSON.stringify(item) + '\n').join(''))
+    await tick()
+    assert.deepEqual(f.instances[0].bytes, [...Buffer.from('abcd')], 'replayed output is not written twice')
+    f.hooks.dispose()
+    assert.equal(f.updateListeners, 0, 'unmount unsubscribes dshDesktop.updates')
+  } finally { f.hooks.dispose() }
 })
 
 test('large terminal pastes preserve Unicode and send ordered chunks below the host limit', async () => {
