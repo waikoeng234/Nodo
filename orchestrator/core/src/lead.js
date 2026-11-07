@@ -265,20 +265,26 @@ export function install(rt) {
     const sessionId = found.session.source?.kind === 'lead' ? found.session.source.leadSessionId : id
     const owner = rt.conversationOf(sessionId)
     const state = stateOf(sessionId)
-    if (!owner || state.delivering) return
-    state.delivering = true
-    try {
-      while (owner.session.reportQueue?.length) {
-        const item = owner.session.reportQueue[0]
-        if (freezing.has(item.id)) return
-        if (!await freezeReport(owner.session, item)) continue
-        const placed = await deliverReport(owner.profile.id, owner.session, item)
-        if (placed) void rt.followLead(sessionId, placed)
-        else if (owner.session.reportQueue?.[0] === item) return
-      }
-    } catch (error) {
-      rt.warn('nodo: lead report failed (%s): %s', sessionId, error.message ?? error)
-    } finally { state.delivering = false }
+    if (!owner) return
+    // A request during a pass may follow a change that pass already read past: it
+    // runs one more pass, and every caller settles with the last one.
+    if (state.delivering) { state.again = true; return state.delivering }
+    state.delivering = (async () => {
+      do {
+        state.again = false
+        try {
+          for (let item; (item = owner.session.reportQueue?.[0]) && !freezing.has(item.id);) {
+            if (!await freezeReport(owner.session, item)) continue
+            const placed = await deliverReport(owner.profile.id, owner.session, item)
+            if (placed) void rt.followLead(sessionId, placed)
+            else if (owner.session.reportQueue?.[0] === item) break
+          }
+        } catch (error) {
+          rt.warn('nodo: lead report failed (%s): %s', sessionId, error.message ?? error)
+        }
+      } while (state.again)
+    })().finally(() => { state.delivering = undefined })
+    return state.delivering
   }
   const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name}. Start your report with a one-line outcome summary, actual verification results and unresolved issues.
 Carry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.
