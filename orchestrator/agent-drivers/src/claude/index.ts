@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js'
+import { STEER, addUsage, isTodoTool, promptTokensOf, todoPlanSteps, usageOf } from '../spi.js'
 import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { collector } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
@@ -305,6 +305,13 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
   const startTool = (block: ClaudeToolUse, parentCallId: string | undefined) => {
     const turn = running!
     if (turn.completedTools.has(block.id)) return
+    // The top-level todo list rides the plan channel; its call and result never
+    // become a tool row. Subagent todos keep the ordinary row.
+    if (!parentCallId && isTodoTool(block.name)) {
+      const steps = todoPlanSteps(block.input)
+      if (steps) { emit({ type: 'plan', turnId: turn.id, steps }); turn.completedTools.add(block.id) }
+      return
+    }
     const previous = turn.tools.get(block.id)
     turn.tools.set(block.id, { name: block.name ?? previous?.name ?? 'tool', input: block.input ?? previous?.input,
       parentCallId: parentCallId ?? previous?.parentCallId })

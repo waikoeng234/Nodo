@@ -6,6 +6,7 @@ import { TOOL_TIMELINE_CSS } from './tool-timeline.tsx'
 import { CODE_DIFF_CSS } from './code-diff.tsx'
 import { FILE_CHANGES_SUMMARY_CSS } from './file-changes-summary.tsx'
 import { CHANGES_PANEL_CSS } from './changes-panel.tsx'
+import { TODO_DOCK_CSS } from './todo-dock.js'
 import { COMPOSER_ATTACHMENTS_CSS } from './composer-attachments.tsx'
 import { FILE_ICON_CSS } from './file-icons.tsx'
 import { HOVER_PREVIEW_CSS } from './hover-preview.tsx'
@@ -43,7 +44,7 @@ html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :is(.no
 html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
 `
 
-export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + FILE_ICON_CSS + HOVER_PREVIEW_CSS + `
+export const CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + TODO_DOCK_CSS + COMPOSER_ATTACHMENTS_CSS + FILE_ICON_CSS + HOVER_PREVIEW_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}

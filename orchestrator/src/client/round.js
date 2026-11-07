@@ -7,6 +7,7 @@ import { RoleAvatar } from './avatar.tsx'
 import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
 import { supportedStreamRecord } from './stream-records.js'
 import { StreamingText } from './streaming-text.tsx'
+import { PlanDock } from './todo-dock.js'
 import { runDuration } from './running.js'
 
 const NODO_BLOCK = /^```nodo[ \t]*\r?\n[\s\S]*?(?:^```[ \t]*$|(?![\s\S]))/gm
@@ -226,13 +227,16 @@ export function RoundMember({ step, round }) {
           onClick: () => round.onSupplement(step) }, h(IconEditOutlineRegular, { size: 14 }), '补充'),
         h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
           h(IconRightUpOutlineRegular, { size: 14 }), '查看会话')),
+      // The live task list sits between the header and the event stream; a
+      // reported member's card is its report and changes instead.
       step.report ? h(Fragment, null,
         rest || step.taskId
           ? h('button', { type: 'button', className: 'nodo-round-summary', 'aria-expanded': open, onClick: () => setOpen(value => !value) },
             h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
           : h('p', { className: 'nodo-round-summary' }, summary),
         h(RoundChanges, { step }))
-        : h(RoundTools, { step, work }),
+        : h(Fragment, null, h(PlanDock, { profileId: step.profile, sessionId: step.session, compact: true }),
+          h(RoundTools, { step, work })),
       !step.report && step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
       open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
       open && step.taskId && h(RoundTask, { step })))

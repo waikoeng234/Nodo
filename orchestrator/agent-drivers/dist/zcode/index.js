@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { STEER, addUsage, steerFailed, usageOf } from '../spi.js';
+import { STEER, addUsage, isTodoTool, steerFailed, todoPlanSteps, usageOf } from '../spi.js';
 import { invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector, listDirs, newestPluginVersions } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
@@ -229,6 +229,15 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         const id = payload.toolCallId;
         if (!id || turn.completedTools.has(id))
             return;
+        // The top-level todo list rides the plan channel; its call and result never
+        // become a tool row. Subagent todos keep the ordinary row.
+        if (turn.planTools.has(id) || !payload.parentToolCallId && isTodoTool(payload.toolName)) {
+            turn.planTools.add(id);
+            const plan = todoPlanSteps(payload.input);
+            if (plan)
+                emit({ type: 'plan', turnId: turn.id, steps: plan });
+            return;
+        }
         if (payload.toolName)
             turn.names.set(id, payload.toolName);
         if (payload.parentToolCallId)
@@ -352,7 +361,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 detail: `第 ${retry.attempt}/${retry.maxRetries} 次，等待 ${Math.ceil((retry.retryDelayMs ?? 0) / 1000)} 秒` });
         }
         if (event.type === 'tool.updated') {
-            if (payload.kind === 'batch' || !payload.toolCallId || turn.completedTools.has(payload.toolCallId))
+            if (payload.kind === 'batch' || !payload.toolCallId || turn.completedTools.has(payload.toolCallId) || turn.planTools.has(payload.toolCallId))
                 return;
             startTool(payload);
             const parent = turn.parents.get(payload.toolCallId);
@@ -605,7 +614,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 throw new Error('ZCode is compacting this session');
             if (running)
                 throw new Error('ZCode already has a running turn');
-            const turn = running = { id: `zcode-${++sequence}`, started: false, messages: new Set(), tools: new Set(), completedTools: new Set(), names: new Map(), inputs: new Map(), parents: new Map(), parentEmitted: new Set(), guides: new Set(), guideIds: new Map(), sawText: false, settle: null };
+            const turn = running = { id: `zcode-${++sequence}`, started: false, messages: new Set(), tools: new Set(), completedTools: new Set(), planTools: new Set(), names: new Map(), inputs: new Map(), parents: new Map(), parentEmitted: new Set(), guides: new Set(), guideIds: new Map(), sawText: false, settle: null };
             turn.changes = createFileChanges(cwd);
             try {
                 await boot();

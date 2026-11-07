@@ -631,3 +631,21 @@ test('claude only marks structured transient failures retryable', () => withFixt
     assert.equal(ended.retryable, undefined)
   } finally { driver.dispose() }
 }))
+
+test('Claude maps a top-level TodoWrite call to the plan channel and keeps subagent todos as rows', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('TODOS')
+      await until(() => events.find(event => event.type === 'turn/end'))
+      const plans = events.filter(event => event.type === 'plan')
+      assert.equal(plans.length, 1, 'stream and assembled copies of the same call emit one snapshot')
+      assert.deepEqual(plans[0].steps, [
+        { text: 'Map the calls', status: 'completed' }, { text: 'Emit the plan', status: 'in_progress' }, { text: 'Suppress the row', status: 'pending' },
+      ])
+      assert.equal(events.some(event => event.type === 'tool' && event.callId === 'todo-tool'), false, 'the todo call never becomes a tool row')
+      assert.equal(events.some(event => event.type === 'tool' && event.callId === 'todo-tool' && event.phase === 'end'), false)
+    } finally { driver.dispose() }
+  })
+})

@@ -744,3 +744,22 @@ test('ZCode check reports why the app-server died instead of a bare exit code', 
     } finally { delete process.env.FIXTURE_EXIT_APPSERVER }
   })
 })
+
+test('ZCode maps a top-level TodoWrite call to the plan channel and keeps subagent todos as rows', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('zcode', { bin, cwd, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('TODOS')
+      await until(() => events.find(event => event.type === 'turn/end'))
+      const plans = events.filter(event => event.type === 'plan')
+      assert.equal(plans.length, 1)
+      assert.deepEqual(plans[0].steps, [
+        { text: 'Map the calls', status: 'completed' }, { text: 'Emit the plan', status: 'in_progress' }, { text: 'Suppress the row', status: 'pending' },
+      ])
+      assert.equal(events.some(event => event.type === 'tool' && event.callId === 'todo'), false, 'the todo call never becomes a tool row')
+      const child = events.filter(event => event.type === 'tool' && event.callId === 'child-todo')
+      assert.deepEqual(child.map(event => event.phase), ['start', 'end'], 'a subagent todo keeps the ordinary row')
+    } finally { driver.dispose() }
+  })
+})

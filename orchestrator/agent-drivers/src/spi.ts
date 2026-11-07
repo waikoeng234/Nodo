@@ -346,6 +346,25 @@ export function timingOf(raw: unknown): Timing | undefined {
   return Object.keys(timing).length > 0 ? timing : undefined
 }
 
+/** The todo-list tool under any spelling (`TodoWrite`, `todo_write`, …). */
+export const isTodoTool = (name: unknown) => typeof name === 'string' && name.replace(/[^a-z]/gi, '').toLowerCase() === 'todowrite'
+
+/**
+ * A todo tool's whole-list input (object or JSON string) as `plan` steps: empty
+ * contents dropped, unknown statuses read as pending. Undefined without a
+ * usable list, so a call whose input has not arrived yet stays silent.
+ */
+export function todoPlanSteps(input: unknown) {
+  let parsed: unknown = input
+  if (typeof input === 'string') { try { parsed = JSON.parse(input) } catch { return undefined } }
+  const raw = Array.isArray((parsed as { todos?: unknown } | null)?.todos) ? (parsed as { todos: unknown[] }).todos : []
+  const steps = raw.filter(todo => typeof (todo as { content?: unknown })?.content === 'string' && (todo as { content: string }).content !== '').slice(0, 50)
+    .map(todo => ({ text: (todo as { content: string }).content,
+      status: (todo as { status?: string }).status === 'in_progress' || (todo as { status?: string }).status === 'completed'
+        ? (todo as { status: 'in_progress' | 'completed' }).status : 'pending' as const }))
+  return steps.length > 0 ? steps : undefined
+}
+
 /** Returns the primitive names an adapter object does not provide as functions. */
 export function missingPrimitives(candidate: unknown) {
   if (candidate === null || typeof candidate !== 'object') return [...PRIMITIVES]

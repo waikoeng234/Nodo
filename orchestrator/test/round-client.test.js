@@ -1296,3 +1296,23 @@ test('supplementing scopes the conversation to a task: chip, taskId on send, que
   assert.deepEqual(plain(calls.filter(call => call.endpoint === 'send').at(-1).payload),
     { profile: 'lead', session: 'l1', text: 'Plain', images: [], mode: 'queue' })
 })
+
+test('a live executor card shows the member task list between the header and the event stream', async () => {
+  const lines = [{ who: 'user', kind: 'text', text: 'Task' },
+    { who: 'agent', kind: 'plan', steps: [{ text: 'one', status: 'completed' }, { text: 'two', status: 'in_progress' }] }]
+  const { RoundMember, host } = await loadClient(['round.js', 'stream-records.js'], { call: async () => fullAnswer(lines) })
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], teams: [], onOpen: () => {} }
+  const step = { session: 'e2', profile: 'tester', type: 'test', hard: false, reused: false }
+  const dock = () => {
+    host.reset()
+    const node = nodes(RoundMember({ step, round })).find(item => item.props.sessionId === 'e2' && item.props.compact)
+    return node && node.type(node.props)
+  }
+  assert.equal(dock(), null, 'nothing shows before the transcript arrives')
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  const card = dock()
+  assert.equal(card.props.className, 'nodo-todo-dock')
+  assert.equal(card.props['data-compact'], '')
+  assert.equal(nodes(card).find(node => node.props.className === 'nodo-todo-dock-progress').children[0], '已完成 1 · 进行中 1')
+})

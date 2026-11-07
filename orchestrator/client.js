@@ -11953,14 +11953,14 @@ function ResourceList({ resources, scope, cwd }) {
   if (items.length === 0) return null;
   return (0, import_react.createElement)("div", { "data-nodo-resources": "" }, items.map((resource, index) => (0, import_react.createElement)(ResourceItem, { key: index, resource, scope, cwd })));
 }
-function streamProgress(progress) {
-  if (!progress || typeof progress !== "object") return null;
+function streamProgress(progress2) {
+  if (!progress2 || typeof progress2 !== "object") return null;
   const parts = [];
-  if (Number.isFinite(progress.elapsedMs)) parts.push(`\u5DF2\u7528\u65F6 ${(progress.elapsedMs / 1e3).toFixed(1)} \u79D2`);
-  if (typeof progress.message === "string" && progress.message !== "") parts.push(progress.message.slice(0, 200));
-  if (Number.isFinite(progress.outputBytes)) parts.push(`\u8F93\u51FA ${streamSize(progress.outputBytes)}`);
-  if (Number.isFinite(progress.stdoutBytes)) parts.push(`stdout ${streamSize(progress.stdoutBytes)}`);
-  if (Number.isFinite(progress.stderrBytes)) parts.push(`stderr ${streamSize(progress.stderrBytes)}`);
+  if (Number.isFinite(progress2.elapsedMs)) parts.push(`\u5DF2\u7528\u65F6 ${(progress2.elapsedMs / 1e3).toFixed(1)} \u79D2`);
+  if (typeof progress2.message === "string" && progress2.message !== "") parts.push(progress2.message.slice(0, 200));
+  if (Number.isFinite(progress2.outputBytes)) parts.push(`\u8F93\u51FA ${streamSize(progress2.outputBytes)}`);
+  if (Number.isFinite(progress2.stdoutBytes)) parts.push(`stdout ${streamSize(progress2.stdoutBytes)}`);
+  if (Number.isFinite(progress2.stderrBytes)) parts.push(`stderr ${streamSize(progress2.stderrBytes)}`);
   return parts.length ? parts.join(" \xB7 ") : null;
 }
 function ChangedFile({ file, load, loaded, available, root, cycle = 0, inline = false, patch, panel = false, preview = false }) {
@@ -12052,7 +12052,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
   });
   const status2 = STREAM_STATUS[record.status] ?? STREAM_STATUS.unknown;
   const notice = record.capture !== "complete" ? STREAM_REASON[record.reason] ?? "\u6765\u6E90\u5185\u5BB9\u4E0D\u5B8C\u6574" : null;
-  const progress = record.status === "running" ? streamProgress(body.progress) : null;
+  const progress2 = record.status === "running" ? streamProgress(body.progress) : null;
   const terminal = typeof body.command === "string";
   const diffs = Array.isArray(body.diffs) ? body.diffs.filter((diff) => typeof diff.path === "string" && typeof diff.newText === "string" && (typeof diff.oldText === "string" || diff.oldText === null && diff.created === true)) : [];
   const file = record.kind === "tool" && !terminal && ["read", "write", "edit"].includes(toolVariant(record.title)) ? toolFileChange(body.input ?? body.inputText) : null;
@@ -12080,7 +12080,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
         "div",
         { className: "nodo-stream-content" },
         (0, import_react.createElement)("p", { className: "nodo-note", "data-error": failed ? "" : void 0 }, status2),
-        progress && (0, import_react.createElement)("p", { className: "nodo-note", "data-nodo-progress": "" }, progress),
+        progress2 && (0, import_react.createElement)("p", { className: "nodo-note", "data-nodo-progress": "" }, progress2),
         notice && (0, import_react.createElement)("p", { className: "nodo-note" }, notice),
         !full && record.truncated && (0, import_react.createElement)("p", { className: "nodo-note" }, "\u5F53\u524D\u663E\u793A\u6458\u8981\u3002"),
         (0, import_react.createElement)(ResourceList, { resources: body.resources, scope: request, cwd }),
@@ -12193,13 +12193,13 @@ function decorateStreamingText(root, caret, { name, streaming, animate = streami
     const now = view2.performance.now();
     const rules = [];
     for (const [key, item] of active) {
-      const progress = Math.max(0, Math.min(1, (now - item.since) / FADE_MS));
-      if (progress === 1) {
+      const progress2 = Math.max(0, Math.min(1, (now - item.since) / FADE_MS));
+      if (progress2 === 1) {
         highlights?.delete(item.name);
         active.delete(key);
         continue;
       }
-      const opacity = 1 - (1 - progress) ** 3;
+      const opacity = 1 - (1 - progress2) ** 3;
       rules.push(`::highlight(${item.name}){color:color-mix(in srgb,${item.ink} ${opacity * 100}%,transparent)}`);
     }
     if (rules.length) {
@@ -12741,13 +12741,13 @@ var completedLead = (text) => {
     start = next.index + next[0].length;
   }
 };
-function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error: error2, status: status2, timeline, file, scope }) {
+function ProcessRow({ kind, variant, title, summary, body, input, output, progress: progress2, running, error: error2, status: status2, timeline, file, scope }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const hover = useHoverPreview();
   const text = typeof body === "string" ? body.trim() : "";
-  const expandable = text !== "" || Boolean(input) || Boolean(output) || Boolean(progress);
+  const expandable = text !== "" || Boolean(input) || Boolean(output) || Boolean(progress2);
   const streaming = running === true;
-  const progressNote = streamProgress(progress);
+  const progressNote = streamProgress(progress2);
   const collapsed = summary ? [
     (0, import_react.createElement)("span", { key: "sep", className: "nodo-tool-sep", "data-shimmer-decoration": true, "aria-hidden": true }),
     kind === "thinking" ? (0, import_react.createElement)("span", { key: "summary", className: "nodo-think-summary", "data-streaming": streaming ? "" : void 0 }, summary) : (0, import_react.createElement)("span", { key: "summary", className: "nodo-row-summary", "data-error": error2 ? "" : void 0 }, summary)
@@ -12793,23 +12793,23 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
         (0, import_react.createElement)("span", { className: "nodo-io-label" }, label),
         (0, import_react.createElement)("span", { className: "nodo-io-text", "data-error": error2 && label === "\u8F93\u51FA" ? "" : void 0 }, value)
       )),
-      ...progress?.outputPreview ? [(0, import_react.createElement)(
+      ...progress2?.outputPreview ? [(0, import_react.createElement)(
         "div",
         { key: "output-preview", className: "nodo-io-section" },
         (0, import_react.createElement)("span", { className: "nodo-io-label" }, "\u8F93\u51FA\u9884\u89C8"),
-        (0, import_react.createElement)("span", { className: "nodo-io-text" }, progress.outputPreview)
+        (0, import_react.createElement)("span", { className: "nodo-io-text" }, progress2.outputPreview)
       )] : [],
-      ...progress?.stdoutTail ? [(0, import_react.createElement)(
+      ...progress2?.stdoutTail ? [(0, import_react.createElement)(
         "div",
         { key: "stdout-tail", className: "nodo-io-section" },
         (0, import_react.createElement)("span", { className: "nodo-io-label" }, "stdout\uFF08\u5C3E\u90E8\uFF09"),
-        (0, import_react.createElement)("span", { className: "nodo-io-text" }, progress.stdoutTail)
+        (0, import_react.createElement)("span", { className: "nodo-io-text" }, progress2.stdoutTail)
       )] : [],
-      ...progress?.stderrTail ? [(0, import_react.createElement)(
+      ...progress2?.stderrTail ? [(0, import_react.createElement)(
         "div",
         { key: "stderr-tail", className: "nodo-io-section" },
         (0, import_react.createElement)("span", { className: "nodo-io-label" }, "stderr\uFF08\u5C3E\u90E8\uFF09"),
-        (0, import_react.createElement)("span", { className: "nodo-io-text" }, progress.stderrTail)
+        (0, import_react.createElement)("span", { className: "nodo-io-text" }, progress2.stderrTail)
       )] : []
     )
   });
@@ -12866,14 +12866,14 @@ function toolRow(row, { profile, session, work, timeline }) {
   });
   const action = toolVariant(item.name);
   const variant = TOOL_VARIANTS[action];
-  const progress = streamProgress(item.progress);
+  const progress2 = streamProgress(item.progress);
   return (0, import_react.createElement)(ProcessRow, {
     key: index,
     kind: "tool",
     variant,
     timeline,
     title: `${row.invocation ? "\u8C03\u7528 \xB7 " : row.result ? "\u7ED3\u679C \xB7 " : ""}${variant.title}`,
-    summary: [item.brief ? item.brief.split("\n")[0] : null, progress].filter(Boolean).join(" \xB7 ") || null,
+    summary: [item.brief ? item.brief.split("\n")[0] : null, progress2].filter(Boolean).join(" \xB7 ") || null,
     body: item.brief ?? "",
     input: item.input,
     output: item.output,
@@ -13567,6 +13567,66 @@ function StatsDialog({ stats, onClose }) {
   );
 }
 
+// src/client/todo-dock.js
+var EMPTY2 = [];
+var DOT = { completed: "done", in_progress: "ongoing", pending: "idle" };
+var WORD = { completed: "\u5DF2\u5B8C\u6210", in_progress: "\u8FDB\u884C\u4E2D", pending: "\u5F85\u529E" };
+var progress = (steps) => {
+  const counts = { completed: 0, in_progress: 0, pending: 0 };
+  for (const step of steps) counts[(step.status ?? "pending") in counts ? step.status : "pending"] += 1;
+  return Object.entries(counts).filter(([, count]) => count > 0).map(([status2, count]) => `${WORD[status2]} ${count}`).join(" \xB7 ");
+};
+function PlanDock({ profileId, sessionId, compact }) {
+  const [collapsed, setCollapsed] = (0, import_react.useState)(true);
+  (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
+  (0, import_react.useEffect)(() => sessionId ? watchTranscript(profileId, sessionId) : void 0, [profileId, sessionId]);
+  const lines = sessionId ? transcriptOf(`${profileId}:${sessionId}`) : EMPTY2;
+  const plan = lines.findLast((line) => line.kind === "plan");
+  const steps = plan && plan.removed !== true && Array.isArray(plan.steps) ? plan.steps : [];
+  if (!sessionId || steps.length === 0) return null;
+  return (0, import_react.createElement)(
+    "section",
+    { className: "nodo-todo-dock", "data-compact": compact ? "" : void 0, "aria-label": "\u4EFB\u52A1\u6E05\u5355" },
+    (0, import_react.createElement)(
+      "button",
+      { type: "button", className: "nodo-todo-dock-head", "aria-expanded": !collapsed, onClick: () => setCollapsed((value) => !value) },
+      (0, import_react.createElement)("span", { className: "nodo-todo-dock-lead", "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChecklistOutlineRegular, { size: 16 })),
+      (0, import_react.createElement)("span", { className: "nodo-todo-dock-title" }, "\u4EFB\u52A1\u6E05\u5355"),
+      (0, import_react.createElement)("span", { className: "nodo-todo-dock-progress" }, progress(steps)),
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-todo-dock-chevron", "aria-hidden": true },
+        (0, import_react.createElement)(collapsed ? import_dsh_client_ui_primitives.IconChevronUpOutlineRegular : import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
+      )
+    ),
+    !collapsed && (0, import_react.createElement)(
+      "ul",
+      { className: "nodo-todo-dock-list" },
+      steps.map((step, index) => (0, import_react.createElement)(
+        "li",
+        { key: index, className: "nodo-todo-dock-item", "data-status": step.status ?? "pending" },
+        (0, import_react.createElement)("span", { className: "nodo-todo-dock-glyph", "aria-hidden": true }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: DOT[step.status] ?? "idle", size: 8 })),
+        (0, import_react.createElement)("span", { className: "nodo-todo-dock-content", title: step.text }, step.text)
+      ))
+    )
+  );
+}
+var TODO_DOCK_CSS = `
+.nodo-todo-dock{box-sizing:border-box;flex:none;display:flex;flex-direction:column;gap:8px;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 8px;padding:6px 12px;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu);box-shadow:var(--dsw-elevation-panel);overflow:hidden}
+.nodo-todo-dock-head{display:flex;align-items:center;gap:10px;width:100%;padding:0;border:0;background:0 0;cursor:pointer;text-align:left;font:inherit}
+.nodo-todo-dock-lead{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-todo-dock-title{flex:none;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500;line-height:24px}
+.nodo-todo-dock-progress{flex:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:400;line-height:20px}
+.nodo-todo-dock-chevron{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-todo-dock-list{display:flex;flex-direction:column;gap:8px;max-height:180px;margin:0;padding:0;list-style:none;overflow-y:auto;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+.nodo-todo-dock-item{display:flex;align-items:center;gap:10px;min-width:0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.nodo-todo-dock-glyph{display:grid;place-items:center;flex:none;width:16px;height:16px}
+.nodo-todo-dock-content{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-todo-dock[data-compact]{position:sticky;top:0;z-index:3;width:100%;max-width:none;margin:2px 0;padding:4px 10px;gap:6px;border-radius:var(--dsw-radius-md);background:var(--dsw-specific-sidebar-fill);box-shadow:none}
+.nodo-todo-dock[data-compact] .nodo-todo-dock-list{max-height:140px;gap:6px}
+.nodo-todo-dock[data-compact] .nodo-todo-dock-head{gap:8px}
+`;
+
 // src/client/running.js
 var RUNNING_COLORS = [...avatar_templates_default, ...avatar_templates_default.slice(1, -1).reverse()];
 var RUNNING_COLOR_HOLD = 3160;
@@ -13978,6 +14038,8 @@ function RoundMember({ step, round }) {
           "\u67E5\u770B\u4F1A\u8BDD"
         )
       ),
+      // The live task list sits between the header and the event stream; a
+      // reported member's card is its report and changes instead.
       step.report ? (0, import_react.createElement)(
         import_react.Fragment,
         null,
@@ -13988,7 +14050,12 @@ function RoundMember({ step, round }) {
           (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
         ) : (0, import_react.createElement)("p", { className: "nodo-round-summary" }, summary),
         (0, import_react.createElement)(RoundChanges, { step })
-      ) : (0, import_react.createElement)(RoundTools, { step, work }),
+      ) : (0, import_react.createElement)(
+        import_react.Fragment,
+        null,
+        (0, import_react.createElement)(PlanDock, { profileId: step.profile, sessionId: step.session, compact: true }),
+        (0, import_react.createElement)(RoundTools, { step, work })
+      ),
       !step.report && step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),
       open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
       open && step.taskId && (0, import_react.createElement)(RoundTask, { step })
@@ -14610,7 +14677,7 @@ function ComposerAttachments({ className = "", ...props }) {
 }
 function ComposerAttachmentChip({ attachment, onRemove, onPreview, disabled, className = "", ...props }) {
   const Icon = ICONS[attachment.kind ?? "text"];
-  const progress = Number.isFinite(attachment.progress) ? Math.max(0, Math.min(100, attachment.progress)) : 0;
+  const progress2 = Number.isFinite(attachment.progress) ? Math.max(0, Math.min(100, attachment.progress)) : 0;
   const icon = /* @__PURE__ */ (0, import_react.createElement)(Icon, { size: 16 });
   return /* @__PURE__ */ (0, import_react.createElement)("div", { "data-slot": "composer-attachment", "data-state": attachment.state, className: `nodo-composer-attachment ${className}`, ...props }, onPreview ? /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-composer-attachment-icon", "aria-label": `\u9884\u89C8\u56FE\u7247 ${attachment.name}`, onClick: onPreview }, icon) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-composer-attachment-icon", "aria-hidden": true }, icon), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-composer-attachment-label" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-composer-attachment-name", title: attachment.name }, attachment.name), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-composer-attachment-meta" }, attachment.meta)), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-composer-attachment-trailing" }, attachment.state === "uploading" ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-composer-attachment-spinner", role: "status", "aria-label": `\u6B63\u5728\u4E0A\u4F20 ${attachment.name}` }) : attachment.state === "done" && onRemove ? /* @__PURE__ */ (0, import_react.createElement)(
     "button",
@@ -14630,8 +14697,8 @@ function ComposerAttachmentChip({ attachment, onRemove, onPreview, disabled, cla
       "aria-label": `\u4E0A\u4F20 ${attachment.name}`,
       "aria-valuemin": 0,
       "aria-valuemax": 100,
-      "aria-valuenow": progress,
-      style: { width: `${progress}%` }
+      "aria-valuenow": progress2,
+      style: { width: `${progress2}%` }
     }
   ));
 }
@@ -18792,6 +18859,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           readOnly,
           from: members.find((item) => item.session.id === card.profileId)
         })),
+        (0, import_react.createElement)(PlanDock, { profileId: profile.id, sessionId }),
         !archivedConversation && (0, import_react.createElement)(Composer, {
           profile: composerProfile,
           workspace: sessionWorkspace,
@@ -20899,7 +20967,7 @@ html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-r
 html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] :is(.nodo-space-sidebar,.nodo-space-sidebar .nodo-rail,.nodo-space-sidebar .nodo-rail-dock){border:0;background:0 0}
 html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space] .nodo-space-sidebar .nodo-rail-body{margin-bottom:8px;padding-top:16px;border:var(--nodo-card-edge);border-radius:var(--nodo-card-radius) 0 0 var(--nodo-card-radius);background:var(--dsw-specific-sidebar-fill)}
 `;
-var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + COMPOSER_ATTACHMENTS_CSS + FILE_ICON_CSS + HOVER_PREVIEW_CSS + `
+var CSS = TERMINAL_CSS + AVATAR_CSS + ENGINE_LOGO_CSS + RUNNING_CSS + TOOL_CALL_CSS + TOOL_TIMELINE_CSS + CODE_DIFF_CSS + FILE_CHANGES_SUMMARY_CSS + CHANGES_PANEL_CSS + TODO_DOCK_CSS + COMPOSER_ATTACHMENTS_CSS + FILE_ICON_CSS + HOVER_PREVIEW_CSS + `
 .nodo-page{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-page *{box-sizing:border-box}
 .nodo-space{height:100%;display:flex;flex-direction:column;background:var(--nodo-chrome,var(--dsw-specific-sidebar-fill))}
