@@ -401,7 +401,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-tree-alert[data-tone=caution]{--nodo-tree-tone:var(--dsw-alias-state-warn-primary);color:${WARN_INK}}
 .nodo-tree-alert:hover{background:color-mix(in srgb,var(--nodo-tree-tone) 16%,transparent)}
 .nodo-tree-alert-dot{width:5px;height:5px;border-radius:50%;background:var(--nodo-tree-tone)}
-.nodo-tree{display:flex;flex-direction:column;align-items:stretch;align-self:stretch;gap:2px;width:auto;min-height:0;margin:0}
+.nodo-round-tree{display:flex;flex-direction:column;align-items:stretch;align-self:stretch;gap:2px;flex:1;width:auto;min-height:0;overflow-y:auto}
 .nodo-tree-lead{display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:9px;align-items:center;align-self:stretch;flex:none;box-sizing:border-box;width:auto;margin:0 -2px;padding:8px 10px;border:0;border-radius:var(--nodo-tree-radius);background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-alias-bg-layer-1));color:inherit;font:inherit;text-align:start;cursor:pointer}
 .nodo-tree-lead:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,var(--dsw-alias-bg-layer-1))}
 .nodo-tree-lead>.nodo-avatar{grid-row:span 2}
@@ -432,10 +432,10 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-tree-model{display:flex;align-items:center;gap:4px;flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .nodo-tree-model>:last-child,.nodo-tree-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-tree-title{flex:1;color:var(--dsw-alias-label-secondary)}
-.nodo-tree-state{display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;white-space:nowrap}
-.nodo-tree-state .nodo-dot{width:6px;height:6px}
-.nodo-tree-state[data-tone=caution]{color:${WARN_INK}}
-.nodo-tree-state[data-tone=fault]{color:var(--dsw-alias-state-error-primary)}
+.nodo-round-tree-state{display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;white-space:nowrap}
+.nodo-round-tree-state .nodo-dot{width:6px;height:6px}
+.nodo-round-tree-state[data-tone=caution]{color:${WARN_INK}}
+.nodo-round-tree-state[data-tone=fault]{color:var(--dsw-alias-state-error-primary)}
 .nodo-tree-note{grid-column:2;display:-webkit-box;margin-top:3px;overflow:hidden;color:${WARN_INK};font-size:12px;line-height:18px;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .nodo-tree-row[data-kind=failed] .nodo-tree-note{color:var(--dsw-alias-state-error-primary)}
 .nodo-tree-time{flex:none;min-width:2.6em;text-align:right}

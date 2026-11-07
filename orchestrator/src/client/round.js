@@ -257,10 +257,10 @@ function memberState(task, execution, work, asked, handedOff) {
   if (handedOff) return { kind: 'stopped', word: '已转新会话', dot: 'stop', finished: true }
   if (task?.status === 'done') return { kind: 'done', word: '已完成', dot: 'done', finished: true }
   if (task?.status === 'stopped') return { kind: 'stopped', word: '已停止', dot: 'stop', finished: true }
-  if (task?.status === 'review') return { kind: 'review', word: '待验收', dot: 'done' }
-  if (task?.status === 'blocked') return { kind: 'blocked', word: execution?.status === 'unconfirmed' || task.latestExecutionStatus === 'unconfirmed' ? '未确认' : '受阻', dot: 'wait', tone: 'caution' }
-  if (execution?.status === 'failed') return { kind: 'failed', word: '执行失败', dot: 'err', tone: 'fault' }
   if (asked) return { kind: 'waiting', word: '等待用户', dot: 'wait', tone: 'caution' }
+  if (task?.status === 'review') return { kind: 'review', word: '待验收', dot: 'done' }
+  if (execution?.status === 'failed') return { kind: 'failed', word: '执行失败', dot: 'err', tone: 'fault' }
+  if (task?.status === 'blocked') return { kind: 'blocked', word: execution?.status === 'unconfirmed' || task.latestExecutionStatus === 'unconfirmed' ? '未确认' : '受阻', dot: 'wait', tone: 'caution' }
   if (work?.active && (work.status?.startsWith('waiting-') || work.suspect)) return { kind: 'waiting', word: workLabel(work), dot: 'wait', tone: 'caution' }
   if (execution?.status === 'queued') return { kind: 'queued', word: '排队中', dot: 'stop' }
   if (work?.active || execution?.status === 'running') return { kind: 'running', word: '运行中', dot: 'run', tone: 'accent' }
@@ -348,11 +348,12 @@ export function RoundTeam({ lead, members, work, tasks, decisions, stats, worksp
   const [now, setNow] = useState(() => Date.now())
   const listRef = useRef(null), linksRef = useRef(null), seen = useRef(null), visits = useRef({})
   const leadId = lead?.session.id
-  const asked = taskId => (decisions ?? []).find(decision => (decision.status === 'pending' || decision.status === 'answered') && decision.taskIds.includes(taskId))
   const rows = members.map(({ role, session }) => {
     const hit = latest?.get(session.id)
-    const state = memberState(hit?.task, hit?.execution, work?.[session.id], hit && asked(hit.task.id), hit?.handedOff)
-    const note = ['waiting', 'blocked', 'failed'].includes(state.kind) ? (hit && asked(hit.task.id)?.questions?.[0]?.question) || hit?.execution.reason : undefined
+    const asked = hit && (decisions ?? []).find(decision => (decision.status === 'pending' || decision.status === 'answered')
+      && (decision.taskIds.includes(hit.task.id) || decision.sourceExecutionIds?.includes(hit.execution.id)))
+    const state = memberState(hit?.task, hit?.execution, work?.[session.id], asked, hit?.handedOff)
+    const note = ['waiting', 'blocked', 'failed'].includes(state.kind) ? asked?.questions?.[0]?.question || hit?.execution.reason : undefined
     return { id: session.id, role, session, title: hit?.task.title ?? session.name, attempts: hit?.count ?? 0, note, ...state }
   })
   const pending = (tasks ?? []).filter(task => task.coordinatorSessionId === leadId && task.status === 'open' && task.latestExecutionStatus == null
@@ -363,7 +364,7 @@ export function RoundTeam({ lead, members, work, tasks, decisions, stats, worksp
   const leadState = leadWork?.active ? memberState(undefined, undefined, leadWork)
     : active.length + pending.length > 0 ? { kind: 'idle', word: '等待回报', dot: 'stop' } : rows.length ? { kind: 'done', word: '已完成', dot: 'done' } : { kind: 'idle' }
   const count = kind => rows.filter(row => row.kind === kind).length
-  const live = leadWork?.active === true || active.some(row => row.kind === 'running' || row.kind === 'waiting' || row.kind === 'blocked')
+  const live = leadWork?.active === true || members.some(({ session }) => work?.[session.id]?.active === true)
   // Task statuses and which members run decide whether the list is stale;
   // unrelated structure changes do not refetch, and a folded card never does.
   const stale = [(tasks ?? []).map(task => `${task.id}:${task.status}:${task.latestExecutionStatus}`).join(), members.map(({ session }) => work?.[session.id]?.active === true).join()].join('|')
@@ -413,7 +414,7 @@ export function RoundTeam({ lead, members, work, tasks, decisions, stats, worksp
     const ms = (stats?.[id] ? stats[id].llmMs + stats[id].toolMs : 0) + (work?.[id]?.active && work[id].since ? now - work[id].since : 0)
     return ms > 0 ? h('span', { className: 'nodo-tree-time' }, runDuration(ms)) : null
   }
-  const state = row => row.word ? h('span', { className: 'nodo-tree-state', 'data-tone': row.tone }, row.dot && h(WorkDot, { kind: row.dot }), row.word) : null
+  const state = row => row.word ? h('span', { className: 'nodo-round-tree-state', 'data-tone': row.tone }, row.dot && h(WorkDot, { kind: row.dot }), row.word) : null
   const model = (role, session) => {
     const route = session.model ?? role.model
     return h('span', { className: 'nodo-tree-model', title: route },
@@ -458,7 +459,7 @@ export function RoundTeam({ lead, members, work, tasks, decisions, stats, worksp
       alert('waiting', 'caution', '等待用户'), alert('failed', 'fault', '失败'),
       h('button', { type: 'button', className: 'nodo-tree-toggle', 'aria-expanded': !folded, title: folded ? '展开团队' : '收起团队', onClick: () => setFolded(value => !value) },
         `${count('running')} 运行中 · ${count('done')}/${rows.length} 已完成`, h(IconChevronDownOutlineRegular, { size: 14 }))),
-    !folded && h('div', { className: 'nodo-tree', role: 'tree', 'aria-label': '团队', onKeyDown: step },
+    !folded && h('div', { className: 'nodo-round-tree', role: 'tree', 'aria-label': '团队', onKeyDown: step },
       lead && h('button', { type: 'button', className: 'nodo-tree-lead', 'data-session': leadId, title: '查看主控会话', onClick: () => onOpen(leadId) },
         h(RoleAvatar, { profile: lead.role, size: 28, running: leadState.kind === 'running' }),
         h('span', { className: 'nodo-tree-line' }, h('span', { className: 'nodo-tree-name' }, lead.role.name), state(leadState)),

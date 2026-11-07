@@ -14102,10 +14102,10 @@ function memberState(task, execution, work, asked, handedOff) {
   if (handedOff) return { kind: "stopped", word: "\u5DF2\u8F6C\u65B0\u4F1A\u8BDD", dot: "stop", finished: true };
   if (task?.status === "done") return { kind: "done", word: "\u5DF2\u5B8C\u6210", dot: "done", finished: true };
   if (task?.status === "stopped") return { kind: "stopped", word: "\u5DF2\u505C\u6B62", dot: "stop", finished: true };
-  if (task?.status === "review") return { kind: "review", word: "\u5F85\u9A8C\u6536", dot: "done" };
-  if (task?.status === "blocked") return { kind: "blocked", word: execution?.status === "unconfirmed" || task.latestExecutionStatus === "unconfirmed" ? "\u672A\u786E\u8BA4" : "\u53D7\u963B", dot: "wait", tone: "caution" };
-  if (execution?.status === "failed") return { kind: "failed", word: "\u6267\u884C\u5931\u8D25", dot: "err", tone: "fault" };
   if (asked) return { kind: "waiting", word: "\u7B49\u5F85\u7528\u6237", dot: "wait", tone: "caution" };
+  if (task?.status === "review") return { kind: "review", word: "\u5F85\u9A8C\u6536", dot: "done" };
+  if (execution?.status === "failed") return { kind: "failed", word: "\u6267\u884C\u5931\u8D25", dot: "err", tone: "fault" };
+  if (task?.status === "blocked") return { kind: "blocked", word: execution?.status === "unconfirmed" || task.latestExecutionStatus === "unconfirmed" ? "\u672A\u786E\u8BA4" : "\u53D7\u963B", dot: "wait", tone: "caution" };
   if (work?.active && (work.status?.startsWith("waiting-") || work.suspect)) return { kind: "waiting", word: workLabel(work), dot: "wait", tone: "caution" };
   if (execution?.status === "queued") return { kind: "queued", word: "\u6392\u961F\u4E2D", dot: "stop" };
   if (work?.active || execution?.status === "running") return { kind: "running", word: "\u8FD0\u884C\u4E2D", dot: "run", tone: "accent" };
@@ -14220,11 +14220,11 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
   const [now, setNow] = (0, import_react.useState)(() => Date.now());
   const listRef = (0, import_react.useRef)(null), linksRef = (0, import_react.useRef)(null), seen = (0, import_react.useRef)(null), visits = (0, import_react.useRef)({});
   const leadId = lead?.session.id;
-  const asked = (taskId) => (decisions ?? []).find((decision) => (decision.status === "pending" || decision.status === "answered") && decision.taskIds.includes(taskId));
   const rows = members.map(({ role, session }) => {
     const hit = latest?.get(session.id);
-    const state2 = memberState(hit?.task, hit?.execution, work?.[session.id], hit && asked(hit.task.id), hit?.handedOff);
-    const note = ["waiting", "blocked", "failed"].includes(state2.kind) ? hit && asked(hit.task.id)?.questions?.[0]?.question || hit?.execution.reason : void 0;
+    const asked = hit && (decisions ?? []).find((decision) => (decision.status === "pending" || decision.status === "answered") && (decision.taskIds.includes(hit.task.id) || decision.sourceExecutionIds?.includes(hit.execution.id)));
+    const state2 = memberState(hit?.task, hit?.execution, work?.[session.id], asked, hit?.handedOff);
+    const note = ["waiting", "blocked", "failed"].includes(state2.kind) ? asked?.questions?.[0]?.question || hit?.execution.reason : void 0;
     return { id: session.id, role, session, title: hit?.task.title ?? session.name, attempts: hit?.count ?? 0, note, ...state2 };
   });
   const pending = (tasks ?? []).filter((task) => task.coordinatorSessionId === leadId && task.status === "open" && task.latestExecutionStatus == null && !tasks.some((child) => child.parentId === task.id));
@@ -14233,7 +14233,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
   const leadWork = leadId ? work?.[leadId] : void 0;
   const leadState = leadWork?.active ? memberState(void 0, void 0, leadWork) : active.length + pending.length > 0 ? { kind: "idle", word: "\u7B49\u5F85\u56DE\u62A5", dot: "stop" } : rows.length ? { kind: "done", word: "\u5DF2\u5B8C\u6210", dot: "done" } : { kind: "idle" };
   const count = (kind) => rows.filter((row) => row.kind === kind).length;
-  const live = leadWork?.active === true || active.some((row) => row.kind === "running" || row.kind === "waiting" || row.kind === "blocked");
+  const live = leadWork?.active === true || members.some(({ session }) => work?.[session.id]?.active === true);
   const stale = [(tasks ?? []).map((task) => `${task.id}:${task.status}:${task.latestExecutionStatus}`).join(), members.map(({ session }) => work?.[session.id]?.active === true).join()].join("|");
   (0, import_react.useEffect)(() => {
     if (!live) return;
@@ -14279,7 +14279,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
     const ms2 = (stats?.[id] ? stats[id].llmMs + stats[id].toolMs : 0) + (work?.[id]?.active && work[id].since ? now - work[id].since : 0);
     return ms2 > 0 ? (0, import_react.createElement)("span", { className: "nodo-tree-time" }, runDuration(ms2)) : null;
   };
-  const state = (row) => row.word ? (0, import_react.createElement)("span", { className: "nodo-tree-state", "data-tone": row.tone }, row.dot && (0, import_react.createElement)(WorkDot, { kind: row.dot }), row.word) : null;
+  const state = (row) => row.word ? (0, import_react.createElement)("span", { className: "nodo-round-tree-state", "data-tone": row.tone }, row.dot && (0, import_react.createElement)(WorkDot, { kind: row.dot }), row.word) : null;
   const model = (role, session) => {
     const route2 = session.model ?? role.model;
     return (0, import_react.createElement)(
@@ -14359,7 +14359,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
     ),
     !folded && (0, import_react.createElement)(
       "div",
-      { className: "nodo-tree", role: "tree", "aria-label": "\u56E2\u961F", onKeyDown: step },
+      { className: "nodo-round-tree", role: "tree", "aria-label": "\u56E2\u961F", onKeyDown: step },
       lead && (0, import_react.createElement)(
         "button",
         { type: "button", className: "nodo-tree-lead", "data-session": leadId, title: "\u67E5\u770B\u4E3B\u63A7\u4F1A\u8BDD", onClick: () => onOpen(leadId) },
@@ -21546,7 +21546,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-tree-alert[data-tone=caution]{--nodo-tree-tone:var(--dsw-alias-state-warn-primary);color:${WARN_INK}}
 .nodo-tree-alert:hover{background:color-mix(in srgb,var(--nodo-tree-tone) 16%,transparent)}
 .nodo-tree-alert-dot{width:5px;height:5px;border-radius:50%;background:var(--nodo-tree-tone)}
-.nodo-tree{display:flex;flex-direction:column;align-items:stretch;align-self:stretch;gap:2px;width:auto;min-height:0;margin:0}
+.nodo-round-tree{display:flex;flex-direction:column;align-items:stretch;align-self:stretch;gap:2px;flex:1;width:auto;min-height:0;overflow-y:auto}
 .nodo-tree-lead{display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:9px;align-items:center;align-self:stretch;flex:none;box-sizing:border-box;width:auto;margin:0 -2px;padding:8px 10px;border:0;border-radius:var(--nodo-tree-radius);background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-alias-bg-layer-1));color:inherit;font:inherit;text-align:start;cursor:pointer}
 .nodo-tree-lead:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,var(--dsw-alias-bg-layer-1))}
 .nodo-tree-lead>.nodo-avatar{grid-row:span 2}
@@ -21577,10 +21577,10 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-tree-model{display:flex;align-items:center;gap:4px;flex:1;min-width:0;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .nodo-tree-model>:last-child,.nodo-tree-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nodo-tree-title{flex:1;color:var(--dsw-alias-label-secondary)}
-.nodo-tree-state{display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;white-space:nowrap}
-.nodo-tree-state .nodo-dot{width:6px;height:6px}
-.nodo-tree-state[data-tone=caution]{color:${WARN_INK}}
-.nodo-tree-state[data-tone=fault]{color:var(--dsw-alias-state-error-primary)}
+.nodo-round-tree-state{display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;white-space:nowrap}
+.nodo-round-tree-state .nodo-dot{width:6px;height:6px}
+.nodo-round-tree-state[data-tone=caution]{color:${WARN_INK}}
+.nodo-round-tree-state[data-tone=fault]{color:var(--dsw-alias-state-error-primary)}
 .nodo-tree-note{grid-column:2;display:-webkit-box;margin-top:3px;overflow:hidden;color:${WARN_INK};font-size:12px;line-height:18px;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .nodo-tree-row[data-kind=failed] .nodo-tree-note{color:var(--dsw-alias-state-error-primary)}
 .nodo-tree-time{flex:none;min-width:2.6em;text-align:right}

@@ -432,8 +432,8 @@ test('each executor row says its state from the task, its newest execution, live
   const tasks = [
     { id: 't1', title: 'Review', status: 'review', executions: [{ sessionId: 'e1', createdAt: 10 }] },
     { id: 't2', title: 'Unconfirmed', status: 'blocked', latestExecutionStatus: 'unconfirmed', executions: [{ sessionId: 'e2', createdAt: 10, status: 'unconfirmed' }] },
-    { id: 't3', title: 'Failed', status: 'open', executions: [{ sessionId: 'e3', createdAt: 10, status: 'failed', reason: '2 tests fail' }] },
-    { id: 't4', title: 'Asked', status: 'open', executions: [{ sessionId: 'e4', createdAt: 10, status: 'running' }] },
+    { id: 't3', title: 'Failed', status: 'blocked', executions: [{ sessionId: 'e3', createdAt: 10, status: 'failed', reason: '2 tests fail' }] },
+    { id: 't4', title: 'Asked', status: 'blocked', latestExecutionStatus: 'unconfirmed', executions: [{ sessionId: 'e4', createdAt: 10, status: 'unconfirmed' }] },
     { id: 't5', title: 'Approval', status: 'open', executions: [{ sessionId: 'e5', createdAt: 10, status: 'running' }] },
     { id: 't6', title: 'Running', status: 'open', latestExecutionStatus: 'running', executions: [{ sessionId: 'e6', createdAt: 10, status: 'running' }] },
     { id: 't7', title: 'Queued', status: 'open', executions: [{ sessionId: 'e7', createdAt: 10, status: 'queued' }] },
@@ -461,6 +461,22 @@ test('each executor row says its state from the task, its newest execution, live
   assert.equal(rows.e8, undefined, 'a session whose task moved to a new session folds away')
   const alerts = nodes(render()).filter(node => node.props?.className === 'nodo-tree-alert').map(text)
   assert.deepEqual(plain(alerts), ['2 等待用户', '1 失败'])
+})
+
+test('a decision sourced only by execution marks its member as waiting for the user', async () => {
+  const tasks = [{ id: 't1', title: 'Review', status: 'review', executions: [{ id: 'x1', sessionId: 'e1', createdAt: 10, status: 'done' }] }]
+  const decisions = [{ status: 'pending', taskIds: [], sourceExecutionIds: ['x1'], questions: [{ question: 'Accept this tradeoff?' }] }]
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => tasks } })
+  const render = () => {
+    host.reset()
+    return RoundTeam({ members: [{ role: { id: 'worker', name: 'Worker' }, session: { id: 'e1' } }], decisions, work: {}, onOpen() {} })
+  }
+  render()
+  host.effects.at(-1)()
+  await tick()
+  const row = treeRows(render())[0]
+  assert.equal(row.kind, 'waiting')
+  assert.ok(text(row.node).includes('Accept this tradeoff?'))
 })
 
 test('a delegation chip names its executor, and the faces stack lists every role of the round', async () => {
@@ -937,6 +953,30 @@ test('a reused session takes its newest execution\'s task, counts its executions
   assert.equal(label('e2'), 'Coder|Legacy', 'a session without executions or stats shows no time')
   work = { e1: { active: true, since: Date.now() - 30500 } }
   assert.equal(label('e1'), 'Coder|待验收|Newest task|第 2 次|1m 40s', 'the turn in flight adds to the finished ones')
+})
+
+test('working time keeps ticking while a session with a reported task runs a follow-up turn', async () => {
+  let now = 60000, advance
+  const tasks = [{ id: 't1', title: 'Review', status: 'review', executions: [{ sessionId: 'e1', createdAt: 1, status: 'done' }] }]
+  const { RoundTeam, host } = await loadClient('round.js', {
+    uiShared: { ...TEAM_SHARED, call: async () => tasks },
+    globals: { Date: class extends Date { static now() { return now } }, setInterval: callback => { advance = callback; return 1 }, clearInterval() {} },
+  })
+  const render = () => {
+    host.reset()
+    return RoundTeam({ members: [{ role: { id: 'worker', name: 'Worker' }, session: { id: 'e1' } }],
+      stats: { e1: { llmMs: 10000, toolMs: 0 } }, work: { e1: { active: true, since: 30000 } }, onOpen() {} })
+  }
+  render()
+  host.effects.at(-1)()
+  await tick()
+  assert.ok(text(render()).includes('40s'))
+  const stop = host.effects.at(-3)()
+  assert.equal(typeof advance, 'function', 'the live session keeps the timer active after its task reports')
+  now += 5000
+  advance()
+  assert.ok(text(render()).includes('45s'))
+  stop()
 })
 
 test('rows open their session, and the header alert walks through the members in that state', async () => {
