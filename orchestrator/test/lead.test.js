@@ -2265,8 +2265,9 @@ test('a manual recovery completion without replyId reports inline without a refe
   assert.equal(work.source.pendingReport, undefined)
 }))
 
+// setTimeout is mocked around these waits, so they yield with setImmediate against a wall-clock deadline.
 const retryUntil = async check => {
-  for (let attempts = 0; attempts < 4000; attempts++) {
+  for (const deadline = Date.now() + 10_000; Date.now() < deadline;) {
     const result = check()
     if (result) return result
     await new Promise(resolve => setImmediate(resolve))
@@ -3036,10 +3037,12 @@ test('a result for a non-compliant lead notes the executor session once and deli
   assert.equal(queued().length, 1)
   await rt.flushLeadReports(leadConversation.id)
   assert.equal(notes().length, 1, 'the same result never notes twice')
+  const earlier = rt.flushLeadReports(leadConversation.id)
   rt.state.profiles[lead.id].permission = 'workspace'
   rt.conversationOf(leadConversation.id).session.permission = 'workspace'
   await rt.flushLeadReports(leadConversation.id)
-  assert.equal(queued(), undefined)
+  assert.equal(queued(), undefined, 'a flush asked for during another settles once the change is delivered')
+  await earlier
   assert.ok(lines(leadConversation).some(line => line.who === 'user' && line.origin?.kind === 'report'))
 }))
 
