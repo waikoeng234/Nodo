@@ -177,6 +177,25 @@ const receive = line => {
     send({ type: 'system', subtype: 'task_notification', task_id: 'task-2', status: 'completed', summary: 'child two done', output_file: '/tmp/out', session_id: session })
     return say('Lifecycle done')
   }
+  if (text === 'TODOS' || text === 'TODOS_CLEAR') {
+    const todos = { todos: [{ content: 'Map the calls', status: 'completed' }, { content: 'Emit the plan', status: 'in_progress' }, { content: 'Suppress the row', status: 'pending' }] }
+    const stream = event => send({ type: 'stream_event', session_id: session, event })
+    stream({ type: 'message_start', message: { id: 'todos-' + turn } })
+    stream({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'todo-tool', name: 'TodoWrite' } })
+    stream({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(todos) } })
+    stream({ type: 'content_block_stop', index: 0 })
+    // The assembled message repeats the same call; the driver must not double-emit.
+    send({ type: 'assistant', session_id: session, message: { id: 'todos-' + turn, content: [{ type: 'tool_use', id: 'todo-tool', name: 'TodoWrite', input: todos }] } })
+    toolResult('todo-tool', 'TodoWrite', false)
+    if (text === 'TODOS_CLEAR') {
+      stream({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'clear-todo', name: 'TodoWrite', input: {} } })
+      stream({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"todos":[]}' } })
+      stream({ type: 'content_block_stop', index: 1 })
+      send({ type: 'assistant', session_id: session, message: { id: 'clear-todos-' + turn, content: [{ type: 'tool_use', id: 'clear-todo', name: 'TodoWrite', input: { todos: [] } }] } })
+      toolResult('clear-todo', 'TodoWrite', false)
+    }
+    return say('Todos done')
+  }
   if (text === 'EXIT_PLAN') {
     pending = { id: 'plan-' + turn, tool: 'ExitPlanMode' }
     send({ type: 'control_request', request_id: pending.id, request: { subtype: 'can_use_tool', tool_name: 'ExitPlanMode', input: { plan: '# Plan\nRun the checks' } } })

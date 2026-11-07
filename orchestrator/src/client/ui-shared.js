@@ -15,7 +15,7 @@ import { projectAnchorOf } from '../../core/shared/workspaces.js'
 import {
   Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
-  IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
+  IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,
@@ -35,7 +35,7 @@ export { h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, use
 export {
   Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tooltip, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
-  IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
+  IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
   IconPaperclipOutlineRegular, IconPanelLeftOutlineRegular, IconCloseOutlineRegular,
   IconPlanOutlineRegular, IconPlusOutlineRegular,

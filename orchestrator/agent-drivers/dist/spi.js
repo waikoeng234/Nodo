@@ -229,6 +229,31 @@ export function timingOf(raw) {
     }
     return Object.keys(timing).length > 0 ? timing : undefined;
 }
+/** The todo-list tool under any spelling (`TodoWrite`, `todo_write`, …). */
+export const isTodoTool = (name) => typeof name === 'string' && name.replace(/[^a-z]/gi, '').toLowerCase() === 'todowrite';
+/**
+ * A todo tool's whole-list input (object or JSON string) as `plan` steps: empty
+ * contents dropped, unknown statuses read as pending. Undefined without a
+ * list; an empty list clears the plan.
+ */
+export function todoPlanSteps(input) {
+    let parsed = input;
+    if (typeof input === 'string') {
+        try {
+            parsed = JSON.parse(input);
+        }
+        catch {
+            return undefined;
+        }
+    }
+    const raw = parsed?.todos;
+    if (!Array.isArray(raw))
+        return undefined;
+    return raw.filter(todo => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
+        .map(todo => ({ text: todo.content,
+        status: todo.status === 'in_progress' || todo.status === 'completed'
+            ? todo.status : 'pending' }));
+}
 /** Returns the primitive names an adapter object does not provide as functions. */
 export function missingPrimitives(candidate) {
     if (candidate === null || typeof candidate !== 'object')

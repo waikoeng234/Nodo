@@ -7,6 +7,7 @@ import { Rail } from './session-rail.tsx'
 import { RunningLine, TaskCountLine } from './running.js'
 import { Feed, SessionStats, StatsDialog } from './feed.js'
 import { Composer, GoalDialog } from './composer.js'
+import { PlanDock } from './todo-dock.js'
 import { roundIndex, RoundFaces } from './round.js'
 import { SessionPanel } from './session-panel.js'
 import { ApprovalCard, DecisionCard, pruneDecisionDrafts } from './run-cards.js'
@@ -499,6 +500,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id,
       card: card.taskId ? { ...card, taskTitle: view.tasks?.find(task => task.id === card.taskId)?.title } : card, refresh, readOnly,
       from: members.find(item => item.session.id === card.profileId) })),
+    h(PlanDock, { profileId: profile.id, sessionId }),
     !archivedConversation && h(Composer, {
       profile: composerProfile, workspace: sessionWorkspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,
       busy: sessionBusy, readOnly: readOnly || !workspace,
