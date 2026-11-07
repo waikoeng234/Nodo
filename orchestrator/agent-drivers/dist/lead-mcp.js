@@ -13,7 +13,8 @@ const tools = [
     { name: 'nodo_delegate', description: '派活前先判断是否缺少用户取舍或授权；缺少时先用 nodo_decision，不替用户选方案。受理新任务或同任务后续执行，返回 taskId、executionId、session、role 和 queued 状态，本轮正常结束后发送。告诉用户已受理并结束本轮，结果会自动送来。本轮停止或出错则取消。多个任务会改同一批文件、需要隔离时用 worktree；有先后顺序要求用 dependsOn，依赖未验收时拒绝派活。执行者所需上下文要写全。Nodo 不会自动合并。执行结束后核对报告，用 nodo_task 验收。',
         inputSchema: { type: 'object', required: ['type', 'hard', 'task'], additionalProperties: false, properties: {
                 type: { type: 'string', description: '任务类型 id' },
-                taskId: { type: 'string', description: '继续已有任务时填写。省略则新建任务，标题从 task 自动提炼。' },
+                taskId: { type: 'string', description: '继续已有任务时填写。省略则新建任务。' },
+                title: { type: 'string', description: '一句话概括本任务，最长 80 字符；作为新任务标题和新开执行会话的名称，省略时取 task 首行。续用会话不改名，已有任务改标题用 nodo_task revise。' },
                 parentId: { type: 'string', description: '本主控的父任务 id。带 taskId 时不可传，修改关系用 nodo_task revise。' },
                 dependsOn: { type: 'array', items: { type: 'string', minLength: 1 }, description: '本主控的前置任务 id，须全部 done。带 taskId 时不可传。' },
                 worktree: { type: 'boolean', description: 'true 为新任务创建独立 Git worktree，基于主控工作区 HEAD，不含未提交改动和依赖。带 taskId 时沿用原执行目录，不能切换；带 session 续用时不能传此参数。' },

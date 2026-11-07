@@ -11,7 +11,10 @@ const liveStub = feed => ({
 })
 const nodes = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(nodes) : !('type' in node) || !('props' in node) ? []
   : [node, ...Object.values(node.props ?? {}).flatMap(nodes), ...(node.children ?? []).flatMap(nodes)]
-const menuItems = tree => nodes(tree).filter(node => node.props?.className === 'nodo-team-row').map(node => ({ id: node.props['data-session'], label: node.children[1] }))
+const treeRows = tree => nodes(tree).filter(node => /^nodo-tree-(lead|row)\b/.test(node.props?.className ?? '') && node.props['data-kind'] !== 'open')
+  .map(node => ({ id: node.props['data-session'], kind: node.props['data-kind'], node }))
+const TEAM_SHARED = { workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing', WorkDot: 'WorkDot', exactTokens: String, turnTokens: () => 0,
+  contextPercent: stats => stats.contextSize > 0 ? Math.round(stats.contextUsed / stats.contextSize * 100) : null }
 const openPanel = async ({ render }) => { render().find(node => node.props?.['aria-label'] === '摘要面板').props.onClick(); await tick() }
 const text = node => nodes(node).flatMap(item => item.children ?? []).filter(child => typeof child === 'string').join('|')
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -37,26 +40,29 @@ test('execution cards show the parent title from existing task data', async () =
   assert.deepEqual(calls, [], 'the chip requires no new requests')
 })
 
-test('round menu indents a child one level only when its parent is in the menu', async () => {
+test('the team tree hangs every executor off the lead, lists planned tasks and folds finished sessions into one row', async () => {
   const tasks = [
-    { id: 'parent', title: 'Goal', executions: [{ sessionId: 'p', createdAt: 1 }] },
-    { id: 'child', title: 'Part', parentId: 'parent', executions: [{ sessionId: 'c', createdAt: 2 }] },
-    { id: 'orphan', title: 'Another part', parentId: 'absent', executions: [{ sessionId: 'o', createdAt: 3 }] },
+    { id: 'goal', title: 'Goal', status: 'open', coordinatorSessionId: 'l1' },
+    { id: 'part', title: 'Part', status: 'open', parentId: 'goal', executions: [{ sessionId: 'a', createdAt: 1, status: 'running' }] },
+    { id: 'old', title: 'Old', status: 'done', executions: [{ sessionId: 'b', createdAt: 0 }] },
+    { id: 'later', title: 'Later', status: 'open', coordinatorSessionId: 'l1', latestExecutionStatus: null },
   ]
-  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
-    call: async () => tasks, sessionTime: () => '', workLabel: () => '', workDot: () => 'idle',
-  } })
-  let members = ['p', 'c', 'o'].map(id => ({ role: { id: 'worker', name: 'Worker' }, session: { id, name: id } }))
-  const items = () => {
-    host.reset()
-    return menuItems(RoundTeam({ members, work: {}, struct: 1, workspace: 'w', onOpen() {} }))
-  }
-  items()
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => tasks } })
+  const lead = { role: { id: 'lead', name: 'Lead' }, session: { id: 'l1', name: 'Fix login' } }
+  const members = ['a', 'b'].map(id => ({ role: { id: 'worker', name: 'Worker' }, session: { id, name: id } }))
+  const render = () => { host.reset(); return RoundTeam({ lead, members, work: {}, tasks: [tasks[0], { ...tasks[1], coordinatorSessionId: 'l1', latestExecutionStatus: 'running' }, tasks[3]], workspace: 'w', onOpen() {} }) }
+  render()
   host.effects.at(-1)()
   await tick()
-  assert.deepEqual(plain(items().map(item => item.label.props.style ?? null)), [null, { paddingInlineStart: 16 }, null])
-  members = members.filter(item => item.session.id !== 'p')
-  assert.ok(items().every(item => item.label.props.style === undefined), 'a parent outside the menu causes no indent')
+  assert.deepEqual(plain(treeRows(render()).map(row => [row.id, row.kind])), [['l1', null], ['a', 'running'], [null, null]],
+    'the lead heads the tree, the running member follows, and the finished one waits behind the fold row')
+  const shown = nodes(render())
+  assert.ok(text(shown.find(node => node.props?.['data-kind'] === 'open')).includes('Later'), 'a planned leaf task without a session shows as 待派发')
+  assert.ok(!text(shown).includes('Goal'), 'a goal task with children is not work of its own')
+  const fold = shown.find(node => node.props?.className === 'nodo-tree-row nodo-tree-fold')
+  assert.ok(text(fold).includes('已完成 1'))
+  fold.props.onClick()
+  assert.deepEqual(plain(treeRows(render()).map(row => row.id)), ['l1', 'a', null, 'b'], 'opening the fold row lists the finished sessions')
 })
 
 test('roundLines turns the lead transcript into a chat of speaker rows, delegation chips and one message per executor', async () => {
@@ -422,38 +428,39 @@ test(`an expanded member loads its task on demand and retries a failed task-get 
   assert.ok(text(shown).includes('验证通过 · 依据 2 项'), 'the acceptance conclusion carries its evidence count')
 })
 
-test('the session menu shows the idle task word and keeps a running session\'s state', async () => {
+test('each executor row says its state from the task, its newest execution, live work and open decisions', async () => {
   const tasks = [
     { id: 't1', title: 'Review', status: 'review', executions: [{ sessionId: 'e1', createdAt: 10 }] },
     { id: 't2', title: 'Unconfirmed', status: 'blocked', latestExecutionStatus: 'unconfirmed', executions: [{ sessionId: 'e2', createdAt: 10, status: 'unconfirmed' }] },
-    { id: 't3', title: 'Failed', status: 'blocked', executions: [{ sessionId: 'e3', createdAt: 10, status: 'failed' }] },
-    { id: 't4', title: 'Done', status: 'done', executions: [{ sessionId: 'e4', createdAt: 10 }] },
-    { id: 't5', title: 'Stopped', status: 'stopped', executions: [{ sessionId: 'e5', createdAt: 10 }] },
+    { id: 't3', title: 'Failed', status: 'open', executions: [{ sessionId: 'e3', createdAt: 10, status: 'failed', reason: '2 tests fail' }] },
+    { id: 't4', title: 'Asked', status: 'open', executions: [{ sessionId: 'e4', createdAt: 10, status: 'running' }] },
+    { id: 't5', title: 'Approval', status: 'open', executions: [{ sessionId: 'e5', createdAt: 10, status: 'running' }] },
     { id: 't6', title: 'Running', status: 'open', latestExecutionStatus: 'running', executions: [{ sessionId: 'e6', createdAt: 10, status: 'running' }] },
     { id: 't7', title: 'Queued', status: 'open', executions: [{ sessionId: 'e7', createdAt: 10, status: 'queued' }] },
+    { id: 't8', title: 'Handed off', status: 'open', executions: [{ sessionId: 'e8', createdAt: 10, status: 'failed' }, { sessionId: 'e9', createdAt: 20, status: 'running' }] },
   ]
-  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
-    call: async endpoint => endpoint === 'task-list' ? tasks : undefined,
-    sessionTime: () => '', workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
-  } })
-  const members = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}`, updatedAt: 7 } }))
-  const label = id => {
-    host.reset()
-    const items = menuItems(RoundTeam({ members, work: { e8: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} }))
-    return text(items.find(item => item.id === id).label)
-  }
-  label('e1')
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => tasks,
+    workLabel: work => ({ 'waiting-approval': '等待审批' })[work?.status] ?? (work?.active ? '运行中' : '') } })
+  const members = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}` } }))
+  const decisions = [{ status: 'pending', taskIds: ['t4'], questions: [{ question: 'Keep the old API?' }] }]
+  const work = { e5: { active: true, status: 'waiting-approval' }, e10: { active: true } }
+  const render = () => { host.reset(); return RoundTeam({ members, work, decisions, tasks: [], workspace: 'w1', onOpen() {} }) }
+  render()
   host.effects.at(-1)()
   await tick()
-  assert.equal(label('e1'), 'Review|Coder|待验收')
-  assert.equal(label('e2'), 'Unconfirmed|Coder|未确认', 'a blocked task with an unconfirmed execution says 未确认')
-  assert.equal(label('e3'), 'Failed|Coder|受阻')
-  assert.equal(label('e4'), 'Done|Coder|已完成')
-  assert.equal(label('e5'), 'Stopped|Coder|已停止')
-  assert.equal(label('e6'), 'Running|Coder|进行中')
-  assert.equal(label('e7'), 'Queued|Coder|待执行')
-  assert.equal(label('e8'), 'S8|Coder|运行中', 'a running session keeps its running state')
-  assert.equal(label('e9'), 'S9|Coder', 'a session without a task stays blank')
+  const rows = Object.fromEntries(treeRows(render()).filter(row => row.id).map(row => [row.id, text(row.node)]))
+  assert.equal(rows.e1, 'Coder|待验收|Review')
+  assert.equal(rows.e2, 'Coder|未确认|Unconfirmed', 'a blocked task with an unconfirmed execution says 未确认')
+  assert.equal(rows.e3, 'Coder|执行失败|Failed|2 tests fail', 'a failure carries its reason')
+  assert.equal(rows.e4, 'Coder|等待用户|Asked|Keep the old API?', 'an open decision shows its question')
+  assert.equal(rows.e5, 'Coder|等待审批|Approval')
+  assert.equal(rows.e6, 'Coder|运行中|Running', 'a running execution reads as running before live work catches up')
+  assert.equal(rows.e7, 'Coder|排队中|Queued')
+  assert.equal(rows.e9, 'Coder|运行中|Handed off')
+  assert.equal(rows.e10, 'Coder|运行中|S10', 'a session without a task keeps its name and live state')
+  assert.equal(rows.e8, undefined, 'a session whose task moved to a new session folds away')
+  const alerts = nodes(render()).filter(node => node.props?.className === 'nodo-tree-alert').map(text)
+  assert.deepEqual(plain(alerts), ['2 等待用户', '1 失败'])
 })
 
 test('a delegation chip names its executor, and the faces stack lists every role of the round', async () => {
@@ -835,7 +842,7 @@ async function mount(viewName = 'team', restored, feed = null, respond = null) {
     { id: 'e1', name: 'First', workspaceRef: 'w', createdAt: 1, source: { kind: 'lead', leadSessionId: 'l1' } },
   ] }
   const view = { profiles: [lead, coder], workspaces: [{ id: 'w', name: 'Project' }], work: { e1: { active: true, since: 100 } },
-    stats: { l1: { turns: 2, steps: 4, inputTokens: 100, outputTokens: 50 }, e1: { turns: 1, steps: 2, inputTokens: 20, outputTokens: 10 } },
+    stats: { l1: { turns: 2, steps: 4, inputTokens: 100, outputTokens: 50 }, e1: { turns: 1, steps: 2, inputTokens: 20, outputTokens: 10, llmMs: 0, toolMs: 0 } },
     teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
   const space = { active: true, legacy: true }
   const loaded = await loadClient(['page.js', 'round.js', 'session-panel.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js', 'workspace-dialogs.js'], {
@@ -890,10 +897,11 @@ test('a lead session opens as its round: chat feed, faces, session menu and roun
   assert.deepEqual(plain(render().filter(node => node.type === loaded.ApprovalCard).map(node => node.props.card.id)), ['a1'])
   assert.equal(find(loaded.RunningLine), undefined, 'the running line belongs to the lead\'s own run')
   assert.deepEqual(plain(find(loaded.RoundFaces).roles.map(role => role.id)), ['lead', 'coder'])
-  const items = menuItems(loaded.RoundTeam({ ...menu }))
-  assert.deepEqual(plain(items.map(item => item.id)), ['l1', 'e1', 'e2'], 'the lead heads the list')
-  assert.equal(text(items[1].label), 'First|Coder|运行中')
-  assert.equal(text(items[2].label), 'Second|Coder')
+  assert.equal(menu.stats, view.stats)
+  const items = treeRows(loaded.RoundTeam({ ...menu }))
+  assert.deepEqual(plain(items.map(item => item.id)), ['l1', 'e1', 'e2'], 'the lead heads the tree')
+  assert.ok(text(items[1].node).startsWith('Coder|运行中|First|'), 'a running member times its run')
+  assert.equal(text(items[2].node), 'Coder|Second')
 })
 
 test('the round menu scopes its task list to the lead session workspace, not the display anchor', async () => {
@@ -904,69 +912,95 @@ test('the round menu scopes its task list to the lead session workspace, not the
   assert.equal(h.find(h.loaded.SessionPanel).workspace, 'tw', 'the menu asks for tasks where the lead session lives')
 })
 
-test('the session menu titles each executor with its latest task and keeps the role, time and state on the second line', async () => {
+test('a reused session takes its newest execution\'s task, counts its executions and times its working turns', async () => {
   const calls = []
   const tasks = [
-    { id: 't1', title: 'First task', executions: [{ sessionId: 'e1', createdAt: 10, startedAt: 20, endedAt: 30 }] },
-    { id: 't2', title: 'Reused task', executions: [{ sessionId: 'e1', createdAt: 100, startedAt: 140, endedAt: 300 }] },
-    { id: 't3', title: 'Newest task', executions: [{ sessionId: 'e1', createdAt: 200, startedAt: 250, endedAt: null }] },
-    { id: 't4', title: 'Queued task', executions: [{ sessionId: 'e3', createdAt: 500, startedAt: null, endedAt: null }] },
+    { id: 't1', title: 'First task', status: 'open', executions: [{ sessionId: 'e1', createdAt: 10, startedAt: 20, endedAt: 30, status: 'failed' }] },
+    { id: 't2', title: 'Newest task', status: 'review', executions: [{ sessionId: 'e1', createdAt: 200, startedAt: 250, endedAt: 70020, status: 'done' }] },
   ]
-  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
-    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'task-list' ? tasks : undefined },
-    sessionTime: at => ({ 7: '5分钟前', 250: '刚刚', 500: '3秒前' })[at] ?? '',
-    workLabel: work => work?.active ? '运行中' : '', workDot: () => 'ongoing',
-  } })
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return tasks } } })
   const members = [
-    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'First', updatedAt: 7 } },
-    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e2', name: 'Legacy', updatedAt: 7 } },
-    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e3', name: 'Fresh', updatedAt: 7 } },
+    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'First' } },
+    { role: { id: 'coder', name: 'Coder' }, session: { id: 'e2', name: 'Legacy' } },
   ]
   const label = id => {
     host.reset()
-    const items = menuItems(RoundTeam({ members, work: { e1: { active: true } }, struct: 1, workspace: 'w1', onOpen() {} }))
-    return text(items.find(item => item.id === id).label)
+    return text(treeRows(RoundTeam({ members, work, stats, workspace: 'w1', onOpen() {} })).find(row => row.id === id).node)
   }
-  assert.equal(label('e1'), 'First|Coder · 5分钟前|运行中', 'a session keeps its own row until the task list answers')
+  let work = {}
+  const stats = { e1: { llmMs: 50000, toolMs: 20000 } }
+  assert.equal(label('e1'), 'Coder|First|1m 10s', 'a session keeps its own row until the task list answers')
   host.effects.at(-1)()
   await tick()
   assert.deepEqual(plain(calls), [{ endpoint: 'task-list', payload: { workspace: 'w1' } }])
-  assert.equal(label('e1'), 'Newest task|Coder · 刚刚|运行中', 'a reused session takes its newest execution, and the time comes from that execution alone')
-  assert.equal(label('e2'), 'Legacy|Coder · 5分钟前', 'a session without executions keeps its name and its own time')
-  assert.equal(label('e3'), 'Queued task|Coder · 3秒前', 'a queued execution dates itself from creation')
+  assert.equal(label('e1'), 'Coder|待验收|Newest task|第 2 次|1m 10s')
+  assert.equal(label('e2'), 'Coder|Legacy', 'a session without executions or stats shows no time')
+  work = { e1: { active: true, since: Date.now() - 30500 } }
+  assert.equal(label('e1'), 'Coder|待验收|Newest task|第 2 次|1m 40s', 'the turn in flight adds to the finished ones')
 })
 
-test('the team list asks for tasks scoped to its workspace and titles each session with its task', async () => {
-  const calls = []
-  const tasks = [{ id: 't1', title: 'First task', executions: [{ sessionId: 'e1', createdAt: 10, startedAt: null, endedAt: null }] }]
-  const { RoundTeam, host } = await loadClient('round.js', { uiShared: {
-    call: async (endpoint, payload) => { calls.push({ endpoint, payload }); return endpoint === 'task-list' ? tasks : undefined },
-    sessionTime: at => ({ 10: '刚刚' })[at] ?? '',
-    workLabel: () => '', workDot: () => 'ongoing',
-  } })
-  const members = [{ role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'First', updatedAt: 7 } }]
-  const items = () => {
-    host.reset()
-    return menuItems(RoundTeam({ members, work: {}, struct: 1, workspace: 'w1', onOpen() {} }))
-  }
-  items()
+test('rows open their session, and the header alert walks through the members in that state', async () => {
+  const opened = []
+  const tasks = [1, 2].map(n => ({ id: `t${n}`, title: `Task ${n}`, status: 'open', executions: [{ sessionId: `e${n}`, createdAt: n, status: 'failed' }] }))
+  const refs = []
+  let ref = 0
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => tasks }, react: { useRef: initial => refs[ref++] ??= { current: initial } } })
+  const members = [1, 2].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}` } }))
+  const lead = { role: { id: 'lead', name: 'Lead' }, session: { id: 'l1' } }
+  const render = () => { host.reset(); ref = 0; return RoundTeam({ lead, members, work: {}, workspace: 'w1', onOpen: id => opened.push(id) }) }
+  render()
   host.effects.at(-1)()
   await tick()
-  assert.deepEqual(plain(calls), [{ endpoint: 'task-list', payload: { workspace: 'w1' } }])
-  assert.equal(text(items().find(item => item.id === 'e1').label), 'First task|Coder · 刚刚', 'the list titles each session with its task')
+  const rows = treeRows(render())
+  rows[0].node.props.onClick()
+  rows[2].node.props.onClick()
+  assert.deepEqual(opened, ['l1', 'e2'])
+  const visited = []
+  refs[0].current = { querySelector: selector => { visited.push(selector); return { scrollIntoView() {}, focus() {}, classList: { add() {}, remove() {} }, offsetWidth: 0 } } }
+  const alert = nodes(render()).find(node => node.props?.className === 'nodo-tree-alert')
+  for (let n = 0; n < 3; n++) alert.props.onClick()
+  assert.deepEqual(visited, ['[data-session="e1"]', '[data-session="e2"]', '[data-session="e1"]'])
 })
 
-test('the team list folds to its header and keeps the list scrollable inside a bounded card', async () => {
-  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { call: async () => [], sessionTime: () => '', workLabel: () => '', workDot: () => 'idle' } })
+test('team rows show the model by its own name, not the engine route', async () => {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => [] } })
+  const members = [['z', 'bigmodel-api$GLM-5.3-Flash'], ['p', 'deepseek/deepseek-v4.1-flash'], ['c', 'claude-haiku']]
+    .map(([id, model]) => ({ role: { id: 'coder', name: 'Coder' }, session: { id, name: id, model } }))
+  host.reset()
+  const shown = nodes(RoundTeam({ members, work: {}, workspace: 'w', onOpen() {} })).filter(node => node.props?.className === 'nodo-tree-model')
+  assert.deepEqual(plain(shown.map(text)), ['GLM-5.3-Flash', 'deepseek-v4.1-flash', 'claude-haiku'])
+  assert.equal(shown[0].props.title, 'bigmodel-api$GLM-5.3-Flash', 'the full route stays in the tooltip')
+})
+
+test('a member row puts its token buckets behind a hover card next to the context ring', async () => {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => [],
+    exactTokens: value => String(value), turnTokens: u => u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens,
+    cacheHitPercent: u => u.cacheReadTokens ? '96' : '' } })
+  const members = [{ role: { id: 'coder', name: 'Coder' }, session: { id: 'e1', name: 'S1' } }]
+  const stats = { e1: { inputTokens: 128438, cacheReadTokens: 3143936, cacheWriteTokens: 0, outputTokens: 45037, contextUsed: 1, contextSize: 10 } }
+  host.reset()
+  const sub = nodes(RoundTeam({ members, work: {}, stats, workspace: 'w', onOpen() {} })).find(node => node.props?.className === 'nodo-tree-line nodo-tree-sub')
+  const [usage, ring] = sub.children.filter(child => typeof child.type === 'function').map(child => child.type.name)
+  assert.deepEqual([usage, ring], ['TokenUsage', 'ContextRing'], 'the token mark sits left of the context ring')
+  const element = sub.children.find(child => child.type?.name === 'TokenUsage')
+  const card = element.type(element.props).children[0]
+  assert.equal(card.type, 'HoverCard')
+  assert.equal(card.props.inline, true, 'inline mode keeps the card inside the window')
+  assert.equal(text(card.props.content), 'Token 用量|3317411 tok|缓存命中|96%|未缓存输入|128438|缓存读取|3143936|输出|45037', 'an unused bucket stays out')
+  assert.equal(element.type({ stats: { inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 } }), null, 'no usage yet, no mark')
+})
+
+test('the team tree folds to its header', async () => {
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => [] } })
   const members = [1, 2, 3].map(n => ({ role: { id: 'coder', name: 'Coder' }, session: { id: `e${n}`, name: `S${n}` } }))
-  const render = () => { host.reset(); return RoundTeam({ members, work: {}, struct: 1, workspace: 'w', onOpen() {} }) }
-  assert.equal(menuItems(render()).length, 3)
-  assert.ok(nodes(render()).some(node => node.props?.className === 'nodo-team-list'))
-  const fold = nodes(render()).find(node => node.props?.['aria-expanded'] === true)
-  host.cells[1] = true
-  assert.equal(menuItems(render()).length, 0)
-  assert.equal(nodes(render()).find(node => node.props?.['aria-expanded'] !== undefined).props['aria-expanded'], false)
-  assert.equal(typeof fold.props.onClick, 'function')
+  const render = () => { host.reset(); return RoundTeam({ members, work: {}, workspace: 'w', onOpen() {} }) }
+  assert.equal(treeRows(render()).length, 3)
+  assert.ok(nodes(render()).some(node => node.props?.className === 'nodo-tree-list'))
+  const fold = nodes(render()).find(node => node.props?.className === 'nodo-tree-toggle')
+  assert.equal(fold.props['aria-expanded'], true)
+  fold.props.onClick()
+  assert.equal(treeRows(render()).length, 0)
+  assert.equal(nodes(render()).find(node => node.props?.className === 'nodo-tree-toggle').props['aria-expanded'], false)
 })
 
 test('artifacts collect workspace files its write/edit tools touched, reply links and attached images', async () => {

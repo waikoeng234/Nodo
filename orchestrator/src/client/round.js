@@ -1,7 +1,9 @@
 import {
-  h, Fragment, useState, useEffect, useSyncExternalStore, call, Button, StateDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel, sessionTime,
-  IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular, IconEditOutlineRegular,
+  h, Fragment, useState, useEffect, useRef, useSyncExternalStore, call, Button, StateDot, WorkDot, MarkdownText, MARKDOWN_LABELS, workDot, workLabel,
+  HoverCard, contextPercent, cacheHitPercent, exactTokens, turnTokens, IconDatabaseOutlineRegular, IconRightUpOutlineRegular, IconChevronDownOutlineRegular, IconThinkOutlineRegular, IconEditOutlineRegular,
 } from './ui-shared.js'
+import { EngineMark } from './engine-logos.js'
+import { modelName } from './model-options.js'
 import { transcriptOf, watchTranscript, subscribeStore, getStoreVersion } from './live.js'
 import { RoleAvatar } from './avatar.tsx'
 import { transcriptRows, toolRow, ProcessRow, MessageTime } from './feed.js'
@@ -249,50 +251,226 @@ export function RoundFaces({ roles }) {
     roles.map(role => h(RoleAvatar, { key: role.id, profile: role, size: 20 })))
 }
 
-export function RoundTeam({ lead, members, work, tasks, workspace, onOpen }) {
-  const [latest, setLatest] = useState(new Map())
+// A member's state reads its newest execution, that execution's task, its live
+// work and the round's open decisions; finished members fold away.
+function memberState(task, execution, work, asked, handedOff) {
+  if (handedOff) return { kind: 'stopped', word: '已转新会话', dot: 'stop', finished: true }
+  if (task?.status === 'done') return { kind: 'done', word: '已完成', dot: 'done', finished: true }
+  if (task?.status === 'stopped') return { kind: 'stopped', word: '已停止', dot: 'stop', finished: true }
+  if (task?.status === 'review') return { kind: 'review', word: '待验收', dot: 'done' }
+  if (task?.status === 'blocked') return { kind: 'blocked', word: execution?.status === 'unconfirmed' || task.latestExecutionStatus === 'unconfirmed' ? '未确认' : '受阻', dot: 'wait', tone: 'caution' }
+  if (execution?.status === 'failed') return { kind: 'failed', word: '执行失败', dot: 'err', tone: 'fault' }
+  if (asked) return { kind: 'waiting', word: '等待用户', dot: 'wait', tone: 'caution' }
+  if (work?.active && (work.status?.startsWith('waiting-') || work.suspect)) return { kind: 'waiting', word: workLabel(work), dot: 'wait', tone: 'caution' }
+  if (execution?.status === 'queued') return { kind: 'queued', word: '排队中', dot: 'stop' }
+  if (work?.active || execution?.status === 'running') return { kind: 'running', word: '运行中', dot: 'run', tone: 'accent' }
+  if (execution?.status === 'cancelled' || execution?.status === 'interrupted') return { kind: 'stopped', word: execution.status === 'cancelled' ? '已取消' : '已中断', dot: 'stop' }
+  if (execution) return { kind: 'review', word: '待验收', dot: 'done' }
+  return { kind: 'idle', word: workLabel(work) }
+}
+
+function ContextRing({ stats }) {
+  const percent = stats ? contextPercent(stats) : null
+  if (percent === null) return null
+  const label = `上下文 ${exactTokens(stats.contextUsed)} / ${exactTokens(stats.contextSize)}（${percent}%）`
+  return h('span', { className: 'nodo-tree-ctx', role: 'img', 'aria-label': label, title: label, 'data-level': percent >= 95 ? 'high' : percent >= 80 ? 'warn' : undefined },
+    h('svg', { viewBox: '0 0 14 14', 'aria-hidden': true }, h('circle', { cx: 7, cy: 7, r: 5 }),
+      h('circle', { cx: 7, cy: 7, r: 5, pathLength: 100, style: { strokeDashoffset: 100 - Math.min(100, percent) } })))
+}
+
+// The session's token buckets behind a database mark: the total, the cache hit,
+// then every bucket the session has used. Inline mode keeps the card inside the
+// window next to the mark and sizes it to its content.
+function TokenUsage({ stats }) {
+  const total = stats ? turnTokens(stats) : 0
+  if (total === 0) return null
+  const hit = cacheHitPercent(stats)
+  const rows = [hit !== '' && ['缓存命中', `${hit}%`], ...[['未缓存输入', stats.inputTokens], ['缓存读取', stats.cacheReadTokens],
+    ['缓存写入', stats.cacheWriteTokens], ['输出', stats.outputTokens]].filter(([, value]) => value > 0).map(([label, value]) => [label, exactTokens(value)])].filter(Boolean)
+  return h('span', { className: 'nodo-tree-tokens', role: 'img', 'aria-label': `Token 用量 ${exactTokens(total)} tok` },
+    h(HoverCard, { inline: true, fitContent: true, anchor: h(IconDatabaseOutlineRegular, { size: 14 }),
+      content: h('div', { className: 'nodo-tree-usage' },
+        h('div', { className: 'nodo-tree-usage-title' }, h('span', null, 'Token 用量'), h('span', null, `${exactTokens(total)} tok`)),
+        h('dl', null, ...rows.flatMap(([label, value]) => [h('dt', { key: `t:${label}` }, label), h('dd', { key: `d:${label}` }, value)]))) }))
+}
+
+// The trunk runs 24px in, under the lead avatar; a member row starts 32px in
+// and its avatar centre sits 17px below the row top (see .nodo-tree-row).
+const TREE_TRUNK = 24, TREE_AVATAR = { x: 40, y: 17 }
+const PACKET_COLORS = { down: '--dsw-alias-state-business-primary', done: '--dsw-alias-state-success-primary', review: '--dsw-alias-state-success-primary',
+  waiting: '--dsw-alias-state-warn-primary', blocked: '--dsw-alias-state-warn-primary', failed: '--dsw-alias-state-error-primary', stopped: '--dsw-alias-label-tertiary' }
+const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+// A dispatch or report travels the one route between the lead and that member;
+// only that route lights up, behind the packet, and fades once it arrives.
+function emitPacket(list, svg, sessionId, dir, color) {
+  const row = list.querySelector(`[data-session="${sessionId}"]`)
+  if (!row || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const ns = 'http://www.w3.org/2000/svg'
+  const make = (tag, className) => { const el = document.createElementNS(ns, tag); if (className) el.setAttribute('class', className); return el }
+  const group = make('g'), lit = make('path', 'nodo-tree-lit'), tail = make('path', 'nodo-tree-tail'), head = make('circle', 'nodo-tree-head-dot')
+  const d = `M ${TREE_TRUNK} 0 V ${row.offsetTop + TREE_AVATAR.y} H ${TREE_AVATAR.x}`
+  for (const path of [lit, tail]) path.setAttribute('d', d)
+  group.style.setProperty('--nodo-packet', `var(${color})`)
+  head.setAttribute('r', '3.6')
+  group.append(lit, tail, head)
+  svg.appendChild(group)
+  const length = lit.getTotalLength()
+  const span = (path, from, to) => { path.style.strokeDasharray = `${Math.max(0, to - from)} ${length}`; path.style.strokeDashoffset = String(-from) }
+  const place = at => {
+    if (dir === 'down') { span(lit, 0, at); span(tail, at - 16, at) } else { span(lit, at, length); span(tail, at, at + 16) }
+    const point = lit.getPointAtLength(at)
+    head.setAttribute('cx', point.x)
+    head.setAttribute('cy', point.y)
+  }
+  place(dir === 'down' ? 0 : length)
+  const duration = Math.min(720, 320 + length * 1.4), start = performance.now()
+  const frame = now => {
+    if (!group.isConnected) return
+    const progress = Math.min(1, (now - start) / duration)
+    place((dir === 'down' ? easeInOut(progress) : 1 - easeInOut(progress)) * length)
+    if (progress < 1) return requestAnimationFrame(frame)
+    tail.remove()
+    head.setAttribute('class', 'nodo-tree-ripple')
+    lit.style.opacity = '0'
+    setTimeout(() => group.remove(), 520)
+  }
+  requestAnimationFrame(frame)
+}
+
+// The summary panel's team: the lead on its own tile, every executor session it
+// dispatched hanging off one trunk, planned tasks no session holds yet, and the
+// finished sessions folded into one row.
+export function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, onOpen }) {
+  const [latest, setLatest] = useState(null)
   const [folded, setFolded] = useState(false)
+  const [showDone, setShowDone] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+  const listRef = useRef(null), linksRef = useRef(null), seen = useRef(null), visits = useRef({})
+  const leadId = lead?.session.id
+  const asked = taskId => (decisions ?? []).find(decision => (decision.status === 'pending' || decision.status === 'answered') && decision.taskIds.includes(taskId))
+  const rows = members.map(({ role, session }) => {
+    const hit = latest?.get(session.id)
+    const state = memberState(hit?.task, hit?.execution, work?.[session.id], hit && asked(hit.task.id), hit?.handedOff)
+    const note = ['waiting', 'blocked', 'failed'].includes(state.kind) ? (hit && asked(hit.task.id)?.questions?.[0]?.question) || hit?.execution.reason : undefined
+    return { id: session.id, role, session, title: hit?.task.title ?? session.name, attempts: hit?.count ?? 0, note, ...state }
+  })
+  const pending = (tasks ?? []).filter(task => task.coordinatorSessionId === leadId && task.status === 'open' && task.latestExecutionStatus == null
+    && !tasks.some(child => child.parentId === task.id))
+  const done = rows.filter(row => row.finished)
+  const active = rows.filter(row => !row.finished)
+  const leadWork = leadId ? work?.[leadId] : undefined
+  const leadState = leadWork?.active ? memberState(undefined, undefined, leadWork)
+    : active.length + pending.length > 0 ? { kind: 'idle', word: '等待回报', dot: 'stop' } : rows.length ? { kind: 'done', word: '已完成', dot: 'done' } : { kind: 'idle' }
+  const count = kind => rows.filter(row => row.kind === kind).length
+  const live = leadWork?.active === true || active.some(row => row.kind === 'running' || row.kind === 'waiting' || row.kind === 'blocked')
   // Task statuses and which members run decide whether the list is stale;
   // unrelated structure changes do not refetch, and a folded card never does.
   const stale = [(tasks ?? []).map(task => `${task.id}:${task.status}:${task.latestExecutionStatus}`).join(), members.map(({ session }) => work?.[session.id]?.active === true).join()].join('|')
+
+  useEffect(() => {
+    if (!live) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [live])
+  // A new or continued session (more executions) sends a dispatch packet; a
+  // changed outcome reports back. The first answer only records what is there.
+  useEffect(() => {
+    if (!latest || folded) return
+    const marks = new Map(rows.map(row => [row.id, `${row.kind}:${row.attempts}`]))
+    const before = seen.current
+    seen.current = marks
+    if (!before || !listRef.current) return
+    for (const row of rows) {
+      const was = before.get(row.id) ?? 'idle:0', [kind, attempts] = was.split(':')
+      if (was === marks.get(row.id) || (row.finished && !showDone)) continue
+      if ((row.kind === 'running' || row.kind === 'queued') && +attempts < row.attempts) emitPacket(listRef.current, linksRef.current, row.id, 'down', PACKET_COLORS.down)
+      else if (PACKET_COLORS[row.kind] && kind !== row.kind && !(kind === 'review' && row.kind === 'done')) emitPacket(listRef.current, linksRef.current, row.id, 'up', PACKET_COLORS[row.kind])
+    }
+  })
   useEffect(() => {
     if (folded) return
-    let live = true
+    let current = true
     call('task-list', { workspace }).then(list => {
-      if (!live) return
-      const newest = new Map()
+      if (!current) return
+      const newest = new Map(), owner = new Map()
       for (const task of list ?? []) for (const execution of task.executions ?? []) {
         const held = newest.get(execution.sessionId)
-        if (held && held.createdAt >= execution.createdAt) continue
-        newest.set(execution.sessionId, { title: task.title, task, createdAt: execution.createdAt,
-          at: Math.max(execution.endedAt ?? 0, execution.startedAt ?? 0, execution.createdAt ?? 0) || undefined })
+        const count = (held?.count ?? 0) + 1
+        if (!(held && held.execution.createdAt >= execution.createdAt)) newest.set(execution.sessionId, { task, execution, count })
+        else held.count = count
+        if (!(owner.get(task.id)?.createdAt >= execution.createdAt)) owner.set(task.id, execution)
       }
+      for (const [sessionId, hit] of newest) hit.handedOff = owner.get(hit.task.id).sessionId !== sessionId
       setLatest(newest)
     }).catch(() => {})
-    return () => { live = false }
+    return () => { current = false }
   }, [stale, workspace, folded])
-  const listed = new Set(members.map(({ session }) => latest.get(session.id)?.task.id))
-  const running = members.filter(({ session }) => work?.[session.id]?.active === true).length
-  const done = members.filter(({ session }) => latest.get(session.id)?.task.status === 'done').length
-  const row = (id, role, title, meta, state, indent) => h('button', { key: id, type: 'button', className: 'nodo-team-row', 'data-session': id, onClick: () => onOpen(id) },
-    h(RoleAvatar, { profile: role, size: 18, running: work?.[id]?.active === true }),
-    h('span', { className: 'nodo-round-menu-item', style: indent ? { paddingInlineStart: 16 } : undefined },
-      h('span', { className: 'nodo-round-title' }, title),
-      h('span', { className: 'nodo-round-menu-meta' }, meta, state)))
-  const stateOf = (id, word) => {
-    const status = workLabel(work?.[id])
-    return status ? h('span', { className: 'nodo-row-running' }, h(StateDot, { state: workDot(work[id]), size: 8 }), status) : word ? h('span', null, word) : null
+
+  // Working time over every turn of the session: finished turns from stats, plus the one in flight.
+  const elapsed = id => {
+    const ms = (stats?.[id] ? stats[id].llmMs + stats[id].toolMs : 0) + (work?.[id]?.active && work[id].since ? now - work[id].since : 0)
+    return ms > 0 ? h('span', { className: 'nodo-tree-time' }, runDuration(ms)) : null
   }
-  return h('div', { className: 'nodo-team' },
-    h('button', { type: 'button', className: 'nodo-panel-head nodo-panel-fold', 'aria-expanded': !folded, onClick: () => setFolded(value => !value) },
+  const state = row => row.word ? h('span', { className: 'nodo-tree-state', 'data-tone': row.tone }, row.dot && h(WorkDot, { kind: row.dot }), row.word) : null
+  const model = (role, session) => {
+    const route = session.model ?? role.model
+    return h('span', { className: 'nodo-tree-model', title: route },
+      h(EngineMark, { engine: session.engine ?? role.engine, size: 12 }), h('span', null, route && modelName(route)))
+  }
+  const member = row => h('button', { key: row.id, type: 'button', className: 'nodo-tree-row', 'data-session': row.id, 'data-kind': row.kind, 'data-tone': row.tone,
+    'data-pending': row.kind === 'queued' ? '' : undefined, title: '查看会话', onClick: () => onOpen(row.id) },
+    h(RoleAvatar, { profile: row.role, size: 20, running: row.kind === 'running' }),
+    h('span', { className: 'nodo-tree-line' }, h('span', { className: 'nodo-tree-name' }, row.role.name), model(row.role, row.session), state(row)),
+    h('span', { className: 'nodo-tree-line nodo-tree-sub' },
+      h('span', { className: 'nodo-tree-title', title: row.title }, row.title),
+      row.attempts > 1 && h('span', { className: 'nodo-tag', title: '同一会话续用' }, `第 ${row.attempts} 次`),
+      h(TokenUsage, { stats: stats?.[row.id] }), h(ContextRing, { stats: stats?.[row.id] }), elapsed(row.id)),
+    row.note ? h('span', { className: 'nodo-tree-note', title: row.note }, row.note) : null)
+  const visit = kind => () => {
+    const hits = active.filter(row => row.kind === kind)
+    if (!hits.length) return
+    visits.current[kind] = ((visits.current[kind] ?? -1) + 1) % hits.length
+    const el = listRef.current?.querySelector(`[data-session="${hits[visits.current[kind]].id}"]`)
+    if (!el) return
+    el.scrollIntoView({ block: 'nearest' })
+    el.focus({ preventScroll: true })
+    el.classList.remove('nodo-tree-locate')
+    void el.offsetWidth
+    el.classList.add('nodo-tree-locate')
+  }
+  const alert = (kind, tone, word) => count(kind) > 0 && h('button', { type: 'button', className: 'nodo-tree-alert', 'data-tone': tone, onClick: visit(kind) },
+    h('i', { className: 'nodo-tree-alert-dot' }), `${count(kind)} ${word}`)
+  // Arrow keys step through the lead and every focusable row.
+  const step = event => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    const items = [...event.currentTarget.querySelectorAll('.nodo-tree-lead, button.nodo-tree-row')]
+    const at = items.indexOf(event.target)
+    if (at < 0) return
+    event.preventDefault()
+    items[Math.max(0, Math.min(items.length - 1, at + (event.key === 'ArrowDown' ? 1 : -1)))].focus()
+  }
+
+  return h('div', { className: 'nodo-team nodo-team-tree' },
+    h('div', { className: 'nodo-panel-head nodo-tree-head' },
       h('span', null, '团队'),
-      h('span', { className: 'nodo-panel-meta' }, `${running} 运行中 · ${done}/${members.length} 已完成`,
-        h(IconChevronDownOutlineRegular, { size: 14, style: folded ? { transform: 'rotate(-90deg)' } : undefined }))),
-    !folded && h('div', { className: 'nodo-team-list' },
-      lead && row(lead.session.id, lead.role, lead.role.name, 'Leader', stateOf(lead.session.id), false),
-      ...members.map(({ role, session }) => {
-        const hit = latest.get(session.id)
-        return row(session.id, role, hit?.title ?? session.name, [role.name, sessionTime(hit?.at ?? session.updatedAt)].filter(Boolean).join(' · '),
-          stateOf(session.id, taskWord(hit?.task, work?.[session.id])), !!hit?.task.parentId && listed.has(hit.task.parentId))
-      })))
+      alert('waiting', 'caution', '等待用户'), alert('failed', 'fault', '失败'),
+      h('button', { type: 'button', className: 'nodo-tree-toggle', 'aria-expanded': !folded, title: folded ? '展开团队' : '收起团队', onClick: () => setFolded(value => !value) },
+        `${count('running')} 运行中 · ${count('done')}/${rows.length} 已完成`, h(IconChevronDownOutlineRegular, { size: 14 }))),
+    !folded && h('div', { className: 'nodo-tree', role: 'tree', 'aria-label': '团队', onKeyDown: step },
+      lead && h('button', { type: 'button', className: 'nodo-tree-lead', 'data-session': leadId, title: '查看主控会话', onClick: () => onOpen(leadId) },
+        h(RoleAvatar, { profile: lead.role, size: 28, running: leadState.kind === 'running' }),
+        h('span', { className: 'nodo-tree-line' }, h('span', { className: 'nodo-tree-name' }, lead.role.name), state(leadState)),
+        h('span', { className: 'nodo-tree-line nodo-tree-sub' }, model(lead.role, lead.session), h(TokenUsage, { stats: stats?.[leadId] }), h(ContextRing, { stats: stats?.[leadId] }), elapsed(leadId))),
+      (rows.length > 0 || pending.length > 0) && h('div', { className: 'nodo-tree-list', ref: listRef },
+        h('svg', { className: 'nodo-tree-links', ref: linksRef, 'aria-hidden': true }),
+        ...active.map(member),
+        ...pending.map(task => h('div', { key: `task:${task.id}`, className: 'nodo-tree-row', 'data-kind': 'open', 'data-pending': '' },
+          h('i', { className: 'nodo-tree-hole' }),
+          h('span', { className: 'nodo-tree-line' }, h('span', { className: 'nodo-tree-name' }, '待派发')),
+          h('span', { className: 'nodo-tree-line nodo-tree-sub' }, h('span', { className: 'nodo-tree-title', title: task.title }, task.title)))),
+        done.length > 0 && h('button', { key: 'finished', type: 'button', className: 'nodo-tree-row nodo-tree-fold', 'aria-expanded': showDone, onClick: () => setShowDone(value => !value) },
+          h(RoundFaces, { roles: done.slice(-4).map(row => row.role) }), h('span', null, `已完成 ${done.length}`), h(IconChevronDownOutlineRegular, { size: 14 })),
+        ...(showDone ? done.map(member) : []))))
 }

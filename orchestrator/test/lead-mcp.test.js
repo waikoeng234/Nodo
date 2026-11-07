@@ -174,7 +174,8 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     await client.callTool({ name: 'nodo_board', arguments: { table: 'roles' } })
     await client.callTool({ name: 'nodo_board', arguments: { session: 'older' } })
     assert.deepEqual(h.calls[2], ['delegations', 'lead', 'older'])
-    const args = { type: 'feature', hard: false, task: 'Complete task', worktree: true, parentId: 'goal', dependsOn: ['investigation'] }
+    assert.match(tools[1].inputSchema.properties.title.description, /新开执行会话的名称.*省略时取 task 首行/)
+    const args = { type: 'feature', hard: false, task: 'Complete task', title: 'Task title', worktree: true, parentId: 'goal', dependsOn: ['investigation'] }
     const receipt = await client.callTool({ name: 'nodo_delegate', arguments: args })
     assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, reused: false })
     assert.deepEqual(h.calls.at(-1), ['delegate', 'lead', args])

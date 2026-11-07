@@ -523,7 +523,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     h('div', { className: 'nodo-stats' },
       h(SessionStats, { stats: leadModeOf(profile, session) ? undefined : (view?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) }))),
       panelOpen && sessionWorkspace && h(SessionPanel, { workspace: sessionWorkspace.id, cwd: sessionWorkspace.cwd, running: work?.active === true || activeTasks > 0, profile: profile.id, session: sessionId,
-        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view.work, tasks: view.tasks, onOpen: openRound } : undefined })))
+        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view.work, tasks: view.tasks, decisions: view.decisions, stats: view.stats, onOpen: openRound } : undefined })))
 
   const page = () => {
     if (profile && (workspace || session)) return conversation()

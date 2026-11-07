@@ -565,7 +565,9 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
     if (!found) throw invalid('type 必须是本团队任务类型清单中的 id')
     if (typeof command.hard !== 'boolean') throw invalid('hard 必须是 true 或 false')
     if (typeof command.task !== 'string' || !command.task.trim()) throw invalid('task 必须是非空字符串')
+    if (command.title !== undefined && (typeof command.title !== 'string' || !command.title.trim())) throw invalid('title 必须是非空字符串')
     const hard = command.hard, task = rt.redactDeepSecrets(command.task)
+    const title = rt.redactDeepSecrets(command.title ?? task).trim().split(/\r?\n/, 1)[0].slice(0, 80)
     if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
     const dispatchContext = await rt.selectDispatchContext({ leadSessionId: leadSession.id, taskId: taskRecord?.id,
       parentId: relations.parentId, dependsOn: relations.dependsOn, context: parseDelegateContext(command.context) })
@@ -610,12 +612,12 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
       const worktree = workspaceRef !== (taskRecord?.workspaceRef ?? leadSession.workspaceRef) ? workspace?.worktree : undefined
       const instruction = worktree ? `\n\n执行目录：${workspace.cwd}\n分支：${worktree.branch}\n基准 commit：${worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。` : ''
       if (header.length + task.length + instruction.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
-      session = live?.session ?? await rt.createSession(target.id, task.trim().split(/\r?\n/, 1)[0].slice(0, 80), workspaceRef, true, false, picked.choices,
+      session = live?.session ?? await rt.createSession(target.id, title, workspaceRef, true, false, picked.choices,
         { kind: 'lead', leadProfileId: lead.id, leadSessionId: leadSession.id, type: found.id, hard }, { activate: false })
       continued = session.source.continued
       if (!taskRecord) {
         taskRecord = await rt.createTask({ workspaceRef: leadSession.workspaceRef, teamId: team.id, coordinatorSessionId: leadSession.id,
-          title: task.trim().split(/\r?\n/, 1)[0].slice(0, 80), brief: task, parentId: command.parentId, dependsOn: command.dependsOn,
+          title, brief: task, parentId: command.parentId, dependsOn: command.dependsOn,
           source: { kind: 'lead', sessionId: leadSession.id } })
       }
       if ((await rt.taskView(taskRecord.id)).status === 'stopped') await rt.reopenTask(taskRecord.id)
