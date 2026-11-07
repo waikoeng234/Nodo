@@ -234,7 +234,7 @@ export const isTodoTool = (name) => typeof name === 'string' && name.replace(/[^
 /**
  * A todo tool's whole-list input (object or JSON string) as `plan` steps: empty
  * contents dropped, unknown statuses read as pending. Undefined without a
- * usable list, so a call whose input has not arrived yet stays silent.
+ * list; an empty list clears the plan.
  */
 export function todoPlanSteps(input) {
     let parsed = input;
@@ -246,12 +246,13 @@ export function todoPlanSteps(input) {
             return undefined;
         }
     }
-    const raw = Array.isArray(parsed?.todos) ? parsed.todos : [];
-    const steps = raw.filter(todo => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
+    const raw = parsed?.todos;
+    if (!Array.isArray(raw))
+        return undefined;
+    return raw.filter(todo => typeof todo?.content === 'string' && todo.content !== '').slice(0, 50)
         .map(todo => ({ text: todo.content,
         status: todo.status === 'in_progress' || todo.status === 'completed'
             ? todo.status : 'pending' }));
-    return steps.length > 0 ? steps : undefined;
 }
 /** Returns the primitive names an adapter object does not provide as functions. */
 export function missingPrimitives(candidate) {

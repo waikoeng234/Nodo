@@ -100,6 +100,19 @@ const runTurn = text => {
     notify('model.streaming', { kind: 'tool_input_start', toolCallId: 'todo', toolName: 'TodoWrite' })
     notify('model.streaming', { kind: 'tool_call', toolCallId: 'todo', toolName: 'TodoWrite', input: todos })
     notify('tool.updated', { kind: 'result', toolCallId: 'todo', result: { success: true, content: 'written' } })
+    if (text.includes('TODOS_CLEAR')) {
+      notify('model.streaming', { kind: 'tool_input_start', toolCallId: 'clear-todo', toolName: 'TodoWrite' })
+      notify('model.streaming', { kind: 'tool_call', toolCallId: 'clear-todo', input: '{"todos":[]}' })
+      notify('tool.updated', { kind: 'scheduled', toolCallId: 'clear-todo', inputOmitted: true })
+      notify('tool.updated', { kind: 'result', toolCallId: 'clear-todo', result: { success: true, content: 'cleared' } })
+    }
+    if (text.includes('TODOS_LATE')) {
+      notify('model.streaming', { kind: 'tool_input_start', toolCallId: 'late-todo', toolName: 'TodoWrite' })
+      notify('model.streaming', { kind: 'tool_call', toolCallId: 'late-todo', input: { todos: [{ content: 'Child plan', status: 'pending' }] } })
+      notify('tool.updated', { kind: 'scheduled', toolCallId: 'late-todo', ...(text.includes('SCHEDULED') ? { parentToolCallId: 'parent-call' } : {}) })
+      notify('tool.updated', { kind: 'started', toolCallId: 'late-todo', parentToolCallId: 'parent-call' })
+      notify('tool.updated', { kind: 'result', toolCallId: 'late-todo', result: { success: true, content: 'child' } })
+    }
     // A subagent's todo keeps the ordinary tool row.
     notify('model.streaming', { kind: 'tool_call', toolCallId: 'child-todo', toolName: 'TodoWrite', input: todos, parentToolCallId: 'parent-call' })
     notify('tool.updated', { kind: 'result', toolCallId: 'child-todo', result: { success: true, content: 'child' } })

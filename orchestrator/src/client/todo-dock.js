@@ -18,12 +18,12 @@ const progress = steps => {
   return Object.entries(counts).filter(([, count]) => count > 0).map(([status, count]) => `${WORD[status]} ${count}`).join(' · ')
 }
 
-export function PlanDock({ profileId, sessionId, compact }) {
+export function PlanDock({ profileId, sessionId, compact, selectLines }) {
   const [collapsed, setCollapsed] = useState(true)
   useSyncExternalStore(subscribeStore, getStoreVersion)
   useEffect(() => sessionId ? watchTranscript(profileId, sessionId) : undefined, [profileId, sessionId])
   const lines = sessionId ? transcriptOf(`${profileId}:${sessionId}`) : EMPTY
-  const plan = lines.findLast(line => line.kind === 'plan')
+  const plan = (selectLines ? selectLines(lines) : lines).findLast(line => line.kind === 'plan')
   const steps = plan && plan.removed !== true && Array.isArray(plan.steps) ? plan.steps : []
   if (!sessionId || steps.length === 0) return null
   return h('section', { className: 'nodo-todo-dock', 'data-compact': compact ? '' : undefined, 'aria-label': '任务清单' },

@@ -1316,3 +1316,34 @@ test('a live executor card shows the member task list between the header and the
   assert.equal(card.props['data-compact'], '')
   assert.equal(nodes(card).find(node => node.props.className === 'nodo-todo-dock-progress').children[0], '已完成 1 · 进行中 1')
 })
+
+test('member task lists stay in their delegation window across reuse, retries and removal', async () => {
+  const feed = { lines: [
+    { who: 'user', at: 1 },
+    { who: 'user', origin: { kind: 'retry' }, at: 3 },
+    { who: 'agent', kind: 'plan', at: 4, steps: [{ text: 'First task', status: 'completed' }] },
+    { who: 'user', at: 10 },
+    { who: 'agent', kind: 'plan', at: 11, steps: [{ text: 'Second task', status: 'in_progress' }, { text: 'Pending', status: 'pending' }] },
+    { who: 'user', at: 20 },
+  ] }
+  const { RoundMember, host } = await loadClient('round.js', { stubs: { 'live.js': liveStub(feed) } })
+  const round = { profiles: [{ id: 'tester', name: 'Tester' }], onOpen() {} }
+  const step = { session: 's', profile: 'tester', type: 'test', at: 2, ended: 'interrupted' }
+  const dock = () => {
+    host.reset()
+    const node = nodes(RoundMember({ step, round })).find(item => item.props.compact)
+    host.reset()
+    return node.type(node.props)
+  }
+  const progress = () => nodes(dock()).find(node => node.props.className === 'nodo-todo-dock-progress')?.children[0]
+  assert.equal(progress(), '已完成 1', 'an interrupted card keeps its own plan after session reuse')
+  step.at = 12
+  delete step.ended
+  assert.equal(progress(), '进行中 1 · 待办 1')
+  feed.lines.splice(5, 0, { who: 'agent', kind: 'plan', at: 13, removed: true, steps: [] })
+  assert.equal(dock(), null, 'a removal never revives an earlier plan')
+  step.at = 21
+  assert.equal(dock(), null, 'a new task does not inherit a prior plan')
+  step.deferred = true
+  assert.equal(dock(), null, 'an unsent delegation does not inherit a prior plan')
+})

@@ -13576,12 +13576,12 @@ var progress = (steps) => {
   for (const step of steps) counts[(step.status ?? "pending") in counts ? step.status : "pending"] += 1;
   return Object.entries(counts).filter(([, count]) => count > 0).map(([status2, count]) => `${WORD[status2]} ${count}`).join(" \xB7 ");
 };
-function PlanDock({ profileId, sessionId, compact }) {
+function PlanDock({ profileId, sessionId, compact, selectLines }) {
   const [collapsed, setCollapsed] = (0, import_react.useState)(true);
   (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
   (0, import_react.useEffect)(() => sessionId ? watchTranscript(profileId, sessionId) : void 0, [profileId, sessionId]);
   const lines = sessionId ? transcriptOf(`${profileId}:${sessionId}`) : EMPTY2;
-  const plan = lines.findLast((line) => line.kind === "plan");
+  const plan = (selectLines ? selectLines(lines) : lines).findLast((line) => line.kind === "plan");
   const steps = plan && plan.removed !== true && Array.isArray(plan.steps) ? plan.steps : [];
   if (!sessionId || steps.length === 0) return null;
   return (0, import_react.createElement)(
@@ -13870,12 +13870,13 @@ var taskWord = (task, work, unconfirmed = false) => {
   return work?.active || task.latestExecutionStatus === "running" ? "\u8FDB\u884C\u4E2D" : task.status === "open" ? "\u5F85\u6267\u884C" : "";
 };
 var typeName = (round, id) => (round.teams?.find((team) => team.lead === round.leadId)?.types ?? []).find((item) => item.id === id)?.name ?? (round.teams ?? []).flatMap((team) => team.types ?? []).find((item) => item.id === id)?.name ?? id;
-var delegationRows = (lines, step) => {
+var delegationLines = (lines, step) => {
   const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
   const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
   const end = lines.findIndex((line, index) => index >= start && boundary(line));
-  return transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? void 0 : end));
+  return step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? void 0 : end);
 };
+var delegationRows = (lines, step) => transcriptRows(delegationLines(lines, step));
 var shownChanges = (row) => row.item.kind === "changes" && supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0;
 function RoundTools({ step, work }) {
   (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
@@ -14053,7 +14054,12 @@ function RoundMember({ step, round }) {
       ) : (0, import_react.createElement)(
         import_react.Fragment,
         null,
-        (0, import_react.createElement)(PlanDock, { profileId: step.profile, sessionId: step.session, compact: true }),
+        (0, import_react.createElement)(PlanDock, {
+          profileId: step.profile,
+          sessionId: step.session,
+          compact: true,
+          selectLines: (lines) => delegationLines(lines, step)
+        }),
         (0, import_react.createElement)(RoundTools, { step, work })
       ),
       !step.report && step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),

@@ -352,17 +352,17 @@ export const isTodoTool = (name: unknown) => typeof name === 'string' && name.re
 /**
  * A todo tool's whole-list input (object or JSON string) as `plan` steps: empty
  * contents dropped, unknown statuses read as pending. Undefined without a
- * usable list, so a call whose input has not arrived yet stays silent.
+ * list; an empty list clears the plan.
  */
 export function todoPlanSteps(input: unknown) {
   let parsed: unknown = input
   if (typeof input === 'string') { try { parsed = JSON.parse(input) } catch { return undefined } }
-  const raw = Array.isArray((parsed as { todos?: unknown } | null)?.todos) ? (parsed as { todos: unknown[] }).todos : []
-  const steps = raw.filter(todo => typeof (todo as { content?: unknown })?.content === 'string' && (todo as { content: string }).content !== '').slice(0, 50)
+  const raw = (parsed as { todos?: unknown } | null)?.todos
+  if (!Array.isArray(raw)) return undefined
+  return raw.filter(todo => typeof (todo as { content?: unknown })?.content === 'string' && (todo as { content: string }).content !== '').slice(0, 50)
     .map(todo => ({ text: (todo as { content: string }).content,
       status: (todo as { status?: string }).status === 'in_progress' || (todo as { status?: string }).status === 'completed'
         ? (todo as { status: 'in_progress' | 'completed' }).status : 'pending' as const }))
-  return steps.length > 0 ? steps : undefined
 }
 
 /** Returns the primitive names an adapter object does not provide as functions. */

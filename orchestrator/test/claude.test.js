@@ -649,3 +649,17 @@ test('Claude maps a top-level TodoWrite call to the plan channel and keeps subag
     } finally { driver.dispose() }
   })
 })
+
+test('Claude clears a populated plan with an empty TodoWrite snapshot', () => withFixture(async ({ bin, cwd }) => {
+  const events = []
+  const driver = createDriver('claude', { bin, cwd, onEvent: event => events.push(event) })
+  try {
+    await driver.sendTurn('TODOS_CLEAR')
+    await until(() => events.some(event => event.type === 'turn/end'))
+    const plans = events.filter(event => event.type === 'plan')
+    assert.equal(plans.length, 2, 'streamed and assembled empty snapshots are deduplicated')
+    assert.equal(plans[0].steps.length, 3)
+    assert.deepEqual(plans[1].steps, [])
+    assert.equal(events.some(event => event.type === 'tool'), false)
+  } finally { driver.dispose() }
+}))

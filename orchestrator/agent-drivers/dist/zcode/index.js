@@ -229,21 +229,23 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         const id = payload.toolCallId;
         if (!id || turn.completedTools.has(id))
             return;
-        // The top-level todo list rides the plan channel; its call and result never
-        // become a tool row. Subagent todos keep the ordinary row.
-        if (turn.planTools.has(id) || !payload.parentToolCallId && isTodoTool(payload.toolName)) {
-            turn.planTools.add(id);
-            const plan = todoPlanSteps(payload.input);
-            if (plan)
-                emit({ type: 'plan', turnId: turn.id, steps: plan });
-            return;
-        }
         if (payload.toolName)
             turn.names.set(id, payload.toolName);
         if (payload.parentToolCallId)
             turn.parents.set(id, payload.parentToolCallId);
         if (payload.input !== undefined)
             turn.inputs.set(id, payload.input);
+        // Parent relations can arrive after the model stream, with scheduling or
+        // start events. Publish top-level todos only once the tool finishes.
+        if (isTodoTool(turn.names.get(id)) && !turn.parents.has(id)) {
+            if (payload.result !== undefined || payload.kind === 'error') {
+                turn.completedTools.add(id);
+                const plan = todoPlanSteps(turn.inputs.get(id));
+                if (payload.kind !== 'error' && payload.result?.success !== false && plan)
+                    emit({ type: 'plan', turnId: turn.id, steps: plan });
+            }
+            return true;
+        }
         if (turn.tools.has(id)) {
             // A parent relation may arrive with the scheduled/started notification
             // after the input stream already opened the row; preserve it once.
@@ -361,9 +363,10 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 detail: `第 ${retry.attempt}/${retry.maxRetries} 次，等待 ${Math.ceil((retry.retryDelayMs ?? 0) / 1000)} 秒` });
         }
         if (event.type === 'tool.updated') {
-            if (payload.kind === 'batch' || !payload.toolCallId || turn.completedTools.has(payload.toolCallId) || turn.planTools.has(payload.toolCallId))
+            if (payload.kind === 'batch' || !payload.toolCallId || turn.completedTools.has(payload.toolCallId))
                 return;
-            startTool(payload);
+            if (startTool(payload))
+                return;
             const parent = turn.parents.get(payload.toolCallId);
             if (payload.kind === 'progress') {
                 // These are the source's own latest snapshots (tails/preview/byte
@@ -614,7 +617,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 throw new Error('ZCode is compacting this session');
             if (running)
                 throw new Error('ZCode already has a running turn');
-            const turn = running = { id: `zcode-${++sequence}`, started: false, messages: new Set(), tools: new Set(), completedTools: new Set(), planTools: new Set(), names: new Map(), inputs: new Map(), parents: new Map(), parentEmitted: new Set(), guides: new Set(), guideIds: new Map(), sawText: false, settle: null };
+            const turn = running = { id: `zcode-${++sequence}`, started: false, messages: new Set(), tools: new Set(), completedTools: new Set(), names: new Map(), inputs: new Map(), parents: new Map(), parentEmitted: new Set(), guides: new Set(), guideIds: new Map(), sawText: false, settle: null };
             turn.changes = createFileChanges(cwd);
             try {
                 await boot();

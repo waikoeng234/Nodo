@@ -105,13 +105,14 @@ const typeName = (round, id) => (round.teams?.find(team => team.lead === round.l
 
 // One delegation's transcript window: from its task line to the next one;
 // retry continuations stay inside.
-const delegationRows = (lines, step) => {
+const delegationLines = (lines, step) => {
   const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
   const start = step.deferred ? lines.findIndex(line => boundary(line) && line.at >= step.at) + 1
     : lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
   const end = lines.findIndex((line, index) => index >= start && boundary(line))
-  return transcriptRows(step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? undefined : end))
+  return step.deferred && start === 0 ? [] : lines.slice(start, end < 0 ? undefined : end)
 }
+const delegationRows = (lines, step) => transcriptRows(delegationLines(lines, step))
 const shownChanges = row => row.item.kind === 'changes' && supportedStreamRecord(row.item.presentation)
   && row.item.presentation.body.fileCount > 0
 
@@ -235,7 +236,8 @@ export function RoundMember({ step, round }) {
             h('span', null, summary), h(IconChevronDownOutlineRegular, { size: 14 }))
           : h('p', { className: 'nodo-round-summary' }, summary),
         h(RoundChanges, { step }))
-        : h(Fragment, null, h(PlanDock, { profileId: step.profile, sessionId: step.session, compact: true }),
+        : h(Fragment, null, h(PlanDock, { profileId: step.profile, sessionId: step.session, compact: true,
+          selectLines: lines => delegationLines(lines, step) }),
           h(RoundTools, { step, work })),
       !step.report && step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
       open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
