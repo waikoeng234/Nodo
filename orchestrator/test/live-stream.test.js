@@ -52,6 +52,9 @@ test('a shared stream resumes changed and appended rows, stays idle, and cancels
     assert.equal(loaded.getLive().work[session].active, true)
     assert.equal(loaded.getLive().profiles[0].sessions.find(row => row.id === session).updatedAt, 123)
     const initial = JSON.parse(first.query.get('watch'))[0].since
+    // Only a running turn's rows change; a background save settles the rows of an idle session.
+    const workView = rt.workView
+    rt.workView = () => ({ ...workView(), [session]: { active: true } })
     const line = rt.appendLine(session, { who: 'agent', kind: 'text', text: 'one', open: true })
     const value = structuredClone(rt.transcriptDelta(session, initial))
     first.controller.enqueue(encode({ type: 'transcript', key, value }))

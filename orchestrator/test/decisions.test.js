@@ -384,16 +384,22 @@ test('upgrading a delivered historical report does not backfill review or block 
   leader.finish()
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
   const line = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === first.executionId)
-  delete line.origin.reviewRequired
-  rt.touchLine(owner.id, line)
   delete rt.state.executions[first.executionId].reports
   rt.conversationOf(owner.id).session.reportQueue = [{ id: line.origin.reportId, executionId: first.executionId, taskId: first.taskId, session: first.session, text: line.text }]
   await rt.saveStrict()
   await host.dispose()
+  // The delivered row is settled on disk: rewrite it as a version before review existed saved it.
+  const file = join(host.home, 'transcripts', `${encodeURIComponent(owner.id)}.jsonl`)
+  writeFileSync(file, readFileSync(file, 'utf8').split('\n').map(text => {
+    const row = text && JSON.parse(text)
+    if (row?.origin?.reportId === line.origin.reportId) delete row.origin.reviewRequired
+    return row ? JSON.stringify(row) : text
+  }).join('\n'))
   const restarted = boot(host.home)
   try {
     const recovered = await restarted.runtime
     await recovered.flushLeadReports(owner.id)
+    assert.equal(recovered.conversationOf(owner.id).session.reportQueue, undefined, 'the historical report was processed')
     assert.equal(recovered.state.executions[first.executionId].reports, undefined)
     assert.equal(recovered.transcriptOf(owner.id).filter(item => item.origin?.reportId === line.origin.reportId).length, 1)
     assert.equal((await recovered.leadDispatch.delegate(owner.id, { type: 'feature', hard: false, task: 'Authorized work after upgrade' })).status, 'queued')
