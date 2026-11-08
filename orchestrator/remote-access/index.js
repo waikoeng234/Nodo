@@ -1,16 +1,26 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { command } from './command.js'
-import { startMobileProxy, mobileProxyPort } from './proxy.js'
+import { startMobileProxy } from './proxy.js'
 
-export const proxyTarget = `http://127.0.0.1:${mobileProxyPort}`
 const TAILSCALE = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
 const message = (phase, reason, extra = {}) => ({ phase, reason, ...extra })
 
 export function createRemoteAccess({ host, connection, preferences, save, platform = process.platform,
   exists = existsSync, run = command, proxy = startMobileProxy }) {
-  let stop, busy = false, closed = false
+  let stop, port, busy = false, closed = false
   const state = () => ({ enabled: preferences().enabled === true, busy })
+  // Preferences saved before ports were persisted forwarded to the former fixed port.
+  const persisted = () => preferences().port ?? 43819
+  const target = () => state().enabled ? `http://127.0.0.1:${persisted()}` : ''
+  const retract = async () => {
+    const origin = preferences().origin
+    if (!origin || !exists(TAILSCALE)) return true
+    let config
+    try { config = JSON.parse(String((await run(TAILSCALE, ['serve', 'status', '--json'])).stdout)) } catch { return false }
+    if (config.Web?.[`${new URL(origin).host}:443`]?.Handlers?.['/']?.Proxy !== target()) return true
+    return (await run(TAILSCALE, ['serve', '--yes', '--https=443', '--set-path=/', 'off'])).code === 0
+  }
   const inspect = async () => {
     if (platform !== 'darwin' || !host?.getOrigin || !connection?.authenticatedUrl)
       return message('unsupported', '目前支持 macOS 上的 DSH Desktop。')
@@ -34,11 +44,12 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
     const key = `${hostname}:443`
     const handler = config.Web?.[key]?.Handlers?.['/']
     if (config.AllowFunnel?.[key]) return message('conflict', '此地址已开启公网 Funnel，请先关闭它；手机远程只使用私有网络。')
-    if ((handler && handler.Proxy !== proxyTarget) || (config.TCP?.['443'] && !config.TCP['443'].HTTPS))
+    if ((handler && handler.Proxy !== target()) || (config.TCP?.['443'] && !config.TCP['443'].HTTPS))
       return message('conflict', '此 HTTPS 入口已用于其他服务，现有配置保持不变。')
-    return { phase: 'ready', origin, configured: handler?.Proxy === proxyTarget }
+    return { phase: 'ready', origin, configured: handler?.Proxy === target() }
   }
   const status = async () => {
+    if (state().enabled && !stop && !busy) await retract()
     const view = await inspect()
     const enabled = state().enabled
     return { ...view, ...state(), phase: view.phase === 'ready' ? enabled && view.configured && stop ? 'enabled' : 'ready' : view.phase,
@@ -46,9 +57,9 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
         : enabled && !stop ? '本机代理未运行，可重新启用。' : '') }
   }
   const release = async () => { const dispose = stop; stop = undefined; await dispose?.() }
-  const start = async origin => {
+  const start = async (origin, reuse) => {
     if (closed) throw new Error('远程访问已停止，请重新打开设置。')
-    if (!stop) stop = await proxy(host.getOrigin(), origin)
+    if (!stop) ({ stop, port } = await proxy(host.getOrigin(), origin, reuse))
   }
   return {
     status,
@@ -60,14 +71,14 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
     async enable() {
       if (busy) throw new Error('正在配置远程访问，请稍后。')
       busy = true
-      let created = false, origin
+      let created = false, origin, view
       try {
-        const view = await inspect()
+        view = await inspect()
         if (view.phase !== 'ready') return { ...view, ...state(), busy: false }
         origin = view.origin
-        await start(origin)
+        await start(origin, view.configured ? persisted() : undefined)
         if (!view.configured) {
-          const result = await run(TAILSCALE, ['serve', '--bg', '--yes', '--https=443', '--set-path=/', proxyTarget], { timeout: 8_000 })
+          const result = await run(TAILSCALE, ['serve', '--bg', '--yes', '--https=443', '--set-path=/', `http://127.0.0.1:${port}`], { timeout: 8_000 })
           if (result.code !== 0) {
             const url = /https:\/\/login\.tailscale\.com\/f\/serve\?node=[\w-]+/.exec(`${result.stdout}\n${result.stderr}`)?.[0]
             await release()
@@ -77,11 +88,11 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
           }
           created = true
         }
-        await save({ enabled: true, origin })
+        await save({ enabled: true, origin, port })
         return { enabled: true, busy: false, phase: 'enabled', origin, configured: true }
       } catch (error) {
         await release()
-        if (created) await run(TAILSCALE, ['serve', '--yes', '--https=443', '--set-path=/', 'off'])
+        if (created || view?.configured) await run(TAILSCALE, ['serve', '--yes', '--https=443', '--set-path=/', 'off'])
         throw error
       } finally { busy = false }
     },
@@ -89,15 +100,7 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
       if (busy) throw new Error('正在配置远程访问，请稍后。')
       busy = true
       try {
-        const result = await run(TAILSCALE, ['serve', 'status', '--json'])
-        let config
-        try { config = JSON.parse(String(result.stdout)) } catch { throw new Error('无法读取转发配置，请打开 Tailscale 后重试关闭。') }
-        const origin = preferences().origin
-        const key = origin ? `${new URL(origin).host}:443` : ''
-        if (config.Web?.[key]?.Handlers?.['/']?.Proxy === proxyTarget) {
-          const removed = await run(TAILSCALE, ['serve', '--yes', '--https=443', '--set-path=/', 'off'])
-          if (removed.code !== 0) throw new Error('转发尚未移除，请打开 Tailscale 后重试关闭。')
-        }
+        if (!await retract()) throw new Error('转发尚未移除，请打开 Tailscale 后重试关闭。')
         await release()
         await save({ enabled: false })
         return { enabled: false, busy: false, phase: 'ready' }
@@ -115,7 +118,8 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
     async resume() {
       if (!state().enabled) return
       const view = await inspect()
-      if (view.phase === 'ready' && view.configured) await start(view.origin)
+      if (view.phase === 'ready' && view.configured) await start(view.origin, persisted()).catch(() => {})
+      if (!stop) await retract()
     },
     async close() { closed = true; await release() },
   }

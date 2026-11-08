@@ -1,17 +1,44 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { command } from './command.js'
 
-export const mobileProxyPort = 43819
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+const running = async pid => (await command('/bin/ps', ['-p', String(pid)])).code === 0
 
-export async function startMobileProxy(upstream, mobileOrigin, port = mobileProxyPort) {
+// Only an orphaned httpd (reparented to launchd) running this module's own config is a leftover of a crashed host.
+async function reapOrphans() {
+  for (const name of readdirSync(tmpdir()).filter(name => name.startsWith('nodo-mobile-'))) {
+    const directory = join(tmpdir(), name)
+    const pid = Number(await readFile(join(directory, 'httpd.pid'), 'utf8').catch(() => ''))
+    if (!pid) continue
+    const ps = await command('/bin/ps', ['-ww', '-o', 'ppid=,command=', '-p', String(pid)])
+    const owned = /^1\s+(.+)$/.exec(String(ps.stdout).trim())?.[1] === `/usr/sbin/httpd -f ${join(directory, 'httpd.conf')} -DFOREGROUND`
+    if (owned) {
+      process.kill(pid, 'SIGTERM')
+      for (let attempt = 0; attempt < 60 && await running(pid); attempt++) await wait(50)
+    }
+    if (owned || ps.code !== 0) rmSync(directory, { recursive: true, force: true })
+  }
+}
+
+export async function startMobileProxy(upstream, mobileOrigin, port) {
   const external = new URL(mobileOrigin)
   if (external.protocol !== 'https:' || !external.hostname.endsWith('.ts.net')
     || external.port || external.username || external.password || external.pathname !== '/' || external.search || external.hash) {
     throw new Error('手机入口必须是 Tailscale 的 HTTPS 根地址')
+  }
+  await reapOrphans()
+  if (!port) {
+    const probe = createServer().listen(0, '127.0.0.1')
+    await once(probe, 'listening')
+    port = probe.address().port
+    await new Promise(resolve => probe.close(resolve))
   }
   const directory = mkdtempSync(join(tmpdir(), 'nodo-mobile-'))
   const instance = randomUUID()
@@ -62,9 +89,9 @@ ProxyPassReverse "/" "${upstream}/"
     }).catch(() => null)
     const ready = response?.headers.get('x-nodo-remote-instance') === instance
     await response?.body?.cancel()
-    if (ready) return stop
-    await new Promise(resolve => setTimeout(resolve, 50))
+    if (ready) return { port, stop }
+    await wait(50)
   }
   await stop()
-  throw new Error('本机转发启动失败，请检查转发端口 43819 是否已被占用。')
+  throw new Error('本机转发启动失败，请重新启用手机远程。')
 }

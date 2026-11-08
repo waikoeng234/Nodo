@@ -55,8 +55,12 @@ test('remote access is restored once per host process, not on every load', async
   const prefs = { get remoteAccess() { reads++; return { enabled: true } } }
   const f = fixture(null, { prefs })
   try {
-    for (let i = 0; i < 3; i++) await f.rt.load()
+    await f.rt.load()
     await new Promise(resolve => setImmediate(resolve))
-    assert.equal(reads, 1)
+    const once = reads
+    for (let i = 0; i < 2; i++) await f.rt.load()
+    await new Promise(resolve => setImmediate(resolve))
+    assert(once > 0)
+    assert.equal(reads, once)
   } finally { await f.close() }
 })

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import WebSocket, { WebSocketServer } from 'ws'
 import { startMobileProxy } from '../remote-access/proxy.js'
@@ -28,11 +32,12 @@ test('mobile gateway preserves authentication, streams, and WebSockets', { skip:
   await once(upstream, 'listening')
   t.after(() => { wsServer.close(); upstream.closeAllConnections(); upstream.close() })
   const origin = `http://127.0.0.1:${upstream.address().port}`
-  const stop = await startMobileProxy(origin, mobileOrigin, 43820)
+  const { port, stop } = await startMobileProxy(origin, mobileOrigin)
   t.after(stop)
+  assert.notEqual(port, 43819)
 
   const read = (path = '/', headers = {}, method = 'GET') => new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port: 43820, path, headers, method }, response => {
+    const req = request({ host: '127.0.0.1', port, path, headers, method }, response => {
       let text = ''
       let firstAt
       const startedAt = Date.now()
@@ -71,7 +76,7 @@ test('mobile gateway preserves authentication, streams, and WebSockets', { skip:
   assert.equal(stream.text, '{"first":true}\n{"last":true}\n')
   assert(stream.duration >= 200)
   assert(stream.firstAt < 150, 'initial stream chunk was buffered')
-  const ws = new WebSocket('ws://127.0.0.1:43820/ws', { headers })
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers })
   t.after(() => ws.terminate())
   await once(ws, 'open')
   ws.send('fixture')
@@ -79,4 +84,34 @@ test('mobile gateway preserves authentication, streams, and WebSockets', { skip:
   assert.equal(value.toString(), 'fixture')
   ws.close()
   await once(ws, 'close')
+})
+
+test('a proxy orphaned by a crashed host is replaced while other processes survive', { skip: process.platform !== 'darwin' }, async t => {
+  const mobileOrigin = 'https://fixture.tail0000.ts.net'
+  const upstream = 'http://127.0.0.1:9'
+  const answers = port => fetch(`http://127.0.0.1:${port}/`, { headers: { host: new URL(mobileOrigin).host }, signal: AbortSignal.timeout(1000) })
+    .then(response => response.headers.has('x-nodo-remote-instance'), () => false)
+  const alive = pid => spawnSync('/bin/ps', ['-p', String(pid)]).status === 0
+
+  const live = await startMobileProxy(upstream, mobileOrigin)
+  t.after(live.stop)
+  const decoy = mkdtempSync(join(tmpdir(), 'nodo-mobile-'))
+  const decoyPid = Number(String(spawnSync('/bin/sh', ['-c', 'sleep 60 >/dev/null 2>&1 & echo $!']).stdout).trim())
+  writeFileSync(join(decoy, 'httpd.pid'), String(decoyPid))
+  t.after(() => { process.kill(decoyPid); rmSync(decoy, { recursive: true, force: true }) })
+
+  const crashed = spawn(process.execPath, ['--input-type=module', '-e', `
+    const { startMobileProxy } = await import(${JSON.stringify(new URL('../remote-access/proxy.js', import.meta.url).href)})
+    console.log((await startMobileProxy(${JSON.stringify(upstream)}, ${JSON.stringify(mobileOrigin)})).port)`], { stdio: ['ignore', 'pipe', 'inherit'] })
+  const port = Number(String((await once(crashed.stdout, 'data'))[0]))
+  crashed.kill('SIGKILL')
+  await once(crashed, 'exit')
+  assert(await answers(port), 'orphaned proxy should still be listening')
+
+  const next = await startMobileProxy(upstream, mobileOrigin, port)
+  t.after(next.stop)
+  assert.equal(next.port, port)
+  assert(await answers(port))
+  assert(await answers(live.port))
+  assert(alive(decoyPid))
 })
