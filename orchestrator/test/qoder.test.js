@@ -185,15 +185,16 @@ test('Qoder refuses steering and its interrupt receipt ends the turn as interrup
     const driver = createDriver('qoder', { bin, cwd, onEvent: event => events.push(event) })
     try {
       assert.equal(await driver.steer('change focus'), 'refused', 'mid-turn user frames queue as the next turn, so the host must queue instead')
+      const requests = () => existsSync(join(cwd, 'qoder-requests.jsonl')) ? readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8') : ''
       await driver.sendTurn('WAIT')
-      await until(() => events.find(event => event.type === 'session' && event.state === 'ready'))
+      await until(() => requests().includes('"user":"WAIT"'))
       assert.equal(await driver.steer('change focus'), 'refused')
-      assert.ok(!readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').includes('change focus'), 'a refused steer never reaches the engine')
       await driver.interruptTurn()
       const end = await until(() => events.find(event => event.type === 'turn/end'))
       assert.equal(end.reason, 'interrupted')
       assert.equal(end.unconfirmed, undefined, 'the engine confirmed this stop with its own result frame')
-      assert.ok(readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').includes('{"control":"interrupt"}'))
+      assert.ok(requests().includes('{"control":"interrupt"}'))
+      assert.ok(!requests().includes('change focus'), 'a refused steer never reaches the engine')
     } finally { driver.dispose() }
   })
 })

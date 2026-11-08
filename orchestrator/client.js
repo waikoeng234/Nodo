@@ -14393,32 +14393,36 @@ function RoundMember({ step, round }) {
           (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }),
           step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.stoppedBy && (step.ended === "cancelled" || step.ended === "interrupted") ? "\u5DF2\u505C\u6B62" : step.ended === "cancelled" ? "\u5DF2\u53D6\u6D88" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F"
         ) : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
-        live && round.onStop && (0, import_react.createElement)(
-          "button",
-          {
+        (0, import_react.createElement)(
+          "span",
+          { className: "nodo-round-actions" },
+          live && round.onStop && (0, import_react.createElement)(
+            "button",
+            {
+              type: "button",
+              className: "nodo-round-open",
+              disabled: stopping,
+              "aria-label": `\u505C\u6B62 ${role.name}`,
+              onClick: () => {
+                setConfirming(true);
+                void round.onStop(step).finally(() => setConfirming(false));
+              }
+            },
+            (0, import_react.createElement)("svg", { width: 10, height: 10, viewBox: "0 0 10 10", fill: "currentColor", "aria-hidden": true }, (0, import_react.createElement)("rect", { width: 10, height: 10, rx: 2 })),
+            stopping ? "\u505C\u6B62\u4E2D\u2026" : "\u505C\u6B62"
+          ),
+          step.taskId && round.onSupplement && (0, import_react.createElement)("button", {
             type: "button",
             className: "nodo-round-open",
-            disabled: stopping,
-            "aria-label": `\u505C\u6B62 ${role.name}`,
-            onClick: () => {
-              setConfirming(true);
-              void round.onStop(step).finally(() => setConfirming(false));
-            }
-          },
-          (0, import_react.createElement)("svg", { width: 10, height: 10, viewBox: "0 0 10 10", fill: "currentColor", "aria-hidden": true }, (0, import_react.createElement)("rect", { width: 10, height: 10, rx: 2 })),
-          stopping ? "\u505C\u6B62\u4E2D\u2026" : "\u505C\u6B62"
-        ),
-        step.taskId && round.onSupplement && (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-round-open",
-          "aria-label": `\u8865\u5145 ${task?.title ?? role.name}`,
-          onClick: () => round.onSupplement(step)
-        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 14 }), "\u8865\u5145"),
-        (0, import_react.createElement)(
-          "button",
-          { type: "button", className: "nodo-round-open", onClick: () => round.onOpen(step.session) },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 14 }),
-          "\u67E5\u770B\u4F1A\u8BDD"
+            "aria-label": `\u8865\u5145 ${task?.title ?? role.name}`,
+            onClick: () => round.onSupplement(step)
+          }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, { size: 14 }), "\u8865\u5145"),
+          (0, import_react.createElement)(
+            "button",
+            { type: "button", className: "nodo-round-open", onClick: () => round.onOpen(step.session) },
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 14 }),
+            "\u67E5\u770B\u4F1A\u8BDD"
+          )
         )
       ),
       // The live task list sits between the header and the event stream; a
@@ -21522,6 +21526,35 @@ html[data-nodo-space]:not([data-platform]) .nodo-left-control{position:absolute;
 html[data-nodo-space]:not([data-platform]) .nodo-left-control button{width:28px;height:28px;padding:0;border-radius:var(--dsw-radius-sm)}
 html[data-nodo-space]:not([data-platform]) .nodo-space-chrome>*{display:none}
 ${FRAME_CSS.replaceAll("html:is([data-platform=darwin],[data-windows-titlebar])[data-nodo-space]", "html[data-nodo-space]:not([data-platform])")}
+/* Phones: below the host's 768px drawer breakpoint the host gives the rightbar
+   no width, so the tools open as a full-screen sheet just under the host
+   overlay layer (z-index 20) that holds both panel toggles. The host leading
+   seat there holds the sidebar toggle and new-session button but reserves
+   room for one. iOS Safari zooms into text fields under 16px. */
+@media (max-width:767px){
+html[data-nodo-space]:not([data-platform]) .nodo-head{--dsh-frame-leading-clearance:84px}
+html[data-nodo-space]:not([data-platform]) .nodo-composer{margin-bottom:12px}
+html[data-nodo-space]:not([data-platform]) :is(input[type=text],input[type=search],input:not([type]),textarea){font-size:16px}
+html[data-nodo-space]:not([data-platform]) :has(> [data-rightbar-col]){--nodo-frame-gap:0px;--nodo-card-edge:0 solid transparent}
+html[data-nodo-space]:not([data-platform]) :has(+ [data-rightbar-col]),html[data-nodo-space]:not([data-platform]) [data-sidebar-collapsed]>:has(+ [data-rightbar-col]){margin:0}
+html[data-nodo-space]:not([data-platform]) .nodo-space-chrome{display:none}
+html[data-nodo-space]:not([data-platform]) .nodo-space-sidebar{--nodo-top-clearance:0px}
+html[data-nodo-space]:not([data-platform]) .nodo-space-sidebar .nodo-rail-body{margin-bottom:0}
+html[data-nodo-space]:not([data-platform]) .nodo-right-panel{z-index:19;width:100vw!important;background:var(--dsw-alias-bg-base)}
+html[data-nodo-space]:not([data-platform]) .nodo-right-head{padding-left:48px}
+html[data-nodo-space]:not([data-platform]) .nodo-right-tree{flex:1;border-left:0}
+html[data-nodo-space]:not([data-platform]) .nodo-right-files:has(.nodo-right-preview) .nodo-right-tree,html[data-nodo-space]:not([data-platform]) .nodo-right-files:not(:has(.nodo-right-preview)) .nodo-right-viewer{display:none}
+html[data-nodo-space]:not([data-platform]) .nodo-model-trigger :is(.nodo-model-label,.nodo-model-effort),html[data-nodo-space]:not([data-platform]) .nodo-stats{display:none}
+html[data-nodo-space]:not([data-platform]) .nodo-model-icon{display:block}
+html[data-nodo-space]:not([data-platform]) .nodo-feed{overflow-x:clip}
+html[data-nodo-space]:not([data-platform]) .nodo-tab:not([data-current]) .nodo-crumb-text{display:none}
+html[data-nodo-space]:not([data-platform]) .nodo-round-head{flex-wrap:wrap;height:auto;min-height:28px}
+html[data-nodo-space]:not([data-platform]) .nodo-round-role{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html[data-nodo-space]:not([data-platform]) .nodo-round-actions{display:flex;flex-basis:100%}
+html[data-nodo-space]:not([data-platform]) .nodo-round-actions>.nodo-round-open{margin-left:0}
+html[data-nodo-space]:not([data-platform]) .nodo-question-foot{flex-wrap:wrap}
+html[data-nodo-space]:not([data-platform]) :is(.nodo-approval-headline,.nodo-question-title,.nodo-question-label,.nodo-question-description,.nodo-decision-why){overflow-wrap:anywhere}
+}
 /* The Windows host paints its titlebar strip in the sidebar fill; the space
    chrome tint matches the left icon column. The right panel carries its header
    inside the card. The open panel card hangs 8px over the centre column, so the
@@ -21782,6 +21815,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-round-status[data-state=ended]{color:${WARN_INK}}
 .nodo-round-open{display:inline-flex;align-items:center;flex:none;gap:5px;height:26px;margin-left:auto;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
 .nodo-round-open+.nodo-round-open{margin-left:0}
+.nodo-round-actions{display:contents}
 .nodo-round-open:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nodo-round-summary{display:flex;align-items:flex-start;gap:6px;align-self:flex-start;max-width:100%;margin:0;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left}
 button.nodo-round-summary{cursor:pointer}

@@ -261,6 +261,9 @@ test('an executor message shows its role, tags and state, expands the rest of it
   delete round.work.e2.seen
   const stop = suspect.find(node => node.props['aria-label'] === '停止 Tester')
   assert.equal(stop.props.disabled, false, 'a suspected turn remains stoppable')
+  const actions = suspect.find(node => node.props.className === 'nodo-round-actions')
+  assert.deepEqual(nodes(actions).filter(node => node.props.className === 'nodo-round-open').map(node => node.props['aria-label'] ?? text(node)), ['停止 Tester', '查看会话'],
+    'the member buttons share one container the phone layout lifts onto its own row')
   stop.props.onClick()
   assert.deepEqual(stopped, ['e2'], 'a live member stops on its own')
   await tick()
