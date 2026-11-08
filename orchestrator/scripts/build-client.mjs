@@ -2,8 +2,8 @@
 // script that registers a factory with window.__ModuleLoader__; the factory's
 // `require` resolves React and the dsh UI packages from the host's shared module
 // table, so both stay external and are not bundled.
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Script } from 'node:vm'
 import { build } from 'esbuild'
@@ -50,12 +50,16 @@ const result = await build({
     virtualModule('nodo:file-icons', `export const FILE_ICON_URLS = ${JSON.stringify(fileIcons)}`),
   ],
 })
+// esbuild prints module comments relative to the resolved real path; a linked
+// node_modules would otherwise bake a local path into the committed bundle.
+const modulePath = relative(process.cwd(), realpathSync(join(PLUGIN, 'node_modules'))).replaceAll('\\', '/') + '/'
+const bundle = result.outputFiles[0].text.trimEnd().replaceAll(modulePath, 'node_modules/')
 const bundled = `// Built by scripts/build-client.mjs from src/client (npm run build); edits here are overwritten.
 window.__ModuleLoader__.load({
   id: ${JSON.stringify(JSON.parse(read('package.json')).name)},
   factory: (require) => {
     const module = { exports: {} }
-${result.outputFiles[0].text.trimEnd()}
+${bundle}
     // The loader expects an ES module namespace object.
     return Object.defineProperty({ ...module.exports }, Symbol.toStringTag, { value: 'Module' })
   },

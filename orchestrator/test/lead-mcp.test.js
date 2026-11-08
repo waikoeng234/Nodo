@@ -179,6 +179,10 @@ test('lead MCP authenticates, forwards task tools and returns sanitized MCP erro
     const receipt = await client.callTool({ name: 'nodo_delegate', arguments: args })
     assert.deepEqual(JSON.parse(receipt.content[0].text), { session: 'work', role: 'Worker', type: 'feature', hard: false, reused: false })
     assert.deepEqual(h.calls.at(-1), ['delegate', 'lead', args])
+    assert.equal((await rpc(spec, { name: 'nodo_delegate', arguments: { ...args, session: 'work' } })).isError, true)
+    const continuesArgs = { ...args, continues: 'goal' }
+    await client.callTool({ name: 'nodo_delegate', arguments: continuesArgs })
+    assert.deepEqual(h.calls.at(-1), ['delegate', 'lead', continuesArgs])
     const stopped = await client.callTool({ name: 'nodo_interrupt', arguments: { session: 'work' } })
     assert.deepEqual(JSON.parse(stopped.content[0].text), { session: 'work', ended: 'interrupted', lastOutput: '[redacted]' })
     assert.equal((await client.callTool({ name: 'nodo_interrupt', arguments: { executionId: 'execution' } })).isError, undefined)

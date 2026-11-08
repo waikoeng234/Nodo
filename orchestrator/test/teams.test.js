@@ -178,5 +178,7 @@ test('the first read over existing teams copies the shared catalog into every te
     const teams = rt.teams()
     assert.match(teams[0].types[0].id, /^[\w-]{1,40}$/, 'without a stored catalog the built-in defaults seed every team')
     assert.ok(teams[0].types.some(type => type.id === 'feature'))
+    assert.deepEqual(teams[0].types.filter(type => type.independent).map(type => type.id), ['test', 'review'],
+      'the built-in independent flags ride the default catalog')
   })
 })

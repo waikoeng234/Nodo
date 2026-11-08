@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
+import { isAbsolute, relative } from 'node:path'
 import { failure, invalid } from './errors.js'
 import { TASK_TEXT_MAX, RESULT_PREVIEW_MAX, RESULT_TEXT_MAX, RESULTS_TEXT_MAX } from './constants.js'
 
+const CHANGES_RECORDS_MAX = 50
 const previewOf = value => value.trim().replace(/\s+/g, ' ').slice(0, RESULT_PREVIEW_MAX)
 export const executionResultOf = async (execution, rt) => {
   if (execution.result) return execution.result
@@ -174,6 +176,58 @@ export function install(rt) {
     Object.assign(taskOf(execution.taskId), { status: 'open', updatedAt: now })
     return saveExecution(execution)
   }
+  // Merges the session's change records inside the execution window into one
+  // per-path summary. Shell writes are not covered, workspace snapshots may
+  // include changes Nodo cannot attribute to this execution, and unreadable or
+  // partial records only degrade capture. Collection never blocks ending.
+  const collectFiles = async execution => {
+    try {
+      if (execution.startedAt == null) return undefined
+      const found = rt.conversationOf(execution.sessionId)
+      if (!found) return undefined
+      const allLines = rt.transcriptOf(execution.sessionId).filter(line => line.kind === 'changes' && line.at >= execution.startedAt)
+      if (!allLines.length) return undefined
+      const lines = allLines.slice(-CHANGES_RECORDS_MAX)
+      const workspaceCwd = rt.state.workspaces[execution.workspaceRef ?? rt.state.tasks[execution.taskId]?.workspaceRef]?.cwd
+      const relPath = (value, cwd) => {
+        if (!isAbsolute(value)) return value
+        const base = cwd ?? workspaceCwd
+        return base ? relative(base, value) : value
+      }
+      const merged = new Map()
+      let partial = lines.length < allLines.length, snapshot = false
+      for (const line of lines) {
+        const ref = line.presentation?.details?.ref
+        if (!ref) { partial = true; continue }
+        let record
+        try { record = await rt.readStreamDetail({ profile: found.profile.id, session: execution.sessionId, ref }) } catch { partial = true; continue }
+        if (record.kind !== 'changes') continue
+        if (record.capture !== 'complete') partial = true
+        if (record.body?.scope === 'workspace-snapshot') snapshot = true
+        for (const file of record.body?.files ?? []) {
+          if (!file.edits?.length) continue
+          const path = relPath(file.path, record.body?.cwd)
+          if (!path) continue
+          const ops = merged.get(path) ?? []
+          for (const edit of file.edits) ops.push({ operation: edit.operation, fromPath: edit.fromPath, cwd: record.body?.cwd })
+          merged.set(path, ops)
+        }
+      }
+      const source = snapshot ? 'workspace-snapshot' : 'edit-tools'
+      if (!merged.size) return partial ? { items: [], total: 0, capture: 'partial', source } : undefined
+      const items = [...merged.entries()].map(([path, ops]) => {
+        const last = ops.at(-1)
+        const op = last.operation === 'delete' ? 'delete'
+          : ops.some(item => item.operation === 'add') ? 'add'
+          : ops.some(item => item.operation === 'move') ? 'move'
+          : last.operation === 'unknown' ? 'unknown' : 'update'
+        const from = op === 'move' ? relPath(ops.findLast(item => item.operation === 'move').fromPath ?? '', ops.findLast(item => item.operation === 'move').cwd) : undefined
+        return { path, op, ...(from ? { from } : {}) }
+      }).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+      const total = items.length
+      return { items: items.slice(0, 200), total, capture: partial || total > 200 ? 'partial' : 'complete', source }
+    } catch { return undefined }
+  }
   const endExecution = async (id, status, allowed, taskState, input = {}, unsent = false) => {
     if (!unsent) await writable()
     const execution = executionOf(id)
@@ -183,7 +237,9 @@ export function install(rt) {
     const late = execution.status === 'unconfirmed'
     const now = Date.now()
     archiveResult(execution, input, status)
+    const files = await collectFiles(execution)
     Object.assign(execution, result, { status, reason, updatedAt: now, endedAt: now })
+    if (files) execution.files = files
     if (unsent) execution.startedAt = null
     stopping.delete(id)
     const task = taskOf(execution.taskId)

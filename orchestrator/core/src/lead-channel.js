@@ -19,13 +19,13 @@ export function install(rt) {
   const handle = async request => {
     const id = caller(request.token), args = request.arguments ?? {}
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是对象')
-    const allowed = { nodo_context: ['action', 'taskId', 'query', 'cursor', 'sourceId', 'executionId', 'offset', 'limit'], nodo_decision: ['taskIds', 'executionIds', 'questions', 'references', 'stopExecutionIds'], nodo_board: ['table', 'session', 'taskId', 'decisionId'], nodo_delegate: ['type', 'hard', 'task', 'title', 'session', 'taskId', 'worktree', 'parentId', 'dependsOn', 'context'], nodo_interrupt: ['session', 'executionId'], nodo_task: ['taskId', 'action', 'executionId', 'executionIds', 'disposition', 'reason', 'basis', 'references', 'title', 'brief', 'parentId', 'dependsOn'] }[request.name]
+    const allowed = { nodo_context: ['action', 'taskId', 'query', 'cursor', 'sourceId', 'executionId', 'offset', 'limit'], nodo_decision: ['taskIds', 'executionIds', 'questions', 'references', 'stopExecutionIds'], nodo_board: ['table', 'session', 'taskId', 'decisionId'], nodo_delegate: ['type', 'hard', 'task', 'title', 'continues', 'taskId', 'worktree', 'parentId', 'dependsOn', 'context'], nodo_interrupt: ['session', 'executionId'], nodo_task: ['taskId', 'action', 'executionId', 'executionIds', 'disposition', 'reason', 'basis', 'references', 'title', 'brief', 'parentId', 'dependsOn'] }[request.name]
     if (!allowed) throw new Error('未知主控工具')
     if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error('包含不支持的参数')
     if (request.name === 'nodo_context') return rt.executionContext(id, args)
     await rt.decisionDeliveryReady?.(id)
     if (request.name === 'nodo_decision') return rt.createDecision(id, args)
-    for (const key of ['session', 'taskId', 'executionId', 'decisionId']) if (args[key] !== undefined && (typeof args[key] !== 'string' || !args[key].trim())) throw new Error(`${key} 必须是非空字符串`)
+    for (const key of ['session', 'continues', 'taskId', 'executionId', 'decisionId']) if (args[key] !== undefined && (typeof args[key] !== 'string' || !args[key].trim())) throw new Error(`${key} 必须是非空字符串`)
     if (args.parentId !== undefined && (typeof args.parentId !== 'string' || (!args.parentId.trim() && !(request.name === 'nodo_task' && args.action === 'revise' && args.parentId === '')))) throw new Error(request.name === 'nodo_delegate' ? 'parentId 必须是非空字符串' : 'parentId 必须是非空字符串；revise 可用空字符串清空')
     if (args.dependsOn !== undefined && (!Array.isArray(args.dependsOn) || args.dependsOn.some(id => typeof id !== 'string' || !id.trim()))) throw new Error('dependsOn 必须是非空字符串数组')
     if (request.name === 'nodo_board') {

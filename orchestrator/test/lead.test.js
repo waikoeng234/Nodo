@@ -23,7 +23,18 @@ registerEngine('lead-echo-final', { ...echoEntry, info: { ...echoEntry.info, id:
   } })
 } })
 
-const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.', session) => ({ type, hard, task, ...(session ? { session } : {}) })
+// The changes fixture emits the given snapshot bodies at each turn start, so a
+// delegation records real change snapshots through the normal dispatch sinks.
+registerEngine('lead-changes', { ...echoEntry, info: { ...echoEntry.info, id: 'lead-changes' }, validate: raw => raw, create(options) {
+  const snapshots = options.changes ?? []
+  return echoEntry.create({ ...options, onEvent: event => {
+    options.onEvent(event)
+    if (event.type === 'turn/start') for (const body of snapshots) options.onEvent({ type: 'changes', turnId: event.turnId,
+      presentation: { version: 1, kind: 'changes', mode: 'snapshot', capture: body.capture ?? 'complete', body } })
+  } })
+} })
+
+const delegateType = (type, hard, task = 'Implement the task\nKeep existing changes; report paths and tests.', extra = {}) => ({ type, hard, task, ...extra })
 const completed = text => ({ mode: 'turn', completion: Promise.resolve({ reason: 'done', text }) })
 const waitFor = async check => {
   const deadline = Date.now() + 8000
@@ -219,7 +230,7 @@ test('restart cancels unsent delegations without reports or occupied slots', () 
     assert.equal(recovered.state.tasks[receipt.taskId].status, 'stopped')
     assert.equal(recovered.conversationOf(conversation.id).session.reportQueue, undefined)
     assert.equal(recovered.driverOf(receipt.session), undefined)
-    const next = await recovered.leadDispatch.delegate(conversation.id, { ...delegateType('feature', false), taskId: receipt.taskId, session: receipt.session })
+    const next = await recovered.leadDispatch.delegate(conversation.id, { ...delegateType('feature', false), taskId: receipt.taskId })
     assert.equal(next.session, receipt.session)
     await recovered.followLead(conversation.id, { mode: 'turn', completion: Promise.resolve({ reason: 'interrupted' }) })
   } finally { await restarted.dispose() }
@@ -253,7 +264,7 @@ test('lead delegates in its workspace, returns referenced reports and stops at 2
     const delivered = inputs.find(item => item.sessionId === work.id).text
     assert.match(delivered, /^Task from lead Lead\. Start your report with a one-line outcome summary, actual verification results and unresolved issues\./)
     assert.match(delivered, /Carry out the task as written\./)
-    assert.match(delivered, /List changed files once at the end with repo-root-relative paths, no absolute paths or Markdown links\./)
+    assert.doesNotMatch(delivered, /List changed files once at the end/)
     assert.ok(delivered.includes(task))
     if (index === 0) assert.ok(delivered.includes(task), 'the task body still rides inline')
     assert.equal(delivered.includes('--- 来源'), false, 'the default dispatch never inlines a user message')
@@ -335,7 +346,7 @@ test('a tool reuses the executor after an explicit stop and reports only the rev
   await rt.followLead(conversation.id, completed('Dispatched'))
   await until(() => inputs.some(item => item.sessionId === receipt.session))
   await rt.leadDispatch.interrupt(conversation.id, { executionId: receipt.executionId })
-  await toolTask(rt, conversation.id, delegateType('feature', false, 'Apply the new constraint', receipt.session))
+  await toolTask(rt, conversation.id, delegateType('feature', false, 'Apply the new constraint', { taskId: receipt.taskId }))
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   assert.equal(inputs.filter(item => item.sessionId === receipt.session).length, 2)
   assert.deepEqual(lines(conversation).filter(line => line.delegation && !line.delegation.ended).map(line => line.delegation.reused), [false, true])
@@ -368,22 +379,24 @@ test('overlapping interrupt tools share stop confirmation without sending anothe
   } finally { release(); rt.interrupt = interrupt; await interrupt(worker.id, receipt.session) }
 }))
 
-test('a running delegation refuses reuse of the same executor session', () => withLead(async ({ rt, role, session, lines }) => {
+test('a running delegation is left alone and a follow-up opens another session', () => withLead(async ({ rt, role, session, lines }) => {
   const worker = await role('Worker', 'Progress', { engineOptions: { script: [{ kind: 'text', text: 'Progress' }, { kind: 'ask' }, { kind: 'wait', ms: 5000 }] } })
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
   const first = toolTask(rt, conversation.id, delegateType('feature', false))
   const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
   await until(() => rt.approvalsView().some(item => item.profileId === work.id))
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, work.id)), {
-    code: 'orch/invalid', message: `该执行会话已有活跃派活：${work.id}，请先用 nodo_interrupt 停止，确认结束后再续用或派活`,
-  })
-  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  const second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change'))
+  assert.equal(second.continued, false)
+  assert.equal(second.reason, '没有接续来源任务')
+  assert.notEqual(second.session, work.id)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: second.executionId })
   await rt.interrupt(worker.id, work.id)
   await first
   assert.equal(lines(conversation).filter(line => line.origin?.kind === 'reject').length, 0)
   assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0)
-  const note = lines(conversation).find(line => line.delegation?.ended === 'interrupted')
+  const note = lines(conversation).find(line => line.delegation?.ended === 'interrupted' && line.delegation.session === work.id)
   assert.equal(note.text, '')
   assert.deepEqual(note.delegation, { session: work.id, taskId: Object.values(rt.state.executions).find(item => item.sessionId === work.id).taskId, executionId: Object.values(rt.state.executions).find(item => item.sessionId === work.id).id, ended: 'interrupted', stoppedBy: 'user' })
   assert.doesNotMatch(rt.leadBrief(lead, conversation), /To resume it with its context/)
@@ -429,19 +442,22 @@ test('a stop request keeps the delegation occupied until its completion is confi
   const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
   await until(() => rt.workView()[work.id]?.active && lines(conversation).some(line => line.delegation))
   const interrupt = rt.interrupt
-  let requested = false, release
+  let requested = false, release, second
   const gate = new Promise(resolve => { release = resolve })
   rt.interrupt = async (...args) => { requested = true; await gate; return interrupt(...args) }
   const stopping = rt.leadDispatch.interrupt(conversation.id, work.id)
   try {
     await until(() => requested)
     assert.equal(rt.workView()[work.id]?.stopping, true, 'a stop request shows in the live work view before the turn settles')
-    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, work.id)), /该执行会话已有活跃派活/)
-    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+    second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change'))
+    assert.equal(second.continued, false)
+    assert.notEqual(second.session, work.id)
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
     assert.equal(lines(conversation).filter(line => line.origin?.kind === 'reject').length, 0)
   } finally {
     release()
     await stopping
+    await rt.leadDispatch.interrupt(conversation.id, { executionId: second.executionId })
     await interrupt(worker.id, work.id)
     await pending
   }
@@ -586,7 +602,7 @@ test('an executor idle warning keeps its delegation occupied and a late success 
   const pending = toolTask(rt, conversation.id, delegateType('feature', false))
   const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
   await until(() => rt.workView()[work.id]?.active && lines(conversation).some(line => line.delegation))
-  let settled = false
+  let settled = false, second
   pending.then(() => { settled = true })
   const interruptDriver = rt.interruptDriver
   const interrupted = []
@@ -604,8 +620,10 @@ test('an executor idle warning keeps its delegation occupied and a late success 
       assert.deepEqual(interrupted, [])
       assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 0)
     } finally { mock.timers.reset() }
-    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, work.id)), /该执行会话已有活跃派活/)
-    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1, 'silence cannot release the lead delegation')
+    second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change'))
+    assert.equal(second.continued, false)
+    assert.notEqual(second.session, work.id)
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2, 'silence cannot release the lead delegation')
     assert.ok(lines(work).some(line => line.kind === 'note' && /仍在等待.*手动停止/.test(line.text)))
     rt.driverSink(work.id, { type: 'turn/end', turnId: 'turn-1', reason: 'done', text: 'Late work completed' })
     await pending
@@ -618,6 +636,7 @@ test('an executor idle warning keeps its delegation occupied and a late success 
     assert.ok(inputs.some(item => item.profileId === lead.id && item.text.includes('Late work completed')))
   } finally {
     rt.interruptDriver = interruptDriver
+    await rt.leadDispatch.interrupt(conversation.id, { executionId: second.executionId }).catch(() => {})
     await rt.interrupt(worker.id, work.id)
     await pending
   }
@@ -667,7 +686,10 @@ test('a delivered failure removes the resume hint and stays continuable', () => 
   assert.equal(lines(conversation).filter(line => line.origin?.kind === 'report').length, 1)
   assert.ok(!brief.includes('unconfirmed'))
   assert.ok(!rt.leadBrief(rt.findProfile(lead.id), conversation).includes(failed.id))
-  await toolTask(rt, conversation.id, delegateType('feature', false, undefined, failed.id))
+  const taskId = Object.values(rt.state.executions).find(item => item.sessionId === failed.id).taskId
+  const again = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId }))
+  assert.equal(again.session, failed.id)
+  assert.equal(again.continued, true)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   assert.equal(inputs.filter(item => item.sessionId === failed.id).length, 2)
   assert.ok(lines(conversation).some(line => line.text === `继续受理 Worker · ${failed.name}（功能 · 常规）`))
@@ -717,7 +739,7 @@ test('a delegated message at the text limit keeps the header in both engine inpu
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  const header = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\nList changed files once at the end with repo-root-relative paths, no absolute paths or Markdown links. Write the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.\n\n'
+  const header = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\nWrite the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.\n\n'
   const task = 'x'.repeat(TASK_TEXT_MAX - header.length)
   await toolTask(rt, conversation.id, delegateType('feature', false, task))
   const received = inputs.find(input => input.profileId === worker.id).text
@@ -1022,9 +1044,11 @@ test('a lead can continue its own dispatched session instead of opening a new on
   const worker = await role('Worker', 'Work completed')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  await toolTask(rt, conversation.id, delegateType('feature', false))
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  await toolTask(rt, conversation.id, delegateType('feature', false, undefined, work.id))
+  const second = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
+  assert.equal(second.session, work.id)
+  assert.equal(second.continued, true)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   const sent = inputs.filter(item => item.sessionId === work.id)
   assert.equal(sent.length, 2)
@@ -1042,47 +1066,37 @@ test('routing mode continues a session when the type and difficulty match', () =
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
   await split('bug-fix', true)
-  await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the header'))
+  const first = await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the header'))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
   assert.equal(work.model, 'hard-model')
-  await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the footer', work.id))
+  const second = await toolTask(rt, conversation.id, delegateType('bug-fix', true, 'Fix the footer', { taskId: first.taskId }))
+  assert.equal(second.session, work.id)
+  assert.equal(second.continued, true)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   assert.equal(work.model, 'hard-model', 'a continued session keeps the model it was opened with')
   assert.ok(lines(conversation).some(line => line.text === '继续受理 Router · Fix the header（修复 · 难题）'))
 }))
 
-test('continuation is refused for unknown, foreign and archived sessions', () => withLead(async ({ rt, role, session, lines }) => {
+test('an archived candidate session falls back to a new session with the reason', () => withLead(async ({ rt, role, session }) => {
   const worker = await role('Worker', 'Done')
   const lead = await role('Lead', 'Reviewed', { lead: true })
-  const second = await role('Second lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  const secondConversation = await session(second)
-  const refused = async command => {
-    const error = await rt.leadDispatch.delegate(conversation.id, command).then(() => assert.fail('Expected refusal'), error => error)
-    assert.match(error.message, /去掉 session 字段新开会话/)
-    return error.message
-  }
-  await toolTask(rt, secondConversation.id, delegateType('feature', false))
-  const foreign = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  assert.match(await refused(delegateType('feature', false, undefined, 'missing')), /session 必须是本主控会话派出的执行会话 id/)
-  assert.match(await refused(delegateType('feature', false, undefined, foreign.id)), /session 必须是本主控会话派出的执行会话 id/)
-  await toolTask(rt, conversation.id, delegateType('feature', false))
-  const own = rt.sessionsOf(rt.findProfile(worker.id))[1]
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
+  const own = rt.sessionsOf(rt.findProfile(worker.id))[0]
   rt.conversation(worker.id, own.id).session.archivedAt = Date.now()
-  assert.match(await refused(delegateType('feature', false, undefined, own.id)), /该执行会话已归档/)
+  const second = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
+  assert.equal(second.continued, false)
+  assert.equal(second.reason, '候选会话已归档')
+  assert.notEqual(second.session, own.id)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 2)
 }))
 
-test('continuation refuses a foreign or unconfirmed executor and allows an interrupted result', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+test('an unconfirmed candidate falls back to a new session with the reason', () => withLead(async ({ rt, role, session, inputs }) => {
   const worker = await role('Worker', 'Done')
-  const other = await role('Other', 'Done', { taskTypes: ['docs'] })
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  await toolTask(rt, conversation.id, delegateType('feature', false))
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('docs', false, undefined, work.id)), /该执行会话属于其他角色/)
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('docs', false, undefined, work.id)), /该执行会话属于其他角色/)
-  assert.equal(rt.sessionsOf(rt.findProfile(other.id)).filter(item => item.source?.kind === 'lead').length, 0)
   const send = rt.send
   rt.send = async (profileId, text, sessionId, ...rest) => {
     const placed = await send(profileId, text, sessionId, ...rest)
@@ -1090,32 +1104,80 @@ test('continuation refuses a foreign or unconfirmed executor and allows an inter
     const outcome = await placed.completion
     return { ...placed, completion: Promise.resolve({ ...outcome, unconfirmed: true }) }
   }
-  await toolTask(rt, conversation.id, delegateType('feature', false))
+  const again = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
   rt.send = send
-  const flagged = rt.sessionsOf(rt.findProfile(worker.id))[1]
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, flagged.id)), /状态未确认/)
-  assert.equal(inputs.filter(item => item.sessionId === flagged.id).length, 1)
-  rt.findProfile(worker.id).engineOptions.script = [{ kind: 'ask' }]
-  const pending = toolTask(rt, conversation.id, delegateType('feature', false))
-  const stopped = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[2])
-  await until(() => rt.approvalsView().some(item => item.profileId === stopped.id))
-  await rt.interrupt(worker.id, stopped.id)
-  await pending
-  rt.conversation(worker.id, stopped.id).session.engineOptions.script[0] = { kind: 'text', text: 'Done' }
-  await toolTask(rt, conversation.id, delegateType('feature', false, undefined, stopped.id))
-  assert.equal(inputs.filter(item => item.sessionId === stopped.id).length, 2)
-  assert.equal(lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令')).length, 0)
-  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).filter(item => item.source?.kind === 'lead').length, 3)
+  assert.equal(again.session, work.id)
+  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 2)
+  // The unconfirmed execution still occupies the task; a continues relation
+  // reaches the candidate check and refuses to reuse the session.
+  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId })), /pending execution/)
+  const next = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Next change', { continues: first.taskId }))
+  assert.equal(next.continued, false)
+  assert.equal(next.reason, '候选会话最近一次派活状态未确认')
+  assert.notEqual(next.session, work.id)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: next.executionId })
 }))
 
-test('routing mode refuses continuation when the difficulty differs', () => withLead(async ({ rt, role, session, lines }) => {
+test('an interrupted candidate keeps continuing the same session', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'ask' }
+  const second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change', { taskId: first.taskId }))
+  assert.equal(second.session, work.id)
+  await rt.followLead(conversation.id, completed('Dispatched'))
+  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await rt.interrupt(worker.id, work.id)
+  await until(() => rt.delegationSummary(work).status === 'interrupted-user')
+  rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'text', text: 'Done' }
+  const third = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
+  assert.equal(third.session, work.id)
+  assert.equal(third.continued, true)
+  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 3)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  assert.equal(lines(conversation).filter(line => line.who === 'user' && line.text.startsWith('Nodo 没有执行你的派活指令')).length, 0)
+}))
+
+test('continues reuses the source session or hands over its last result', () => withLead(async ({ rt, role, session, inputs }) => {
+  const worker = await role('Worker', 'Parser built and verified')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false, 'Build the parser'))
+  const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
+  const next = await toolTask(rt, conversation.id, delegateType('feature', false, 'Extend the parser', { continues: first.taskId }))
+  assert.equal(next.session, work.id)
+  assert.equal(next.continued, true)
+  assert.notEqual(next.taskId, first.taskId)
+  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 2)
+  rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'ask' }
+  const poke = rt.send(worker.id, 'Poke', work.id, [], [])
+  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  const third = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Rework the parser', { continues: first.taskId }))
+  assert.equal(third.continued, false)
+  assert.equal(third.reason, '候选会话正忙')
+  assert.notEqual(third.session, work.id)
+  await rt.followLead(conversation.id, completed('Dispatched'))
+  const handover = await until(() => inputs.find(item => item.sessionId === third.session))
+  assert.ok(handover.text.includes('Parser built and verified'), 'the last result is handed over as required context')
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: third.executionId })
+  await rt.interrupt(worker.id, work.id)
+  await poke
+}))
+
+test('routing mode opens a new session when the difficulty differs', () => withLead(async ({ rt, role, session }) => {
   const worker = await role('Router', 'Done', { taskTypes: ['feature'], hard: { model: 'hard-model', thinking: 'high' } })
   const lead = await role('Lead', 'Answered', { lead: true })
   const conversation = await session(lead)
-  await toolTask(rt, conversation.id, delegateType('feature', true, 'Fix the header'))
+  const first = await toolTask(rt, conversation.id, delegateType('feature', true, 'Fix the header'))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Fix the footer', work.id)), /该执行会话的任务难度与本次不同/)
-  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
+  const second = await toolTask(rt, conversation.id, delegateType('feature', false, 'Fix the footer', { taskId: first.taskId }))
+  assert.equal(second.continued, false)
+  assert.equal(second.reason, '候选会话的难度与本次不一致')
+  assert.notEqual(second.session, work.id)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
 }))
 
 for (const on of [true, false]) {
@@ -1126,41 +1188,56 @@ for (const on of [true, false]) {
     await split('feature', on)
     const hard = await toolTask(rt, conversation.id, delegateType('feature', true, 'Deep rework'))
     assert.equal(rt.conversationOf(hard.session).session.model, on ? 'hard-model' : undefined)
-    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Follow-up', hard.session)), /该执行会话的任务难度与本次不同/)
+    const denied = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Follow-up', { taskId: hard.taskId }))
+    assert.equal(denied.continued, false)
+    assert.equal(denied.reason, '候选会话的难度与本次不一致')
+    assert.notEqual(denied.session, hard.session)
+    await rt.leadDispatch.interrupt(conversation.id, { executionId: denied.executionId })
     const routine = await toolTask(rt, conversation.id, delegateType('feature', false, 'Follow-up'))
     assert.notEqual(routine.session, hard.session)
     assert.equal(routine.reused, false)
     assert.equal(rt.conversationOf(routine.session).session.model, undefined)
     assert.equal(rt.conversationOf(routine.session).session.source.hard, false)
-    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+    assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 3)
   }))
 }
 
-test('a session can be continued at most twice', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+test('a session is continued while it has fewer than five executions', () => withLead(async ({ rt, role, session, inputs }) => {
   const worker = await role('Worker', 'Done')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  await toolTask(rt, conversation.id, delegateType('feature', false))
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  await toolTask(rt, conversation.id, delegateType('feature', false, undefined, work.id))
-  await toolTask(rt, conversation.id, delegateType('feature', false, undefined, work.id))
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, work.id)), /该执行会话已续用 2 次/)
-  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
-  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 3)
+  for (let i = 0; i < 4; i++) {
+    const receipt = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
+    assert.equal(receipt.session, work.id)
+    assert.equal(receipt.continued, true)
+  }
+  assert.equal(work.source.continued, 4)
+  const fifth = await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
+  assert.equal(fifth.continued, false)
+  assert.equal(fifth.reason, '候选会话承接的执行数已达上限')
+  assert.notEqual(fifth.session, work.id)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+  assert.equal(inputs.filter(item => item.sessionId === work.id).length, 5)
 }))
 
-test('a busy session refuses continuation without creating a delegation', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+test('a busy candidate session falls back to a new session', () => withLead(async ({ rt, role, session, inputs, lines }) => {
   const worker = await role('Worker', 'Done')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  await toolTask(rt, conversation.id, delegateType('feature', false))
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
   rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'ask' }
   const poke = rt.send(worker.id, 'Poke', work.id, [], [])
   await until(() => rt.approvalsView().some(item => item.profileId === work.id))
-  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, undefined, work.id)), /该执行会话正忙/)
+  const second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change', { taskId: first.taskId }))
+  assert.equal(second.continued, false)
+  assert.equal(second.reason, '候选会话正忙')
+  assert.notEqual(second.session, work.id)
+  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 2)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: second.executionId })
   assert.ok(!lines(conversation).some(line => line.text?.startsWith('继续受理')))
-  assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 1)
   assert.equal(inputs.filter(item => item.sessionId === work.id).length, 2)
   await rt.interrupt(worker.id, work.id)
   await poke
@@ -1170,9 +1247,9 @@ test('continuations count toward the 24-delegation budget', () => withLead(async
   const worker = await role('Worker', 'Done')
   const lead = await role('Lead', delegateType('feature', false), { lead: true })
   const conversation = await session(lead)
-  await toolTask(rt, conversation.id, delegateType('feature', false))
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
   const continued = rt.sessionsOf(rt.findProfile(worker.id))[0]
-  for (let i = 0; i < 2; i++) await toolTask(rt, conversation.id, delegateType('feature', false, undefined, continued.id))
+  for (let i = 0; i < 2; i++) await toolTask(rt, conversation.id, delegateType('feature', false, undefined, { taskId: first.taskId }))
   for (let i = 0; i < 21; i++) await toolTask(rt, conversation.id, delegateType('feature', false))
   await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false)), /24 次派活上限/)
   assert.equal(rt.sessionsOf(rt.findProfile(worker.id)).length, 22)
@@ -1243,8 +1320,10 @@ for (const [firstHard, nextHard] of [[true, false], [false, true]]) {
     await split('feature', true)
     const first = await toolTask(rt, conversation.id, delegateType('feature', firstHard, 'Original task'))
     assert.equal(first.role, firstHard ? 'Hard' : 'Routine')
-    await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', nextHard, 'Follow-up', first.session)),
-      /属于其他角色|任务难度与本次不同/)
+    const denied = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', nextHard, 'Follow-up', { taskId: first.taskId }))
+    assert.equal(denied.continued, false)
+    assert.match(denied.reason, /不一致/)
+    await rt.leadDispatch.interrupt(conversation.id, { executionId: denied.executionId })
     const task = `Continue from session ${first.session}. Preserve existing changes and report; complete only the remaining work.`
     const next = await toolTask(rt, conversation.id, delegateType('feature', nextHard, task))
     assert.equal(next.role, nextHard ? 'Hard' : 'Routine')
@@ -1253,8 +1332,8 @@ for (const [firstHard, nextHard] of [[true, false], [false, true]]) {
     const work = rt.conversationOf(next.session).session
     assert.equal(work.source.hard, nextHard)
     assert.equal(work.model, nextHard ? 'hard-model' : undefined)
-    assert.equal(rt.sessionsOf(rt.findProfile(routine.id)).length, 1)
-    assert.equal(rt.sessionsOf(rt.findProfile(hard.id)).length, 1)
+    assert.equal(rt.sessionsOf(rt.findProfile(routine.id)).length, nextHard ? 1 : 2)
+    assert.equal(rt.sessionsOf(rt.findProfile(hard.id)).length, nextHard ? 2 : 1)
     assert.ok(inputs.find(item => item.sessionId === next.session).text.includes(task))
   }))
 }
@@ -1327,7 +1406,7 @@ const withRecovery = run => {
   const delegate = async (reuse, text) => {
     const count = rt.sessionsOf(rt.findProfile(worker.id)).length
     const previous = Object.values(rt.state.executions).findLast(item => item.sessionId === reuse?.id)
-    const receipt = await rt.leadDispatch.delegate(conversation.id, { ...delegateType('feature', false, text, reuse?.id), ...(previous ? { taskId: previous.taskId } : {}) })
+    const receipt = await rt.leadDispatch.delegate(conversation.id, { ...delegateType('feature', false, text), ...(previous ? { taskId: previous.taskId } : {}) })
     await rt.followLead(conversation.id, completed('Dispatched'))
     const work = reuse ?? await until(() => rt.sessionsOf(rt.findProfile(worker.id))[count])
     const driver = await until(() => rt.driverOf(work.id)?.active && rt.driverOf(work.id))
@@ -1562,7 +1641,7 @@ test('role board preserves settings order, columns, task types and routing rules
   assert.match(board, /First \| Coder identity \[redacted\] \| Build features/)
   assert.ok(board.indexOf('First') < board.indexOf('Second'))
   assert.doesNotMatch(board, /Removed|sensitive-marker|\| Lead \|/)
-  assert.match(board, /id \| name \| when \| 常规任务 \| 难题/)
+  assert.match(board, /id \| name \| when \| 常规任务 \| 难题 \| 独立视角/)
   assert.match(board, /feature \| 功能 \| [^|]* \| First \| 同常规任务/)
   assert.match(board, /docs \| 文档 \| [^|]* \| 无人承接 \| 同常规任务/)
   await split('review', true)
@@ -1761,7 +1840,8 @@ for (const action of ['interrupt', 'amend']) test(`confirmed lead ${action} leav
   if (action === 'interrupt') await h.rt.leadDispatch.interrupt(h.conversation, { executionId: Object.values(h.rt.state.executions).findLast(item => item.sessionId === task.work.id).id })
   else {
     await h.rt.leadDispatch.interrupt(h.conversation, task.work.id)
-    await h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Changed requirement', session: task.work.id })
+    const taskId = Object.values(h.rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+    await h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Changed requirement', taskId })
     assert.equal(task.driver.active, false)
     assert.equal(task.driver.calls.length, 1)
     await h.rt.followLead(h.conversation.id, completed('Dispatched'))
@@ -2071,7 +2151,9 @@ test('persisted lifecycle and continuation budgets survive clearing lead memory'
   await until(() => h.reports().length === 1)
   await h.finishLead()
   await until(() => !work.source.pendingReport)
-  for (let count = 1; count <= 2; count++) {
+  // The preamble's manual resume already spent one execution; three reuses
+  // reach the five-execution cap.
+  for (let count = 1; count <= 3; count++) {
     installLead(h.rt)
     const task = await h.delegate(work, 'Recheck after restart')
     task.driver.finish('error')
@@ -2080,8 +2162,13 @@ test('persisted lifecycle and continuation budgets survive clearing lead memory'
     assert.equal(stored().source.continued, count)
   }
   installLead(h.rt)
-  await assert.rejects(h.rt.leadDispatch.delegate(h.conversation.id, delegateType('feature', false, 'Third continuation', work.id)), /已续用 2 次/)
-  assert.equal(driver.calls.length, 4)
+  const previous = Object.values(rt.state.executions).findLast(item => item.sessionId === work.id)
+  const denied = await h.rt.leadDispatch.delegate(h.conversation.id, { ...delegateType('feature', false, 'Fifth continuation'), taskId: previous.taskId })
+  assert.equal(denied.continued, false)
+  assert.equal(denied.reason, '候选会话承接的执行数已达上限')
+  assert.notEqual(denied.session, work.id)
+  await h.rt.leadDispatch.interrupt(h.conversation.id, { executionId: denied.executionId })
+  assert.equal(driver.calls.length, 5)
 }))
 
 test('persisted FIFO recovers on session load and a delivered report id is not resent', () => withRecovery(async h => {
@@ -2302,7 +2389,8 @@ test('a deferred reuse refused by independent work reports failure without claim
   task.driver.finish('done', 'Original report')
   await until(() => h.reports().length === 1)
   await h.finishLead()
-  await h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Recheck', session: task.work.id })
+  const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+  await h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Recheck', taskId })
   assert.equal(rt.delegationSummary(task.work).status, 'queued')
   await h.input(task.work, 'Independent task')
   await h.rt.followLead(h.conversation.id, completed('Dispatched'))
@@ -2366,7 +2454,8 @@ test('delivered unconfirmed failures suppress stale hints and refuse session reu
   await h.finishLead()
   await task.following
   assert.doesNotMatch(h.rt.leadBrief(h.lead, h.conversation), /without a report/)
-  await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Reuse', session: task.work.id }), /状态未确认/)
+  const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+  await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Reuse', taskId }), /pending execution/)
 }))
 
 test('store sync preserves active flights and marks orphaned running summaries unconfirmed', () => withRecovery(async h => {
@@ -2466,17 +2555,20 @@ test('a late interrupted end retains its stop owner and leaves another flight ru
   }
 }))
 
-test('reuse of an active executor refuses the new requirement without stopping it', () => withRecovery(async h => {
+test('a busy candidate is not reused and the running executor is left alone', () => withRecovery(async h => {
   const rt = h.rt
-  const task = await h.delegate(), workView = h.rt.workView
+  const task = await h.failed(), workView = h.rt.workView
   h.rt.workView = () => ({ ...workView(), [task.work.id]: { active: true } })
   try {
-    await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Unsent requirement', session: task.work.id }), /该执行会话已有活跃派活/)
+    const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+    const second = await h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Unsent requirement', taskId })
+    assert.equal(second.continued, false)
+    assert.equal(second.reason, '候选会话正忙')
+    assert.notEqual(second.session, task.work.id)
     assert.equal(task.driver.calls.length, 1)
-    assert.equal(rt.delegationSummary(task.work).status, 'running')
+    assert.equal(rt.delegationSummary(task.work).status, 'failed')
     assert.equal(task.work.source.continued, undefined)
-    await h.rt.leadDispatch.interrupt(h.conversation, task.work.id)
-    await task.following
+    await h.rt.leadDispatch.interrupt(h.conversation, { executionId: second.executionId })
   } finally { h.rt.workView = workView }
 }))
 
@@ -2531,7 +2623,7 @@ test('MCP dispatch uses driver credentials and current user attachments', () => 
     const workerDriver = await until(() => h.rt.driverOf(receipt.session)?.active && h.rt.driverOf(receipt.session))
     assert.equal(workerDriver.leadMcpServers, undefined)
     assert.match(workerDriver.calls[0], /current\.txt/)
-    assert.deepEqual(receipt, { taskId: receipt.taskId, executionId: receipt.executionId, status: 'queued', session: receipt.session, role: 'Worker', type: 'feature', hard: false, reused: false, message: '已受理，本轮结束后发送' })
+    assert.deepEqual(receipt, { taskId: receipt.taskId, executionId: receipt.executionId, status: 'queued', session: receipt.session, role: 'Worker', type: 'feature', hard: false, reused: false, continued: false, reason: '没有接续来源任务', message: '已受理，本轮结束后发送' })
     workerDriver.interruptTurn = async () => workerDriver.finish('interrupted', 'Last output '.repeat(500))
     const stopped = await client.callTool({ name: 'nodo_interrupt', arguments: { session: receipt.session } })
     assert.equal(JSON.parse(stopped.content[0].text).ended, 'interrupted')
@@ -2548,23 +2640,26 @@ test('dispatch service validates reuse, requires an explicit stop and returns an
   await assert.rejects(service.delegate(h.worker, { type: 'feature', hard: false, task: 'Invalid owner' }), /有效主控/)
   const receipt = await service.delegate(h.conversation, { type: 'feature', hard: false, task: 'Original\nContext' })
   await h.rt.followLead(h.conversation.id, completed('Dispatched'))
-  assert.deepEqual(receipt, { taskId: receipt.taskId, executionId: receipt.executionId, status: 'queued', session: receipt.session, role: 'Worker', type: 'feature', hard: false, reused: false, message: '已受理，本轮结束后发送' })
+  assert.deepEqual(receipt, { taskId: receipt.taskId, executionId: receipt.executionId, status: 'queued', session: receipt.session, role: 'Worker', type: 'feature', hard: false, reused: false, continued: false, reason: '没有接续来源任务', message: '已受理，本轮结束后发送' })
   const work = h.rt.conversationOf(receipt.session).session
   const driver = await until(() => h.rt.driverOf(work.id)?.active && h.rt.driverOf(work.id))
   const summary = { ...rt.delegationSummary(work) }
   for (const command of [{ type: 'bad', hard: false, task: 'Next' }, { type: 'feature', hard: 'false', task: 'Next' }, { type: 'feature', hard: false, task: '' }]) {
-    await assert.rejects(service.delegate(h.conversation, { ...command, session: work.id }), { code: 'orch/invalid' })
+    await assert.rejects(service.delegate(h.conversation, { ...command }), { code: 'orch/invalid' })
     assert.equal(driver.active, true)
     assert.deepEqual(rt.delegationSummary(work), summary)
   }
-  await assert.rejects(service.delegate(h.conversation, { type: 'feature', hard: false, task: 'Updated', session: work.id }), /该执行会话已有活跃派活/)
+  await assert.rejects(service.delegate(h.conversation, { type: 'feature', hard: false, task: 'Updated', taskId: receipt.taskId }), /pending execution/)
+  assert.equal(driver.active, true)
+  assert.deepEqual(rt.delegationSummary(work), summary)
   await service.interrupt(h.conversation, { executionId: receipt.executionId })
-  const amended = await service.delegate(h.conversation, { type: 'feature', hard: false, task: 'Updated', session: work.id })
+  const amended = await service.delegate(h.conversation, { type: 'feature', hard: false, task: 'Updated', taskId: receipt.taskId })
   assert.equal(driver.active, false)
   assert.equal(driver.calls.length, 1)
   assert.equal(rt.delegationSummary(work).status, 'queued')
   await h.rt.followLead(h.conversation.id, completed('Dispatched'))
   assert.equal(amended.reused, true)
+  assert.equal(amended.continued, true)
   await until(() => driver.calls.length === 2)
   assert.equal(work.source.continued, 1)
   assert.equal(rt.delegationSummary(work).task, 'Original')
@@ -2575,13 +2670,14 @@ test('dispatch service validates reuse, requires an explicit stop and returns an
   assert.equal(rt.delegationSummary(work).status, 'interrupted-lead')
 }))
 
-test('a refused reuse leaves the original execution free to finish normally', () => withRecovery(async h => {
+test('a busy or running task falls back or refuses without touching the running execution', () => withRecovery(async h => {
   const rt = h.rt
   const task = await h.delegate()
   const interrupt = h.rt.interrupt
   h.rt.interrupt = async () => { task.driver.finish('done', 'Already finished'); return true }
   try {
-    await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Changed requirement', session: task.work.id }), /该执行会话已有活跃派活/)
+    const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+    await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Changed requirement', taskId }), /pending execution/)
     assert.equal(task.driver.active, true)
     task.driver.finish('done', 'Already finished')
     assert.equal(task.driver.calls.length, 1)
@@ -2602,7 +2698,8 @@ test('accepted queued supplements retain the slot and freeze only their last res
   await until(() => task.driver.calls.length === 2)
   assert.equal(h.reports().length, 0)
   assert.deepEqual(rt.delegationSummary(task.work), summary)
-  await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Another', session: task.work.id }), /该执行会话已有活跃派活/)
+  const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+  await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Another', taskId }), /pending execution/)
   task.driver.finish('done', 'Final supplemented result')
   await until(() => h.reports().length === 1)
   assert.equal(h.rt.state.executions[h.reports()[0].origin.executionId].result.text, 'Final supplemented result')
@@ -2631,7 +2728,8 @@ test('recovered running summaries become unconfirmed and a late end records the 
     const restored = rt.conversationOf(task.work.id).session
     assert.equal(rt.delegationSummary(restored).status, 'unconfirmed')
     assert.equal(rt.delegationSummary(restored).acceptedAt, summary.acceptedAt)
-    await assert.rejects(rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Reuse', session: task.work.id }), /状态未确认/)
+    const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+    await assert.rejects(rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Reuse', taskId }), /pending execution/)
     await rt.leadEnded(task.work.id, { reason: 'error' })
     assert.equal(rt.delegationSummary(restored).status, 'failed')
     const leadDriver = await until(() => rt.driverOf(h.conversation.id)?.active && rt.driverOf(h.conversation.id))
@@ -2683,7 +2781,8 @@ test('explicit stop timeout marks unconfirmed and refuses session reuse', () => 
     const stopped = await h.rt.leadDispatch.interrupt(h.conversation, task.work.id)
     assert.equal(stopped.unconfirmed, true)
     await reviewDeliveredReports(rt, h.conversation.id)
-    await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Unsent change', session: task.work.id }), /状态未确认/)
+    const taskId = Object.values(rt.state.executions).findLast(item => item.sessionId === task.work.id).taskId
+    await assert.rejects(h.rt.leadDispatch.delegate(h.conversation, { type: 'feature', hard: false, task: 'Unsent change', taskId }), /pending execution/)
     assert.equal(rt.delegationSummary(task.work).status, 'unconfirmed')
     assert.equal(task.driver.calls.length, 1)
     assert.equal(task.work.source.continued, undefined)
@@ -3117,4 +3216,135 @@ test('a 1:1 chat lead session skips the per-turn lead machinery and the roles ta
   assert.deepEqual(started, [team.id], 'only the Team session registers lead input')
   assert.throws(() => rt.leadRoles(chat.id), /主控会话/)
   assert.match(rt.leadRoles(team.id), /\| 角色 \|/)
+}))
+
+test('a delegation records merged change files and surfaces them in reports and context', () => withLead(async ({ host, rt, role, session, lines }) => {
+  const cwd = join(host.home, 'ws')
+  const worker = await role('Editor', 'Edited and verified', { engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Edited and verified' }, { kind: 'wait', ms: 120 }], changes: [
+    { scope: 'edit-tools', coverage: 'partial', cwd, files: [
+      { path: join(cwd, 'a.ts'), edits: [{ operation: 'add' }] },
+      { path: join(cwd, 'b.ts'), edits: [{ operation: 'update' }] },
+      { path: join(cwd, 'c.ts'), edits: [{ operation: 'add' }] },
+    ] },
+    { scope: 'edit-tools', coverage: 'partial', cwd, files: [
+      { path: join(cwd, 'a.ts'), edits: [{ operation: 'update' }] },
+      { path: join(cwd, 'c.ts'), edits: [{ operation: 'delete' }] },
+      { path: join(cwd, 'd.ts'), edits: [{ operation: 'move', fromPath: join(cwd, 'e.ts') }] },
+    ] },
+  ] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const receipt = await toolTask(rt, conversation.id, delegateType('feature', false))
+  const execution = rt.state.executions[receipt.executionId]
+  assert.deepEqual(execution.files, { items: [
+    { path: 'a.ts', op: 'add' },
+    { path: 'b.ts', op: 'update' },
+    { path: 'c.ts', op: 'delete' },
+    { path: 'd.ts', op: 'move', from: 'e.ts' },
+  ], total: 4, capture: 'complete', source: 'edit-tools' })
+  const report = lines(conversation).filter(line => line.origin?.kind === 'report').at(-1)
+  assert.match(report.text, /^Report from Editor · Implement the task · 改动 4 个文件\n/)
+  const read = await rt.executionContext(conversation.id, { action: 'read', executionId: receipt.executionId })
+  assert.match(read.text, /改动文件：4 个（编辑工具记录）\n- 新增 a\.ts\n- 修改 b\.ts\n- 删除 c\.ts\n- 移动 d\.ts（自 e\.ts）$/)
+}))
+
+test('partial snapshots and oversized change lists degrade capture', () => withLead(async ({ host, rt, role, session }) => {
+  const cwd = join(host.home, 'ws')
+  const worker = await role('Editor', 'Done', { engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Done' }, { kind: 'wait', ms: 120 }] } })
+  const many = Array.from({ length: 205 }, (_, index) => ({ path: join(cwd, `f${String(index).padStart(3, '0')}.ts`), edits: [{ operation: 'update' }] }))
+  rt.findProfile(worker.id).engineOptions.changes = [
+    { scope: 'edit-tools', coverage: 'partial', cwd, capture: 'partial', files: many } ]
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const receipt = await toolTask(rt, conversation.id, delegateType('feature', false))
+  const files = rt.state.executions[receipt.executionId].files
+  assert.equal(files.total, 205)
+  assert.equal(files.items.length, 200)
+  assert.equal(files.capture, 'partial')
+  assert.equal(files.source, 'edit-tools')
+}))
+
+test('an unreadable change record still yields a partial capture', () => withLead(async ({ host, rt, role, session }) => {
+  const cwd = join(host.home, 'ws')
+  const worker = await role('Editor', 'Done', { engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Done' }, { kind: 'wait', ms: 120 }], changes: [
+    { scope: 'edit-tools', coverage: 'partial', cwd, capture: 'partial', files: [{ path: join(cwd, 'x.ts'), edits: [{ operation: 'update' }] }] } ] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const receipt = await toolTask(rt, conversation.id, delegateType('feature', false))
+  assert.deepEqual(rt.state.executions[receipt.executionId].files, { items: [{ path: 'x.ts', op: 'update' }], total: 1, capture: 'partial', source: 'edit-tools' })
+}))
+
+test('a continued session is told which later tasks touched its files', () => withLead(async ({ host, rt, role, session, inputs }) => {
+  const cwd = join(host.home, 'ws')
+  const editor = await role('Editor', 'Edited', { taskTypes: ['feature'], engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Edited' }, { kind: 'wait', ms: 120 }], changes: [
+    { scope: 'edit-tools', coverage: 'partial', cwd, files: [{ path: join(cwd, 'a.ts'), edits: [{ operation: 'add' }] }] } ] } })
+  await role('Later', 'Touched', { taskTypes: ['docs'], engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Touched' }, { kind: 'wait', ms: 120 }], changes: [
+    { scope: 'edit-tools', coverage: 'partial', cwd, files: [
+      { path: join(cwd, 'a.ts'), edits: [{ operation: 'update' }] },
+      { path: join(cwd, 'z.ts'), edits: [{ operation: 'update' }] },
+    ] } ] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false, 'Build the parser'))
+  assert.equal(rt.sessionsOf(rt.findProfile(editor.id)).length, 1)
+  await toolTask(rt, conversation.id, delegateType('docs', false, 'Update the docs'))
+  const third = await toolTask(rt, conversation.id, delegateType('feature', false, 'Extend the parser', { taskId: first.taskId }))
+  assert.equal(third.session, first.session)
+  const sent = inputs.filter(item => item.sessionId === third.session).at(-1).text
+  assert.match(sent, /自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n- Update the docs · done · a\.ts\n/)
+  assert.doesNotMatch(sent, /z\.ts/)
+}))
+
+test('a workspace snapshot keeps unknown operations and says it may include other changes', () => withLead(async ({ host, rt, role, session, lines }) => {
+  const cwd = join(host.home, 'ws')
+  await role('Editor', 'Done', { engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Done' }, { kind: 'wait', ms: 120 }], changes: [
+    { scope: 'workspace-snapshot', coverage: 'partial', cwd, files: [{ path: join(cwd, 'n.ts'), edits: [{ operation: 'unknown' }] }] } ] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const receipt = await toolTask(rt, conversation.id, delegateType('feature', false))
+  assert.deepEqual(rt.state.executions[receipt.executionId].files, { items: [{ path: 'n.ts', op: 'unknown' }], total: 1, capture: 'complete', source: 'workspace-snapshot' })
+  const report = lines(conversation).filter(line => line.origin?.kind === 'report').at(-1)
+  assert.match(report.text, /改动 1 个文件（工作区快照，可能含其他改动）/)
+  const read = await rt.executionContext(conversation.id, { action: 'read', executionId: receipt.executionId })
+  assert.match(read.text, /改动文件：1 个（工作区快照，可能含其他改动）\n- 未知 n\.ts$/)
+}))
+
+test('an independent type does not reuse a session that ran other work', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Worker', 'Done', { taskTypes: ['feature', 'review'] })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const team = rt.teams()[0]
+  await rt.updateTeams([{ ...team, types: team.types.map(type => type.id === 'review' ? { ...type, independent: true } : type),
+    assign: { ...team.assign, review: { normal: { profile: worker.id } } } }])
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
+  const second = await rt.leadDispatch.delegate(conversation.id, delegateType('review', false, 'Recheck the change', { continues: first.taskId }))
+  assert.equal(second.continued, false)
+  assert.equal(second.reason, 'independent 类型不能沿用执行过其他类型的会话')
+  assert.notEqual(second.session, first.session)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: second.executionId })
+}))
+
+test('continues refuses a source task whose execution is still active', () => withLead(async ({ rt, role, session }) => {
+  await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false))
+  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Next step', { continues: first.taskId })),
+    /接续来源任务还在执行/)
+  await rt.followLead(conversation.id, completed('Dispatched'))
+  await until(() => !rt.workView()[first.session]?.active)
+}))
+
+test('an oversized source result is handed over as background material', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false, 'Build the parser'))
+  Object.assign(rt.state.executions[first.executionId].result, { text: 'x'.repeat(95_000), length: 95_000, originalLength: 95_000 })
+  rt.conversation(worker.id, first.session).session.archivedAt = Date.now()
+  const next = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Extend the parser', { continues: first.taskId }))
+  assert.equal(next.continued, false)
+  assert.equal(next.reason, '候选会话已归档')
+  assert.match(next.message, /上一执行结果过大，将写入任务目录作为背景材料/)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: next.executionId })
 }))

@@ -11,7 +11,7 @@ const fitText = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height 
 export interface TeamPick { profile?: string; model?: string; thinking?: string }
 export interface Team { id: string; name: string; lead: string | null; members: string[]; types: TeamType[]; assign: Record<string, { normal?: TeamPick; hard?: TeamPick }> }
 export interface TeamRole { id: string; name: string; engine?: string; model?: string }
-export interface TeamType { id?: string; name: string; when?: string }
+export interface TeamType { id?: string; name: string; when?: string; independent?: boolean }
 export interface TeamEngine { id: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
 
 type DropEvent = { preventDefault: () => void; stopPropagation?: () => void }
@@ -331,6 +331,11 @@ export function AssignPage({ roles, teams, engines, activeId, disabled, onActive
                   <span className="nodo-assign-type-top">
                     <input className="nodo-type-input" key={`${type.id}:${type.name}`} defaultValue={type.name} maxLength={20} aria-label={`任务类型名称 ${type.name}`} disabled={disabled}
                       onBlur={(event: { target: { value: string } }) => { const value = event.target.value.trim(); if (value && value !== type.name) patchType(index, { name: value }) }} />
+                    <label className="nodo-type-independent">
+                      <input type="checkbox" checked={type.independent === true} disabled={disabled}
+                        onChange={(event: { target: { checked: boolean } }) => patchType(index, event.target.checked ? { independent: true } : { independent: undefined })} />
+                      独立视角
+                    </label>
                   </span>
                   <textarea rows={1} ref={fitText} onInput={(event: { currentTarget: HTMLTextAreaElement }) => fitText(event.currentTarget)} className="nodo-type-input nodo-type-sub" key={`${type.id}:${type.when}`} defaultValue={type.when ?? ''} maxLength={200} placeholder="什么时候派这类任务" aria-label={`任务类型说明 ${type.name}`} disabled={disabled}
                     onKeyDown={(event: { key: string; preventDefault: () => void; currentTarget: { blur: () => void } }) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() } }}
@@ -413,6 +418,8 @@ export const TEAMS_CSS = `
 .nodo-assign-head{min-height:44px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500}
 .nodo-assign-type{display:flex;flex-direction:column;min-width:0}
 .nodo-assign-type-top{display:flex;align-items:center;gap:4px}
+.nodo-type-independent{display:inline-flex;align-items:center;gap:4px;margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;white-space:nowrap;cursor:pointer}
+.nodo-type-independent input{accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-assign-type .nodo-type-input{height:26px;padding:0 4px;font-size:14px;font-weight:500}
 .nodo-assign-type .nodo-type-sub{box-sizing:border-box;height:24px;max-height:120px;padding:2px 4px;resize:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-assign-remove,.nodo-assign-confirm{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:22px;height:22px;padding:0 4px;border:0;border-radius:6px;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;cursor:pointer}
