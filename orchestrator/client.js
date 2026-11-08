@@ -15375,7 +15375,7 @@ function PendingMessages({ items, disabled, onAction }) {
     ))
   );
 }
-function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = "\u505C\u6B62\u751F\u6210", busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, taskScope, onRemoveTaskScope, focusTick, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
+function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = "\u505C\u6B62\u751F\u6210", busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, taskScope, onRemoveTaskScope, focusTick, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, accept, attachLabel = "\u4E0A\u4F20\u56FE\u7247\u6216\u6587\u4EF6", placeholder = "\u53D1\u6D88\u606F\u6216\u521B\u5EFA\u4EFB\u52A1\uFF0C/ \u8C03\u7528\u6307\u4EE4\uFF0C@ \u6587\u4EF6\u6216\u5BF9\u8BDD" }) {
   const box = (0, import_react.useRef)(null);
   const card = (0, import_react.useRef)(null);
   const picker = (0, import_react.useRef)(null);
@@ -15537,7 +15537,8 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
       multiple: true,
       hidden: true,
       disabled: readOnly || busy,
-      "aria-label": "\u4E0A\u4F20\u56FE\u7247\u6216\u6587\u4EF6",
+      ...accept ? { accept } : {},
+      "aria-label": attachLabel,
       onChange: (event) => {
         const picked = Array.from(event.target.files);
         event.target.value = "";
@@ -19362,9 +19363,13 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     if (team && !roleId) return;
     startConversation(roleId, pageEnv, project);
   };
+  const imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
   const attach = async (files) => {
     try {
-      const added = await Promise.all(files.map(readImage));
+      if (!files.length) return;
+      const images = files.filter((file) => imageTypes.includes(file.type));
+      if (images.length !== files.length) throw new Error("\u4F1A\u8BDD\u91CC\u53EA\u80FD\u6DFB\u52A0\u56FE\u7247\uFF0C\u5176\u4ED6\u6587\u4EF6\u8BF7\u5728\u65B0\u5EFA\u4F1A\u8BDD\u9875\u6DFB\u52A0\u3002");
+      const added = await Promise.all(images.map(readImage));
       setPastedImages((current) => ({ ...current, [draftKey]: [...current[draftKey] ?? [], ...added] }));
     } catch (failure) {
       setActionError(failure.message);
@@ -19596,6 +19601,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           onStop: () => void interrupt(),
           onAttach: attach,
           onRemoveImage: removeImage,
+          onAttachFiles: attach,
+          accept: "image/png,image/jpeg,image/webp,image/gif",
+          attachLabel: "\u4E0A\u4F20\u56FE\u7247",
           pending: work?.pending?.some((item) => item.taskId) ? work.pending.map((item) => item.taskId ? { ...item, taskTitle: view2.tasks?.find((task) => task.id === item.taskId)?.title } : item) : work?.pending,
           onQueueAction: (seq, action) => void queueAction(seq, action),
           taskScope: scopeTask?.title,

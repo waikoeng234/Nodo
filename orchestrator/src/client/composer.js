@@ -51,7 +51,7 @@ export function PendingMessages({ items, disabled, onAction }) {
         }, label))))))
 }
 
-export function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = '停止生成', busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, taskScope, onRemoveTaskScope, focusTick, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
+export function Composer({ profile, workspace, value, images, running, stoppable = running, stopLabel = '停止生成', busy, readOnly, modelDisabled, onChange, onSend, onStop, onModelChange, onAttach, onRemoveImage, onInsert, onGoal, onCompact, onReference, references = [], onRemoveReference, taskScope, onRemoveTaskScope, focusTick, rolePicker, files: attachedFiles = [], onAttachFiles, onRemoveFile, pending = [], onQueueAction, accept, attachLabel = '上传图片或文件', placeholder = '发消息或创建任务，/ 调用指令，@ 文件或对话' }) {
   const box = useRef(null)
   const card = useRef(null)
   const picker = useRef(null)
@@ -168,7 +168,7 @@ export function Composer({ profile, workspace, value, images, running, stoppable
     h('span', { className: 'nodo-reference-tag' },
       h('span', { className: 'nodo-task-scope', title: taskScope }, taskScope),
       h('button', { type: 'button', disabled: readOnly || busy, 'aria-label': `移除任务范围 ${taskScope}`, onClick: onRemoveTaskScope }, '×'))),
-  onAttachFiles && h('input', { ref: picker, type: 'file', multiple: true, hidden: true, disabled: readOnly || busy, 'aria-label': '上传图片或文件',
+  onAttachFiles && h('input', { ref: picker, type: 'file', multiple: true, hidden: true, disabled: readOnly || busy, ...(accept ? { accept } : {}), 'aria-label': attachLabel,
     onChange: event => { const picked = Array.from(event.target.files); event.target.value = ''; if (picked.length && !readOnly && !busy) onAttachFiles(picked) } }),
   (attachedFiles.length > 0 || images.length > 0) && h(ComposerAttachments, { 'aria-label': '本次消息附件' },
     attachedFiles.map((file, index) => h(ComposerAttachmentChip, { key: `file:${file.id ?? index}`, attachment: composerAttachment(file),

@@ -2296,6 +2296,54 @@ test('the new conversation feeds picker files into the draft and sends documents
   assert.deepEqual(JSON.parse(JSON.stringify(sent.payload.images)), [{ mediaType: 'image/png', name: 'shot.png', data: 'AAAA' }])
 })
 
+test('existing conversations attach only the host image types and refuse a mixed batch whole', async () => {
+  const calls = []
+  const view = { profiles: [{ id: 'role', engine: 'echo', activeSessionId: 'conversation', sessions: [
+    { id: 'conversation', workspaceRef: 'project' },
+  ] }], workspaces: [{ id: 'project' }], work: {}, stats: {}, prefs: { onboardedAt: 1 } }
+  const loaded = await loadClient('page.js', {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) }, subscribeNativeSession() {}, readNativeSession: () => null,
+      runningOf: () => ({ active: false }),
+      readImage: async file => ({ name: file.name, mediaType: file.type, dataUrl: `data:${file.type};base64,AA` }),
+      base64Of: dataUrl => dataUrl.slice(dataUrl.indexOf(',') + 1),
+      call: async (endpoint, payload) => {
+        calls.push({ endpoint, payload: JSON.parse(JSON.stringify(payload)) })
+        return { id: 'role', activeSessionId: 'conversation' }
+      },
+    },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      localStorage: { getItem: key => key === 'nodo.navigation'
+        ? JSON.stringify({ profile: 'role', workspace: 'project', sessions: { 'project:role': 'conversation' } }) : null, setItem() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const render = () => { loaded.host.reset(); return all(loaded.NodoPage({ contentOnly: true })) }
+  const composer = () => render().find(node => node.props?.onAttachFiles).props
+  const alert = () => render().find(node => node.props?.role === 'alert')
+  const pdf = { name: 'spec.pdf', type: 'application/pdf' }
+  const png = { name: 'shot.png', type: 'image/png' }
+  assert.equal(composer().accept, 'image/png,image/jpeg,image/webp,image/gif')
+  assert.equal(composer().attachLabel, '上传图片')
+
+  await composer().onAttachFiles([pdf])
+  assert.equal(alert()?.children.join(''), '会话里只能添加图片，其他文件请在新建会话页添加。')
+  assert.equal(composer().images.length, 0)
+
+  await composer().onAttachFiles([png, pdf])
+  assert.equal(alert()?.children.join(''), '会话里只能添加图片，其他文件请在新建会话页添加。')
+  assert.equal(composer().images.length, 0, 'a mixed batch adds nothing')
+
+  await composer().onAttachFiles([png])
+  assert.equal(composer().images[0].name, 'shot.png')
+  composer().onSend()
+  for (let round = 0; round < 5; round++) await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls.find(call => call.endpoint === 'send').payload.images, [{ mediaType: 'image/png', name: 'shot.png', data: 'AA' }])
+})
+
 test('the goal dialog uses the conversation goal and saves it trimmed', async () => {
   const states = [], saved = []
   let cursor = 0
@@ -2328,6 +2376,7 @@ test('shared composer accepts file paste, drop and picker input without changing
     uiShared: { ComposerGlyph: () => 'Send' },
   })
   const props = { profile: { engine: 'echo' }, value: '任务', images: [], files: [], readOnly: false, busy: false,
+    accept: 'image/png', attachLabel: '上传图片',
     onSend() {}, onChange() {}, onInsert() {}, onAttach: files => images.push(...files), onAttachFiles: files => attachments.push(...files) }
   const all = tree => tree && typeof tree === 'object' ? [tree, ...(tree.children ?? []).flatMap(all)] : []
   const tree = Composer(props)
@@ -2342,6 +2391,11 @@ test('shared composer accepts file paste, drop and picker input without changing
   assert.equal(attachments.length, 2)
   tree.props.onDrop({ dataTransfer: { files: [] }, preventDefault() { assert.fail('ordinary text drops keep their native editing behavior') } })
   const picker = all(tree).find(item => item.type === 'input' && item.props.type === 'file')
+  assert.equal(picker.props.accept, 'image/png')
+  assert.equal(picker.props['aria-label'], '上传图片')
+  const plain = all(Composer({ ...props, accept: undefined, attachLabel: undefined })).find(item => item.type === 'input' && item.props.type === 'file')
+  assert.equal('accept' in plain.props, false, 'without a restriction the picker keeps every file type')
+  assert.equal(plain.props['aria-label'], '上传图片或文件')
   const target = { files: [file], value: 'selected-file' }
   picker.props.onChange({ target })
   assert.equal(target.value, '')
