@@ -18556,7 +18556,15 @@ function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBac
           if (value && value !== type.name) patchType(index, { name: value });
         }
       }
-    )), /* @__PURE__ */ (0, import_react.createElement)(
+    ), /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-type-independent" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        type: "checkbox",
+        checked: type.independent === true,
+        disabled,
+        onChange: (event) => patchType(index, event.target.checked ? { independent: true } : { independent: void 0 })
+      }
+    ), "\u72EC\u7ACB\u89C6\u89D2")), /* @__PURE__ */ (0, import_react.createElement)(
       "textarea",
       {
         rows: 1,
@@ -18673,6 +18681,8 @@ var TEAMS_CSS = `
 .nodo-assign-head{min-height:44px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500}
 .nodo-assign-type{display:flex;flex-direction:column;min-width:0}
 .nodo-assign-type-top{display:flex;align-items:center;gap:4px}
+.nodo-type-independent{display:inline-flex;align-items:center;gap:4px;margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;white-space:nowrap;cursor:pointer}
+.nodo-type-independent input{accent-color:var(--dsw-alias-state-business-primary)}
 .nodo-assign-type .nodo-type-input{height:26px;padding:0 4px;font-size:14px;font-weight:500}
 .nodo-assign-type .nodo-type-sub{box-sizing:border-box;height:24px;max-height:120px;padding:2px 4px;resize:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-assign-remove,.nodo-assign-confirm{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:22px;height:22px;padding:0 4px;border:0;border-radius:6px;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;cursor:pointer}

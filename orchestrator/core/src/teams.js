@@ -17,7 +17,7 @@ export function install(rt) {
   const derive = () => {
     const roster = live().filter(profile => profile.lead !== true)
     const types = Array.isArray(state.prefs.taskTypes) ? state.prefs.taskTypes : defaultTaskTypes
-    const catalog = types.map(({ id, name, when }) => ({ id, name, when }))
+    const catalog = types.map(({ id, name, when, independent }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}) }))
     const teams = live().filter(profile => profile.lead === true).map(lead => {
       const assign = {}
       for (const type of types) {
@@ -51,7 +51,7 @@ export function install(rt) {
   const migrate = () => {
     if (!Array.isArray(state.prefs.teams) || !state.prefs.teams.some(team => !Array.isArray(team.types))) return
     const catalog = (Array.isArray(state.prefs.taskTypes) ? state.prefs.taskTypes : defaultTaskTypes)
-      .map(({ id, name, when }) => ({ id, name, when }))
+      .map(({ id, name, when, independent }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}) }))
     for (const team of state.prefs.teams) team.types = catalog.map(type => ({ ...type }))
     delete state.prefs.taskTypes
   }
@@ -72,7 +72,7 @@ export function install(rt) {
       }
       ids.add(id)
       names.add(normalize(name))
-      return { id, name, when: item.when }
+      return { id, name, when: item.when, ...(item.independent === true ? { independent: true } : {}) }
     })
   }
 
