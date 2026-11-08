@@ -298,6 +298,64 @@ test('OpenCode compaction channels distinguish cancelled from failed on both neg
   })
 })
 
+test('ACP compaction settles the out-of-band turn it reports and refuses to overlap turns', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-acp-core-'))
+  const events = []
+  let release
+  const driver = createAcpDriver({ cwd, onEvent: event => events.push(event) }, {
+    id: 'fixture', label: 'Fixture',
+    connect: callbacks => jsonRpcProcess({ bin: process.execPath, args: [fixture], cwd, jsonrpc: '2.0', ...callbacks }),
+    compact: () => new Promise(resolve => { release = resolve }),
+  })
+  try {
+    const pending = driver.compact()
+    await until(() => events.some(event => event.type === 'turn/start' && event.turnId.startsWith('fixture-compact')))
+    await assert.rejects(driver.sendTurn('WHILE_COMPACTING'), /running turn/)
+    release()
+    await pending
+    assert.equal(ended(events).reason, 'done')
+    assert.equal(events.filter(event => event.type === 'turn/end').length, 1)
+    await driver.sendTurn('AFTER')
+    await until(() => events.filter(event => event.type === 'turn/end').length >= 2)
+  } finally { driver.dispose(); rmSync(cwd, { recursive: true, force: true }) }
+})
+
+test('ACP compaction failure ends its turn as an error and surfaces the hook rejection', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-acp-core-'))
+  const events = []
+  const driver = createAcpDriver({ cwd, onEvent: event => events.push(event) }, {
+    id: 'fixture', label: 'Fixture',
+    connect: callbacks => jsonRpcProcess({ bin: process.execPath, args: [fixture], cwd, jsonrpc: '2.0', ...callbacks }),
+    compact: () => Promise.reject(new Error('nothing to compact yet')),
+  })
+  try {
+    await assert.rejects(driver.compact(), /nothing to compact yet/)
+    assert.equal(ended(events).reason, 'error')
+    assert.match(ended(events).error, /nothing to compact yet/)
+  } finally { driver.dispose(); rmSync(cwd, { recursive: true, force: true }) }
+})
+
+test('ACP compaction aborts its out-of-band work when the turn is interrupted', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-acp-core-'))
+  const events = []
+  let aborted = false
+  const driver = createAcpDriver({ cwd, onEvent: event => events.push(event) }, {
+    id: 'fixture', label: 'Fixture',
+    connect: callbacks => jsonRpcProcess({ bin: process.execPath, args: [fixture], cwd, jsonrpc: '2.0', ...callbacks }),
+    compact: (sessionId, signal) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => { aborted = true; reject(new Error('compaction aborted')) }, { once: true })
+    }),
+  })
+  try {
+    const pending = driver.compact()
+    await until(() => events.some(event => event.type === 'turn/start' && event.turnId.startsWith('fixture-compact')))
+    await driver.interruptTurn()
+    assert.equal(aborted, true)
+    await pending
+    assert.equal(ended(events).reason, 'interrupted')
+  } finally { driver.dispose(); rmSync(cwd, { recursive: true, force: true }) }
+})
+
 test('OpenCode child-session ownership becomes attributed activity instead of main-reply text', async () => {
   await withDriver(async ({ driver, events }) => {
     await driver.sendTurn('CHILD')

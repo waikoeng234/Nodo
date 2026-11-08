@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createServer } from 'node:http'
 import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/dist/index.js'
 import { claudeArgs } from '../agent-drivers/dist/claude/native.js'
 import { leadMcp, LEAD_TOOLS } from '../agent-drivers/dist/lead-mcp.js'
@@ -333,6 +334,121 @@ test('Codex ignores a turn/started for a turn it did not start', async () => {
       assert.equal(starts[0].turnId, events.find(event => event.type === 'turn/end').turnId)
     } finally { driver.dispose() }
   })
+})
+
+test('OpenCode compacts through its background service registration', async () => {
+  // A stub of the POST /compact and GET /message service routes: the first
+  // poll still reports the summarizer running, the next one completes.
+  let polls = 0
+  let postBody
+  const seen = []
+  const server = createServer((request, response) => {
+    seen.push({ method: request.method, url: request.url, authorization: request.headers.authorization })
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'POST') {
+      let body = ''
+      request.on('data', chunk => { body += chunk })
+      request.on('end', () => {
+        postBody = body
+        response.end(JSON.stringify({ data: { id: 'msg-compact', sessionID: 'acp-session', type: 'compaction', delivery: 'steer' } }))
+      })
+      return
+    }
+    polls++
+    response.end(JSON.stringify({ data: [{ id: 'msg-compact', type: 'compaction', status: polls === 1 ? 'running' : 'completed' }] }))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const state = mkdtempSync(join(tmpdir(), 'orch-opencode-state-'))
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-opencode-compact-'))
+  const bin = join(cwd, 'opencode')
+  copyFileSync(new URL('./fixtures/opencode-flow-cli.cjs', import.meta.url), bin)
+  chmodSync(bin, 0o755)
+  mkdirSync(join(state, 'opencode'), { recursive: true })
+  writeFileSync(join(state, 'opencode', 'service.json'), JSON.stringify({ url: `http://127.0.0.1:${server.address().port}`, password: 'fixture-password' }))
+  const events = []
+  const driver = createDriver('opencode', { bin, cwd, onEvent: event => events.push(event) })
+  const previous = process.env.XDG_STATE_HOME
+  try {
+    process.env.XDG_STATE_HOME = state
+    await driver.openSession()
+    await driver.compact()
+    const sessionId = seen[0].url.split('/')[3]
+    assert.equal(postBody, '{}')
+    assert.equal(events.find(event => event.type === 'turn/end').reason, 'done')
+    assert.equal(events.filter(event => event.type === 'turn/end').length, 1)
+    assert.deepEqual(seen.map(entry => entry.method), ['POST', 'GET', 'GET'])
+    assert.match(seen[0].url, /^\/api\/session\/[^/]+\/compact$/)
+    assert.equal(seen[0].authorization, `Basic ${Buffer.from('opencode:fixture-password').toString('base64')}`)
+    assert.ok(seen.slice(1).every(entry => entry.url === `/api/session/${sessionId}/message`), 'completion polls the message list of the same session')
+  } finally {
+    if (previous === undefined) delete process.env.XDG_STATE_HOME
+    else process.env.XDG_STATE_HOME = previous
+    driver.dispose()
+    server.closeAllConnections?.()
+    await new Promise(resolve => server.close(resolve))
+    rmSync(cwd, { recursive: true, force: true })
+    rmSync(state, { recursive: true, force: true })
+  }
+})
+
+test('OpenCode compaction without a running service reports the missing registration', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-opencode-compact-'))
+  const bin = join(cwd, 'opencode')
+  copyFileSync(new URL('./fixtures/opencode-flow-cli.cjs', import.meta.url), bin)
+  chmodSync(bin, 0o755)
+  const events = []
+  const driver = createDriver('opencode', { bin, cwd, onEvent: event => events.push(event) })
+  const previous = process.env.XDG_STATE_HOME
+  try {
+    process.env.XDG_STATE_HOME = join(cwd, 'empty-state')
+    await driver.openSession()
+    await assert.rejects(driver.compact(), /background service is not running/)
+    assert.equal(events.find(event => event.type === 'turn/end').reason, 'error')
+  } finally {
+    if (previous === undefined) delete process.env.XDG_STATE_HOME
+    else process.env.XDG_STATE_HOME = previous
+    driver.dispose()
+    rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
+test('OpenCode compaction reports a failed compaction record', async () => {
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json')
+    if (request.method === 'POST') {
+      request.resume()
+      request.on('end', () => response.end(JSON.stringify({ data: { id: 'msg-compact' } })))
+      return
+    }
+    response.end(JSON.stringify({ data: [{ id: 'msg-compact', type: 'compaction', status: 'failed', error: { message: 'summary failed' } }] }))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const state = mkdtempSync(join(tmpdir(), 'orch-opencode-state-'))
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-opencode-compact-'))
+  const bin = join(cwd, 'opencode')
+  copyFileSync(new URL('./fixtures/opencode-flow-cli.cjs', import.meta.url), bin)
+  chmodSync(bin, 0o755)
+  mkdirSync(join(state, 'opencode'), { recursive: true })
+  writeFileSync(join(state, 'opencode', 'service.json'), JSON.stringify({ url: `http://127.0.0.1:${server.address().port}` }))
+  const events = []
+  const driver = createDriver('opencode', { bin, cwd, onEvent: event => events.push(event) })
+  const previous = process.env.XDG_STATE_HOME
+  try {
+    process.env.XDG_STATE_HOME = state
+    await driver.openSession()
+    await assert.rejects(driver.compact(), /summary failed/)
+    const ended = events.find(event => event.type === 'turn/end')
+    assert.equal(ended.reason, 'error')
+    assert.match(ended.error, /summary failed/)
+  } finally {
+    if (previous === undefined) delete process.env.XDG_STATE_HOME
+    else process.env.XDG_STATE_HOME = previous
+    driver.dispose()
+    server.closeAllConnections?.()
+    await new Promise(resolve => server.close(resolve))
+    rmSync(cwd, { recursive: true, force: true })
+    rmSync(state, { recursive: true, force: true })
+  }
 })
 
 test('Codex marks a turn ended by dispose as unconfirmed', async () => {

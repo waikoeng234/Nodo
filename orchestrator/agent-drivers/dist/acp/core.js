@@ -100,6 +100,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         if (running !== turn)
             return;
         running = null;
+        turn.abort?.abort();
         turn.settle?.();
         closeRequests();
         // A session's `usage_update` reports the context occupancy of the newest
@@ -437,11 +438,52 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             }
         },
         async steer() { return STEER.REFUSED; },
+        // Out-of-band compaction rides the same turn shape a prompt does: the
+        // channel cannot trigger it, so the hook runs it and the turn closes on
+        // the hook's terminal report. The method exists exactly when an engine
+        // supplies the hook, matching the capability declaration.
+        ...(support.compact ? {
+            async compact() {
+                if (disposed)
+                    throw new Error(`${label} driver disposed`);
+                if (running)
+                    throw new Error(`${label} already has a running turn`);
+                const abort = new AbortController();
+                const turn = running = { id: `${id}-compact-${++sequence}`, started: false, abort, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) };
+                try {
+                    await boot();
+                    if (disposed || running !== turn)
+                        return;
+                    turn.started = true;
+                    turn.done = new Promise(resolve => { turn.settle = resolve; });
+                    emit({ type: 'turn/start', turnId: turn.id });
+                    await support.compact(sessionId, abort.signal);
+                    if (running === turn)
+                        end(turn, 'done');
+                }
+                catch (error) {
+                    // A stop or dispose already settled the turn; the host must not wait
+                    // for the out-of-band work to report again.
+                    if (running !== turn)
+                        return;
+                    if (!turn.started)
+                        running = null;
+                    else if (turn.cancelled) {
+                        end(turn, 'interrupted');
+                        return;
+                    }
+                    else
+                        end(turn, 'error', translateError(error).message);
+                    throw error;
+                }
+            },
+        } : {}),
         async interruptTurn() {
             const turn = running;
             if (!turn)
                 return;
             turn.cancelled = true;
+            turn.abort?.abort();
             closeRequests();
             const drop = () => { turn.unconfirmed = true; disconnect(); end(turn, 'interrupted'); };
             if (!turn.started) {
