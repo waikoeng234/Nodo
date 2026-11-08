@@ -71,7 +71,7 @@ const completedLead = text => {
   }
 }
 
-export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status, timeline, file, scope }) {
+export function ProcessRow({ kind, variant, title, summary, body, input, output, progress, running, error, status, timeline, file, scope, fileLinks }) {
   const [open, setOpen] = useState(false)
   const hover = useHoverPreview()
   const text = typeof body === 'string' ? body.trim() : ''
@@ -105,7 +105,7 @@ export function ProcessRow({ kind, variant, title, summary, body, input, output,
     ...(settledFile ? { expandable: false, onOpenChange: () => {} } : {}),
     ...(cards ? { after: cards.preview } : {}),
     children: kind === 'thinking'
-      ? h('div', { className: 'nodo-think-body' }, h(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact' }))
+      ? h('div', { className: 'nodo-think-body' }, h(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: 'compact', fileLinks }))
       : settledFile ? null : h('div', { className: 'nodo-io-card' },
         ...(progressNote ? [h('p', { className: 'nodo-note' }, progressNote)] : []),
         ...(input || output ? [['输入', input], ['输出', output]] : [[streaming ? '输入' : '输出', body]])

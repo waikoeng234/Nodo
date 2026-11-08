@@ -652,6 +652,27 @@ test('an open executor transcript message streams until its message or turn sett
   assert.equal(render().children[0].children[0].props.streaming, false)
 })
 
+test('member transcript text, thinking and live buffer render without file links in the lead conversation', async () => {
+  const lines = [{ who: 'user', kind: 'text', text: 'Task' },
+    { who: 'agent', kind: 'thinking', text: 'Check client.js' },
+    { who: 'agent', kind: 'text', text: 'Edited `client.js`' }]
+  const { RoundMember, host } = await loadClient('round.js', { call: async () => fullAnswer(lines) })
+  const step = { session: 'e1', profile: 'coder', type: 'feature' }
+  const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: true, buffer: 'Now `index.js`' } }, onOpen() {} }
+  const render = () => {
+    host.reset()
+    const tools = nodes(RoundMember({ step, round })).find(node => node.props.step === step && node.type !== RoundMember)
+    return tools.type(tools.props)
+  }
+  render()
+  host.effects.at(-1)()
+  for (let at = 0; at < 5; at += 1) await tick()
+  const [thinking, text, live] = render().children.flat()
+  assert.equal(thinking.props.fileLinks, false)
+  assert.equal(text.children[0].props.fileLinks, false)
+  assert.equal(live.children[0].props.fileLinks, false)
+})
+
 test('automatic continuation tools stay in their delegation window', async () => {
   const tool = (callId, at) => ({ who: 'agent', kind: 'tool', name: 'Bash', callId, phase: 'end', brief: callId, at })
   const lines = [

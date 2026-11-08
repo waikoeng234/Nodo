@@ -12218,11 +12218,252 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
   );
 }
 
+// src/client/terminal.tsx
+var terminalScope = (target) => target.workspace !== void 0 ? { workspace: target.workspace } : { profile: target.profile, session: target.session };
+var ROUTE3 = "/api/nodo/terminal";
+var TerminalMissingError = class extends Error {
+};
+async function terminalRequest(op, payload = {}) {
+  const response = await fetch(ROUTE3, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, ...payload }) });
+  const answer = await response.json();
+  if (response.status === 404 || answer.error?.code === "terminal/not-found") throw new TerminalMissingError("\u7EC8\u7AEF\u4E0D\u5B58\u5728");
+  if (!answer.ok) throw new Error("\u7EC8\u7AEF\u64CD\u4F5C\u5931\u8D25");
+  return answer.value;
+}
+var sizeOf = ({ cols, rows }) => ({ cols: Math.max(2, Math.min(32767, cols)), rows: Math.max(1, Math.min(32767, rows)) });
+async function openTerminal(element, size) {
+  const [{ Terminal }, { FitAddon }] = await Promise.all([Promise.resolve().then(() => (init_xterm(), xterm_exports)), Promise.resolve().then(() => (init_addon_fit(), addon_fit_exports))]);
+  const terminal = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 3e3, minimumContrastRatio: 4.5, ...size });
+  const fit = new FitAddon();
+  try {
+    terminal.loadAddon(fit);
+    terminal.open(element);
+  } catch (error2) {
+    terminal.dispose();
+    throw error2;
+  }
+  return { terminal, fit };
+}
+async function measureTerminal(element) {
+  if (!element || !element.clientWidth || !element.clientHeight) throw new Error("Terminal is hidden");
+  const screen = document.createElement("div");
+  screen.className = "nodo-terminal";
+  screen.style.cssText = "position:absolute;inset:0;visibility:hidden;pointer-events:none";
+  element.appendChild(screen);
+  let view2;
+  try {
+    view2 = await openTerminal(screen);
+    const size = view2.fit.proposeDimensions();
+    if (!size) throw new Error("Terminal dimensions unavailable");
+    return sizeOf(size);
+  } finally {
+    view2?.terminal.dispose();
+    screen.remove();
+  }
+}
+function TerminalView({ id, target, initialSize, active, onGone }) {
+  const container = (0, import_react.useRef)(null);
+  const resize = (0, import_react.useRef)(() => {
+  });
+  const [message, setMessage] = (0, import_react.useState)("");
+  const gone = (0, import_react.useRef)(onGone);
+  gone.current = onGone;
+  const scope = (0, import_react.useRef)(terminalScope(target));
+  scope.current = terminalScope(target);
+  (0, import_react.useLayoutEffect)(() => {
+    const element = container.current;
+    if (!element) return;
+    let live = true, cleanup = () => {
+    };
+    void openTerminal(element, initialSize).then(({ terminal, fit }) => {
+      if (!live) {
+        terminal.dispose();
+        return;
+      }
+      let exited = false, seq = 0, writing = Promise.resolve();
+      let frame, retry2, resizing = false, resizeFailures = 0;
+      let applied2 = initialSize, desired;
+      let abort = new AbortController();
+      let resume;
+      const stopPause = subscribeUpdatePause(() => {
+        abort.abort();
+        abort = new AbortController();
+      }, () => resume?.());
+      const missing = (error2) => {
+        if (!(error2 instanceof TerminalMissingError)) return false;
+        exited = true;
+        gone.current();
+        return true;
+      };
+      const updateTheme = () => {
+        const style = getComputedStyle(element);
+        const color = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+        terminal.options.theme = {
+          background: color("--dsw-alias-bg-base", "#171717"),
+          foreground: color("--dsw-alias-label-primary", "#eeeeee"),
+          cursor: color("--dsw-alias-label-primary", "#eeeeee"),
+          selectionBackground: color("--dsw-alias-interactive-bg-active", "#77777766")
+        };
+      };
+      const syncSize = async () => {
+        if (resizing || !desired || applied2?.cols === desired.cols && applied2?.rows === desired.rows) return;
+        const size = desired;
+        resizing = true;
+        try {
+          await terminalRequest("resize", { ...scope.current, id, ...size });
+          if (!live) return;
+          applied2 = size;
+          resizeFailures = 0;
+          terminal.resize(size.cols, size.rows);
+          setMessage((current) => current === "\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : current);
+        } catch (error2) {
+          if (live && !missing(error2)) {
+            setMessage("\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026");
+            retry2 = setTimeout(() => {
+              retry2 = void 0;
+              resize.current();
+            }, Math.min(1e3 * 2 ** resizeFailures++, 8e3));
+          }
+        } finally {
+          resizing = false;
+          if (live && !exited && !retry2 && (applied2?.cols !== desired?.cols || applied2?.rows !== desired?.rows)) resize.current();
+        }
+      };
+      resize.current = () => {
+        if (frame !== void 0 || !live || exited) return;
+        frame = requestAnimationFrame(() => {
+          frame = void 0;
+          if (!live || exited || !element.clientWidth || !element.clientHeight) return;
+          updateTheme();
+          const size = fit.proposeDimensions();
+          if (size) {
+            desired = sizeOf(size);
+            if (!retry2) void syncSize();
+          }
+        });
+      };
+      const observer = new ResizeObserver(() => resize.current());
+      observer.observe(element);
+      const theme = new MutationObserver(updateTheme);
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-color-scheme"] });
+      updateTheme();
+      resize.current();
+      const input = terminal.onData((data) => {
+        writing = writing.then(async () => {
+          for (let start = 0; live && !exited && start < data.length; ) {
+            let end = Math.min(start + 256 * 1024, data.length);
+            const last = data.charCodeAt(end - 1);
+            if (end < data.length && last >= 55296 && last <= 56319) end--;
+            await terminalRequest("write", { ...scope.current, id, data: data.slice(start, end) });
+            start = end;
+          }
+        }).catch((error2) => {
+          if (live && !missing(error2)) setMessage("\u8F93\u5165\u5931\u8D25");
+        });
+      });
+      const apply2 = async (frame2) => {
+        if (frame2.type === "reset") {
+          terminal.reset();
+          seq = frame2.seq;
+        } else if (frame2.type === "output" && frame2.data && frame2.seq > seq) {
+          const bytes = Uint8Array.from(atob(frame2.data), (character) => character.charCodeAt(0));
+          await new Promise((resolve) => terminal.write(bytes.subarray(Math.max(0, seq - (frame2.from ?? seq))), resolve));
+          seq = frame2.seq;
+        } else if (frame2.type === "exit") {
+          exited = true;
+          setMessage(frame2.failed ? "\u7EC8\u7AEF\u5DF2\u4E2D\u65AD" : `\u5DF2\u9000\u51FA${frame2.code == null ? "" : ` (${frame2.code})`}`);
+        }
+      };
+      const connect2 = async () => {
+        let failures2 = 0;
+        while (live && !exited) {
+          if (updateInstalling()) await new Promise((resolve) => {
+            resume = resolve;
+          });
+          const before = seq;
+          try {
+            const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
+            const response = await fetch(`${ROUTE3}?${query}`, { signal: abort.signal });
+            if (!live) return;
+            if (response.status === 404) {
+              exited = true;
+              gone.current();
+              return;
+            }
+            if (!response.ok || !response.body) throw new Error("Stream unavailable");
+            setMessage("");
+            const reader = response.body.getReader(), decoder = new TextDecoder();
+            let pending = "";
+            try {
+              while (live) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                pending += decoder.decode(value, { stream: true });
+                let newline;
+                while ((newline = pending.indexOf("\n")) >= 0) {
+                  const line = pending.slice(0, newline);
+                  pending = pending.slice(newline + 1);
+                  if (live && line) await apply2(JSON.parse(line));
+                }
+              }
+            } finally {
+              await reader.cancel().catch(() => {
+              });
+              reader.releaseLock();
+            }
+          } catch {
+            if (live && !updateInstalling()) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
+          }
+          if (seq > before) failures2 = 0;
+          if (live && !exited && !updateInstalling() && ++failures2 > 5) {
+            setMessage("\u8FDE\u63A5\u5DF2\u4E2D\u65AD");
+            break;
+          }
+          if (live && !exited && !updateInstalling()) await new Promise((resolve) => {
+            const done = () => {
+              clearTimeout(timer2);
+              abort.signal.removeEventListener("abort", done);
+              resolve();
+            };
+            const timer2 = setTimeout(done, 1e3 * 2 ** (failures2 - 1));
+            abort.signal.addEventListener("abort", done, { once: true });
+            if (abort.signal.aborted) done();
+          });
+        }
+      };
+      void connect2();
+      cleanup = () => {
+        live = false;
+        abort.abort();
+        stopPause();
+        observer.disconnect();
+        theme.disconnect();
+        input.dispose();
+        terminal.dispose();
+        if (frame !== void 0) cancelAnimationFrame(frame);
+        clearTimeout(retry2);
+        resize.current = () => {
+        };
+      };
+    }).catch(() => {
+      if (live) setMessage("\u7EC8\u7AEF\u4E0D\u53EF\u7528");
+    });
+    return () => {
+      live = false;
+      cleanup();
+    };
+  }, [id]);
+  (0, import_react.useEffect)(() => {
+    if (active) resize.current();
+  }, [active]);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal-screen", ref: container }), message && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, message));
+}
+
 // src/client/streaming-text.tsx
 var segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("zh-CN", { granularity: "word" }) : null;
 var FADE_MS = 260;
 var STAGGER_MS = 160;
-var ignored = 'button,svg,style,script,[aria-hidden="true"],[hidden]';
+var ignored = 'button:not([data-nodo-file]),svg,style,script,[aria-hidden="true"],[hidden]';
 var blocks = "p,li,pre,blockquote,h1,h2,h3,h4,h5,h6,td,th";
 function streamingWords(root) {
   const nodes = [];
@@ -12372,11 +12613,76 @@ function decorateStreamingText(root, caret, { name, streaming, animate = streami
     }
   };
 }
-function StreamingText({ text, streaming = false, animate = streaming, ...props }) {
+var foundFiles = /* @__PURE__ */ new Map();
+var pendingFiles = /* @__PURE__ */ new Set();
+var fileListeners = /* @__PURE__ */ new Set();
+var LINKED_FILE = { "data-nodo-file": "" };
+var PLAIN_FILE = { ...LINKED_FILE, className: "nodo-file-plain", disabled: true, title: void 0 };
+var unsubscribed = () => () => {
+};
+var FILES_MATCH_MAX = 30;
+var codeFilePath = (text) => {
+  const path = text.trim().replace(/(?:#L\d+(?:-L?\d+)?|:\d+(?::\d+)?(?:-\d+(?::\d+)?)?)$/, "");
+  const nested = path.includes("/");
+  return /^[^\t\r\n~'"`<>|*?{}]+$/.test(path) && (nested || !path.includes(" ")) && !path.includes("://") && !path.endsWith("/") && (nested || /\.[a-z][\w-]*$/i.test(path) || /^(?:[A-Z][a-z]+|[A-Z][A-Z\d_]+)$/.test(path)) ? path : void 0;
+};
+function useFileLinks() {
+  const target = (0, import_react.useSyncExternalStore)(rightPanelService?.subscribe ?? unsubscribed, () => rightPanelService?.getSnapshot().target ?? null);
+  const outer = (0, import_dsh_client_ui_primitives.useMarkdownDelegate)();
+  const asked = (0, import_react.useRef)(/* @__PURE__ */ new Set());
+  const [version, setVersion] = (0, import_react.useState)(0);
+  (0, import_react.useEffect)(() => {
+    const listener = (key) => {
+      if (asked.current.has(key)) setVersion((value) => value + 1);
+    };
+    fileListeners.add(listener);
+    return () => {
+      fileListeners.delete(listener);
+    };
+  }, []);
+  return (0, import_react.useMemo)(() => {
+    if (!target) return null;
+    const scope = terminalScope(target);
+    const keyOf2 = (path) => JSON.stringify([scope, target.cwd, path]);
+    const readable = (path) => call2("workspace-file", { ...scope, path }).then((value) => typeof value.text === "string" || !!value.image, () => false);
+    const locate = (path) => {
+      const key = keyOf2(path);
+      const found = foundFiles.get(key);
+      if (found !== void 0) return found;
+      if (!asked.current.has(key) && !pendingFiles.has(key)) {
+        pendingFiles.add(key);
+        void readable(path).then((found2) => found2 ? path : path.includes("/") ? void 0 : call2("workspace-files", { ...scope, query: path }).then(({ files }) => {
+          const matches = files.filter((file) => file.endsWith(`/${path}`));
+          return matches.length === 1 && files.length < FILES_MATCH_MAX ? readable(matches[0]).then((found3) => found3 ? matches[0] : void 0) : void 0;
+        }, () => void 0)).then((resolved) => {
+          pendingFiles.delete(key);
+          if (resolved) {
+            foundFiles.set(key, resolved);
+            fileListeners.forEach((listener) => listener(key));
+          }
+        });
+      }
+      asked.current.add(key);
+      return void 0;
+    };
+    const openFile = (path) => rightPanelService.openFile(relativeFile(foundFiles.get(keyOf2(path)) ?? path, target.cwd));
+    return {
+      fileMentions: { resolve(text) {
+        const file = codeFilePath(text);
+        const path = file === void 0 ? void 0 : locate(file);
+        return path !== void 0 ? { title: path, label: `\u6253\u5F00 ${path}`, open: () => openFile(path), contextMenuProps: LINKED_FILE } : void 0;
+      } },
+      delegate: { ...outer, openFile, getTriggerProps: (trigger) => trigger.kind !== "file" ? outer.getTriggerProps?.(trigger) : { ...outer.getTriggerProps?.(trigger), ...locate(trigger.path ?? "") !== void 0 ? LINKED_FILE : PLAIN_FILE } }
+    };
+  }, [target, outer, version]);
+}
+function StreamingText({ text, streaming = false, animate = streaming, fileLinks = true, ...props }) {
   const body = (0, import_react.useRef)(null);
   const caret = (0, import_react.useRef)(null);
   const decoration = (0, import_react.useRef)(null);
   const name = `nodo-stream-${(0, import_react.useId)().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const fileLinked = useFileLinks();
+  const links = fileLinks ? fileLinked : null;
   (0, import_react.useLayoutEffect)(() => {
     if (!body.current || !caret.current) return;
     if (!decoration.current && (streaming || animate)) decoration.current = decorateStreamingText(body.current, caret.current, { name, streaming, animate });
@@ -12386,7 +12692,7 @@ function StreamingText({ text, streaming = false, animate = streaming, ...props 
     decoration.current?.dispose();
     decoration.current = null;
   }, [name]);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-streaming-text" }, /* @__PURE__ */ (0, import_react.createElement)("div", { ref: body }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { ...props, text, streaming })), /* @__PURE__ */ (0, import_react.createElement)("span", { ref: caret, className: "nodo-streaming-caret", hidden: true, "aria-hidden": true }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-streaming-text" }, /* @__PURE__ */ (0, import_react.createElement)("div", { ref: body }, links ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownDelegateProvider, { ...links.delegate }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { ...props, text, streaming, fileMentions: links.fileMentions })) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { ...props, text, streaming })), /* @__PURE__ */ (0, import_react.createElement)("span", { ref: caret, className: "nodo-streaming-caret", hidden: true, "aria-hidden": true }));
 }
 
 // src/client/session-references.js
@@ -12804,7 +13110,7 @@ var completedLead = (text) => {
     start = next.index + next[0].length;
   }
 };
-function ProcessRow({ kind, variant, title, summary, body, input, output, progress: progress2, running, error: error2, status: status2, timeline, file, scope }) {
+function ProcessRow({ kind, variant, title, summary, body, input, output, progress: progress2, running, error: error2, status: status2, timeline, file, scope, fileLinks }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const hover = useHoverPreview();
   const text = typeof body === "string" ? body.trim() : "";
@@ -12846,7 +13152,7 @@ function ProcessRow({ kind, variant, title, summary, body, input, output, progre
     ...settledFile ? { expandable: false, onOpenChange: () => {
     } } : {},
     ...cards ? { after: cards.preview } : {},
-    children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact" })) : settledFile ? null : (0, import_react.createElement)(
+    children: kind === "thinking" ? (0, import_react.createElement)("div", { className: "nodo-think-body" }, (0, import_react.createElement)(StreamingText, { text: body, streaming, labels: MARKDOWN_LABELS, variant: "compact", fileLinks })) : settledFile ? null : (0, import_react.createElement)(
       "div",
       { className: "nodo-io-card" },
       ...progressNote ? [(0, import_react.createElement)("p", { className: "nodo-note" }, progressNote)] : [],
@@ -13964,11 +14270,12 @@ function RoundTools({ step, work }) {
   return (rows.length > 0 || buffer !== null) && (0, import_react.createElement)(
     "div",
     { className: "nodo-round-tools" },
-    rows.map((row) => row.item.kind === "text" ? (0, import_react.createElement)("div", { key: row.index, className: "nodo-round-text" }, (0, import_react.createElement)(StreamingText, { text: row.item.text, streaming: row.item.open === true && work?.active === true, labels: MARKDOWN_LABELS })) : row.item.kind === "thinking" ? (0, import_react.createElement)(ProcessRow, {
+    rows.map((row) => row.item.kind === "text" ? (0, import_react.createElement)("div", { key: row.index, className: "nodo-round-text" }, (0, import_react.createElement)(StreamingText, { text: row.item.text, streaming: row.item.open === true && work?.active === true, labels: MARKDOWN_LABELS, fileLinks: false })) : row.item.kind === "thinking" ? (0, import_react.createElement)(ProcessRow, {
       key: row.index,
       kind: "thinking",
       variant: { icon: import_dsh_client_ui_primitives.IconThinkOutlineRegular },
       timeline: true,
+      fileLinks: false,
       title: "\u601D\u8003",
       summary: (row.item.text ?? "").split("\n")[0].replaceAll("**", "") || null,
       body: row.item.text ?? ""
@@ -13976,7 +14283,7 @@ function RoundTools({ step, work }) {
     buffer !== null && (0, import_react.createElement)(
       "div",
       { key: "live", className: "nodo-round-text" },
-      (0, import_react.createElement)(StreamingText, { text: buffer, streaming: true, labels: MARKDOWN_LABELS })
+      (0, import_react.createElement)(StreamingText, { text: buffer, streaming: true, labels: MARKDOWN_LABELS, fileLinks: false })
     )
   );
 }
@@ -19812,247 +20119,6 @@ function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
   )));
 }
 
-// src/client/terminal.tsx
-var terminalScope = (target) => target.workspace !== void 0 ? { workspace: target.workspace } : { profile: target.profile, session: target.session };
-var ROUTE3 = "/api/nodo/terminal";
-var TerminalMissingError = class extends Error {
-};
-async function terminalRequest(op, payload = {}) {
-  const response = await fetch(ROUTE3, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, ...payload }) });
-  const answer = await response.json();
-  if (response.status === 404 || answer.error?.code === "terminal/not-found") throw new TerminalMissingError("\u7EC8\u7AEF\u4E0D\u5B58\u5728");
-  if (!answer.ok) throw new Error("\u7EC8\u7AEF\u64CD\u4F5C\u5931\u8D25");
-  return answer.value;
-}
-var sizeOf = ({ cols, rows }) => ({ cols: Math.max(2, Math.min(32767, cols)), rows: Math.max(1, Math.min(32767, rows)) });
-async function openTerminal(element, size) {
-  const [{ Terminal }, { FitAddon }] = await Promise.all([Promise.resolve().then(() => (init_xterm(), xterm_exports)), Promise.resolve().then(() => (init_addon_fit(), addon_fit_exports))]);
-  const terminal = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 3e3, minimumContrastRatio: 4.5, ...size });
-  const fit = new FitAddon();
-  try {
-    terminal.loadAddon(fit);
-    terminal.open(element);
-  } catch (error2) {
-    terminal.dispose();
-    throw error2;
-  }
-  return { terminal, fit };
-}
-async function measureTerminal(element) {
-  if (!element || !element.clientWidth || !element.clientHeight) throw new Error("Terminal is hidden");
-  const screen = document.createElement("div");
-  screen.className = "nodo-terminal";
-  screen.style.cssText = "position:absolute;inset:0;visibility:hidden;pointer-events:none";
-  element.appendChild(screen);
-  let view2;
-  try {
-    view2 = await openTerminal(screen);
-    const size = view2.fit.proposeDimensions();
-    if (!size) throw new Error("Terminal dimensions unavailable");
-    return sizeOf(size);
-  } finally {
-    view2?.terminal.dispose();
-    screen.remove();
-  }
-}
-function TerminalView({ id, target, initialSize, active, onGone }) {
-  const container = (0, import_react.useRef)(null);
-  const resize = (0, import_react.useRef)(() => {
-  });
-  const [message, setMessage] = (0, import_react.useState)("");
-  const gone = (0, import_react.useRef)(onGone);
-  gone.current = onGone;
-  const scope = (0, import_react.useRef)(terminalScope(target));
-  scope.current = terminalScope(target);
-  (0, import_react.useLayoutEffect)(() => {
-    const element = container.current;
-    if (!element) return;
-    let live = true, cleanup = () => {
-    };
-    void openTerminal(element, initialSize).then(({ terminal, fit }) => {
-      if (!live) {
-        terminal.dispose();
-        return;
-      }
-      let exited = false, seq = 0, writing = Promise.resolve();
-      let frame, retry2, resizing = false, resizeFailures = 0;
-      let applied2 = initialSize, desired;
-      let abort = new AbortController();
-      let resume;
-      const stopPause = subscribeUpdatePause(() => {
-        abort.abort();
-        abort = new AbortController();
-      }, () => resume?.());
-      const missing = (error2) => {
-        if (!(error2 instanceof TerminalMissingError)) return false;
-        exited = true;
-        gone.current();
-        return true;
-      };
-      const updateTheme = () => {
-        const style = getComputedStyle(element);
-        const color = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-        terminal.options.theme = {
-          background: color("--dsw-alias-bg-base", "#171717"),
-          foreground: color("--dsw-alias-label-primary", "#eeeeee"),
-          cursor: color("--dsw-alias-label-primary", "#eeeeee"),
-          selectionBackground: color("--dsw-alias-interactive-bg-active", "#77777766")
-        };
-      };
-      const syncSize = async () => {
-        if (resizing || !desired || applied2?.cols === desired.cols && applied2?.rows === desired.rows) return;
-        const size = desired;
-        resizing = true;
-        try {
-          await terminalRequest("resize", { ...scope.current, id, ...size });
-          if (!live) return;
-          applied2 = size;
-          resizeFailures = 0;
-          terminal.resize(size.cols, size.rows);
-          setMessage((current) => current === "\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : current);
-        } catch (error2) {
-          if (live && !missing(error2)) {
-            setMessage("\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026");
-            retry2 = setTimeout(() => {
-              retry2 = void 0;
-              resize.current();
-            }, Math.min(1e3 * 2 ** resizeFailures++, 8e3));
-          }
-        } finally {
-          resizing = false;
-          if (live && !exited && !retry2 && (applied2?.cols !== desired?.cols || applied2?.rows !== desired?.rows)) resize.current();
-        }
-      };
-      resize.current = () => {
-        if (frame !== void 0 || !live || exited) return;
-        frame = requestAnimationFrame(() => {
-          frame = void 0;
-          if (!live || exited || !element.clientWidth || !element.clientHeight) return;
-          updateTheme();
-          const size = fit.proposeDimensions();
-          if (size) {
-            desired = sizeOf(size);
-            if (!retry2) void syncSize();
-          }
-        });
-      };
-      const observer = new ResizeObserver(() => resize.current());
-      observer.observe(element);
-      const theme = new MutationObserver(updateTheme);
-      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-color-scheme"] });
-      updateTheme();
-      resize.current();
-      const input = terminal.onData((data) => {
-        writing = writing.then(async () => {
-          for (let start = 0; live && !exited && start < data.length; ) {
-            let end = Math.min(start + 256 * 1024, data.length);
-            const last = data.charCodeAt(end - 1);
-            if (end < data.length && last >= 55296 && last <= 56319) end--;
-            await terminalRequest("write", { ...scope.current, id, data: data.slice(start, end) });
-            start = end;
-          }
-        }).catch((error2) => {
-          if (live && !missing(error2)) setMessage("\u8F93\u5165\u5931\u8D25");
-        });
-      });
-      const apply2 = async (frame2) => {
-        if (frame2.type === "reset") {
-          terminal.reset();
-          seq = frame2.seq;
-        } else if (frame2.type === "output" && frame2.data && frame2.seq > seq) {
-          const bytes = Uint8Array.from(atob(frame2.data), (character) => character.charCodeAt(0));
-          await new Promise((resolve) => terminal.write(bytes.subarray(Math.max(0, seq - (frame2.from ?? seq))), resolve));
-          seq = frame2.seq;
-        } else if (frame2.type === "exit") {
-          exited = true;
-          setMessage(frame2.failed ? "\u7EC8\u7AEF\u5DF2\u4E2D\u65AD" : `\u5DF2\u9000\u51FA${frame2.code == null ? "" : ` (${frame2.code})`}`);
-        }
-      };
-      const connect2 = async () => {
-        let failures2 = 0;
-        while (live && !exited) {
-          if (updateInstalling()) await new Promise((resolve) => {
-            resume = resolve;
-          });
-          const before = seq;
-          try {
-            const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
-            const response = await fetch(`${ROUTE3}?${query}`, { signal: abort.signal });
-            if (!live) return;
-            if (response.status === 404) {
-              exited = true;
-              gone.current();
-              return;
-            }
-            if (!response.ok || !response.body) throw new Error("Stream unavailable");
-            setMessage("");
-            const reader = response.body.getReader(), decoder = new TextDecoder();
-            let pending = "";
-            try {
-              while (live) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                pending += decoder.decode(value, { stream: true });
-                let newline;
-                while ((newline = pending.indexOf("\n")) >= 0) {
-                  const line = pending.slice(0, newline);
-                  pending = pending.slice(newline + 1);
-                  if (live && line) await apply2(JSON.parse(line));
-                }
-              }
-            } finally {
-              await reader.cancel().catch(() => {
-              });
-              reader.releaseLock();
-            }
-          } catch {
-            if (live && !updateInstalling()) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
-          }
-          if (seq > before) failures2 = 0;
-          if (live && !exited && !updateInstalling() && ++failures2 > 5) {
-            setMessage("\u8FDE\u63A5\u5DF2\u4E2D\u65AD");
-            break;
-          }
-          if (live && !exited && !updateInstalling()) await new Promise((resolve) => {
-            const done = () => {
-              clearTimeout(timer2);
-              abort.signal.removeEventListener("abort", done);
-              resolve();
-            };
-            const timer2 = setTimeout(done, 1e3 * 2 ** (failures2 - 1));
-            abort.signal.addEventListener("abort", done, { once: true });
-            if (abort.signal.aborted) done();
-          });
-        }
-      };
-      void connect2();
-      cleanup = () => {
-        live = false;
-        abort.abort();
-        stopPause();
-        observer.disconnect();
-        theme.disconnect();
-        input.dispose();
-        terminal.dispose();
-        if (frame !== void 0) cancelAnimationFrame(frame);
-        clearTimeout(retry2);
-        resize.current = () => {
-        };
-      };
-    }).catch(() => {
-      if (live) setMessage("\u7EC8\u7AEF\u4E0D\u53EF\u7528");
-    });
-    return () => {
-      live = false;
-      cleanup();
-    };
-  }, [id]);
-  (0, import_react.useEffect)(() => {
-    if (active) resize.current();
-  }, [active]);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal-screen", ref: container }), message && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, message));
-}
-
 // src/client/right-panel.tsx
 var terminalTab = ({ id, cols, rows, shell }) => ({ kind: "terminal", id, ...cols && rows ? { cols, rows } : {}, ...shell ? { shell } : {} });
 var tabId = (tab) => tab.kind === "files" ? "files" : tab.id;
@@ -21689,6 +21755,8 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-streaming-text{position:relative;min-width:0}
 .nodo-streaming-caret{position:absolute;width:2px;margin-left:2px;border-radius:1px;background:var(--dsw-alias-state-business-primary);pointer-events:none;animation:nodo-streaming-pulse 1s ease-in-out infinite}
 .nodo-streaming-caret[hidden]{display:none}
+.nodo-file-plain{all:unset}
+.nodo-file-plain>svg{display:none}
 @keyframes nodo-streaming-pulse{50%{opacity:.25}}
 @media(prefers-reduced-motion:reduce){.nodo-streaming-caret{animation:none}}
 .nodo-row-content{flex:1;min-width:0}

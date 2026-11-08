@@ -152,8 +152,8 @@ export function install(rt) {
 
   // The composer's @-context search: relative file paths under the workspace's
   // directory, engine-agnostic — every agent reads a path with its own tools.
-  const workspaceFiles = ({ workspace, query = '' }) => {
-    const target = rt.findWorkspace(workspace)
+  const workspaceFiles = async ({ workspace, query = '', ...scope }) => {
+    const target = workspace !== undefined ? rt.findWorkspace(workspace) : { cwd: await sessionCwd(scope) }
     if (target === undefined) throw invalid(`No workspace "${workspace}"`)
     const wanted = String(query ?? '').trim().toLowerCase()
     const found = []

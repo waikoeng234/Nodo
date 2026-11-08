@@ -119,7 +119,7 @@ test('editing a workspace cwd moves its roles and restarts their conversations',
 })
 
 test('the @-context search lists workspace files relative to its directory', async () => {
-  await withHost(async ({ api, post, home }) => {
+  await withHost(async ({ api, post, home, runtime }) => {
     const workspace = await api('workspace-create', { name: 'Files', cwd: join(home, 'tree') })
     mkdirSync(join(home, 'tree', 'src', 'deep'), { recursive: true })
     mkdirSync(join(home, 'tree', 'node_modules', 'pkg'), { recursive: true })
@@ -131,6 +131,14 @@ test('the @-context search lists workspace files relative to its directory', asy
     assert.deepEqual([...all], ['README.md', 'src/deep/needle.txt', 'src/main.js'], 'dependencies and dot entries stay out')
     assert.equal((await api('workspace-files', { workspace: workspace.id, query: 'NEEDLE' })).files[0], 'src/deep/needle.txt')
     assert.equal((await post('workspace-files', { workspace: 'ghost' })).error.code, 'orch/invalid')
+    const profile = await api('profile-create', { name: 'Fixture Coder', engine: 'echo', workspace: workspace.id })
+    const session = (await api('session-create', { profile: profile.id, workspace: workspace.id, lazy: true })).id
+    mkdirSync(join(home, 'worktree', 'lib'), { recursive: true })
+    writeFileSync(join(home, 'worktree', 'lib', 'main.js'), 'x')
+    const rt = await runtime
+    rt.state.profiles[profile.id].sessions.find(item => item.id === session).cwd = join(home, 'worktree')
+    assert.deepEqual([...(await api('workspace-files', { profile: profile.id, session, query: 'main.js' })).files], ['lib/main.js'], 'a conversation searches its own directory')
+    assert.equal((await post('workspace-files', { profile: profile.id, session: 'ghost' })).error.code, 'orch/not-found')
   })
 })
 

@@ -240,7 +240,7 @@ test('reduced motion and unsupported Highlight API keep content visible without 
 test('StreamingText retains one decoration through renders and completion and cleans it up on unmount', async () => {
   const f = fixture(), refs = [], effects = []
   let refCursor = 0, effectCursor = 0, pending = []
-  const { StreamingText } = await loadClient('streaming-text.tsx', { react: {
+  const { StreamingText } = await loadClient('streaming-text.tsx', { primitives: { useMarkdownDelegate: () => ({}) }, react: {
     useRef: initial => refs[refCursor++] ??= { current: initial },
     useLayoutEffect: (effect, deps) => {
       const at = effectCursor++, previous = effects[at]
@@ -310,3 +310,176 @@ test('the feed retains StreamingText for completed messages while the legacy buf
   assert.equal(body.props.variant, 'compact')
 })
 
+
+test('reply file references link only to readable workspace files, are checked once, and open in the right panel', async () => {
+  const opened = [], requests = []
+  let target = { workspace: 'w', cwd: '/ws' }
+  const refs = []
+  let refCursor = 0
+  const { StreamingText, codeFilePath, host } = await loadClient('streaming-text.tsx', {
+    primitives: { useMarkdownDelegate: () => ({}) },
+    react: { useRef: initial => refs[refCursor++] ??= { current: initial } },
+    uiShared: {
+      rightPanelService: { subscribe: () => () => {}, getSnapshot: () => ({ target }), openFile: path => opened.push(path) },
+      call: async (endpoint, payload) => {
+        requests.push([endpoint, payload.workspace, payload.path])
+        return payload.path.includes('missing') ? { missing: true } : payload.path.endsWith('.bin') ? { binary: true } : { text: '' }
+      },
+    },
+  })
+  assert.equal(codeFilePath('orchestrator/index.js:12'), 'orchestrator/index.js')
+  assert.equal(codeFilePath('README.md'), 'README.md')
+  for (const text of ['npm test', 'v1.2', 'src/', 'https://a.b/c.js', 'fn()', '~/x.ts', 'value']) assert.equal(codeFilePath(text), undefined, text)
+  const find = (node, type) => !node || typeof node !== 'object' ? undefined
+    : node.type === type ? node : node.children?.map(child => find(child, type)).find(Boolean)
+  const render = (props = {}) => { host.reset(); refCursor = 0; return StreamingText({ text: 'x', labels: {}, ...props }) }
+  let tree = render()
+  host.effects.splice(0).forEach(effect => effect())
+  let mentions = find(tree, 'MarkdownText').props.fileMentions
+  let delegate = find(tree, 'MarkdownDelegateProvider').props
+  assert.equal(mentions.resolve('src/a.ts:12'), undefined, 'unchecked paths stay plain')
+  assert.equal(mentions.resolve('src/missing.ts'), undefined)
+  assert.equal(mentions.resolve('out/app.bin'), undefined)
+  assert.equal(mentions.resolve('npm test'), undefined)
+  assert.equal(delegate.getTriggerProps({ kind: 'file', path: '/ws/docs/b.md' }).disabled, true, 'unchecked Markdown file links render as plain text')
+  assert.equal(delegate.getTriggerProps({ kind: 'url', url: 'https://a.b' }), undefined)
+  await new Promise(resolve => setImmediate(resolve))
+  tree = render()
+  tree = render()
+  mentions = find(tree, 'MarkdownText').props.fileMentions
+  delegate = find(tree, 'MarkdownDelegateProvider').props
+  const mention = mentions.resolve('src/a.ts:12')
+  assert.equal(mention.title, 'src/a.ts')
+  assert.equal(mention.contextMenuProps['data-nodo-file'], '', 'linked text stays in the streaming decoration text')
+  mention.open()
+  assert.equal(mentions.resolve('src/missing.ts'), undefined)
+  assert.equal(mentions.resolve('out/app.bin'), undefined)
+  const linked = delegate.getTriggerProps({ kind: 'file', path: '/ws/docs/b.md' })
+  assert.equal(linked.disabled, undefined)
+  assert.equal(linked['data-nodo-file'], '')
+  delegate.openFile('/ws/docs/b.md')
+  assert.deepEqual(opened, ['src/a.ts', 'docs/b.md'], 'paths inside the workspace open relative so the tree selects them')
+  assert.deepEqual(requests.sort(), [['workspace-file', 'w', '/ws/docs/b.md'], ['workspace-file', 'w', 'out/app.bin'], ['workspace-file', 'w', 'src/a.ts'], ['workspace-file', 'w', 'src/missing.ts']],
+    'each path is checked once across renders')
+  target = null
+  tree = render({ streaming: true })
+  assert.equal(find(tree, 'MarkdownDelegateProvider'), undefined, 'without a right panel target nothing links')
+  assert.equal(find(tree, 'MarkdownText').props.fileMentions, undefined)
+})
+
+// 每个 mount 用独立的 ref 表模拟一条新消息；返回当前实例的 fileMentions 和 delegate。
+async function fileLinkClient(handler) {
+  const requests = [], instances = [], opened = []
+  let refs, refCursor = 0, target = { workspace: 'w', cwd: '/ws' }
+  const client = await loadClient('streaming-text.tsx', {
+    primitives: { useMarkdownDelegate: () => ({}) },
+    react: { useRef: initial => refs[refCursor++] ??= { current: initial } },
+    uiShared: {
+      rightPanelService: { subscribe: () => () => {}, getSnapshot: () => ({ target }), openFile: path => opened.push(path) },
+      call: async (endpoint, payload) => { requests.push([payload.workspace, payload.path ?? payload.query, endpoint]); return handler(payload.path, endpoint, payload) },
+    },
+  })
+  const find = (node, type) => !node || typeof node !== 'object' ? undefined
+    : node.type === type ? node : node.children?.map(child => find(child, type)).find(Boolean)
+  const render = instance => {
+    refs = instances[instance] ??= []
+    client.host.reset(); refCursor = 0
+    const tree = client.StreamingText({ text: 'x', labels: {} })
+    client.host.effects.splice(0).forEach(effect => effect())
+    return { mentions: find(tree, 'MarkdownText').props.fileMentions, delegate: find(tree, 'MarkdownDelegateProvider').props }
+  }
+  return { ...client, requests, opened, render, settle: () => new Promise(resolve => setImmediate(resolve)), setTarget: value => { target = value } }
+}
+
+test('missing or failed file checks are retried by later messages, but not repeated within one message', async () => {
+  let created = false, down = true
+  const { render, requests, settle } = await fileLinkClient(async path => {
+    if (path === 'src/new.ts') return created ? { text: '' } : { missing: true }
+    if (down) throw new Error('offline')
+    return { text: '' }
+  })
+  assert.equal(render(0).mentions.resolve('src/new.ts'), undefined)
+  assert.equal(render(0).mentions.resolve('src/flaky.ts'), undefined)
+  await settle()
+  assert.equal(render(0).mentions.resolve('src/new.ts'), undefined)
+  assert.equal(render(0).mentions.resolve('src/flaky.ts'), undefined)
+  await settle()
+  assert.equal(requests.length, 2, 'streaming renders of one message do not re-request a path')
+  created = true; down = false
+  render(1).mentions.resolve('src/new.ts')
+  render(1).mentions.resolve('src/flaky.ts')
+  await settle()
+  assert.ok(render(1).mentions.resolve('src/new.ts'), 'a file created after an earlier mention links in a later message')
+  assert.ok(render(1).mentions.resolve('src/flaky.ts'), 'a failed request is not cached as missing')
+  assert.ok(render(2).mentions.resolve('src/new.ts'), 'found files stay cached globally')
+  assert.equal(requests.length, 4)
+})
+
+test('file checks are keyed by working directory', async () => {
+  const { render, requests, settle, setTarget } = await fileLinkClient(async () => ({ text: '' }))
+  render(0).mentions.resolve('src/a.ts')
+  await settle()
+  assert.ok(render(0).mentions.resolve('src/a.ts'))
+  setTarget({ workspace: 'w', cwd: '/other' })
+  assert.equal(render(0).mentions.resolve('src/a.ts'), undefined, 'a hit in one cwd does not link the same relative path in another')
+  await settle()
+  assert.ok(render(0).mentions.resolve('src/a.ts'))
+  assert.equal(requests.length, 2)
+})
+
+test('a bare file name links when exactly one workspace file has that name, opening its full relative path', async () => {
+  const files = { 'client.js': ['orchestrator/client.js', 'orchestrator/client.json'], 'index.js': ['a/index.js', 'b/index.js'], 'ghost.js': [], 'blob.bin': ['out/blob.bin'] }
+  const { render, requests, opened, settle } = await fileLinkClient(async (path, endpoint, payload) =>
+    endpoint === 'workspace-files' ? { files: files[payload.query] } : path === 'out/blob.bin' || !path.includes('/') ? { missing: true } : { text: '' })
+  for (const name of ['client.js', 'index.js', 'ghost.js', 'blob.bin']) assert.equal(render(0).mentions.resolve(name), undefined, name)
+  render(0).delegate.getTriggerProps({ kind: 'file', path: 'client.js' })
+  await settle()
+  for (const name of ['client.js', 'index.js', 'ghost.js', 'blob.bin']) render(0).mentions.resolve(`${name}:3`)
+  await settle()
+  const { mentions, delegate } = render(0)
+  const mention = mentions.resolve('client.js')
+  assert.equal(mention.title, 'orchestrator/client.js')
+  mention.open()
+  assert.equal(delegate.getTriggerProps({ kind: 'file', path: 'client.js' }).disabled, undefined, 'Markdown links to a bare name share the same lookup')
+  delegate.openFile('client.js')
+  assert.deepEqual(opened, ['orchestrator/client.js', 'orchestrator/client.js'])
+  assert.equal(mentions.resolve('index.js'), undefined, 'several files with the name stay plain')
+  assert.equal(mentions.resolve('ghost.js'), undefined, 'no match stays plain')
+  assert.equal(mentions.resolve('blob.bin'), undefined, 'an unreadable match stays plain')
+  assert.deepEqual(requests.filter(item => item[2] === 'workspace-files').map(item => item[1]).sort(), ['blob.bin', 'client.js', 'ghost.js', 'index.js'],
+    'each name is searched once per message')
+})
+
+test('a full page of name matches may be truncated, so the name stays plain', async () => {
+  const files = ['a/index.ts', ...Array.from({ length: 29 }, (_, at) => `d${at}/index.tsx`)]
+  const { render, requests, settle } = await fileLinkClient(async (path, endpoint) => endpoint === 'workspace-files' ? { files } : path.includes('/') ? { text: '' } : { missing: true })
+  render(0).mentions.resolve('index.ts')
+  for (let at = 0; at < 3; at += 1) await settle()
+  assert.equal(render(0).mentions.resolve('index.ts'), undefined)
+  assert.equal(requests.some(item => item[1] === 'a/index.ts'), false, 'a truncated result is never treated as the unique match')
+})
+
+test('text from another conversation renders without file links while the current one still links', async () => {
+  const { render, StreamingText, host, settle } = await fileLinkClient(async () => ({ text: '' }))
+  render(0).mentions.resolve('src/a.ts')
+  await settle()
+  assert.ok(render(0).mentions.resolve('src/a.ts'))
+  host.reset()
+  const tree = StreamingText({ text: 'x', labels: {}, fileLinks: false })
+  const find = (node, type) => !node || typeof node !== 'object' ? undefined
+    : node.type === type ? node : node.children?.map(child => find(child, type)).find(Boolean)
+  assert.equal(find(tree, 'MarkdownDelegateProvider'), undefined)
+  assert.equal(find(tree, 'MarkdownText').props.fileMentions, undefined)
+  assert.equal(find(tree, 'MarkdownText').props.fileLinks, undefined, 'the switch is not forwarded to Markdown')
+})
+
+test('codeFilePath accepts common real paths and strips location suffixes, but skips ordinary words', async () => {
+  const { codeFilePath } = await fileLinkClient(async () => ({}))
+  for (const [text, path] of [
+    ['Makefile', 'Makefile'], ['Dockerfile', 'Dockerfile'], ['LICENSE', 'LICENSE'], ['.gitignore', '.gitignore'],
+    ['docs/a b.md', 'docs/a b.md'], ['src/app/[id]/page.tsx', 'src/app/[id]/page.tsx'], ['src/(auth)/login.ts', 'src/(auth)/login.ts'],
+    ['src/a.ts#L12', 'src/a.ts'], ['src/a.ts#L12-L20', 'src/a.ts'], ['src/a.ts:12:5-10', 'src/a.ts'], ['src/a.ts:12-20', 'src/a.ts'], ['a.ts:12:5', 'a.ts'],
+  ]) assert.equal(codeFilePath(text), path, text)
+  for (const text of ['npm test', 'value', 'fn()', 'v1.2', 'https://a.b/c.js', 'src/', 'useState', 'StreamingText', 'a b.md', 'I', '~/x.ts', '{a}/b.ts'])
+    assert.equal(codeFilePath(text), undefined, text)
+})

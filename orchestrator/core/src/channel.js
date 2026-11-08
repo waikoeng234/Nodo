@@ -129,7 +129,7 @@ export function install(rt) {
         return rt.scanEngineCommands({ engine, engineOptions: rt.engineConfig(engine).engineOptions, cwd })
       }
       case 'workspace-files':
-        return rt.workspaceFiles({ workspace: body.workspace, query: body.query })
+        return rt.workspaceFiles({ workspace: body.workspace, query: body.query, profile: body.profile, session: body.session, target: body.target })
       case 'workspace-file':
         return rt.workspaceFile(body)
       case 'workspace-dir':

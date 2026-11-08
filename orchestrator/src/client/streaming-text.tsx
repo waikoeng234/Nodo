@@ -1,5 +1,7 @@
-import { h, useLayoutEffect, useId, useRef, MarkdownText } from './ui-shared.js'
+import { h, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, useSyncExternalStore, call, rightPanelService, MarkdownText, MarkdownDelegateProvider, useMarkdownDelegate } from './ui-shared.js'
 import type { MARKDOWN_LABELS } from './ui-shared.js'
+import { terminalScope } from './terminal.tsx'
+import { relativeFile } from './file-diffs.ts'
 
 interface TextPart { node: Text; start: number; end: number }
 interface ActiveWord { start: number; end: number; text: string; since: number; name: string; ink: string }
@@ -11,12 +13,13 @@ export interface StreamingTextProps {
   animate?: boolean
   labels?: typeof MARKDOWN_LABELS
   variant?: string
+  fileLinks?: boolean
 }
 
 const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter('zh-CN', { granularity: 'word' }) : null
 const FADE_MS = 260
 const STAGGER_MS = 160
-const ignored = 'button,svg,style,script,[aria-hidden="true"],[hidden]'
+const ignored = 'button:not([data-nodo-file]),svg,style,script,[aria-hidden="true"],[hidden]'
 const blocks = 'p,li,pre,blockquote,h1,h2,h3,h4,h5,h6,td,th'
 
 export function streamingWords(root: HTMLElement): { nodes: TextPart[]; words: Intl.SegmentData[]; text: string } {
@@ -148,11 +151,75 @@ export function decorateStreamingText(root: HTMLElement, caret: HTMLElement, { n
   }
 }
 
-export function StreamingText({ text, streaming = false, animate = streaming, ...props }: StreamingTextProps) {
+// 只有 workspace-file 能读出文本或图片的路径才成为链接；裸文件名在根目录读不到时按文件名在工作区里找，唯一匹配才算。
+// 只全局缓存命中（值为解析后的路径），未命中或失败只在本条消息内不再重复请求。
+const foundFiles = new Map<string, string>()
+const pendingFiles = new Set<string>()
+const fileListeners = new Set<(key: string) => void>()
+const LINKED_FILE = { 'data-nodo-file': '' }
+const PLAIN_FILE = { ...LINKED_FILE, className: 'nodo-file-plain', disabled: true, title: undefined }
+const unsubscribed = () => () => {}
+// 与 core/src/workspaces.js 的 FILES_MATCH_MAX 一致；返回满额说明结果可能被截断，无法确认唯一。
+const FILES_MATCH_MAX = 30
+
+export const codeFilePath = (text: string): string | undefined => {
+  const path = text.trim().replace(/(?:#L\d+(?:-L?\d+)?|:\d+(?::\d+)?(?:-\d+(?::\d+)?)?)$/, '')
+  const nested = path.includes('/')
+  return /^[^\t\r\n~'"`<>|*?{}]+$/.test(path) && (nested || !path.includes(' ')) && !path.includes('://') && !path.endsWith('/')
+    && (nested || /\.[a-z][\w-]*$/i.test(path) || /^(?:[A-Z][a-z]+|[A-Z][A-Z\d_]+)$/.test(path)) ? path : undefined
+}
+
+function useFileLinks() {
+  const target = useSyncExternalStore(rightPanelService?.subscribe ?? unsubscribed, () => rightPanelService?.getSnapshot().target ?? null)
+  const outer = useMarkdownDelegate()
+  const asked = useRef(new Set<string>())
+  const [version, setVersion] = useState(0)
+  useEffect(() => {
+    const listener = (key: string) => { if (asked.current.has(key)) setVersion(value => value + 1) }
+    fileListeners.add(listener)
+    return () => { fileListeners.delete(listener) }
+  }, [])
+  return useMemo(() => {
+    if (!target) return null
+    const scope = terminalScope(target)
+    const keyOf = (path: string) => JSON.stringify([scope, target.cwd, path])
+    const readable = (path: string) => call('workspace-file', { ...scope, path }).then((value: { text?: string; image?: unknown }) => typeof value.text === 'string' || !!value.image, () => false)
+    const locate = (path: string): string | undefined => {
+      const key = keyOf(path)
+      const found = foundFiles.get(key)
+      if (found !== undefined) return found
+      if (!asked.current.has(key) && !pendingFiles.has(key)) {
+        pendingFiles.add(key)
+        void readable(path).then(found => found ? path : path.includes('/') ? undefined
+          : call('workspace-files', { ...scope, query: path }).then(({ files }: { files: string[] }) => {
+            const matches = files.filter(file => file.endsWith(`/${path}`))
+            return matches.length === 1 && files.length < FILES_MATCH_MAX ? readable(matches[0]).then(found => found ? matches[0] : undefined) : undefined
+          }, () => undefined))
+          .then(resolved => { pendingFiles.delete(key); if (resolved) { foundFiles.set(key, resolved); fileListeners.forEach(listener => listener(key)) } })
+      }
+      asked.current.add(key)
+      return undefined
+    }
+    const openFile = (path: string) => rightPanelService.openFile(relativeFile(foundFiles.get(keyOf(path)) ?? path, target.cwd))
+    return {
+      fileMentions: { resolve(text: string) {
+        const file = codeFilePath(text)
+        const path = file === undefined ? undefined : locate(file)
+        return path !== undefined ? { title: path, label: `打开 ${path}`, open: () => openFile(path), contextMenuProps: LINKED_FILE } : undefined
+      } },
+      delegate: { ...outer, openFile, getTriggerProps: (trigger: { kind: string; path?: string }) => trigger.kind !== 'file' ? outer.getTriggerProps?.(trigger)
+        : { ...outer.getTriggerProps?.(trigger), ...(locate(trigger.path ?? '') !== undefined ? LINKED_FILE : PLAIN_FILE) } },
+    }
+  }, [target, outer, version])
+}
+
+export function StreamingText({ text, streaming = false, animate = streaming, fileLinks = true, ...props }: StreamingTextProps) {
   const body = useRef<HTMLDivElement>(null)
   const caret = useRef<HTMLSpanElement>(null)
   const decoration = useRef<StreamingDecoration | null>(null)
   const name = `nodo-stream-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const fileLinked = useFileLinks()
+  const links = fileLinks ? fileLinked : null
   useLayoutEffect(() => {
     if (!body.current || !caret.current) return
     if (!decoration.current && (streaming || animate)) decoration.current = decorateStreamingText(body.current, caret.current, { name, streaming, animate })
@@ -161,7 +228,9 @@ export function StreamingText({ text, streaming = false, animate = streaming, ..
   useLayoutEffect(() => () => { decoration.current?.dispose(); decoration.current = null }, [name])
   return (
     <div className="nodo-streaming-text">
-      <div ref={body}><MarkdownText {...props} text={text} streaming={streaming} /></div>
+      <div ref={body}>{links
+        ? <MarkdownDelegateProvider {...links.delegate}><MarkdownText {...props} text={text} streaming={streaming} fileMentions={links.fileMentions} /></MarkdownDelegateProvider>
+        : <MarkdownText {...props} text={text} streaming={streaming} />}</div>
       <span ref={caret} className="nodo-streaming-caret" hidden aria-hidden />
     </div>
   )

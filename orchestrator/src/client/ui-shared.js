@@ -13,7 +13,7 @@ import { projectAnchorOf } from '../../core/shared/workspaces.js'
 // reuses the host's own controls, rows, markdown renderer and icon artwork (the
 // native packages require it the same way).
 import {
-  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tooltip, HoverCard, relativeTime,
+  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, MarkdownDelegateProvider, useMarkdownDelegate, Menu, Modal, RiskConfirmation, StateDot, Tooltip, HoverCard, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
@@ -33,7 +33,7 @@ import NODO_LOGO from './assets/nodo-logo.png'
 
 export { h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore }
 export {
-  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, Menu, Modal, RiskConfirmation, StateDot, Tooltip, HoverCard, relativeTime,
+  Button, CodeBlock, DisclosureRow, DiffBlock, diffTotals, writeClipboard, TerminalBlock, ImageLightbox, Input, MarkdownText, MarkdownDelegateProvider, useMarkdownDelegate, Menu, Modal, RiskConfirmation, StateDot, Tooltip, HoverCard, relativeTime,
   IconApiOutlineRegular, IconBrowseOutlineRegular, IconChevronDownOutlineRegular,
   IconCheckOutlineRegular, IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconChevronUpOutlineRegular, IconCodeOutlineRegular, IconCompactOutlineRegular,
   IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFlatListOutlineRegular, IconFolderOpenOutlineRegular, IconGoalOutlineRegular, IconNewChatOutlineRegular,
