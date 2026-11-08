@@ -7,6 +7,7 @@ import { WorkspaceFields } from './workspace-dialogs.js'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
 import { setNavigation } from './page.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
+import { RemoteAccessSettings } from './remote-access.js'
 
 // Settings is the host's modal too: the same card and field metrics as the role
 // dialog, with the primary action submitting the form inside it
@@ -30,6 +31,7 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [section, setSection] = useState('engines')
   const pick = engineId => {
     setSelected(engineId); setDraft(seed(engineId))
     setSaved(false); setError('')
@@ -154,17 +156,31 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
   const grid = (key, items) => items.length > 0 && h('div', { key, className: 'nodo-engine-grid' }, ...items.map(item => card(item)))
   return h(Modal, {
     open: true, onClose: () => { if (!locked) onClose() }, closeLabel: '关闭',
-    title: '模型提供方与 Agent',
+    title: 'Nodo 设置',
     className: 'nodo-dialog nodo-engine-dialog',
     contentClassName: 'nodo-engine-shell',
-    footer: engine ? [
+    footer: section === 'engines' && engine ? [
       h(Button, {
         key: 'run', type: 'submit', form: ENGINE_FORM, variant: 'primary', size: 'sm',
         disabled: locked || readOnly,
       }, busy ? '保存中…' : '保存'),
     ] : undefined,
   },
-  h('div', { className: 'nodo-engine-content' },
+  h('div', { className: 'nodo-settings-tabs', role: 'tablist', 'aria-label': '设置分类' },
+    ...[['engines', '模型提供方与 Agent'], ['remote', '手机远程']].map(([id, title]) => h('button', {
+      key: id, type: 'button', role: 'tab', id: `nodo-settings-${id}`, 'aria-selected': section === id,
+      tabIndex: section === id ? 0 : -1,
+      'aria-controls': `nodo-settings-panel-${id}`, disabled: locked, onClick: () => setSection(id),
+      onKeyDown: event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        const next = event.key === 'Home' ? 'engines' : event.key === 'End' ? 'remote' : id === 'engines' ? 'remote' : 'engines'
+        setSection(next)
+        event.currentTarget.parentElement.querySelector(`#nodo-settings-${next}`)?.focus()
+      },
+    }, title))),
+  section === 'remote' ? h('div', { role: 'tabpanel', id: 'nodo-settings-panel-remote', 'aria-labelledby': 'nodo-settings-remote', className: 'nodo-engine-content' },
+    h(RemoteAccessSettings, { readOnly })) : h('div', { className: 'nodo-engine-content', role: 'tabpanel', id: 'nodo-settings-panel-engines', 'aria-labelledby': 'nodo-settings-engines' },
     h('div', { className: 'nodo-engine-toolbar' },
       loading ? h('span', null, '正在检测本机 Agent…') : heading('已检测', detected),
       h(Button, { variant: 'ghost', size: 'sm', icon: h(IconRefreshOutlineRegular, { size: 14 }), title: '检查所有 Agent 的默认配置', disabled: locked || loading || !engines.length, onClick: () => void inspect(true) },

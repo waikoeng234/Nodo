@@ -23,6 +23,7 @@
     "src/host/",
     "src/client/",
     "core/",
+    "remote-access/",
     "agent-drivers/",
     "cordis.patch.yml",
     "client.js",

@@ -11,10 +11,17 @@ Nodo is a dsh plugin that puts several native coding Agents in one workbench: ro
 | `core/shared/` | Data and pure logic shared by host and client: routing, lead rules, role presets, task types, avatar templates |
 | `src/host/` | dsh-only modules: native session status, the `/api/nodo` route, and project terminals |
 | `src/client/` | Browser half: sidebar, roles and teams pages, conversations, lead round view, right sidebar, styles |
+| `remote-access/` | macOS Tailscale Serve setup, loopback gateway, and system QR encoder; independent of Agent and Nodo task logic |
 | `client.js` | Generated browser entry; built from `src/client/`, never edited by hand |
 | `agent-drivers/` | Embedded Agent adapter package (TypeScript, compiled `dist/` committed) |
 | `scripts/`, `test/` | Build, check and verification scripts; automated tests with simulated Agent CLIs |
 | `cordis.patch.yml` | dsh bundle declaration |
+
+## Phone access
+
+On macOS DSH Desktop, open **Nodo 设置 → 手机远程**. Install Tailscale on the computer and phone, sign in to the same account, and connect both devices. Click **启用手机远程**, authorize HTTPS certificates if prompted (leave optional Funnel disabled), then return and continue. Click **连接手机** and scan the QR code in the phone browser. No separate `dsh web` process is required. Keep Desktop running and the computer online and awake. Tailscale replaces an active Android VPN.
+
+The login link grants owner access to the entire DSH host; do not share it. After a Desktop restart, generate a new link if the browser asks for authentication. **关闭远程访问** removes only this feature's root forwarding. Disabling or uninstalling the plugin stops its local proxy; turn remote access off first to remove the persistent Serve configuration too.
 
 ## Teams and leads
 

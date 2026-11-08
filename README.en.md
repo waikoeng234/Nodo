@@ -44,6 +44,16 @@ To install from source, clone the repository, run `npm ci --ignore-scripts && np
 
 > Only Claude Code or Codex can lead, and a lead leads one team. Only a lead conversation started under the 团队 tab dispatches work.
 
+## Phone access
+
+On macOS, open **Nodo 设置 → 手机远程** in DSH Desktop:
+
+1. Install Tailscale on the computer and phone, sign in to the same account, and connect both devices.
+2. Click **启用手机远程**. For the first setup, authorize HTTPS certificates, leave optional Funnel disabled, and return to Nodo to continue.
+3. Click **连接手机** and scan the QR code to open Nodo in the phone browser. Bookmark the address for later use.
+
+No separate `dsh web` process is needed: the browser connects to the same Desktop host, and tasks run on the computer. Keep the computer online and awake with Desktop running. Tailscale replaces an active VPN on Android. The login QR code grants owner access to the entire DSH host; keep it private. If authentication expires after a Desktop restart, generate a fresh QR code. **关闭远程访问** removes this feature's forwarding; it does not reset other Tailscale services.
+
 ## Why not multi-model APIs or Subagents
 
 They switch models or split tasks inside **one Harness**. Nodo organizes **several native Agents**, each keeping its own execution environment. The two do not conflict; Agents in Nodo can still use their own Subagents.

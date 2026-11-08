@@ -44,6 +44,16 @@ Nodo 是运行在 DeepSeek Harness（下称 dsh）里的插件，把这些 Agent
 
 > 主控只能是 Claude Code 或 Codex，且只领导一个团队。只有在「团队」标签下新建的主控会话才会派活。
 
+## 手机远程
+
+在 macOS 的 DSH Desktop 中打开 **Nodo 设置 → 手机远程**，按提示完成：
+
+1. 电脑和手机安装 Tailscale，登录同一账号并连接。
+2. 点击 **启用手机远程**；首次使用时在授权页启用 HTTPS certificates，保持可选的 Funnel 关闭，再回到 Nodo 继续配置。
+3. 点击 **连接手机**，用手机扫描二维码，在浏览器里打开 Nodo。以后可收藏该地址。
+
+无需另外启动 `dsh web`。手机连接的是这台 Desktop 的同一个宿主，任务仍在电脑上执行；电脑需保持联网、唤醒，Desktop 保持运行。Android 上 Tailscale 会替换正在运行的 VPN。登录二维码授予整个 DSH 宿主的所有者权限，请勿分享。详细的日常使用、关闭和排错方法见[手机远程指南](docs/phone-remote.md)。
+
 ## 为什么不直接用「多模型 API」或 Subagent
 
 它们是在**同一个 Harness** 里换模型或拆任务；Nodo 是把**多个原生 Agent** 组织起来，各自保留自己的执行环境。两者不冲突，Agent 在 Nodo 里照常可以用自己的 Subagent。
