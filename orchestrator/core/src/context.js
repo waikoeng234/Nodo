@@ -107,8 +107,10 @@ export function install(rt) {
     description: shorten(rt.state.tasks[execution.taskId].title, RESULT_PREVIEW_MAX), source: 'execution-result', status: execution.status, executionReason: execution.reason })
   const filesAppendix = files => {
     if (!files) return ''
-    const head = `改动文件：${files.total} 个（${files.source}${files.capture === 'partial' ? ' · 部分捕获' : ''}${files.total > files.items.length ? ` · 仅列 ${files.items.length} 个` : ''}）`
-    return ['', head, ...files.items.map(item => `- ${item.op} ${item.path}${item.from ? `（自 ${item.from}）` : ''}`)].join('\n')
+    const source = files.source === 'workspace-snapshot' ? '工作区快照，可能含其他改动' : '编辑工具记录'
+    const operation = { add: '新增', update: '修改', delete: '删除', move: '移动', unknown: '未知' }
+    const head = `改动文件：${files.total} 个（${source}${files.capture === 'partial' ? ' · 部分捕获' : ''}${files.total > files.items.length ? ` · 仅列 ${files.items.length} 个` : ''}）`
+    return ['', head, ...files.items.map(item => `- ${operation[item.op] ?? item.op} ${item.path}${item.from ? `（自 ${item.from}）` : ''}`)].join('\n')
   }
 
   // Resolves one handle to a bounded view: metadata, completeness as fixed by the

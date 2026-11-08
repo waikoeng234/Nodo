@@ -1641,7 +1641,7 @@ test('role board preserves settings order, columns, task types and routing rules
   assert.match(board, /First \| Coder identity \[redacted\] \| Build features/)
   assert.ok(board.indexOf('First') < board.indexOf('Second'))
   assert.doesNotMatch(board, /Removed|sensitive-marker|\| Lead \|/)
-  assert.match(board, /id \| name \| when \| 常规任务 \| 难题/)
+  assert.match(board, /id \| name \| when \| 常规任务 \| 难题 \| 独立视角/)
   assert.match(board, /feature \| 功能 \| [^|]* \| First \| 同常规任务/)
   assert.match(board, /docs \| 文档 \| [^|]* \| 无人承接 \| 同常规任务/)
   await split('review', true)
@@ -3245,7 +3245,7 @@ test('a delegation records merged change files and surfaces them in reports and 
   const report = lines(conversation).filter(line => line.origin?.kind === 'report').at(-1)
   assert.match(report.text, /^Report from Editor · Implement the task · 改动 4 个文件\n/)
   const read = await rt.executionContext(conversation.id, { action: 'read', executionId: receipt.executionId })
-  assert.match(read.text, /改动文件：4 个（edit-tools）\n- add a\.ts\n- update b\.ts\n- delete c\.ts\n- move d\.ts（自 e\.ts）$/)
+  assert.match(read.text, /改动文件：4 个（编辑工具记录）\n- 新增 a\.ts\n- 修改 b\.ts\n- 删除 c\.ts\n- 移动 d\.ts（自 e\.ts）$/)
 }))
 
 test('partial snapshots and oversized change lists degrade capture', () => withLead(async ({ host, rt, role, session }) => {
@@ -3293,4 +3293,58 @@ test('a continued session is told which later tasks touched its files', () => wi
   const sent = inputs.filter(item => item.sessionId === third.session).at(-1).text
   assert.match(sent, /自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n- Update the docs · done · a\.ts\n/)
   assert.doesNotMatch(sent, /z\.ts/)
+}))
+
+test('a workspace snapshot keeps unknown operations and says it may include other changes', () => withLead(async ({ host, rt, role, session, lines }) => {
+  const cwd = join(host.home, 'ws')
+  await role('Editor', 'Done', { engine: 'lead-changes', engineOptions: { script: [{ kind: 'text', text: 'Done' }, { kind: 'wait', ms: 120 }], changes: [
+    { scope: 'workspace-snapshot', coverage: 'partial', cwd, files: [{ path: join(cwd, 'n.ts'), edits: [{ operation: 'unknown' }] }] } ] } })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const receipt = await toolTask(rt, conversation.id, delegateType('feature', false))
+  assert.deepEqual(rt.state.executions[receipt.executionId].files, { items: [{ path: 'n.ts', op: 'unknown' }], total: 1, capture: 'complete', source: 'workspace-snapshot' })
+  const report = lines(conversation).filter(line => line.origin?.kind === 'report').at(-1)
+  assert.match(report.text, /改动 1 个文件（工作区快照，可能含其他改动）/)
+  const read = await rt.executionContext(conversation.id, { action: 'read', executionId: receipt.executionId })
+  assert.match(read.text, /改动文件：1 个（工作区快照，可能含其他改动）\n- 未知 n\.ts$/)
+}))
+
+test('an independent type does not reuse a session that ran other work', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Worker', 'Done', { taskTypes: ['feature', 'review'] })
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const team = rt.teams()[0]
+  await rt.updateTeams([{ ...team, types: team.types.map(type => type.id === 'review' ? { ...type, independent: true } : type),
+    assign: { ...team.assign, review: { normal: { profile: worker.id } } } }])
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false))
+  const second = await rt.leadDispatch.delegate(conversation.id, delegateType('review', false, 'Recheck the change', { continues: first.taskId }))
+  assert.equal(second.continued, false)
+  assert.equal(second.reason, 'independent 类型不能沿用执行过其他类型的会话')
+  assert.notEqual(second.session, first.session)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: second.executionId })
+}))
+
+test('continues refuses a source task whose execution is still active', () => withLead(async ({ rt, role, session }) => {
+  await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false))
+  await assert.rejects(rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Next step', { continues: first.taskId })),
+    /接续来源任务还在执行/)
+  await rt.followLead(conversation.id, completed('Dispatched'))
+  await until(() => !rt.workView()[first.session]?.active)
+}))
+
+test('an oversized source result is handed over as background material', () => withLead(async ({ rt, role, session }) => {
+  const worker = await role('Worker', 'Done')
+  const lead = await role('Lead', 'Reviewed', { lead: true })
+  const conversation = await session(lead)
+  const first = await toolTask(rt, conversation.id, delegateType('feature', false, 'Build the parser'))
+  Object.assign(rt.state.executions[first.executionId].result, { text: 'x'.repeat(95_000), length: 95_000, originalLength: 95_000 })
+  rt.conversation(worker.id, first.session).session.archivedAt = Date.now()
+  const next = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Extend the parser', { continues: first.taskId }))
+  assert.equal(next.continued, false)
+  assert.equal(next.reason, '候选会话已归档')
+  assert.match(next.message, /上一执行结果过大，将写入任务目录作为背景材料/)
+  await rt.leadDispatch.interrupt(conversation.id, { executionId: next.executionId })
 }))

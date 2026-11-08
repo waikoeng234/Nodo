@@ -23,10 +23,10 @@ export const leadRules = [
   'The delegation body points out only the key entry files; do not enumerate file paths or long test lists — executors choose the relevant tests by the modules they change.',
   'Review every newly delivered report before delegating again: use nodo_task review with continue (sufficient basis within existing authorization) or investigate (state missing facts and the investigation target), reason and non-empty basis. Review does not complete or reopen a task. For missing user preferences, trade-offs or authorization, use nodo_decision with source executionIds. After nodo_decision succeeds, end the turn and wait. If it fails, correct the parameters and retry. Never ask the same question through native tools, even after failure, or continue with a default or recommended plan.',
   'Do not resume user-stopped work without user authorization.',
-  'Parallel delegation: a lead session keeps up to 5 executions active and accepts at most 24 dispatches per turn; the budget resets on each user message. Dispatch independent tasks together; express ordering with dependsOn, whose tasks must all be done before dispatch. Reusing a running executor session requires stopping it with nodo_interrupt first.',
+  'Parallel delegation: a lead session keeps up to 5 executions active and accepts at most 24 dispatches per turn; the budget resets on each user message. Dispatch independent tasks together; express ordering with dependsOn, whose tasks must all be done before dispatch. Whether a follow-up reuses the executor session is Nodo\'s decision; a busy or mismatched candidate simply opens a new session, so do not interrupt a running execution just to reuse it.',
   'Execution directory: worktree:true gives a task its own directory and branch, fixed from its first execution for every later execution of the task. Nodo never merges; merge manually or dispatch a separate task without worktree.',
   'For a large goal, first create a goal task without worktree; its brief states the overall goal and acceptance criteria. Aim for 3–6 child tasks linked by parentId; isolate only children that need worktree. The goal task\'s own follow-up execution performs integration acceptance; use existing acceptance rules to decide whether an independent review is needed, without repeating completed reviews. After accepting a parent, reopen it before reworking any child, then repeat integration acceptance.',
-  'nodo_delegate returns taskId/executionId with queued status. Relations decide continuation: rework of the same deliverable passes taskId and reopens an accepted task first; the next step of a long effort, or a new task building on another task\'s result, is a new task with continues; re-checks, acceptance and tests use an independent type. Whether the executor session is actually continued is Nodo\'s decision — go by the receipt\'s continued field; when it is false Nodo has already handed over the previous execution result as required context, so the task text only needs this round\'s goal and increment. nodo_board table=tasks reads task summaries; taskId reads task details with bounded result previews and sourceId handles. nodo_interrupt accepts executionId or legacy session, never both. After checking archived results, nodo_task completes a task with non-empty executionIds, reason and basis; references is only for purely legacy results and cannot be mixed with executionIds or basis. It also reopens a finished task, or revises title, brief, parentId or dependsOn of an unfinished task; a finished task must be reopened before revising. Delegating without context automatically inlines applicable decisions and dependency acceptance conclusions, and archives dependency reports into the task directory; pass context.required/context.background with sourceIds from nodo_context list to choose material explicitly — unknown, unauthorized or over-budget required sources are refused before any task is created.',
+  'nodo_delegate returns taskId/executionId with queued status. Relations decide continuation: rework of the same deliverable passes taskId and reopens an accepted task first; the next step of a long effort, or a new task building on another task\'s result, is a new task with continues. continues adds no dependency — pass dependsOn when the next step must wait, and the source task must not still be running. Re-checks, acceptance and tests use an independent type, which never reuses a session that ran other work. Whether the executor session is continued is Nodo\'s decision — go by the receipt\'s continued field. A fresh session receives the source task\'s last finished result as required context, or as background material when it is too large; when the receipt message says the previous result is unavailable, write the needed context into the task. nodo_board table=tasks reads task summaries; taskId reads task details with bounded result previews and sourceId handles. nodo_interrupt accepts executionId or legacy session, never both. After checking archived results, nodo_task completes a task with non-empty executionIds, reason and basis; references is only for purely legacy results and cannot be mixed with executionIds or basis. It also reopens a finished task, or revises title, brief, parentId or dependsOn of an unfinished task; a finished task must be reopened before revising. Delegating without context automatically inlines applicable decisions and dependency acceptance conclusions, and archives dependency reports into the task directory; pass context.required/context.background with sourceIds from nodo_context list to choose material explicitly — unknown, unauthorized or over-budget required sources are refused before any task is created.',
     'nodo_board only returns result previews. Read the full available result with nodo_context read — executions by executionId, other sources by sourceId; follow nextOffset for further pages. Check completeness and the actual execution status before review or acceptance; a preview is not the full report.',
 ].join('\n')
 
@@ -110,13 +110,13 @@ export function install(rt) {
     const nameOf = pick => pick?.profile ? rt.state.profiles[pick.profile]?.name ?? '' : ''
     const settings = pick => [pick?.model, pick?.thinking].filter(Boolean).join(' / ')
     return [table(['角色', '身份', '职责'], rosterOf(found.profile).map(item => [item.name, item.identity, item.role])),
-      table(['id', 'name', 'when', '常规任务', '难题'], team.types.map(item => {
+      table(['id', 'name', 'when', '常规任务', '难题', '独立视角'], team.types.map(item => {
         const entry = team.assign[item.id]
         const split = entry?.hard !== undefined
         return [item.id, item.name, item.when, [nameOf(entry?.normal), settings(entry?.normal)].filter(Boolean).join(' · ') || '无人承接',
-          split ? [nameOf(entry.hard), settings(entry.hard)].filter(Boolean).join(' · ') || '无人承接' : '同常规任务']
+          split ? [nameOf(entry.hard), settings(entry.hard)].filter(Boolean).join(' · ') || '无人承接' : '同常规任务', item.independent ? '是' : '']
       })),
-      '路由规则：每个任务类型在团队里有固定的承接角色；没有单独指定难题角色的类型，常规和难题都派给常规角色。没有承接角色就停止派活并说明缺口。后续任务按团队分配重新路由；难度或执行角色变化时新开会话，并交代已有改动、报告和剩余问题。分配变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
+      '路由规则：每个任务类型在团队里有固定的承接角色；没有单独指定难题角色的类型，常规和难题都派给常规角色。没有承接角色就停止派活并说明缺口。后续任务按团队分配重新路由，角色或难度变化时由 Nodo 新开会话并自动交接上一执行结果；task 只写本轮目标和增量。分配变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
   }
   const cancelLeadRetry = (id, takeover = false) => {
     const flight = flightOf(id)
@@ -143,26 +143,30 @@ export function install(rt) {
     const work = rt.workView()[id]
     return work?.active || work?.queued > 0
   }
-  // Files other sessions touched after this session's last execution ended, in
-  // the same execution directory and intersecting its own change history.
+  // Files other sessions of the same lead touched after this session's last
+  // execution ended, in the same execution directory and intersecting its own
+  // change history. Workspace snapshots carry an attribution caveat.
   const incrementNote = (session, workspaceRef) => {
-    const own = Object.values(rt.state.executions).filter(item => item.sessionId === session.id && item.files)
-    const paths = new Set(own.flatMap(item => item.files.items.map(file => file.path)))
+    const owner = session.source?.leadSessionId
+    const own = Object.values(rt.state.executions).filter(item => item.sessionId === session.id)
+    const paths = new Set(own.flatMap(item => item.files?.items.map(file => file.path) ?? []))
     const lastEnded = Math.max(0, ...own.filter(item => item.endedAt != null).map(item => item.endedAt))
     if (!paths.size || !lastEnded) return ''
     const hits = Object.values(rt.state.executions)
       .filter(item => item.endedAt != null && item.endedAt > lastEnded && item.sessionId !== session.id && item.files
+        && rt.state.tasks[item.taskId]?.coordinatorSessionId === owner
         && (item.workspaceRef ?? rt.state.tasks[item.taskId]?.workspaceRef) === workspaceRef)
       .sort((a, b) => a.endedAt - b.endedAt)
       .map(item => {
         const inter = item.files.items.filter(file => paths.has(file.path)).map(file => file.path)
-        return inter.length ? { title: rt.state.tasks[item.taskId]?.title ?? item.taskId, status: item.status, inter } : null
+        return inter.length ? { title: rt.state.tasks[item.taskId]?.title ?? item.taskId, status: item.status,
+          files: item.files, inter } : null
       })
       .filter(Boolean)
     if (!hits.length) return ''
     const rest = hits.length - 5
     return `自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n${hits.slice(0, 5)
-      .map(item => `- ${item.title} · ${item.status} · ${item.inter.slice(0, 10).join('、')}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}\n\n`
+      .map(item => `- ${item.title} · ${item.status} · ${item.inter.slice(0, 10).join('、')}${item.files.source === 'workspace-snapshot' ? '（工作区快照，可能含其他改动）' : ''}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}\n\n`
   }
   const recipient = (profile, session) => {
     const found = rt.conversation(profile, session)
@@ -194,7 +198,7 @@ export function install(rt) {
         : result.completeness === 'partial' ? `partial${result.reason ? ` (${result.reason})` : ''}, ${result.length.toLocaleString('en-US')} of ${(result.originalLength ?? result.length).toLocaleString('en-US')} characters`
         : `unavailable${result.reason ? ` (${result.reason})` : ''}`
       item.text = rt.redactDeepSecrets([
-        `Report from ${source?.profile.name ?? 'executor'}${title ? ` · ${title}` : ''}${execution.files?.total ? ` · 改动 ${execution.files.total} 个文件` : ''}`,
+        `Report from ${source?.profile.name ?? 'executor'}${title ? ` · ${title}` : ''}${execution.files?.total ? ` · 改动 ${execution.files.total} 个文件${execution.files.source === 'workspace-snapshot' ? '（工作区快照，可能含其他改动）' : ''}` : ''}`,
         `Status: ${item.status}${item.reason && item.reason !== item.status ? ` · ${item.reason}` : ''}`,
         ...(result.preview ? [`Result preview: ${result.preview}`] : []),
         `Completeness: ${completeness}`,
@@ -581,6 +585,9 @@ Write the body as conclusions, marking file:line only after claims that need che
     }
     if (command?.worktree !== undefined && typeof command.worktree !== 'boolean') throw invalid('worktree 必须是 true 或 false')
     const sourceRecord = taskRecord ?? continuesRecord
+    if (['queued', 'running'].includes(continuesRecord?.executions.at(-1)?.status)) {
+      throw invalid('接续来源任务还在执行，请等它结束再派；需要并行请另建任务并用 dependsOn 排序')
+    }
     const previous = sourceRecord?.executions.findLast(item => item.startedAt != null && rt.state.workspaces[item.workspaceRef ?? sourceRecord.workspaceRef])
     const directoryReset = !previous && sourceRecord?.executions.some(item => item.workspaceRef && !rt.state.workspaces[item.workspaceRef])
     let workspaceRef = previous ? previous.workspaceRef ?? sourceRecord.workspaceRef : sourceRecord?.workspaceRef ?? leadSession.workspaceRef
@@ -606,10 +613,10 @@ Write the body as conclusions, marking file:line only after claims that need che
     picked.profile = holder
     // Continuation candidate: the source task's last ended execution's session.
     // Every condition must hold; the first miss gives the receipt's reason.
-    let live, continueReason
+    const lastEnded = sourceRecord?.executions.findLast(item => item.endedAt != null)
+    let live, continueReason, handover
     if (!sourceRecord) continueReason = '没有接续来源任务'
     else {
-      const lastEnded = [...sourceRecord.executions].reverse().find(item => item.endedAt != null)
       const candidate = lastEnded && rt.conversationOf(lastEnded.sessionId)
       const candidateSource = candidate?.session.source
       if (!lastEnded) continueReason = '接续来源任务还没有已结束的执行'
@@ -629,14 +636,26 @@ Write the body as conclusions, marking file:line only after claims that need che
         live = candidate
       }
     }
-    // A fresh session hands over the source task's latest execution result.
-    if (!live && sourceRecord) {
-      const last = sourceRecord.executions.at(-1)
-      const handed = last && !['queued', 'running'].includes(last.status)
-        ? await rt.resolveContextSource(leadSession.id, `execution:${last.id}:result`).catch(() => null) : null
-      if (handed?.text?.trim() && !dispatchContext.required.some(item => item.sourceId === handed.sourceId))
-        dispatchContext.required.push({ sourceId: handed.sourceId, kind: 'execution', role: 'required', description: handed.description,
-          completeness: handed.completeness, ...(handed.reason ? { reason: handed.reason } : {}), text: handed.text, length: handed.text.length })
+    // A fresh session receives the source task's last finished result, inline
+    // when it fits and as background material when it does not.
+    if (!live && sourceRecord && lastEnded) {
+      const handed = await rt.resolveContextSource(leadSession.id, `execution:${lastEnded.id}:result`).catch(() => null)
+      const selection = handed?.text?.trim() ? { sourceId: handed.sourceId, kind: 'execution', description: handed.description,
+        completeness: handed.completeness, ...(handed.reason ? { reason: handed.reason } : {}), text: handed.text, length: handed.text.length } : null
+      if (selection) {
+        const known = [...dispatchContext.required, ...dispatchContext.background].find(item => item.sourceId === selection.sourceId)
+        if (known) handover = known.role === 'background' ? 'background' : 'required'
+        else {
+          const requiredLength = dispatchContext.required.reduce((sum, item) => sum + item.text.length + 200, 0)
+          if (header.length + task.length + requiredLength + selection.text.length + 4200 > INPUT_CONTEXT_MAX) {
+            dispatchContext.background.push({ ...selection, role: 'background' })
+            handover = 'background'
+          } else {
+            dispatchContext.required.push({ ...selection, role: 'required' })
+            handover = 'required'
+          }
+        }
+      }
     }
     const requiredLength = dispatchContext.required.reduce((sum, item) => sum + item.text.length + 200, 0)
     const backgroundLength = dispatchContext.background.reduce((sum, item) => sum + item.text.length, 0)
@@ -705,8 +724,12 @@ Write the body as conclusions, marking file:line only after claims that need che
       await note(leadSession.id, `${reused ? '继续受理' : '已受理'} ${target.name} · ${session.name}（${found.name} · ${hard ? '难题' : '常规'}）`,
         { delegation: { session: session.id, ...executionIds(execution), profile: target.id, type: found.id, hard, reused, deferred: true,
           ...(worktree ? { branch: worktree.branch } : {}) } })
+      const handoverNote = reused || !sourceRecord ? ''
+        : handover === 'background' ? '。上一执行结果过大，将写入任务目录作为背景材料'
+        : handover ? '' : '。上一执行结果不可用，新会话需要完整上下文'
       return { receipt: { ...executionIds(execution), session: session.id, role: target.name, type: found.id, hard, reused, continued: reused,
-        ...(reused ? {} : { reason: continueReason }), status: 'queued', message: `已受理，本轮结束后发送${directoryReset ? '。原隔离目录已删除，已重新选择执行目录' : ''}` } }
+        ...(reused ? {} : { reason: continueReason }), status: 'queued',
+        message: `已受理，本轮结束后发送${directoryReset ? '。原隔离目录已删除，已重新选择执行目录' : ''}${handoverNote}` } }
     } catch (error) {
       if (!flight?.dispatchStarted) {
         if (reused && session) {

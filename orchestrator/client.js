@@ -30,7 +30,7 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// ../../nodo/orchestrator/node_modules/@xterm/xterm/lib/xterm.mjs
+// node_modules/@xterm/xterm/lib/xterm.mjs
 var xterm_exports = {};
 __export(xterm_exports, {
   Terminal: () => Dl
@@ -764,7 +764,7 @@ function Tc(s15) {
 }
 var zs, Rl, Ll, M, S, Gs, mi, $s, _i, er, tr, ir, we, De, rt, q, js, Hn, Fn, F, rr, ge, Zs, xt, nr, H, sr, Js, Be, wt, nt, ae, Dt, ce, Qs, or, Re, lr, Wn, Bl, Un, bi, ar, Rt, cr, ro, so, At, lo, ao, oo, ur, zn, Wl, dt, hr, dr, Ee, D, ye, fe, kt, G, Ct, zl, mr, Gl, fo, $l, $, Mt, $n, po, br, Vn, gi, qn, Yn, Vl, Pt, ql, Yl, _r, v, jn, gr, Si, Eu, Tu, Ot, Ei, Bt, Ti, Sr, Iu, yu, vr, Nt, yr, xr, Ii, Zl, vo, go, Jl, Ql, ea, ta, Tr, Ir, bo, ia, $e, Ve, xe, So, ra, Xn, wr, Te, Zn, Dr, na, xu, Fe, st, sa, oa, Eo, la, wu, Du, Ru, Lu, ot, aa, yi, Jn, To, Io, yo, Qn, Rr, es, ua, ha, da, fa, ft, wo, Lr, qe, xi, Do, ma, ts, Ye, kr, ba, Ar, va, _e, Cr, Bh, be, Nh, Fh, Hh, Oo, Wh, Uh, No, Kh, zh, ss, os, wa, mt, Mr, Di, pt, Gh, Y, Da, ls, Wt, He, Q, Pr, lt, Uo, Or, cs, Ri, Br, Nr, Fr, Ca, Ut, Kt, Wr, Ur, Ma, Ko, zo, us, zr, hs, ds, Kr, zt, Gt, Gr, We, at, Li, bt, b, Ai, fs, $t, ue, he, de, J, ps, j, U, z, ve, $r, Vr, ct, Vt, Yr, ms, _s, Le, jr, jo, ki, Xr, Na, Yt, jt, Zr, bs, vs, Jr, gs, Qr, Xt, en, tn, Mi, Pi, Oi, Ss, Fa, Zo, Zt, Wa, Ua, Es, Bi, Ts, rn, Is, ys, Jt, nn, Qt, xs, on, Ds, Ya, ja, Xa, Za, Ja, ei, Hi, Wi, re, St, Ki, tl, il, Ui, Qa, ti, Rs, ln, ec, tc, ii, ic, zi, B, X, an, Ls, Ze, un, cn, ne, Je, cl, $i, hn, ks, Cs, ni, si, nc, dn, ul, hl, li, dl, Ps, fl, ai, Os, ac, se, fn, Ae, pn, Vi, uc, ci, qi, mn, pe, Yi, _n, ji, Xi, Fs, ke, hc, bn, dc, fc, mc, ut, _l, vl, gl, vn, Zi, _c, El, bc, gn, ui, Tl, Sn, gc, ee, En, Us, yl, Tn, Ks, Sc, In, xl, wl, Tt, hi, yn, xn, wn, Ji, Dn, Rn, Ln, Ic, Ue, Dl;
 var init_xterm = __esm({
-  "../../nodo/orchestrator/node_modules/@xterm/xterm/lib/xterm.mjs"() {
+  "node_modules/@xterm/xterm/lib/xterm.mjs"() {
     zs = Object.defineProperty;
     Rl = Object.getOwnPropertyDescriptor;
     Ll = (s15, t) => {
@@ -9124,14 +9124,14 @@ ${h3.join(`
   }
 });
 
-// ../../nodo/orchestrator/node_modules/@xterm/addon-fit/lib/addon-fit.mjs
+// node_modules/@xterm/addon-fit/lib/addon-fit.mjs
 var addon_fit_exports = {};
 __export(addon_fit_exports, {
   FitAddon: () => o
 });
 var h2, _, o;
 var init_addon_fit = __esm({
-  "../../nodo/orchestrator/node_modules/@xterm/addon-fit/lib/addon-fit.mjs"() {
+  "node_modules/@xterm/addon-fit/lib/addon-fit.mjs"() {
     h2 = 2;
     _ = 1;
     o = class {
@@ -10246,7 +10246,7 @@ var HOVER_PREVIEW_CSS = `
 .nodo-hover-picture>img{display:block;max-width:100%;max-height:336px;margin:0 auto;border-radius:var(--dsw-radius-md)}
 `;
 
-// ../../nodo/orchestrator/node_modules/diff/libesm/diff/base.js
+// node_modules/diff/libesm/diff/base.js
 var Diff = class {
   diff(oldStr, newStr, options = {}) {
     let callback;
@@ -10448,7 +10448,7 @@ var Diff = class {
   }
 };
 
-// ../../nodo/orchestrator/node_modules/diff/libesm/util/string.js
+// node_modules/diff/libesm/util/string.js
 function longestCommonPrefix(str1, str2) {
   let i;
   for (i = 0; i < str1.length && i < str2.length; i++) {
@@ -10576,7 +10576,7 @@ function leadingAndTrailingWs(string, segmenter2) {
   return [head, tail];
 }
 
-// ../../nodo/orchestrator/node_modules/diff/libesm/diff/word.js
+// node_modules/diff/libesm/diff/word.js
 var extendedWordChars = "a-zA-Z0-9_\\u{AD}\\u{C0}-\\u{D6}\\u{D8}-\\u{F6}\\u{F8}-\\u{2C6}\\u{2C8}-\\u{2D7}\\u{2DE}-\\u{2FF}\\u{1E00}-\\u{1EFF}";
 var tokenizeIncludingWhitespace = new RegExp(`[${extendedWordChars}]+|\\s+|[^${extendedWordChars}]`, "ug");
 var WordDiff = class extends Diff {
@@ -10713,7 +10713,7 @@ function diffWordsWithSpace(oldStr, newStr, options) {
   return wordsWithSpaceDiff.diff(oldStr, newStr, options);
 }
 
-// ../../nodo/orchestrator/node_modules/diff/libesm/diff/line.js
+// node_modules/diff/libesm/diff/line.js
 var LineDiff = class extends Diff {
   constructor() {
     super(...arguments);
@@ -10761,7 +10761,7 @@ function tokenize(value, options) {
   return retLines;
 }
 
-// ../../nodo/orchestrator/node_modules/diff/libesm/patch/parse.js
+// node_modules/diff/libesm/patch/parse.js
 function parsePatch(uniDiff) {
   const diffstr = uniDiff.split(/\n/), list = [];
   let i = 0;
@@ -11097,7 +11097,7 @@ function parsePatch(uniDiff) {
   return list;
 }
 
-// ../../nodo/orchestrator/node_modules/diff/libesm/patch/create.js
+// node_modules/diff/libesm/patch/create.js
 function needsQuoting(s15) {
   for (let i = 0; i < s15.length; i++) {
     if (s15[i] < " " || s15[i] > "~" || s15[i] === '"' || s15[i] === "\\") {
@@ -21012,7 +21012,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
   return { NewConversation: NewConversation2 };
 }
 
-// ../../nodo/orchestrator/node_modules/@xterm/xterm/css/xterm.css
+// node_modules/@xterm/xterm/css/xterm.css
 var xterm_default = `/**
  * Copyright (c) 2014 The xterm.js authors. All rights reserved.
  * Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
