@@ -483,6 +483,8 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-streaming-text{position:relative;min-width:0}
 .nodo-streaming-caret{position:absolute;width:2px;margin-left:2px;border-radius:1px;background:var(--dsw-alias-state-business-primary);pointer-events:none;animation:nodo-streaming-pulse 1s ease-in-out infinite}
 .nodo-streaming-caret[hidden]{display:none}
+.nodo-file-plain{all:unset}
+.nodo-file-plain>svg{display:none}
 @keyframes nodo-streaming-pulse{50%{opacity:.25}}
 @media(prefers-reduced-motion:reduce){.nodo-streaming-caret{animation:none}}
 .nodo-row-content{flex:1;min-width:0}
