@@ -11,11 +11,11 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
   let stop, port, busy = false, closed = false
   const state = () => ({ enabled: preferences().enabled === true, busy })
   // Preferences saved before ports were persisted forwarded to the former fixed port.
-  const persisted = () => preferences().port ?? 43819
+  const persisted = () => { const { port } = preferences(); return Number.isInteger(port) && port > 0 && port < 65536 ? port : 43819 }
   const target = () => state().enabled ? `http://127.0.0.1:${persisted()}` : ''
   const retract = async () => {
     const origin = preferences().origin
-    if (!origin || !exists(TAILSCALE)) return true
+    if (!origin || !URL.canParse(origin) || !exists(TAILSCALE)) return true
     let config
     try { config = JSON.parse(String((await run(TAILSCALE, ['serve', 'status', '--json'])).stdout)) } catch { return false }
     if (config.Web?.[`${new URL(origin).host}:443`]?.Handlers?.['/']?.Proxy !== target()) return true
@@ -49,7 +49,6 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
     return { phase: 'ready', origin, configured: handler?.Proxy === target() }
   }
   const status = async () => {
-    if (state().enabled && !stop && !busy) await retract()
     const view = await inspect()
     const enabled = state().enabled
     return { ...view, ...state(), phase: view.phase === 'ready' ? enabled && view.configured && stop ? 'enabled' : 'ready' : view.phase,
@@ -92,7 +91,8 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
         return { enabled: true, busy: false, phase: 'enabled', origin, configured: true }
       } catch (error) {
         await release()
-        if (created || view?.configured) await run(TAILSCALE, ['serve', '--yes', '--https=443', '--set-path=/', 'off'])
+        if (created) await run(TAILSCALE, ['serve', '--yes', '--https=443', '--set-path=/', 'off'])
+        else if (view?.configured) await retract()
         throw error
       } finally { busy = false }
     },

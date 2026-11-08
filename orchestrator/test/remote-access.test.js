@@ -20,6 +20,7 @@ function fixture(options = {}) {
     exists: () => !options.missing,
     proxy: async (upstream, mobile, port) => {
       ports.push(port)
+      await options.onProxy?.({ config: () => config, setConfig: value => { config = value } })
       if (options.proxyError) throw new Error('occupied')
       running++
       return { port: port ?? next++, stop: () => { running-- } }
@@ -175,11 +176,52 @@ test('a failed resume removes only its own root forwarding', async () => {
   assert.equal(foreign.config().Web[key].Handlers['/'].Proxy, own(50999))
 })
 
-test('status removes its forwarding while no proxy is running', async () => {
+test('status never changes Serve while its proxy is not running', async () => {
   const f = fixture({ prefs: { enabled: true, origin, port: 50123 }, config: { Web: { [key]: { Handlers: { '/': { Proxy: own(50123) } } } } } })
-  assert.equal((await f.service.status()).phase, 'ready')
-  assert.equal(f.config().Web[key].Handlers['/'], undefined)
-  assert.equal(f.running(), 0)
+  const view = await f.service.status()
+  assert.equal(view.phase, 'ready')
+  assert.equal(view.reason, '本机代理未运行，可重新启用。')
+  assert(!f.calls.some(c => c.args.includes('off')))
+  assert.equal(f.config().Web[key].Handlers['/'].Proxy, own(50123))
+})
+
+test('a status check during resume keeps the forwarding being restored', async () => {
+  let release, entered
+  const proxyEntered = new Promise(resolve => { entered = resolve })
+  const f = fixture({ prefs: { enabled: true, origin, port: 50123 }, config: { Web: { [key]: { Handlers: { '/': { Proxy: own(50123) } } } } },
+    onProxy: () => { entered(); return new Promise(resolve => { release = resolve }) } })
+  const resuming = f.service.resume()
+  await proxyEntered
+  await f.service.status()
+  release()
+  await resuming
+  assert(!f.calls.some(c => c.args.includes('off')))
+  assert.equal((await f.service.status()).phase, 'enabled')
+})
+
+test('enable rollback leaves a root forwarding that is no longer its own', async () => {
+  const f = fixture({ prefs: { enabled: true, origin, port: 50123 }, proxyError: true,
+    config: { Web: { [key]: { Handlers: { '/': { Proxy: own(50123) } } } } },
+    onProxy: ({ setConfig }) => setConfig({ Web: { [key]: { Handlers: { '/': { Proxy: 'http://127.0.0.1:9999' } } } } }) })
+  await assert.rejects(f.service.enable(), /occupied/)
+  assert(!f.calls.some(c => c.args.includes('off')))
+  assert.equal(f.config().Web[key].Handlers['/'].Proxy, 'http://127.0.0.1:9999')
+})
+
+test('an invalid persisted port is treated as missing', async () => {
+  for (const port of ['50123\nListen 0.0.0.0:80', 70000, 0, 1.5]) {
+    const f = fixture({ prefs: { enabled: true, origin, port }, config: { Web: { [key]: { Handlers: { '/': { Proxy: own(43819) } } } } } })
+    await f.service.resume()
+    assert.deepEqual(f.ports, [43819])
+  }
+})
+
+test('a corrupt saved origin owns no forwarding', async () => {
+  const f = fixture({ prefs: { enabled: true, origin: 'not a url', port: 50123 }, proxyError: true,
+    config: { Web: { [key]: { Handlers: { '/': { Proxy: own(50123) } } } } } })
+  await f.service.resume()
+  assert.deepEqual(await f.service.disable(), { enabled: false, busy: false, phase: 'ready' })
+  assert(!f.calls.some(c => c.args.includes('off')))
 })
 
 test('a proxy that cannot restart over its own forwarding fails closed', async () => {

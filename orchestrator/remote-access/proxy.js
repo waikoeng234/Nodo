@@ -19,11 +19,10 @@ async function reapOrphans() {
     if (!pid) continue
     const ps = await command('/bin/ps', ['-ww', '-o', 'ppid=,command=', '-p', String(pid)])
     const owned = /^1\s+(.+)$/.exec(String(ps.stdout).trim())?.[1] === `/usr/sbin/httpd -f ${join(directory, 'httpd.conf')} -DFOREGROUND`
-    if (owned) {
-      process.kill(pid, 'SIGTERM')
-      for (let attempt = 0; attempt < 60 && await running(pid); attempt++) await wait(50)
-    }
-    if (owned || ps.code !== 0) rmSync(directory, { recursive: true, force: true })
+    if (!owned) continue
+    try { process.kill(pid, 'SIGTERM') } catch {}
+    for (let attempt = 0; attempt < 60 && await running(pid); attempt++) await wait(50)
+    try { rmSync(directory, { recursive: true, force: true }) } catch {}
   }
 }
 

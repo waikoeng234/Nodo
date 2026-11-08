@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -86,6 +86,18 @@ test('mobile gateway preserves authentication, streams, and WebSockets', { skip:
   await once(ws, 'close')
 })
 
+const crashedHost = async (upstream, mobileOrigin) => {
+  const before = new Set(readdirSync(tmpdir()))
+  const crashed = spawn(process.execPath, ['--input-type=module', '-e', `
+    const { startMobileProxy } = await import(${JSON.stringify(new URL('../remote-access/proxy.js', import.meta.url).href)})
+    console.log((await startMobileProxy(${JSON.stringify(upstream)}, ${JSON.stringify(mobileOrigin)})).port)`], { stdio: ['ignore', 'pipe', 'inherit'] })
+  const port = Number(String((await once(crashed.stdout, 'data'))[0]))
+  crashed.kill('SIGKILL')
+  await once(crashed, 'exit')
+  const name = readdirSync(tmpdir()).find(name => name.startsWith('nodo-mobile-') && !before.has(name))
+  return { port, directory: join(tmpdir(), name) }
+}
+
 test('a proxy orphaned by a crashed host is replaced while other processes survive', { skip: process.platform !== 'darwin' }, async t => {
   const mobileOrigin = 'https://fixture.tail0000.ts.net'
   const upstream = 'http://127.0.0.1:9'
@@ -100,12 +112,7 @@ test('a proxy orphaned by a crashed host is replaced while other processes survi
   writeFileSync(join(decoy, 'httpd.pid'), String(decoyPid))
   t.after(() => { process.kill(decoyPid); rmSync(decoy, { recursive: true, force: true }) })
 
-  const crashed = spawn(process.execPath, ['--input-type=module', '-e', `
-    const { startMobileProxy } = await import(${JSON.stringify(new URL('../remote-access/proxy.js', import.meta.url).href)})
-    console.log((await startMobileProxy(${JSON.stringify(upstream)}, ${JSON.stringify(mobileOrigin)})).port)`], { stdio: ['ignore', 'pipe', 'inherit'] })
-  const port = Number(String((await once(crashed.stdout, 'data'))[0]))
-  crashed.kill('SIGKILL')
-  await once(crashed, 'exit')
+  const { port } = await crashedHost(upstream, mobileOrigin)
   assert(await answers(port), 'orphaned proxy should still be listening')
 
   const next = await startMobileProxy(upstream, mobileOrigin, port)
@@ -114,4 +121,20 @@ test('a proxy orphaned by a crashed host is replaced while other processes survi
   assert(await answers(port))
   assert(await answers(live.port))
   assert(alive(decoyPid))
+})
+
+test('one leftover that cannot be cleaned or inspected does not block a new proxy', { skip: process.platform !== 'darwin' }, async t => {
+  const mobileOrigin = 'https://fixture.tail0000.ts.net'
+  const upstream = 'http://127.0.0.1:9'
+  const stale = mkdtempSync(join(tmpdir(), 'nodo-mobile-'))
+  writeFileSync(join(stale, 'httpd.pid'), String(spawnSync('/usr/bin/true').pid))
+  t.after(() => rmSync(stale, { recursive: true, force: true }))
+  const { port, directory } = await crashedHost(upstream, mobileOrigin)
+  chmodSync(directory, 0o500)
+  t.after(() => { chmodSync(directory, 0o700); rmSync(directory, { recursive: true, force: true }) })
+
+  const next = await startMobileProxy(upstream, mobileOrigin, port)
+  t.after(next.stop)
+  assert.equal(next.port, port)
+  assert(existsSync(stale))
 })
