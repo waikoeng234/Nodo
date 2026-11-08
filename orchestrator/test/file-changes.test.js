@@ -216,7 +216,7 @@ test('Codex malformed future file payloads downgrade capture without breaking th
 
 test('two legacy conversations preserve independent summaries and immutable details across restart and deletion', async () => {
   await withDriver('opencode', async ({ cwd, bin }) => {
-    registerEngine('es05-legacy', { info: { id: 'es05-legacy', label: 'Changes fixture', requiresCwd: true }, validate: value => value,
+    registerEngine('es05-legacy', { info: { id: 'es05-legacy', label: 'Changes fixture', requiresCwd: true, capabilities: { compact: true } }, validate: value => value,
       create: options => createDriver('opencode', { ...options, bin }) })
     const home = join(cwd, 'nodo')
     let host = boot(home)
