@@ -105,6 +105,11 @@ export function install(rt) {
   }
   const executionEntry = (execution, result) => ({ ...result, taskId: execution.taskId, executionId: execution.id,
     description: shorten(rt.state.tasks[execution.taskId].title, RESULT_PREVIEW_MAX), source: 'execution-result', status: execution.status, executionReason: execution.reason })
+  const filesAppendix = files => {
+    if (!files) return ''
+    const head = `改动文件：${files.total} 个（${files.source}${files.capture === 'partial' ? ' · 部分捕获' : ''}${files.total > files.items.length ? ` · 仅列 ${files.items.length} 个` : ''}）`
+    return ['', head, ...files.items.map(item => `- ${item.op} ${item.path}${item.from ? `（自 ${item.from}）` : ''}`)].join('\n')
+  }
 
   // Resolves one handle to a bounded view: metadata, completeness as fixed by the
   // record itself, and the full stored text for paging. Cleaned sources return
@@ -116,7 +121,9 @@ export function install(rt) {
       const execution = rt.state.executions[parsed.id]
       if (!execution) throw failure('No such execution', 'orch/not-found')
       ownedTaskOf(id, execution.taskId)
-      return { kind: 'execution', ...executionEntry(execution, { ...await executionResultOf(execution, rt), sourceId }) }
+      const entry = { kind: 'execution', ...executionEntry(execution, { ...await executionResultOf(execution, rt), sourceId }) }
+      if (execution.files) entry.text += filesAppendix(execution.files)
+      return entry
     }
     if (parsed.kind === 'decision') {
       const decision = rt.state.decisions[parsed.id]

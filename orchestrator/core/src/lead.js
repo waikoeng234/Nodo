@@ -26,7 +26,7 @@ export const leadRules = [
   'Parallel delegation: a lead session keeps up to 5 executions active and accepts at most 24 dispatches per turn; the budget resets on each user message. Dispatch independent tasks together; express ordering with dependsOn, whose tasks must all be done before dispatch. Reusing a running executor session requires stopping it with nodo_interrupt first.',
   'Execution directory: worktree:true gives a task its own directory and branch, fixed from its first execution for every later execution of the task. Nodo never merges; merge manually or dispatch a separate task without worktree.',
   'For a large goal, first create a goal task without worktree; its brief states the overall goal and acceptance criteria. Aim for 3–6 child tasks linked by parentId; isolate only children that need worktree. The goal task\'s own follow-up execution performs integration acceptance; use existing acceptance rules to decide whether an independent review is needed, without repeating completed reviews. After accepting a parent, reopen it before reworking any child, then repeat integration acceptance.',
-  'nodo_delegate returns taskId/executionId with queued status; reuse taskId for follow-up work without passing parentId/dependsOn. nodo_board table=tasks reads task summaries; taskId reads task details with bounded result previews and sourceId handles. nodo_interrupt accepts executionId or legacy session, never both. After checking archived results, nodo_task completes a task with non-empty executionIds, reason and basis; references is only for purely legacy results and cannot be mixed with executionIds or basis. It also reopens a finished task, or revises title, brief, parentId or dependsOn of an unfinished task; a finished task must be reopened before revising. Delegating without context automatically inlines applicable decisions and dependency acceptance conclusions, and archives dependency reports into the task directory; pass context.required/context.background with sourceIds from nodo_context list to choose material explicitly — unknown, unauthorized or over-budget required sources are refused before any task is created.',
+  'nodo_delegate returns taskId/executionId with queued status. Relations decide continuation: rework of the same deliverable passes taskId and reopens an accepted task first; the next step of a long effort, or a new task building on another task\'s result, is a new task with continues; re-checks, acceptance and tests use an independent type. Whether the executor session is actually continued is Nodo\'s decision — go by the receipt\'s continued field; when it is false Nodo has already handed over the previous execution result as required context, so the task text only needs this round\'s goal and increment. nodo_board table=tasks reads task summaries; taskId reads task details with bounded result previews and sourceId handles. nodo_interrupt accepts executionId or legacy session, never both. After checking archived results, nodo_task completes a task with non-empty executionIds, reason and basis; references is only for purely legacy results and cannot be mixed with executionIds or basis. It also reopens a finished task, or revises title, brief, parentId or dependsOn of an unfinished task; a finished task must be reopened before revising. Delegating without context automatically inlines applicable decisions and dependency acceptance conclusions, and archives dependency reports into the task directory; pass context.required/context.background with sourceIds from nodo_context list to choose material explicitly — unknown, unauthorized or over-budget required sources are refused before any task is created.',
     'nodo_board only returns result previews. Read the full available result with nodo_context read — executions by executionId, other sources by sourceId; follow nextOffset for further pages. Check completeness and the actual execution status before review or acceptance; a preview is not the full report.',
 ].join('\n')
 
@@ -143,6 +143,27 @@ export function install(rt) {
     const work = rt.workView()[id]
     return work?.active || work?.queued > 0
   }
+  // Files other sessions touched after this session's last execution ended, in
+  // the same execution directory and intersecting its own change history.
+  const incrementNote = (session, workspaceRef) => {
+    const own = Object.values(rt.state.executions).filter(item => item.sessionId === session.id && item.files)
+    const paths = new Set(own.flatMap(item => item.files.items.map(file => file.path)))
+    const lastEnded = Math.max(0, ...own.filter(item => item.endedAt != null).map(item => item.endedAt))
+    if (!paths.size || !lastEnded) return ''
+    const hits = Object.values(rt.state.executions)
+      .filter(item => item.endedAt != null && item.endedAt > lastEnded && item.sessionId !== session.id && item.files
+        && (item.workspaceRef ?? rt.state.tasks[item.taskId]?.workspaceRef) === workspaceRef)
+      .sort((a, b) => a.endedAt - b.endedAt)
+      .map(item => {
+        const inter = item.files.items.filter(file => paths.has(file.path)).map(file => file.path)
+        return inter.length ? { title: rt.state.tasks[item.taskId]?.title ?? item.taskId, status: item.status, inter } : null
+      })
+      .filter(Boolean)
+    if (!hits.length) return ''
+    const rest = hits.length - 5
+    return `自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n${hits.slice(0, 5)
+      .map(item => `- ${item.title} · ${item.status} · ${item.inter.slice(0, 10).join('、')}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}\n\n`
+  }
   const recipient = (profile, session) => {
     const found = rt.conversation(profile, session)
     rt.assertSessionWritable(found.profile, found.session)
@@ -173,7 +194,7 @@ export function install(rt) {
         : result.completeness === 'partial' ? `partial${result.reason ? ` (${result.reason})` : ''}, ${result.length.toLocaleString('en-US')} of ${(result.originalLength ?? result.length).toLocaleString('en-US')} characters`
         : `unavailable${result.reason ? ` (${result.reason})` : ''}`
       item.text = rt.redactDeepSecrets([
-        `Report from ${source?.profile.name ?? 'executor'}${title ? ` · ${title}` : ''}`,
+        `Report from ${source?.profile.name ?? 'executor'}${title ? ` · ${title}` : ''}${execution.files?.total ? ` · 改动 ${execution.files.total} 个文件` : ''}`,
         `Status: ${item.status}${item.reason && item.reason !== item.status ? ` · ${item.reason}` : ''}`,
         ...(result.preview ? [`Result preview: ${result.preview}`] : []),
         `Completeness: ${completeness}`,
@@ -288,7 +309,7 @@ export function install(rt) {
   }
   const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name}. Start your report with a one-line outcome summary, actual verification results and unresolved issues.
 Carry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.
-List changed files once at the end with repo-root-relative paths, no absolute paths or Markdown links. Write the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.
+Write the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.
 
 `)
   const ownerOf = value => {
@@ -342,9 +363,6 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
       return rt.reviseTask(command.taskId, changes)
     }
     throw invalid('action 必须是 complete、reopen、revise 或 review')
-  }
-  const assertSessionIdle = (state, session) => {
-    if (state.flights.has(session)) throw invalid(`该执行会话已有活跃派活：${session}，请先用 nodo_interrupt 停止，确认结束后再续用或派活`)
   }
   const assertFlightCapacity = (state, message) => {
     if (state.flights.size + state.reserved >= MAX_ACTIVE_FLIGHTS) throw invalid(message)
@@ -546,6 +564,11 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
     if (unreviewed) throw Object.assign(invalid(unreviewed.message), unreviewed)
     const state = stateOf(leadSession.id), header = headerOf(lead)
     let taskRecord = command?.taskId !== undefined ? await ownedTask({ profile: lead, session: leadSession }, command.taskId) : undefined
+    let continuesRecord
+    if (command?.continues !== undefined) {
+      if (taskRecord) throw invalid('taskId 与 continues 不能同时传：同任务的补充、修改、返修用 taskId；接续其他任务成果的新任务用 continues')
+      continuesRecord = await ownedTask({ profile: lead, session: leadSession }, command.continues)
+    }
     if (taskRecord && (command.parentId !== undefined || command.dependsOn !== undefined)) throw invalid('续用 taskId 时不能传 parentId 或 dependsOn，请用 nodo_task revise 修改关系')
     const relations = taskRecord ?? command
     if (relations.parentId) {
@@ -557,11 +580,11 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
       if (dependency.status !== 'done') throw invalid(`依赖任务 ${dependency.title} 尚未验收，先完成它再派活`)
     }
     if (command?.worktree !== undefined && typeof command.worktree !== 'boolean') throw invalid('worktree 必须是 true 或 false')
-    if (command?.session !== undefined && command.worktree !== undefined) throw invalid('续用 session 时不能传 worktree，执行目录已锁定')
-    const previous = taskRecord?.executions.findLast(item => item.startedAt != null && rt.state.workspaces[item.workspaceRef ?? taskRecord.workspaceRef])
-    const directoryReset = !previous && taskRecord?.executions.some(item => item.workspaceRef && !rt.state.workspaces[item.workspaceRef])
-    let workspaceRef = previous ? previous.workspaceRef ?? taskRecord.workspaceRef : taskRecord?.workspaceRef ?? leadSession.workspaceRef
-    if (previous && command.worktree !== undefined && command.worktree !== (workspaceRef !== taskRecord.workspaceRef)) throw invalid('worktree 与任务原执行目录不一致，任务执行目录已锁定')
+    const sourceRecord = taskRecord ?? continuesRecord
+    const previous = sourceRecord?.executions.findLast(item => item.startedAt != null && rt.state.workspaces[item.workspaceRef ?? sourceRecord.workspaceRef])
+    const directoryReset = !previous && sourceRecord?.executions.some(item => item.workspaceRef && !rt.state.workspaces[item.workspaceRef])
+    let workspaceRef = previous ? previous.workspaceRef ?? sourceRecord.workspaceRef : sourceRecord?.workspaceRef ?? leadSession.workspaceRef
+    if (previous && command.worktree !== undefined && command.worktree !== (workspaceRef !== sourceRecord.workspaceRef)) throw invalid('worktree 与接续来源任务的执行目录不一致，执行目录已锁定')
     const attached = state.attached ?? []
     if ((state.count ?? 0) >= LEAD_DISPATCH_BUDGET) throw invalid(`本轮已达到 ${LEAD_DISPATCH_BUDGET} 次派活上限`)
     const team = rt.teamOf(lead.id)
@@ -577,33 +600,49 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
     if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
     const dispatchContext = await rt.selectDispatchContext({ leadSessionId: leadSession.id, taskId: taskRecord?.id,
       parentId: relations.parentId, dependsOn: relations.dependsOn, context: parseDelegateContext(command.context) })
-    const requiredLength = dispatchContext.required.reduce((sum, item) => sum + item.text.length + 200, 0)
-    const backgroundLength = dispatchContext.background.reduce((sum, item) => sum + item.text.length, 0)
-    if (backgroundLength > BACKGROUND_TEXT_MAX) throw invalid(`背景材料合计约 ${backgroundLength} 字符超过上限 ${BACKGROUND_TEXT_MAX}，请减少 background 来源`)
-    if (header.length + task.length + requiredLength + 4000 > INPUT_CONTEXT_MAX) throw invalid(`必需上下文超过派活输入预算 ${INPUT_CONTEXT_MAX} 字符（required 合计约 ${requiredLength}），请缩小任务或用 context 改选必要内容`)
     const picked = route(team.assign, found.id, hard)
     const holder = picked.profile ? rosterOf(lead).find(item => item.id === picked.profile) : undefined
     if (!holder) throw invalid(`没有${hard && team.assign[found.id]?.hard ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
     picked.profile = holder
-    let live
-    if (command.session !== undefined) {
-      const deny = reason => { throw invalid(`${reason}，请去掉 session 字段新开会话，并在 task 里写完整上下文`) }
-      if (typeof command.session !== 'string' || !command.session.trim()) deny('session 必须是非空字符串')
-      live = rt.conversationOf(command.session)
-      const source = live?.session.source
-      if (source?.kind !== 'lead' || source.leadSessionId !== leadSession.id) deny('session 必须是本主控会话派出的执行会话 id')
-      if (live.session.archivedAt) deny('该执行会话已归档')
-      if (live.profile.id !== picked.profile.id) deny('该执行会话属于其他角色')
-      if (source.hard !== hard) deny('该执行会话的任务难度与本次不同')
-      if (delegationSummary(live.session)?.status === 'unconfirmed') deny('该执行会话状态未确认')
-      if ((source.continued ?? 0) >= 2) deny('该执行会话已续用 2 次')
-      rt.assertSessionWritable(live.profile, live.session)
-      if (!taskRecord) throw invalid('带上 taskId 重试以续用该会话')
-      if (!taskRecord.executions.some(execution => execution.sessionId === live.session.id)) deny('session 必须属于 taskId 指定的任务')
-      assertSessionIdle(state, live.session.id)
+    // Continuation candidate: the source task's last ended execution's session.
+    // Every condition must hold; the first miss gives the receipt's reason.
+    let live, continueReason
+    if (!sourceRecord) continueReason = '没有接续来源任务'
+    else {
+      const lastEnded = [...sourceRecord.executions].reverse().find(item => item.endedAt != null)
+      const candidate = lastEnded && rt.conversationOf(lastEnded.sessionId)
+      const candidateSource = candidate?.session.source
+      if (!lastEnded) continueReason = '接续来源任务还没有已结束的执行'
+      else if (!candidate || candidateSource?.kind !== 'lead' || candidateSource.leadSessionId !== leadSession.id) continueReason = '候选会话不是本主控派出的执行会话'
+      else if (candidate.session.archivedAt) continueReason = '候选会话已归档'
+      else if (flightOf(candidate.session.id) || busy(candidate.session.id)) continueReason = '候选会话正忙'
+      else if (delegationSummary(candidate.session)?.status === 'unconfirmed') continueReason = '候选会话最近一次派活状态未确认'
+      else if (candidate.profile.id !== picked.profile.id) continueReason = '候选会话的角色与本次路由不一致'
+      else if (candidateSource.hard !== hard) continueReason = '候选会话的难度与本次不一致'
+      else if (workspaceRef !== candidate.session.workspaceRef) continueReason = '候选会话的工作区与本次执行目录不一致'
+      else if (command.worktree === true && !previous) continueReason = 'worktree 与接续来源任务的执行目录不一致'
+      else if (found.independent && Object.values(rt.state.executions).some(item => item.sessionId === candidate.session.id
+        && !team.types.find(type => type.id === item.type)?.independent)) continueReason = 'independent 类型不能沿用执行过其他类型的会话'
+      else if (Object.values(rt.state.executions).filter(item => item.sessionId === candidate.session.id).length >= 5) continueReason = '候选会话承接的执行数已达上限'
+      else {
+        rt.assertSessionWritable(candidate.profile, candidate.session)
+        live = candidate
+      }
     }
+    // A fresh session hands over the source task's latest execution result.
+    if (!live && sourceRecord) {
+      const last = sourceRecord.executions.at(-1)
+      const handed = last && !['queued', 'running'].includes(last.status)
+        ? await rt.resolveContextSource(leadSession.id, `execution:${last.id}:result`).catch(() => null) : null
+      if (handed?.text?.trim() && !dispatchContext.required.some(item => item.sourceId === handed.sourceId))
+        dispatchContext.required.push({ sourceId: handed.sourceId, kind: 'execution', role: 'required', description: handed.description,
+          completeness: handed.completeness, ...(handed.reason ? { reason: handed.reason } : {}), text: handed.text, length: handed.text.length })
+    }
+    const requiredLength = dispatchContext.required.reduce((sum, item) => sum + item.text.length + 200, 0)
+    const backgroundLength = dispatchContext.background.reduce((sum, item) => sum + item.text.length, 0)
+    if (backgroundLength > BACKGROUND_TEXT_MAX) throw invalid(`背景材料合计约 ${backgroundLength} 字符超过上限 ${BACKGROUND_TEXT_MAX}，请减少 background 来源`)
+    if (header.length + task.length + requiredLength + 4000 > INPUT_CONTEXT_MAX) throw invalid(`必需上下文超过派活输入预算 ${INPUT_CONTEXT_MAX} 字符（required 合计约 ${requiredLength}），请缩小任务或用 context 改选必要内容`)
     assertFlightCapacity(state, `此主控会话最多同时派活 ${MAX_ACTIVE_FLIGHTS} 个任务，请等一个结束后再派`)
-    if (live && busy(live.session.id)) throw invalid('该执行会话正忙，请去掉 session 字段新开会话，并在 task 里写完整上下文')
     const target = picked.profile, reused = !!live
     state.reserved++
     state.count = (state.count ?? 0) + 1
@@ -615,9 +654,10 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
         workspaceRef = createdWorkspace.id
       }
       const workspace = rt.findWorkspace(workspaceRef)
-      const worktree = workspaceRef !== (taskRecord?.workspaceRef ?? leadSession.workspaceRef) ? workspace?.worktree : undefined
+      const worktree = workspaceRef !== (sourceRecord?.workspaceRef ?? leadSession.workspaceRef) ? workspace?.worktree : undefined
+      const increment = live ? incrementNote(live.session, workspaceRef) : ''
       const instruction = worktree ? `\n\n执行目录：${workspace.cwd}\n分支：${worktree.branch}\n基准 commit：${worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。` : ''
-      if (header.length + task.length + instruction.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
+      if (header.length + task.length + instruction.length + increment.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
       session = live?.session ?? await rt.createSession(target.id, title, workspaceRef, true, false, picked.choices,
         { kind: 'lead', leadProfileId: lead.id, leadSessionId: leadSession.id, type: found.id, hard }, { activate: false })
       continued = session.source.continued
@@ -646,7 +686,7 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
           // folder; a shared task reuses the paths the lead already holds.
           const paths = worktree && attached.length ? await rt.placeCopies(attached, workspace.cwd) : attached
           if (rt.sessionBlockReason?.(leadSession.id) || flight.stopping) return await cancelDispatch(state, flight)
-          const input = await rt.composeDispatchInput({ workspaceCwd: workspace.cwd, header, instruction, task,
+          const input = await rt.composeDispatchInput({ workspaceCwd: workspace.cwd, header, instruction, task: increment + task,
             required: flight.context.required, background: flight.context.background })
           if (flight.stopping || rt.sessionBlockReason?.(leadSession.id)) return await cancelDispatch(state, flight)
           await rt.startExecution(execution.id, input.inputContext)
@@ -665,7 +705,8 @@ List changed files once at the end with repo-root-relative paths, no absolute pa
       await note(leadSession.id, `${reused ? '继续受理' : '已受理'} ${target.name} · ${session.name}（${found.name} · ${hard ? '难题' : '常规'}）`,
         { delegation: { session: session.id, ...executionIds(execution), profile: target.id, type: found.id, hard, reused, deferred: true,
           ...(worktree ? { branch: worktree.branch } : {}) } })
-      return { receipt: { ...executionIds(execution), session: session.id, role: target.name, type: found.id, hard, reused, status: 'queued', message: `已受理，本轮结束后发送${directoryReset ? '。原隔离目录已删除，已重新选择执行目录' : ''}` } }
+      return { receipt: { ...executionIds(execution), session: session.id, role: target.name, type: found.id, hard, reused, continued: reused,
+        ...(reused ? {} : { reason: continueReason }), status: 'queued', message: `已受理，本轮结束后发送${directoryReset ? '。原隔离目录已删除，已重新选择执行目录' : ''}` } }
     } catch (error) {
       if (!flight?.dispatchStarted) {
         if (reused && session) {

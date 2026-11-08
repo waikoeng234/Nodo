@@ -3364,7 +3364,16 @@ test('the assignment page picks roles with model and thinking, splits hard tasks
   assert.deepEqual(savedTeams.at(-1)[0].types.map(item => item.name), ['文档组', '审查'], '运维 leaves after the inline confirm')
   assert.deepEqual(Object.keys(savedTeams.at(-1)[0].assign), ['docs'], 'the removed type takes its assignment along')
 
+  const checkbox = name => rolesTree(render().find(node => node.props?.['aria-label'] === name))
+    .find(node => node.type === 'input' && node.props.type === 'checkbox')
+  assert.equal(checkbox('文档组').props.checked, false)
+  checkbox('文档组').props.onChange({ target: { checked: true } })
+  assert.equal(savedTeams.at(-1)[0].types[0].independent, true, 'the independent toggle saves onto the type')
+  checkbox('文档组').props.onChange({ target: { checked: false } })
+  assert.equal(savedTeams.at(-1)[0].types[0].independent, undefined, 'toggling off drops the flag')
+
   disabled = true
   assert.equal(render().find(node => node.props?.className === 'nodo-roles-add').props.disabled, true)
   assert.equal(render().find(node => node.props?.['aria-label'] === '任务类型名称 文档组').props.disabled, true)
+  assert.equal(checkbox('文档组').props.disabled, true)
 })
