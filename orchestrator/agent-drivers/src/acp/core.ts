@@ -32,8 +32,9 @@ export type AcpSupport = {
   initialize?(peer: JsonRpcPeer): Promise<AcpCapabilities>
   // Compaction runs outside the ACP method set on engines whose channel cannot
   // trigger it: the hook triggers out-of-band and resolves once the engine
-  // reports a terminal status, throwing on failure.
-  compact?(sessionId: string): Promise<unknown>
+  // reports a terminal status, throwing on failure. The signal aborts the
+  // out-of-band work when the turn is stopped or the driver is disposed.
+  compact?(sessionId: string, signal: AbortSignal): Promise<unknown>
   instructionMode?: string
   question?(context: AcpQuestionContext): AcpQuestion | undefined
   resumeMethod?: string
@@ -68,7 +69,7 @@ type AcpTool = { name: string; input?: unknown; output?: unknown; rawOutput?: un
 type AcpTurn = {
   id: string; started: boolean; messages: Map<string, string>; tools: Map<string, AcpTool>; completedTools: Set<string>
   children: Map<string, { text: string; title?: string; started?: boolean }>; changes: FileChanges
-  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; retrying?: boolean; retryId?: string; compacting?: boolean; done?: Promise<void>; settle?: () => void
+  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; retrying?: boolean; retryId?: string; abort?: AbortController; done?: Promise<void>; settle?: () => void
 }
 type AcpPending = { id: RpcId; params: AcpParams; replied?: boolean; gated?: boolean; busy?: boolean } & (
   { kind: 'permission' } | { kind: 'question'; question: AcpQuestion }
@@ -166,6 +167,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
   const end = (turn: AcpTurn, reason: 'done' | 'interrupted' | 'error', error?: string, usage?: unknown, retryable = false) => {
     if (running !== turn) return
     running = null
+    turn.abort?.abort()
     turn.settle?.()
     closeRequests()
     // A session's `usage_update` reports the context occupancy of the newest
@@ -460,17 +462,23 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       async compact() {
         if (disposed) throw new Error(`${label} driver disposed`)
         if (running) throw new Error(`${label} already has a running turn`)
-        const turn: AcpTurn = running = { id: `${id}-compact-${++sequence}`, started: false, compacting: true, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) }
+        const abort = new AbortController()
+        const turn: AcpTurn = running = { id: `${id}-compact-${++sequence}`, started: false, abort, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) }
         try {
           await boot()
           if (disposed || running !== turn) return
           turn.started = true
           turn.done = new Promise<void>(resolve => { turn.settle = resolve })
           emit({ type: 'turn/start', turnId: turn.id })
-          await support.compact!(sessionId!)
+          await support.compact!(sessionId!, abort.signal)
           if (running === turn) end(turn, 'done')
         } catch (error) {
-          if (running === turn) end(turn, 'error', translateError(error).message)
+          // A stop or dispose already settled the turn; the host must not wait
+          // for the out-of-band work to report again.
+          if (running !== turn) return
+          if (!turn.started) running = null
+          else if (turn.cancelled) { end(turn, 'interrupted'); return }
+          else end(turn, 'error', translateError(error).message)
           throw error
         }
       },
@@ -479,6 +487,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       const turn = running
       if (!turn) return
       turn.cancelled = true
+      turn.abort?.abort()
       closeRequests()
       const drop = () => { turn.unconfirmed = true; disconnect(); end(turn, 'interrupted') }
       if (!turn.started) { drop(); return }

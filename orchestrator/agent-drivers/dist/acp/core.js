@@ -100,6 +100,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         if (running !== turn)
             return;
         running = null;
+        turn.abort?.abort();
         turn.settle?.();
         closeRequests();
         // A session's `usage_update` reports the context occupancy of the newest
@@ -447,7 +448,8 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                     throw new Error(`${label} driver disposed`);
                 if (running)
                     throw new Error(`${label} already has a running turn`);
-                const turn = running = { id: `${id}-compact-${++sequence}`, started: false, compacting: true, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) };
+                const abort = new AbortController();
+                const turn = running = { id: `${id}-compact-${++sequence}`, started: false, abort, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) };
                 try {
                     await boot();
                     if (disposed || running !== turn)
@@ -455,12 +457,22 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                     turn.started = true;
                     turn.done = new Promise(resolve => { turn.settle = resolve; });
                     emit({ type: 'turn/start', turnId: turn.id });
-                    await support.compact(sessionId);
+                    await support.compact(sessionId, abort.signal);
                     if (running === turn)
                         end(turn, 'done');
                 }
                 catch (error) {
-                    if (running === turn)
+                    // A stop or dispose already settled the turn; the host must not wait
+                    // for the out-of-band work to report again.
+                    if (running !== turn)
+                        return;
+                    if (!turn.started)
+                        running = null;
+                    else if (turn.cancelled) {
+                        end(turn, 'interrupted');
+                        return;
+                    }
+                    else
                         end(turn, 'error', translateError(error).message);
                     throw error;
                 }
@@ -471,6 +483,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             if (!turn)
                 return;
             turn.cancelled = true;
+            turn.abort?.abort();
             closeRequests();
             const drop = () => { turn.unconfirmed = true; disconnect(); end(turn, 'interrupted'); };
             if (!turn.started) {

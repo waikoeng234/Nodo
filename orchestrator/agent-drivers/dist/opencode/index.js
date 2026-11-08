@@ -96,33 +96,60 @@ const opencodeConfigDir = () => join(process.env.XDG_CONFIG_HOME || join(homedir
 // to a terminal status. The password stays a request header and is never logged.
 const opencodeStateDir = () => process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state');
 const opencodeService = () => {
+    const dir = join(opencodeStateDir(), 'opencode');
+    let names = ['service.json'];
     try {
-        const service = JSON.parse(readFileSync(join(opencodeStateDir(), 'opencode', 'service.json'), 'utf8'));
-        if (typeof service.url !== 'string' || service.url === '')
-            throw new Error('missing url');
-        return service;
+        const versioned = readdirSync(dir).filter(name => /^service-.*\.json$/.test(name))
+            .sort((a, b) => statSync(join(dir, b)).mtimeMs - statSync(join(dir, a)).mtimeMs);
+        names = [...names, ...versioned];
     }
-    catch {
-        throw new Error('OpenCode background service is not running');
+    catch { }
+    for (const name of names) {
+        try {
+            const service = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+            if (typeof service.url === 'string' && service.url !== '')
+                return service;
+        }
+        catch { }
     }
+    throw new Error('OpenCode background service is not running');
 };
-const opencodeCompact = async (sessionId) => {
+const opencodeFailure = async (response) => {
+    const body = await response.json().catch(() => undefined);
+    const message = typeof body?.error?.message === 'string' ? body.error.message : typeof body?.message === 'string' ? body.message : undefined;
+    return message ?? `HTTP ${response.status}`;
+};
+const opencodeCompact = async (sessionId, signal) => {
     const service = opencodeService();
     const headers = { 'content-type': 'application/json' };
     if (typeof service.password === 'string' && service.password !== '')
         headers.authorization = `Basic ${Buffer.from(`opencode:${service.password}`).toString('base64')}`;
-    const response = await fetch(`${service.url}/api/session/${sessionId}/compact`, { method: 'POST', body: '{}', headers });
+    const call = async (path, init) => {
+        const timeout = AbortSignal.timeout(30_000);
+        try {
+            return await fetch(`${service.url}${path}`, { ...init, signal: AbortSignal.any([signal, timeout]) });
+        }
+        catch (error) {
+            if (signal.aborted)
+                throw error;
+            if (timeout.aborted)
+                throw new Error('OpenCode background service did not respond');
+            throw new Error(`OpenCode background service is not reachable: ${error instanceof Error && error.message ? error.message : 'request failed'}`);
+        }
+    };
+    const response = await call(`/api/session/${sessionId}/compact`, { method: 'POST', body: '{}', headers });
     if (!response.ok)
-        throw new Error(`OpenCode compaction failed: HTTP ${response.status}`);
+        throw new Error(`OpenCode compaction failed: ${await opencodeFailure(response)}`);
     const record = await response.json();
     if (typeof record.data?.id !== 'string')
         throw new Error('OpenCode compaction did not start');
     const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const poll = await fetch(`${service.url}/api/session/${sessionId}/message`, { headers });
+        signal.throwIfAborted();
+        const poll = await call(`/api/session/${sessionId}/message`, { headers });
         if (!poll.ok)
-            throw new Error(`OpenCode compaction failed: HTTP ${poll.status}`);
+            throw new Error(`OpenCode compaction failed: ${await opencodeFailure(poll)}`);
         const list = await poll.json();
         const entry = (list.data ?? []).find(item => item?.id === record.data.id);
         if (entry?.status === 'completed')

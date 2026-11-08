@@ -335,6 +335,27 @@ test('ACP compaction failure ends its turn as an error and surfaces the hook rej
   } finally { driver.dispose(); rmSync(cwd, { recursive: true, force: true }) }
 })
 
+test('ACP compaction aborts its out-of-band work when the turn is interrupted', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'orch-acp-core-'))
+  const events = []
+  let aborted = false
+  const driver = createAcpDriver({ cwd, onEvent: event => events.push(event) }, {
+    id: 'fixture', label: 'Fixture',
+    connect: callbacks => jsonRpcProcess({ bin: process.execPath, args: [fixture], cwd, jsonrpc: '2.0', ...callbacks }),
+    compact: (sessionId, signal) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => { aborted = true; reject(new Error('compaction aborted')) }, { once: true })
+    }),
+  })
+  try {
+    const pending = driver.compact()
+    await until(() => events.some(event => event.type === 'turn/start' && event.turnId.startsWith('fixture-compact')))
+    await driver.interruptTurn()
+    assert.equal(aborted, true)
+    await pending
+    assert.equal(ended(events).reason, 'interrupted')
+  } finally { driver.dispose(); rmSync(cwd, { recursive: true, force: true }) }
+})
+
 test('OpenCode child-session ownership becomes attributed activity instead of main-reply text', async () => {
   await withDriver(async ({ driver, events }) => {
     await driver.sendTurn('CHILD')
