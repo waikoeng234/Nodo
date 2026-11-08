@@ -18413,7 +18413,7 @@ function TeamsSection({ roles, teams, activeId, locked, onActive, save, openRole
       onClick: () => save(teams.filter((team) => team !== current))
     },
     /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tree" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col", "data-over": over === `lead:${current.id}` ? "" : void 0, ...target(`lead:${current.id}`), onDrop: drop(`lead:${current.id}`) }, lead ? card(lead, `lead:${current.id}`, current) : slot("\u62D6\u5165\u4E3B\u63A7")), /* @__PURE__ */ (0, import_react.createElement)("svg", { className: "nodo-team-lines", width: "72", height, viewBox: `0 0 72 ${height}`, fill: "none", "aria-hidden": "true" }, rows.map((_2, index) => {
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tree" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col", "data-over": over === `lead:${current.id}` ? "" : void 0, ...target(`lead:${current.id}`), onDrop: drop(`lead:${current.id}`) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-cap" }, "\u4E3B\u63A7"), lead ? card(lead, `lead:${current.id}`, current) : slot("\u62D6\u5165\u4E3B\u63A7")), /* @__PURE__ */ (0, import_react.createElement)("svg", { className: "nodo-team-lines", width: "72", height, viewBox: `0 0 72 ${height}`, fill: "none", "aria-hidden": "true" }, rows.map((_2, index) => {
     const y = index * (CARD + GAP) + CARD / 2;
     return /* @__PURE__ */ (0, import_react.createElement)(
       "path",
@@ -18426,9 +18426,9 @@ function TeamsSection({ roles, teams, activeId, locked, onActive, save, openRole
         strokeDasharray: !lead || index === rows.length - 1 ? "4 4" : void 0
       }
     );
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col" }, members.map((role) => card(role, current.id, current)), slot("\u62D6\u5165\u89D2\u8272"))))), pending && dialog && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: dialog.title, onClose: () => setPending(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: dialog.footer }, /* @__PURE__ */ (0, import_react.createElement)("p", null, dialog.body)));
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-cap" }, "\u6210\u5458"), members.map((role) => card(role, current.id, current)), slot("\u62D6\u5165\u89D2\u8272"))))), pending && dialog && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: dialog.title, onClose: () => setPending(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: dialog.footer }, /* @__PURE__ */ (0, import_react.createElement)("p", null, dialog.body)));
 }
-function PickCell({ label, pick, team, roles, engines, optional, disabled, onChange, remove }) {
+function PickCell({ label, caption, pick, team, roles, engines, optional, disabled, onChange, remove }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
     if (!open) return;
@@ -18447,7 +18447,7 @@ function PickCell({ label, pick, team, roles, engines, optional, disabled, onCha
   for (const item of models) providers.set(item.group ?? "", [...providers.get(item.group ?? "") ?? [], item]);
   const set = (changes) => onChange({ ...pick, ...changes });
   const tags = [pick?.model ? modelLabel(models.find((item) => item.id === pick.model) ?? { id: pick.model }) : "", pick?.thinking ? levels.find((level) => level.id === pick.thinking)?.label ?? pick.thinking : ""].filter(Boolean);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick", "data-warn": holder ? void 0 : "", "data-removable": remove ? "" : void 0, "data-pick-open": open ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick", "data-warn": holder ? void 0 : "", "data-removable": remove ? "" : void 0, "data-pick-open": open ? "" : void 0 }, caption && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-cap" }, caption), /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -18590,6 +18590,7 @@ function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBac
     )), /* @__PURE__ */ (0, import_react.createElement)(
       PickCell,
       {
+        caption: "\u8D1F\u8D23\u89D2\u8272",
         label: `${type.name}${entry.hard ? " \xB7 \u666E\u901A\u4EFB\u52A1" : " \xB7 \u666E\u901A\u548C\u56F0\u96BE\u4EFB\u52A1"}`,
         pick: entry.normal,
         team,
@@ -18606,6 +18607,7 @@ function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBac
     ), entry.hard ? /* @__PURE__ */ (0, import_react.createElement)(
       PickCell,
       {
+        caption: "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E",
         label: `${type.name} \xB7 \u56F0\u96BE\u4EFB\u52A1`,
         pick: entry.hard,
         team,
@@ -18668,6 +18670,8 @@ var TEAMS_CSS = `
 .nodo-team-name:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-team-tree{display:flex;align-items:center;justify-content:center}
 .nodo-team-col{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%;flex:none}
+/* Column captions only appear where the tree and the assign table stack, i.e. on phones. */
+.nodo-tree-cap,.nodo-pick-cap{display:none}
 .nodo-team-lines{flex:none}
 .nodo-assign{display:flex;flex-direction:column;gap:12px}
 .nodo-assign-back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;height:36px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;color:inherit;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
@@ -18721,7 +18725,7 @@ var TEAMS_CSS = `
 .nodo-assign-field-name{width:180px;flex:none;border:0}
 .nodo-assign-add>span.nodo-assign-field{flex:1;padding-right:8px;gap:4px}
 .nodo-assign-add>span.nodo-assign-field>input{flex:1}
-@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}}
+@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
 `;
 
 // src/client/roles.tsx
@@ -18996,7 +19000,7 @@ var ROLES_CSS = `
 .nodo-type-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
 .nodo-type-input:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-type-input:focus{outline:0;border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}
-@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
+@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}.nodo-roles-main[data-screen=overview]{min-width:0}}
 ${TEAMS_CSS}`;
 
 // core/shared/session.js

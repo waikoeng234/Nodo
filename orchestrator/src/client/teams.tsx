@@ -187,6 +187,7 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
             </div>
             <div className="nodo-team-tree">
               <div className="nodo-team-col" data-over={over === `lead:${current.id}` ? '' : undefined} {...target(`lead:${current.id}`)} onDrop={drop(`lead:${current.id}`)}>
+                <span className="nodo-tree-cap">主控</span>
                 {lead ? card(lead, `lead:${current.id}`, current) : slot('拖入主控')}
               </div>
               <svg className="nodo-team-lines" width="72" height={height} viewBox={`0 0 72 ${height}`} fill="none" aria-hidden="true">
@@ -197,6 +198,7 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
                 })}
               </svg>
               <div className="nodo-team-col">
+                <span className="nodo-tree-cap">成员</span>
                 {members.map(role => card(role, current.id, current))}
                 {slot('拖入角色')}
               </div>
@@ -212,8 +214,9 @@ export function TeamsSection({ roles, teams, activeId, locked, onActive, save, o
 }
 
 // One picker per cell: role first, then the model and thinking it runs with.
-export function PickCell({ label, pick, team, roles, engines, optional, disabled, onChange, remove }: {
-  label: string; pick: TeamPick | undefined; team: Team; roles: TeamRole[]; engines: TeamEngine[]; optional: boolean
+// `caption` names the cell where the shared column header cannot, i.e. on phones.
+export function PickCell({ label, caption, pick, team, roles, engines, optional, disabled, onChange, remove }: {
+  label: string; caption?: string; pick: TeamPick | undefined; team: Team; roles: TeamRole[]; engines: TeamEngine[]; optional: boolean
   disabled: boolean; onChange: (pick: TeamPick | undefined) => void; remove?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -234,6 +237,7 @@ export function PickCell({ label, pick, team, roles, engines, optional, disabled
   const tags = [pick?.model ? modelLabel(models.find(item => item.id === pick.model) ?? { id: pick.model }) : '', pick?.thinking ? levels.find(level => level.id === pick.thinking)?.label ?? pick.thinking : ''].filter(Boolean)
   return (
     <div className="nodo-pick" data-warn={holder ? undefined : ''} data-removable={remove ? '' : undefined} data-pick-open={open ? '' : undefined}>
+      {caption && <span className="nodo-pick-cap">{caption}</span>}
       <button type="button" className="nodo-pick-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`${label} ${holder?.name ?? '无人承接'}`} disabled={disabled}
         onClick={() => setOpen(!open)}>
         {holder ? <RoleAvatar profile={holder} size={24} /> : <span className="nodo-pick-none" />}
@@ -341,13 +345,13 @@ export function AssignPage({ roles, teams, engines, activeId, disabled, onActive
                     onKeyDown={(event: { key: string; preventDefault: () => void; currentTarget: { blur: () => void } }) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() } }}
                     onBlur={(event: { target: { value: string } }) => { if (event.target.value !== (type.when ?? '')) patchType(index, { when: event.target.value }) }} />
                 </div>
-                <PickCell label={`${type.name}${entry.hard ? ' · 普通任务' : ' · 普通和困难任务'}`} pick={entry.normal} team={team} roles={roles} engines={engines}
+                <PickCell caption="负责角色" label={`${type.name}${entry.hard ? ' · 普通任务' : ' · 普通和困难任务'}`} pick={entry.normal} team={team} roles={roles} engines={engines}
                   optional={false} disabled={disabled} onChange={pick => edit(type.id ?? '', 'normal', pick ?? {})}
                   remove={removing === type.id
                     ? <button type="button" className="nodo-assign-confirm" disabled={disabled} onClick={() => { setRemoving(null); removeType(type) }}>删除</button>
                     : <button type="button" className="nodo-assign-remove" aria-label={`删除 ${type.name}`} disabled={disabled} onClick={() => setRemoving(type.id ?? null)}>×</button>} />
                 {entry.hard
-                  ? <PickCell label={`${type.name} · 困难任务`} pick={entry.hard} team={team} roles={roles} engines={engines} optional disabled={disabled} onChange={pick => edit(type.id ?? '', 'hard', pick ?? undefined)}
+                  ? <PickCell caption="困难任务另派" label={`${type.name} · 困难任务`} pick={entry.hard} team={team} roles={roles} engines={engines} optional disabled={disabled} onChange={pick => edit(type.id ?? '', 'hard', pick ?? undefined)}
                     remove={<button type="button" className="nodo-assign-remove" aria-label={`${type.name} 不再单独指定困难任务`} disabled={disabled} onClick={() => edit(type.id ?? '', 'hard', undefined)}>×</button>} />
                   : <button type="button" className="nodo-assign-split" disabled={disabled} onClick={() => edit(type.id ?? '', 'hard', {})}>
                     <IconPlusOutlineRegular size={14} />困难任务单独指定</button>}
@@ -405,6 +409,8 @@ export const TEAMS_CSS = `
 .nodo-team-name:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-team-tree{display:flex;align-items:center;justify-content:center}
 .nodo-team-col{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%;flex:none}
+/* Column captions only appear where the tree and the assign table stack, i.e. on phones. */
+.nodo-tree-cap,.nodo-pick-cap{display:none}
 .nodo-team-lines{flex:none}
 .nodo-assign{display:flex;flex-direction:column;gap:12px}
 .nodo-assign-back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;height:36px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;color:inherit;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
@@ -458,5 +464,5 @@ export const TEAMS_CSS = `
 .nodo-assign-field-name{width:180px;flex:none;border:0}
 .nodo-assign-add>span.nodo-assign-field{flex:1;padding-right:8px;gap:4px}
 .nodo-assign-add>span.nodo-assign-field>input{flex:1}
-@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}}
+@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
 `

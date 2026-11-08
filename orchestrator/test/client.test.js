@@ -184,6 +184,27 @@ test('the summary panel leaves the composer its room and follows it as the draft
   assert.equal(loaded.sessionPanelBottom({ ...body, querySelector: () => null }), '0px', 'an archived conversation without a composer keeps the whole column')
 })
 
+test('the phone roles and assign pages stack into one column with named groups', async () => {
+  const { ROLES_CSS } = await loadClient('roles.tsx')
+  const line = needle => ROLES_CSS.split('\n').find(l => l.startsWith(needle)) ?? ''
+  assert.match(line('@media(max-width:720px){.nodo-roles-body'), /\.nodo-roles-main\[data-screen=overview\]\{min-width:0\}/, 'the overview drops its 820px floor on phones')
+  assert.equal(line('.nodo-tree-cap,.nodo-pick-cap'), '.nodo-tree-cap,.nodo-pick-cap{display:none}', 'wider layouts keep the header row and the drawn tree')
+  const narrow = line('@media(max-width:720px){.nodo-assign-row')
+  assert.match(narrow, /\.nodo-tree-cap\{display:block/)
+  assert.match(narrow, /\.nodo-pick-cap\{display:block/)
+  assert.match(narrow, /\.nodo-pick-pop\{[^}]*max-width/, 'the picker popover never widens the screen')
+  assert.match(narrow, /\.nodo-assign-add\{[^}]*flex-direction:column/, 'the add-type form stacks')
+  const { PickCell, TeamsSection } = await loadClient('teams.tsx')
+  const flat = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(flat)] : []
+  const pick = PickCell({ label: '改 bug 无人承接', caption: '负责角色', pick: { profile: 'r1' }, team: { members: ['r1'], lead: null },
+    roles: [{ id: 'r1', name: '小算' }], engines: [], optional: false, disabled: false, onChange: () => {} })
+  assert.equal(flat(pick).find(node => node.props?.className === 'nodo-pick-cap')?.children?.[0], '负责角色')
+  const section = TeamsSection({ roles: [{ id: 'lead', name: '主控甲', engine: 'dsh' }, { id: 'm1', name: '执行乙', engine: 'dsh' }],
+    teams: [{ id: 't1', name: '网站', lead: 'lead', members: ['m1'], types: [], assign: {} }], activeId: 't1', locked: true,
+    onActive: () => {}, save: () => {}, openRole: () => {}, onAssign: () => {}, createButton: null })
+  assert.deepEqual(flat(section).filter(node => node.props?.className === 'nodo-tree-cap').map(node => node.children?.[0]), ['主控', '成员'])
+})
+
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
   const { transcriptRows, ProcessRow, ToolCall } = await loadClient(['feed.js', 'tool-call.tsx'], {
     uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' } } },
@@ -3195,7 +3216,7 @@ test('the teams section edits membership by drag and button and saves the whole 
   assert.deepEqual(saved.at(-1)[0].members, ['A', 'B'], 'dropping on the panel adds the role')
   assert.deepEqual(actives.at(-1), 't1')
 
-  assert.equal(render().some(node => rolesText(node) === '主控'), false, 'cards carry no lead mark or toggle')
+  assert.equal(cards().some(node => rolesText(node) === '主控'), false, 'cards carry no lead mark or toggle; only the stacked tree captions name the lead column')
   const leadColumn = () => render().find(node => node.props?.className === 'nodo-team-col' && node.props.onDrop)
   dragFromGrid('前端')
   leadColumn().props.onDrop({ preventDefault() {} })
