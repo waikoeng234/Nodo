@@ -19122,6 +19122,10 @@ var openInitialSidebarSession = (page) => {
   if (nativeRole(profile)) void selectSession(profile, sessionId, workspace, page);
   else nativeSpace.showLegacy();
 };
+var sessionPanelBottom = (body) => {
+  const composer = body.querySelector(".nodo-composer");
+  return composer ? `${Math.max(0, body.getBoundingClientRect().bottom - composer.getBoundingClientRect().top)}px` : "0px";
+};
 function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
   const { view: view2, error: error2, refresh } = useStateView();
   const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
@@ -19481,6 +19485,19 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     setEditing(null);
     nativeSpace.showLegacy();
   });
+  const panelBody = (0, import_react.useRef)(null);
+  (0, import_react.useLayoutEffect)(() => {
+    const node = panelBody.current;
+    if (!node) return;
+    const measure = () => node.style.setProperty("--nodo-session-bottom", sessionPanelBottom(node));
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    const composer = node.querySelector(".nodo-composer");
+    if (composer) observer.observe(composer);
+    return () => observer.disconnect();
+  }, [sessionId, archivedConversation, profile?.id, workspace?.id, view2 !== null, panelOpen]);
   const conversation = () => (0, import_react.createElement)(
     "div",
     { className: "nodo-conversation" },
@@ -19544,7 +19561,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     ),
     (0, import_react.createElement)(
       "div",
-      { className: "nodo-body" },
+      { className: "nodo-body", ref: panelBody },
       (0, import_react.createElement)(
         "div",
         { className: "nodo-body-main" },
@@ -21706,7 +21723,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 .nodo-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 .nodo-body{position:relative;display:flex;flex:1;min-height:0;container:nodo-body/inline-size}
-@container nodo-body (max-width:760px){.nodo-session-panel{position:absolute;z-index:8;top:0;right:0;bottom:0;padding:8px;pointer-events:none}.nodo-session-panel>*{pointer-events:auto;box-shadow:var(--dsw-elevation-panel)}}
+@container nodo-body (max-width:760px){.nodo-session-panel{position:absolute;z-index:8;top:0;right:0;bottom:var(--nodo-session-bottom,0px);padding:8px;pointer-events:none}.nodo-session-panel>*{pointer-events:auto;box-shadow:var(--dsw-elevation-panel)}}
 .nodo-body-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 /* Host conversation header geometry: 20px inline start, a 30px title row inside
    the window-chrome band, then a hairline. */

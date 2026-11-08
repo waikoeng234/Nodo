@@ -142,6 +142,46 @@ test('the phone layout keeps the conversation within the viewport width', async 
   assert.doesNotMatch(desktop('.nodo-feed'), /overflow-x/, 'wider layouts keep their own overflow')
   assert.match(desktop('.nodo-round-speaker,.nodo-round-head'), /height:28px/)
   assert.equal(desktop('.nodo-round-actions'), '.nodo-round-actions{display:contents}', 'wider layouts keep the buttons inline')
+  const summary = CSS.split('\n').find(line => line.startsWith('@container nodo-body (max-width:760px)')) ?? ''
+  assert.match(summary, /\.nodo-session-panel\{[^}]*bottom:var\(--nodo-session-bottom,0px\)/, 'the summary panel stops above the composer')
+})
+
+test('the summary panel leaves the composer its room and follows it as the draft grows', async () => {
+  const effects = [], callbacks = []
+  const view = { profiles: [{ id: 'role', engine: 'echo', sessions: [{ id: 's1', workspaceRef: 'p' }] }],
+    workspaces: [{ id: 'p' }], work: {}, stats: {}, prefs: { onboardedAt: 1 } }
+  const loaded = await loadClient('page.js', {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) }, subscribeNativeSession() {}, readNativeSession: () => null,
+    },
+    react: { useLayoutEffect: effect => effects.push(effect) },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      localStorage: { getItem: key => key === 'nodo.navigation'
+        ? JSON.stringify({ profile: 'role', workspace: 'p', sessions: { 'p:role': 's1' } }) : null, setItem() {} },
+      ResizeObserver: class { constructor(callback) { callbacks.push(callback) } observe() {} disconnect() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const style = new Map()
+  const bodyRect = { bottom: 800 }
+  let composerTop = 604
+  const composer = { getBoundingClientRect: () => ({ top: composerTop }) }
+  const body = {
+    style: { setProperty: (name, value) => style.set(name, value) },
+    getBoundingClientRect: () => bodyRect,
+    querySelector: () => composer,
+  }
+  const bodyNode = all(loaded.NodoPage({ contentOnly: true })).find(node => node.props?.className === 'nodo-body')
+  bodyNode.props.ref.current = body
+  effects.forEach(effect => effect())
+  assert.equal(style.get('--nodo-session-bottom'), '196px', 'the panel leaves the composer and its margin below')
+  composerTop = 500
+  callbacks.at(-1)()
+  assert.equal(style.get('--nodo-session-bottom'), '300px', 'a taller draft pushes the panel up')
+  assert.equal(loaded.sessionPanelBottom({ ...body, querySelector: () => null }), '0px', 'an archived conversation without a composer keeps the whole column')
 })
 
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {

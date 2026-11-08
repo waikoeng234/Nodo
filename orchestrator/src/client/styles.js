@@ -281,7 +281,7 @@ button[aria-label="Nodo"]:has(.nodo-panel-logo)>span:not(:has(.nodo-panel-logo))
 .nodo-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 .nodo-conversation{display:flex;flex-direction:column;flex:1;min-height:0}
 .nodo-body{position:relative;display:flex;flex:1;min-height:0;container:nodo-body/inline-size}
-@container nodo-body (max-width:760px){.nodo-session-panel{position:absolute;z-index:8;top:0;right:0;bottom:0;padding:8px;pointer-events:none}.nodo-session-panel>*{pointer-events:auto;box-shadow:var(--dsw-elevation-panel)}}
+@container nodo-body (max-width:760px){.nodo-session-panel{position:absolute;z-index:8;top:0;right:0;bottom:var(--nodo-session-bottom,0px);padding:8px;pointer-events:none}.nodo-session-panel>*{pointer-events:auto;box-shadow:var(--dsw-elevation-panel)}}
 .nodo-body-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 /* Host conversation header geometry: 20px inline start, a 30px title row inside
    the window-chrome band, then a hairline. */

@@ -127,6 +127,14 @@ export const openInitialSidebarSession = page => {
   else nativeSpace.showLegacy()
 }
 
+// The phone summary panel overlays the transcript, so the body hands it the room
+// the composer needs below; an archived conversation has no composer and keeps
+// the whole column.
+export const sessionPanelBottom = body => {
+  const composer = body.querySelector('.nodo-composer')
+  return composer ? `${Math.max(0, body.getBoundingClientRect().bottom - composer.getBoundingClientRect().top)}px` : '0px'
+}
+
 export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
   const { view, error, refresh } = useStateView()
   const navigation = useSyncExternalStore(subscribeNavigation, readNavigation)
@@ -463,6 +471,21 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     setEditing(null)
     nativeSpace.showLegacy()
   })
+  // The panel reads this gap from its first paint, so measure before it opens and
+  // again whenever the composer grows.
+  const panelBody = useRef(null)
+  useLayoutEffect(() => {
+    const node = panelBody.current
+    if (!node) return
+    const measure = () => node.style.setProperty('--nodo-session-bottom', sessionPanelBottom(node))
+    measure()
+    if (typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    const composer = node.querySelector('.nodo-composer')
+    if (composer) observer.observe(composer)
+    return () => observer.disconnect()
+  }, [sessionId, archivedConversation, profile?.id, workspace?.id, view !== null, panelOpen])
   const conversation = () => h('div', { className: 'nodo-conversation' },
     // The host conversation header: the session's own name in the window-chrome
     // row and one hairline closing the block.
@@ -490,7 +513,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
           h(Tooltip, { label: '摘要面板', side: 'bottom', align: 'end', delayMs: 500,
             children: h(Button, { variant: 'ghost', className: 'nodo-right-toggle', 'aria-label': '摘要面板', 'aria-pressed': panelOpen, onClick: () => setPanelOpen(value => !value),
               icon: h(IconPanelLeftOutlineRegular, { size: 16, className: 'nodo-summary-glyph' }) }) })))),
-    h('div', { className: 'nodo-body' },
+    h('div', { className: 'nodo-body', ref: panelBody },
     h('div', { className: 'nodo-body-main' },
     h(Feed, { key: `${team}:${sessionId}`, profile, session, work, sentTick, decisions: view.decisions,
       round: team ? { profiles: view.profiles, teams: view.teams, tasks: view.tasks, decisions: view.decisions, leadId: profile.id, work: view.work, onOpen: openSession, onStop: conversationReadOnly ? undefined : stopMember,
