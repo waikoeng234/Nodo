@@ -179,14 +179,29 @@ export function transcriptRows(lines) {
     if (item.kind === 'plan' && (item.removed === true
       || (( !Array.isArray(item.steps) || item.steps.length === 0) && !item.text))) continue
     if (item.kind !== 'tool') {
-      const last = rows.at(-1)
+      const retry = item.kind === 'lifecycle' && item.event === 'retry'
       // One retry run reads as one row ticking in place: the newest
       // announcement replaces the row, and an end keeps the last count.
-      if (item.kind === 'lifecycle' && item.event === 'retry'
-        && last?.item.kind === 'lifecycle' && last.item.event === 'retry'
+      // The turn end closes its retries after the turn's summary rows, so an
+      // end reaches back to the run.
+      const last = retry && item.phase === 'end'
+        ? rows.findLast(row => row.item.who === 'user' || (row.item.kind === 'lifecycle' && row.item.event === 'retry'))
+        : rows.at(-1)
+      if (retry && last?.item.kind === 'lifecycle' && last.item.event === 'retry'
         && (last.item.turnId === undefined || item.turnId === undefined || last.item.turnId === item.turnId))
         last.item = item.text === undefined ? { ...item, text: last.item.text } : item
       else rows.push({ item, index, running: false, error: false })
+      // Engines repeat the turn failure in the row just before it: a retry run
+      // that never got through, or the failure echoed as reply text. The
+      // error row keeps the reason once.
+      const failure = item.kind === 'error' ? String(item.text ?? '').trim() : ''
+      const prev = failure ? rows.findLast(row => row.item !== item && row.item.kind !== 'changes') : undefined
+      if (prev?.item.kind === 'lifecycle') {
+        const note = String(prev.item.text ?? '').trim()
+        prev.item = { ...prev.item, ...(prev.item.event === 'retry' ? { phase: 'end', isError: true, cancelled: undefined } : {}),
+          ...(note && (note.includes(failure) || failure.includes(note)) ? { text: undefined } : {}) }
+      } else if (prev?.item.who === 'agent' && prev.item.kind === 'text' && String(prev.item.text ?? '').trim() === failure)
+        rows.splice(rows.indexOf(prev), 1)
       continue
     }
     if (item.phase === 'start') {

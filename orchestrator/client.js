@@ -12955,10 +12955,22 @@ function transcriptRows(lines) {
   for (const [index, item] of lines.entries()) {
     if (item.kind === "plan" && (item.removed === true || (!Array.isArray(item.steps) || item.steps.length === 0) && !item.text)) continue;
     if (item.kind !== "tool") {
-      const last = rows.at(-1);
-      if (item.kind === "lifecycle" && item.event === "retry" && last?.item.kind === "lifecycle" && last.item.event === "retry" && (last.item.turnId === void 0 || item.turnId === void 0 || last.item.turnId === item.turnId))
+      const retry2 = item.kind === "lifecycle" && item.event === "retry";
+      const last = retry2 && item.phase === "end" ? rows.findLast((row) => row.item.who === "user" || row.item.kind === "lifecycle" && row.item.event === "retry") : rows.at(-1);
+      if (retry2 && last?.item.kind === "lifecycle" && last.item.event === "retry" && (last.item.turnId === void 0 || item.turnId === void 0 || last.item.turnId === item.turnId))
         last.item = item.text === void 0 ? { ...item, text: last.item.text } : item;
       else rows.push({ item, index, running: false, error: false });
+      const failure = item.kind === "error" ? String(item.text ?? "").trim() : "";
+      const prev = failure ? rows.findLast((row) => row.item !== item && row.item.kind !== "changes") : void 0;
+      if (prev?.item.kind === "lifecycle") {
+        const note = String(prev.item.text ?? "").trim();
+        prev.item = {
+          ...prev.item,
+          ...prev.item.event === "retry" ? { phase: "end", isError: true, cancelled: void 0 } : {},
+          ...note && (note.includes(failure) || failure.includes(note)) ? { text: void 0 } : {}
+        };
+      } else if (prev?.item.who === "agent" && prev.item.kind === "text" && String(prev.item.text ?? "").trim() === failure)
+        rows.splice(rows.indexOf(prev), 1);
       continue;
     }
     if (item.phase === "start") {

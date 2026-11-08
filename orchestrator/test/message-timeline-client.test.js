@@ -222,6 +222,34 @@ test('a run of retry announcements folds into one row that ticks to the newest c
   assert.equal(claude[0].item.phase, 'end')
   assert.equal(transcriptRows([start(1, 2), { ...start(2, 3), turnId: 'u' }]).length, 2,
     'retries of different turns stay their own rows')
+  // A retry run that never got through closes as failed, even when the turn
+  // end closes its attempts after the file summary; the error row keeps the
+  // reason once, while a retry note saying something else stays.
+  const failure = { who: 'agent', kind: 'error', text: 'Internal error: ECONNRESET: socket closed' }
+  const failed = transcriptRows([
+    start(1, 2, { entityId: 'retry-1', text: 'ECONNRESET: socket closed' }), retry('end', { entityId: 'retry-1' }),
+    { who: 'agent', kind: 'changes', text: 'summary' }, failure,
+  ])
+  assert.equal(failed.map(row => row.item.kind).join(), 'lifecycle,changes,error')
+  assert.equal(failed[0].item.isError, true)
+  assert.equal(failed[0].item.text, undefined)
+  const counted = transcriptRows([
+    start(1, 2, { entityId: 'retry-1' }), { who: 'agent', kind: 'text', text: 'partial' },
+    { who: 'agent', kind: 'changes', text: 'summary' }, retry('end', { entityId: 'retry-1', isError: true }), failure,
+  ])
+  assert.equal(counted.map(row => row.item.kind).join(), 'lifecycle,text,changes,error')
+  assert.equal(counted[0].item.isError, true)
+  assert.equal(counted[0].item.text, '第 1/10 次，等待 2 秒')
+  // An engine that echoes the failure as its reply shows it only as the error.
+  const echoed = transcriptRows([
+    { who: 'agent', kind: 'text', text: 'Sorry, something went wrong.' },
+    { who: 'agent', kind: 'error', text: 'Sorry, something went wrong.' },
+  ])
+  assert.equal(echoed.map(row => row.item.kind).join(), 'error')
+  assert.equal(transcriptRows([
+    { who: 'agent', kind: 'text', text: 'I hit Sorry, something went wrong. while building' },
+    { who: 'agent', kind: 'error', text: 'Sorry, something went wrong.' },
+  ]).length, 2, 'a reply that only mentions the failure stays')
   live.push(...JSON.parse(JSON.stringify([
     start(1, 2), start(2, 3),
     retry('end', { entityId: 'retry-1' }), retry('end', { entityId: 'retry-2' }),

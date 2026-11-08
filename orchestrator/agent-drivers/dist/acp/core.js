@@ -269,12 +269,12 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
         if (update.sessionUpdate === 'session_info_update' && 'opencode/retry' in meta) {
             const retry = meta['opencode/retry'];
             if (retry && typeof retry === 'object') {
-                emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: 'start',
-                    ...(Number.isFinite(retry.attempt) ? { entityId: `retry:${turn.id}:${retry.attempt}` } : {}),
+                turn.retryId = Number.isFinite(retry.attempt) ? `retry:${turn.id}:${retry.attempt}` : undefined;
+                emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: 'start', ...(turn.retryId ? { entityId: turn.retryId } : {}),
                     ...(errorText(retry.error) ? { detail: errorText(retry.error) } : {}) });
             }
             else
-                emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: 'end' });
+                emit({ type: 'lifecycle', turnId: turn.id, kind: 'retry', phase: 'end', ...(turn.retryId ? { entityId: turn.retryId } : {}) });
         }
         // CodeBuddy announces run phases through `session_info_update` `_meta`;
         // the retrying phase repeats until the next phase closes the banner.

@@ -525,7 +525,8 @@ test('Claude result frames settle done only on clean success and keep a failed t
         [{ subtype: 'error_max_turns', is_error: true, result: 'partial answer', errors: ['Reached the maximum number of turns'] }, 'error', /Reached the maximum number of turns/, 'partial answer'],
         [{ subtype: 'error_max_budget_usd', is_error: true, error: { message: 'Budget exceeded' } }, 'error', /Budget exceeded/, ''],
         [{ subtype: 'future_result', is_error: true }, 'error', /future_result/, ''],
-        [{ subtype: 'success', is_error: true, result: 'looks done' }, 'error', /\(success\)/, 'looks done'],
+        [{ subtype: 'success', is_error: true, result: 'API Error: Connection dropped' }, 'error', /^API Error: Connection dropped$/, 'API Error: Connection dropped'],
+        [{ subtype: 'success', is_error: true }, 'error', /\(success\)/, ''],
       ]) {
         events.length = 0
         await driver.sendTurn(`RESULT ${JSON.stringify(frame)}`)

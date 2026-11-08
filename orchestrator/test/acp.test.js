@@ -256,6 +256,7 @@ test('ACP plans replace as snapshots and compaction plus retry statuses close th
     assert.equal(lifecycle[0].entityId, 'c1')
     assert.equal(lifecycle[1].detail, 'compaction boom')
     assert.equal(lifecycle[2].detail, 'rate limited')
+    assert.equal(lifecycle[3].entityId, lifecycle[2].entityId, 'the anonymous OpenCode end closes the attempt it follows')
     assert.equal(events.find(event => event.type === 'turn/end').reason, 'done')
   })
 })
