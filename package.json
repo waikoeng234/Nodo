@@ -25,6 +25,7 @@
     "orchestrator/src/host/",
     "orchestrator/src/client/",
     "orchestrator/core/",
+    "orchestrator/remote-access/",
     "orchestrator/agent-drivers/",
     "orchestrator/cordis.patch.yml",
     "orchestrator/client.js",
