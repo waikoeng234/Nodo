@@ -415,7 +415,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.sessionId == null || card.sessionId === sessionId
       || members.some(item => item.session.id === card.sessionId)).map(card => h(ApprovalCard, { key: card.id,
       card: card.taskId ? { ...card, taskTitle: view.tasks?.find(task => task.id === card.taskId)?.title } : card, refresh, readOnly,
-      from: members.find(item => item.session.id === card.profileId) })),
+      from: members.find(item => item.session.id === card.sessionId) })),
     h(PlanDock, { profileId: profile.id, sessionId }),
     !archivedConversation && h(Composer, {
       profile: composerProfile, workspace: sessionWorkspace, value: drafts[draftKey] ?? '', images: pastedImages[draftKey] ?? [], running: work?.active === true,

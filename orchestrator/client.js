@@ -22177,7 +22177,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           card: card.taskId ? { ...card, taskTitle: view2.tasks?.find((task) => task.id === card.taskId)?.title } : card,
           refresh,
           readOnly,
-          from: members.find((item) => item.session.id === card.profileId)
+          from: members.find((item) => item.session.id === card.sessionId)
         })),
         (0, import_react.createElement)(PlanDock, { profileId: profile.id, sessionId }),
         !archivedConversation && (0, import_react.createElement)(Composer, {
