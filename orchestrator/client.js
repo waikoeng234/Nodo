@@ -19354,7 +19354,9 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   };
   const attach = async (files) => {
     try {
-      const added = await Promise.all(files.map(readImage));
+      const images = files.filter((file) => file.type.startsWith("image/"));
+      if (files.length && !images.length) throw new Error("\u4F1A\u8BDD\u91CC\u53EA\u80FD\u6DFB\u52A0\u56FE\u7247\uFF0C\u5176\u4ED6\u6587\u4EF6\u8BF7\u5728\u65B0\u5EFA\u4F1A\u8BDD\u9875\u6DFB\u52A0\u3002");
+      const added = await Promise.all(images.map(readImage));
       setPastedImages((current) => ({ ...current, [draftKey]: [...current[draftKey] ?? [], ...added] }));
     } catch (failure) {
       setActionError(failure.message);
@@ -19586,6 +19588,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           onStop: () => void interrupt(),
           onAttach: attach,
           onRemoveImage: removeImage,
+          onAttachFiles: attach,
           pending: work?.pending?.some((item) => item.taskId) ? work.pending.map((item) => item.taskId ? { ...item, taskTitle: view2.tasks?.find((task) => task.id === item.taskId)?.title } : item) : work?.pending,
           onQueueAction: (seq, action) => void queueAction(seq, action),
           taskScope: scopeTask?.title,
