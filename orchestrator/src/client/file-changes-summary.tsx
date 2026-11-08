@@ -3,7 +3,7 @@ import type { ReactNode } from './ui-shared.js'
 import { CodeDiff } from './code-diff.tsx'
 import { relativeFile, summarizeChanges } from './file-diffs.ts'
 import type { ChangedFileData, ChangesBody, DiffCounts } from './file-diffs.ts'
-import { buildFileTree, FileTree, FILE_TREE_CSS } from './file-tree.tsx'
+import { groupFilesByDirectory, FileTree, FILE_TREE_CSS } from './file-tree.tsx'
 import { useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
 
 const subscribePanel = (listener: () => void) => rightPanelService?.subscribe(listener) ?? (() => {})
@@ -47,7 +47,7 @@ export function FileChangesSummary({ record, value, full, load, loadChanges = lo
   const previewId = `${detailsId}-preview`
   const { files, totals } = useMemo(() => summarizeChanges(value.body), [value.body])
   const byPath = new Map(files.map((entry, index) => [entry.file.path, { ...entry, index }]))
-  const tree = buildFileTree((expanded ? files : files.slice(0, 3)).map(({ file, counts }) => ({
+  const tree = groupFilesByDirectory((expanded ? files : files.slice(0, 3)).map(({ file, counts }) => ({
     path: file.path, relativePath: relativeFile(file.path, value.body.cwd), additions: counts?.added, deletions: counts?.removed,
   })))
   const count = record.body.fileCount

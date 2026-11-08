@@ -5,7 +5,7 @@ import { createAcpDriver, initializeAcp } from '../acp/core.js'
 import { acpModelCatalog } from '../acp/catalog.js'
 import { formElicitation } from '../acp/elicitation.js'
 import { jsonRpcProcess } from '../json-rpc-process.js'
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
+import { checkCliBase, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { collector, COMMAND_NAME } from '../skills.js'
 import { opencodeInstructions } from './instructions.js'
 import type { AcpDriverOptions } from '../acp/core.js'
@@ -46,18 +46,13 @@ export function validateOpencodeOptions(raw: Record<string, unknown> = {}): Open
 }
 
 export async function checkOpencode({ cwd, engineOptions = {} }: EngineScanOptions = {}): Promise<EngineCheckResult> {
-  const checks: EngineCheckResult['checks'] = []
-  try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
-  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validateOpencodeOptions(engineOptions)
-  const executable = findOpencodeExecutable(options.bin ?? 'opencode')
-  if (!executable) return { engine: 'opencode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'OpenCode executable not found. Install OpenCode or enter its absolute path.' }] }
-  let version
-  try { version = await cliVersion(executable); checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` }) }
-  catch { return { engine: 'opencode', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] } }
+  const base = await checkCliBase('opencode', cwd, findOpencodeExecutable(options.bin ?? 'opencode'), 'OpenCode executable not found. Install OpenCode or enter its absolute path.')
+  if (base.failed) return base.failed
+  const { checks, executable, version } = base
   let peer: JsonRpcPeer | undefined
   try {
-    peer = await handshakeOpencode({ executable, cwd })
+    peer = await handshakeOpencode({ executable: executable!, cwd })
     checks.push({ label: 'Protocol', ok: true, message: 'OpenCode ACP server connected' })
     checks.push({ label: 'Model / credentials', ok: null, message: 'The protocol has no credential query. The existing OpenCode login is used; a conversation is needed to verify the model route.' })
   } catch (error) {

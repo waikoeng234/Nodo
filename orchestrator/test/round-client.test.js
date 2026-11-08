@@ -883,10 +883,11 @@ async function mount(viewName = 'team', restored, feed = null, respond = null) {
   ] }
   const view = { profiles: [lead, coder], workspaces: [{ id: 'w', name: 'Project' }], work: { e1: { active: true, since: 100 } },
     stats: { l1: { turns: 2, steps: 4, inputTokens: 100, outputTokens: 50 }, e1: { turns: 1, steps: 2, inputTokens: 20, outputTokens: 10, llmMs: 0, toolMs: 0 } },
-    teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', profileId: 'e1' }, { id: 'a2', profileId: 'elsewhere' }] }
+    teams: [], prefs: { onboardedAt: 1 }, approvals: [{ id: 'a1', sessionId: 'e1' }, { id: 'a2', sessionId: 'elsewhere' }] }
   const space = { active: true, legacy: true }
   const loaded = await loadClient(['page.js', 'round.js', 'session-panel.js', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js', 'workspace-dialogs.js'], {
-    stubs: { 'session-rail.tsx': { Rail: props => ({ type: 'Rail', props }) }, ...(feed ? { 'live.js': liveStub(feed) } : {}) },
+    stubs: { 'session-rail.tsx': { Rail: props => ({ type: 'Rail', props }) }, ...(feed ? { 'live.js': liveStub(feed) } : {}),
+      'navigation.js': { readNavigation: () => navigation, subscribeNavigation: () => () => {}, setNavigation: update => { navigation = update(navigation) } } },
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),
       readNavigation: () => navigation, subscribeNavigation() {}, setNavigation: update => { navigation = update(navigation) },
@@ -1366,7 +1367,7 @@ test('supplementing scopes the conversation to a task: chip, taskId on send, que
     { who: 'system', kind: 'note', text: '已派给 Coder', delegation: { session: 'e1', profile: 'coder', type: 'bug-fix', hard: false, reused: false, taskId: 't1', executionId: 'x1' }, at: 3 } ] }
   const { loaded, view, calls, find, render } = await mount('team', null, feed)
   view.tasks = [{ id: 't1', title: 'Fix login', status: 'open' }, { id: 't2', title: 'Other task', status: 'open' }]
-  view.approvals = [{ id: 'a1', profileId: 'e1', taskId: 't1' }]
+  view.approvals = [{ id: 'a1', sessionId: 'e1', taskId: 't1' }]
   view.work.l1 = { active: false, pending: [{ seq: 5, text: 'Queued', images: [], sending: false, taskId: 't1' }] }
   const composer = () => find(loaded.Composer)
   assert.equal(composer().taskScope, undefined, 'no scope before supplementing')

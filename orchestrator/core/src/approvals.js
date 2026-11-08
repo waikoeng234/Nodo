@@ -2,18 +2,18 @@ import { ANSWER_TEXT_MAX } from './constants.js'
 import { failure, invalid } from './errors.js'
 
 export function install(rt) {
-  /** @type {Map<string, {id:string, profileId:?string, name:?string, kind:'permission'|'question', tool:?string, reason:string, detail:any, at:number, answer:(choice:{decision:string, value?:string})=>void}>} */
+  /** @type {Map<string, {id:string, sessionId:?string, name:?string, kind:'permission'|'question', tool:?string, reason:string, detail:any, at:number, answer:(choice:{decision:string, value?:string})=>void}>} */
   const pending = new Map()
   const answering = new Map()
 
   // A driver wants permission. The card settles; the engine is told.
-  const openApproval = (profileId, event, onAnswered) => {
+  const openApproval = (sessionId, event, onAnswered) => {
     if (typeof event?.id !== 'string' || event.id === '') return
     if (pending.has(event.id)) return
     const entry = {
       id: event.id,
-      profileId,
-      name: rt.conversationOf(profileId)?.profile.name ?? null,
+      sessionId,
+      name: rt.conversationOf(sessionId)?.profile.name ?? null,
       kind: event.kind === 'question' ? 'question' : 'permission',
       tool: typeof event.tool === 'string' ? event.tool : null,
       reason: String(event.reason ?? '').slice(0, 500),
@@ -32,13 +32,13 @@ export function install(rt) {
       answering.set(entry.id, entry)
       let accepted
       try {
-        accepted = await rt.answerRequest(profileId, entry.id, { decision, value })
+        accepted = await rt.answerRequest(sessionId, entry.id, { decision, value })
       } catch (error) {
         if (!entry.closed) pending.set(entry.id, entry)
         rt.notifyLive?.()
         throw error
       } finally {
-        rt.rearmIdle?.(profileId)
+        rt.rearmIdle?.(sessionId)
       }
       if (!accepted) throw failure('This engine request is no longer active', 'orch/stale')
     }
@@ -63,28 +63,27 @@ export function install(rt) {
     try {
       await entry.answer(reply)
       if (!entry.cancelled && decision === 'allow' && entry.tool === 'ExitPlanMode') {
-        const found = rt.conversationOf(entry.profileId)
+        const found = rt.conversationOf(entry.sessionId)
         if (['claude', 'codebuddy'].includes(found?.session?.engine) && (found.session.permission ?? found.profile.permission) === 'plan') {
           found.session.permission = 'workspace'
           await rt.save()
         }
       }
-      answering.delete(entry.id)
       if (!entry.cancelled) await entry.onAnswered?.(reply)
-      if (entry.profileId) void rt.flushLeadReports?.(entry.profileId)
+      if (entry.sessionId) void rt.flushLeadReports?.(entry.sessionId)
     } finally { answering.delete(entry.id) }
   }
 
   // A profile gone or its driver disposed: settle its cards as denied so
   // the engine never keeps waiting on a screen that will not answer.
-  const cancelApprovals = (profileId) => {
+  const cancelApprovals = (sessionId) => {
     for (const entry of [...pending.values(), ...answering.values()]) {
-      if (entry.profileId !== profileId) continue
+      if (entry.sessionId !== sessionId) continue
       const unanswered = pending.delete(entry.id)
       entry.closed = true
       entry.cancelled = true
-      rt.driverSink?.(profileId, { type: 'request/closed', id: entry.id, cancelled: true })
-      if (unanswered) void rt.answerRequest(profileId, entry.id,
+      rt.driverSink?.(sessionId, { type: 'request/closed', id: entry.id, cancelled: true })
+      if (unanswered) void rt.answerRequest(sessionId, entry.id,
         entry.kind === 'permission' ? { decision: 'deny' } : { decision: 'answer', value: '' }).catch(() => {})
     }
   }
@@ -92,10 +91,10 @@ export function install(rt) {
   const approvalsView = () => {
     if (!pending.size) return []
     const latest = new Map(Object.values(rt.state.executions).map(execution => [execution.sessionId, execution]))
-    return [...pending.values()].map(({ id, profileId, name, kind, tool, reason, detail, at, answer }) => {
-      const execution = latest.get(profileId)
+    return [...pending.values()].map(({ id, sessionId, name, kind, tool, reason, detail, at }) => {
+      const execution = latest.get(sessionId)
       const active = execution && ['queued', 'running', 'unconfirmed'].includes(execution.status)
-      return { id, profileId, name, kind, tool, reason, detail, at, open: typeof answer === 'function',
+      return { id, sessionId, name, kind, tool, reason, detail, at,
         ...(active ? { taskId: execution.taskId } : {}) }
     })
   }
@@ -106,8 +105,8 @@ export function install(rt) {
     const entry = answering.get(id)
     if (entry) entry.closed = true
   }
-  const awaitingAnswer = profileId => [...pending.values()].some(entry => entry.profileId === profileId)
+  const awaitingAnswer = sessionId => [...pending.values()].some(entry => entry.sessionId === sessionId)
 
-  const settlingAnswer = profileId => [...answering.values()].some(entry => entry.profileId === profileId)
+  const settlingAnswer = sessionId => [...answering.values()].some(entry => entry.sessionId === sessionId)
   Object.assign(rt, { openApproval, answerApproval, cancelApprovals, approvalsView, closeApproval, awaitingAnswer, settlingAnswer })
 }

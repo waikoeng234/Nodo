@@ -5,6 +5,15 @@ import { join } from 'node:path'
 import { leadMcp, leadServer } from '../../agent-drivers/dist/lead-mcp.js'
 import { leadModeOf } from '../shared/lead.js'
 
+const TOOL_ARGS = {
+  nodo_context: ['action', 'taskId', 'query', 'cursor', 'sourceId', 'executionId', 'offset', 'limit'],
+  nodo_decision: ['taskIds', 'executionIds', 'questions', 'references', 'stopExecutionIds'],
+  nodo_board: ['table', 'session', 'taskId', 'decisionId'],
+  nodo_delegate: ['type', 'hard', 'task', 'title', 'continues', 'taskId', 'worktree', 'parentId', 'dependsOn', 'context'],
+  nodo_interrupt: ['session', 'executionId'],
+  nodo_task: ['taskId', 'action', 'executionId', 'executionIds', 'disposition', 'reason', 'basis', 'references', 'title', 'brief', 'parentId', 'dependsOn'],
+}
+
 export function install(rt) {
   const tokens = new Map(), credentials = new Map(), clients = new Set()
   let server, directory, socket, starting, closed = false
@@ -19,7 +28,7 @@ export function install(rt) {
   const handle = async request => {
     const id = caller(request.token), args = request.arguments ?? {}
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是对象')
-    const allowed = { nodo_context: ['action', 'taskId', 'query', 'cursor', 'sourceId', 'executionId', 'offset', 'limit'], nodo_decision: ['taskIds', 'executionIds', 'questions', 'references', 'stopExecutionIds'], nodo_board: ['table', 'session', 'taskId', 'decisionId'], nodo_delegate: ['type', 'hard', 'task', 'title', 'continues', 'taskId', 'worktree', 'parentId', 'dependsOn', 'context'], nodo_interrupt: ['session', 'executionId'], nodo_task: ['taskId', 'action', 'executionId', 'executionIds', 'disposition', 'reason', 'basis', 'references', 'title', 'brief', 'parentId', 'dependsOn'] }[request.name]
+    const allowed = TOOL_ARGS[request.name]
     if (!allowed) throw new Error('未知主控工具')
     if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error('包含不支持的参数')
     if (request.name === 'nodo_context') return rt.executionContext(id, args)

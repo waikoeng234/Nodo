@@ -5,7 +5,7 @@ import {
 import { Field } from './profile-dialogs.js'
 import { WorkspaceFields } from './workspace-dialogs.js'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
-import { setNavigation } from './page.js'
+import { setNavigation } from './navigation.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 import { RemoteAccessSettings } from './remote-access.js'
 

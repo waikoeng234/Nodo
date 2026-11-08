@@ -3,21 +3,22 @@
 // state.json never grows with image bytes.
 import { randomUUID } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, sep } from 'node:path'
+import { basename, join } from 'node:path'
 import { IMAGE_BYTES_MAX, IMAGES_MAX, FILE_BYTES_MAX, FILES_MAX } from './constants.js'
-import { materializeResources, projectContent } from './resources.js'
-import { readImageFile } from './image-files.js'
+import { imageSinkHandlers, materializeResources, projectContent } from './resources.js'
 import { invalid } from './errors.js'
+import { inside } from './fs.js'
+import { IMAGE_EXT_BY_MIME } from './image-types.js'
+import { isUuid, isUuidLike } from './text.js'
 
 const ignoreFolder = folder => writeFile(join(folder, '.gitignore'), '*\n', { flag: 'wx' })
   .catch(error => { if (error.code !== 'EEXIST') throw error })
 
-const EXTENSIONS = new Map([['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/webp', 'webp'], ['image/gif', 'gif']])
 const fileName = raw => {
   const name = basename(String(raw ?? 'file').replaceAll('\\', '/')).replace(/[\u0000-\u001f]/g, '').slice(0, 200)
   return name && name !== '.' && name !== '..' ? name : 'file'
 }
-const validId = id => /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(id ?? '')
+const validId = id => isUuid(id)
 
 export function install(rt) {
   const dir = join(rt.home, 'attachments')
@@ -33,9 +34,10 @@ export function install(rt) {
   const admitFiles = (files = []) => {
     if (!Array.isArray(files) || files.length > FILES_MAX) throw invalid(`At most ${FILES_MAX} files per message`)
     return files.map(file => {
-      const bytes = typeof file?.data === 'string' ? Buffer.from(file.data, 'base64') : Buffer.alloc(0)
-      if (typeof file?.data !== 'string' || bytes.toString('base64') !== file.data) throw invalid('File data is not valid base64')
-      if (bytes.length > FILE_BYTES_MAX) throw invalid('Each file must be at most 20 MB')
+      if (typeof file?.data !== 'string') throw invalid('File data is not valid base64')
+      const bytes = Buffer.from(file.data, 'base64')
+      if (bytes.toString('base64') !== file.data) throw invalid('File data is not valid base64')
+      if (bytes.length > FILE_BYTES_MAX) throw invalid(`Each file must be at most ${FILE_BYTES_MAX / 1024 / 1024} MB`)
       return { name: fileName(file.name), bytes }
     })
   }
@@ -51,7 +53,7 @@ export function install(rt) {
   const fileOf = async ref => {
     const [file] = cleanFileRefs([ref])
     const bytes = await readFile(join(filesDir, file.id)).catch(() => { throw invalid('Attached file is unavailable') })
-    if (bytes.length > FILE_BYTES_MAX) throw invalid('Attached file exceeds 20 MB')
+    if (bytes.length > FILE_BYTES_MAX) throw invalid(`Attached file exceeds ${FILE_BYTES_MAX / 1024 / 1024} MB`)
     return bytes
   }
   const materializeFiles = async (files, cwd) => {
@@ -60,7 +62,7 @@ export function install(rt) {
     return place(refs.map((file, index) => ({ name: file.name, bytes: contents[index] })), cwd)
   }
   const materializeImages = (images, cwd) => place(images.map(image => {
-    const extension = EXTENSIONS.get(image.mediaType), name = fileName(image.name || 'image')
+    const extension = IMAGE_EXT_BY_MIME.get(image.mediaType), name = fileName(image.name || 'image')
     return { name: name.toLowerCase().endsWith(`.${extension}`) ? name : `${name}.${extension}`, bytes: Buffer.from(image.data, 'base64') }
   }), cwd)
   // The staged folder sits in the workspace's ignored `.nodo` segment; both
@@ -73,8 +75,7 @@ export function install(rt) {
       const next = join(base, segment)
       await mkdir(next, { recursive: true })
       base = await realpath(next)
-      const path = relative(root, base)
-      if (path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) throw invalid('Attachment directory must stay inside its workspace')
+      if (!inside(root, base)) throw invalid('Attachment directory must stay inside its workspace')
       if (segment === '.nodo') await ignoreFolder(base)
     }
     return mkdtemp(join(base, 'task-'))
@@ -102,10 +103,11 @@ export function install(rt) {
     if (images === undefined || images === null) return []
     if (!Array.isArray(images) || images.length > IMAGES_MAX) throw invalid(`At most ${IMAGES_MAX} images per message`)
     return images.map(image => {
-      if (!EXTENSIONS.has(image?.mediaType)) throw invalid('Only PNG, JPEG, WebP and GIF images can be sent')
-      const bytes = typeof image.data === 'string' ? Buffer.from(image.data, 'base64') : Buffer.alloc(0)
+      if (!IMAGE_EXT_BY_MIME.has(image?.mediaType)) throw invalid('Only PNG, JPEG, WebP and GIF images can be sent')
+      if (typeof image.data !== 'string') throw invalid('Image data is not valid base64')
+      const bytes = Buffer.from(image.data, 'base64')
       if (bytes.length === 0 || bytes.toString('base64') !== image.data) throw invalid('Image data is not valid base64')
-      if (bytes.length > IMAGE_BYTES_MAX) throw invalid('Each image must be at most 5 MB')
+      if (bytes.length > IMAGE_BYTES_MAX) throw invalid(`Each image must be at most ${IMAGE_BYTES_MAX / 1024 / 1024} MB`)
       return { mediaType: image.mediaType, data: image.data, name: typeof image.name === 'string' ? image.name.slice(0, 200) : '' }
     })
   }
@@ -115,14 +117,14 @@ export function install(rt) {
     await mkdir(dir, { recursive: true, mode: 0o700 })
     return Promise.all(images.map(async image => {
       const id = randomUUID()
-      await writeFile(join(dir, `${id}.${EXTENSIONS.get(image.mediaType)}`), Buffer.from(image.data, 'base64'), { flag: 'wx', mode: 0o600 })
+      await writeFile(join(dir, `${id}.${IMAGE_EXT_BY_MIME.get(image.mediaType)}`), Buffer.from(image.data, 'base64'), { flag: 'wx', mode: 0o600 })
       return { id, mediaType: image.mediaType, name: image.name }
     }))
   }
 
   const imageOf = async ({ id, mediaType }) => {
-    const extension = EXTENSIONS.get(mediaType)
-    if (extension === undefined || !/^[0-9a-f-]{36}$/.test(id)) throw invalid('Unknown image')
+    const extension = IMAGE_EXT_BY_MIME.get(mediaType)
+    if (extension === undefined || !isUuidLike(id)) throw invalid('Unknown image')
     const bytes = await readFile(join(dir, `${id}.${extension}`)).catch(error => {
       if (error.code === 'ENOENT') throw invalid('Attached image is unavailable')
       throw error
@@ -134,18 +136,13 @@ export function install(rt) {
     const found = rt.conversationOf(conversationId)
     if (!found || rt.readOnly() !== undefined) return []
     const saved = []
+    const handlers = imageSinkHandlers(rt, rt.sessionWorkspace(found.profile, found.session)?.cwd)
     await materializeResources({ body: { resources: projectContent(text).resources } }, {
-      readFileImage: uri => readImageFile(uri, rt.sessionWorkspace(found.profile, found.session)?.cwd),
-      validateImage: async image => {
-        if (typeof rt.ctx.attachments?.validateImage !== 'function') return false
-        await rt.ctx.attachments.validateImage(image)
-        return true
-      },
+      ...handlers,
       saveImage: async image => {
-        const [ref] = await saveImages([image])
-        if (!ref?.id) throw new Error('storage-unavailable')
-        saved.push(ref)
-        return { id: ref.id, mediaType: ref.mediaType }
+        const ref = await handlers.saveImage(image)
+        if (ref?.id) saved.push(ref)
+        return ref
       },
     })
     return saved

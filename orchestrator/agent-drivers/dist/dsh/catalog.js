@@ -13,17 +13,27 @@ const route = (provider, model) => JSON.stringify([provider, model]);
 // only its name. The provider is the section a model sits under; the route id
 // carries it for the value sent back.
 async function hostModels(llm) {
+    const attempt = async (run, fallback) => {
+        try {
+            return await run();
+        }
+        catch {
+            return fallback;
+        }
+    };
     const providers = (await llm.listProviders()) ?? [];
     const sections = await Promise.all(providers.map(async (provider) => {
-        const listed = await Promise.resolve().then(() => llm.listModels(provider.id)).catch(() => []);
+        const listed = await attempt(() => llm.listModels(provider.id), []);
         const group = provider.name || provider.id;
-        return Promise.all((listed ?? []).map(async (model) => ({
-            id: route(provider.id, model.id),
-            label: String(model.name || model.id),
-            ...(group ? { group: String(group) } : {}),
-            ...await Promise.resolve().then(() => llm.resolveModelInfo(provider.id, model.id))
-                .then(info => levelsOf(info?.reasoning?.efforts, info?.reasoning?.defaultEffort), () => ({})),
-        })));
+        return Promise.all((listed ?? []).map(async (model) => {
+            const info = await attempt(() => llm.resolveModelInfo(provider.id, model.id), null);
+            return {
+                id: route(provider.id, model.id),
+                label: String(model.name || model.id),
+                ...(group ? { group: String(group) } : {}),
+                ...levelsOf(info?.reasoning?.efforts, info?.reasoning?.defaultEffort),
+            };
+        }));
     }));
     return sections.flat();
 }

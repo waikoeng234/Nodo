@@ -7,7 +7,7 @@ const sample = () => ({ version: 1, kind: 'tool', mode: 'snapshot', runId: 'run'
   details: { state: 'stored', ref: 'fixed-ref' } })
 const harness = async (call, uiShared) => {
   const { StreamRecordCard, FileChangesSummary, ChangedFile, ResourceList, ResourceItem, CodeDiff, HoverPreview, ToolFileChip, HoverFilePreview, host } = await loadClient(['stream-records.js', 'code-diff.tsx', 'file-changes-summary.tsx', 'hover-preview.tsx'], {
-    stubs: { 'feed.js': { TranscriptImage: 'TranscriptImage', ProcessRow: 'ProcessRow' } },
+    stubs: { 'transcript-image.js': { TranscriptImage: 'TranscriptImage' }, 'feed.js': { ProcessRow: 'ProcessRow' } },
     primitives: {
       DisclosureRow: 'DisclosureRow', IconCodeOutlineRegular: 'Icon', TerminalBlock: 'TerminalBlock',
       DiffBlock: 'DiffBlock', CodeBlock: 'CodeBlock', Button: 'Button',

@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js';
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { STEER, addUsage, promptTokensOf, steerFailed, usageOf } from '../spi.js';
+import { checkCliBase, cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { piArgs, connectPi } from './native.js';
@@ -62,28 +62,13 @@ export async function handshakePi({ executable, cwd, env } = {}) {
     return answer;
 }
 export async function checkPi({ cwd, engineOptions = {} } = {}) {
-    const checks = [];
-    try {
-        validateWorkspace(cwd, true);
-        checks.push({ label: 'Working directory', ok: true, message: cwd });
-    }
-    catch (error) {
-        checks.push({ label: 'Working directory', ok: false, message: error.message });
-    }
     const options = validatePiOptions(engineOptions);
-    const executable = findExecutable(options.bin ?? 'pi');
-    if (!executable)
-        return { engine: 'pi', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'pi CLI executable not found. Install pi or enter its absolute path.' }] };
-    let version;
+    const base = await checkCliBase('pi', cwd, findExecutable(options.bin ?? 'pi'), 'pi CLI executable not found. Install pi or enter its absolute path.');
+    if (base.failed)
+        return base.failed;
+    const { checks, executable, version } = base;
     try {
-        version = await cliVersion(executable);
-        checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
-    }
-    catch {
-        return { engine: 'pi', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] };
-    }
-    try {
-        const state = await handshakePi({ executable, cwd });
+        const state = await handshakePi({ executable: executable, cwd });
         const model = state.model;
         checks.push({ label: 'Protocol', ok: true, message: `pi RPC connected${typeof state.sessionId === 'string' ? ` (session ${state.sessionId.slice(0, 8)})` : ''}` });
         checks.push({ label: 'Model', ok: model ? true : null, message: model
@@ -229,8 +214,13 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     // compact after the summary exists — those two outlive the 5 s default.
     const command = (type, extra = {}, timeoutMs = 5000) => new Promise((resolvePromise, reject) => {
         const id = `orch-${++rpcSeq}`;
-        const timer = timeoutMs ? setTimeout(() => { if (controls.delete(id))
-            reject(new Error(`pi ${type} command timed out`)); }, timeoutMs) : null;
+        const timer = timeoutMs ? setTimeout(() => {
+            if (!controls.delete(id))
+                return;
+            const error = new Error(`pi ${type} command timed out`);
+            error.name = 'TimeoutError';
+            reject(error);
+        }, timeoutMs) : null;
         controls.set(id, record => {
             if (timer)
                 clearTimeout(timer);
@@ -519,7 +509,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
                 return STEER.STEERED;
             }
             catch (error) {
-                return String(error?.message).includes('timed out') ? STEER.INDETERMINATE : STEER.REFUSED;
+                return steerFailed(error);
             }
         },
         // The native compaction channel; its lifetime arrives as compaction events.

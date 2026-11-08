@@ -2,7 +2,9 @@ import { h, useState, useLayoutEffect, useRef, useSyncExternalStore, useStateVie
 import { Composer, GoalDialog } from './composer.js'
 import { RolePicker } from './role-seat.js'
 import { WorkspaceDialog } from './workspace-dialogs.js'
-import { nativeRole, readDrafts, heldImages, subscribeNavigation, readNavigation, setNavigation } from './page.js'
+import { nativeRole } from './page-sessions.js'
+import { readDrafts, heldImages } from './drafts.js'
+import { subscribeNavigation, readNavigation, setNavigation } from './navigation.js'
 
 export function createNewConversation(ctx, space, ReferenceDialog) {
   const readOptions = () => {

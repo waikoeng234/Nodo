@@ -131,3 +131,24 @@ export async function cliVersion(bin, options = {}) {
     });
     return stdout.trim().split('\n')[0].slice(0, 120);
 }
+// The workspace, executable and version checks every adapter shares. `failed`
+// already carries the adapter's engine id, so a caller returns it unchanged.
+export async function checkCliBase(engine, cwd, executable, missingMessage, versionOf = cliVersion) {
+    const checks = [];
+    try {
+        validateWorkspace(cwd, true);
+        checks.push({ label: 'Working directory', ok: true, message: cwd });
+    }
+    catch (error) {
+        checks.push({ label: 'Working directory', ok: false, message: error.message });
+    }
+    if (!executable)
+        return { checks, failed: { engine, ok: false, checks: [...checks, { label: 'CLI', ok: false, message: missingMessage }] } };
+    try {
+        const version = await versionOf(executable);
+        return { checks: [...checks, { label: 'CLI', ok: true, message: `${version} · ${executable}` }], executable, version };
+    }
+    catch {
+        return { checks, executable, failed: { engine, ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] } };
+    }
+}

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { once } from 'node:events'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
-import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
+import { findDshExecutable } from '../../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running the native check')
@@ -82,7 +82,7 @@ writeFileSync(patch, JSON.stringify([
   { id: 'llm-deepseek', config: { baseURL: `http://127.0.0.1:${mock.address().port}`, apiKeyEnv: 'ORCH_DSH_MOCK_KEY' } },
   { id: 'session-title-llm', disabled: true },
   ...(uiProbe?.patch ?? []),
-  { insert: [{ id: 'nodo', name: fileURLToPath(new URL('../index.js', import.meta.url)), config: { home: join(home, 'nodo') } }] },
+  { insert: [{ id: 'nodo', name: fileURLToPath(new URL('../../index.js', import.meta.url)), config: { home: join(home, 'nodo') } }] },
 ]))
 let child
 let log = ''

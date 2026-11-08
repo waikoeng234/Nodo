@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { STEER, addUsage, isTodoTool, promptTokensOf, todoPlanSteps, usageOf } from '../spi.js';
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { checkCliBase, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { claudeArgs, connectClaude, leadMcpEnv } from './native.js';
@@ -31,29 +31,14 @@ export function validateClaudeOptions(raw = {}) {
 // is the stream handshake itself, and the model route stays unverified until a
 // turn runs — same honesty as the other adapters.
 export async function checkClaude({ cwd, engineOptions = {} } = {}) {
-    const checks = [];
-    try {
-        validateWorkspace(cwd, true);
-        checks.push({ label: 'Working directory', ok: true, message: cwd });
-    }
-    catch (error) {
-        checks.push({ label: 'Working directory', ok: false, message: error.message });
-    }
     const options = validateClaudeOptions(engineOptions);
-    const executable = findExecutable(options.bin ?? 'claude');
-    if (!executable)
-        return { engine: 'claude', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'Claude Code executable not found. Install Claude Code or enter its absolute path.' }] };
-    let version;
-    try {
-        version = await cliVersion(executable);
-        checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
-    }
-    catch {
-        return { engine: 'claude', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] };
-    }
+    const base = await checkCliBase('claude', cwd, findExecutable(options.bin ?? 'claude'), 'Claude Code executable not found. Install Claude Code or enter its absolute path.');
+    if (base.failed)
+        return base.failed;
+    const { checks, executable, version } = base;
     let peer;
     try {
-        peer = (await handshakeClaude({ executable, cwd })).peer;
+        peer = (await handshakeClaude({ executable: executable, cwd })).peer;
         checks.push({ label: 'Protocol', ok: true, message: 'Claude Code stream protocol connected' });
         checks.push({ label: 'Model / credentials', ok: null, message: 'The protocol has no credential query. The existing Claude Code login is used; a conversation is needed to verify the model route.' });
     }
@@ -143,7 +128,7 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd } = {}) {
     const options = validateClaudeOptions(engineOptions);
     const config = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const found = collector();
-    const scanSkills = (dir, owner, scope) => {
+    const scanDir = (dir, owner, scope, skills) => {
         let entries;
         try {
             entries = readdirSync(dir, { withFileTypes: true });
@@ -152,25 +137,14 @@ export async function scanClaudeCommands({ engineOptions = {}, cwd } = {}) {
             return;
         }
         for (const entry of entries) {
-            if (entry.isDirectory())
+            if (skills && entry.isDirectory())
                 found.add(join(dir, entry.name, 'SKILL.md'), entry.name, owner, scope);
             else if (entry.isFile() && entry.name.endsWith('.md'))
                 found.add(join(dir, entry.name), entry.name.replace(/\.md$/, ''), owner, scope);
         }
     };
-    const scanCommands = (dir, owner, scope) => {
-        let entries;
-        try {
-            entries = readdirSync(dir, { withFileTypes: true });
-        }
-        catch {
-            return;
-        }
-        for (const entry of entries) {
-            if (entry.isFile() && entry.name.endsWith('.md'))
-                found.add(join(dir, entry.name), entry.name.replace(/\.md$/, ''), owner, scope);
-        }
-    };
+    const scanSkills = (dir, owner, scope) => scanDir(dir, owner, scope, true);
+    const scanCommands = (dir, owner, scope) => scanDir(dir, owner, scope, false);
     // A `plugins` directory segment announces the plugin cache: the next level
     // names the plugin, and its skills resolve as `plugin:skill`.
     const walk = (root, depth, owner, scope) => {

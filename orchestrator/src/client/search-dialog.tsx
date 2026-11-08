@@ -1,4 +1,4 @@
-import type { RailRole, RailWorkspace } from './session-rail.tsx'
+import type { RailRole, RailWorkspace } from './rail-types.ts'
 import {
   h, useState, useRef, useEffect, Modal, WorkDot, workLabel, workKind, sessionTime,
   IconBranchOutlineRegular, IconCloseOutlineRegular, IconFolderOpenOutlineRegular, IconSearchOutlineRegular,

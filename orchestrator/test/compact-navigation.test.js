@@ -15,6 +15,7 @@ async function mount(pendingEndpoint = 'session-compact', engine = 'zcode', side
   // selectSession compares snapshots by identity to detect navigation away.
   let space = { active: true, legacy: false }
   const loaded = await loadClient(['page.js', 'session-rail.tsx', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
+    stubs: { 'navigation.js': { readNavigation: () => navigation, subscribeNavigation: () => () => {}, setNavigation: update => { navigation = update(navigation) } } },
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),
       readNavigation: () => navigation, subscribeNavigation() {},

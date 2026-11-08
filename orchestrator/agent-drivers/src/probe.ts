@@ -11,6 +11,7 @@ export function probeSpawn({ bin = process.execPath, args = ['-e', 'process.stdo
   return new Promise((resolve) => {
     let settled = false
     let out = ''
+    let timer: NodeJS.Timeout
     const finish = (result: ProbeSpawnResult) => {
       if (settled) return
       settled = true
@@ -23,11 +24,11 @@ export function probeSpawn({ bin = process.execPath, args = ['-e', 'process.stdo
     } catch (error) {
       return finish({ ok: false, step: 'spawn', error: String((error as { message?: unknown } | null | undefined)?.message ?? error) })
     }
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       child.kill('SIGKILL')
       finish({ ok: false, step: 'timeout', error: `no exit within ${timeoutMs}ms` })
     }, timeoutMs)
-    child.stdout?.on('data', chunk => { out += chunk })
+    child.stdout.on('data', chunk => { out += chunk })
     child.on('error', error => finish({ ok: false, step: 'error', error: String(error?.message ?? error) }))
     child.on('close', (code, signal) => {
       if (code === 0 && out.includes('ok')) return finish({ ok: true })

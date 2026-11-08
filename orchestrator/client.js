@@ -9196,7 +9196,7 @@ var subscribeUpdatePause = (pause, resume) => {
   };
 };
 
-// src/client/live.js
+// src/client/api.js
 var ROUTE = "/api/nodo";
 var call = async (endpoint, payload) => {
   const response = await fetch(ROUTE, {
@@ -9208,6 +9208,8 @@ var call = async (endpoint, payload) => {
   if (answer?.ok !== true) throw new Error(answer?.error?.message ?? "request failed");
   return answer.value;
 };
+
+// src/client/live.js
 var view = null;
 var error = "";
 var listeners = /* @__PURE__ */ new Set();
@@ -9474,7 +9476,6 @@ var nodo_logo_default = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABD4AAAFqC
 
 // src/client/ui-shared.js
 var PANEL_ID = "nodo";
-var ROUTE2 = "/api/nodo";
 var ROLE_FORM = "nodo-role-form";
 var WORKSPACE_FORM = "nodo-workspace-form";
 var WORKTREE_FORM = "nodo-worktree-form";
@@ -9500,16 +9501,6 @@ function setHostServices(services) {
   layoutService = services.layoutService;
   rightPanelService = services.rightPanelService;
 }
-var call2 = async (endpoint, payload) => {
-  const response = await fetch(ROUTE2, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ endpoint, payload })
-  });
-  const answer = await response.json();
-  if (answer?.ok !== true) throw new Error(answer?.error?.message ?? "request failed");
-  return answer.value;
-};
 var readImage = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve({ name: file.name, mediaType: file.type, dataUrl: reader.result });
@@ -9633,347 +9624,155 @@ function NodoLogo({ width = 112, compact = false } = {}) {
 var ARCHIVED_VIEWS = { hide: "\u9690\u85CF\u5DF2\u5F52\u6863", all: "\u5168\u90E8\u5BF9\u8BDD\uFF08\u663E\u793A\u5DF2\u5F52\u6863\uFF09", only: "\u4EC5\u663E\u793A\u5DF2\u5F52\u6863" };
 var SESSION_FOLD = 10;
 
-// core/shared/avatar-templates.json
-var avatar_templates_default = [
-  { id: "sky", label: "\u5929\u7A7A\u56E2\u5B50", color: "#7CC8F5", tilt: -12, shape: "M32 5C48 3 58 14 58 31C60 48 49 59 31 58C13 59 5 49 5 32C3 16 15 5 32 5Z" },
-  { id: "peach", label: "\u871C\u6843\u56E2\u5B50", color: "#F7A27A", tilt: -14, shape: "M32 4C47 4 56 16 59 32C62 47 47 58 32 60C17 63 3 48 5 33C7 18 16 4 32 4Z" },
-  { id: "olive", label: "\u6A44\u6984\u56E2\u5B50", color: "#B8BF4C", tilt: 8, shape: "M31 6C44 3 56 14 59 29C61 42 50 56 36 58C20 62 6 49 6 35C4 21 16 8 31 6Z" },
-  { id: "mint", label: "\u8584\u8377\u56E2\u5B50", color: "#7FD39B", tilt: -6, shape: "M33 7C49 5 58 17 58 32C61 47 47 57 31 57C17 60 4 48 5 33C4 18 18 6 33 7Z" },
-  { id: "lavender", label: "\u85B0\u8863\u8349\u56E2\u5B50", color: "#B9A3F5", tilt: 10, shape: "M30 5C45 3 57 13 58 29C61 46 49 58 33 59C18 61 6 51 5 35C2 19 14 6 30 5Z" },
-  { id: "butter", label: "\u5976\u6CB9\u56E2\u5B50", color: "#F5C84C", tilt: -8, shape: "M32 6C48 4 59 17 58 32C59 47 47 60 30 58C15 60 4 48 5 32C4 16 17 5 32 6Z" }
-];
-
-// src/client/avatar.tsx
-var avatarTemplateOf = (profile = {}) => avatar_templates_default.find((item) => item.id === profile.avatarTemplate) ?? avatar_templates_default[Array.from(profile.id || profile.name || "").reduce((sum, letter) => sum + (letter.codePointAt(0) ?? 0), 0) % avatar_templates_default.length];
-function RoleAvatar({ profile, running = false, size = 32 }) {
-  const template = avatarTemplateOf(profile);
-  return /* @__PURE__ */ (0, import_react.createElement)(
-    "span",
-    {
-      className: "nodo-avatar",
-      "data-running": running ? "true" : void 0,
-      "data-template": template.id,
-      "aria-hidden": true,
-      style: { width: size, height: size, color: template.color }
-    },
-    /* @__PURE__ */ (0, import_react.createElement)("svg", { viewBox: "0 0 64 64", width: size, height: size, focusable: false }, /* @__PURE__ */ (0, import_react.createElement)("rect", { className: "nodo-avatar-tile", width: 64, height: 64, rx: 18 }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: "translate(6.86 6.86) scale(.786)" }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-art" }, /* @__PURE__ */ (0, import_react.createElement)("path", { className: "nodo-avatar-body", d: template.shape, fill: template.color }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: `rotate(${template.tilt} 32 30)` }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-eyes", fill: "#172021" }, /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 21, y: 23, width: 5.5, height: 15, rx: 2.75 }), /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 38, y: 23, width: 5.5, height: 15, rx: 2.75 }))))))
-  );
-}
-var AVATAR_CSS = `
-.nodo-avatar{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:28%}
-.nodo-avatar>svg{display:block;overflow:visible}
-.nodo-avatar-tile{fill:color-mix(in srgb,currentColor 20%,var(--dsw-alias-bg-base))}
-.nodo-avatar-art{transform-box:fill-box;transform-origin:50% 85%}
-.nodo-avatar-eyes{transform-box:fill-box;transform-origin:center}
-.nodo-avatar[data-running=true] .nodo-avatar-art{animation:nodo-avatar-hop 1.6s ease-in-out infinite}
-.nodo-avatar[data-running=true] .nodo-avatar-eyes{animation:nodo-avatar-blink 3.8s ease-in-out infinite}
-.nodo-roster-item:hover .nodo-avatar:not([data-running]) .nodo-avatar-art{animation:nodo-avatar-greet .45s ease-in-out}
-.nodo-avatar-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.nodo-avatar-option{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:78px;padding:8px 4px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
-.nodo-avatar-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-avatar-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
-.nodo-avatar-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
-.nodo-avatar-option:disabled{opacity:.5;cursor:default}
-@keyframes nodo-avatar-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-8px) rotate(4deg) scale(.98,1.02)}}
-@keyframes nodo-avatar-blink{0%,42%,48%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
-@keyframes nodo-avatar-greet{0%,100%{transform:rotate(0)}35%{transform:rotate(-9deg)}70%{transform:rotate(7deg)}}
-@media(prefers-reduced-motion:reduce){.nodo-avatar .nodo-avatar-art,.nodo-avatar .nodo-avatar-eyes{animation:none!important}}
-`;
-
-// src/client/role-seat.js
-function RolePicker({ profiles, profile, disabled, onSelect }) {
-  profiles = profiles.filter((role) => !role.deletedAt);
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const name = profile?.name ?? "\u9009\u62E9\u89D2\u8272";
-  const face = [profile && (0, import_react.createElement)(RoleAvatar, { profile, size: 20 }), (0, import_react.createElement)("span", { className: "nodo-role-seat-label" }, name)];
-  if (!onSelect) return profile ? (0, import_react.createElement)("span", {
-    className: "nodo-role-seat nodo-role-seat-fixed",
-    "aria-label": `\u4F1A\u8BDD\u89D2\u8272\uFF1A${name}\uFF0C\u4E0D\u53EF\u4FEE\u6539`,
-    title: "\u4F1A\u8BDD\u89D2\u8272\u5DF2\u56FA\u5B9A"
-  }, ...face) : null;
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-    open,
-    onClose: () => setOpen(false),
-    portal: true,
-    side: "top",
-    align: "end",
-    className: "nodo-role-seat",
-    listClassName: "nodo-role-seat-list",
-    selectedId: profile?.id,
-    items: profiles.length ? profiles.map((role) => ({
-      id: role.id,
-      label: role.name,
-      icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
-      disabled
-    })) : [{ type: "label", id: "empty", text: "\u8BF7\u5148\u6DFB\u52A0\u89D2\u8272" }],
-    onSelect: (id) => {
-      if (!disabled && profiles.some((role) => role.id === id)) {
-        onSelect(id);
-        setOpen(false);
-      }
-    },
-    anchor: (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-role-seat-trigger",
-        disabled,
-        "data-nodo-role-seat": true,
-        "aria-haspopup": "menu",
-        "aria-expanded": open,
-        "aria-label": `\u9009\u62E9\u89D2\u8272\uFF0C\u5F53\u524D ${name}`,
-        onClick: () => setOpen((value) => !value)
-      },
-      ...face,
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
-    )
-  });
-}
-function createRoleSeat(ctx, space) {
-  function RoleSeat({ sessionId }) {
-    const { view: view2 } = useStateView();
-    const profile = view2?.profiles.find((role) => !role.deletedAt && role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sessionId));
-    if (typeof ctx.sessions.subagentAddress === "function" && ctx.sessions.subagentAddress(sessionId) !== void 0) return null;
-    return (0, import_react.createElement)(RolePicker, { profiles: view2?.profiles ?? [], profile });
+// src/client/drafts.js
+var heldImages = {};
+var setHeldImages = (value) => {
+  heldImages = value;
+};
+var readDrafts = () => {
+  try {
+    return JSON.parse(localStorage.getItem("nodo.drafts")) ?? {};
+  } catch {
+    return {};
   }
-  ctx.slots.inject("conversation.input.right", () => {
+};
+var readScopes = () => {
+  try {
+    return JSON.parse(localStorage.getItem("nodo.taskScope")) ?? {};
+  } catch {
+    return {};
+  }
+};
+
+// src/client/native-space.js
+function createNativeSpace(ctx, Sidebar, SidebarControl) {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem("nodo.space"));
+  } catch {
+  }
+  let state = { active: false, legacy: saved?.legacy === true, nativeSession: saved?.nativeSession, nodoSession: saved?.nodoSession, draft: saved?.draft, drafting: saved?.drafting ?? !!saved?.draft };
+  let awaitingEntry = false;
+  const listeners2 = /* @__PURE__ */ new Set();
+  const current = () => ctx.uiSession.adapter.current.getSnapshot().key;
+  const publish = (changes) => {
+    const next = { ...state, ...changes };
+    if (Object.keys(next).every((key) => next[key] === state[key])) return;
+    state = next;
+    try {
+      localStorage.setItem("nodo.space", JSON.stringify(state));
+    } catch {
+    }
+    for (const listener of listeners2) listener();
+  };
+  const subscribe = (listener) => {
+    listeners2.add(listener);
+    return () => listeners2.delete(listener);
+  };
+  const draftEmpty = (draft) => {
+    const read = (key2) => {
+      try {
+        return JSON.parse(localStorage.getItem(key2));
+      } catch {
+      }
+    };
+    const key = `new:${draft.id}`;
+    return String(read("nodo.drafts")?.[key] ?? "").trim() === "" && !read("nodo.draft-options")?.[key]?.references?.length && !read("nodo.draft-options")?.[key]?.files?.length && !heldImages?.[key]?.length;
+  };
+  const keptDraft = () => state.draft && draftEmpty(state.draft) ? { draft: void 0 } : {};
+  const away = () => ({ drafting: false, ...keptDraft() });
+  const resume = () => {
+    const catalog = ctx.sessions.list.getSnapshot();
+    if (!awaitingEntry || catalog.phase !== "ready") return;
+    awaitingEntry = false;
+    if (state.legacy || state.drafting) ctx.layout.selectPanel("nodo");
+    else if (state.nodoSession && catalog.byId[state.nodoSession]) ctx.uiWorkspace.openSession(state.nodoSession);
+    else {
+      publish({ nodoSession: void 0 });
+      ctx.layout.selectPanel(null);
+    }
+  };
+  const enter = () => {
+    if (!state.active) publish({ active: true, nativeSession: current() === state.nodoSession ? state.nativeSession : current() ?? state.nativeSession });
+    awaitingEntry = true;
+    resume();
+    if (document.querySelector("[data-sidebar-collapsed]")) ctx.layout.toggleSidebar();
+  };
+  const seat = (slot, Component) => ctx.slots.inject(slot.name, () => {
     let unregister;
     const update = () => {
-      const state = space.getSnapshot();
-      if (state.active && !state.legacy && !unregister) unregister = ctx.slots.register({ name: "conversation.input.right", id: "nodo-role" }, RoleSeat);
-      else if ((!state.active || state.legacy) && unregister) {
+      if (state.active && !unregister) unregister = ctx.slots.register(slot, Component);
+      else if (!state.active && unregister) {
         unregister();
         unregister = null;
       }
     };
-    const stop = space.subscribe(update);
+    const stop = subscribe(update);
     update();
     return () => {
       stop();
       unregister?.();
     };
   });
-  return { RoleSeat };
-}
-
-// core/shared/version.js
-var isNewer = (base, candidate) => {
-  const parse = (value) => typeof value === "string" && /^v?\d+\.\d+\.\d+$/i.test(value) ? value.replace(/^v/i, "").split(".").map(Number) : null;
-  const a = parse(typeof base === "string" ? base.split(/[-+]/)[0] : base ?? "0.0.0"), b2 = parse(candidate ?? "");
-  if (!a || !b2) return false;
-  for (let index = 0; index < 3; index++) if (b2[index] !== a[index]) return b2[index] > a[index];
-  return false;
-};
-
-// src/client/search-dialog.tsx
-function SearchDialog({ items, onClose }) {
-  const [query, setQuery] = (0, import_react.useState)("");
-  const [active, setActive] = (0, import_react.useState)(0);
-  const list = (0, import_react.useRef)(null);
-  const needle = query.trim().toLocaleLowerCase();
-  const found = needle ? items.filter((item) => item.terms.some((term) => String(term ?? "").toLocaleLowerCase().includes(needle))) : items;
-  const current = Math.min(active, found.length - 1);
-  const pick = (item) => {
-    onClose();
-    item.pick();
-  };
-  (0, import_react.useEffect)(() => {
-    list.current?.children[current]?.scrollIntoView?.({ block: "nearest" });
-  }, [current]);
-  const onKeyDown = (event) => {
-    if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
-    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    if (step && found.length) {
-      event.preventDefault();
-      setActive((current + step + found.length) % found.length);
-    } else if (event.key === "Enter" && found[current]) {
-      event.preventDefault();
-      pick(found[current]);
-    }
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, onClose, closeLabel: "\u5173\u95ED", title: "\u641C\u7D22\u4F1A\u8BDD", headless: true, className: "nodo-search-dialog" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-search-box" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), /* @__PURE__ */ (0, import_react.createElement)(
-    "input",
-    {
-      type: "search",
-      "data-modal-autofocus": true,
-      value: query,
-      placeholder: "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
-      "aria-label": "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
-      onChange: (event) => {
-        setQuery(event.target.value);
-        setActive(0);
-      },
-      onKeyDown
-    }
-  ), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": "\u5173\u95ED\u641C\u7D22", onClick: onClose }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 16 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-search-list", role: "listbox", "aria-label": "\u4F1A\u8BDD", ref: list }, found.map((item, index) => {
-    const on2 = index === current;
-    const status2 = workLabel(item.work);
-    const Glyph = item.project.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular;
-    return /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        key: item.id,
-        type: "button",
-        role: "option",
-        className: "nodo-search-row",
-        "aria-selected": on2,
-        "data-active": on2 || void 0,
-        title: `${item.role.name} \xB7 ${item.name}`,
-        onMouseMove: () => {
-          if (!on2) setActive(index);
-        },
-        onClick: () => pick(item)
-      },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-avatar", "data-lead": item.role.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item.role, size: 20 })),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-name" }, item.name),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-project" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, item.project.name)),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-meta" }, on2 ? "\u21B5" : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(item.work) }), status2) : sessionTime(item.updatedAt))
-    );
-  }), !found.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, items.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD")));
-}
-
-// nodo:engine-logos:nodo:engine-logos
-var ENGINE_LOGO_SVGS = { "claude": '<svg viewBox="0 0 248 248" fill="none" xmlns="http://www.w3.org/2000/svg">\n<path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/>\n</svg>', "codebuddy": '<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">\n<g clip-path="url(#clip0_5110_14771)">\n<rect width="40" height="40" rx="20" fill="url(#paint0_linear_5110_14771)"/>\n<g filter="url(#filter0_f_5110_14771)">\n<circle cx="12.6071" cy="34.9794" r="14.081" fill="#32E6B9" fill-opacity="0.4"/>\n</g>\n<g filter="url(#filter1_f_5110_14771)">\n<circle cx="33.3404" cy="43.6185" r="12.8704" fill="#32E6B9"/>\n</g>\n<path d="M27.6897 3.3426C28.057 3.01322 28.0795 2.99983 28.3485 2.98366C28.7851 2.95177 29.1858 3.16107 29.8664 3.78072C31.4566 5.22574 33.6703 8.19724 35.047 10.7343L35.5796 11.7191L36.3309 12.0927C37.0562 12.4593 38.2459 13.2111 38.7428 13.614C38.9673 13.7997 38.9992 13.8032 39.2326 13.7124C40.2872 13.3017 41.7982 13.846 43.1307 15.1244C44.3302 16.274 45.479 18.2384 45.9191 19.8778C45.9833 20.1417 46.0683 20.709 46.0994 21.1314C46.1997 22.6144 45.7243 23.7986 44.8085 24.3349C44.6213 24.443 44.6085 24.4725 44.6137 24.939C44.6559 27.1604 44.0571 29.3777 42.8543 31.54C41.4965 33.9678 39.0794 36.4798 35.8073 38.846C34.0502 40.1247 29.8918 42.5469 28.0122 43.3973C23.5096 45.4244 19.8999 46.2022 16.7645 45.8181C14.8943 45.5915 12.7771 44.8611 11.5246 44.0137C11.1951 43.786 11.1428 43.7719 10.8909 43.8439C9.55017 44.2289 7.79442 43.4374 6.30272 41.7817C5.70771 41.1197 4.74709 39.4939 4.43575 38.6241C3.71569 36.5887 3.85859 34.752 4.81783 33.6551C5.0657 33.3725 5.07387 33.3607 5.01972 32.8856C4.93033 32.1079 4.88982 30.9566 4.93066 30.2138L4.96343 29.5205L3.92091 27.6777C2.3078 24.8074 1.28326 22.3968 0.887982 20.5554C0.679402 19.546 0.692781 19.0981 0.949061 18.7667C1.10529 18.5666 1.61622 18.3594 2.23252 18.2455C3.78518 17.9729 7.17203 18.2198 10.9394 18.885L11.3303 18.9525L12.1903 18.1921C13.6179 16.9275 14.5665 16.2176 16.315 15.1274C18.1373 13.9872 20.1943 13.0498 22.5103 12.3071L23.2533 12.0687L23.6615 10.9964C25.1239 7.13587 26.6218 4.28969 27.6897 3.3426ZM15.4393 23.1261C13.7864 24.0804 12.9602 24.5582 12.3529 25.093C9.89364 27.2585 8.9738 30.6888 10.0208 33.7938C10.2794 34.5606 10.7568 35.387 11.7111 37.0398C12.6653 38.6926 13.1424 39.5194 13.6771 40.1267C15.8426 42.5859 19.2732 43.5045 22.3783 42.4574C23.145 42.1989 23.972 41.7223 25.6248 40.768L35.1333 35.2783C36.7862 34.324 37.6124 33.8462 38.2196 33.3114C40.6789 31.1459 41.5988 27.7156 40.5518 24.6105C40.2932 23.8438 39.8157 23.0174 38.8615 21.3646C37.9072 19.7117 37.4302 18.885 36.8955 18.2777C34.7299 15.8185 31.2993 14.8999 28.1943 15.947C27.4275 16.2055 26.6006 16.6821 24.9478 17.6364L15.4393 23.1261Z" fill="url(#paint1_linear_5110_14771)"/>\n<rect x="15.8816" y="30.0273" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 15.8816 30.0273)" fill="white"/>\n<rect x="26.6978" y="23.7812" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 26.6978 23.7812)" fill="white"/>\n</g>\n<defs>\n<filter id="filter0_f_5110_14771" x="-14.9163" y="7.45599" width="55.0468" height="55.047" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="6.72123" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<filter id="filter1_f_5110_14771" x="9.46959" y="19.7477" width="47.7417" height="47.741" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="5.50019" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<linearGradient id="paint0_linear_5110_14771" x1="20" y1="0" x2="20" y2="40" gradientUnits="userSpaceOnUse">\n<stop stop-color="#6C4DFF"/>\n<stop offset="1" stop-color="#583ED3"/>\n</linearGradient>\n<linearGradient id="paint1_linear_5110_14771" x1="14.639" y1="10.7917" x2="32.1712" y2="41.1585" gradientUnits="userSpaceOnUse">\n<stop stop-color="white" stop-opacity="0.8"/>\n<stop offset="0.437689" stop-color="white"/>\n</linearGradient>\n<clipPath id="clip0_5110_14771">\n<rect width="40" height="40" rx="20" fill="white"/>\n</clipPath>\n</defs>\n</svg>', "codex": '<svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>', "dsh": '<svg fill="#5786FE" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136 9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287.3.3 0 0 1 .113.074.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078.253.253 0 0 1-.114-.358 1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45"/></svg>', "opencode": '<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">\n<rect width="512" height="512" fill="#131010"></rect>\n<path d="M320 224V352H192V224H320Z" fill="#5A5858"></path>\n<path fill-rule="evenodd" clip-rule="evenodd" d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z" fill="white"></path>\n</svg>', "pi": '<svg fill="currentColor" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg"><path d="M420 280H280V140H0V0H420V280Z"/><path d="M560 560H420V280H560V560Z"/><path d="M140 560H0V140H140V280H280V420H140V560Z"/></svg>', "qoder": '<svg fill="currentColor" viewBox="0 0 206 206" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M104.003 35.8361C104.122 35.8899 104.223 35.938 104.308 35.9805C104.575 36.1139 104.784 36.2211 104.937 36.3023L154.881 62.632L154.9 62.6418C154.992 62.6907 155.084 62.7426 155.173 62.7973C160.753 65.8115 165.083 70.1612 168.163 75.8464C171.221 81.491 172.75 87.925 172.75 95.1484V117.637C172.75 117.795 172.743 117.954 172.728 118.111V158.251C172.728 163.577 170.488 167.682 166.008 170.563C161.529 173.445 156.866 173.781 152.021 171.573L143.479 167.682L143.449 167.699L143.279 167.796C143.276 167.798 143.237 167.821 143.159 167.867C142.593 168.202 142.154 168.454 141.84 168.625C141.789 168.654 141.686 168.709 141.532 168.79C141.479 168.819 141.443 168.837 141.426 168.846L141.174 168.979C140.759 169.203 140.355 169.414 139.961 169.61L139.342 169.911L139.192 169.982C138.849 170.145 138.46 170.326 138.025 170.524L137.252 170.86C136.994 170.973 136.623 171.127 136.137 171.32L136.002 171.374L135.892 171.42C135.835 171.443 135.78 171.466 135.725 171.488C135.49 171.584 135.294 171.661 135.137 171.716C134.872 171.814 134.453 171.961 133.881 172.16L133.879 172.161L133.715 172.219C133.549 172.28 133.366 172.342 133.165 172.407C132.571 172.603 131.9 172.805 131.151 173.012L127.646 173.973C126.996 174.153 126.392 174.306 125.833 174.432L125.437 174.515L125.039 174.596C124.663 174.676 124.363 174.738 124.139 174.782C124.007 174.809 123.855 174.836 123.681 174.864C123.646 174.869 123.625 174.872 123.619 174.874L123.11 174.956C123.106 174.957 123.084 174.961 123.044 174.967C122.729 175.02 122.483 175.059 122.304 175.085C122.178 175.104 121.986 175.129 121.727 175.159L121.331 175.209L120.674 175.285C120.526 175.302 120.362 175.317 120.18 175.33L120.066 175.341L120.015 175.345C119.546 175.384 119.175 175.411 118.903 175.426C118.815 175.433 118.717 175.438 118.608 175.443L118.645 175.439C118.497 175.452 118.347 175.459 118.198 175.459H118.137C117.737 175.478 117.398 175.487 117.121 175.487H116.455C116.418 175.487 116.381 175.487 116.344 175.486C116.298 175.485 116.224 175.484 116.122 175.483C115.843 175.479 115.623 175.473 115.461 175.466C115.335 175.462 115.132 175.452 114.852 175.434L114.824 175.432L114.654 175.426L114.273 175.407C114.212 175.404 114.15 175.399 114.088 175.394L113.388 175.332C112.948 175.29 112.527 175.243 112.124 175.19L111.925 175.166C111.882 175.162 111.839 175.155 111.796 175.149C111.339 175.081 110.875 175.005 110.403 174.921L109.901 174.827L109.871 174.821C109.63 174.777 109.429 174.736 109.27 174.698L109.224 174.687L109.158 174.672L109.037 174.644C108.61 174.549 108.15 174.435 107.656 174.301L107.629 174.294C107.5 174.263 107.358 174.226 107.201 174.181L107.2 174.181C106.608 174.013 106.029 173.831 105.463 173.634C105.307 173.586 105.154 173.53 105.004 173.466L104.884 173.42C104.405 173.241 104.002 173.083 103.675 172.948C103.58 172.909 103.469 172.861 103.342 172.804C103.29 172.781 103.261 172.768 103.255 172.766L103.084 172.692C102.756 172.551 102.39 172.384 101.986 172.19L101.906 172.152L101.891 172.145C101.798 172.103 101.715 172.063 101.64 172.025C101.571 171.99 101.501 171.955 101.431 171.918C101.407 171.906 101.386 171.895 101.369 171.886C101.249 171.835 101.13 171.778 101.012 171.716L101.009 171.715L51.5574 145.645C51.215 145.509 50.8889 145.336 50.5849 145.128C48.367 143.914 46.3274 142.453 44.4659 140.744C44.4647 140.743 44.4635 140.742 44.4623 140.741C44.4584 140.737 44.4546 140.734 44.4507 140.73C44.4362 140.717 44.4214 140.704 44.4064 140.69C43.6029 139.953 42.8113 139.14 42.0317 138.252C42.0244 138.243 42.0171 138.235 42.0097 138.226C42.0082 138.224 42.0067 138.222 42.0051 138.22C41.5797 137.727 41.1892 137.252 40.8338 136.795C40.7387 136.672 40.6464 136.551 40.5567 136.432C35.6857 129.988 33.2502 122.172 33.2502 112.983V90.4946C33.2502 89.8308 33.2644 89.0633 33.2927 88.1921C33.3022 87.9838 33.3174 87.7494 33.3384 87.4888C33.3459 87.3951 33.3511 87.3283 33.3539 87.2882C33.3866 86.7286 33.4259 86.2074 33.4719 85.7247C33.4848 85.5587 33.5136 85.2969 33.5583 84.9392C33.5691 84.8524 33.5769 84.7892 33.5817 84.7498C33.589 84.6881 33.6006 84.5877 33.6166 84.4487C33.672 83.9681 33.7187 83.5958 33.7569 83.3318C33.7999 83.0465 33.8556 82.7028 33.9239 82.3007C33.9303 82.2616 33.9429 82.1836 33.9618 82.0668C34.0386 81.5927 34.1025 81.2235 34.1537 80.9593C34.1539 80.9576 34.1542 80.9559 34.1545 80.9542L34.1507 80.9713C34.1669 80.871 34.1817 80.7851 34.1951 80.7134C34.3125 80.1121 34.4286 79.5636 34.5433 79.0679C34.5554 79.0129 34.5689 78.9553 34.5837 78.895C34.704 78.3592 34.8544 77.7535 35.0349 77.078C35.0683 76.9444 35.1121 76.78 35.1663 76.5847C35.1764 76.5481 35.1839 76.5212 35.1886 76.5042C35.4221 75.6865 35.6047 75.0694 35.7364 74.653C35.7408 74.639 35.7453 74.6249 35.7499 74.6109C35.7573 74.5867 35.7647 74.5627 35.7723 74.539C35.7789 74.517 35.7857 74.495 35.7926 74.473C35.8241 74.3734 35.8643 74.2549 35.9134 74.1174L35.9251 74.085C36.1639 73.3479 36.3895 72.6905 36.6021 72.1127C36.6575 71.9603 36.7417 71.7385 36.8547 71.4475C36.8818 71.3777 36.9019 71.3258 36.9151 71.2917C36.9324 71.247 36.9593 71.177 36.9959 71.0817C37.2171 70.5062 37.3921 70.0651 37.5208 69.7585L37.5168 69.7661C37.5549 69.6676 37.5905 69.5789 37.6236 69.5C37.6858 69.3466 37.7661 69.1613 37.8644 68.944C37.8998 68.8657 37.9232 68.8133 37.9347 68.7869C38.152 68.2878 38.3184 67.9104 38.4338 67.6548C38.5471 67.4055 38.7105 67.0593 38.9238 66.6163C38.9706 66.5208 39.03 66.3991 39.1019 66.2511C39.2648 65.9163 39.392 65.6588 39.4835 65.4786L39.5155 65.4136C39.5653 65.3091 39.6106 65.2167 39.6516 65.1362C39.7258 64.9869 39.8207 64.8074 39.9362 64.5977C39.9744 64.5283 39.9996 64.4822 40.0115 64.4596C40.0477 64.3922 40.0935 64.3066 40.1489 64.2029C40.3258 63.872 40.463 63.6187 40.5605 63.4432C40.7672 63.0697 40.9619 62.726 41.1445 62.4123C41.2987 62.1332 41.489 61.8063 41.7152 61.4316C41.7383 61.3935 41.7619 61.3555 41.786 61.318L41.7824 61.323C41.7846 61.3193 41.7867 61.3156 41.7888 61.3118L41.7824 61.323C41.8335 61.2318 41.8771 61.1561 41.9132 61.0959C42.0161 60.9245 42.159 60.697 42.342 60.4136C42.5227 60.1209 42.7188 59.811 42.9304 59.484C43.0841 59.2469 43.3076 58.9123 43.601 58.4804L43.9154 58.0238L44.2115 57.5939C44.2325 57.5634 44.2537 57.5333 44.2753 57.5034L44.2749 57.5021C44.3548 57.3822 44.4252 57.2801 44.4861 57.1958C44.5458 57.1108 44.6445 56.9765 44.7821 56.7929C44.8446 56.7095 44.8877 56.6514 44.9115 56.6186C45.2257 56.1886 45.4678 55.8625 45.6377 55.6403L45.9946 55.1837L46.3262 54.7597C46.5387 54.4816 46.7902 54.1653 47.0808 53.811C47.0969 53.7914 47.1242 53.7575 47.1628 53.7094C47.2305 53.6246 47.2851 53.5571 47.3267 53.5067C47.4115 53.4034 47.53 53.264 47.6821 53.0885C47.7338 53.0289 47.771 52.9858 47.7938 52.9593C47.8766 52.8642 47.9852 52.7384 48.1197 52.582C48.3585 52.3041 48.544 52.0909 48.6764 51.9423L49.3723 51.1748C49.5804 50.9454 49.8853 50.6178 50.2869 50.1921C50.3199 50.1572 50.3534 50.1227 50.3874 50.0888L50.3985 50.0741C50.5274 49.9324 50.6395 49.8139 50.7349 49.7185C50.7855 49.6679 50.8533 49.6012 50.9383 49.5185C50.99 49.4683 51.0247 49.4343 51.0424 49.4165C51.4915 48.9675 51.9017 48.5656 52.2729 48.2107C52.3283 48.1583 52.4007 48.0891 52.49 48.0029C52.6771 47.8224 52.8271 47.6806 52.9399 47.5775C53.3761 47.1664 53.9052 46.6923 54.5271 46.155C54.5279 46.1543 54.5287 46.1536 54.5295 46.1528L54.5189 46.161C54.617 46.0697 54.7025 45.9924 54.7754 45.9292C54.8391 45.8741 54.904 45.8206 54.9705 45.7688C54.997 45.7476 55.0236 45.7269 55.0503 45.7065L55.0774 45.6851L55.0939 45.6717C55.5288 45.3081 55.9911 44.9311 56.4808 44.5407C56.5166 44.5125 56.5529 44.4839 56.5898 44.4548C56.7923 44.2954 56.9507 44.1724 57.0648 44.0858C57.2979 43.9051 57.6655 43.6275 58.1675 43.253C58.2075 43.2232 58.2479 43.1939 58.2888 43.1654C58.3729 43.1065 58.5143 43.0042 58.7128 42.8586C59.1025 42.577 59.5704 42.2518 60.1163 41.883L60.1145 41.8841L60.1593 41.8524C60.2852 41.7638 60.3942 41.6892 60.4862 41.6287C60.5329 41.5967 60.5792 41.5661 60.6251 41.5367C61.2865 41.1057 61.8541 40.7475 62.3278 40.4623C62.4222 40.4035 62.5743 40.3142 62.7839 40.1944C62.7838 40.1941 62.8182 40.1736 62.8873 40.1328C63.453 39.7986 63.8928 39.5462 64.2065 39.3754L64.8387 39.0383L64.872 39.0207C65.2867 38.7973 65.6911 38.5871 66.0852 38.39C66.2669 38.2991 66.5247 38.1744 66.8586 38.0158C67.1979 37.8542 67.5857 37.6746 68.0218 37.477L68.4373 37.2954L68.7948 37.1398C69.0934 37.0111 69.5097 36.84 70.0435 36.6265C70.1097 36.6005 70.1844 36.5712 70.2678 36.5384C70.5114 36.4427 70.6998 36.3699 70.833 36.3199C71.1527 36.2027 71.5991 36.0447 72.1722 35.8457C72.2132 35.8316 72.2719 35.8109 72.3482 35.7837C72.574 35.7031 72.7593 35.64 72.904 35.5945C73.5201 35.3928 74.1846 35.1929 74.8975 34.9948L78.4057 34.0333C79.0348 33.8574 79.6373 33.7044 80.2131 33.5744C80.378 33.5359 80.5868 33.4913 80.8395 33.4407C81.1612 33.3685 81.5282 33.2925 81.9406 33.2127C82.0871 33.1842 82.2808 33.151 82.5216 33.1131C82.5981 33.101 82.6517 33.0924 82.6826 33.0873C82.7524 33.0758 82.852 33.0591 82.9815 33.0372C83.2985 32.9834 83.5459 32.9435 83.7238 32.9177C83.7635 32.9119 83.8033 32.9066 83.8432 32.9018L84.1737 32.8619L84.504 32.822C84.5516 32.8162 84.6345 32.8056 84.7525 32.7903C85.0348 32.7538 85.2559 32.7271 85.4158 32.7105C85.5254 32.6991 85.6353 32.6913 85.7453 32.6873L86.07 32.6632C86.533 32.6238 86.9091 32.5967 87.1982 32.582C87.3378 32.5734 87.5561 32.5646 87.8533 32.5556L87.8692 32.5551C87.9598 32.5532 88.0717 32.5499 88.205 32.5453C88.4606 32.5364 88.6706 32.5314 88.835 32.5303C88.9748 32.5275 89.1472 32.5271 89.3523 32.529L89.537 32.5302C89.6342 32.5318 89.7388 32.5334 89.851 32.5349C90.1448 32.5389 90.3757 32.5444 90.5436 32.5514C90.6803 32.5549 90.9082 32.5655 91.2273 32.5832C91.2891 32.5871 91.3656 32.5912 91.4568 32.5957C91.6011 32.6026 91.7158 32.6089 91.8012 32.6144C91.9206 32.6204 92.0953 32.6356 92.3254 32.6598L92.6313 32.6871C93.0373 32.7257 93.4523 32.7724 93.8761 32.8271L93.8896 32.8288L93.8913 32.829C94.0015 32.8408 94.0983 32.8527 94.1819 32.8646C94.6093 32.9223 95.085 32.9984 95.6089 33.093C95.6739 33.1047 95.7386 33.1178 95.8031 33.1321L95.8062 33.1318C95.8842 33.1466 95.9548 33.1606 96.0179 33.1737C96.0408 33.1779 96.0713 33.1835 96.1093 33.1905C96.3333 33.2314 96.5177 33.2683 96.6627 33.301C96.7395 33.3173 96.8375 33.3418 96.9566 33.3744C96.9806 33.3797 97.0046 33.385 97.0288 33.3903C97.2476 33.4387 97.4749 33.4924 97.7107 33.5517C97.9063 33.6006 98.1067 33.6529 98.3119 33.7085L98.3072 33.7071L98.3401 33.7149C98.4501 33.742 98.5513 33.7682 98.6438 33.7934C98.6594 33.7976 98.6743 33.8018 98.6886 33.8058C98.7485 33.8224 98.8045 33.8387 98.8566 33.8545C98.8608 33.8557 98.865 33.8569 98.8692 33.8581C99.3732 34.0019 99.9241 34.1774 100.522 34.3846C100.548 34.3932 100.574 34.4019 100.6 34.4109C100.733 34.4556 100.881 34.5109 101.044 34.5769C101.508 34.7451 101.931 34.9089 102.311 35.0684C102.368 35.0928 102.417 35.1139 102.459 35.1317C102.655 35.2169 102.808 35.2839 102.918 35.3328C103.261 35.4856 103.61 35.6469 103.963 35.8169L104.003 35.8361ZM101.032 34.5728L101.03 34.5721C101.033 34.573 101.035 34.5739 101.038 34.5748C101.036 34.5741 101.034 34.5735 101.032 34.5728ZM104.903 162.561L105.666 162.963C105.717 162.991 105.807 163.037 105.935 163.102C105.972 163.121 106.002 163.136 106.025 163.148C106.092 163.178 106.131 163.197 106.145 163.205L106.281 163.269C106.554 163.401 106.811 163.519 107.052 163.622L107.063 163.627C107.148 163.663 107.253 163.708 107.38 163.765C107.425 163.785 107.449 163.796 107.452 163.797C107.68 163.891 107.998 164.015 108.408 164.169L108.458 164.189C108.52 164.211 108.58 164.234 108.641 164.257L108.655 164.263C109.054 164.403 109.476 164.536 109.919 164.661C109.914 164.66 109.885 164.654 109.835 164.643C109.904 164.659 109.973 164.675 110.041 164.693L110.249 164.747C110.596 164.84 110.948 164.927 111.306 165.008L111.379 165.025L111.451 165.041L111.564 165.067L111.672 165.086L111.703 165.092L112.139 165.174C112.496 165.238 112.847 165.295 113.191 165.347L113.391 165.372C113.685 165.41 113.977 165.443 114.269 165.47L114.88 165.525L115.066 165.535L115.442 165.551L115.47 165.553C115.644 165.565 115.787 165.572 115.899 165.576C115.964 165.579 116.087 165.581 116.267 165.584C116.363 165.585 116.443 165.586 116.506 165.587H117.121C117.26 165.587 117.474 165.58 117.764 165.566C117.848 165.561 117.932 165.559 118.015 165.559H118.037C118.081 165.557 118.126 165.555 118.174 165.552L118.156 165.555C118.215 165.55 118.274 165.546 118.334 165.542C118.501 165.534 118.779 165.514 119.169 165.481L119.325 165.467C119.376 165.462 119.427 165.458 119.479 165.455C119.506 165.453 119.53 165.451 119.549 165.449L120.088 165.388L120.592 165.324C120.728 165.308 120.832 165.295 120.904 165.284C121.005 165.27 121.174 165.243 121.411 165.203C121.454 165.196 121.491 165.19 121.522 165.185L121.924 165.119C121.976 165.11 122.042 165.1 122.123 165.087L122.114 165.091C122.152 165.082 122.191 165.074 122.23 165.067C122.398 165.035 122.677 164.977 123.068 164.895L123.398 164.828L123.653 164.775C124.058 164.683 124.517 164.567 125.03 164.425L128.507 163.472C129.101 163.307 129.652 163.141 130.162 162.973C130.219 162.955 130.253 162.943 130.266 162.939C130.308 162.922 130.35 162.907 130.393 162.892L130.632 162.808H130.634C131.154 162.628 131.551 162.487 131.825 162.387C131.834 162.383 131.882 162.364 131.971 162.328C132.052 162.295 132.097 162.276 132.106 162.273L132.326 162.182C132.367 162.166 132.414 162.147 132.467 162.126C132.853 161.972 133.13 161.858 133.299 161.784L133.938 161.506C134.318 161.334 134.65 161.181 134.935 161.045L135.024 161.003L135.533 160.756C135.838 160.604 136.178 160.426 136.553 160.224L136.711 160.141C136.766 160.112 136.839 160.073 136.929 160.025C136.993 159.992 137.052 159.961 137.107 159.93C137.318 159.814 137.658 159.619 138.125 159.343C138.192 159.304 138.261 159.263 138.332 159.221L138.46 159.147H138.461C138.544 159.098 138.619 159.055 138.687 159.017C139.131 158.749 139.551 158.484 139.947 158.224L140.305 157.979C141.736 157.002 143.572 156.845 145.148 157.563L156.125 162.564C157.693 163.279 159.202 163.17 160.652 162.237C162.103 161.304 162.828 159.976 162.828 158.251V117.614C162.828 117.456 162.835 117.298 162.85 117.14V95.1484C162.85 83.7403 158.651 75.8219 150.254 71.3934L149.959 71.2374C149.909 71.2132 149.855 71.1867 149.796 71.158C149.721 71.1217 149.663 71.0932 149.62 71.0724C149.384 70.9567 149.129 70.8386 148.853 70.718C148.676 70.6389 148.548 70.5828 148.468 70.5496C148.234 70.4515 147.944 70.3392 147.597 70.2126L147.415 70.1456L147.313 70.1067C146.939 69.9768 146.534 69.8488 146.096 69.7227L145.999 69.6973L145.777 69.6395C145.321 69.5221 144.979 69.4377 144.751 69.3863C144.724 69.3805 144.683 69.3717 144.629 69.3597C144.371 69.3034 144.185 69.2642 144.072 69.242C144.03 69.2339 143.989 69.2253 143.948 69.2162L143.83 69.1927C143.449 69.1241 143.093 69.0673 142.761 69.0223C142.792 69.0267 142.81 69.0291 142.814 69.0296C142.703 69.0177 142.628 69.0088 142.589 69.0029C142.287 68.9641 141.996 68.931 141.716 68.9037L141.71 68.9033L141.383 68.8734C141.233 68.8611 140.993 68.845 140.663 68.8252C140.435 68.8126 140.276 68.805 140.186 68.8025C140.128 68.8008 140.071 68.7982 140.014 68.7947C139.934 68.7897 139.76 68.7873 139.491 68.7873L138.982 68.7863C138.823 68.7894 138.572 68.7974 138.23 68.8105C138.13 68.8157 138.008 68.8205 137.866 68.8249C137.791 68.8271 137.731 68.8296 137.686 68.8322C137.515 68.8408 137.229 68.8619 136.827 68.8954L136.781 68.899C136.729 68.9029 136.661 68.9074 136.577 68.9127L136.442 68.9231C136.355 68.9316 136.204 68.9492 135.988 68.9761C135.849 68.9934 135.758 69.0044 135.717 69.0091C135.625 69.0209 135.503 69.035 135.352 69.0513C135.248 69.0625 135.179 69.0706 135.146 69.0756C135.049 69.09 134.884 69.1175 134.65 69.158C134.503 69.1832 134.384 69.2036 134.291 69.219C134.229 69.2289 134.145 69.2422 134.038 69.2587C133.907 69.2786 133.814 69.2938 133.759 69.3042C133.645 69.3251 133.444 69.3668 133.157 69.4293C133.028 69.4574 132.949 69.4744 132.92 69.4802C132.827 69.5013 132.7 69.5285 132.54 69.5617C132.451 69.5801 132.403 69.5901 132.396 69.5916C131.906 69.7035 131.445 69.8191 131.014 69.9384L127.538 70.8908C126.968 71.049 126.455 71.2026 125.998 71.3517L125.707 71.4525L125.352 71.575C124.951 71.7086 124.6 71.8325 124.3 71.9467C124.181 71.9913 123.979 72.0708 123.693 72.1852C123.284 72.3461 122.971 72.4736 122.752 72.5678L122.104 72.8516C121.973 72.9113 121.833 72.9757 121.684 73.0449V91.2807C121.684 92.0491 121.665 92.8184 121.628 93.5885C121.622 93.7365 121.609 93.9283 121.591 94.1637L121.59 94.1679L121.571 94.4471L121.57 94.4744C121.528 95.1281 121.491 95.6208 121.457 95.9524C121.439 96.1399 121.414 96.3666 121.381 96.6324L121.329 97.0655C121.322 97.1194 121.312 97.2021 121.299 97.3136C121.248 97.7482 121.207 98.0619 121.178 98.255C121.155 98.4224 121.12 98.6496 121.074 98.9367C121.068 98.9704 121.065 98.9883 121.065 98.9905L121.009 99.3453L121.009 99.3467C120.917 99.902 120.844 100.324 120.788 100.612C120.661 101.278 120.528 101.923 120.389 102.547L120.362 102.657C120.224 103.259 120.071 103.869 119.902 104.487L119.761 104.999C119.578 105.652 119.397 106.263 119.219 106.83L119.068 107.297C118.85 107.97 118.629 108.613 118.405 109.225C118.356 109.361 118.29 109.536 118.205 109.751L118.188 109.793L118.192 109.783L118.08 110.078C118.063 110.121 118.039 110.184 118.007 110.266C117.79 110.827 117.625 111.244 117.512 111.517C117.449 111.674 117.358 111.889 117.239 112.163C117.192 112.273 117.165 112.336 117.158 112.351L117.095 112.503C116.916 112.924 116.752 113.292 116.603 113.609C116.52 113.796 116.401 114.053 116.244 114.381C116.192 114.49 116.148 114.584 116.109 114.664C116.087 114.71 116.055 114.778 116.011 114.868C115.823 115.258 115.676 115.559 115.568 115.77C115.376 116.148 115.2 116.486 115.04 116.784L114.726 117.371L114.51 117.768C114.385 117.994 114.197 118.325 113.947 118.761C113.932 118.786 113.907 118.83 113.871 118.893C113.665 119.251 113.496 119.536 113.364 119.749C113.175 120.066 112.975 120.389 112.764 120.718C112.747 120.745 112.719 120.789 112.68 120.851C112.458 121.207 112.294 121.463 112.191 121.62C112.082 121.789 111.924 122.028 111.715 122.339C111.63 122.465 111.557 122.575 111.495 122.666L111.474 122.698L110.894 123.543L110.828 123.635L110.248 124.44C110.006 124.774 109.774 125.086 109.554 125.376C109.374 125.614 109.136 125.921 108.838 126.296C108.792 126.354 108.722 126.444 108.626 126.564C108.415 126.831 108.255 127.032 108.146 127.165C107.99 127.358 107.765 127.627 107.472 127.971L107.432 128.017L107.427 128.022C107.169 128.329 106.885 128.659 106.573 129.01C106.415 129.187 106.185 129.443 105.883 129.777C105.674 130.009 105.372 130.333 104.979 130.75C104.865 130.87 104.702 131.038 104.49 131.254C104.4 131.346 104.327 131.42 104.271 131.477C103.929 131.825 103.523 132.223 103.055 132.67L102.875 132.844L102.673 133.037L102.415 133.284C101.896 133.765 101.374 134.233 100.848 134.686L100.749 134.772L100.669 134.843L100.589 134.915C100.544 134.955 100.499 134.995 100.452 135.032L100.254 135.197C99.956 135.449 99.52 135.806 98.9463 136.268L98.9399 136.273C98.8505 136.346 98.7376 136.435 98.6012 136.539C98.551 136.577 98.5019 136.615 98.4539 136.652L98.3712 136.715C97.9722 137.023 97.5654 137.329 97.1506 137.632C97.1246 137.65 97.0729 137.688 96.9956 137.746C96.8643 137.844 96.7619 137.919 96.6886 137.971C96.2495 138.286 95.8236 138.581 95.4107 138.856L95.0917 139.078C95.0575 139.102 95.0231 139.126 94.9883 139.148C94.3982 139.537 93.7872 139.923 93.1553 140.305L93.1461 140.31C93.3774 150.816 97.2951 158.232 104.899 162.559C104.9 162.559 104.902 162.56 104.903 162.561ZM85.109 152.14C83.8619 148.186 83.2373 143.919 83.2353 139.337V137.521C83.2347 137.489 83.2344 137.458 83.2344 137.426V116.845C83.2344 116.045 83.2534 115.247 83.2913 114.451C83.2988 114.292 83.313 114.083 83.334 113.822C83.3415 113.729 83.3466 113.663 83.3493 113.626C83.3544 113.552 83.3621 113.44 83.3724 113.29C83.4083 112.76 83.4408 112.342 83.4697 112.035C83.4825 111.908 83.5022 111.733 83.5288 111.511C83.5477 111.353 83.5635 111.213 83.5763 111.091C83.5843 111.024 83.5963 110.921 83.6122 110.782C83.6676 110.301 83.7158 109.919 83.757 109.636C83.797 109.37 83.8504 109.041 83.917 108.649C83.9225 108.616 83.931 108.565 83.9424 108.496C84.0263 107.992 84.0935 107.6 84.144 107.32C84.2642 106.675 84.3948 106.043 84.5356 105.422C84.5486 105.362 84.5632 105.3 84.5794 105.234C84.5829 105.219 84.5864 105.203 84.59 105.188C84.7498 104.507 84.9083 103.874 85.0654 103.29C85.0711 103.27 85.0838 103.223 85.1035 103.148C85.1407 103.006 85.1675 102.907 85.1837 102.851C85.3667 102.187 85.5509 101.565 85.7364 100.984C85.7394 100.975 85.7425 100.965 85.7454 100.956C85.7604 100.907 85.7756 100.859 85.7911 100.812C85.8274 100.699 85.8714 100.57 85.9233 100.425C85.9267 100.416 85.9288 100.41 85.9293 100.409C86.1871 99.6224 86.4078 98.9796 86.5913 98.4808C86.651 98.3166 86.7374 98.0889 86.8505 97.7977C86.8777 97.7276 86.8935 97.687 86.8979 97.6759C87.1126 97.1079 87.3121 96.6018 87.4965 96.1574C87.5769 95.96 87.6945 95.6837 87.8495 95.3284C87.8867 95.2432 87.9153 95.1776 87.9353 95.1316C88.1491 94.6407 88.3155 94.2636 88.4344 94.0001C88.5435 93.7602 88.7034 93.4213 88.9141 92.9835C88.9155 92.9806 88.9169 92.9777 88.9182 92.9749C89.099 92.5951 89.2811 92.2247 89.4646 91.8639C89.5557 91.6816 89.689 91.4218 89.8645 91.0844C89.9194 90.9789 89.9656 90.8899 90.0032 90.8175C90.201 90.4424 90.3841 90.1034 90.5524 89.8004C90.7617 89.4223 90.9573 89.0771 91.1389 88.7647L91.4063 88.3047L91.7037 87.7941C91.8473 87.5548 92.0487 87.2295 92.3079 86.8181C92.4094 86.6532 92.5571 86.4188 92.7509 86.1149C92.8189 86.0084 92.8779 85.9158 92.9281 85.8371C93.0803 85.6022 93.2952 85.2806 93.5727 84.8722C93.8298 84.4867 94.0521 84.1637 94.2398 83.9033C94.4559 83.5971 94.6806 83.2865 94.9138 82.9715C95.2236 82.5476 95.4605 82.2284 95.6245 82.014C95.8073 81.7734 96.0476 81.4661 96.3452 81.0921L96.69 80.6582L97.0805 80.168C97.2347 79.9804 97.4631 79.7075 97.7656 79.3492L97.7895 79.3212C97.8343 79.2689 97.9023 79.1892 97.9935 79.0823C98.2842 78.7413 98.506 78.4851 98.6587 78.3137C98.8175 78.1339 99.0523 77.8728 99.3629 77.5304C99.5705 77.3015 99.8791 76.9701 100.289 76.536C100.534 76.2773 100.774 76.0318 101.006 75.7993C101.356 75.4442 101.766 75.0422 102.236 74.5932C102.529 74.3084 102.75 74.0982 102.898 73.9627C103.423 73.4747 103.975 72.9804 104.555 72.4797L104.568 72.4679C104.572 72.4646 104.575 72.4614 104.579 72.4582L104.568 72.4679C104.69 72.3555 104.78 72.2755 104.837 72.2279C104.93 72.1485 105.043 72.0556 105.178 71.9492C105.67 71.5386 106.104 71.1853 106.48 70.8893C106.615 70.7826 106.802 70.6384 107.041 70.4566C107.478 70.1188 107.863 69.8283 108.196 69.5852L108.738 69.1881C109.156 68.886 109.606 68.5732 110.088 68.2498C110.094 68.2454 110.111 68.2342 110.137 68.2159C110.281 68.1154 110.413 68.0272 110.532 67.9513C111.047 67.6097 111.632 67.2385 112.286 66.8376C112.329 66.8116 112.372 66.7861 112.415 66.7614C112.544 66.6878 112.642 66.6306 112.71 66.59C113.351 66.212 113.817 65.9444 114.107 65.7874C114.195 65.7371 114.288 65.6854 114.387 65.6323C114.427 65.6108 114.467 65.5899 114.507 65.5696C114.569 65.5368 114.639 65.5005 114.715 65.4606C114.784 65.425 114.833 65.3993 114.863 65.3835C115.228 65.1868 115.634 64.9766 116.082 64.7529C116.336 64.6259 116.591 64.5012 116.849 64.3787C117.279 64.1741 117.669 63.9926 118.018 63.8342L118.772 63.5029C119.128 63.3494 119.559 63.1731 120.064 62.9741C120.385 62.8458 120.638 62.7468 120.824 62.6771C121.224 62.5247 121.69 62.36 122.221 62.183L122.468 62.0972L122.76 61.9962C123.466 61.7648 124.175 61.5501 124.888 61.352L128.396 60.3905C128.613 60.3306 128.835 60.2715 129.063 60.213L100.3 45.0496C100.214 45.004 100.083 44.937 99.9066 44.8487C99.9047 44.8478 99.9027 44.8469 99.9007 44.846L99.9075 44.8496C99.7964 44.7991 99.6999 44.7535 99.6181 44.7129C99.4811 44.6472 99.3429 44.5824 99.2036 44.5184C99.1007 44.4713 98.9939 44.4231 98.8832 44.3739C98.8044 44.3386 98.6867 44.2871 98.53 44.2193C98.4876 44.201 98.455 44.1869 98.4322 44.177C98.4314 44.1767 98.4306 44.1763 98.4299 44.176C98.3382 44.1381 98.2427 44.0998 98.1433 44.061C97.9965 44.0041 97.8311 43.9427 97.6473 43.8766C97.5717 43.85 97.4776 43.814 97.3649 43.7686C97.3527 43.7645 97.3407 43.7603 97.3286 43.7561C96.8799 43.5998 96.4567 43.4648 96.059 43.3512L95.9727 43.3283C95.8926 43.3086 95.8272 43.2921 95.7763 43.2788C95.3802 43.1715 95.0531 43.0905 94.795 43.036C94.6972 43.0166 94.5792 42.9882 94.4409 42.9508C94.4084 42.9445 94.3714 42.9375 94.33 42.93C94.2346 42.9125 94.1589 42.8984 94.1029 42.8876C94.0584 42.8789 94.014 42.8697 93.9698 42.8599L93.9667 42.8601C93.9009 42.8477 93.8405 42.8359 93.7854 42.8246C93.4377 42.7625 93.1212 42.7121 92.8358 42.6733C92.725 42.6614 92.6275 42.6495 92.5435 42.6375C92.2732 42.6029 91.997 42.5722 91.7147 42.5453L91.3599 42.5131L91.2927 42.5057L91.289 42.5054L91.1859 42.4959C91.1239 42.4922 91.055 42.4886 90.9793 42.4849C90.835 42.478 90.7203 42.4717 90.6349 42.4662C90.4366 42.4553 90.292 42.4486 90.201 42.446C90.0797 42.4413 89.9183 42.4376 89.7169 42.4349C89.5824 42.433 89.4787 42.4313 89.4058 42.4298C89.4064 42.4305 89.3577 42.4304 89.26 42.4294C89.1424 42.4283 89.0705 42.4281 89.0444 42.4289C88.9973 42.4302 88.9501 42.4309 88.903 42.4309C88.8446 42.4309 88.7268 42.434 88.5495 42.4401C88.3825 42.4459 88.248 42.4499 88.1461 42.4522C87.9529 42.458 87.8209 42.4631 87.7499 42.4674C87.5399 42.4782 87.2415 42.5 86.8546 42.5328L86.5715 42.554L86.3409 42.5711C86.3298 42.572 86.3187 42.5728 86.3077 42.5735C86.2335 42.5825 86.1393 42.5944 86.0254 42.6091C85.8845 42.6274 85.7759 42.6412 85.6996 42.6505L85.3608 42.6915L85.0984 42.7231C84.9951 42.7388 84.8419 42.764 84.6388 42.7985C84.4899 42.8237 84.3759 42.8429 84.2967 42.8558C84.246 42.8643 84.1678 42.8768 84.0619 42.8935C83.9382 42.913 83.8599 42.9259 83.827 42.9323C83.5008 42.9954 83.1868 43.0605 82.885 43.1276C82.6666 43.172 82.5146 43.2042 82.429 43.2242C81.993 43.3228 81.5326 43.4398 81.0478 43.5754L77.5317 44.539C76.9734 44.6941 76.4388 44.8552 75.928 45.0223C75.8676 45.0416 75.7842 45.0701 75.6778 45.1081C75.5623 45.1493 75.4704 45.1817 75.4021 45.2051C74.8937 45.3817 74.5177 45.5145 74.2741 45.6037C74.2132 45.6267 74.085 45.6766 73.8895 45.7534C73.7991 45.7889 73.7301 45.816 73.6823 45.8346C73.2548 46.0058 72.9375 46.1359 72.7303 46.2251L72.3994 46.3693L72.0419 46.5249C71.7073 46.677 71.3972 46.821 71.1115 46.957L71.1072 46.9591C70.8335 47.0891 70.6356 47.1846 70.5135 47.2457C70.2089 47.398 69.8811 47.5686 69.5302 47.7576L69.4965 47.7756L68.9012 48.0927C68.7153 48.1941 68.3892 48.3824 67.9232 48.6577C67.8482 48.702 67.7923 48.735 67.7555 48.7567C67.6073 48.8417 67.518 48.8937 67.4876 48.9125C67.0806 49.1579 66.5958 49.4639 66.0332 49.8305C65.9931 49.8578 65.9533 49.8842 65.9139 49.9097L65.8575 49.9496C65.7862 49.9998 65.7282 50.0401 65.6836 50.0706C65.2073 50.3925 64.8258 50.657 64.5392 50.864C64.3368 51.0125 64.1686 51.1342 64.0344 51.2291C63.607 51.5482 63.2914 51.7866 63.0876 51.9444C62.9946 52.0152 62.8699 52.1121 62.7135 52.2352C62.6748 52.2656 62.6456 52.2887 62.6258 52.3042C62.2109 52.635 61.8299 52.9455 61.4827 53.2357C61.4226 53.2875 61.3346 53.3593 61.2187 53.4512C61.1402 53.5238 61.0704 53.5865 61.0095 53.6393C60.4881 54.0895 60.0428 54.4885 59.6734 54.8362C59.591 54.912 59.488 55.0095 59.3645 55.1286C59.248 55.241 59.1565 55.3286 59.0899 55.3914C58.7889 55.6792 58.4401 56.0213 58.0437 56.4178C57.9931 56.4684 57.9253 56.535 57.8403 56.6177C57.7886 56.6679 57.7539 56.7019 57.7362 56.7197L57.7249 56.7344C57.6255 56.8437 57.536 56.9393 57.4565 57.0211C57.1154 57.3829 56.865 57.6517 56.7055 57.8275L56.0398 58.5614C55.9662 58.6442 55.8292 58.8023 55.6287 59.0355C55.4778 59.2111 55.3624 59.3447 55.2825 59.4363C55.2667 59.4549 55.227 59.5009 55.1632 59.5745C55.0686 59.6836 55.0053 59.7575 54.9736 59.7962C54.9593 59.8136 54.9328 59.8464 54.8943 59.8946C54.8265 59.9794 54.7719 60.047 54.7303 60.0973C54.5152 60.3596 54.3244 60.5997 54.1578 60.8176L53.8013 61.2738L53.4693 61.6981C53.3654 61.8344 53.1797 62.0856 52.9122 62.4515C52.8654 62.5159 52.7968 62.6084 52.7064 62.7292C52.6248 62.8381 52.5706 62.9115 52.5439 62.9494L52.5131 62.9944C52.4514 63.087 52.3954 63.1689 52.345 63.2403L52.0696 63.6401L51.7733 64.0703C51.532 64.4257 51.3545 64.691 51.2409 64.8662C51.0597 65.1463 50.8943 65.4079 50.7447 65.6511C50.7251 65.683 50.7052 65.7146 50.6848 65.7459C50.5481 65.9573 50.4543 66.1054 50.4033 66.1903L50.3824 66.227C50.3045 66.3638 50.2323 66.4853 50.1657 66.5917C50.0113 66.8483 49.8731 67.0865 49.751 67.3064C49.5715 67.6161 49.3943 67.9291 49.2192 68.2454C49.1453 68.3783 49.0325 68.5866 48.881 68.8703C48.8223 68.98 48.7781 69.0627 48.7481 69.1185C48.72 69.1716 48.6738 69.2567 48.6094 69.3736C48.5585 69.4661 48.5308 69.5168 48.5265 69.5259C48.5046 69.571 48.482 69.6157 48.4588 69.66L48.4547 69.6708C48.3897 69.8073 48.3322 69.9233 48.2822 70.0189C48.2355 70.1113 48.1433 70.299 48.0058 70.5818C47.9333 70.7308 47.8767 70.8467 47.8361 70.9296C47.6588 71.2978 47.5309 71.5684 47.4524 71.7412C47.3585 71.9492 47.2134 72.2784 47.0172 72.7288C46.9875 72.7976 46.9436 72.8962 46.8857 73.0244C46.8378 73.1302 46.8106 73.1914 46.8041 73.2079C46.7849 73.2566 46.7649 73.305 46.7441 73.353C46.7433 73.3551 46.7425 73.3573 46.7417 73.3594L46.75 73.3409C46.7166 73.4274 46.6876 73.5004 46.6631 73.5599C46.5646 73.7947 46.4228 74.1529 46.2376 74.6347C46.1998 74.7329 46.1713 74.807 46.152 74.8571C46.1361 74.8984 46.1135 74.9566 46.0843 75.0318C45.9971 75.2565 45.9358 75.4173 45.9005 75.5143C45.7283 75.9826 45.5384 76.5369 45.3309 77.1772C45.3081 77.2459 45.2843 77.3155 45.2595 77.386C45.2346 77.4698 45.2075 77.5532 45.178 77.636C45.1726 77.6528 45.1672 77.6694 45.1617 77.6859C45.0586 78.0149 44.9117 78.5129 44.7212 79.1799L44.7065 79.2334C44.6722 79.3569 44.6508 79.4367 44.6421 79.4728C44.6323 79.5129 44.6222 79.553 44.6115 79.5928C44.4631 80.1463 44.3425 80.6288 44.2497 81.0401C44.2363 81.1019 44.2212 81.1671 44.2043 81.2356C44.2015 81.2478 44.1987 81.2602 44.1958 81.2724C44.1057 81.6601 44.0145 82.0896 43.9222 82.5611C43.9219 82.5631 43.9215 82.5651 43.9212 82.5671L43.9253 82.5485C43.9091 82.6488 43.8943 82.7348 43.8809 82.8064C43.8451 82.9907 43.7966 83.2719 43.7355 83.6497C43.7153 83.7743 43.6999 83.8688 43.6893 83.9332C43.6284 84.2926 43.5824 84.5751 43.5513 84.7805C43.5298 84.9296 43.4969 85.1967 43.4525 85.5819C43.4353 85.7314 43.4221 85.8449 43.4129 85.9225C43.4057 85.9831 43.3956 86.0649 43.3828 86.168C43.3563 86.3799 43.3402 86.5204 43.3347 86.5896C43.2957 87.0031 43.2621 87.4507 43.2337 87.9323C43.2261 88.0425 43.2174 88.1588 43.2075 88.2812C43.1952 88.435 43.1878 88.5377 43.1854 88.5891C43.1625 89.3034 43.1511 89.9389 43.1511 90.4954V112.984C43.1511 119.71 44.7969 125.37 48.0885 129.964C48.2105 130.135 48.3347 130.304 48.4612 130.471C48.7612 130.87 49.1067 131.296 49.4976 131.749C50.0389 132.365 50.5851 132.925 51.1362 133.429C51.1394 133.432 51.1427 133.435 51.146 133.438C51.159 133.45 51.1727 133.462 51.1869 133.475C52.1229 134.329 53.1204 135.091 54.1794 135.76C54.6482 136.057 55.1293 136.336 55.6229 136.597C55.6387 136.605 55.6545 136.613 55.6701 136.622L55.7005 136.637C55.7175 136.646 55.7346 136.655 55.7515 136.664L85.109 152.14ZM93.1353 128.236C93.4493 127.981 93.6922 127.78 93.8641 127.635L94.0621 127.471L94.0756 127.459L94.1552 127.388L94.3292 127.235C94.7991 126.83 95.2489 126.428 95.6787 126.029L95.8253 125.887L96.0277 125.694L96.1784 125.548C96.5995 125.146 96.9459 124.807 97.2176 124.531C97.2581 124.489 97.3285 124.417 97.4289 124.315C97.6004 124.141 97.7231 124.014 97.7971 123.936C98.1301 123.583 98.3794 123.315 98.5452 123.132C98.8197 122.829 99.0227 122.603 99.1543 122.453C99.428 122.145 99.6664 121.87 99.8696 121.627C99.8932 121.599 99.9173 121.571 99.9416 121.543L99.961 121.521C100.189 121.254 100.352 121.059 100.451 120.936C100.54 120.827 100.676 120.657 100.86 120.424C100.962 120.296 101.039 120.198 101.092 120.131C101.332 119.828 101.519 119.588 101.653 119.41C101.842 119.162 102.036 118.901 102.235 118.626L102.797 117.846L102.819 117.815L103.309 117.099L103.311 117.096C103.344 117.047 103.406 116.954 103.499 116.816C103.668 116.564 103.788 116.384 103.858 116.274C103.965 116.111 104.109 115.885 104.29 115.597C104.328 115.536 104.357 115.49 104.378 115.456C104.573 115.153 104.739 114.885 104.877 114.652C104.898 114.616 104.92 114.58 104.942 114.545C105.011 114.435 105.127 114.238 105.289 113.956C105.325 113.894 105.353 113.846 105.371 113.813C105.591 113.43 105.753 113.146 105.856 112.96L106.027 112.645L106.306 112.122C106.44 111.873 106.587 111.591 106.746 111.278C106.819 111.134 106.935 110.898 107.092 110.573C107.137 110.478 107.172 110.405 107.196 110.356C107.213 110.32 107.251 110.241 107.309 110.118C107.427 109.87 107.51 109.694 107.557 109.589C107.708 109.262 107.852 108.94 107.988 108.622L108.004 108.58C108.048 108.477 108.098 108.361 108.153 108.233C108.24 108.031 108.301 107.889 108.334 107.807C108.436 107.558 108.583 107.187 108.773 106.695C108.806 106.611 108.831 106.547 108.849 106.501L108.93 106.284C108.956 106.217 108.98 106.157 109 106.106C109.044 105.996 109.071 105.926 109.082 105.896C109.28 105.353 109.469 104.803 109.649 104.247L109.805 103.768C109.931 103.364 110.073 102.88 110.231 102.318L110.353 101.873C110.486 101.389 110.605 100.913 110.713 100.445L110.766 100.224C110.856 99.8165 110.954 99.3298 111.062 98.7642C111.104 98.5444 111.164 98.2039 111.239 97.7427L111.24 97.7413L111.286 97.4467C111.291 97.4136 111.297 97.3803 111.302 97.3468C111.335 97.1476 111.356 97.0084 111.367 96.9292C111.395 96.7383 111.429 96.4795 111.468 96.1528C111.482 96.0307 111.493 95.9379 111.501 95.8744L111.551 95.4529C111.576 95.2556 111.592 95.114 111.6 95.0279C111.626 94.7717 111.656 94.3788 111.689 93.8493L111.691 93.8218L111.715 93.4636C111.719 93.4193 111.721 93.3886 111.722 93.3716C111.731 93.2627 111.736 93.1977 111.737 93.1766C111.768 92.5227 111.784 91.8907 111.784 91.2807V79.3334C111.683 79.4164 111.58 79.5026 111.473 79.592C111.434 79.6239 111.396 79.6552 111.357 79.6859L111.24 79.7802C111.239 79.7812 111.238 79.7822 111.237 79.7833L111.249 79.7743C111.126 79.8862 111.041 79.9618 110.993 80.0012C110.538 80.3944 110.077 80.8076 109.611 81.2411C109.514 81.3295 109.345 81.4906 109.104 81.7244C108.688 82.1222 108.331 82.4721 108.034 82.7742C107.843 82.9645 107.658 83.1541 107.479 83.3429C107.121 83.7221 106.86 84.0021 106.696 84.1831C106.414 84.4937 106.204 84.7277 106.065 84.8851C105.951 85.0125 105.772 85.2195 105.528 85.5059C105.432 85.6192 105.366 85.6963 105.331 85.7372C105.056 86.0624 104.873 86.2807 104.78 86.3921L104.435 86.827L104.094 87.2552C103.841 87.5734 103.643 87.8273 103.498 88.0169C103.372 88.1822 103.169 88.4556 102.89 88.8374C102.689 89.1089 102.493 89.3801 102.302 89.651C102.166 89.8402 101.994 90.0899 101.787 90.4002C101.534 90.7732 101.359 91.034 101.262 91.1826C101.225 91.2418 101.17 91.3279 101.098 91.4409C100.933 91.6994 100.805 91.9027 100.713 92.0507C100.474 92.4308 100.313 92.6903 100.229 92.8291L99.9616 93.2888L99.698 93.7424C99.551 93.995 99.3887 94.2817 99.2111 94.6025C99.0755 94.8467 98.9312 95.1137 98.7783 95.4034C98.7492 95.4597 98.7058 95.5433 98.6481 95.6541C98.497 95.9446 98.3829 96.1669 98.3057 96.321C98.1488 96.6297 97.9937 96.9454 97.8402 97.268L97.8392 97.2703C97.658 97.6465 97.5293 97.9186 97.453 98.0866C97.3556 98.3021 97.2097 98.633 97.0154 99.0794C96.9949 99.1266 96.9646 99.1963 96.9244 99.2882C96.8019 99.5691 96.7118 99.7803 96.654 99.9218C96.5019 100.289 96.3327 100.718 96.1463 101.211C96.1315 101.25 96.1094 101.306 96.0801 101.382C95.9928 101.607 95.9293 101.774 95.8897 101.882C95.7393 102.291 95.5393 102.876 95.2896 103.637C95.2779 103.671 95.262 103.715 95.242 103.771L95.2393 103.772C95.2279 103.809 95.2161 103.847 95.204 103.884C95.1874 103.939 95.1706 103.991 95.1534 104.043C95.0129 104.485 94.8672 104.979 94.7164 105.526C94.7107 105.546 94.698 105.593 94.6784 105.668C94.6411 105.81 94.6173 105.898 94.607 105.932C94.4938 106.355 94.3708 106.848 94.2382 107.411C94.2266 107.464 94.2138 107.518 94.1998 107.575L94.1965 107.589C94.082 108.092 93.9774 108.598 93.8825 109.107C93.8433 109.324 93.7855 109.662 93.7091 110.122C93.6976 110.191 93.6881 110.247 93.6806 110.293C93.6225 110.634 93.5794 110.898 93.5513 111.084C93.5269 111.253 93.4925 111.53 93.4482 111.915C93.4309 112.065 93.421 112.149 93.4184 112.166C93.4056 112.294 93.3859 112.469 93.3592 112.691C93.3403 112.848 93.3287 112.949 93.3243 112.992C93.3052 113.194 93.2806 113.518 93.2505 113.962C93.2397 114.12 93.2313 114.243 93.2252 114.328C93.2203 114.397 93.213 114.492 93.2032 114.615C93.1908 114.769 93.1834 114.871 93.181 114.923C93.1505 115.562 93.1353 116.203 93.1353 116.846V128.236Z"/></svg>', "zcode": '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\n	 viewBox="0 0 30 30" style="enable-background:new 0 0 30 30;" xml:space="preserve">\n<style type="text/css">\n	.st0{opacity:0.3;fill:#E2E4E7;}\n	.st1{opacity:0.8;fill:#E2E4E7;stroke:#FFFFFF;stroke-width:5;stroke-miterlimit:10;}\n	.st2{fill:url(#SVGID_1_);}\n	.st3{fill:none;stroke:#E0E4E9;stroke-width:0.25;stroke-miterlimit:10;}\n	.st4{fill:none;}\n	.st5{fill:#9DA1A5;}\n	.st6{fill-rule:evenodd;clip-rule:evenodd;fill:none;}\n	.st7{fill-rule:evenodd;clip-rule:evenodd;fill:#DFE2E7;}\n	.st8{fill-rule:evenodd;clip-rule:evenodd;fill:#CDD4DA;}\n	.st9{fill-rule:evenodd;clip-rule:evenodd;fill:#B3BCC7;}\n	.st10{fill-rule:evenodd;clip-rule:evenodd;fill:#9DAAB7;}\n	.st11{fill-rule:evenodd;clip-rule:evenodd;fill:#8698A8;}\n	.st12{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_2_);}\n	.st13{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_3_);}\n	.st14{fill:#1F63EC;}\n	.st15{fill:#2D2D2D;}\n	.st16{fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st17{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_4_);}\n	.st18{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_5_);}\n	.st19{fill:none;stroke:#677380;stroke-width:0.5;stroke-miterlimit:10;}\n	.st20{fill:none;stroke:url(#SVGID_6_);stroke-width:2;stroke-miterlimit:10;}\n	.st21{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_7_);}\n	.st22{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_8_);}\n	.st23{fill:#FFFFFF;}\n	.st24{fill-rule:evenodd;clip-rule:evenodd;fill:#2D2D2D;}\n	.st25{clip-path:url(#SVGID_10_);}\n	.st26{clip-path:url(#SVGID_12_);}\n	.st27{fill:url(#SVGID_13_);}\n	.st28{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_14_);}\n	.st29{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_15_);}\n	.st30{clip-path:url(#SVGID_17_);}\n	.st31{clip-path:url(#SVGID_19_);}\n	.st32{fill:url(#SVGID_20_);}\n	.st33{fill:none;stroke:url(#SVGID_21_);stroke-width:2;stroke-miterlimit:10;}\n	.st34{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_22_);}\n	.st35{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_23_);}\n	.st36{clip-path:url(#SVGID_25_);}\n	.st37{clip-path:url(#SVGID_27_);}\n	.st38{fill:url(#SVGID_28_);}\n	.st39{clip-path:url(#SVGID_30_);}\n	.st40{clip-path:url(#SVGID_32_);}\n	.st41{fill:url(#SVGID_33_);}\n	.st42{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF6;}\n	.st43{fill-rule:evenodd;clip-rule:evenodd;fill:#FFFFFF;}\n	.st44{clip-path:url(#SVGID_35_);}\n	.st45{clip-path:url(#SVGID_37_);}\n	.st46{fill:url(#SVGID_38_);}\n	.st47{fill-rule:evenodd;clip-rule:evenodd;fill:#9DA1A5;}\n	.st48{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_39_);}\n	.st49{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_40_);}\n	.st50{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_41_);}\n	.st51{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_42_);}\n	.st52{fill:none;stroke:url(#SVGID_43_);stroke-width:2;stroke-miterlimit:10;}\n	.st53{fill-rule:evenodd;clip-rule:evenodd;fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st54{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_44_);}\n	.st55{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_45_);}\n	.st56{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_46_);}\n	.st57{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_47_);}\n	.st58{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_48_);}\n	.st59{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_49_);}\n	.st60{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_50_);}\n	.st61{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_51_);}\n	.st62{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_52_);}\n	.st63{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_53_);}\n	.st64{clip-path:url(#SVGID_55_);}\n	.st65{clip-path:url(#SVGID_57_);}\n	.st66{fill:url(#SVGID_58_);}\n	.st67{clip-path:url(#SVGID_60_);}\n	.st68{clip-path:url(#SVGID_62_);}\n	.st69{fill:url(#SVGID_63_);}\n	.st70{fill:none;stroke:url(#SVGID_64_);stroke-width:2;stroke-miterlimit:10;}\n	.st71{clip-path:url(#SVGID_66_);}\n	.st72{clip-path:url(#SVGID_68_);}\n	.st73{fill:url(#SVGID_69_);}\n	.st74{clip-path:url(#SVGID_71_);}\n	.st75{clip-path:url(#SVGID_73_);}\n	.st76{fill:url(#SVGID_74_);}\n	.st77{clip-path:url(#SVGID_76_);}\n	.st78{clip-path:url(#SVGID_78_);}\n	.st79{fill:url(#SVGID_79_);}\n	.st80{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_80_);}\n	.st81{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_81_);}\n	.st82{clip-path:url(#SVGID_83_);}\n	.st83{clip-path:url(#SVGID_85_);}\n	.st84{fill:url(#SVGID_86_);}\n	.st85{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_87_);}\n	.st86{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_88_);}\n	.st87{clip-path:url(#SVGID_90_);}\n	.st88{clip-path:url(#SVGID_92_);}\n	.st89{fill:url(#SVGID_93_);}\n	.st90{fill:none;stroke:url(#SVGID_94_);stroke-width:2;stroke-miterlimit:10;}\n	.st91{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_95_);}\n	.st92{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_96_);}\n	.st93{clip-path:url(#SVGID_98_);}\n	.st94{clip-path:url(#SVGID_100_);}\n	.st95{fill:url(#SVGID_101_);}\n	.st96{clip-path:url(#SVGID_103_);}\n	.st97{clip-path:url(#SVGID_105_);}\n	.st98{fill:url(#SVGID_106_);}\n	.st99{clip-path:url(#SVGID_108_);}\n	.st100{clip-path:url(#SVGID_110_);}\n	.st101{fill:url(#SVGID_111_);}\n	.st102{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st103{clip-path:url(#SVGID_113_);}\n	.st104{fill:#FDD138;}\n	.st105{fill:#FCA62F;}\n	.st106{fill:#FB7927;}\n	.st107{fill:#F44B22;}\n	.st108{fill:#D81915;}\n	.st109{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3354;stroke-miterlimit:10;}\n	.st110{fill:none;stroke:#65727F;stroke-width:2;stroke-miterlimit:10;}\n	.st111{fill:none;stroke:#65727F;stroke-width:0.75;stroke-miterlimit:10;}\n	.st112{fill:url(#SVGID_114_);}\n	.st113{fill:#D06C50;}\n	.st114{fill:#2D2D2D;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st115{opacity:0.2;}\n	.st116{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;}\n	.st117{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0212,1.0212;}\n	.st118{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0205,1.0205;}\n	.st119{opacity:0.2;fill:none;}\n	.st120{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;}\n	.st121{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;stroke-dasharray:1.0509,1.0509;}\n	.st122{opacity:0.3;fill:#1F63EC;}\n	.st123{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st124{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st125{clip-path:url(#SVGID_118_);}\n	.st126{fill:url(#SVGID_119_);}\n	.st127{fill:none;stroke:#DFE2E7;stroke-width:0.75;stroke-miterlimit:10;}\n	.st128{fill:#9DA1A5;stroke:#FFFFFF;stroke-miterlimit:10;}\n	.st129{fill:url(#SVGID_120_);}\n	.st130{fill:none;stroke:#677380;stroke-width:0.75;stroke-miterlimit:10;}\n	.st131{opacity:0.4;}\n	.st132{clip-path:url(#SVGID_122_);}\n	.st133{clip-path:url(#SVGID_124_);}\n	.st134{fill:url(#SVGID_125_);}\n	.st135{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;}\n	.st136{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:0.9951,0.9951;}\n	.st137{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1.004,1.004;}\n	.st138{fill:none;stroke:url(#SVGID_126_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st139{fill:url(#SVGID_127_);}\n	.st140{fill:none;stroke:#DDE0E4;stroke-width:0.35;stroke-miterlimit:10;}\n	.st141{fill:#2D2D2D;stroke:#A9B3BE;stroke-width:0.275;stroke-miterlimit:10;}\n	.st142{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF4;}\n	.st143{fill:#FFFFFF;stroke:#B1BAC4;stroke-width:0.275;stroke-miterlimit:10;}\n	.st144{fill:#CE6C50;}\n	.st145{fill:#5B5B5B;}\n	.st146{fill:#8392A3;}\n	.st147{fill:none;stroke:url(#SVGID_128_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st148{fill:url(#SVGID_129_);}\n	.st149{fill:none;stroke:#B5BDC4;stroke-width:0.7;stroke-miterlimit:10;}\n	.st150{opacity:0.6;fill:none;stroke:#78838E;stroke-width:0.35;stroke-miterlimit:10;}\n	.st151{opacity:0.2;fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1,1;}\n	.st152{fill:none;stroke:#DDE0E4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st153{fill:none;stroke:#8392A3;stroke-width:0.5;stroke-miterlimit:10;}\n	.st154{opacity:0.2;fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0182,1.0182;}\n	.st155{fill:none;stroke:#DDE0E4;stroke-width:0.765;stroke-miterlimit:10;}\n	.st156{fill:url(#SVGID_130_);}\n	.st157{fill:url(#SVGID_131_);}\n	.st158{fill:#B1BAC4;}\n	.st159{fill:#CBD1D8;}\n	.st160{fill:#0B1B2B;}\n	.st161{fill:#91D119;}\n	.st162{opacity:0.7;}\n	.st163{fill:#FFFFFF;stroke:#000000;stroke-width:0.4418;stroke-miterlimit:10;}\n	.st164{fill:none;stroke:#939CAA;stroke-width:0.2209;stroke-miterlimit:10;}\n	.st165{fill:none;stroke:#FFFFFF;stroke-width:3.0924;stroke-miterlimit:10;}\n	.st166{fill:url(#SVGID_132_);}\n	.st167{fill:none;stroke:url(#SVGID_133_);stroke-width:1.714;stroke-miterlimit:10;}\n	.st168{fill:url(#SVGID_134_);}\n	.st169{fill:url(#SVGID_135_);}\n	.st170{fill:url(#SVGID_136_);}\n	.st171{fill:url(#SVGID_137_);}\n	.st172{fill:url(#SVGID_138_);}\n	.st173{fill:url(#SVGID_139_);}\n	.st174{fill:url(#SVGID_140_);}\n	.st175{fill:url(#SVGID_141_);}\n	.st176{fill:url(#SVGID_142_);}\n	.st177{fill:url(#SVGID_143_);}\n	.st178{fill:url(#SVGID_144_);}\n	.st179{fill:none;stroke:#1F63EC;stroke-width:4;stroke-miterlimit:10;}\n	.st180{fill:none;stroke:#0B1B2B;stroke-width:4;stroke-miterlimit:10;}\n	.st181{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st182{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st183{fill:#257AF1;}\n	.st184{opacity:0.3;fill:#FFFFFF;}\n	.st185{fill:none;stroke:#98A5B2;stroke-width:4;stroke-miterlimit:10;}\n	.st186{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st187{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st188{fill:none;stroke:#DDDFE4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st189{fill:#9A9EA2;}\n	.st190{fill-rule:evenodd;clip-rule:evenodd;fill:#3267AC;}\n	.st191{fill:#FFFFFF;stroke:#AFB8C3;stroke-width:0.275;stroke-miterlimit:10;}\n	.st192{fill:#C5694E;}\n	.st193{fill:#8192A2;}\n	.st194{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.6317;stroke-miterlimit:10;}\n</style>\n<g id="\u56FE\u5C42_2">\n</g>\n<g id="\u56FE\u5C42_1">\n	<path class="st194" d="M24.51,28.51H5.49c-2.21,0-4-1.79-4-4V5.49c0-2.21,1.79-4,4-4h19.03c2.21,0,4,1.79,4,4v19.03\n		C28.51,26.72,26.72,28.51,24.51,28.51z"/>\n	<g>\n		<g>\n			<g>\n				<g>\n					<path class="st23" d="M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z"/>\n					<polygon class="st23" points="24.3,7.1 13.14,22.91 5.7,22.91 16.86,7.1 					"/>\n					<path class="st23" d="M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z"/>\n				</g>\n			</g>\n		</g>\n	</g>\n</g>\n</svg>' };
-
-// nodo:engine-names:nodo:engine-names
-var ENGINE_NAMES = { "codex": "Codex", "dsh": "DeepSeek Harness", "claude": "Claude Code", "qoder": "Qoder", "pi": "Pi", "zcode": "ZCode", "opencode": "OpenCode", "codebuddy": "CodeBuddy" };
-
-// src/client/engine-logos.js
-var engineDisplayName = (item) => ENGINE_NAMES[item.id] ?? String(item.label ?? item.id).replace(/\s*CLI$/, "");
-function EngineMark({ engine, size = 20 }) {
-  const svg = ENGINE_LOGO_SVGS[engine];
-  if (!svg) return (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size });
-  return (0, import_react.createElement)("span", {
-    className: "nodo-engine-art",
-    style: { width: size, height: size },
-    dangerouslySetInnerHTML: { __html: svg },
-    "aria-hidden": true
-  });
-}
-var ENGINE_LOGO_CSS = `
-.nodo-engine-art{display:inline-block;flex:none}
-.nodo-engine-art>svg{display:block;width:100%;height:100%}
-`;
-
-// src/client/model-options.js
-function modelName(raw) {
-  let id = typeof raw === "string" ? raw : "";
-  if (id.startsWith("[")) {
-    try {
-      const [, model] = JSON.parse(id);
-      if (typeof model === "string" && model !== "") id = model;
-    } catch {
-    }
-  }
-  const name = id.slice(Math.max(id.lastIndexOf("$"), id.lastIndexOf("/")) + 1);
-  return name || id;
-}
-var modelLabel = (item) => item.label && /\s/.test(item.label) ? item.label : modelName(item.label ?? item.id);
-var unlistedOption = (value, choices) => value && !choices.some((item) => item.id === value) ? [(0, import_react.createElement)("option", { key: value, value }, `\u4E0D\u5728\u6E05\u5355\uFF1A${value}`)] : [];
-function modelChoices(models, value = "", fallback = "") {
-  const selected = models.find((item) => item.id === (value || fallback));
-  const providers = /* @__PURE__ */ new Map();
-  for (const item of models) providers.set(item.group ?? "", [...providers.get(item.group ?? "") ?? [], item]);
-  const options = [...providers].flatMap(([group, items]) => {
-    const rows = items.map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id, title: item.id }, modelLabel(item)));
-    return group === "" ? rows : [(0, import_react.createElement)("optgroup", { key: `group:${group}`, label: group }, ...rows)];
-  });
-  return { selected, value: selected?.id ?? value, levels: selected?.thinking ?? [], options: [...unlistedOption(value, models), ...options] };
-}
-var thinkingAfterModelChange = (models, model, thinking) => (models.find((item) => item.id === model)?.thinking ?? []).some((level) => level.id === thinking) ? thinking : "";
-
-// src/client/tool-call.tsx
-var STATUS_LABELS = {
-  started: "\u5DF2\u53D1\u8D77",
-  running: "\u8FD0\u884C\u4E2D",
-  done: "\u5DF2\u5B8C\u6210",
-  error: "\u5931\u8D25",
-  denied: "\u5DF2\u62D2\u7EDD",
-  interrupted: "\u5DF2\u505C\u6B62",
-  unknown: "\u7ED3\u679C\u672A\u786E\u8BA4"
-};
-var COLLAPSE_MS = 200;
-function toolCallQuery(input, fallback = "") {
-  if (typeof input === "string" && input.trimStart().startsWith("{")) {
-    try {
-      return toolCallQuery(JSON.parse(input), fallback);
-    } catch {
-    }
-  }
-  if (input && typeof input === "object") {
-    const args = input;
-    input = ["command", "cmd", "query", "pattern", "file_path", "filePath", "path", "url", "uri", "description", "title"].map((key) => args[key]).find((value) => typeof value === "string" && value.trim() !== "");
-  }
-  return (typeof input === "string" && input.trim() ? input : fallback).trim().split(/\r?\n/, 1)[0].slice(0, 400);
-}
-function ToolCall({ label, activeLabel = label, query = "", queryNode, after, status: status2 = "unknown", compact = false, expandable = true, kind = "tool", open, onOpenChange, children }) {
-  const id = `nodo-tool-${(0, import_react.useId)()}`;
-  const [mounted, setMounted] = (0, import_react.useState)(open);
-  (0, import_react.useEffect)(() => {
-    if (open) {
-      setMounted(true);
-      return;
-    }
-    if (!mounted) return;
-    const timer2 = setTimeout(() => setMounted(false), COLLAPSE_MS);
-    return () => clearTimeout(timer2);
-  }, [open, mounted]);
-  const running = status2 === "running";
-  const statusLabel = kind === "tool" ? `\uFF1A${STATUS_LABELS[status2]}` : running ? "\uFF1A\u8FDB\u884C\u4E2D" : "";
-  const chevron = /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }));
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call", "data-open": open, "data-state": status2, "data-compact": compact, "data-kind": kind }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-tool-call-trigger",
-      ...expandable ? { "aria-expanded": open, "aria-controls": id } : {},
-      "aria-label": `${running ? activeLabel : label}${query ? ` ${query}` : ""}${statusLabel}`,
-      onClick: () => onOpenChange(!open)
+  seat({ name: "sidebar", priority: -100 }, Sidebar);
+  seat({ name: "shell.overlay", id: "nodo.sidebar-toggle" }, SidebarControl);
+  ctx.effect(() => {
+    let live = true;
+    let selected = current();
+    const stop = ctx.uiSession.adapter.current.subscribe(() => {
+      const id = current();
+      if (id === selected) return;
+      selected = id;
+      if (state.active && !state.legacy && id) publish({ nodoSession: id, ...away() });
+    });
+    const stopCatalog = ctx.sessions.list.subscribe(resume);
+    if (saved?.active) queueMicrotask(() => {
+      if (live) enter();
+    });
+    return () => {
+      live = false;
+      stop();
+      stopCatalog();
+      listeners2.clear();
+    };
+  }, "nodo: native space");
+  return {
+    subscribe,
+    getSnapshot: () => state,
+    enter,
+    leave() {
+      awaitingEntry = false;
+      publish({ active: false, ...keptDraft() });
+      if (state.nativeSession && ctx.sessions.list.getSnapshot().byId[state.nativeSession]) ctx.uiWorkspace.openSession(state.nativeSession);
+      else ctx.layout.selectPanel(null);
     },
-    !compact && expandable && chevron,
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-label" }, running ? activeLabel : label),
-    queryNode !== void 0 ? queryNode : query !== "" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-query", title: query }, query),
-    kind === "tool" && (!compact || !["done", "running", "started"].includes(status2)) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-status", "aria-hidden": true, title: STATUS_LABELS[status2] }, compact ? STATUS_LABELS[status2] : status2 === "done" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : running || status2 === "started" ? null : status2 === "interrupted" ? "\u2212" : status2 === "unknown" ? "?" : "!"),
-    compact && expandable && chevron
-  ), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-call-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-clip" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-content" }, (open || mounted) && children))), after);
+    // The draft outlives session switches when it has input and is reachable
+    // from the rail's "新会话" row; only its own successful send ends it.
+    // `drafting` marks the draft as the page on show, apart from merely kept.
+    // Another recipient gets its own draft: the open one would keep showing the
+    // role its composer was seeded with, not the requested one.
+    startDraft(options) {
+      const held = state.draft && (options.profile === void 0 || options.profile === state.draft.profile);
+      publish({ legacy: false, drafting: true, draft: held ? { ...state.draft, ...options, id: state.draft.id } : { ...options, id: crypto.randomUUID() } });
+      ctx.layout.selectPanel("nodo");
+    },
+    resumeDraft() {
+      publish({ legacy: false, drafting: true });
+      ctx.layout.selectPanel("nodo");
+    },
+    endDraft(id) {
+      if (state.draft?.id === id) publish({ draft: void 0, drafting: false });
+    },
+    open(id) {
+      publish({ legacy: false, nodoSession: id, ...away() });
+      ctx.uiWorkspace.openSession(id);
+    },
+    showLegacy() {
+      publish({ legacy: true, ...away() });
+      ctx.layout.selectPanel("nodo");
+    }
+  };
 }
-var TOOL_CALL_CSS = `
-.nodo-tool-call{min-width:0}
-.nodo-tool-call-trigger{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:28px;padding:2px 0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-align:left;cursor:pointer}
-.nodo-tool-call-trigger:hover{color:var(--dsw-alias-label-primary)}
-.nodo-tool-call-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
-.nodo-tool-call-chevron{display:flex;flex:none;transition:transform ${COLLAPSE_MS}ms ease}
-.nodo-tool-call[data-open=true] .nodo-tool-call-chevron{transform:rotate(90deg)}
-.nodo-tool-call-label{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nodo-tool-call[data-state=running] .nodo-tool-call-label{color:transparent;background:linear-gradient(100deg,var(--dsw-alias-label-tertiary) 35%,var(--dsw-alias-label-primary) 50%,var(--dsw-alias-label-tertiary) 65%);background-size:250% 100%;background-clip:text;animation:nodo-tool-call-shimmer 1.8s linear infinite}
-.nodo-tool-call-query{flex:0 1 auto;min-width:0;max-width:55%;padding:0 6px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-markdown-code-block-small);line-height:20px;text-overflow:ellipsis;white-space:nowrap}
-.nodo-tool-call-file{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;max-width:55%}
-.nodo-tool-call-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nodo-tool-call-file-name[role=link]{cursor:pointer}
-.nodo-tool-call-file-name[role=link]:hover{text-decoration:underline}
-.nodo-tool-call-file-name[role=link]:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px;border-radius:var(--dsw-radius-sm)}
-.nodo-tool-call-directory{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
-.nodo-tool-call-file .nodo-changes-counts{font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px}
-.nodo-tool-call-status{display:flex;align-items:center;justify-content:center;flex:none;width:14px;height:20px;color:var(--dsw-alias-label-tertiary)}
-.nodo-tool-call[data-state=error] .nodo-tool-call-status,.nodo-tool-call[data-state=denied] .nodo-tool-call-status{color:var(--dsw-alias-state-error-primary)}
-.nodo-tool-call-panel{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows ${COLLAPSE_MS}ms ease,opacity ${COLLAPSE_MS}ms ease,visibility ${COLLAPSE_MS}ms}
-.nodo-tool-call[data-open=true] .nodo-tool-call-panel{grid-template-rows:1fr;opacity:1;visibility:visible}
-.nodo-tool-call-clip{min-height:0;overflow:hidden}
-.nodo-tool-call-content{min-width:0;padding:4px 0 6px 22px}
-.nodo-tool-call-content>.nodo-io-card{margin:0}
-.nodo-tool-call-content .nodo-io-section+.nodo-io-section{border-top:.5px solid var(--dsw-alias-border-l1)}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:8px}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-label{flex:none;max-width:40%}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-query{max-width:min(65%,48ch);padding:2px 8px;border:0;border-radius:8px;line-height:22px;color:var(--dsw-alias-label-secondary)}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-file{max-width:min(65%,52ch)}
-.nodo-tool-call[data-compact=true]:not([data-kind=tool]) .nodo-tool-call-query{max-width:min(65%,52ch);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:22px}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-chevron{opacity:.35}
-.nodo-tool-call[data-compact=true]:hover .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true]:focus-within .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true][data-open=true] .nodo-tool-call-chevron{opacity:1}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-status{width:auto;white-space:nowrap;font-size:var(--dsh-content-font-size-tertiary,12px)}
-.nodo-tool-call[data-compact=true] .nodo-tool-call-content{margin:4px 0 8px;padding:4px 0 4px 12px;border-left:1px solid var(--dsw-alias-border-l1)}
-@keyframes nodo-tool-call-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
-@media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
-`;
 
 // nodo:file-icons:nodo:file-icons
 var FILE_ICON_URLS = { "c": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTE5LjU2MyAyMkE1LjU3IDUuNTcgMCAwIDEgMTQgMTYuNDM3di0yLjg3M0E1LjU3IDUuNTcgMCAwIDEgMTkuNTYzIDhIMjRWMmgtNC40MzdBMTEuNTYzIDExLjU2MyAwIDAgMCA4IDEzLjU2M3YyLjg3M0ExMS41NjQgMTEuNTY0IDAgMCAwIDE5LjU2MyAyOEgyNHYtNloiLz48L3N2Zz4=", "console": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmNzA0MyIgZD0iTTIgMmExIDEgMCAwIDAtMSAxdjEwYzAgLjU1NC40NDYgMSAxIDFoMTJjLjU1NCAwIDEtLjQ0NiAxLTFWM2ExIDEgMCAwIDAtMS0xem0wIDNoMTJ2OEgyem0xIDIgMiAyLTIgMiAxIDEgMy0zLTMtM3ptNSAzLjVWMTJoNXYtMS41eiIvPjwvc3ZnPg==", "cpp": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTI4IDE0di00aC0ydjRoLTZ2LTRoLTJ2NGgtNHYyaDR2NGgydi00aDZ2NGgydi00aDR2LTJ6Ii8+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTEzLjU2MyAyMkE1LjU3IDUuNTcgMCAwIDEgOCAxNi40Mzd2LTIuODczQTUuNTcgNS41NyAwIDAgMSAxMy41NjMgOEgxOFYyaC00LjQzN0ExMS41NjMgMTEuNTYzIDAgMCAwIDIgMTMuNTYzdjIuODczQTExLjU2NCAxMS41NjQgMCAwIDAgMTMuNTYzIDI4SDE4di02WiIvPjwvc3ZnPg==", "csharp": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTMwIDE0di0yaC0yVjhoLTJ2NGgtMlY4aC0ydjRoLTJ2MmgydjJoLTJ2MmgydjRoMnYtNGgydjRoMnYtNGgydi0yaC0ydi0yWm0tNCAyaC0ydi0yaDJabS0xMi40MzcgNkE1LjU3IDUuNTcgMCAwIDEgOCAxNi40Mzd2LTIuODczQTUuNTcgNS41NyAwIDAgMSAxMy41NjMgOEgxOFYyaC00LjQzN0ExMS41NjMgMTEuNTYzIDAgMCAwIDIgMTMuNTYzdjIuODczQTExLjU2NCAxMS41NjQgMCAwIDAgMTMuNTYzIDI4SDE4di02WiIvPjwvc3ZnPg==", "css": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzdlNTdjMiIgZD0iTTIwIDE4aC0ydi0yaC0ydjJjMCAuMTkzIDAgLjcwMyAxLjI1NCAxLjAzM0EzLjM0NSAzLjM0NSAwIDAgMSAyMCAyMmgydjJoMnYtMmMwLS4zODgtLjU2Mi0uODUxLTEuMjU0LTEuMDM0QzIwLjM1NiAyMC4zNCAyMCAxOC44NCAyMCAxOG0tMy4yNTQgMi45NjZDMTQuMzU2IDIwLjM0IDE0IDE4Ljg0IDE0IDE4aC0ydi0yaC0ydjhoMnYtMmg0djJoMnYtMmMwLS4zODgtLjU2Mi0uODUxLTEuMjU0LTEuMDM0Ii8+PHBhdGggZmlsbD0iIzdlNTdjMiIgZD0iTTI0IDRINHYyMGE0IDQgMCAwIDAgNCA0aDE2LjE2QTMuODQgMy44NCAwIDAgMCAyOCAyNC4xNlY4YTQgNCAwIDAgMC00LTRtMiAxNGgtMnYtMmgtMnYyYzAgLjE5MyAwIC43MDMgMS4yNTQgMS4wMzNBMy4zNDUgMy4zNDUgMCAwIDEgMjYgMjJ2MmEyIDIgMCAwIDEtMiAyaC0yYTIgMiAwIDAgMS0yLTIgMiAyIDAgMCAxLTIgMmgtMmEyIDIgMCAwIDEtMi0yIDIgMiAwIDAgMS0yIDJoLTJhMiAyIDAgMCAxLTItMnYtOGEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDIgMiAyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDIgMiAyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDIgMloiLz48L3N2Zz4=", "database": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmY2EyOCIgZD0iTTE2IDI0Yy01LjUyNSAwLTEwLS45LTEwLTJ2NGMwIDEuMSA0LjQ3NSAyIDEwIDJzMTAtLjkgMTAtMnYtNGMwIDEuMS00LjQ3NSAyLTEwIDJtMC04Yy01LjUyNSAwLTEwLS45LTEwLTJ2NGMwIDEuMSA0LjQ3NSAyIDEwIDJzMTAtLjkgMTAtMnYtNGMwIDEuMS00LjQ3NSAyLTEwIDJtMC0xMkMxMC40NzcgNCA2IDQuODk1IDYgNnY0YzAgMS4xIDQuNDc1IDIgMTAgMnMxMC0uOSAxMC0yVjZjMC0xLjEwNS00LjQ3Ny0yLTEwLTIiLz48L3N2Zz4=", "docker": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTIxLjgxIDEwLjI1Yy0uMDYtLjA0LS41Ni0uNDMtMS42NC0uNDMtLjI4IDAtLjU2LjAzLS44NC4wOC0uMjEtMS40LTEuMzgtMi4xMS0xLjQzLTIuMTRsLS4yOS0uMTctLjE4LjI3Yy0uMjQuMzYtLjQzLjc3LS41MSAxLjE5LS4yLjgtLjA4IDEuNTYuMzMgMi4yMS0uNDkuMjgtMS4yOS4zNS0xLjQ2LjM1SDIuNjJjLS4zNCAwLS42Mi4yOC0uNjIuNjMgMCAxLjE1LjE4IDIuMy41OCAzLjM4LjQ1IDEuMTkgMS4xMyAyLjA3IDIgMi42MS45OC42IDIuNTkuOTQgNC40Mi45NC43OSAwIDEuNjEtLjA3IDIuNDItLjIyIDEuMTItLjIgMi4yLS41OSAzLjE5LTEuMTZBOC4zIDguMyAwIDAgMCAxNi43OCAxNmMxLjA1LTEuMTcgMS42Ny0yLjUgMi4xMi0zLjY1aC4xOWMxLjE0IDAgMS44NS0uNDYgMi4yNC0uODUuMjYtLjI0LjQ1LS41My41OS0uODdsLjA4LS4yNHptLTE3Ljk2Ljk5aDEuNzZjLjA4IDAgLjE2LS4wNy4xNi0uMTZWOS41YzAtLjA4LS4wNy0uMTYtLjE2LS4xNkgzLjg1Yy0uMDkgMC0uMTYuMDctLjE2LjE2djEuNThjLjAxLjA5LjA3LjE2LjE2LjE2bTIuNDMgMGgxLjc2Yy4wOCAwIC4xNi0uMDcuMTYtLjE2VjkuNWMwLS4wOC0uMDctLjE2LS4xNi0uMTZINi4yOGMtLjA5IDAtLjE2LjA3LS4xNi4xNnYxLjU4Yy4wMS4wOS4wNy4xNi4xNi4xNm0yLjQ3IDBoMS43NWMuMSAwIC4xNy0uMDcuMTctLjE2VjkuNWMwLS4wOC0uMDYtLjE2LS4xNy0uMTZIOC43NWMtLjA4IDAtLjE1LjA3LS4xNS4xNnYxLjU4YzAgLjA5LjA2LjE2LjE1LjE2bTIuNDQgMGgxLjc3Yy4wOCAwIC4xNS0uMDcuMTUtLjE2VjkuNWMwLS4wOC0uMDYtLjE2LS4xNS0uMTZoLTEuNzdjLS4wOCAwLS4xNS4wNy0uMTUuMTZ2MS41OGMwIC4wOS4wNy4xNi4xNS4xNk02LjI4IDloMS43NmMuMDggMCAuMTYtLjA5LjE2LS4xOFY3LjI1YzAtLjA5LS4wNy0uMTYtLjE2LS4xNkg2LjI4Yy0uMDkgMC0uMTYuMDYtLjE2LjE2djEuNTdjLjAxLjA5LjA3LjE4LjE2LjE4bTIuNDcgMGgxLjc1Yy4xIDAgLjE3LS4wOS4xNy0uMThWNy4yNWMwLS4wOS0uMDYtLjE2LS4xNy0uMTZIOC43NWMtLjA4IDAtLjE1LjA2LS4xNS4xNnYxLjU3YzAgLjA5LjA2LjE4LjE1LjE4bTIuNDQgMGgxLjc3Yy4wOCAwIC4xNS0uMDkuMTUtLjE4VjcuMjVjMC0uMDktLjA3LS4xNi0uMTUtLjE2aC0xLjc3Yy0uMDggMC0uMTUuMDYtLjE1LjE2djEuNTdjMCAuMDkuMDcuMTguMTUuMThtMC0yLjI4aDEuNzdjLjA4IDAgLjE1LS4wNy4xNS0uMTZWNWMwLS4xLS4wNy0uMTctLjE1LS4xN2gtMS43N2MtLjA4IDAtLjE1LjA2LS4xNS4xN3YxLjU2YzAgLjA4LjA3LjE2LjE1LjE2bTIuNDYgNC41MmgxLjc2Yy4wOSAwIC4xNi0uMDcuMTYtLjE2VjkuNWMwLS4wOC0uMDctLjE2LS4xNi0uMTZoLTEuNzZjLS4wOCAwLS4xNS4wNy0uMTUuMTZ2MS41OGMwIC4wOS4wNy4xNi4xNS4xNiIvPjwvc3ZnPg==", "document": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIvPjxwYXRoIGZpbGw9IiM0MmE1ZjUiIGQ9Ik04IDE2aDh2Mkg4em0wLTRoOHYySDh6bTYtMTBINmMtMS4xIDAtMiAuOS0yIDJ2MTZjMCAxLjEuODkgMiAxLjk5IDJIMThjMS4xIDAgMi0uOSAyLTJWOHptNCAxOEg2VjRoN3Y1aDV6Ii8+PC9zdmc+", "git": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2U2NGExOSIgZD0iTTEzLjE3MiAyLjgyOCAxMS43OCA0LjIybDEuOTEgMS45MSAyIDJBMi45ODYgMi45ODYgMCAwIDEgMjAgMTAuODFhMy4yNSAzLjI1IDAgMCAxLS4zMSAxLjMxbDIuMDYgMmEyLjY4IDIuNjggMCAwIDEgMy4zNy41NyAyLjg2IDIuODYgMCAwIDEgLjg4IDIuMTE3IDMuMDIgMy4wMiAwIDAgMS0uODU2IDIuMTA5QTIuOSAyLjkgMCAwIDEgMjMgMTkuODFhMi45MyAyLjkzIDAgMCAxLTIuMTMtLjg3IDIuNjk0IDIuNjk0IDAgMCAxLS41Ni0zLjM4bC0yLTIuMDZhMyAzIDAgMCAxLS4zMS4xMlYyMGEzIDMgMCAwIDEgMS40NCAxLjA5IDIuOTIgMi45MiAwIDAgMSAuNTYgMS43MiAyLjg4IDIuODggMCAwIDEtLjg3OCAyLjEyOCAyLjk4IDIuOTggMCAwIDEtMi4wNDguODcxIDIuOTgxIDIuOTgxIDAgMCAxLTIuNTE0LTQuNzE5QTMgMyAwIDAgMSAxNiAyMHYtNi4zOGEyLjk2IDIuOTYgMCAwIDEtMS40NC0xLjA5IDIuOSAyLjkgMCAwIDEtLjU2LTEuNzIgMi45IDIuOSAwIDAgMSAuMzEtMS4zMWwtMy45LTMuOS03LjU3OSA3LjU3MmE0IDQgMCAwIDAtLjAwMSA1LjY1OGwxMC4zNDIgMTAuMzQyYTQgNCAwIDAgMCA1LjY1NiAwbDEwLjM0NC0xMC4zNDRhNCA0IDAgMCAwIDAtNS42NTZMMTguODI4IDIuODI4YTQgNCAwIDAgMC01LjY1NiAwIi8+PC9zdmc+", "go": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAwYWNjMSIgZD0iTTIgMTJoNHYySDJ6bS0yIDRoNnYySDB6bTQgNGgydjJINHptMTYuOTU0LTVIMTR2M2gzLjIzOWE0LjQyIDQuNDIgMCAwIDEtMy41MzEgMiAyLjY1IDIuNjUgMCAwIDEtMi4wNTMtLjg1OCAyLjg2IDIuODYgMCAwIDEtLjYyOC0yLjI4QTQuNTE1IDQuNTE1IDAgMCAxIDE1LjI5MiAxM2EyLjczIDIuNzMgMCAwIDEgMS43NDkuNTg0bDIuOTYyLTEuMTg1QTUuNiA1LjYgMCAwIDAgMTUuMjkyIDEwYTcuNTI2IDcuNTI2IDAgMCAwLTcuMjQzIDYuNSA1LjYxNCA1LjYxNCAwIDAgMCA1LjY1OSA2LjUgNy41MjYgNy41MjYgMCAwIDAgNy4yNDMtNi41IDYuNCA2LjQgMCAwIDAgLjAwMy0xLjUiLz48cGF0aCBmaWxsPSIjMDBhY2MxIiBkPSJNMjYuMjkyIDEwYTcuNTI2IDcuNTI2IDAgMCAwLTcuMjQzIDYuNSA1LjYxNCA1LjYxNCAwIDAgMCA1LjY1OSA2LjUgNy41MjYgNy41MjYgMCAwIDAgNy4yNDMtNi41IDUuNjE0IDUuNjE0IDAgMCAwLTUuNjU5LTYuNW0yLjY4MSA2LjEzN0E0LjUxNSA0LjUxNSAwIDAgMSAyNC43MDggMjBhMi42NSAyLjY1IDAgMCAxLTIuMDUzLS44NTggMi44NiAyLjg2IDAgMCAxLS42MjgtMi4yOEE0LjUxNSA0LjUxNSAwIDAgMSAyNi4yOTIgMTNhMi42NSAyLjY1IDAgMCAxIDIuMDUzLjg1OCAyLjg2IDIuODYgMCAwIDEgLjYyOCAyLjI4WiIvPjwvc3ZnPg==", "html": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2U2NTEwMCIgZD0ibTQgNCAyIDIyIDEwIDIgMTAtMiAyLTIyWm0xOS43MiA3SDExLjI4bC4yOSAzaDExLjg2bC0uODAyIDkuMzM1TDE1Ljk5IDI1bC02LjYzNS0xLjY0Nkw4LjkzIDE5aDMuMDJsLjE5IDIgMy44Ni43NyAzLjg0LS43Ny4yOS00SDguODRMOCA4aDE2WiIvPjwvc3ZnPg==", "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iIzI2YTY5YSIgZD0iTTguNSA2aDRsLTQtNHpNMy44NzUgMUg5LjVsNCA0djguNmMwIC43NzMtLjYxNiAxLjQtMS4zNzUgMS40aC04LjI1Yy0uNzYgMC0xLjM3NS0uNjI3LTEuMzc1LTEuNFYyLjRjMC0uNzc3LjYxMi0xLjQgMS4zNzUtMS40TTQgMTMuNmg4VjhsLTIuNjI1IDIuOEw4IDkuNHptMS4yNS03LjdjLS43NiAwLTEuMzc1LjYyNy0xLjM3NSAxLjRzLjYxNiAxLjQgMS4zNzUgMS40Yy43NiAwIDEuMzc1LS42MjcgMS4zNzUtMS40UzYuMDA5IDUuOSA1LjI1IDUuOSIvPjwvc3ZnPg==", "java": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2Y0NDMzNiIgZD0iTTQgMjZoMjR2Mkg0ek0yOCA0SDdhMSAxIDAgMCAwLTEgMXYxM2E0IDQgMCAwIDAgNCA0aDEwYTQgNCAwIDAgMCA0LTR2LTRoNGEyIDIgMCAwIDAgMi0yVjZhMiAyIDAgMCAwLTItMm0wIDhoLTRWNmg0WiIvPjwvc3ZnPg==", "javascript": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmY2EyOCIgZD0iTTIgMnYxMmgxMlYyem02IDZoMXY0YTEuMDAzIDEuMDAzIDAgMCAxLTEgMUg3YTEuMDAzIDEuMDAzIDAgMCAxLTEtMXYtMWgxdjFoMXptMyAwaDJ2MWgtMnYxaDFhMS4wMDMgMS4wMDMgMCAwIDEgMSAxdjFhMS4wMDMgMS4wMDMgMCAwIDEtMSAxaC0ydi0xaDJ2LTFoLTFhMS4wMDMgMS4wMDMgMCAwIDEtMS0xVjlhMS4wMDMgMS4wMDMgMCAwIDEgMS0xIi8+PC9zdmc+", "json": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgLTk2MCA5NjAgOTYwIj48cGF0aCBmaWxsPSIjZjlhODI1IiBkPSJNNTYwLTE2MHYtODBoMTIwcTE3IDAgMjguNS0xMS41VDcyMC0yODB2LTgwcTAtMzggMjItNjl0NTgtNDR2LTE0cS0zNi0xMy01OC00NHQtMjItNjl2LTgwcTAtMTctMTEuNS0yOC41VDY4MC03MjBINTYwdi04MGgxMjBxNTAgMCA4NSAzNXQzNSA4NXY4MHEwIDE3IDExLjUgMjguNVQ4NDAtNTYwaDQwdjE2MGgtNDBxLTE3IDAtMjguNSAxMS41VDgwMC0zNjB2ODBxMCA1MC0zNSA4NXQtODUgMzV6bS0yODAgMHEtNTAgMC04NS0zNXQtMzUtODV2LTgwcTAtMTctMTEuNS0yOC41VDEyMC00MDBIODB2LTE2MGg0MHExNyAwIDI4LjUtMTEuNVQxNjAtNjAwdi04MHEwLTUwIDM1LTg1dDg1LTM1aDEyMHY4MEgyODBxLTE3IDAtMjguNSAxMS41VDI0MC02ODB2ODBxMCAzOC0yMiA2OXQtNTggNDR2MTRxMzYgMTMgNTggNDR0MjIgNjl2ODBxMCAxNyAxMS41IDI4LjVUMjgwLTI0MGgxMjB2ODB6Ii8+PC9zdmc+", "kotlin": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9IjEuNzI1IiB4Mj0iMjIuMTg1IiB5MT0iMjIuNjciIHkyPSIxLjk4MiIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgxLjMwNiAxLjEyOSlzY2FsZSguODkzMjQpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjN2M0ZGZmIi8+PHN0b3Agb2Zmc2V0PSIuNSIgc3RvcC1jb2xvcj0iI2Q1MDBmOSIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2VmNTM1MCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGZpbGw9InVybCgjYSkiIGQ9Ik0yLjk3NSAyLjk3NnYxOC4wNDhoMTguMDV2LS4wM2wtNC40NzgtNC41MTEtNC40OC00LjUxNSA0LjQ4LTQuNTE1IDQuNDQzLTQuNDc3eiIvPjwvc3ZnPg==", "license": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmNTcyMiIgZD0iTTggMWE1LjUgNS41IDAgMCAwLTQgOS4yNlYxNWw0LTEuNSA0IDEuNXYtNC43NEE1LjQ5IDUuNDkgMCAwIDAgOCAxbTAgMS41YTQgNCAwIDEgMSAwIDggNCA0IDAgMCAxIDAtOG0wIDJhMiAyIDAgMSAwIDAgNCAyIDIgMCAwIDAgMC00Ii8+PC9zdmc+", "lock": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmZDU0ZiIgZD0iTTI1IDEyaC0zVjhhNiA2IDAgMCAwLTEyIDB2NEg3YTEgMSAwIDAgMC0xIDF2MTZhMSAxIDAgMCAwIDEgMWgxOGExIDEgMCAwIDAgMS0xVjEzYTEgMSAwIDAgMC0xLTFNMTQgOGEyIDIgMCAwIDEgNCAwdjRoLTRabTIgMTdhNCA0IDAgMSAxIDQtNCA0IDQgMCAwIDEtNCA0Ii8+PC9zdmc+", "log": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIvPjxwYXRoIGZpbGw9IiNhZmI0MmIiIGQ9Ik0xOSA1djloLTV2NUg1VjV6bTAtMkg1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDEwbDYtNlY1YzAtMS4xLS45LTItMi0ybS03IDExSDd2LTJoNXptNS00SDdWOGgxMHoiLz48L3N2Zz4=", "markdown": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzQyYTVmNSIgZD0ibTE0IDEwLTQgMy41TDYgMTBINHYxMmg0di02bDIgMiAyLTJ2Nmg0VjEwem0xMiA2di02aC00djZoLTRsNiA4IDYtOHoiLz48L3N2Zz4=", "npm": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2U1MzkzNSIgZD0iTTQgNHYyNGgyNFY0Wm0yMCAyMGgtNFYxMmgtNHYxMkg4VjhoMTZaIi8+PC9zdmc+", "pdf": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2VmNTM1MCIgZD0iTTEzIDloNS41TDEzIDMuNXpNNiAyaDhsNiA2djEyYTIgMiAwIDAgMS0yIDJINmEyIDIgMCAwIDEtMi0yVjRhMiAyIDAgMCAxIDItMm00LjkzIDEwLjQ0Yy40MS45LjkzIDEuNjQgMS41MyAyLjE1bC40MS4zMmMtLjg3LjE2LTIuMDcuNDQtMy4zNC45M2wtLjExLjA0LjUtMS4wNGMuNDUtLjg3Ljc4LTEuNjYgMS4wMS0yLjRtNi40OCAzLjgxYy4xOC0uMTguMjctLjQxLjI4LS42Ni4wMy0uMi0uMDItLjM5LS4xMi0uNTUtLjI5LS40Ny0xLjA0LS42OS0yLjI4LS42OWwtMS4yOS4wNy0uODctLjU4Yy0uNjMtLjUyLTEuMi0xLjQzLTEuNi0yLjU2bC4wNC0uMTRjLjMzLTEuMzMuNjQtMi45NC0uMDItMy42YS44NS44NSAwIDAgMC0uNjEtLjI0aC0uMjRjLS4zNyAwLS43LjM5LS43OS43Ny0uMzcgMS4zMy0uMTUgMi4wNi4yMiAzLjI3di4wMWMtLjI1Ljg4LS41NyAxLjktMS4wOCAyLjkzbC0uOTYgMS44LS44OS40OWMtMS4yLjc1LTEuNzcgMS41OS0xLjg4IDIuMTItLjA0LjE5LS4wMi4zNi4wNS41NGwuMDMuMDUuNDguMzEuNDQuMTFjLjgxIDAgMS43My0uOTUgMi45Ny0zLjA3bC4xOC0uMDdjMS4wMy0uMzMgMi4zMS0uNTYgNC4wMy0uNzUgMS4wMy41MSAyLjI0Ljc0IDMgLjc0LjQ0IDAgLjc0LS4xMS45MS0uM20tLjQxLS43MS4wOS4xMWMtLjAxLjEtLjA0LjExLS4wOS4xM2gtLjA0bC0uMTkuMDJjLS40NiAwLTEuMTctLjE5LTEuOS0uNTEuMDktLjEuMTMtLjEuMjMtLjEgMS40IDAgMS44LjI1IDEuOS4zNU03LjgzIDE3Yy0uNjUgMS4xOS0xLjI0IDEuODUtMS42OSAyIC4wNS0uMzguNS0xLjA0IDEuMjEtMS42OXptMy4wMi02LjkxYy0uMjMtLjktLjI0LTEuNjMtLjA3LTIuMDVsLjA3LS4xMi4xNS4wNWMuMTcuMjQuMTkuNTYuMDkgMS4xbC0uMDMuMTYtLjE2LjgyeiIvPjwvc3ZnPg==", "php": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzFlODhlNSIgZD0iTTEyIDE4LjA4Yy02LjYzIDAtMTItMi43Mi0xMi02LjA4czUuMzctNi4wOCAxMi02LjA4UzI0IDguNjQgMjQgMTJzLTUuMzcgNi4wOC0xMiA2LjA4bS01LjE5LTcuOTVjLjU0IDAgLjkxLjEgMS4wOS4zMS4xOC4yLjIyLjU2LjEzIDEuMDMtLjEuNTMtLjI5Ljg3LS41OCAxLjA5cS0uNDIuMzMtMS4yOS4zM2gtLjg3bC41My0yLjc2em0tMy41IDUuNTVoMS40NGwuMzQtMS43NWgxLjIzYy41NCAwIC45OC0uMDYgMS4zMy0uMTcuMzUtLjEyLjY3LS4zMS45Ni0uNTguMjQtLjIyLjQzLS40Ni41OC0uNzMuMTUtLjI2LjI2LS41Ni4zMS0uODguMTYtLjc4LjA1LTEuMzktLjMzLTEuODItLjM5LS40NC0uOTktLjY1LTEuODItLjY1SDQuNTl6bTcuMjUtOC4zMy0xLjI4IDYuNThoMS40MmwuNzQtMy43N2gxLjE0Yy4zNiAwIC42LjA2LjcxLjE4cy4xMy4zNC4wNy42NmwtLjU3IDIuOTNoMS40NWwuNTktMy4wN2MuMTMtLjYyLjAzLTEuMDctLjI3LTEuMzYtLjMtLjI3LS44NS0uNC0xLjY1LS40aC0xLjI3TDEyIDcuMzV6TTE4IDEwLjEzYy41NSAwIC45MS4xIDEuMDkuMzEuMTguMi4yMi41Ni4xMyAxLjAzLS4xLjUzLS4yOS44Ny0uNTcgMS4wOS0uMjkuMjItLjcyLjMzLTEuMy4zM2gtLjg1bC41LTIuNzZ6bS0zLjUgNS41NWgxLjQ0bC4zNC0xLjc1aDEuMjJjLjU1IDAgMS0uMDYgMS4zNS0uMTcuMzUtLjEyLjY1LS4zMS45NS0uNTguMjQtLjIyLjQ0LS40Ni41OC0uNzMuMTUtLjI2LjI2LS41Ni4zMi0uODguMTUtLjc4LjA0LTEuMzktLjM0LTEuODItLjM2LS40NC0uOTktLjY1LTEuODItLjY1aC0yLjc1eiIvPjwvc3ZnPg==", "python": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTkuODYgMkEyLjg2IDIuODYgMCAwIDAgNyA0Ljg2djEuNjhoNC4yOWMuMzkgMCAuNzEuNTcuNzEuOTZINC44NkEyLjg2IDIuODYgMCAwIDAgMiAxMC4zNnYzLjc4MWEyLjg2IDIuODYgMCAwIDAgMi44NiAyLjg2aDEuMTh2LTIuNjhhMi44NSAyLjg1IDAgMCAxIDIuODUtMi44Nmg1LjI1YzEuNTggMCAyLjg2LTEuMjcxIDIuODYtMi44NTFWNC44NkEyLjg2IDIuODYgMCAwIDAgMTQuMTQgMnptLS43MiAxLjYxYy40IDAgLjcyLjEyLjcyLjcxcy0uMzIuODkxLS43Mi44OTFjLS4zOSAwLS43MS0uMy0uNzEtLjg5cy4zMi0uNzExLjcxLS43MTEiLz48cGF0aCBmaWxsPSIjZmRkODM1IiBkPSJNMTcuOTU5IDd2Mi42OGEyLjg1IDIuODUgMCAwIDEtMi44NSAyLjg1OUg5Ljg2QTIuODUgMi44NSAwIDAgMCA3IDE1LjM4OXYzLjc1YTIuODYgMi44NiAwIDAgMCAyLjg2IDIuODZoNC4yOEEyLjg2IDIuODYgMCAwIDAgMTcgMTkuMTR2LTEuNjhoLTQuMjkxYy0uMzkgMC0uNzA5LS41Ny0uNzA5LS45Nmg3LjE0QTIuODYgMi44NiAwIDAgMCAyMiAxMy42NFY5Ljg2QTIuODYgMi44NiAwIDAgMCAxOS4xNCA3ek04LjMyIDExLjUxM2wtLjAwNC4wMDQuMDM4LS4wMDR6bTYuNTQgNy4yNzZjLjM5IDAgLjcxLjMuNzEuODlhLjcxLjcxIDAgMCAxLS43MS43MWMtLjQgMC0uNzItLjEyLS43Mi0uNzFzLjMyLS44OS43Mi0uODkiLz48L3N2Zz4=", "react": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAwYmNkNCIgZD0iTTE2IDEyYzcuNDQ0IDAgMTIgMi41OSAxMiA0cy00LjU1NiA0LTEyIDQtMTItMi41OS0xMi00IDQuNTU2LTQgMTItNG0wLTJjLTcuNzMyIDAtMTQgMi42ODYtMTQgNnM2LjI2OCA2IDE0IDYgMTQtMi42ODYgMTQtNi02LjI2OC02LTE0LTYiLz48cGF0aCBmaWxsPSIjMDBiY2Q0IiBkPSJNMTYgMTRhMiAyIDAgMSAwIDIgMiAyIDIgMCAwIDAtMi0yIi8+PHBhdGggZmlsbD0iIzAwYmNkNCIgZD0iTTEwLjQ1OCA1LjUwN2MyLjAxNyAwIDUuOTM3IDMuMTc3IDkuMDA2IDguNDkzIDMuNzIyIDYuNDQ3IDMuNzU3IDExLjY4NyAyLjUzNiAxMi4zOTJhLjkuOSAwIDAgMS0uNDU3LjFjLTIuMDE3IDAtNS45MzgtMy4xNzYtOS4wMDctOC40OTJDOC44MTQgMTEuNTUzIDguNzc5IDYuMzEzIDEwIDUuNjA4YS45LjkgMCAwIDEgLjQ1OC0uMW0tLjAwMS0yQTIuODcgMi44NyAwIDAgMCA5IDMuODc1QzYuMTMgNS41MzIgNi45MzggMTIuMzA0IDEwLjgwNCAxOWMzLjI4NCA1LjY5IDcuNzIgOS40OTMgMTAuNzQgOS40OTNBMi44NyAyLjg3IDAgMCAwIDIzIDI4LjEyNGMyLjg3LTEuNjU2IDIuMDYyLTguNDI4LTEuODA0LTE1LjEyNC0zLjI4NC01LjY5LTcuNzItOS40OTMtMTAuNzQtOS40OTNaIi8+PHBhdGggZmlsbD0iIzAwYmNkNCIgZD0iTTIxLjU0MyA1LjUwN2EuOS45IDAgMCAxIC40NTcuMWMxLjIyMS43MDYgMS4xODYgNS45NDYtMi41MzYgMTIuMzkzLTMuMDcgNS4zMTYtNi45OSA4LjQ5My05LjAwNyA4LjQ5M2EuOS45IDAgMCAxLS40NTctLjFDOC43NzkgMjUuNjg2IDguODE0IDIwLjQ0NiAxMi41MzYgMTRjMy4wNy01LjMxNiA2Ljk5LTguNDkzIDkuMDA3LTguNDkzbTAtMmMtMy4wMiAwLTcuNDU1IDMuODA0LTEwLjc0IDkuNDkzQzYuOTM5IDE5LjY5NiA2LjEzIDI2LjQ2OCA5IDI4LjEyNGEyLjg3IDIuODcgMCAwIDAgMS40NTcuMzY5YzMuMDIgMCA3LjQ1NS0zLjgwNCAxMC43NC05LjQ5M0MyNS4wNjEgMTIuMzA0IDI1Ljg3IDUuNTMyIDIzIDMuODc2YTIuODcgMi44NyAwIDAgMC0xLjQ1Ny0uMzY5Ii8+PC9zdmc+", "react_ts": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTE2IDEyYzcuNDQ0IDAgMTIgMi41OSAxMiA0cy00LjU1NiA0LTEyIDQtMTItMi41OS0xMi00IDQuNTU2LTQgMTItNG0wLTJjLTcuNzMyIDAtMTQgMi42ODYtMTQgNnM2LjI2OCA2IDE0IDYgMTQtMi42ODYgMTQtNi02LjI2OC02LTE0LTYiLz48cGF0aCBmaWxsPSIjMDI4OGQxIiBkPSJNMTYgMTRhMiAyIDAgMSAwIDIgMiAyIDIgMCAwIDAtMi0yIi8+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTEwLjQ1OCA1LjUwN2MyLjAxNyAwIDUuOTM3IDMuMTc3IDkuMDA2IDguNDkzIDMuNzIyIDYuNDQ3IDMuNzU3IDExLjY4NyAyLjUzNiAxMi4zOTJhLjkuOSAwIDAgMS0uNDU3LjFjLTIuMDE3IDAtNS45MzgtMy4xNzYtOS4wMDctOC40OTJDOC44MTQgMTEuNTUzIDguNzc5IDYuMzEzIDEwIDUuNjA4YS45LjkgMCAwIDEgLjQ1OC0uMW0tLjAwMS0yQTIuODcgMi44NyAwIDAgMCA5IDMuODc1QzYuMTMgNS41MzIgNi45MzggMTIuMzA0IDEwLjgwNCAxOWMzLjI4NCA1LjY5IDcuNzIgOS40OTMgMTAuNzQgOS40OTNBMi44NyAyLjg3IDAgMCAwIDIzIDI4LjEyNGMyLjg3LTEuNjU2IDIuMDYyLTguNDI4LTEuODA0LTE1LjEyNC0zLjI4NC01LjY5LTcuNzItOS40OTMtMTAuNzQtOS40OTNaIi8+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTIxLjU0MyA1LjUwN2EuOS45IDAgMCAxIC40NTcuMWMxLjIyMS43MDYgMS4xODYgNS45NDYtMi41MzYgMTIuMzkzLTMuMDcgNS4zMTYtNi45OSA4LjQ5My05LjAwNyA4LjQ5M2EuOS45IDAgMCAxLS40NTctLjFDOC43NzkgMjUuNjg2IDguODE0IDIwLjQ0NiAxMi41MzYgMTRjMy4wNy01LjMxNiA2Ljk5LTguNDkzIDkuMDA3LTguNDkzbTAtMmMtMy4wMiAwLTcuNDU1IDMuODA0LTEwLjc0IDkuNDkzQzYuOTM5IDE5LjY5NiA2LjEzIDI2LjQ2OCA5IDI4LjEyNGEyLjg3IDIuODcgMCAwIDAgMS40NTcuMzY5YzMuMDIgMCA3LjQ1NS0zLjgwNCAxMC43NC05LjQ5M0MyNS4wNjEgMTIuMzA0IDI1Ljg3IDUuNTMyIDIzIDMuODc2YTIuODcgMi44NyAwIDAgMC0xLjQ1Ny0uMzY5Ii8+PC9zdmc+", "readme": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZD0iTTAgMGgyNHYyNEgweiIvPjxwYXRoIGZpbGw9IiM0MmE1ZjUiIGQ9Ik04IDFDNC4xMzYgMSAxIDQuMTM2IDEgOHMzLjEzNiA3IDcgNyA3LTMuMTM2IDctNy0zLjEzNi03LTctN20xIDExSDdWNy41aDJ6bTAtNkg3VjRoMnoiLz48L3N2Zz4=", "ruby": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2Y0NDMzNiIgZD0iTTE4LjA0MSAzLjE3N2MyLjI0LjM4MiAyLjg3OSAxLjkxOSAyLjg0MyAzLjUyN1Y2LjY3bC0xLjAxMyAxMy4yNjYtMTMuMTMyLjg5N2guMDA4Yy0xLjA5My0uMDQ0LTMuNTE4LS4xNTEtMy42MzQtMy41NDVsMS4yMTctMi4yMjIgMi40NjIgNS43NCAyLjA5Ny02Ljc3LS4wNDUuMDA5LjAxOC0uMDE4IDYuODUgMi4xODZMMTMuOTQ1IDkuM2w2LjUzLS40MDktNS4xNDQtNC4yMTIgMi43MS0xLjUxdi4wMDlNMy4xMTMgMTcuMjUydi4wMTd6TTYuOTE2IDYuODc0YzIuNjMtMi42MjIgNi4wMzMtNC4xNjggNy4zNC0yLjg0NCAxLjI5NyAxLjMwNi0uMDcyIDQuNTIzLTIuNzAyIDcuMTM1LTIuNjY2IDIuNjEzLTYuMDE1IDQuMjQ4LTcuMzIyIDIuOTMzLTEuMzA2LTEuMzI0LjAzNi00LjYxMiAyLjY3NS03LjIyNHoiLz48L3N2Zz4=", "rust": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmNzA0MyIgZD0ibTMwIDEyLTQtMlY2aC00bC0yLTQtNCAyLTQtMi0yIDRINnY0bC00IDIgMiA0LTIgNCA0IDJ2NGg0bDIgNCA0LTIgNCAyIDItNGg0di00bDQtMi0yLTRaTTYgMTZhOS45IDkuOSAwIDAgMSAuODQyLTRIMTB2OEg2Ljg0MkE5LjkgOS45IDAgMCAxIDYgMTZtMTAgMTBhOS45OCA5Ljk4IDAgMCAxLTcuOTc4LTRIMTZ2LTJoLTJ2LTJoNGMuODE5LjgxOS4yOTcgMi4zMDggMS4xNzkgMy4zN2ExLjg5IDEuODkgMCAwIDAgMS40Ni42M2gzLjM0QTkuOTggOS45OCAwIDAgMSAxNiAyNm0tMi0xMnYtMmg0YTEgMSAwIDAgMSAwIDJabTExLjE1OCA2SDI0YTIuMDA2IDIuMDA2IDAgMCAxLTItMiAyIDIgMCAwIDAtMi0yIDMgMyAwIDAgMCAzLTNxMC0uMDgtLjAwNC0uMTYxQTMuMTE1IDMuMTE1IDAgMCAwIDE5LjgzIDEwSDguMDIyYTkuOTg2IDkuOTg2IDAgMCAxIDE3LjEzNiAxMCIvPjwvc3ZnPg==", "sass": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2VjNDA3YSIgZD0iTTI3LjgzNyA1LjY3M2E0LjMzIDQuMzMgMCAwIDAtMi4yOTMtMi43MDFjLTIuMzYyLTEuMjYxLTYuMTEtMS4yOTgtOS41NDgtLjA5MmEyNi4zIDI2LjMgMCAwIDAtOC43NiA0Ljk2NmMtMi43NTIgMi41NDItMy40MzggNC45MjUtMy4xODkgNi4xOTQuNTIzIDIuNjY4IDMuMjc0IDQuNTM5IDUuNDg1IDYuMDQyLjQxOC4yODQuODIyLjU1OSAxLjE3NS44MTYtMS40MjkuNzYtNC4yNjEgMi40NDQtNS4wODggNC4yNDhhMy44OCAzLjg4IDAgMCAwLS4xMTggMy4zMzJBMi4zNyAyLjM3IDAgMCAwIDYuODY5IDI5LjhhNS42IDUuNiAwIDAgMCAxLjQ5LjIgNi4zNSA2LjM1IDAgMCAwIDUuMTktMi44NTYgNi43NCA2Ljc0IDAgMCAwIC44NjQtNS4zODIgNy4zIDcuMyAwIDAgMSAyLjA0NC0uMDMgMy45MiAzLjkyIDAgMCAxIDIuODE2IDEuMzExIDEuODIgMS44MiAwIDAgMSAuNDIzIDEuMjYyIDEuNTUgMS41NSAwIDAgMS0uNzcyIDEuMDVjLS4yMzQuMTQtLjU4Ni4zNTUtLjUwNC44MDMuMDM2LjE5NC4xOTguNjMzLjg5NC41MTJhMi45MyAyLjkzIDAgMCAwIDIuMTQ1LTIuNjUxIDQgNCAwIDAgMC0xLjE5Ny0yLjkwNCA1Ljk0IDUuOTQgMCAwIDAtNC4zOTYtMS42MjYgMTAuNiAxMC42IDAgMCAwLTIuNjcyLjMwNCAyMCAyMCAwIDAgMC0yLjIwMy0xLjg0NmMtMS43MTItMS4zLTMuMzMtMi41MjktMy4yMzUtNC4yNi4xMjUtMi4yNjMgMi40NjgtNC41MzIgNi45NjQtNi43NDQgNC4wMTYtMS45NzYgNy4yNTQtMi4wMzcgOC45NDQtMS40MzhhMiAyIDAgMCAxIDEuMjA0Ljg4MyAyLjc3IDIuNzcgMCAwIDEtLjM2IDIuNDcgOS43MSA5LjcxIDAgMCAxLTcuNDI1IDQuMzA0IDMuODYgMy44NiAwIDAgMS0zLjIzOC0uNzU3Yy0uMjc4LS4zMDItLjU5My0uNjQ1LTEuMDc0LS4zODNxLS41NjUuMzEtLjIyNSAxLjE4OWEzLjkgMy45IDAgMCAwIDIuNDA3IDEuOTIgMTEuNyAxMS43IDAgMCAwIDcuMTI4LS42NzFjMy41MjctMS4zNSA2LjY4MS01LjIwMiA1Ljc1Ni04Ljc4N00xMS44OTUgMjQuNDc1YTQgNCAwIDAgMS0uMTkyLjQ2OCA0LjUgNC41IDAgMCAxLS43NTMgMS4wODEgMi44MyAyLjgzIDAgMCAxLTIuNTMzIDEuMTA3Yy0uMDU2LS4wMzItLjA3OC0uMTQ2LS4wODUtLjE5M2EzLjI4IDMuMjggMCAwIDEgMS4wNzYtMi4yODQgMTEuMyAxMS4zIDAgMCAxIDIuNjQ0LTEuOTMzIDMuODUgMy44NSAwIDAgMS0uMTU3IDEuNzU0Ii8+PC9zdmc+", "svelte": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMzAwIj48cGF0aCBmaWxsPSIjZmY1NzIyIiBkPSJNMTc1Ljk0IDI0LjMyOGMtMTMuMDM3LjI1Mi0yNi4wMDkgMy44NzItMzcuNDcxIDExLjE3NEw3OS45MTIgNzIuODE4YTY3LjEzIDY3LjEzIDAgMCAwLTMwLjM1NSA0NC45MDYgNzAuOCA3MC44IDAgMCAwIDYuOTU5IDQ1LjQ0NSA2Ny4yIDY3LjIgMCAwIDAtMTAuMDM1IDI1LjEwMiA3MS41NCA3MS41NCAwIDAgMCAxMi4yMzYgNTQuMTU2YzIzLjM1MSAzMy40MSA2OS40NjggNDMuMzExIDEwMi44MSAyMi4wN2w1OC41NTktMzcuMTU4YTY3LjM2IDY3LjM2IDAgMCAwIDMwLjM1NS00NC45MDYgNzAuNzcgNzAuNzcgMCAwIDAtNi45ODItNDUuNDIyIDY3LjY1IDY3LjY1IDAgMCAwIDEwLjA1OS0yNS4xMDIgNzEuNjMgNzEuNjMgMCAwIDAtMTIuMjM2LTU0LjE1NnYtLjE4Yy0xNS4zMjQtMjEuOTI1LTQwLjQ1My0zMy43MjctNjUuMzQyLTMzLjI0NnptNS4xMzcgMjguNjhhNDYuNSA0Ni41IDAgMCAxIDM2LjA5IDE5Ljk2OSA0Mi45OCA0Mi45OCAwIDAgMSA3LjM2NSAzMi41NTcgNDUgNDUgMCAwIDEtMS4zOTMgNS40NTVsLTEuMTIzIDMuMzctMi45ODYtMi4yNDdhNzUuOSA3NS45IDAgMCAwLTIyLjkwMi0xMS40NWwtMi4yNDQtLjY1MS4yMDEtMi4yNDZhMTMuMTYgMTMuMTYgMCAwIDAtMi4zNzktOC43MTEgMTMuOTkgMTMuOTkgMCAwIDAtMTQuOTUzLTUuNDEyIDEyLjggMTIuOCAwIDAgMC0zLjU5NCAxLjU3MmwtNTguNTc4IDM3LjI1YTEyLjI0IDEyLjI0IDAgMCAwLTUuNTAyIDguMTUgMTMuMSAxMy4xIDAgMCAwIDIuMjQ2IDkuODM0IDE0LjAzIDE0LjAzIDAgMCAwIDE0LjkzIDUuNTY5IDEzLjUgMTMuNSAwIDAgMCAzLjU5NC0xLjU3M2wyMi40NTMtMTQuMjM0YTQxLjggNDEuOCAwIDAgMSAxMS44OTgtNS4yMzIgNDYuNDggNDYuNDggMCAwIDEgNDkuOTE0IDE4LjUwMiA0My4wMiA0My4wMiAwIDAgMSA3LjM2MyAzMi41NTcgNDAuNDIgNDAuNDIgMCAwIDEtMTguMjU0IDI3LjA3OGwtNTguNTggMzcuMzE2YTQzIDQzIDAgMCAxLTExLjg5OCA1LjIzQTQ2LjU0NSA0Ni41NDUgMCAwIDEgODIuODEgMjI3LjE0YTQyLjk4IDQyLjk4IDAgMCAxLTcuMzQxLTMyLjU1NyAzOCAzOCAwIDAgMSAxLjM5LTUuNDFsMS4xMDItMy4zNyAzLjAwOCAyLjI0NmE3NS45IDc1LjkgMCAwIDAgMjIuODM2IDExLjM2MWwyLjI0NC42NS0uMjAxIDIuMjQ3YTEzLjI1IDEzLjI1IDAgMCAwIDIuNDQ3IDguNjQ0IDE0LjAzIDE0LjAzIDAgMCAwIDE1LjA0MyA1LjU2OSAxMy4xIDEzLjEgMCAwIDAgMy41OTItMS41NzNsNTguNDY3LTM3LjMxNmExMi4xNyAxMi4xNyAwIDAgMCA1LjUwMi04LjE3MyAxMi45NiAxMi45NiAwIDAgMC0yLjI0Ni05LjgxMSAxNC4wMyAxNC4wMyAwIDAgMC0xNS4wNDMtNS41NjggMTIuOCAxMi44IDAgMCAwLTMuNTkyIDEuNTdsLTIyLjQ1MyAxNC4yNThhNDIuOSA0Mi45IDAgMCAxLTExLjg3NyA1LjIwOSA0Ni41MiA0Ni41MiAwIDAgMS00OS44NDYtMTguNSA0My4wMiA0My4wMiAwIDAgMS03LjI5Ny0zMi41NTdBNDAuNDIgNDAuNDIgMCAwIDEgOTYuNzk4IDk2Ljk4bDU4LjY0Ni0zNy4zMTZhNDIuOCA0Mi44IDAgMCAxIDExLjgxMS01LjIxIDQ2LjUgNDYuNSAwIDAgMSAxMy44MjItMS40NDR6Ii8+PC9zdmc+", "svg": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZmlsbD0iI2ZmYjMwMCIgZD0iTTI5LjE2OCAxNC4wM2EyLjcgMi43IDAgMCAwLTEuOTY4LS44MyAyLjUxIDIuNTEgMCAwIDAtMS45MjkuOGgtNC40NDNsMy4wNzgtMy4wNzhhMi44MzUgMi44MzUgMCAwIDAgMi44NTctMi44NDIgMi42IDIuNiAwIDAgMC0uODMxLTEuOTY5IDIuODIgMi44MiAwIDAgMC0yLjAxNC0uNzg4IDIuNjcgMi42NyAwIDAgMC0xLjk2OC43ODggMi4zNiAyLjM2IDAgMCAwLS44MTIgMS45MjJMMTggMTEuMTdWNi43MjZhMi41MSAyLjUxIDAgMCAwIC44LTEuOTI5IDIuNyAyLjcgMCAwIDAtLjgzMi0xLjk2OCAyLjc0NSAyLjc0NSAwIDAgMC0zLjkzNiAwIDIuNyAyLjcgMCAwIDAtLjgzMiAxLjk2OCAyLjUxIDIuNTEgMCAwIDAgLjggMS45M3Y0LjQ0M2wtMy4xMzgtMy4xMzhhMi4zNiAyLjM2IDAgMCAwLS44MTItMS45MjIgMi42NiAyLjY2IDAgMCAwLTEuOTY4LS43ODggMi44MyAyLjgzIDAgMCAwLTIuMDE0Ljc4OCAyLjYgMi42IDAgMCAwLS44MzEgMS45NjkgMi43NCAyLjc0IDAgMCAwIC44MzEgMi4wMTMgMi44IDIuOCAwIDAgMCAyLjAyNi44MjlsMy4wNzggMy4wNzhINi43MjlhMi41MSAyLjUxIDAgMCAwLTEuOTI5LS44IDIuNyAyLjcgMCAwIDAtMS45NjguODMxIDIuNzQ1IDIuNzQ1IDAgMCAwIDAgMy45MzcgMi43IDIuNyAwIDAgMCAxLjk2OC44MzIgMi41MSAyLjUxIDAgMCAwIDEuOTI5LS44aDQuNDQzbC0zLjA3OCAzLjA3N2EyLjgzNSAyLjgzNSAwIDAgMC0yLjg1NyAyLjg0MiAyLjYgMi42IDAgMCAwIC44MzEgMS45NjkgMi44MiAyLjgyIDAgMCAwIDIuMDE0Ljc4OCAyLjY3IDIuNjcgMCAwIDAgMS45NjgtLjc4OCAyLjM2IDIuMzYgMCAwIDAgLjgxMi0xLjkyMkwxNCAyMC44Mjd2NC40NDRhMi41MSAyLjUxIDAgMCAwLS44IDEuOTI5IDIuNzg0IDIuNzg0IDAgMCAwIDQuNzY4IDEuOTY4QTIuNyAyLjcgMCAwIDAgMTguOCAyNy4yYTIuNTEgMi41MSAwIDAgMC0uOC0xLjkyOXYtNC40NDRsMy4xMzggMy4xMzhhMi4zNiAyLjM2IDAgMCAwIC44MTIgMS45MjIgMi42NiAyLjY2IDAgMCAwIDEuOTY4Ljc4OCAyLjgzIDIuODMgMCAwIDAgMi4wMTQtLjc4OCAyLjYgMi42IDAgMCAwIC44MzEtMS45NjkgMi43NCAyLjc0IDAgMCAwLS44MzEtMi4wMTMgMi44IDIuOCAwIDAgMC0yLjAyNi0uODI5TDIwLjgyOCAxOGg0LjQ0M2EyLjUxIDIuNTEgMCAwIDAgMS45My44IDIuNzg0IDIuNzg0IDAgMCAwIDEuOTY3LTQuNzY5WiIvPjwvc3ZnPg==", "swift": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmNmU0MCIgZD0iTTE3LjA4NyAxOS43MjFjLTIuMzYgMS4zNi01LjU5IDEuNS04Ljg2LjFhMTMuOCAxMy44IDAgMCAxLTYuMjMtNS4zMmMuNjcuNTUgMS40NiAxIDIuMyAxLjQgMy4zNyAxLjU3IDYuNzMgMS40NiA5LjEgMC0zLjM3LTIuNTktNi4yNC01Ljk2LTguMzctOC43MS0uNDUtLjQ1LS43OC0xLjAxLTEuMTItMS41MSA4LjI4IDYuMDUgNy45MiA3LjU5IDIuNDEtMS4wMSA0Ljg5IDQuOTQgOS40MyA3Ljc0IDkuNDMgNy43NC4xNi4wOS4yNS4xNi4zNi4yMi4xLS4yNS4xOS0uNTEuMjYtLjc4Ljc5LTIuODUtLjExLTYuMTItMi4wOC04LjgxIDQuNTUgMi43NSA3LjI1IDcuOTEgNi4xMiAxMi4yNC0uMDMuMTEtLjA2LjIyLS4wNS4zOSAyLjI0IDIuODMgMS42NCA1Ljc4IDEuMzUgNS4yMi0xLjIxLTIuMzktMy40OC0xLjY1LTQuNjItMS4xNyIvPjwvc3ZnPg==", "toml": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2NmZDhkYyIgZD0iTTQgNlY0aDh2Mkg5djdIN1Y2eiIvPjxwYXRoIGZpbGw9IiNlZjUzNTAiIGQ9Ik00IDF2MUgydjEyaDJ2MUgxVjF6bTggMHYxaDJ2MTJoLTJ2MWgzVjF6Ii8+PC9zdmc+", "typescript": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbDpzcGFjZT0icHJlc2VydmUiIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iIzAyODhkMSIgZD0iTTIgMnYxMmgxMlYyem00IDZoM3YxSDh2NEg3VjlINnptNSAwaDJ2MWgtMnYxaDFhMS4wMDMgMS4wMDMgMCAwIDEgMSAxdjFhMS4wMDMgMS4wMDMgMCAwIDEtMSAxaC0ydi0xaDJ2LTFoLTFhMS4wMDMgMS4wMDMgMCAwIDEtMS0xVjlhMS4wMDMgMS4wMDMgMCAwIDEgMS0xIi8+PC9zdmc+", "vue": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzQxYjg4MyIgZD0iTTEuNzkxIDMuODUxIDEyIDIxLjQ3MSAyMi4yMDkgMy45MzZWMy44NUgxOC4yNGwtNi4xOCAxMC42MTZMNS45MDYgMy44NTF6Ii8+PHBhdGggZmlsbD0iIzM1NDk1ZSIgZD0ibTUuOTA3IDMuODUxIDYuMTUyIDEwLjYxN0wxOC4yNCAzLjg1MWgtMy43MjNMMTIuMDg0IDguMDMgOS42NiAzLjg1eiIvPjwvc3ZnPg==", "xml": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzhiYzM0YSIgZD0iTTEzIDloNS41TDEzIDMuNXpNNiAyaDhsNiA2djEyYTIgMiAwIDAgMS0yIDJINmEyIDIgMCAwIDEtMi0yVjRjMC0xLjExLjg5LTIgMi0ybS4xMiAxMy41IDMuNzQgMy43NCAxLjQyLTEuNDEtMi4zMy0yLjMzIDIuMzMtMi4zMy0xLjQyLTEuNDF6bTExLjE2IDAtMy43NC0zLjc0LTEuNDIgMS40MSAyLjMzIDIuMzMtMi4zMyAyLjMzIDEuNDIgMS40MXoiLz48L3N2Zz4=", "yaml": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmNTI1MiIgZD0iTTEzIDloNS41TDEzIDMuNXpNNiAyaDhsNiA2djEyYzAgMS4xLS45IDItMiAySDZjLTEuMSAwLTItLjktMi0yVjRjMC0xLjEuOS0yIDItMm0xMiAxNnYtMkg5djJ6bS00LTR2LTJINnYyeiIvPjwvc3ZnPg==", "zip": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2FmYjQyYiIgZD0iTTE0IDE3aC0ydi0yaC0ydi0yaDJ2MmgybTAtNmgtMnYyaDJ2MmgtMnYtMmgtMlY5aDJWN2gtMlY1aDJ2MmgybTUtNEg1Yy0xLjExIDAtMiAuODktMiAydjE0YTIgMiAwIDAgMCAyIDJoMTRhMiAyIDAgMCAwIDItMlY1YTIgMiAwIDAgMC0yLTIiLz48L3N2Zz4=" };
@@ -10065,185 +9864,6 @@ function FileIcon({ name, size = 14, fallback }) {
 }
 var FILE_ICON_CSS = `
 .nodo-file-art{display:block;flex:none;object-fit:contain}
-`;
-
-// src/client/hover-preview.tsx
-function diffPreviewPosition(row, width, height, bounds = { top: 0, bottom: height }, least = 720) {
-  const previewWidth = Math.max(0, Math.min(Math.max(row.width, least), 1100, width - 24));
-  const above = Math.max(0, row.top - Math.max(12, bounds.top + 8) - 8);
-  const below = Math.max(0, Math.min(height - 12, bounds.bottom - 8) - row.bottom - 8);
-  const onTop = above >= 160 || above >= below;
-  const span = bounds.width ?? width;
-  const origin = bounds.width === void 0 ? 0 : bounds.left ?? 0;
-  return {
-    left: `${Math.max(12, Math.min(origin + (span - previewWidth) / 2, width - previewWidth - 12))}px`,
-    width: `${previewWidth}px`,
-    top: onTop ? "auto" : `${row.bottom + 8}px`,
-    bottom: onTop ? `${height - row.top + 8}px` : "auto",
-    maxHeight: `${Math.min(360, onTop ? above : below)}px`
-  };
-}
-function useHoverPreview() {
-  const [value, setValue] = (0, import_react.useState)(null);
-  const anchor = (0, import_react.useRef)(null);
-  const popup = (0, import_react.useRef)(null);
-  const timer2 = (0, import_react.useRef)(null);
-  const keep = () => {
-    if (timer2.current !== null) clearTimeout(timer2.current);
-    timer2.current = null;
-  };
-  const close = () => {
-    keep();
-    timer2.current = setTimeout(() => {
-      if (!popup.current?.contains(document.activeElement)) setValue(null);
-    }, 180);
-  };
-  const hide = () => {
-    keep();
-    setValue(null);
-  };
-  const show = (next, row) => {
-    keep();
-    anchor.current = row;
-    setValue(next);
-  };
-  return { value, show, keep, close, hide, anchor, popup };
-}
-function useHoverPreviewPlacement(preview, least = 720) {
-  (0, import_react.useLayoutEffect)(() => {
-    const popup = preview.popup.current, row = preview.anchor.current;
-    if (preview.value === null || !popup || !row) return;
-    const place = () => Object.assign(popup.style, diffPreviewPosition(
-      row.getBoundingClientRect(),
-      window.innerWidth,
-      window.innerHeight,
-      row.closest(".nodo-feed")?.getBoundingClientRect(),
-      least
-    ));
-    popup.popover = "manual";
-    place();
-    popup.showPopover?.({ source: row });
-    const scroll = (event) => {
-      if (!popup.contains(event.target)) preview.hide();
-    };
-    const escape = (event) => {
-      if (event.key === "Escape") preview.hide();
-    };
-    const outside = (event) => {
-      if (!popup.contains(event.target) && !row.contains(event.target)) preview.hide();
-    };
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", scroll, true);
-    document.addEventListener("keydown", escape);
-    document.addEventListener("pointerdown", outside);
-    return () => {
-      if (popup.hidePopover && popup.matches(":popover-open")) popup.hidePopover();
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", scroll, true);
-      document.removeEventListener("keydown", escape);
-      document.removeEventListener("pointerdown", outside);
-    };
-  }, [preview.value]);
-}
-function HoverPreview({ preview, className, id, label, children }) {
-  if (preview.value === null || preview.value === void 0) return null;
-  return /* @__PURE__ */ (0, import_react.createElement)(
-    "div",
-    {
-      id,
-      ref: preview.popup,
-      className,
-      role: "dialog",
-      tabIndex: -1,
-      "aria-label": label,
-      onPointerEnter: preview.keep,
-      onPointerLeave: preview.close,
-      onFocusCapture: preview.keep,
-      onBlurCapture: (event) => {
-        if (!event.currentTarget.contains(event.relatedTarget) && !preview.anchor.current?.contains(event.relatedTarget)) preview.close();
-      }
-    },
-    children
-  );
-}
-function HoverFilePreview({ preview, scope, path }) {
-  const [content, setContent] = (0, import_react.useState)(null);
-  (0, import_react.useEffect)(() => {
-    setContent(null);
-    let live = true;
-    call2("workspace-file", { ...scope, path }).then((value) => {
-      if (live) setContent(value);
-    }).catch(() => {
-      if (live) preview.hide();
-    });
-    return () => {
-      live = false;
-    };
-  }, [preview.value, path]);
-  (0, import_react.useEffect)(() => {
-    if (content !== null && (content.binary || content.missing)) preview.hide();
-  }, [content]);
-  if (content === null) return /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026");
-  if (content.image) return /* @__PURE__ */ (0, import_react.createElement)("img", { className: "nodo-hover-file-image", src: content.image.dataUrl, alt: path });
-  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: (content.text ?? "").split("\n", 101).join("\n"), lang: path.split(".").at(-1)?.toLowerCase() ?? "", wrap: true, showHeader: false });
-}
-function ToolFileChip({ file, onShow, onClose, onOpened, onOpenChanges }) {
-  const target = rightPanelService?.getSnapshot().target;
-  const open = () => {
-    if (!target) return false;
-    if (onOpenChanges) onOpenChanges();
-    else rightPanelService?.openFile(file.path);
-    onOpened();
-    return true;
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)(
-    "span",
-    {
-      className: "nodo-tool-call-file",
-      onPointerEnter: (event) => {
-        if (event.pointerType !== "touch") onShow(event.currentTarget);
-      },
-      onPointerLeave: onClose
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: file.name, size: 14 }),
-    /* @__PURE__ */ (0, import_react.createElement)(
-      "span",
-      {
-        className: "nodo-tool-call-file-name",
-        title: file.path,
-        role: target ? "link" : void 0,
-        tabIndex: target ? 0 : void 0,
-        "aria-haspopup": "dialog",
-        "aria-label": `\u6253\u5F00 ${file.display}`,
-        onClick: (event) => {
-          if (open() && event.stopPropagation) event.stopPropagation();
-        },
-        onKeyDown: (event) => {
-          if ((event.key === "Enter" || event.key === " ") && open() && event.preventDefault) {
-            event.preventDefault();
-            event.stopPropagation();
-          }
-        },
-        onFocus: (event) => onShow(event.currentTarget),
-        onBlur: onClose
-      },
-      file.name
-    ),
-    file.directory !== "" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-directory" }, file.directory),
-    file.counts && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${file.counts.added} \u884C\uFF0C\u5220\u9664 ${file.counts.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", file.counts.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", file.counts.removed.toLocaleString()))
-  );
-}
-var HOVER_PREVIEW_CSS = `
-.nodo-hover-preview{inset:auto;margin:0;box-sizing:border-box;height:360px;padding:8px 12px;overflow:auto;overscroll-behavior:contain;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-panel);z-index:40}
-.nodo-hover-preview .nodo-code-diff{border-radius:var(--dsw-radius-md)}
-.nodo-hover-preview .nodo-code-diff:first-child{margin-top:0}
-.nodo-hover-preview .nodo-code-diff:last-child{margin-bottom:0}
-.nodo-hover-preview .nodo-code-diff-patch{max-height:none}
-.nodo-hover-preview::backdrop{background:transparent;pointer-events:none}
-.nodo-hover-preview .nodo-note{padding:4px 0}
-.nodo-hover-file-image{display:block;max-width:100%;margin:0 auto;border-radius:var(--dsw-radius-md)}
-.nodo-hover-preview.nodo-hover-picture{height:auto;padding:8px}
-.nodo-hover-picture>img{display:block;max-width:100%;max-height:336px;margin:0 auto;border-radius:var(--dsw-radius-md)}
 `;
 
 // node_modules/diff/libesm/diff/base.js
@@ -11383,88 +11003,6 @@ function summarizeChanges(body) {
   return { files, totals };
 }
 
-// src/client/tool-file.ts
-var PATH_KEYS = ["file_path", "filePath", "path"];
-var parseJson = (input) => {
-  if (typeof input === "string" && input.trimStart().startsWith("{")) {
-    try {
-      return JSON.parse(input);
-    } catch {
-      return input;
-    }
-  }
-  return input;
-};
-var unwrap = (input) => {
-  let value = parseJson(input);
-  if (Array.isArray(value)) return { changes: value };
-  if (!value || typeof value !== "object") return null;
-  let record = value;
-  if (record.rawInput !== void 0) {
-    const raw = parseJson(record.rawInput);
-    if (Array.isArray(raw)) return { changes: raw };
-    if (!raw || typeof raw !== "object") return null;
-    record = raw;
-  }
-  return record;
-};
-var textField = (args, keys) => keys.map((key) => args[key]).find((value) => typeof value === "string" && value.trim() !== "");
-var editDiffs = (args, path) => {
-  const list = Array.isArray(args.edits) ? args.edits : [];
-  if (list.length > 0 && list.every((item) => item && typeof item === "object" && typeof item.oldText === "string" && typeof item.newText === "string"))
-    return list.map((item) => ({ path, oldText: item.oldText, newText: item.newText }));
-  const oldText = textField(args, ["oldText", "old_string"]);
-  const newText = textField(args, ["newText", "new_string"]);
-  return typeof oldText === "string" && typeof newText === "string" ? [{ path, oldText, newText }] : null;
-};
-var lastSegment = (path) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
-function describe(path, diffs, cwd) {
-  const display = relativeFile(path, cwd);
-  const name = lastSegment(display);
-  const counts = diffs.length === 0 ? void 0 : chainedEdits(diffs.map((diff) => ({
-    operation: diff.oldText == null ? "add" : "update",
-    oldText: diff.oldText ?? null,
-    newText: diff.newText,
-    diffText: diff.patch
-  }))).reduce((sum, edit) => {
-    const count = editCounts(edit);
-    return sum && count ? { added: sum.added + count.added, removed: sum.removed + count.removed } : void 0;
-  }, { added: 0, removed: 0 });
-  return { path, display, name, directory: display.slice(0, display.length - name.length), counts, diffs };
-}
-function referenceFile(uri, cwd) {
-  if (typeof uri !== "string" || uri.trim() === "" || uri.startsWith("~")) return null;
-  let path = uri;
-  if (/^[a-z][\w+.-]*:/i.test(uri)) {
-    if (!/^file:/i.test(uri)) return null;
-    try {
-      path = decodeURIComponent(new URL(uri).pathname);
-    } catch {
-      return null;
-    }
-  } else if (uri.startsWith("//")) return null;
-  if (path.startsWith("/") && (cwd === void 0 || !(path === cwd || path.startsWith(`${cwd}/`)))) return null;
-  return path !== "/" && lastSegment(path) !== "" ? describe(path, [], cwd) : null;
-}
-function toolFileChange(input, cwd) {
-  const args = unwrap(input);
-  if (args === null) {
-    const bare = typeof input === "string" ? input.trim() : "";
-    return bare !== "" && !/\s/.test(bare) && !/[\\/]$/.test(bare) && !/["{}]/.test(bare) && (!bare.includes(":") || /^[a-zA-Z]:[\\/]/.test(bare)) && lastSegment(bare).includes(".") ? describe(bare, [], cwd) : null;
-  }
-  const patches = (Array.isArray(args.changes) ? args.changes : []).flatMap((change) => {
-    const item = change && typeof change === "object" ? change : null;
-    return item && typeof item.path === "string" && typeof item.diff === "string" ? [{ path: item.path, patch: item.diff }] : [];
-  });
-  if (patches.length > 0) return describe(patches[0].path, patches, cwd);
-  const path = textField(args, PATH_KEYS);
-  if (path === void 0) return null;
-  const edits = editDiffs(args, path);
-  if (edits !== null) return describe(path, edits, cwd);
-  const content = textField(args, ["content"]);
-  return describe(path, content === void 0 ? [] : [{ path, oldText: null, newText: content }], cwd);
-}
-
 // src/client/code-diff.tsx
 var LABELS = {
   copy: "\u590D\u5236",
@@ -11666,7 +11204,7 @@ button.nodo-panel-diff-gap:focus-visible{outline:2px solid var(--dsw-alias-state
 `;
 
 // src/client/file-tree.tsx
-function buildFileTree(files) {
+function groupFilesByDirectory(files) {
   const groups = /* @__PURE__ */ new Map();
   for (const file of files) {
     const path = file.relativePath ?? file.path;
@@ -11684,8 +11222,8 @@ function buildFileTree(files) {
   }
   return Array.from(groups, ([directory, files2]) => directory ? [{ path: directory, name: directory, depth: 0, kind: "folder" }, ...files2] : files2).flat();
 }
-function FileTree({ nodes, visibleCount = nodes.length, totalAdditions, totalDeletions, header, renderFile, className = "", ...props }) {
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { "data-slot": "file-tree", className: `nodo-file-tree ${className}`, ...props }, header ?? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-file-tree-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, nodes.filter((node) => node.kind === "file").length, " \u4E2A\u6587\u4EF6\u53D8\u66F4"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-counts" }, totalAdditions !== void 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-added" }, "+", totalAdditions.toLocaleString()), totalDeletions !== void 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-removed" }, "\u2212", totalDeletions.toLocaleString()))), nodes.slice(0, Math.max(0, visibleCount)).map((node) => {
+function FileTree({ nodes, header, renderFile, className = "", ...props }) {
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { "data-slot": "file-tree", className: `nodo-file-tree ${className}`, ...props }, header ?? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-file-tree-header" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, nodes.filter((node) => node.kind === "file").length, " \u4E2A\u6587\u4EF6\u53D8\u66F4")), nodes.map((node) => {
     const content = /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-row", style: { paddingInlineStart: `${4 + node.depth * 14}px` } }, node.kind === "folder" ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-icon" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: node.name, size: 14 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-name", title: node.path }, node.name), node.kind === "file" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-counts" }, !!node.additions && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-added" }, "+", node.additions.toLocaleString()), !!node.deletions && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-file-tree-removed" }, "\u2212", node.deletions.toLocaleString())));
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: `${node.kind}:${node.path}`, "data-kind": node.kind, className: "nodo-file-tree-entry" }, node.kind === "file" && renderFile ? renderFile(node, content) : content);
   }));
@@ -11702,6 +11240,185 @@ var FILE_TREE_CSS = `
 .nodo-file-tree-counts{display:inline-flex;flex:none;gap:6px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .nodo-file-tree-added{color:var(--dsw-alias-state-success-primary)}
 .nodo-file-tree-removed{color:var(--dsw-alias-state-error-primary)}
+`;
+
+// src/client/hover-preview.tsx
+function diffPreviewPosition(row, width, height, bounds = { top: 0, bottom: height }, least = 720) {
+  const previewWidth = Math.max(0, Math.min(Math.max(row.width, least), 1100, width - 24));
+  const above = Math.max(0, row.top - Math.max(12, bounds.top + 8) - 8);
+  const below = Math.max(0, Math.min(height - 12, bounds.bottom - 8) - row.bottom - 8);
+  const onTop = above >= 160 || above >= below;
+  const span = bounds.width ?? width;
+  const origin = bounds.width === void 0 ? 0 : bounds.left ?? 0;
+  return {
+    left: `${Math.max(12, Math.min(origin + (span - previewWidth) / 2, width - previewWidth - 12))}px`,
+    width: `${previewWidth}px`,
+    top: onTop ? "auto" : `${row.bottom + 8}px`,
+    bottom: onTop ? `${height - row.top + 8}px` : "auto",
+    maxHeight: `${Math.min(360, onTop ? above : below)}px`
+  };
+}
+function useHoverPreview() {
+  const [value, setValue] = (0, import_react.useState)(null);
+  const anchor = (0, import_react.useRef)(null);
+  const popup = (0, import_react.useRef)(null);
+  const timer2 = (0, import_react.useRef)(null);
+  const keep = () => {
+    if (timer2.current !== null) clearTimeout(timer2.current);
+    timer2.current = null;
+  };
+  const close = () => {
+    keep();
+    timer2.current = setTimeout(() => {
+      if (!popup.current?.contains(document.activeElement)) setValue(null);
+    }, 180);
+  };
+  const hide = () => {
+    keep();
+    setValue(null);
+  };
+  const show = (next, row) => {
+    keep();
+    anchor.current = row;
+    setValue(next);
+  };
+  return { value, show, keep, close, hide, anchor, popup };
+}
+function useHoverPreviewPlacement(preview, least = 720) {
+  (0, import_react.useLayoutEffect)(() => {
+    const popup = preview.popup.current, row = preview.anchor.current;
+    if (preview.value === null || !popup || !row) return;
+    const place = () => Object.assign(popup.style, diffPreviewPosition(
+      row.getBoundingClientRect(),
+      window.innerWidth,
+      window.innerHeight,
+      row.closest(".nodo-feed")?.getBoundingClientRect(),
+      least
+    ));
+    popup.popover = "manual";
+    place();
+    popup.showPopover?.({ source: row });
+    const scroll = (event) => {
+      if (!popup.contains(event.target)) preview.hide();
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") preview.hide();
+    };
+    const outside = (event) => {
+      if (!popup.contains(event.target) && !row.contains(event.target)) preview.hide();
+    };
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", scroll, true);
+    document.addEventListener("keydown", escape);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      if (popup.hidePopover && popup.matches(":popover-open")) popup.hidePopover();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", scroll, true);
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [preview.value]);
+}
+function HoverPreview({ preview, className, id, label, children }) {
+  if (preview.value === null || preview.value === void 0) return null;
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      id,
+      ref: preview.popup,
+      className,
+      role: "dialog",
+      tabIndex: -1,
+      "aria-label": label,
+      onPointerEnter: preview.keep,
+      onPointerLeave: preview.close,
+      onFocusCapture: preview.keep,
+      onBlurCapture: (event) => {
+        if (!event.currentTarget.contains(event.relatedTarget) && !preview.anchor.current?.contains(event.relatedTarget)) preview.close();
+      }
+    },
+    children
+  );
+}
+function HoverFilePreview({ preview, scope, path }) {
+  const [content, setContent] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    setContent(null);
+    let live = true;
+    call("workspace-file", { ...scope, path }).then((value) => {
+      if (live) setContent(value);
+    }).catch(() => {
+      if (live) preview.hide();
+    });
+    return () => {
+      live = false;
+    };
+  }, [preview.value, path]);
+  (0, import_react.useEffect)(() => {
+    if (content !== null && (content.binary || content.missing)) preview.hide();
+  }, [content]);
+  if (content === null) return /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026");
+  if (content.image) return /* @__PURE__ */ (0, import_react.createElement)("img", { className: "nodo-hover-file-image", src: content.image.dataUrl, alt: path });
+  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: (content.text ?? "").split("\n", 101).join("\n"), lang: path.split(".").at(-1)?.toLowerCase() ?? "", wrap: true, showHeader: false });
+}
+function ToolFileChip({ file, onShow, onClose, onOpened, onOpenChanges }) {
+  const target = rightPanelService?.getSnapshot().target;
+  const open = () => {
+    if (!target) return false;
+    if (onOpenChanges) onOpenChanges();
+    else rightPanelService?.openFile(file.path);
+    onOpened();
+    return true;
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    "span",
+    {
+      className: "nodo-tool-call-file",
+      onPointerEnter: (event) => {
+        if (event.pointerType !== "touch") onShow(event.currentTarget);
+      },
+      onPointerLeave: onClose
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: file.name, size: 14 }),
+    /* @__PURE__ */ (0, import_react.createElement)(
+      "span",
+      {
+        className: "nodo-tool-call-file-name",
+        title: file.path,
+        role: target ? "link" : void 0,
+        tabIndex: target ? 0 : void 0,
+        "aria-haspopup": "dialog",
+        "aria-label": `\u6253\u5F00 ${file.display}`,
+        onClick: (event) => {
+          if (open() && event.stopPropagation) event.stopPropagation();
+        },
+        onKeyDown: (event) => {
+          if ((event.key === "Enter" || event.key === " ") && open() && event.preventDefault) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        },
+        onFocus: (event) => onShow(event.currentTarget),
+        onBlur: onClose
+      },
+      file.name
+    ),
+    file.directory !== "" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-directory" }, file.directory),
+    file.counts && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-counts", "aria-label": `\u65B0\u589E ${file.counts.added} \u884C\uFF0C\u5220\u9664 ${file.counts.removed} \u884C` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-added" }, "+", file.counts.added.toLocaleString()), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-removed" }, "\u2212", file.counts.removed.toLocaleString()))
+  );
+}
+var HOVER_PREVIEW_CSS = `
+.nodo-hover-preview{inset:auto;margin:0;box-sizing:border-box;height:360px;padding:8px 12px;overflow:auto;overscroll-behavior:contain;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-panel);z-index:40}
+.nodo-hover-preview .nodo-code-diff{border-radius:var(--dsw-radius-md)}
+.nodo-hover-preview .nodo-code-diff:first-child{margin-top:0}
+.nodo-hover-preview .nodo-code-diff:last-child{margin-bottom:0}
+.nodo-hover-preview .nodo-code-diff-patch{max-height:none}
+.nodo-hover-preview::backdrop{background:transparent;pointer-events:none}
+.nodo-hover-preview .nodo-note{padding:4px 0}
+.nodo-hover-file-image{display:block;max-width:100%;margin:0 auto;border-radius:var(--dsw-radius-md)}
+.nodo-hover-preview.nodo-hover-picture{height:auto;padding:8px}
+.nodo-hover-picture>img{display:block;max-width:100%;max-height:336px;margin:0 auto;border-radius:var(--dsw-radius-md)}
 `;
 
 // src/client/file-changes-summary.tsx
@@ -11722,7 +11439,7 @@ function FileChangesSummary({ record, value, full, load, loadChanges = load, bus
   const previewId = `${detailsId}-preview`;
   const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(value.body), [value.body]);
   const byPath = new Map(files.map((entry, index) => [entry.file.path, { ...entry, index }]));
-  const tree = buildFileTree((expanded ? files : files.slice(0, 3)).map(({ file, counts }) => ({
+  const tree = groupFilesByDirectory((expanded ? files : files.slice(0, 3)).map(({ file, counts }) => ({
     path: file.path,
     relativePath: relativeFile(file.path, value.body.cwd),
     additions: counts?.added,
@@ -11895,6 +11612,1292 @@ var FILE_CHANGES_SUMMARY_CSS = FILE_TREE_CSS + `
 .nodo-changes-preview::backdrop{background:transparent;pointer-events:none}
 @media(max-width:420px){.nodo-changes-header{gap:8px;padding:12px}.nodo-changes-icon{width:32px;height:32px}.nodo-changes-coverage{display:none}}
 `;
+
+// src/client/changes-panel.tsx
+var RENDER_BUDGET = 2e3;
+var treeOf = (entries) => {
+  const root = { dirs: /* @__PURE__ */ new Map(), files: [] };
+  for (const { rel, entry } of entries) {
+    const parts = rel.split("/");
+    let at2 = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!at2.dirs.has(part)) at2.dirs.set(part, { dirs: /* @__PURE__ */ new Map(), files: [] });
+      at2 = at2.dirs.get(part);
+    }
+    at2.files.push({ name: parts.at(-1), path: entry.file.path, entry });
+  }
+  return root;
+};
+function ChangesView({ source, initialPath = "", openFile }) {
+  const [body, setBody] = (0, import_react.useState)(source.body);
+  const [selected, setSelected] = (0, import_react.useState)(initialPath);
+  const [query, setQuery] = (0, import_react.useState)("");
+  const [folded, setFolded] = (0, import_react.useState)({});
+  const [expanded, setExpanded] = (0, import_react.useState)({});
+  const [busy, setBusy] = (0, import_react.useState)(!!source.load);
+  const [error2, setError] = (0, import_react.useState)("");
+  const [attempt, setAttempt] = (0, import_react.useState)(0);
+  const sections = (0, import_react.useRef)({});
+  (0, import_react.useEffect)(() => {
+    if (!source.load) return;
+    let live = true;
+    setBusy(true);
+    setError("");
+    void source.load().then((value) => {
+      if (live) setBody(value);
+    }).catch((failure) => {
+      if (live) setError(failure.message || "\u53D8\u66F4\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25");
+    }).finally(() => {
+      if (live) setBusy(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [source, attempt]);
+  const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(body), [body]);
+  const reveal = (path) => sections.current[path]?.scrollIntoView?.({ block: "start" });
+  (0, import_react.useEffect)(() => {
+    if (selected && !busy) reveal(selected);
+  }, [busy]);
+  const rows = files.map((entry) => ({ rel: relativeFile(entry.file.path, body.cwd), entry }));
+  const wanted = query.trim().toLowerCase();
+  const tree = treeOf(rows.filter(({ rel }) => !wanted || rel.toLowerCase().includes(wanted)));
+  const branch = (dir, prefix, depth) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, [...dir.dirs].map(([name, child]) => {
+    const key = `${prefix}${name}/`;
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-changes-node",
+        style: { paddingInlineStart: 8 + depth * 14 },
+        "aria-expanded": !folded[key],
+        onClick: () => setFolded((current) => ({ ...current, [key]: !current[key] }))
+      },
+      folded[key] ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }),
+      /* @__PURE__ */ (0, import_react.createElement)("span", null, name)
+    ), !folded[key] && branch(child, key, depth + 1));
+  }), dir.files.map((file) => /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      key: file.path,
+      type: "button",
+      className: "nodo-changes-node",
+      "data-selected": file.path === selected || void 0,
+      style: { paddingInlineStart: 8 + depth * 14 },
+      title: relativeFile(file.path, body.cwd),
+      onClick: () => {
+        setSelected(file.path);
+        reveal(file.path);
+      }
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: file.name, size: 14 }),
+    /* @__PURE__ */ (0, import_react.createElement)("span", null, file.name),
+    /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: file.entry.counts })
+  )));
+  let spent = 0;
+  const within = /* @__PURE__ */ new Set();
+  for (const { entry } of rows) {
+    const size = entry.counts ? entry.counts.added + entry.counts.removed : 100;
+    if (spent + size <= RENDER_BUDGET) {
+      within.add(entry.file.path);
+      spent += size;
+    }
+  }
+  const section = ({ rel, entry }) => {
+    const name = rel.slice(rel.lastIndexOf("/") + 1);
+    const shown = within.has(entry.file.path) || expanded[entry.file.path] || entry.file.path === selected;
+    return /* @__PURE__ */ (0, import_react.createElement)("section", { key: entry.file.path, className: "nodo-changes-file-section", ref: (element) => {
+      sections.current[entry.file.path] = element;
+    } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-changes-row-title" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: rel }, /* @__PURE__ */ (0, import_react.createElement)("strong", null, name)), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${rel}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) })), shown ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff" }, source.renderFile(entry.file, entry.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-collapsed" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setExpanded((current) => ({ ...current, [entry.file.path]: true })) }, "\u5C55\u5F00 diff")));
+  };
+  const message = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-viewer" }, busy ? message("\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, message(error2), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, rows.map(section), files.length < body.fileCount && message(`\u4EC5\u4FDD\u5B58 ${files.length} / ${body.fileCount} \u4E2A\u6587\u4EF6`), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : message("\u65E0\u6587\u4EF6\u53D8\u66F4")))), files.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5DF2\u66F4\u6539\u7684\u6587\u4EF6"), totals && /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-nodes" }, branch(tree, "", 0))));
+}
+var CHANGES_PANEL_CSS = `
+.nodo-right-changes{display:flex;flex:1;flex-direction:row;min-width:0;min-height:0;overflow:hidden}
+.nodo-changes-viewer{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden}
+.nodo-changes-file-section{flex:none;min-width:0}
+.nodo-changes-diff{min-width:0;overflow-x:hidden}
+.nodo-changes-collapsed{padding:10px 12px}
+.nodo-changes-tree{display:flex;flex:0 0 min(280px,45%);flex-direction:column;min-width:0;min-height:0;border-left:.5px solid var(--dsw-alias-border-l3)}
+.nodo-changes-tree-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:10px 16px 4px;color:var(--dsw-alias-label-secondary);font-size:13px}
+.nodo-changes-nodes{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;padding:0 8px 12px}
+.nodo-changes-node{display:flex;align-items:center;gap:6px;width:100%;min-height:30px;padding:4px 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left;cursor:pointer}
+.nodo-changes-node:hover,.nodo-changes-node[data-selected]{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-changes-node>svg,.nodo-changes-node>img{flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-node>span:not(.nodo-changes-counts){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-changes-row-title{display:flex;align-items:center;gap:8px;min-width:0;min-height:36px;padding:4px 8px 4px 12px;border-bottom:.5px solid var(--dsw-alias-border-l3);font-size:13px}
+.nodo-changes-row-title>svg,.nodo-changes-row-title>img{flex:none;color:var(--dsw-alias-label-tertiary)}
+.nodo-changes-path{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.nodo-changes-path strong{font-weight:600}
+.nodo-changes-load-error{display:flex;align-items:center;gap:8px;padding-right:8px}
+.nodo-changes-node:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
+.nodo-right-changes .nodo-note{padding:0 12px;overflow-wrap:anywhere}
+`;
+
+// src/client/browser.tsx
+var desktopBrowser = () => globalThis.dshDesktop?.browser;
+function normalizeBrowserAddress(input) {
+  let address = input.trim();
+  if (!address || address.length > 16384 || /[\s\\]/.test(address)) return null;
+  if (/^:?\d+$/.test(address)) address = `http://localhost:${address.replace(/^:/, "")}`;
+  else if (/^(localhost|127(?:\.\d{1,3}){1,3}|\[[^\]]+\])(?=[:/?#]|$)/i.test(address)) address = `http://${address}`;
+  else if (!/^[a-z][a-z\d+.-]*:/i.test(address) || /^[a-z\d.-]+\.[a-z\d-]+:\d+(?=[/?#]|$)/i.test(address)) address = `https://${address}`;
+  try {
+    const url = new URL(address);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password || url.port === "0") return null;
+    const origin = globalThis.location?.origin;
+    if (origin && origin !== "null" && url.origin === origin) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+var browserTitle = (url) => url ? new URL(url).hostname : "\u6D4F\u89C8\u5668";
+function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
+  const [bridge] = (0, import_react.useState)(desktopBrowser);
+  const [address, setAddress] = (0, import_react.useState)(initialUrl);
+  const [url, setUrl] = (0, import_react.useState)(initialUrl);
+  const [error2, setError] = (0, import_react.useState)("");
+  const [navigation, setNavigation2] = (0, import_react.useState)({ back: false, forward: false });
+  const [revision, setRevision] = (0, import_react.useState)(0);
+  const viewport = (0, import_react.useRef)(null);
+  const commands = (0, import_react.useRef)(null);
+  const latestUrl = (0, import_react.useRef)(initialUrl);
+  latestUrl.current = initialUrl;
+  const callbacks = (0, import_react.useRef)({ onChange, onOpen });
+  callbacks.current = { onChange, onOpen };
+  (0, import_react.useEffect)(() => {
+    if (!bridge) return;
+    if (!cwd) {
+      setError("\u5DE5\u4F5C\u533A\u4E0D\u53EF\u7528");
+      return;
+    }
+    let live = true, ready = false, firstDocument = true, loadRevision = 0;
+    let pending = latestUrl.current, observed = latestUrl.current;
+    let guest, lease, unsubscribe;
+    const dispose = () => {
+      unsubscribe?.();
+      unsubscribe = void 0;
+      commands.current = null;
+      guest?.remove();
+      guest = void 0;
+      if (lease) {
+        void bridge.release(lease).catch(() => {
+        });
+        lease = void 0;
+      }
+    };
+    const load = (value) => {
+      pending = value;
+      if (!ready || !guest) return;
+      pending = "";
+      const current = ++loadRevision;
+      void guest.loadURL(value).catch((failure) => {
+        if (live && current === loadRevision && !(typeof failure === "object" && failure !== null && "code" in failure && failure.code === "ERR_ABORTED")) setError("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25");
+      });
+    };
+    const observe = () => {
+      if (!live || !ready || !guest) return;
+      try {
+        const current = normalizeBrowserAddress(guest.getURL());
+        if (!current) return;
+        setError("");
+        if (firstDocument) {
+          guest.clearHistory();
+          firstDocument = false;
+        }
+        if (current !== observed) {
+          observed = current;
+          setAddress(current);
+          setUrl(current);
+        }
+        const title = guest.getTitle().trim();
+        if (title) guest.setAttribute("aria-label", title);
+        callbacks.current.onChange(current, title || browserTitle(current));
+        setNavigation2({ back: guest.canGoBack(), forward: guest.canGoForward() });
+      } catch {
+        setError("\u65E0\u6CD5\u8BFB\u53D6\u7F51\u9875\u72B6\u6001");
+      }
+    };
+    commands.current = { navigate: load, back: () => guest?.goBack(), forward: () => guest?.goForward(), reload: () => guest?.reload() };
+    void (async () => {
+      const reservation = await bridge.acquire(`cwd:${cwd}`);
+      if (!live) {
+        await bridge.release(reservation.lease);
+        return;
+      }
+      lease = reservation.lease;
+      setError("");
+      const element = document.createElement("webview");
+      guest = element;
+      element.className = "nodo-browser-frame";
+      element.setAttribute("name", reservation.lease);
+      element.setAttribute("partition", reservation.partition);
+      element.setAttribute("allowpopups", "");
+      element.setAttribute("src", `about:blank#${reservation.lease}`);
+      element.setAttribute("aria-label", "\u6D4F\u89C8\u5668\u9875\u9762");
+      unsubscribe = bridge.onOpenRequested(reservation.lease, (value) => {
+        const next = normalizeBrowserAddress(value);
+        if (live && next) callbacks.current.onOpen(next);
+      });
+      element.addEventListener("dom-ready", () => {
+        if (live) {
+          ready = true;
+          setError("");
+          observe();
+          if (pending) load(pending);
+        }
+      });
+      for (const event of ["did-navigate", "did-navigate-in-page", "did-stop-loading", "page-title-updated"]) element.addEventListener(event, observe);
+      element.addEventListener("did-fail-load", (event) => {
+        const failure = event;
+        if (live && failure.isMainFrame && failure.errorCode !== -3) setError("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25");
+      });
+      viewport.current?.appendChild(element);
+    })().catch(() => {
+      if (live) {
+        dispose();
+        setError("\u65E0\u6CD5\u6253\u5F00\u6D4F\u89C8\u5668");
+      }
+    });
+    return () => {
+      live = false;
+      dispose();
+    };
+  }, [bridge, cwd]);
+  const navigate = () => {
+    const next = normalizeBrowserAddress(address);
+    if (!next) {
+      setError("\u4EC5\u652F\u6301 HTTP \u6216 HTTPS \u5730\u5740");
+      return;
+    }
+    setError("");
+    setAddress(next);
+    setUrl(next);
+    callbacks.current.onChange(next, browserTitle(next));
+    commands.current?.navigate(next);
+  };
+  const command = (action) => {
+    setError("");
+    try {
+      if (bridge) commands.current?.[action]();
+      else if (action === "reload") setRevision((value) => value + 1);
+    } catch {
+      setError("\u7F51\u9875\u64CD\u4F5C\u5931\u8D25");
+    }
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser-toolbar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u540E\u9000", disabled: !navigation.back, onClick: () => command("back"), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u524D\u8FDB", disabled: !navigation.forward, onClick: () => command("forward"), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u5237\u65B0\u7F51\u9875", disabled: !url, onClick: () => command("reload"), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRefreshOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)("form", { onSubmit: (event) => {
+    event.preventDefault();
+    navigate();
+  } }, /* @__PURE__ */ (0, import_react.createElement)(
+    "input",
+    {
+      "aria-label": "\u7F51\u9875\u5730\u5740",
+      placeholder: "\u8F93\u5165\u7F51\u5740\u6216\u7AEF\u53E3",
+      value: address,
+      onChange: (event) => setAddress(event.currentTarget.value),
+      autoCapitalize: "off",
+      autoCorrect: "off",
+      spellCheck: false
+    }
+  )), !bridge && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", disabled: !url, onClick: () => globalThis.open(url, "_blank", "noopener,noreferrer") }, "\u5728\u5916\u90E8\u6253\u5F00")), error2 && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error2), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser-viewport", ref: viewport }, !bridge && /* @__PURE__ */ (0, import_react.createElement)(
+    "iframe",
+    {
+      key: revision,
+      className: "nodo-browser-frame",
+      title: "\u6D4F\u89C8\u5668\u9875\u9762",
+      src: url || "about:blank",
+      referrerPolicy: "no-referrer",
+      sandbox: "allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+    }
+  )));
+}
+
+// src/client/terminal.tsx
+var terminalScope = (target) => target.workspace !== void 0 ? { workspace: target.workspace } : { profile: target.profile, session: target.session };
+var ROUTE2 = "/api/nodo/terminal";
+var TerminalMissingError = class extends Error {
+};
+async function terminalRequest(op, payload = {}) {
+  const response = await fetch(ROUTE2, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, ...payload }) });
+  const answer = await response.json();
+  if (response.status === 404 || answer.error?.code === "terminal/not-found") throw new TerminalMissingError("\u7EC8\u7AEF\u4E0D\u5B58\u5728");
+  if (!answer.ok) throw new Error("\u7EC8\u7AEF\u64CD\u4F5C\u5931\u8D25");
+  return answer.value;
+}
+var sizeOf = ({ cols, rows }) => ({ cols: Math.max(2, Math.min(32767, cols)), rows: Math.max(1, Math.min(32767, rows)) });
+async function openTerminal(element, size) {
+  const [{ Terminal }, { FitAddon }] = await Promise.all([Promise.resolve().then(() => (init_xterm(), xterm_exports)), Promise.resolve().then(() => (init_addon_fit(), addon_fit_exports))]);
+  const terminal = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 3e3, minimumContrastRatio: 4.5, ...size });
+  const fit = new FitAddon();
+  try {
+    terminal.loadAddon(fit);
+    terminal.open(element);
+  } catch (error2) {
+    terminal.dispose();
+    throw error2;
+  }
+  return { terminal, fit };
+}
+async function measureTerminal(element) {
+  if (!element || !element.clientWidth || !element.clientHeight) throw new Error("Terminal is hidden");
+  const screen = document.createElement("div");
+  screen.className = "nodo-terminal";
+  screen.style.cssText = "position:absolute;inset:0;visibility:hidden;pointer-events:none";
+  element.appendChild(screen);
+  let view2;
+  try {
+    view2 = await openTerminal(screen);
+    const size = view2.fit.proposeDimensions();
+    if (!size) throw new Error("Terminal dimensions unavailable");
+    return sizeOf(size);
+  } finally {
+    view2?.terminal.dispose();
+    screen.remove();
+  }
+}
+function TerminalView({ id, target, initialSize, active, onGone }) {
+  const container = (0, import_react.useRef)(null);
+  const resize = (0, import_react.useRef)(() => {
+  });
+  const [message, setMessage] = (0, import_react.useState)("");
+  const gone = (0, import_react.useRef)(onGone);
+  gone.current = onGone;
+  const scope = (0, import_react.useRef)(terminalScope(target));
+  scope.current = terminalScope(target);
+  (0, import_react.useLayoutEffect)(() => {
+    const element = container.current;
+    if (!element) return;
+    let live = true, cleanup = () => {
+    };
+    void openTerminal(element, initialSize).then(({ terminal, fit }) => {
+      if (!live) {
+        terminal.dispose();
+        return;
+      }
+      let exited = false, seq = 0, writing = Promise.resolve();
+      let frame, retry2, resizing = false, resizeFailures = 0;
+      let applied2 = initialSize, desired;
+      let abort = new AbortController();
+      let resume;
+      const stopPause = subscribeUpdatePause(() => {
+        abort.abort();
+        abort = new AbortController();
+      }, () => resume?.());
+      const missing = (error2) => {
+        if (!(error2 instanceof TerminalMissingError)) return false;
+        exited = true;
+        gone.current();
+        return true;
+      };
+      const updateTheme = () => {
+        const style = getComputedStyle(element);
+        const color = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+        terminal.options.theme = {
+          background: color("--dsw-alias-bg-base", "#171717"),
+          foreground: color("--dsw-alias-label-primary", "#eeeeee"),
+          cursor: color("--dsw-alias-label-primary", "#eeeeee"),
+          selectionBackground: color("--dsw-alias-interactive-bg-active", "#77777766")
+        };
+      };
+      const syncSize = async () => {
+        if (resizing || !desired || applied2?.cols === desired.cols && applied2?.rows === desired.rows) return;
+        const size = desired;
+        resizing = true;
+        try {
+          await terminalRequest("resize", { ...scope.current, id, ...size });
+          if (!live) return;
+          applied2 = size;
+          resizeFailures = 0;
+          terminal.resize(size.cols, size.rows);
+          setMessage((current) => current === "\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : current);
+        } catch (error2) {
+          if (live && !missing(error2)) {
+            setMessage("\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026");
+            retry2 = setTimeout(() => {
+              retry2 = void 0;
+              resize.current();
+            }, Math.min(1e3 * 2 ** resizeFailures++, 8e3));
+          }
+        } finally {
+          resizing = false;
+          if (live && !exited && !retry2 && (applied2?.cols !== desired?.cols || applied2?.rows !== desired?.rows)) resize.current();
+        }
+      };
+      resize.current = () => {
+        if (frame !== void 0 || !live || exited) return;
+        frame = requestAnimationFrame(() => {
+          frame = void 0;
+          if (!live || exited || !element.clientWidth || !element.clientHeight) return;
+          updateTheme();
+          const size = fit.proposeDimensions();
+          if (size) {
+            desired = sizeOf(size);
+            if (!retry2) void syncSize();
+          }
+        });
+      };
+      const observer = new ResizeObserver(() => resize.current());
+      observer.observe(element);
+      const theme = new MutationObserver(updateTheme);
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-color-scheme"] });
+      updateTheme();
+      resize.current();
+      const input = terminal.onData((data) => {
+        writing = writing.then(async () => {
+          for (let start = 0; live && !exited && start < data.length; ) {
+            let end = Math.min(start + 256 * 1024, data.length);
+            const last = data.charCodeAt(end - 1);
+            if (end < data.length && last >= 55296 && last <= 56319) end--;
+            await terminalRequest("write", { ...scope.current, id, data: data.slice(start, end) });
+            start = end;
+          }
+        }).catch((error2) => {
+          if (live && !missing(error2)) setMessage("\u8F93\u5165\u5931\u8D25");
+        });
+      });
+      const apply2 = async (frame2) => {
+        if (frame2.type === "reset") {
+          terminal.reset();
+          seq = frame2.seq;
+        } else if (frame2.type === "output" && frame2.data && frame2.seq > seq) {
+          const bytes = Uint8Array.from(atob(frame2.data), (character) => character.charCodeAt(0));
+          await new Promise((resolve) => terminal.write(bytes.subarray(Math.max(0, seq - (frame2.from ?? seq))), resolve));
+          seq = frame2.seq;
+        } else if (frame2.type === "exit") {
+          exited = true;
+          setMessage(frame2.failed ? "\u7EC8\u7AEF\u5DF2\u4E2D\u65AD" : `\u5DF2\u9000\u51FA${frame2.code == null ? "" : ` (${frame2.code})`}`);
+        }
+      };
+      const connect2 = async () => {
+        let failures2 = 0;
+        while (live && !exited) {
+          if (updateInstalling()) await new Promise((resolve) => {
+            resume = resolve;
+          });
+          const before = seq;
+          try {
+            const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
+            const response = await fetch(`${ROUTE2}?${query}`, { signal: abort.signal });
+            if (!live) return;
+            if (response.status === 404) {
+              exited = true;
+              gone.current();
+              return;
+            }
+            if (!response.ok || !response.body) throw new Error("Stream unavailable");
+            setMessage("");
+            const reader = response.body.getReader(), decoder = new TextDecoder();
+            let pending = "";
+            try {
+              while (live) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                pending += decoder.decode(value, { stream: true });
+                let newline;
+                while ((newline = pending.indexOf("\n")) >= 0) {
+                  const line = pending.slice(0, newline);
+                  pending = pending.slice(newline + 1);
+                  if (live && line) await apply2(JSON.parse(line));
+                }
+              }
+            } finally {
+              await reader.cancel().catch(() => {
+              });
+              reader.releaseLock();
+            }
+          } catch {
+            if (live && !updateInstalling()) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
+          }
+          if (seq > before) failures2 = 0;
+          if (live && !exited && !updateInstalling() && ++failures2 > 5) {
+            setMessage("\u8FDE\u63A5\u5DF2\u4E2D\u65AD");
+            break;
+          }
+          if (live && !exited && !updateInstalling()) await new Promise((resolve) => {
+            const done = () => {
+              clearTimeout(timer2);
+              abort.signal.removeEventListener("abort", done);
+              resolve();
+            };
+            const timer2 = setTimeout(done, 1e3 * 2 ** (failures2 - 1));
+            abort.signal.addEventListener("abort", done, { once: true });
+            if (abort.signal.aborted) done();
+          });
+        }
+      };
+      void connect2();
+      cleanup = () => {
+        live = false;
+        abort.abort();
+        stopPause();
+        observer.disconnect();
+        theme.disconnect();
+        input.dispose();
+        terminal.dispose();
+        if (frame !== void 0) cancelAnimationFrame(frame);
+        clearTimeout(retry2);
+        resize.current = () => {
+        };
+      };
+    }).catch(() => {
+      if (live) setMessage("\u7EC8\u7AEF\u4E0D\u53EF\u7528");
+    });
+    return () => {
+      live = false;
+      cleanup();
+    };
+  }, [id]);
+  (0, import_react.useEffect)(() => {
+    if (active) resize.current();
+  }, [active]);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal-screen", ref: container }), message && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, message));
+}
+
+// src/client/right-panel.tsx
+var terminalTab = ({ id, cols, rows, shell }) => ({ kind: "terminal", id, ...cols && rows ? { cols, rows } : {}, ...shell ? { shell } : {} });
+var tabId = (tab) => tab.kind === "files" ? "files" : tab.id;
+var scopeKey = (target) => target.workspace !== void 0 ? `workspace:${target.workspace}` : `session:${target.profile}:${target.session}`;
+function createRightPanel(ctx) {
+  let state = { target: null, expanded: false, tabs: [], active: "", selected: "", available: false, creating: false, error: "" };
+  let generation = 0;
+  let browserSequence = 0;
+  let changesSequence = 0;
+  let bound;
+  let boundCwd;
+  const listeners2 = /* @__PURE__ */ new Set();
+  const closed = /* @__PURE__ */ new Set();
+  const directories = /* @__PURE__ */ new Map();
+  const normalized = (cwd) => cwd && (directories.get(cwd) ?? cwd);
+  const publish = (changes) => {
+    state = { ...state, ...changes };
+    for (const listener of listeners2) listener();
+  };
+  const panel = {
+    subscribe: (listener) => {
+      listeners2.add(listener);
+      return () => {
+        listeners2.delete(listener);
+      };
+    },
+    getSnapshot: () => state,
+    bind(target) {
+      const current = ++generation;
+      const previous = bound;
+      const scope = scopeKey(target);
+      const resolvedCwd = boundCwd !== target.cwd && normalized(boundCwd) === normalized(target.cwd);
+      boundCwd = target.cwd;
+      const unbind = () => {
+        void Promise.resolve().then(() => {
+          if (current === generation) {
+            generation++;
+            publish({ target: null });
+          }
+        });
+      };
+      if (previous && state.available && resolvedCwd && scopeKey(previous) === scope && previous.readOnly === target.readOnly) {
+        bound = { ...target, cwd: normalized(target.cwd) };
+        publish({ target: bound });
+        return unbind;
+      }
+      let adopted = false;
+      const adopt = (cwd = target.cwd) => {
+        const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd);
+        bound = { ...target, cwd: normalized(cwd) };
+        const tabs = (same ? state.tabs.filter((tab) => tab.kind !== "image" || tab.scope === scope) : state.tabs.filter((tab) => tab.kind === "files")).filter((tab) => !target.readOnly || tab.kind !== "terminal");
+        publish({ target: bound, tabs, selected: same ? state.selected : "", active: same && (state.active === "" || tabs.some((tab) => tabId(tab) === state.active)) ? state.active : tabs[0] ? tabId(tabs[0]) : "", available: false, creating: false, ...adopted ? {} : { error: "" } });
+        adopted = true;
+      };
+      if (!previous || normalized(previous.cwd) === normalized(target.cwd) || target.readOnly) adopt();
+      else publish({ available: false, creating: false, error: "" });
+      const restore = async () => {
+        for (let attempt = 0; attempt < 2 && current === generation; attempt++) {
+          try {
+            const value = await terminalRequest("list", terminalScope(target));
+            if (target.cwd && value.cwd) directories.set(target.cwd, value.cwd);
+            if (current !== generation) return;
+            adopt(value.cwd ?? target.cwd);
+            const restored = value.terminals.filter((terminal) => !closed.has(terminal.id));
+            const tabs = [
+              ...state.tabs.filter((tab) => tab.kind !== "terminal" || restored.some((terminal) => terminal.id === tab.id)),
+              ...restored.filter((terminal) => !state.tabs.some((tab) => tabId(tab) === terminal.id)).map(terminalTab)
+            ];
+            publish({
+              target: bound,
+              tabs,
+              available: value.available,
+              active: tabs.some((tab) => tabId(tab) === state.active) ? state.active : tabs[0] ? tabId(tabs[0]) : "",
+              error: state.error === "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" || state.error === "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : state.error
+            });
+            return;
+          } catch {
+            if (current === generation) {
+              if (!adopted) adopt();
+              publish({ error: attempt ? "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" : "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" });
+            }
+          }
+        }
+      };
+      if (!target.readOnly) void restore();
+      return unbind;
+    },
+    toggle: () => publish({ expanded: !state.expanded }),
+    openFiles: () => publish({ tabs: state.tabs.some((tab) => tab.kind === "files") ? state.tabs : [...state.tabs, { kind: "files" }], active: "files" }),
+    openFile(path) {
+      if (state.target) {
+        panel.openFiles();
+        publish({ expanded: true, selected: path });
+      }
+    },
+    openChanges(source, path) {
+      if (!state.target) return;
+      const tab = { kind: "changes", id: "changes", source, path, version: ++changesSequence };
+      publish({ tabs: state.tabs.some((tab2) => tab2.kind === "changes") ? state.tabs.map((current) => current.kind === "changes" ? tab : current) : [...state.tabs, tab], active: "changes", expanded: true });
+    },
+    openImage(image) {
+      if (!state.target) return;
+      const id = `image-${image.id}`;
+      const tab = { kind: "image", id, scope: scopeKey(state.target), image: { ...image } };
+      publish({ tabs: state.tabs.some((current) => current.kind !== "files" && current.id === id) ? state.tabs.map((current) => current.kind === "image" && current.id === id ? tab : current) : [...state.tabs, tab], active: id, expanded: true });
+    },
+    selectFile: (selected) => publish({ selected }),
+    openHome: () => {
+      if (state.active) publish({ active: "" });
+    },
+    selectTab: (active) => publish({ active }),
+    newBrowser(value = "") {
+      if (!state.target) return;
+      const url = value ? normalizeBrowserAddress(value) : "";
+      if (url === null) return;
+      const id = `browser-${++browserSequence}`;
+      publish({ tabs: [...state.tabs, { kind: "browser", id, url, title: browserTitle(url) }], active: id });
+    },
+    updateBrowser(id, url, title) {
+      if (state.tabs.some((tab) => tab.kind === "browser" && tab.id === id && (tab.title !== title || tab.url !== url))) {
+        publish({ tabs: state.tabs.map((tab) => tab.kind === "browser" && tab.id === id ? { ...tab, url, title } : tab) });
+      }
+    },
+    async newTerminal(element) {
+      if (!state.target || !state.available || state.creating) return;
+      const current = generation, scope = terminalScope(state.target);
+      publish({ creating: true, error: "" });
+      try {
+        const size = await measureTerminal(element);
+        if (current !== generation) return;
+        const terminal = await terminalRequest("create", { ...scope, ...size });
+        if (current === generation) publish({ tabs: [...state.tabs, terminalTab({ ...size, ...terminal })], active: terminal.id });
+      } catch {
+        if (current === generation) publish({ error: "\u65E0\u6CD5\u65B0\u5EFA\u7EC8\u7AEF" });
+      } finally {
+        if (current === generation) publish({ creating: false });
+      }
+    },
+    forgetTab(id) {
+      const tabs = state.tabs.filter((tab) => tabId(tab) !== id);
+      publish({ tabs, active: state.active === id ? tabs.at(-1) ? tabId(tabs.at(-1)) : "" : state.active, error: "" });
+    },
+    async closeTab(id) {
+      const current = generation, target = state.target;
+      const index = state.tabs.findIndex((tab2) => tabId(tab2) === id), tab = state.tabs[index];
+      if (!tab || tab.kind === "terminal" && target?.readOnly) return;
+      if (tab.kind === "terminal") closed.add(id);
+      panel.forgetTab(id);
+      try {
+        if (tab.kind === "terminal" && target) await terminalRequest("close", { ...terminalScope(target), id });
+      } catch (error2) {
+        if (!(error2 instanceof TerminalMissingError)) {
+          closed.delete(id);
+          if (current === generation) publish({
+            tabs: [...state.tabs.slice(0, index), tab, ...state.tabs.slice(index)],
+            active: state.active || id,
+            error: "\u65E0\u6CD5\u5173\u95ED\u7EC8\u7AEF"
+          });
+        }
+      }
+    }
+  };
+  ctx.slots.inject("rightbar", () => {
+    let unregister;
+    let owned = false;
+    const close = () => {
+      if (owned) ctx.layout.closeRightbar();
+      owned = false;
+    };
+    const Owner = ({ width }) => {
+      const { expanded } = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
+      (0, import_react.useLayoutEffect)(() => {
+        owned = true;
+        return () => {
+          owned = false;
+        };
+      }, []);
+      (0, import_react.useLayoutEffect)(() => {
+        if (expanded) ctx.layout.openRightbar(true, false);
+        else ctx.layout.closeRightbar();
+      }, [expanded]);
+      return /* @__PURE__ */ (0, import_react.createElement)(RightPanel, { panel, width });
+    };
+    const update = () => {
+      if (state.target && !unregister) unregister = ctx.slots.register({ name: "rightbar", priority: -100 }, Owner);
+      if (!state.target && unregister) {
+        close();
+        unregister();
+        unregister = void 0;
+      }
+    };
+    const stop = panel.subscribe(update);
+    update();
+    return () => {
+      stop();
+      if (unregister) {
+        close();
+        unregister();
+      }
+    };
+  });
+  ctx.slots.inject("shell.overlay", () => {
+    let unregister;
+    const Toggle = () => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-control" }, /* @__PURE__ */ (0, import_react.createElement)(RightPanelToggle, { panel }));
+    const update = () => {
+      if (state.target && !unregister) unregister = ctx.slots.register({ name: "shell.overlay", id: "nodo.right-toggle" }, Toggle);
+      if (!state.target && unregister) {
+        unregister();
+        unregister = void 0;
+      }
+    };
+    const stop = panel.subscribe(update);
+    update();
+    return () => {
+      stop();
+      unregister?.();
+    };
+  });
+  return panel;
+}
+function RightPanelToggle({ panel }) {
+  const state = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Button,
+    {
+      variant: "ghost",
+      className: "nodo-right-toggle",
+      "aria-label": state.expanded ? "\u6536\u8D77\u53F3\u4FA7\u680F" : "\u5C55\u5F00\u53F3\u4FA7\u680F",
+      "aria-expanded": state.expanded,
+      onClick: panel.toggle,
+      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16, className: "nodo-right-glyph" })
+    }
+  );
+}
+function RightPanel({ panel, width }) {
+  const state = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
+  const content = (0, import_react.useRef)(null);
+  const create = () => void panel.newTerminal(content.current);
+  const target = state.target;
+  if (!target) return null;
+  const counts = /* @__PURE__ */ new Map();
+  const titles = state.tabs.map((tab) => {
+    const title = tab.kind === "files" ? "\u9879\u76EE\u6587\u4EF6" : tab.kind === "changes" ? "\u53D8\u66F4" : tab.kind === "image" ? tab.image.name ?? "\u56FE\u7247" : tab.kind === "browser" ? tab.title : tab.shell || "\u7EC8\u7AEF";
+    const base = (tab.kind === "browser" || tab.kind === "image") && title.length > 28 ? `${title.slice(0, 27)}\u2026` : title;
+    const nth = (counts.get(base) ?? 0) + 1;
+    counts.set(base, nth);
+    return nth > 1 ? `${base} ${nth}` : base;
+  });
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-right-panel", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", hidden: !state.expanded, style: { width } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-right-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tabs", role: "tablist", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", onKeyDown: (event) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+    const at2 = state.tabs.findIndex((tab) => tabId(tab) === state.active);
+    if (!step || at2 < 0 || !event.target.matches("[role=tab]")) return;
+    event.preventDefault();
+    const next = tabId(state.tabs[(at2 + step + state.tabs.length) % state.tabs.length]);
+    panel.selectTab(next);
+    document.getElementById(`nodo-right-tab-${next}`)?.focus();
+  } }, state.tabs.map((tab, index) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: tabId(tab), className: "nodo-right-tab", "data-active": state.active === tabId(tab) || void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      role: "tab",
+      id: `nodo-right-tab-${tabId(tab)}`,
+      "aria-controls": `nodo-right-pane-${tabId(tab)}`,
+      "aria-selected": state.active === tabId(tab),
+      tabIndex: state.active === tabId(tab) ? 0 : -1,
+      onClick: () => panel.selectTab(tabId(tab))
+    },
+    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompareSplitOutlineRegular, { size: 14 }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 14 }) : tab.kind === "image" ? /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: tab.image.name ?? "", size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconApiOutlineRegular, { size: 14 }),
+    titles[index]
+  ), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Button,
+    {
+      variant: "ghost",
+      className: "nodo-right-tab-close",
+      "aria-label": `\u5173\u95ED${titles[index]}`,
+      onClick: () => void panel.closeTab(tabId(tab)),
+      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 14 })
+    }
+  ))), state.tabs.length > 0 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u65B0\u5EFA\u6807\u7B7E\u9875", onClick: panel.openHome, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }) }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-content", ref: content }, state.error && status(state.error), state.tabs.map((tab) => /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      key: tabId(tab),
+      id: `nodo-right-pane-${tabId(tab)}`,
+      className: "nodo-right-pane",
+      role: "tabpanel",
+      "aria-labelledby": `nodo-right-tab-${tabId(tab)}`,
+      hidden: state.active !== tabId(tab)
+    },
+    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(WorkspaceFiles, { key: target.cwd, target, selected: state.selected, onSelect: panel.selectFile }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(ChangesView, { key: tab.version, source: tab.source, initialPath: tab.path, openFile: panel.openFile }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(
+      BrowserView,
+      {
+        cwd: target.cwd,
+        initialUrl: tab.url,
+        onChange: (url, title) => panel.updateBrowser(tab.id, url, title),
+        onOpen: panel.newBrowser
+      }
+    ) : tab.kind === "image" ? /* @__PURE__ */ (0, import_react.createElement)(ImageView, { key: tab.id, image: tab.image }) : /* @__PURE__ */ (0, import_react.createElement)(
+      TerminalView,
+      {
+        id: tab.id,
+        target,
+        initialSize: tab.cols && tab.rows ? { cols: tab.cols, rows: tab.rows } : void 0,
+        active: state.active === tab.id && state.expanded,
+        onGone: () => panel.forgetTab(tab.id)
+      }
+    )
+  )), state.active === "" && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-home" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", onClick: panel.openFiles }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u9879\u76EE\u6587\u4EF6"), target.cwd && /* @__PURE__ */ (0, import_react.createElement)("small", { title: target.cwd }, target.cwd))), state.available && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", disabled: state.creating, onClick: create }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconApiOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u65B0\u5EFA\u7EC8\u7AEF"), target.cwd && /* @__PURE__ */ (0, import_react.createElement)("small", { title: target.cwd }, target.cwd))), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", onClick: () => panel.newBrowser() }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u6D4F\u89C8\u5668"))))));
+}
+var status = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
+function WorkspaceFiles({ target, selected: selection, onSelect }) {
+  const [directories, setDirectories] = (0, import_react.useState)({});
+  const [expanded, setExpanded] = (0, import_react.useState)({ "": true });
+  const [localSelected, setLocalSelected] = (0, import_react.useState)("");
+  const [query, setQuery] = (0, import_react.useState)("");
+  const selected = selection ?? localSelected, setSelected = onSelect ?? setLocalSelected;
+  const live = (0, import_react.useRef)(false);
+  const pending = (0, import_react.useRef)(/* @__PURE__ */ new Set());
+  (0, import_react.useEffect)(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      pending.current.clear();
+    };
+  }, []);
+  (0, import_react.useEffect)(() => {
+    for (const path of Object.keys(expanded).filter((path2) => expanded[path2] && !directories[path2] && !pending.current.has(path2))) {
+      pending.current.add(path);
+      void call("workspace-dir", { ...terminalScope(target), path }).then((value) => {
+        if (live.current) setDirectories((current) => ({ ...current, [path]: value }));
+      }).catch(() => {
+        if (live.current) setDirectories((current) => ({ ...current, [path]: { error: true } }));
+      });
+    }
+  }, [expanded, directories, target]);
+  const wanted = query.trim().toLowerCase();
+  const hit = (path, name, kind) => name.toLowerCase().includes(wanted) || kind === "dir" && !!directories[path]?.entries?.some((entry) => hit(`${path}/${entry.name}`, entry.name, entry.kind));
+  const branch = (path, depth, inside = false) => {
+    const directory = directories[path];
+    if (!directory) return status("\u52A0\u8F7D\u4E2D\u2026");
+    if (directory.error) return status("\u76EE\u5F55\u4E0D\u53EF\u7528");
+    return /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, directory.entries?.filter((entry) => inside || !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map((entry) => {
+      const child = path ? `${path}/${entry.name}` : entry.name;
+      const isDir = entry.kind === "dir";
+      const open = isDir && (!!expanded[child] || !!wanted && !!directories[child]);
+      return /* @__PURE__ */ (0, import_react.createElement)("div", { key: child }, /* @__PURE__ */ (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-right-file",
+          style: { paddingInlineStart: 8 + depth * 14 },
+          "data-selected": child === selected || void 0,
+          "aria-expanded": isDir ? open : void 0,
+          title: child,
+          onClick: () => isDir ? setExpanded((current) => ({ ...current, [child]: !open })) : setSelected(child)
+        },
+        isDir ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, open ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }), open ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-right-file-icon" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: entry.name, size: 14 })),
+        /* @__PURE__ */ (0, import_react.createElement)("span", null, entry.name)
+      ), open && branch(child, depth + 1, inside || isDir && !!wanted && entry.name.toLowerCase().includes(wanted)));
+    }), directory.truncated && status("\u76EE\u5F55\u5DF2\u622A\u65AD"), directory.entries?.length === 0 && status("\u7A7A\u76EE\u5F55"));
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-files" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-viewer" }, selected ? /* @__PURE__ */ (0, import_react.createElement)(FilePreview, { key: selected, target, path: selected, onBack: () => setSelected("") }) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-empty" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 32 }), /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u6253\u5F00\u7684\u6587\u4EF6\u663E\u793A\u5728\u8FD9\u91CC"))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-directory" }, branch("", 0))));
+}
+var LANGUAGES = {
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  jsx: "jsx",
+  ts: "typescript",
+  tsx: "tsx",
+  md: "markdown",
+  json: "json",
+  css: "css",
+  html: "html",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  go: "go",
+  java: "java",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml"
+};
+function FilePreview({ target, path, onBack }) {
+  const [content, setContent] = (0, import_react.useState)(null);
+  const [error2, setError] = (0, import_react.useState)(false);
+  const [source, setSource] = (0, import_react.useState)(false);
+  const [lightbox, setLightbox] = (0, import_react.useState)(false);
+  const [imageError, setImageError] = (0, import_react.useState)(false);
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("workspace-file", { ...terminalScope(target), path }).then((value) => {
+      if (live) setContent(value);
+    }).catch(() => {
+      if (live) setError(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [target, path]);
+  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
+  const markdown = extension === "md" && typeof content?.text === "string";
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-head" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { title: path }, path), markdown && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-pressed": source, onClick: () => setSource((value) => !value) }, source ? "\u9884\u89C8" : "\u6E90\u7801"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u5173\u95ED\u6587\u4EF6", onClick: onBack, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 14 }) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, content?.truncated && status("\u6587\u4EF6\u5DF2\u622A\u65AD"), error2 ? status("\u6587\u4EF6\u4E0D\u53EF\u7528") : !content ? status("\u52A0\u8F7D\u4E2D\u2026") : content.missing ? status("\u6587\u4EF6\u4E0D\u5B58\u5728") : content.binary ? status("\u4E8C\u8FDB\u5236\u6587\u4EF6") : content.image ? imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src: content.image.dataUrl, alt: path, onError: () => setImageError(true) })) : markdown && !source ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: content.text ?? "", labels: MARKDOWN_LABELS }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text ?? "", lang: LANGUAGES[extension] ?? "text", wrap: true, showHeader: false })), lightbox && !imageError && content?.image && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src: content.image.dataUrl, alt: path, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
+}
+function ImageView({ image }) {
+  const [src, setSrc] = (0, import_react.useState)(null);
+  const [error2, setError] = (0, import_react.useState)(false);
+  const [lightbox, setLightbox] = (0, import_react.useState)(false);
+  const [imageError, setImageError] = (0, import_react.useState)(false);
+  const alt = image.name || "\u56FE\u7247";
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    setSrc(null);
+    setError(false);
+    setImageError(false);
+    call("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
+      if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
+    }).catch(() => {
+      if (live) setError(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [image.id, image.mediaType]);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, error2 ? status("\u56FE\u7247\u4E0D\u53EF\u7528") : !src ? status("\u52A0\u8F7D\u4E2D\u2026") : imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src, alt, onError: () => setImageError(true) }))), lightbox && !imageError && src && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
+}
+
+// src/client/native-welcome.js
+function createNativeWelcome(ctx, space, Welcome) {
+  let release;
+  const update = () => {
+    const state = space.getSnapshot();
+    const id = ctx.uiSession.adapter.current.getSnapshot().key;
+    const show = state.active && !state.legacy && !state.drafting && (id == null || ctx.sessions.list.getSnapshot().byId[id]?.blank === true);
+    if (show && !release) release = ctx.slots.register({ name: "main.conversation", priority: -100 }, Welcome);
+    else if (!show && release) {
+      release();
+      release = null;
+    }
+  };
+  return () => {
+    const stops = [space.subscribe(update), ctx.sessions.list.subscribe(update), ctx.uiSession.adapter.current.subscribe(update)];
+    update();
+    return () => {
+      for (const stop of stops) stop();
+      release?.();
+      release = null;
+    };
+  };
+}
+
+// src/client/completion-tracker.js
+function createCompletionTracker(storage, events) {
+  const key = "nodo.completions.seen";
+  const read = () => {
+    try {
+      const value = JSON.parse(storage.getItem(key));
+      return Object.fromEntries(Object.entries(value ?? {}).filter(([, at2]) => Number.isFinite(at2)));
+    } catch {
+      return {};
+    }
+  };
+  let snapshot = read();
+  const listeners2 = /* @__PURE__ */ new Set();
+  const notify = () => {
+    for (const listener of listeners2) listener();
+  };
+  const changed = (event) => {
+    if (event.key === key || event.key === null) {
+      snapshot = read();
+      notify();
+    }
+  };
+  events.addEventListener?.("storage", changed);
+  return {
+    getSnapshot: () => snapshot,
+    subscribe(listener) {
+      listeners2.add(listener);
+      return () => listeners2.delete(listener);
+    },
+    mark(id, at2) {
+      if (!Number.isFinite(at2) || (snapshot[id] ?? -1) >= at2) return;
+      const latest = read();
+      for (const [id2, at3] of Object.entries(snapshot)) latest[id2] = Math.max(latest[id2] ?? -1, at3);
+      latest[id] = Math.max(latest[id] ?? -1, at2);
+      snapshot = latest;
+      try {
+        storage.setItem(key, JSON.stringify(snapshot));
+      } catch {
+      }
+      notify();
+    },
+    dispose() {
+      events.removeEventListener?.("storage", changed);
+      listeners2.clear();
+    }
+  };
+}
+
+// src/client/transcript-image.js
+function TranscriptImage({ image }) {
+  const [src, setSrc] = (0, import_react.useState)(null);
+  const [error2, setError] = (0, import_react.useState)(false);
+  const [preview, setPreview] = (0, import_react.useState)(false);
+  const hover = useHoverPreview();
+  const panel = rightPanelService?.getSnapshot().target;
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    setSrc(null);
+    setError(false);
+    setPreview(false);
+    call("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
+      if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
+    }).catch(() => {
+      if (live) setError(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [image.id, image.mediaType]);
+  useHoverPreviewPlacement(hover, 320);
+  const alt = image.name || "\u56FE\u7247";
+  const show = (row) => {
+    if (src !== null) hover.show(src, row);
+  };
+  const open = () => {
+    if (!panel) return false;
+    rightPanelService.openImage({ id: image.id, mediaType: image.mediaType, name: image.name });
+    hover.hide();
+    return true;
+  };
+  return (0, import_react.createElement)(
+    import_react.Fragment,
+    null,
+    error2 ? (0, import_react.createElement)("span", { className: "nodo-note", role: "status" }, `${alt}\uFF1A\u56FE\u7247\u4E0D\u53EF\u7528`) : (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-image-preview",
+        disabled: !src,
+        "aria-label": `\u9884\u89C8 ${alt}`,
+        "aria-haspopup": "dialog",
+        onClick: () => {
+          if (!open()) setPreview(true);
+        },
+        onPointerEnter: (event) => {
+          if (event.pointerType !== "touch") show(event.currentTarget);
+        },
+        onPointerLeave: hover.close,
+        onFocus: (event) => show(event.currentTarget),
+        onBlur: hover.close
+      },
+      src ? (0, import_react.createElement)("img", { className: "nodo-attachment", src, alt, onError: () => setError(true) }) : "\u6B63\u5728\u52A0\u8F7D\u56FE\u7247\u2026"
+    ),
+    hover.value !== null && (0, import_react.createElement)(HoverPreview, {
+      preview: hover,
+      className: "nodo-hover-preview nodo-hover-picture",
+      label: alt,
+      children: (0, import_react.createElement)("img", { src, alt })
+    }),
+    preview && src && (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setPreview(false) })
+  );
+}
+
+// src/client/tool-call.tsx
+var STATUS_LABELS = {
+  started: "\u5DF2\u53D1\u8D77",
+  running: "\u8FD0\u884C\u4E2D",
+  done: "\u5DF2\u5B8C\u6210",
+  error: "\u5931\u8D25",
+  denied: "\u5DF2\u62D2\u7EDD",
+  interrupted: "\u5DF2\u505C\u6B62",
+  unknown: "\u7ED3\u679C\u672A\u786E\u8BA4"
+};
+var COLLAPSE_MS = 200;
+function toolCallQuery(input, fallback = "") {
+  if (typeof input === "string" && input.trimStart().startsWith("{")) {
+    try {
+      return toolCallQuery(JSON.parse(input), fallback);
+    } catch {
+    }
+  }
+  if (input && typeof input === "object") {
+    const args = input;
+    input = ["command", "cmd", "query", "pattern", "file_path", "filePath", "path", "url", "uri", "description", "title"].map((key) => args[key]).find((value) => typeof value === "string" && value.trim() !== "");
+  }
+  return (typeof input === "string" && input.trim() ? input : fallback).trim().split(/\r?\n/, 1)[0].slice(0, 400);
+}
+function ToolCall({ label, activeLabel = label, query = "", queryNode, after, status: status2 = "unknown", compact = false, expandable = true, kind = "tool", open, onOpenChange, children }) {
+  const id = `nodo-tool-${(0, import_react.useId)()}`;
+  const [mounted, setMounted] = (0, import_react.useState)(open);
+  (0, import_react.useEffect)(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    if (!mounted) return;
+    const timer2 = setTimeout(() => setMounted(false), COLLAPSE_MS);
+    return () => clearTimeout(timer2);
+  }, [open, mounted]);
+  const running = status2 === "running";
+  const statusLabel = kind === "tool" ? `\uFF1A${STATUS_LABELS[status2]}` : running ? "\uFF1A\u8FDB\u884C\u4E2D" : "";
+  const chevron = /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-chevron", "aria-hidden": true }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call", "data-open": open, "data-state": status2, "data-compact": compact, "data-kind": kind }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-tool-call-trigger",
+      ...expandable ? { "aria-expanded": open, "aria-controls": id } : {},
+      "aria-label": `${running ? activeLabel : label}${query ? ` ${query}` : ""}${statusLabel}`,
+      onClick: () => onOpenChange(!open)
+    },
+    !compact && expandable && chevron,
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-label" }, running ? activeLabel : label),
+    queryNode !== void 0 ? queryNode : query !== "" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-query", title: query }, query),
+    kind === "tool" && (!compact || !["done", "running", "started"].includes(status2)) && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tool-call-status", "aria-hidden": true, title: STATUS_LABELS[status2] }, compact ? STATUS_LABELS[status2] : status2 === "done" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : running || status2 === "started" ? null : status2 === "interrupted" ? "\u2212" : status2 === "unknown" ? "?" : "!"),
+    compact && expandable && chevron
+  ), /* @__PURE__ */ (0, import_react.createElement)("div", { id, className: "nodo-tool-call-panel", "aria-hidden": !open, ...!open ? { inert: "" } : {} }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-clip" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tool-call-content" }, (open || mounted) && children))), after);
+}
+var TOOL_CALL_CSS = `
+.nodo-tool-call{min-width:0}
+.nodo-tool-call-trigger{display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:28px;padding:2px 0;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-align:left;cursor:pointer}
+.nodo-tool-call-trigger:hover{color:var(--dsw-alias-label-primary)}
+.nodo-tool-call-trigger:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-tool-call-chevron{display:flex;flex:none;transition:transform ${COLLAPSE_MS}ms ease}
+.nodo-tool-call[data-open=true] .nodo-tool-call-chevron{transform:rotate(90deg)}
+.nodo-tool-call-label{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call[data-state=running] .nodo-tool-call-label{color:transparent;background:linear-gradient(100deg,var(--dsw-alias-label-tertiary) 35%,var(--dsw-alias-label-primary) 50%,var(--dsw-alias-label-tertiary) 65%);background-size:250% 100%;background-clip:text;animation:nodo-tool-call-shimmer 1.8s linear infinite}
+.nodo-tool-call-query{flex:0 1 auto;min-width:0;max-width:55%;padding:0 6px;overflow:hidden;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-markdown-code-block-small);line-height:20px;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call-file{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;max-width:55%}
+.nodo-tool-call-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-tool-call-file-name[role=link]{cursor:pointer}
+.nodo-tool-call-file-name[role=link]:hover{text-decoration:underline}
+.nodo-tool-call-file-name[role=link]:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px;border-radius:var(--dsw-radius-sm)}
+.nodo-tool-call-directory{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-call-file .nodo-changes-counts{font-size:var(--dsh-content-font-size-secondary,13px);line-height:20px}
+.nodo-tool-call-status{display:flex;align-items:center;justify-content:center;flex:none;width:14px;height:20px;color:var(--dsw-alias-label-tertiary)}
+.nodo-tool-call[data-state=error] .nodo-tool-call-status,.nodo-tool-call[data-state=denied] .nodo-tool-call-status{color:var(--dsw-alias-state-error-primary)}
+.nodo-tool-call-panel{display:grid;grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows ${COLLAPSE_MS}ms ease,opacity ${COLLAPSE_MS}ms ease,visibility ${COLLAPSE_MS}ms}
+.nodo-tool-call[data-open=true] .nodo-tool-call-panel{grid-template-rows:1fr;opacity:1;visibility:visible}
+.nodo-tool-call-clip{min-height:0;overflow:hidden}
+.nodo-tool-call-content{min-width:0;padding:4px 0 6px 22px}
+.nodo-tool-call-content>.nodo-io-card{margin:0}
+.nodo-tool-call-content .nodo-io-section+.nodo-io-section{border-top:.5px solid var(--dsw-alias-border-l1)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-trigger{min-height:32px;gap:8px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-label{flex:none;max-width:40%}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-query{max-width:min(65%,48ch);padding:2px 8px;border:0;border-radius:8px;line-height:22px;color:var(--dsw-alias-label-secondary)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-file{max-width:min(65%,52ch)}
+.nodo-tool-call[data-compact=true]:not([data-kind=tool]) .nodo-tool-call-query{max-width:min(65%,52ch);font:inherit;font-size:var(--dsh-content-font-size-secondary,13px);line-height:22px}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-chevron{opacity:.35}
+.nodo-tool-call[data-compact=true]:hover .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true]:focus-within .nodo-tool-call-chevron,.nodo-tool-call[data-compact=true][data-open=true] .nodo-tool-call-chevron{opacity:1}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-status{width:auto;white-space:nowrap;font-size:var(--dsh-content-font-size-tertiary,12px)}
+.nodo-tool-call[data-compact=true] .nodo-tool-call-content{margin:4px 0 8px;padding:4px 0 4px 12px;border-left:1px solid var(--dsw-alias-border-l1)}
+@keyframes nodo-tool-call-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
+@media(prefers-reduced-motion:reduce){.nodo-tool-call-chevron,.nodo-tool-call-panel{transition:none}.nodo-tool-call[data-state=running] .nodo-tool-call-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
+`;
+
+// src/client/tool-file.ts
+var PATH_KEYS = ["file_path", "filePath", "path"];
+var parseJson = (input) => {
+  if (typeof input === "string" && input.trimStart().startsWith("{")) {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return input;
+    }
+  }
+  return input;
+};
+var unwrap = (input) => {
+  let value = parseJson(input);
+  if (Array.isArray(value)) return { changes: value };
+  if (!value || typeof value !== "object") return null;
+  let record = value;
+  if (record.rawInput !== void 0) {
+    const raw = parseJson(record.rawInput);
+    if (Array.isArray(raw)) return { changes: raw };
+    if (!raw || typeof raw !== "object") return null;
+    record = raw;
+  }
+  return record;
+};
+var textField = (args, keys) => keys.map((key) => args[key]).find((value) => typeof value === "string" && value.trim() !== "");
+var editDiffs = (args, path) => {
+  const list = Array.isArray(args.edits) ? args.edits : [];
+  if (list.length > 0 && list.every((item) => item && typeof item === "object" && typeof item.oldText === "string" && typeof item.newText === "string"))
+    return list.map((item) => ({ path, oldText: item.oldText, newText: item.newText }));
+  const oldText = textField(args, ["oldText", "old_string"]);
+  const newText = textField(args, ["newText", "new_string"]);
+  return typeof oldText === "string" && typeof newText === "string" ? [{ path, oldText, newText }] : null;
+};
+var lastSegment = (path) => path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+function describe(path, diffs, cwd) {
+  const display = relativeFile(path, cwd);
+  const name = lastSegment(display);
+  const counts = diffs.length === 0 ? void 0 : chainedEdits(diffs.map((diff) => ({
+    operation: diff.oldText == null ? "add" : "update",
+    oldText: diff.oldText ?? null,
+    newText: diff.newText,
+    diffText: diff.patch
+  }))).reduce((sum, edit) => {
+    const count = editCounts(edit);
+    return sum && count ? { added: sum.added + count.added, removed: sum.removed + count.removed } : void 0;
+  }, { added: 0, removed: 0 });
+  return { path, display, name, directory: display.slice(0, display.length - name.length), counts, diffs };
+}
+function referenceFile(uri, cwd) {
+  if (typeof uri !== "string" || uri.trim() === "" || uri.startsWith("~")) return null;
+  let path = uri;
+  if (/^[a-z][\w+.-]*:/i.test(uri)) {
+    if (!/^file:/i.test(uri)) return null;
+    try {
+      path = decodeURIComponent(new URL(uri).pathname);
+    } catch {
+      return null;
+    }
+  } else if (uri.startsWith("//")) return null;
+  if (path.startsWith("/") && (cwd === void 0 || !(path === cwd || path.startsWith(`${cwd}/`)))) return null;
+  return path !== "/" && lastSegment(path) !== "" ? describe(path, [], cwd) : null;
+}
+function toolFileChange(input, cwd) {
+  const args = unwrap(input);
+  if (args === null) {
+    const bare = typeof input === "string" ? input.trim() : "";
+    return bare !== "" && !/\s/.test(bare) && !/[\\/]$/.test(bare) && !/["{}]/.test(bare) && (!bare.includes(":") || /^[a-zA-Z]:[\\/]/.test(bare)) && lastSegment(bare).includes(".") ? describe(bare, [], cwd) : null;
+  }
+  const patches = (Array.isArray(args.changes) ? args.changes : []).flatMap((change) => {
+    const item = change && typeof change === "object" ? change : null;
+    return item && typeof item.path === "string" && typeof item.diff === "string" ? [{ path: item.path, patch: item.diff }] : [];
+  });
+  if (patches.length > 0) return describe(patches[0].path, patches, cwd);
+  const path = textField(args, PATH_KEYS);
+  if (path === void 0) return null;
+  const edits = editDiffs(args, path);
+  if (edits !== null) return describe(path, edits, cwd);
+  const content = textField(args, ["content"]);
+  return describe(path, content === void 0 ? [] : [{ path, oldText: null, newText: content }], cwd);
+}
 
 // src/client/stream-records.js
 function supportedStreamRecord(value) {
@@ -12106,7 +13109,7 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
   const hover = useHoverPreview();
   useHoverPreviewPlacement(hover);
   const readDetails = async () => {
-    const value2 = await call2("stream-detail", { ...request, ref: record.details.ref });
+    const value2 = await call("stream-detail", { ...request, ref: record.details.ref });
     if (!supportedStreamRecord(value2) || value2.runId !== record.runId || value2.entityId !== record.entityId || value2.revision !== record.revision) throw new Error("\u5DE5\u5177\u8BE6\u60C5\u7248\u672C\u4E0D\u5339\u914D\u3002");
     return value2;
   };
@@ -12216,247 +13219,6 @@ function StreamRecordCard({ record, request, eventPhase, timeline = false, cwd }
     }),
     cards?.preview
   );
-}
-
-// src/client/terminal.tsx
-var terminalScope = (target) => target.workspace !== void 0 ? { workspace: target.workspace } : { profile: target.profile, session: target.session };
-var ROUTE3 = "/api/nodo/terminal";
-var TerminalMissingError = class extends Error {
-};
-async function terminalRequest(op, payload = {}) {
-  const response = await fetch(ROUTE3, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, ...payload }) });
-  const answer = await response.json();
-  if (response.status === 404 || answer.error?.code === "terminal/not-found") throw new TerminalMissingError("\u7EC8\u7AEF\u4E0D\u5B58\u5728");
-  if (!answer.ok) throw new Error("\u7EC8\u7AEF\u64CD\u4F5C\u5931\u8D25");
-  return answer.value;
-}
-var sizeOf = ({ cols, rows }) => ({ cols: Math.max(2, Math.min(32767, cols)), rows: Math.max(1, Math.min(32767, rows)) });
-async function openTerminal(element, size) {
-  const [{ Terminal }, { FitAddon }] = await Promise.all([Promise.resolve().then(() => (init_xterm(), xterm_exports)), Promise.resolve().then(() => (init_addon_fit(), addon_fit_exports))]);
-  const terminal = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 3e3, minimumContrastRatio: 4.5, ...size });
-  const fit = new FitAddon();
-  try {
-    terminal.loadAddon(fit);
-    terminal.open(element);
-  } catch (error2) {
-    terminal.dispose();
-    throw error2;
-  }
-  return { terminal, fit };
-}
-async function measureTerminal(element) {
-  if (!element || !element.clientWidth || !element.clientHeight) throw new Error("Terminal is hidden");
-  const screen = document.createElement("div");
-  screen.className = "nodo-terminal";
-  screen.style.cssText = "position:absolute;inset:0;visibility:hidden;pointer-events:none";
-  element.appendChild(screen);
-  let view2;
-  try {
-    view2 = await openTerminal(screen);
-    const size = view2.fit.proposeDimensions();
-    if (!size) throw new Error("Terminal dimensions unavailable");
-    return sizeOf(size);
-  } finally {
-    view2?.terminal.dispose();
-    screen.remove();
-  }
-}
-function TerminalView({ id, target, initialSize, active, onGone }) {
-  const container = (0, import_react.useRef)(null);
-  const resize = (0, import_react.useRef)(() => {
-  });
-  const [message, setMessage] = (0, import_react.useState)("");
-  const gone = (0, import_react.useRef)(onGone);
-  gone.current = onGone;
-  const scope = (0, import_react.useRef)(terminalScope(target));
-  scope.current = terminalScope(target);
-  (0, import_react.useLayoutEffect)(() => {
-    const element = container.current;
-    if (!element) return;
-    let live = true, cleanup = () => {
-    };
-    void openTerminal(element, initialSize).then(({ terminal, fit }) => {
-      if (!live) {
-        terminal.dispose();
-        return;
-      }
-      let exited = false, seq = 0, writing = Promise.resolve();
-      let frame, retry2, resizing = false, resizeFailures = 0;
-      let applied2 = initialSize, desired;
-      let abort = new AbortController();
-      let resume;
-      const stopPause = subscribeUpdatePause(() => {
-        abort.abort();
-        abort = new AbortController();
-      }, () => resume?.());
-      const missing = (error2) => {
-        if (!(error2 instanceof TerminalMissingError)) return false;
-        exited = true;
-        gone.current();
-        return true;
-      };
-      const updateTheme = () => {
-        const style = getComputedStyle(element);
-        const color = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-        terminal.options.theme = {
-          background: color("--dsw-alias-bg-base", "#171717"),
-          foreground: color("--dsw-alias-label-primary", "#eeeeee"),
-          cursor: color("--dsw-alias-label-primary", "#eeeeee"),
-          selectionBackground: color("--dsw-alias-interactive-bg-active", "#77777766")
-        };
-      };
-      const syncSize = async () => {
-        if (resizing || !desired || applied2?.cols === desired.cols && applied2?.rows === desired.rows) return;
-        const size = desired;
-        resizing = true;
-        try {
-          await terminalRequest("resize", { ...scope.current, id, ...size });
-          if (!live) return;
-          applied2 = size;
-          resizeFailures = 0;
-          terminal.resize(size.cols, size.rows);
-          setMessage((current) => current === "\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : current);
-        } catch (error2) {
-          if (live && !missing(error2)) {
-            setMessage("\u5C3A\u5BF8\u540C\u6B65\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026");
-            retry2 = setTimeout(() => {
-              retry2 = void 0;
-              resize.current();
-            }, Math.min(1e3 * 2 ** resizeFailures++, 8e3));
-          }
-        } finally {
-          resizing = false;
-          if (live && !exited && !retry2 && (applied2?.cols !== desired?.cols || applied2?.rows !== desired?.rows)) resize.current();
-        }
-      };
-      resize.current = () => {
-        if (frame !== void 0 || !live || exited) return;
-        frame = requestAnimationFrame(() => {
-          frame = void 0;
-          if (!live || exited || !element.clientWidth || !element.clientHeight) return;
-          updateTheme();
-          const size = fit.proposeDimensions();
-          if (size) {
-            desired = sizeOf(size);
-            if (!retry2) void syncSize();
-          }
-        });
-      };
-      const observer = new ResizeObserver(() => resize.current());
-      observer.observe(element);
-      const theme = new MutationObserver(updateTheme);
-      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-color-scheme"] });
-      updateTheme();
-      resize.current();
-      const input = terminal.onData((data) => {
-        writing = writing.then(async () => {
-          for (let start = 0; live && !exited && start < data.length; ) {
-            let end = Math.min(start + 256 * 1024, data.length);
-            const last = data.charCodeAt(end - 1);
-            if (end < data.length && last >= 55296 && last <= 56319) end--;
-            await terminalRequest("write", { ...scope.current, id, data: data.slice(start, end) });
-            start = end;
-          }
-        }).catch((error2) => {
-          if (live && !missing(error2)) setMessage("\u8F93\u5165\u5931\u8D25");
-        });
-      });
-      const apply2 = async (frame2) => {
-        if (frame2.type === "reset") {
-          terminal.reset();
-          seq = frame2.seq;
-        } else if (frame2.type === "output" && frame2.data && frame2.seq > seq) {
-          const bytes = Uint8Array.from(atob(frame2.data), (character) => character.charCodeAt(0));
-          await new Promise((resolve) => terminal.write(bytes.subarray(Math.max(0, seq - (frame2.from ?? seq))), resolve));
-          seq = frame2.seq;
-        } else if (frame2.type === "exit") {
-          exited = true;
-          setMessage(frame2.failed ? "\u7EC8\u7AEF\u5DF2\u4E2D\u65AD" : `\u5DF2\u9000\u51FA${frame2.code == null ? "" : ` (${frame2.code})`}`);
-        }
-      };
-      const connect2 = async () => {
-        let failures2 = 0;
-        while (live && !exited) {
-          if (updateInstalling()) await new Promise((resolve) => {
-            resume = resolve;
-          });
-          const before = seq;
-          try {
-            const query = new URLSearchParams({ ...scope.current, id, since: String(seq) });
-            const response = await fetch(`${ROUTE3}?${query}`, { signal: abort.signal });
-            if (!live) return;
-            if (response.status === 404) {
-              exited = true;
-              gone.current();
-              return;
-            }
-            if (!response.ok || !response.body) throw new Error("Stream unavailable");
-            setMessage("");
-            const reader = response.body.getReader(), decoder = new TextDecoder();
-            let pending = "";
-            try {
-              while (live) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                pending += decoder.decode(value, { stream: true });
-                let newline;
-                while ((newline = pending.indexOf("\n")) >= 0) {
-                  const line = pending.slice(0, newline);
-                  pending = pending.slice(newline + 1);
-                  if (live && line) await apply2(JSON.parse(line));
-                }
-              }
-            } finally {
-              await reader.cancel().catch(() => {
-              });
-              reader.releaseLock();
-            }
-          } catch {
-            if (live && !updateInstalling()) setMessage("\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026");
-          }
-          if (seq > before) failures2 = 0;
-          if (live && !exited && !updateInstalling() && ++failures2 > 5) {
-            setMessage("\u8FDE\u63A5\u5DF2\u4E2D\u65AD");
-            break;
-          }
-          if (live && !exited && !updateInstalling()) await new Promise((resolve) => {
-            const done = () => {
-              clearTimeout(timer2);
-              abort.signal.removeEventListener("abort", done);
-              resolve();
-            };
-            const timer2 = setTimeout(done, 1e3 * 2 ** (failures2 - 1));
-            abort.signal.addEventListener("abort", done, { once: true });
-            if (abort.signal.aborted) done();
-          });
-        }
-      };
-      void connect2();
-      cleanup = () => {
-        live = false;
-        abort.abort();
-        stopPause();
-        observer.disconnect();
-        theme.disconnect();
-        input.dispose();
-        terminal.dispose();
-        if (frame !== void 0) cancelAnimationFrame(frame);
-        clearTimeout(retry2);
-        resize.current = () => {
-        };
-      };
-    }).catch(() => {
-      if (live) setMessage("\u7EC8\u7AEF\u4E0D\u53EF\u7528");
-    });
-    return () => {
-      live = false;
-      cleanup();
-    };
-  }, [id]);
-  (0, import_react.useEffect)(() => {
-    if (active) resize.current();
-  }, [active]);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-terminal-screen", ref: container }), message && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, message));
 }
 
 // src/client/streaming-text.tsx
@@ -12644,14 +13406,14 @@ function useFileLinks() {
     if (!target) return null;
     const scope = terminalScope(target);
     const keyOf2 = (path) => JSON.stringify([scope, target.cwd, path]);
-    const readable = (path) => call2("workspace-file", { ...scope, path }).then((value) => typeof value.text === "string" || !!value.image, () => false);
+    const readable = (path) => call("workspace-file", { ...scope, path }).then((value) => typeof value.text === "string" || !!value.image, () => false);
     const locate = (path) => {
       const key = keyOf2(path);
       const found = foundFiles.get(key);
       if (found !== void 0) return found;
       if (!asked.current.has(key) && !pendingFiles.has(key)) {
         pendingFiles.add(key);
-        void readable(path).then((found2) => found2 ? path : path.includes("/") ? void 0 : call2("workspace-files", { ...scope, query: path }).then(({ files }) => {
+        void readable(path).then((found2) => found2 ? path : path.includes("/") ? void 0 : call("workspace-files", { ...scope, query: path }).then(({ files }) => {
           const matches = files.filter((file) => file.endsWith(`/${path}`));
           return matches.length === 1 && files.length < FILES_MATCH_MAX ? readable(matches[0]).then((found3) => found3 ? matches[0] : void 0) : void 0;
         }, () => void 0)).then((resolved) => {
@@ -12741,7 +13503,7 @@ function createSessionReferences(ctx, space) {
           clipboardText: (ref) => `[\u5F15\u7528\u4F1A\u8BDD](nodo-reference:${JSON.parse(ref).id})`,
           serialize: async (ref, signal) => {
             signal.throwIfAborted();
-            const snapshot = await call2("reference-read", JSON.parse(ref));
+            const snapshot = await call("reference-read", JSON.parse(ref));
             signal.throwIfAborted();
             return `[\u5F15\u7528\u4F1A\u8BDD](nodo-reference:${snapshot.id})`;
           }
@@ -12775,7 +13537,7 @@ function createSessionReferences(ctx, space) {
     const [busy, setBusy] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       let live = true;
-      if (snapshot) void call2("reference-read", { id: snapshot.id, target, draft }).then((value) => {
+      if (snapshot) void call("reference-read", { id: snapshot.id, target, draft }).then((value) => {
         if (live) {
           setResult(value);
           setMessageId(value.messages[0].id);
@@ -12783,7 +13545,7 @@ function createSessionReferences(ctx, space) {
       }).catch((failure) => {
         if (live) setError(failure.message);
       });
-      else void call2("state").then((value) => {
+      else void call("state").then((value) => {
         if (!live) return;
         setView(value);
         const current = value.profiles.flatMap((profile) => profile.sessions).find((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === target);
@@ -12801,7 +13563,7 @@ function createSessionReferences(ctx, space) {
       setResult(null);
       setError("");
       setMessageId("");
-      void call2("reference-replies", selected).then((value) => {
+      void call("reference-replies", selected).then((value) => {
         if (live) {
           setResult(value);
           setMessageId(value.messages[0]?.id ?? "");
@@ -12822,7 +13584,7 @@ function createSessionReferences(ctx, space) {
       setBusy(true);
       setError("");
       try {
-        const value = await call2("reference-create", { target, draft, ...selected, messageId });
+        const value = await call("reference-create", { target, draft, ...selected, messageId });
         if (onPick) {
           if (onPick(value) !== false) onClose();
           return;
@@ -12921,7 +13683,7 @@ function createSessionReferences(ctx, space) {
       const token = [...input.draft.matchAll(/\[引用会话\]\(nodo-reference:([\da-f-]{36})\)/g)].find((match) => !input.occurrences.some((item) => match.index >= item.offset && match.index < item.offset + item.length));
       if (!token) return;
       let live = true;
-      void call2("reference-read", { id: token[1], target: sessionId }).then((value) => {
+      void call("reference-read", { id: token[1], target: sessionId }).then((value) => {
         if (!live) return;
         const start = token.index - input.occurrences.filter((item) => item.offset < token.index).reduce((total, item) => total + item.length - 1, 0);
         inputFor(sessionId).insertReference(
@@ -12968,7 +13730,7 @@ function createSessionReferences(ctx, space) {
         const hasReferences = node.data.referenceLabels?.length > 0;
         (0, import_react.useEffect)(() => {
           let live = true;
-          if (hasReferences) void call2("reference-history", { target: sessionId, seq: node.data.seq }).then((value) => {
+          if (hasReferences) void call("reference-history", { target: sessionId, seq: node.data.seq }).then((value) => {
             if (live) setReferences(value);
           }).catch(() => {
           });
@@ -13010,6 +13772,107 @@ var REFERENCE_CSS = `
 .nodo-reference-history summary{cursor:pointer;color:var(--dsw-alias-label-secondary)}
 .nodo-reference-history section{margin-top:12px}
 @media(max-width:640px){.nodo-reference-layout{flex-direction:column;height:min(70vh,520px)}.nodo-reference-sources{width:auto;height:180px}.nodo-reference-preview{min-height:0}}
+`;
+
+// nodo:engine-logos:nodo:engine-logos
+var ENGINE_LOGO_SVGS = { "claude": '<svg viewBox="0 0 248 248" fill="none" xmlns="http://www.w3.org/2000/svg">\n<path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/>\n</svg>', "codebuddy": '<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">\n<g clip-path="url(#clip0_5110_14771)">\n<rect width="40" height="40" rx="20" fill="url(#paint0_linear_5110_14771)"/>\n<g filter="url(#filter0_f_5110_14771)">\n<circle cx="12.6071" cy="34.9794" r="14.081" fill="#32E6B9" fill-opacity="0.4"/>\n</g>\n<g filter="url(#filter1_f_5110_14771)">\n<circle cx="33.3404" cy="43.6185" r="12.8704" fill="#32E6B9"/>\n</g>\n<path d="M27.6897 3.3426C28.057 3.01322 28.0795 2.99983 28.3485 2.98366C28.7851 2.95177 29.1858 3.16107 29.8664 3.78072C31.4566 5.22574 33.6703 8.19724 35.047 10.7343L35.5796 11.7191L36.3309 12.0927C37.0562 12.4593 38.2459 13.2111 38.7428 13.614C38.9673 13.7997 38.9992 13.8032 39.2326 13.7124C40.2872 13.3017 41.7982 13.846 43.1307 15.1244C44.3302 16.274 45.479 18.2384 45.9191 19.8778C45.9833 20.1417 46.0683 20.709 46.0994 21.1314C46.1997 22.6144 45.7243 23.7986 44.8085 24.3349C44.6213 24.443 44.6085 24.4725 44.6137 24.939C44.6559 27.1604 44.0571 29.3777 42.8543 31.54C41.4965 33.9678 39.0794 36.4798 35.8073 38.846C34.0502 40.1247 29.8918 42.5469 28.0122 43.3973C23.5096 45.4244 19.8999 46.2022 16.7645 45.8181C14.8943 45.5915 12.7771 44.8611 11.5246 44.0137C11.1951 43.786 11.1428 43.7719 10.8909 43.8439C9.55017 44.2289 7.79442 43.4374 6.30272 41.7817C5.70771 41.1197 4.74709 39.4939 4.43575 38.6241C3.71569 36.5887 3.85859 34.752 4.81783 33.6551C5.0657 33.3725 5.07387 33.3607 5.01972 32.8856C4.93033 32.1079 4.88982 30.9566 4.93066 30.2138L4.96343 29.5205L3.92091 27.6777C2.3078 24.8074 1.28326 22.3968 0.887982 20.5554C0.679402 19.546 0.692781 19.0981 0.949061 18.7667C1.10529 18.5666 1.61622 18.3594 2.23252 18.2455C3.78518 17.9729 7.17203 18.2198 10.9394 18.885L11.3303 18.9525L12.1903 18.1921C13.6179 16.9275 14.5665 16.2176 16.315 15.1274C18.1373 13.9872 20.1943 13.0498 22.5103 12.3071L23.2533 12.0687L23.6615 10.9964C25.1239 7.13587 26.6218 4.28969 27.6897 3.3426ZM15.4393 23.1261C13.7864 24.0804 12.9602 24.5582 12.3529 25.093C9.89364 27.2585 8.9738 30.6888 10.0208 33.7938C10.2794 34.5606 10.7568 35.387 11.7111 37.0398C12.6653 38.6926 13.1424 39.5194 13.6771 40.1267C15.8426 42.5859 19.2732 43.5045 22.3783 42.4574C23.145 42.1989 23.972 41.7223 25.6248 40.768L35.1333 35.2783C36.7862 34.324 37.6124 33.8462 38.2196 33.3114C40.6789 31.1459 41.5988 27.7156 40.5518 24.6105C40.2932 23.8438 39.8157 23.0174 38.8615 21.3646C37.9072 19.7117 37.4302 18.885 36.8955 18.2777C34.7299 15.8185 31.2993 14.8999 28.1943 15.947C27.4275 16.2055 26.6006 16.6821 24.9478 17.6364L15.4393 23.1261Z" fill="url(#paint1_linear_5110_14771)"/>\n<rect x="15.8816" y="30.0273" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 15.8816 30.0273)" fill="white"/>\n<rect x="26.6978" y="23.7812" width="4.00904" height="8.32646" rx="2.00452" transform="rotate(-30 26.6978 23.7812)" fill="white"/>\n</g>\n<defs>\n<filter id="filter0_f_5110_14771" x="-14.9163" y="7.45599" width="55.0468" height="55.047" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="6.72123" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<filter id="filter1_f_5110_14771" x="9.46959" y="19.7477" width="47.7417" height="47.741" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">\n<feFlood flood-opacity="0" result="BackgroundImageFix"/>\n<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>\n<feGaussianBlur stdDeviation="5.50019" result="effect1_foregroundBlur_5110_14771"/>\n</filter>\n<linearGradient id="paint0_linear_5110_14771" x1="20" y1="0" x2="20" y2="40" gradientUnits="userSpaceOnUse">\n<stop stop-color="#6C4DFF"/>\n<stop offset="1" stop-color="#583ED3"/>\n</linearGradient>\n<linearGradient id="paint1_linear_5110_14771" x1="14.639" y1="10.7917" x2="32.1712" y2="41.1585" gradientUnits="userSpaceOnUse">\n<stop stop-color="white" stop-opacity="0.8"/>\n<stop offset="0.437689" stop-color="white"/>\n</linearGradient>\n<clipPath id="clip0_5110_14771">\n<rect width="40" height="40" rx="20" fill="white"/>\n</clipPath>\n</defs>\n</svg>', "codex": '<svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>', "dsh": '<svg fill="#5786FE" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M23.748 4.651c-.254-.124-.364.113-.512.233-.051.04-.094.09-.137.137-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.155-.708-.311-.955-.65-.172-.24-.219-.509-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323-.082.28-.18.553-.266.833-.055.179-.137.218-.328.14a5.5 5.5 0 0 1-1.737-1.179c-.857-.828-1.631-1.743-2.597-2.46a12 12 0 0 0-.689-.47c-.985-.957.13-1.743.387-1.836.27-.098.094-.433-.778-.428-.872.003-1.67.295-2.687.685a3 3 0 0 1-.465.136 9.6 9.6 0 0 0-2.883-.101c-1.885.21-3.39 1.1-4.497 2.622C.082 8.776-.231 10.854.152 13.02c.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257a4.2 4.2 0 0 0 1.545-.475c1.397-.763 1.96-2.016 2.093-3.517.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-1.361-.801-2.5-1.86-3.301-3.306-.775-1.393-1.225-2.888-1.299-4.482-.02-.385.094-.522.477-.592a4.7 4.7 0 0 1 1.53-.038c2.131.311 3.946 1.264 5.467 2.774.868.86 1.525 1.887 2.202 2.89.72 1.066 1.494 2.082 2.48 2.915.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615zm1.001-6.44a.306.306 0 0 1 .415-.287.3.3 0 0 1 .113.074.3.3 0 0 1 .086.214c0 .17-.136.307-.308.307a.303.303 0 0 1-.306-.307m3.11 1.596c-.2.081-.4.151-.591.16a1.25 1.25 0 0 1-.798-.254c-.274-.23-.47-.358-.551-.758a1.7 1.7 0 0 1 .015-.588c.07-.327-.007-.537-.238-.727-.188-.156-.426-.199-.689-.199a.6.6 0 0 1-.254-.078.253.253 0 0 1-.114-.358 1 1 0 0 1 .192-.21c.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.392.451.462.576.685.915.176.264.336.536.446.848.066.194-.02.353-.25.45"/></svg>', "opencode": '<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">\n<rect width="512" height="512" fill="#131010"></rect>\n<path d="M320 224V352H192V224H320Z" fill="#5A5858"></path>\n<path fill-rule="evenodd" clip-rule="evenodd" d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z" fill="white"></path>\n</svg>', "pi": '<svg fill="currentColor" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg"><path d="M420 280H280V140H0V0H420V280Z"/><path d="M560 560H420V280H560V560Z"/><path d="M140 560H0V140H140V280H280V420H140V560Z"/></svg>', "qoder": '<svg fill="currentColor" viewBox="0 0 206 206" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M104.003 35.8361C104.122 35.8899 104.223 35.938 104.308 35.9805C104.575 36.1139 104.784 36.2211 104.937 36.3023L154.881 62.632L154.9 62.6418C154.992 62.6907 155.084 62.7426 155.173 62.7973C160.753 65.8115 165.083 70.1612 168.163 75.8464C171.221 81.491 172.75 87.925 172.75 95.1484V117.637C172.75 117.795 172.743 117.954 172.728 118.111V158.251C172.728 163.577 170.488 167.682 166.008 170.563C161.529 173.445 156.866 173.781 152.021 171.573L143.479 167.682L143.449 167.699L143.279 167.796C143.276 167.798 143.237 167.821 143.159 167.867C142.593 168.202 142.154 168.454 141.84 168.625C141.789 168.654 141.686 168.709 141.532 168.79C141.479 168.819 141.443 168.837 141.426 168.846L141.174 168.979C140.759 169.203 140.355 169.414 139.961 169.61L139.342 169.911L139.192 169.982C138.849 170.145 138.46 170.326 138.025 170.524L137.252 170.86C136.994 170.973 136.623 171.127 136.137 171.32L136.002 171.374L135.892 171.42C135.835 171.443 135.78 171.466 135.725 171.488C135.49 171.584 135.294 171.661 135.137 171.716C134.872 171.814 134.453 171.961 133.881 172.16L133.879 172.161L133.715 172.219C133.549 172.28 133.366 172.342 133.165 172.407C132.571 172.603 131.9 172.805 131.151 173.012L127.646 173.973C126.996 174.153 126.392 174.306 125.833 174.432L125.437 174.515L125.039 174.596C124.663 174.676 124.363 174.738 124.139 174.782C124.007 174.809 123.855 174.836 123.681 174.864C123.646 174.869 123.625 174.872 123.619 174.874L123.11 174.956C123.106 174.957 123.084 174.961 123.044 174.967C122.729 175.02 122.483 175.059 122.304 175.085C122.178 175.104 121.986 175.129 121.727 175.159L121.331 175.209L120.674 175.285C120.526 175.302 120.362 175.317 120.18 175.33L120.066 175.341L120.015 175.345C119.546 175.384 119.175 175.411 118.903 175.426C118.815 175.433 118.717 175.438 118.608 175.443L118.645 175.439C118.497 175.452 118.347 175.459 118.198 175.459H118.137C117.737 175.478 117.398 175.487 117.121 175.487H116.455C116.418 175.487 116.381 175.487 116.344 175.486C116.298 175.485 116.224 175.484 116.122 175.483C115.843 175.479 115.623 175.473 115.461 175.466C115.335 175.462 115.132 175.452 114.852 175.434L114.824 175.432L114.654 175.426L114.273 175.407C114.212 175.404 114.15 175.399 114.088 175.394L113.388 175.332C112.948 175.29 112.527 175.243 112.124 175.19L111.925 175.166C111.882 175.162 111.839 175.155 111.796 175.149C111.339 175.081 110.875 175.005 110.403 174.921L109.901 174.827L109.871 174.821C109.63 174.777 109.429 174.736 109.27 174.698L109.224 174.687L109.158 174.672L109.037 174.644C108.61 174.549 108.15 174.435 107.656 174.301L107.629 174.294C107.5 174.263 107.358 174.226 107.201 174.181L107.2 174.181C106.608 174.013 106.029 173.831 105.463 173.634C105.307 173.586 105.154 173.53 105.004 173.466L104.884 173.42C104.405 173.241 104.002 173.083 103.675 172.948C103.58 172.909 103.469 172.861 103.342 172.804C103.29 172.781 103.261 172.768 103.255 172.766L103.084 172.692C102.756 172.551 102.39 172.384 101.986 172.19L101.906 172.152L101.891 172.145C101.798 172.103 101.715 172.063 101.64 172.025C101.571 171.99 101.501 171.955 101.431 171.918C101.407 171.906 101.386 171.895 101.369 171.886C101.249 171.835 101.13 171.778 101.012 171.716L101.009 171.715L51.5574 145.645C51.215 145.509 50.8889 145.336 50.5849 145.128C48.367 143.914 46.3274 142.453 44.4659 140.744C44.4647 140.743 44.4635 140.742 44.4623 140.741C44.4584 140.737 44.4546 140.734 44.4507 140.73C44.4362 140.717 44.4214 140.704 44.4064 140.69C43.6029 139.953 42.8113 139.14 42.0317 138.252C42.0244 138.243 42.0171 138.235 42.0097 138.226C42.0082 138.224 42.0067 138.222 42.0051 138.22C41.5797 137.727 41.1892 137.252 40.8338 136.795C40.7387 136.672 40.6464 136.551 40.5567 136.432C35.6857 129.988 33.2502 122.172 33.2502 112.983V90.4946C33.2502 89.8308 33.2644 89.0633 33.2927 88.1921C33.3022 87.9838 33.3174 87.7494 33.3384 87.4888C33.3459 87.3951 33.3511 87.3283 33.3539 87.2882C33.3866 86.7286 33.4259 86.2074 33.4719 85.7247C33.4848 85.5587 33.5136 85.2969 33.5583 84.9392C33.5691 84.8524 33.5769 84.7892 33.5817 84.7498C33.589 84.6881 33.6006 84.5877 33.6166 84.4487C33.672 83.9681 33.7187 83.5958 33.7569 83.3318C33.7999 83.0465 33.8556 82.7028 33.9239 82.3007C33.9303 82.2616 33.9429 82.1836 33.9618 82.0668C34.0386 81.5927 34.1025 81.2235 34.1537 80.9593C34.1539 80.9576 34.1542 80.9559 34.1545 80.9542L34.1507 80.9713C34.1669 80.871 34.1817 80.7851 34.1951 80.7134C34.3125 80.1121 34.4286 79.5636 34.5433 79.0679C34.5554 79.0129 34.5689 78.9553 34.5837 78.895C34.704 78.3592 34.8544 77.7535 35.0349 77.078C35.0683 76.9444 35.1121 76.78 35.1663 76.5847C35.1764 76.5481 35.1839 76.5212 35.1886 76.5042C35.4221 75.6865 35.6047 75.0694 35.7364 74.653C35.7408 74.639 35.7453 74.6249 35.7499 74.6109C35.7573 74.5867 35.7647 74.5627 35.7723 74.539C35.7789 74.517 35.7857 74.495 35.7926 74.473C35.8241 74.3734 35.8643 74.2549 35.9134 74.1174L35.9251 74.085C36.1639 73.3479 36.3895 72.6905 36.6021 72.1127C36.6575 71.9603 36.7417 71.7385 36.8547 71.4475C36.8818 71.3777 36.9019 71.3258 36.9151 71.2917C36.9324 71.247 36.9593 71.177 36.9959 71.0817C37.2171 70.5062 37.3921 70.0651 37.5208 69.7585L37.5168 69.7661C37.5549 69.6676 37.5905 69.5789 37.6236 69.5C37.6858 69.3466 37.7661 69.1613 37.8644 68.944C37.8998 68.8657 37.9232 68.8133 37.9347 68.7869C38.152 68.2878 38.3184 67.9104 38.4338 67.6548C38.5471 67.4055 38.7105 67.0593 38.9238 66.6163C38.9706 66.5208 39.03 66.3991 39.1019 66.2511C39.2648 65.9163 39.392 65.6588 39.4835 65.4786L39.5155 65.4136C39.5653 65.3091 39.6106 65.2167 39.6516 65.1362C39.7258 64.9869 39.8207 64.8074 39.9362 64.5977C39.9744 64.5283 39.9996 64.4822 40.0115 64.4596C40.0477 64.3922 40.0935 64.3066 40.1489 64.2029C40.3258 63.872 40.463 63.6187 40.5605 63.4432C40.7672 63.0697 40.9619 62.726 41.1445 62.4123C41.2987 62.1332 41.489 61.8063 41.7152 61.4316C41.7383 61.3935 41.7619 61.3555 41.786 61.318L41.7824 61.323C41.7846 61.3193 41.7867 61.3156 41.7888 61.3118L41.7824 61.323C41.8335 61.2318 41.8771 61.1561 41.9132 61.0959C42.0161 60.9245 42.159 60.697 42.342 60.4136C42.5227 60.1209 42.7188 59.811 42.9304 59.484C43.0841 59.2469 43.3076 58.9123 43.601 58.4804L43.9154 58.0238L44.2115 57.5939C44.2325 57.5634 44.2537 57.5333 44.2753 57.5034L44.2749 57.5021C44.3548 57.3822 44.4252 57.2801 44.4861 57.1958C44.5458 57.1108 44.6445 56.9765 44.7821 56.7929C44.8446 56.7095 44.8877 56.6514 44.9115 56.6186C45.2257 56.1886 45.4678 55.8625 45.6377 55.6403L45.9946 55.1837L46.3262 54.7597C46.5387 54.4816 46.7902 54.1653 47.0808 53.811C47.0969 53.7914 47.1242 53.7575 47.1628 53.7094C47.2305 53.6246 47.2851 53.5571 47.3267 53.5067C47.4115 53.4034 47.53 53.264 47.6821 53.0885C47.7338 53.0289 47.771 52.9858 47.7938 52.9593C47.8766 52.8642 47.9852 52.7384 48.1197 52.582C48.3585 52.3041 48.544 52.0909 48.6764 51.9423L49.3723 51.1748C49.5804 50.9454 49.8853 50.6178 50.2869 50.1921C50.3199 50.1572 50.3534 50.1227 50.3874 50.0888L50.3985 50.0741C50.5274 49.9324 50.6395 49.8139 50.7349 49.7185C50.7855 49.6679 50.8533 49.6012 50.9383 49.5185C50.99 49.4683 51.0247 49.4343 51.0424 49.4165C51.4915 48.9675 51.9017 48.5656 52.2729 48.2107C52.3283 48.1583 52.4007 48.0891 52.49 48.0029C52.6771 47.8224 52.8271 47.6806 52.9399 47.5775C53.3761 47.1664 53.9052 46.6923 54.5271 46.155C54.5279 46.1543 54.5287 46.1536 54.5295 46.1528L54.5189 46.161C54.617 46.0697 54.7025 45.9924 54.7754 45.9292C54.8391 45.8741 54.904 45.8206 54.9705 45.7688C54.997 45.7476 55.0236 45.7269 55.0503 45.7065L55.0774 45.6851L55.0939 45.6717C55.5288 45.3081 55.9911 44.9311 56.4808 44.5407C56.5166 44.5125 56.5529 44.4839 56.5898 44.4548C56.7923 44.2954 56.9507 44.1724 57.0648 44.0858C57.2979 43.9051 57.6655 43.6275 58.1675 43.253C58.2075 43.2232 58.2479 43.1939 58.2888 43.1654C58.3729 43.1065 58.5143 43.0042 58.7128 42.8586C59.1025 42.577 59.5704 42.2518 60.1163 41.883L60.1145 41.8841L60.1593 41.8524C60.2852 41.7638 60.3942 41.6892 60.4862 41.6287C60.5329 41.5967 60.5792 41.5661 60.6251 41.5367C61.2865 41.1057 61.8541 40.7475 62.3278 40.4623C62.4222 40.4035 62.5743 40.3142 62.7839 40.1944C62.7838 40.1941 62.8182 40.1736 62.8873 40.1328C63.453 39.7986 63.8928 39.5462 64.2065 39.3754L64.8387 39.0383L64.872 39.0207C65.2867 38.7973 65.6911 38.5871 66.0852 38.39C66.2669 38.2991 66.5247 38.1744 66.8586 38.0158C67.1979 37.8542 67.5857 37.6746 68.0218 37.477L68.4373 37.2954L68.7948 37.1398C69.0934 37.0111 69.5097 36.84 70.0435 36.6265C70.1097 36.6005 70.1844 36.5712 70.2678 36.5384C70.5114 36.4427 70.6998 36.3699 70.833 36.3199C71.1527 36.2027 71.5991 36.0447 72.1722 35.8457C72.2132 35.8316 72.2719 35.8109 72.3482 35.7837C72.574 35.7031 72.7593 35.64 72.904 35.5945C73.5201 35.3928 74.1846 35.1929 74.8975 34.9948L78.4057 34.0333C79.0348 33.8574 79.6373 33.7044 80.2131 33.5744C80.378 33.5359 80.5868 33.4913 80.8395 33.4407C81.1612 33.3685 81.5282 33.2925 81.9406 33.2127C82.0871 33.1842 82.2808 33.151 82.5216 33.1131C82.5981 33.101 82.6517 33.0924 82.6826 33.0873C82.7524 33.0758 82.852 33.0591 82.9815 33.0372C83.2985 32.9834 83.5459 32.9435 83.7238 32.9177C83.7635 32.9119 83.8033 32.9066 83.8432 32.9018L84.1737 32.8619L84.504 32.822C84.5516 32.8162 84.6345 32.8056 84.7525 32.7903C85.0348 32.7538 85.2559 32.7271 85.4158 32.7105C85.5254 32.6991 85.6353 32.6913 85.7453 32.6873L86.07 32.6632C86.533 32.6238 86.9091 32.5967 87.1982 32.582C87.3378 32.5734 87.5561 32.5646 87.8533 32.5556L87.8692 32.5551C87.9598 32.5532 88.0717 32.5499 88.205 32.5453C88.4606 32.5364 88.6706 32.5314 88.835 32.5303C88.9748 32.5275 89.1472 32.5271 89.3523 32.529L89.537 32.5302C89.6342 32.5318 89.7388 32.5334 89.851 32.5349C90.1448 32.5389 90.3757 32.5444 90.5436 32.5514C90.6803 32.5549 90.9082 32.5655 91.2273 32.5832C91.2891 32.5871 91.3656 32.5912 91.4568 32.5957C91.6011 32.6026 91.7158 32.6089 91.8012 32.6144C91.9206 32.6204 92.0953 32.6356 92.3254 32.6598L92.6313 32.6871C93.0373 32.7257 93.4523 32.7724 93.8761 32.8271L93.8896 32.8288L93.8913 32.829C94.0015 32.8408 94.0983 32.8527 94.1819 32.8646C94.6093 32.9223 95.085 32.9984 95.6089 33.093C95.6739 33.1047 95.7386 33.1178 95.8031 33.1321L95.8062 33.1318C95.8842 33.1466 95.9548 33.1606 96.0179 33.1737C96.0408 33.1779 96.0713 33.1835 96.1093 33.1905C96.3333 33.2314 96.5177 33.2683 96.6627 33.301C96.7395 33.3173 96.8375 33.3418 96.9566 33.3744C96.9806 33.3797 97.0046 33.385 97.0288 33.3903C97.2476 33.4387 97.4749 33.4924 97.7107 33.5517C97.9063 33.6006 98.1067 33.6529 98.3119 33.7085L98.3072 33.7071L98.3401 33.7149C98.4501 33.742 98.5513 33.7682 98.6438 33.7934C98.6594 33.7976 98.6743 33.8018 98.6886 33.8058C98.7485 33.8224 98.8045 33.8387 98.8566 33.8545C98.8608 33.8557 98.865 33.8569 98.8692 33.8581C99.3732 34.0019 99.9241 34.1774 100.522 34.3846C100.548 34.3932 100.574 34.4019 100.6 34.4109C100.733 34.4556 100.881 34.5109 101.044 34.5769C101.508 34.7451 101.931 34.9089 102.311 35.0684C102.368 35.0928 102.417 35.1139 102.459 35.1317C102.655 35.2169 102.808 35.2839 102.918 35.3328C103.261 35.4856 103.61 35.6469 103.963 35.8169L104.003 35.8361ZM101.032 34.5728L101.03 34.5721C101.033 34.573 101.035 34.5739 101.038 34.5748C101.036 34.5741 101.034 34.5735 101.032 34.5728ZM104.903 162.561L105.666 162.963C105.717 162.991 105.807 163.037 105.935 163.102C105.972 163.121 106.002 163.136 106.025 163.148C106.092 163.178 106.131 163.197 106.145 163.205L106.281 163.269C106.554 163.401 106.811 163.519 107.052 163.622L107.063 163.627C107.148 163.663 107.253 163.708 107.38 163.765C107.425 163.785 107.449 163.796 107.452 163.797C107.68 163.891 107.998 164.015 108.408 164.169L108.458 164.189C108.52 164.211 108.58 164.234 108.641 164.257L108.655 164.263C109.054 164.403 109.476 164.536 109.919 164.661C109.914 164.66 109.885 164.654 109.835 164.643C109.904 164.659 109.973 164.675 110.041 164.693L110.249 164.747C110.596 164.84 110.948 164.927 111.306 165.008L111.379 165.025L111.451 165.041L111.564 165.067L111.672 165.086L111.703 165.092L112.139 165.174C112.496 165.238 112.847 165.295 113.191 165.347L113.391 165.372C113.685 165.41 113.977 165.443 114.269 165.47L114.88 165.525L115.066 165.535L115.442 165.551L115.47 165.553C115.644 165.565 115.787 165.572 115.899 165.576C115.964 165.579 116.087 165.581 116.267 165.584C116.363 165.585 116.443 165.586 116.506 165.587H117.121C117.26 165.587 117.474 165.58 117.764 165.566C117.848 165.561 117.932 165.559 118.015 165.559H118.037C118.081 165.557 118.126 165.555 118.174 165.552L118.156 165.555C118.215 165.55 118.274 165.546 118.334 165.542C118.501 165.534 118.779 165.514 119.169 165.481L119.325 165.467C119.376 165.462 119.427 165.458 119.479 165.455C119.506 165.453 119.53 165.451 119.549 165.449L120.088 165.388L120.592 165.324C120.728 165.308 120.832 165.295 120.904 165.284C121.005 165.27 121.174 165.243 121.411 165.203C121.454 165.196 121.491 165.19 121.522 165.185L121.924 165.119C121.976 165.11 122.042 165.1 122.123 165.087L122.114 165.091C122.152 165.082 122.191 165.074 122.23 165.067C122.398 165.035 122.677 164.977 123.068 164.895L123.398 164.828L123.653 164.775C124.058 164.683 124.517 164.567 125.03 164.425L128.507 163.472C129.101 163.307 129.652 163.141 130.162 162.973C130.219 162.955 130.253 162.943 130.266 162.939C130.308 162.922 130.35 162.907 130.393 162.892L130.632 162.808H130.634C131.154 162.628 131.551 162.487 131.825 162.387C131.834 162.383 131.882 162.364 131.971 162.328C132.052 162.295 132.097 162.276 132.106 162.273L132.326 162.182C132.367 162.166 132.414 162.147 132.467 162.126C132.853 161.972 133.13 161.858 133.299 161.784L133.938 161.506C134.318 161.334 134.65 161.181 134.935 161.045L135.024 161.003L135.533 160.756C135.838 160.604 136.178 160.426 136.553 160.224L136.711 160.141C136.766 160.112 136.839 160.073 136.929 160.025C136.993 159.992 137.052 159.961 137.107 159.93C137.318 159.814 137.658 159.619 138.125 159.343C138.192 159.304 138.261 159.263 138.332 159.221L138.46 159.147H138.461C138.544 159.098 138.619 159.055 138.687 159.017C139.131 158.749 139.551 158.484 139.947 158.224L140.305 157.979C141.736 157.002 143.572 156.845 145.148 157.563L156.125 162.564C157.693 163.279 159.202 163.17 160.652 162.237C162.103 161.304 162.828 159.976 162.828 158.251V117.614C162.828 117.456 162.835 117.298 162.85 117.14V95.1484C162.85 83.7403 158.651 75.8219 150.254 71.3934L149.959 71.2374C149.909 71.2132 149.855 71.1867 149.796 71.158C149.721 71.1217 149.663 71.0932 149.62 71.0724C149.384 70.9567 149.129 70.8386 148.853 70.718C148.676 70.6389 148.548 70.5828 148.468 70.5496C148.234 70.4515 147.944 70.3392 147.597 70.2126L147.415 70.1456L147.313 70.1067C146.939 69.9768 146.534 69.8488 146.096 69.7227L145.999 69.6973L145.777 69.6395C145.321 69.5221 144.979 69.4377 144.751 69.3863C144.724 69.3805 144.683 69.3717 144.629 69.3597C144.371 69.3034 144.185 69.2642 144.072 69.242C144.03 69.2339 143.989 69.2253 143.948 69.2162L143.83 69.1927C143.449 69.1241 143.093 69.0673 142.761 69.0223C142.792 69.0267 142.81 69.0291 142.814 69.0296C142.703 69.0177 142.628 69.0088 142.589 69.0029C142.287 68.9641 141.996 68.931 141.716 68.9037L141.71 68.9033L141.383 68.8734C141.233 68.8611 140.993 68.845 140.663 68.8252C140.435 68.8126 140.276 68.805 140.186 68.8025C140.128 68.8008 140.071 68.7982 140.014 68.7947C139.934 68.7897 139.76 68.7873 139.491 68.7873L138.982 68.7863C138.823 68.7894 138.572 68.7974 138.23 68.8105C138.13 68.8157 138.008 68.8205 137.866 68.8249C137.791 68.8271 137.731 68.8296 137.686 68.8322C137.515 68.8408 137.229 68.8619 136.827 68.8954L136.781 68.899C136.729 68.9029 136.661 68.9074 136.577 68.9127L136.442 68.9231C136.355 68.9316 136.204 68.9492 135.988 68.9761C135.849 68.9934 135.758 69.0044 135.717 69.0091C135.625 69.0209 135.503 69.035 135.352 69.0513C135.248 69.0625 135.179 69.0706 135.146 69.0756C135.049 69.09 134.884 69.1175 134.65 69.158C134.503 69.1832 134.384 69.2036 134.291 69.219C134.229 69.2289 134.145 69.2422 134.038 69.2587C133.907 69.2786 133.814 69.2938 133.759 69.3042C133.645 69.3251 133.444 69.3668 133.157 69.4293C133.028 69.4574 132.949 69.4744 132.92 69.4802C132.827 69.5013 132.7 69.5285 132.54 69.5617C132.451 69.5801 132.403 69.5901 132.396 69.5916C131.906 69.7035 131.445 69.8191 131.014 69.9384L127.538 70.8908C126.968 71.049 126.455 71.2026 125.998 71.3517L125.707 71.4525L125.352 71.575C124.951 71.7086 124.6 71.8325 124.3 71.9467C124.181 71.9913 123.979 72.0708 123.693 72.1852C123.284 72.3461 122.971 72.4736 122.752 72.5678L122.104 72.8516C121.973 72.9113 121.833 72.9757 121.684 73.0449V91.2807C121.684 92.0491 121.665 92.8184 121.628 93.5885C121.622 93.7365 121.609 93.9283 121.591 94.1637L121.59 94.1679L121.571 94.4471L121.57 94.4744C121.528 95.1281 121.491 95.6208 121.457 95.9524C121.439 96.1399 121.414 96.3666 121.381 96.6324L121.329 97.0655C121.322 97.1194 121.312 97.2021 121.299 97.3136C121.248 97.7482 121.207 98.0619 121.178 98.255C121.155 98.4224 121.12 98.6496 121.074 98.9367C121.068 98.9704 121.065 98.9883 121.065 98.9905L121.009 99.3453L121.009 99.3467C120.917 99.902 120.844 100.324 120.788 100.612C120.661 101.278 120.528 101.923 120.389 102.547L120.362 102.657C120.224 103.259 120.071 103.869 119.902 104.487L119.761 104.999C119.578 105.652 119.397 106.263 119.219 106.83L119.068 107.297C118.85 107.97 118.629 108.613 118.405 109.225C118.356 109.361 118.29 109.536 118.205 109.751L118.188 109.793L118.192 109.783L118.08 110.078C118.063 110.121 118.039 110.184 118.007 110.266C117.79 110.827 117.625 111.244 117.512 111.517C117.449 111.674 117.358 111.889 117.239 112.163C117.192 112.273 117.165 112.336 117.158 112.351L117.095 112.503C116.916 112.924 116.752 113.292 116.603 113.609C116.52 113.796 116.401 114.053 116.244 114.381C116.192 114.49 116.148 114.584 116.109 114.664C116.087 114.71 116.055 114.778 116.011 114.868C115.823 115.258 115.676 115.559 115.568 115.77C115.376 116.148 115.2 116.486 115.04 116.784L114.726 117.371L114.51 117.768C114.385 117.994 114.197 118.325 113.947 118.761C113.932 118.786 113.907 118.83 113.871 118.893C113.665 119.251 113.496 119.536 113.364 119.749C113.175 120.066 112.975 120.389 112.764 120.718C112.747 120.745 112.719 120.789 112.68 120.851C112.458 121.207 112.294 121.463 112.191 121.62C112.082 121.789 111.924 122.028 111.715 122.339C111.63 122.465 111.557 122.575 111.495 122.666L111.474 122.698L110.894 123.543L110.828 123.635L110.248 124.44C110.006 124.774 109.774 125.086 109.554 125.376C109.374 125.614 109.136 125.921 108.838 126.296C108.792 126.354 108.722 126.444 108.626 126.564C108.415 126.831 108.255 127.032 108.146 127.165C107.99 127.358 107.765 127.627 107.472 127.971L107.432 128.017L107.427 128.022C107.169 128.329 106.885 128.659 106.573 129.01C106.415 129.187 106.185 129.443 105.883 129.777C105.674 130.009 105.372 130.333 104.979 130.75C104.865 130.87 104.702 131.038 104.49 131.254C104.4 131.346 104.327 131.42 104.271 131.477C103.929 131.825 103.523 132.223 103.055 132.67L102.875 132.844L102.673 133.037L102.415 133.284C101.896 133.765 101.374 134.233 100.848 134.686L100.749 134.772L100.669 134.843L100.589 134.915C100.544 134.955 100.499 134.995 100.452 135.032L100.254 135.197C99.956 135.449 99.52 135.806 98.9463 136.268L98.9399 136.273C98.8505 136.346 98.7376 136.435 98.6012 136.539C98.551 136.577 98.5019 136.615 98.4539 136.652L98.3712 136.715C97.9722 137.023 97.5654 137.329 97.1506 137.632C97.1246 137.65 97.0729 137.688 96.9956 137.746C96.8643 137.844 96.7619 137.919 96.6886 137.971C96.2495 138.286 95.8236 138.581 95.4107 138.856L95.0917 139.078C95.0575 139.102 95.0231 139.126 94.9883 139.148C94.3982 139.537 93.7872 139.923 93.1553 140.305L93.1461 140.31C93.3774 150.816 97.2951 158.232 104.899 162.559C104.9 162.559 104.902 162.56 104.903 162.561ZM85.109 152.14C83.8619 148.186 83.2373 143.919 83.2353 139.337V137.521C83.2347 137.489 83.2344 137.458 83.2344 137.426V116.845C83.2344 116.045 83.2534 115.247 83.2913 114.451C83.2988 114.292 83.313 114.083 83.334 113.822C83.3415 113.729 83.3466 113.663 83.3493 113.626C83.3544 113.552 83.3621 113.44 83.3724 113.29C83.4083 112.76 83.4408 112.342 83.4697 112.035C83.4825 111.908 83.5022 111.733 83.5288 111.511C83.5477 111.353 83.5635 111.213 83.5763 111.091C83.5843 111.024 83.5963 110.921 83.6122 110.782C83.6676 110.301 83.7158 109.919 83.757 109.636C83.797 109.37 83.8504 109.041 83.917 108.649C83.9225 108.616 83.931 108.565 83.9424 108.496C84.0263 107.992 84.0935 107.6 84.144 107.32C84.2642 106.675 84.3948 106.043 84.5356 105.422C84.5486 105.362 84.5632 105.3 84.5794 105.234C84.5829 105.219 84.5864 105.203 84.59 105.188C84.7498 104.507 84.9083 103.874 85.0654 103.29C85.0711 103.27 85.0838 103.223 85.1035 103.148C85.1407 103.006 85.1675 102.907 85.1837 102.851C85.3667 102.187 85.5509 101.565 85.7364 100.984C85.7394 100.975 85.7425 100.965 85.7454 100.956C85.7604 100.907 85.7756 100.859 85.7911 100.812C85.8274 100.699 85.8714 100.57 85.9233 100.425C85.9267 100.416 85.9288 100.41 85.9293 100.409C86.1871 99.6224 86.4078 98.9796 86.5913 98.4808C86.651 98.3166 86.7374 98.0889 86.8505 97.7977C86.8777 97.7276 86.8935 97.687 86.8979 97.6759C87.1126 97.1079 87.3121 96.6018 87.4965 96.1574C87.5769 95.96 87.6945 95.6837 87.8495 95.3284C87.8867 95.2432 87.9153 95.1776 87.9353 95.1316C88.1491 94.6407 88.3155 94.2636 88.4344 94.0001C88.5435 93.7602 88.7034 93.4213 88.9141 92.9835C88.9155 92.9806 88.9169 92.9777 88.9182 92.9749C89.099 92.5951 89.2811 92.2247 89.4646 91.8639C89.5557 91.6816 89.689 91.4218 89.8645 91.0844C89.9194 90.9789 89.9656 90.8899 90.0032 90.8175C90.201 90.4424 90.3841 90.1034 90.5524 89.8004C90.7617 89.4223 90.9573 89.0771 91.1389 88.7647L91.4063 88.3047L91.7037 87.7941C91.8473 87.5548 92.0487 87.2295 92.3079 86.8181C92.4094 86.6532 92.5571 86.4188 92.7509 86.1149C92.8189 86.0084 92.8779 85.9158 92.9281 85.8371C93.0803 85.6022 93.2952 85.2806 93.5727 84.8722C93.8298 84.4867 94.0521 84.1637 94.2398 83.9033C94.4559 83.5971 94.6806 83.2865 94.9138 82.9715C95.2236 82.5476 95.4605 82.2284 95.6245 82.014C95.8073 81.7734 96.0476 81.4661 96.3452 81.0921L96.69 80.6582L97.0805 80.168C97.2347 79.9804 97.4631 79.7075 97.7656 79.3492L97.7895 79.3212C97.8343 79.2689 97.9023 79.1892 97.9935 79.0823C98.2842 78.7413 98.506 78.4851 98.6587 78.3137C98.8175 78.1339 99.0523 77.8728 99.3629 77.5304C99.5705 77.3015 99.8791 76.9701 100.289 76.536C100.534 76.2773 100.774 76.0318 101.006 75.7993C101.356 75.4442 101.766 75.0422 102.236 74.5932C102.529 74.3084 102.75 74.0982 102.898 73.9627C103.423 73.4747 103.975 72.9804 104.555 72.4797L104.568 72.4679C104.572 72.4646 104.575 72.4614 104.579 72.4582L104.568 72.4679C104.69 72.3555 104.78 72.2755 104.837 72.2279C104.93 72.1485 105.043 72.0556 105.178 71.9492C105.67 71.5386 106.104 71.1853 106.48 70.8893C106.615 70.7826 106.802 70.6384 107.041 70.4566C107.478 70.1188 107.863 69.8283 108.196 69.5852L108.738 69.1881C109.156 68.886 109.606 68.5732 110.088 68.2498C110.094 68.2454 110.111 68.2342 110.137 68.2159C110.281 68.1154 110.413 68.0272 110.532 67.9513C111.047 67.6097 111.632 67.2385 112.286 66.8376C112.329 66.8116 112.372 66.7861 112.415 66.7614C112.544 66.6878 112.642 66.6306 112.71 66.59C113.351 66.212 113.817 65.9444 114.107 65.7874C114.195 65.7371 114.288 65.6854 114.387 65.6323C114.427 65.6108 114.467 65.5899 114.507 65.5696C114.569 65.5368 114.639 65.5005 114.715 65.4606C114.784 65.425 114.833 65.3993 114.863 65.3835C115.228 65.1868 115.634 64.9766 116.082 64.7529C116.336 64.6259 116.591 64.5012 116.849 64.3787C117.279 64.1741 117.669 63.9926 118.018 63.8342L118.772 63.5029C119.128 63.3494 119.559 63.1731 120.064 62.9741C120.385 62.8458 120.638 62.7468 120.824 62.6771C121.224 62.5247 121.69 62.36 122.221 62.183L122.468 62.0972L122.76 61.9962C123.466 61.7648 124.175 61.5501 124.888 61.352L128.396 60.3905C128.613 60.3306 128.835 60.2715 129.063 60.213L100.3 45.0496C100.214 45.004 100.083 44.937 99.9066 44.8487C99.9047 44.8478 99.9027 44.8469 99.9007 44.846L99.9075 44.8496C99.7964 44.7991 99.6999 44.7535 99.6181 44.7129C99.4811 44.6472 99.3429 44.5824 99.2036 44.5184C99.1007 44.4713 98.9939 44.4231 98.8832 44.3739C98.8044 44.3386 98.6867 44.2871 98.53 44.2193C98.4876 44.201 98.455 44.1869 98.4322 44.177C98.4314 44.1767 98.4306 44.1763 98.4299 44.176C98.3382 44.1381 98.2427 44.0998 98.1433 44.061C97.9965 44.0041 97.8311 43.9427 97.6473 43.8766C97.5717 43.85 97.4776 43.814 97.3649 43.7686C97.3527 43.7645 97.3407 43.7603 97.3286 43.7561C96.8799 43.5998 96.4567 43.4648 96.059 43.3512L95.9727 43.3283C95.8926 43.3086 95.8272 43.2921 95.7763 43.2788C95.3802 43.1715 95.0531 43.0905 94.795 43.036C94.6972 43.0166 94.5792 42.9882 94.4409 42.9508C94.4084 42.9445 94.3714 42.9375 94.33 42.93C94.2346 42.9125 94.1589 42.8984 94.1029 42.8876C94.0584 42.8789 94.014 42.8697 93.9698 42.8599L93.9667 42.8601C93.9009 42.8477 93.8405 42.8359 93.7854 42.8246C93.4377 42.7625 93.1212 42.7121 92.8358 42.6733C92.725 42.6614 92.6275 42.6495 92.5435 42.6375C92.2732 42.6029 91.997 42.5722 91.7147 42.5453L91.3599 42.5131L91.2927 42.5057L91.289 42.5054L91.1859 42.4959C91.1239 42.4922 91.055 42.4886 90.9793 42.4849C90.835 42.478 90.7203 42.4717 90.6349 42.4662C90.4366 42.4553 90.292 42.4486 90.201 42.446C90.0797 42.4413 89.9183 42.4376 89.7169 42.4349C89.5824 42.433 89.4787 42.4313 89.4058 42.4298C89.4064 42.4305 89.3577 42.4304 89.26 42.4294C89.1424 42.4283 89.0705 42.4281 89.0444 42.4289C88.9973 42.4302 88.9501 42.4309 88.903 42.4309C88.8446 42.4309 88.7268 42.434 88.5495 42.4401C88.3825 42.4459 88.248 42.4499 88.1461 42.4522C87.9529 42.458 87.8209 42.4631 87.7499 42.4674C87.5399 42.4782 87.2415 42.5 86.8546 42.5328L86.5715 42.554L86.3409 42.5711C86.3298 42.572 86.3187 42.5728 86.3077 42.5735C86.2335 42.5825 86.1393 42.5944 86.0254 42.6091C85.8845 42.6274 85.7759 42.6412 85.6996 42.6505L85.3608 42.6915L85.0984 42.7231C84.9951 42.7388 84.8419 42.764 84.6388 42.7985C84.4899 42.8237 84.3759 42.8429 84.2967 42.8558C84.246 42.8643 84.1678 42.8768 84.0619 42.8935C83.9382 42.913 83.8599 42.9259 83.827 42.9323C83.5008 42.9954 83.1868 43.0605 82.885 43.1276C82.6666 43.172 82.5146 43.2042 82.429 43.2242C81.993 43.3228 81.5326 43.4398 81.0478 43.5754L77.5317 44.539C76.9734 44.6941 76.4388 44.8552 75.928 45.0223C75.8676 45.0416 75.7842 45.0701 75.6778 45.1081C75.5623 45.1493 75.4704 45.1817 75.4021 45.2051C74.8937 45.3817 74.5177 45.5145 74.2741 45.6037C74.2132 45.6267 74.085 45.6766 73.8895 45.7534C73.7991 45.7889 73.7301 45.816 73.6823 45.8346C73.2548 46.0058 72.9375 46.1359 72.7303 46.2251L72.3994 46.3693L72.0419 46.5249C71.7073 46.677 71.3972 46.821 71.1115 46.957L71.1072 46.9591C70.8335 47.0891 70.6356 47.1846 70.5135 47.2457C70.2089 47.398 69.8811 47.5686 69.5302 47.7576L69.4965 47.7756L68.9012 48.0927C68.7153 48.1941 68.3892 48.3824 67.9232 48.6577C67.8482 48.702 67.7923 48.735 67.7555 48.7567C67.6073 48.8417 67.518 48.8937 67.4876 48.9125C67.0806 49.1579 66.5958 49.4639 66.0332 49.8305C65.9931 49.8578 65.9533 49.8842 65.9139 49.9097L65.8575 49.9496C65.7862 49.9998 65.7282 50.0401 65.6836 50.0706C65.2073 50.3925 64.8258 50.657 64.5392 50.864C64.3368 51.0125 64.1686 51.1342 64.0344 51.2291C63.607 51.5482 63.2914 51.7866 63.0876 51.9444C62.9946 52.0152 62.8699 52.1121 62.7135 52.2352C62.6748 52.2656 62.6456 52.2887 62.6258 52.3042C62.2109 52.635 61.8299 52.9455 61.4827 53.2357C61.4226 53.2875 61.3346 53.3593 61.2187 53.4512C61.1402 53.5238 61.0704 53.5865 61.0095 53.6393C60.4881 54.0895 60.0428 54.4885 59.6734 54.8362C59.591 54.912 59.488 55.0095 59.3645 55.1286C59.248 55.241 59.1565 55.3286 59.0899 55.3914C58.7889 55.6792 58.4401 56.0213 58.0437 56.4178C57.9931 56.4684 57.9253 56.535 57.8403 56.6177C57.7886 56.6679 57.7539 56.7019 57.7362 56.7197L57.7249 56.7344C57.6255 56.8437 57.536 56.9393 57.4565 57.0211C57.1154 57.3829 56.865 57.6517 56.7055 57.8275L56.0398 58.5614C55.9662 58.6442 55.8292 58.8023 55.6287 59.0355C55.4778 59.2111 55.3624 59.3447 55.2825 59.4363C55.2667 59.4549 55.227 59.5009 55.1632 59.5745C55.0686 59.6836 55.0053 59.7575 54.9736 59.7962C54.9593 59.8136 54.9328 59.8464 54.8943 59.8946C54.8265 59.9794 54.7719 60.047 54.7303 60.0973C54.5152 60.3596 54.3244 60.5997 54.1578 60.8176L53.8013 61.2738L53.4693 61.6981C53.3654 61.8344 53.1797 62.0856 52.9122 62.4515C52.8654 62.5159 52.7968 62.6084 52.7064 62.7292C52.6248 62.8381 52.5706 62.9115 52.5439 62.9494L52.5131 62.9944C52.4514 63.087 52.3954 63.1689 52.345 63.2403L52.0696 63.6401L51.7733 64.0703C51.532 64.4257 51.3545 64.691 51.2409 64.8662C51.0597 65.1463 50.8943 65.4079 50.7447 65.6511C50.7251 65.683 50.7052 65.7146 50.6848 65.7459C50.5481 65.9573 50.4543 66.1054 50.4033 66.1903L50.3824 66.227C50.3045 66.3638 50.2323 66.4853 50.1657 66.5917C50.0113 66.8483 49.8731 67.0865 49.751 67.3064C49.5715 67.6161 49.3943 67.9291 49.2192 68.2454C49.1453 68.3783 49.0325 68.5866 48.881 68.8703C48.8223 68.98 48.7781 69.0627 48.7481 69.1185C48.72 69.1716 48.6738 69.2567 48.6094 69.3736C48.5585 69.4661 48.5308 69.5168 48.5265 69.5259C48.5046 69.571 48.482 69.6157 48.4588 69.66L48.4547 69.6708C48.3897 69.8073 48.3322 69.9233 48.2822 70.0189C48.2355 70.1113 48.1433 70.299 48.0058 70.5818C47.9333 70.7308 47.8767 70.8467 47.8361 70.9296C47.6588 71.2978 47.5309 71.5684 47.4524 71.7412C47.3585 71.9492 47.2134 72.2784 47.0172 72.7288C46.9875 72.7976 46.9436 72.8962 46.8857 73.0244C46.8378 73.1302 46.8106 73.1914 46.8041 73.2079C46.7849 73.2566 46.7649 73.305 46.7441 73.353C46.7433 73.3551 46.7425 73.3573 46.7417 73.3594L46.75 73.3409C46.7166 73.4274 46.6876 73.5004 46.6631 73.5599C46.5646 73.7947 46.4228 74.1529 46.2376 74.6347C46.1998 74.7329 46.1713 74.807 46.152 74.8571C46.1361 74.8984 46.1135 74.9566 46.0843 75.0318C45.9971 75.2565 45.9358 75.4173 45.9005 75.5143C45.7283 75.9826 45.5384 76.5369 45.3309 77.1772C45.3081 77.2459 45.2843 77.3155 45.2595 77.386C45.2346 77.4698 45.2075 77.5532 45.178 77.636C45.1726 77.6528 45.1672 77.6694 45.1617 77.6859C45.0586 78.0149 44.9117 78.5129 44.7212 79.1799L44.7065 79.2334C44.6722 79.3569 44.6508 79.4367 44.6421 79.4728C44.6323 79.5129 44.6222 79.553 44.6115 79.5928C44.4631 80.1463 44.3425 80.6288 44.2497 81.0401C44.2363 81.1019 44.2212 81.1671 44.2043 81.2356C44.2015 81.2478 44.1987 81.2602 44.1958 81.2724C44.1057 81.6601 44.0145 82.0896 43.9222 82.5611C43.9219 82.5631 43.9215 82.5651 43.9212 82.5671L43.9253 82.5485C43.9091 82.6488 43.8943 82.7348 43.8809 82.8064C43.8451 82.9907 43.7966 83.2719 43.7355 83.6497C43.7153 83.7743 43.6999 83.8688 43.6893 83.9332C43.6284 84.2926 43.5824 84.5751 43.5513 84.7805C43.5298 84.9296 43.4969 85.1967 43.4525 85.5819C43.4353 85.7314 43.4221 85.8449 43.4129 85.9225C43.4057 85.9831 43.3956 86.0649 43.3828 86.168C43.3563 86.3799 43.3402 86.5204 43.3347 86.5896C43.2957 87.0031 43.2621 87.4507 43.2337 87.9323C43.2261 88.0425 43.2174 88.1588 43.2075 88.2812C43.1952 88.435 43.1878 88.5377 43.1854 88.5891C43.1625 89.3034 43.1511 89.9389 43.1511 90.4954V112.984C43.1511 119.71 44.7969 125.37 48.0885 129.964C48.2105 130.135 48.3347 130.304 48.4612 130.471C48.7612 130.87 49.1067 131.296 49.4976 131.749C50.0389 132.365 50.5851 132.925 51.1362 133.429C51.1394 133.432 51.1427 133.435 51.146 133.438C51.159 133.45 51.1727 133.462 51.1869 133.475C52.1229 134.329 53.1204 135.091 54.1794 135.76C54.6482 136.057 55.1293 136.336 55.6229 136.597C55.6387 136.605 55.6545 136.613 55.6701 136.622L55.7005 136.637C55.7175 136.646 55.7346 136.655 55.7515 136.664L85.109 152.14ZM93.1353 128.236C93.4493 127.981 93.6922 127.78 93.8641 127.635L94.0621 127.471L94.0756 127.459L94.1552 127.388L94.3292 127.235C94.7991 126.83 95.2489 126.428 95.6787 126.029L95.8253 125.887L96.0277 125.694L96.1784 125.548C96.5995 125.146 96.9459 124.807 97.2176 124.531C97.2581 124.489 97.3285 124.417 97.4289 124.315C97.6004 124.141 97.7231 124.014 97.7971 123.936C98.1301 123.583 98.3794 123.315 98.5452 123.132C98.8197 122.829 99.0227 122.603 99.1543 122.453C99.428 122.145 99.6664 121.87 99.8696 121.627C99.8932 121.599 99.9173 121.571 99.9416 121.543L99.961 121.521C100.189 121.254 100.352 121.059 100.451 120.936C100.54 120.827 100.676 120.657 100.86 120.424C100.962 120.296 101.039 120.198 101.092 120.131C101.332 119.828 101.519 119.588 101.653 119.41C101.842 119.162 102.036 118.901 102.235 118.626L102.797 117.846L102.819 117.815L103.309 117.099L103.311 117.096C103.344 117.047 103.406 116.954 103.499 116.816C103.668 116.564 103.788 116.384 103.858 116.274C103.965 116.111 104.109 115.885 104.29 115.597C104.328 115.536 104.357 115.49 104.378 115.456C104.573 115.153 104.739 114.885 104.877 114.652C104.898 114.616 104.92 114.58 104.942 114.545C105.011 114.435 105.127 114.238 105.289 113.956C105.325 113.894 105.353 113.846 105.371 113.813C105.591 113.43 105.753 113.146 105.856 112.96L106.027 112.645L106.306 112.122C106.44 111.873 106.587 111.591 106.746 111.278C106.819 111.134 106.935 110.898 107.092 110.573C107.137 110.478 107.172 110.405 107.196 110.356C107.213 110.32 107.251 110.241 107.309 110.118C107.427 109.87 107.51 109.694 107.557 109.589C107.708 109.262 107.852 108.94 107.988 108.622L108.004 108.58C108.048 108.477 108.098 108.361 108.153 108.233C108.24 108.031 108.301 107.889 108.334 107.807C108.436 107.558 108.583 107.187 108.773 106.695C108.806 106.611 108.831 106.547 108.849 106.501L108.93 106.284C108.956 106.217 108.98 106.157 109 106.106C109.044 105.996 109.071 105.926 109.082 105.896C109.28 105.353 109.469 104.803 109.649 104.247L109.805 103.768C109.931 103.364 110.073 102.88 110.231 102.318L110.353 101.873C110.486 101.389 110.605 100.913 110.713 100.445L110.766 100.224C110.856 99.8165 110.954 99.3298 111.062 98.7642C111.104 98.5444 111.164 98.2039 111.239 97.7427L111.24 97.7413L111.286 97.4467C111.291 97.4136 111.297 97.3803 111.302 97.3468C111.335 97.1476 111.356 97.0084 111.367 96.9292C111.395 96.7383 111.429 96.4795 111.468 96.1528C111.482 96.0307 111.493 95.9379 111.501 95.8744L111.551 95.4529C111.576 95.2556 111.592 95.114 111.6 95.0279C111.626 94.7717 111.656 94.3788 111.689 93.8493L111.691 93.8218L111.715 93.4636C111.719 93.4193 111.721 93.3886 111.722 93.3716C111.731 93.2627 111.736 93.1977 111.737 93.1766C111.768 92.5227 111.784 91.8907 111.784 91.2807V79.3334C111.683 79.4164 111.58 79.5026 111.473 79.592C111.434 79.6239 111.396 79.6552 111.357 79.6859L111.24 79.7802C111.239 79.7812 111.238 79.7822 111.237 79.7833L111.249 79.7743C111.126 79.8862 111.041 79.9618 110.993 80.0012C110.538 80.3944 110.077 80.8076 109.611 81.2411C109.514 81.3295 109.345 81.4906 109.104 81.7244C108.688 82.1222 108.331 82.4721 108.034 82.7742C107.843 82.9645 107.658 83.1541 107.479 83.3429C107.121 83.7221 106.86 84.0021 106.696 84.1831C106.414 84.4937 106.204 84.7277 106.065 84.8851C105.951 85.0125 105.772 85.2195 105.528 85.5059C105.432 85.6192 105.366 85.6963 105.331 85.7372C105.056 86.0624 104.873 86.2807 104.78 86.3921L104.435 86.827L104.094 87.2552C103.841 87.5734 103.643 87.8273 103.498 88.0169C103.372 88.1822 103.169 88.4556 102.89 88.8374C102.689 89.1089 102.493 89.3801 102.302 89.651C102.166 89.8402 101.994 90.0899 101.787 90.4002C101.534 90.7732 101.359 91.034 101.262 91.1826C101.225 91.2418 101.17 91.3279 101.098 91.4409C100.933 91.6994 100.805 91.9027 100.713 92.0507C100.474 92.4308 100.313 92.6903 100.229 92.8291L99.9616 93.2888L99.698 93.7424C99.551 93.995 99.3887 94.2817 99.2111 94.6025C99.0755 94.8467 98.9312 95.1137 98.7783 95.4034C98.7492 95.4597 98.7058 95.5433 98.6481 95.6541C98.497 95.9446 98.3829 96.1669 98.3057 96.321C98.1488 96.6297 97.9937 96.9454 97.8402 97.268L97.8392 97.2703C97.658 97.6465 97.5293 97.9186 97.453 98.0866C97.3556 98.3021 97.2097 98.633 97.0154 99.0794C96.9949 99.1266 96.9646 99.1963 96.9244 99.2882C96.8019 99.5691 96.7118 99.7803 96.654 99.9218C96.5019 100.289 96.3327 100.718 96.1463 101.211C96.1315 101.25 96.1094 101.306 96.0801 101.382C95.9928 101.607 95.9293 101.774 95.8897 101.882C95.7393 102.291 95.5393 102.876 95.2896 103.637C95.2779 103.671 95.262 103.715 95.242 103.771L95.2393 103.772C95.2279 103.809 95.2161 103.847 95.204 103.884C95.1874 103.939 95.1706 103.991 95.1534 104.043C95.0129 104.485 94.8672 104.979 94.7164 105.526C94.7107 105.546 94.698 105.593 94.6784 105.668C94.6411 105.81 94.6173 105.898 94.607 105.932C94.4938 106.355 94.3708 106.848 94.2382 107.411C94.2266 107.464 94.2138 107.518 94.1998 107.575L94.1965 107.589C94.082 108.092 93.9774 108.598 93.8825 109.107C93.8433 109.324 93.7855 109.662 93.7091 110.122C93.6976 110.191 93.6881 110.247 93.6806 110.293C93.6225 110.634 93.5794 110.898 93.5513 111.084C93.5269 111.253 93.4925 111.53 93.4482 111.915C93.4309 112.065 93.421 112.149 93.4184 112.166C93.4056 112.294 93.3859 112.469 93.3592 112.691C93.3403 112.848 93.3287 112.949 93.3243 112.992C93.3052 113.194 93.2806 113.518 93.2505 113.962C93.2397 114.12 93.2313 114.243 93.2252 114.328C93.2203 114.397 93.213 114.492 93.2032 114.615C93.1908 114.769 93.1834 114.871 93.181 114.923C93.1505 115.562 93.1353 116.203 93.1353 116.846V128.236Z"/></svg>', "zcode": '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"\n	 viewBox="0 0 30 30" style="enable-background:new 0 0 30 30;" xml:space="preserve">\n<style type="text/css">\n	.st0{opacity:0.3;fill:#E2E4E7;}\n	.st1{opacity:0.8;fill:#E2E4E7;stroke:#FFFFFF;stroke-width:5;stroke-miterlimit:10;}\n	.st2{fill:url(#SVGID_1_);}\n	.st3{fill:none;stroke:#E0E4E9;stroke-width:0.25;stroke-miterlimit:10;}\n	.st4{fill:none;}\n	.st5{fill:#9DA1A5;}\n	.st6{fill-rule:evenodd;clip-rule:evenodd;fill:none;}\n	.st7{fill-rule:evenodd;clip-rule:evenodd;fill:#DFE2E7;}\n	.st8{fill-rule:evenodd;clip-rule:evenodd;fill:#CDD4DA;}\n	.st9{fill-rule:evenodd;clip-rule:evenodd;fill:#B3BCC7;}\n	.st10{fill-rule:evenodd;clip-rule:evenodd;fill:#9DAAB7;}\n	.st11{fill-rule:evenodd;clip-rule:evenodd;fill:#8698A8;}\n	.st12{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_2_);}\n	.st13{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_3_);}\n	.st14{fill:#1F63EC;}\n	.st15{fill:#2D2D2D;}\n	.st16{fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st17{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_4_);}\n	.st18{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_5_);}\n	.st19{fill:none;stroke:#677380;stroke-width:0.5;stroke-miterlimit:10;}\n	.st20{fill:none;stroke:url(#SVGID_6_);stroke-width:2;stroke-miterlimit:10;}\n	.st21{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_7_);}\n	.st22{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_8_);}\n	.st23{fill:#FFFFFF;}\n	.st24{fill-rule:evenodd;clip-rule:evenodd;fill:#2D2D2D;}\n	.st25{clip-path:url(#SVGID_10_);}\n	.st26{clip-path:url(#SVGID_12_);}\n	.st27{fill:url(#SVGID_13_);}\n	.st28{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_14_);}\n	.st29{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_15_);}\n	.st30{clip-path:url(#SVGID_17_);}\n	.st31{clip-path:url(#SVGID_19_);}\n	.st32{fill:url(#SVGID_20_);}\n	.st33{fill:none;stroke:url(#SVGID_21_);stroke-width:2;stroke-miterlimit:10;}\n	.st34{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_22_);}\n	.st35{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_23_);}\n	.st36{clip-path:url(#SVGID_25_);}\n	.st37{clip-path:url(#SVGID_27_);}\n	.st38{fill:url(#SVGID_28_);}\n	.st39{clip-path:url(#SVGID_30_);}\n	.st40{clip-path:url(#SVGID_32_);}\n	.st41{fill:url(#SVGID_33_);}\n	.st42{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF6;}\n	.st43{fill-rule:evenodd;clip-rule:evenodd;fill:#FFFFFF;}\n	.st44{clip-path:url(#SVGID_35_);}\n	.st45{clip-path:url(#SVGID_37_);}\n	.st46{fill:url(#SVGID_38_);}\n	.st47{fill-rule:evenodd;clip-rule:evenodd;fill:#9DA1A5;}\n	.st48{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_39_);}\n	.st49{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_40_);}\n	.st50{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_41_);}\n	.st51{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_42_);}\n	.st52{fill:none;stroke:url(#SVGID_43_);stroke-width:2;stroke-miterlimit:10;}\n	.st53{fill-rule:evenodd;clip-rule:evenodd;fill:none;stroke:#E0E4E9;stroke-width:0.5;stroke-miterlimit:10;}\n	.st54{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_44_);}\n	.st55{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_45_);}\n	.st56{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_46_);}\n	.st57{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_47_);}\n	.st58{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_48_);}\n	.st59{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_49_);}\n	.st60{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_50_);}\n	.st61{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_51_);}\n	.st62{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_52_);}\n	.st63{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_53_);}\n	.st64{clip-path:url(#SVGID_55_);}\n	.st65{clip-path:url(#SVGID_57_);}\n	.st66{fill:url(#SVGID_58_);}\n	.st67{clip-path:url(#SVGID_60_);}\n	.st68{clip-path:url(#SVGID_62_);}\n	.st69{fill:url(#SVGID_63_);}\n	.st70{fill:none;stroke:url(#SVGID_64_);stroke-width:2;stroke-miterlimit:10;}\n	.st71{clip-path:url(#SVGID_66_);}\n	.st72{clip-path:url(#SVGID_68_);}\n	.st73{fill:url(#SVGID_69_);}\n	.st74{clip-path:url(#SVGID_71_);}\n	.st75{clip-path:url(#SVGID_73_);}\n	.st76{fill:url(#SVGID_74_);}\n	.st77{clip-path:url(#SVGID_76_);}\n	.st78{clip-path:url(#SVGID_78_);}\n	.st79{fill:url(#SVGID_79_);}\n	.st80{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_80_);}\n	.st81{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_81_);}\n	.st82{clip-path:url(#SVGID_83_);}\n	.st83{clip-path:url(#SVGID_85_);}\n	.st84{fill:url(#SVGID_86_);}\n	.st85{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_87_);}\n	.st86{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_88_);}\n	.st87{clip-path:url(#SVGID_90_);}\n	.st88{clip-path:url(#SVGID_92_);}\n	.st89{fill:url(#SVGID_93_);}\n	.st90{fill:none;stroke:url(#SVGID_94_);stroke-width:2;stroke-miterlimit:10;}\n	.st91{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_95_);}\n	.st92{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_96_);}\n	.st93{clip-path:url(#SVGID_98_);}\n	.st94{clip-path:url(#SVGID_100_);}\n	.st95{fill:url(#SVGID_101_);}\n	.st96{clip-path:url(#SVGID_103_);}\n	.st97{clip-path:url(#SVGID_105_);}\n	.st98{fill:url(#SVGID_106_);}\n	.st99{clip-path:url(#SVGID_108_);}\n	.st100{clip-path:url(#SVGID_110_);}\n	.st101{fill:url(#SVGID_111_);}\n	.st102{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st103{clip-path:url(#SVGID_113_);}\n	.st104{fill:#FDD138;}\n	.st105{fill:#FCA62F;}\n	.st106{fill:#FB7927;}\n	.st107{fill:#F44B22;}\n	.st108{fill:#D81915;}\n	.st109{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3354;stroke-miterlimit:10;}\n	.st110{fill:none;stroke:#65727F;stroke-width:2;stroke-miterlimit:10;}\n	.st111{fill:none;stroke:#65727F;stroke-width:0.75;stroke-miterlimit:10;}\n	.st112{fill:url(#SVGID_114_);}\n	.st113{fill:#D06C50;}\n	.st114{fill:#2D2D2D;stroke:#B3BCC7;stroke-width:0.275;stroke-miterlimit:10;}\n	.st115{opacity:0.2;}\n	.st116{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;}\n	.st117{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0212,1.0212;}\n	.st118{fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0205,1.0205;}\n	.st119{opacity:0.2;fill:none;}\n	.st120{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;}\n	.st121{fill:none;stroke:#677380;stroke-width:0.3689;stroke-miterlimit:10;stroke-dasharray:1.0509,1.0509;}\n	.st122{opacity:0.3;fill:#1F63EC;}\n	.st123{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st124{fill:#FFFFFF;stroke:#B3BCC7;stroke-width:0.3162;stroke-miterlimit:10;}\n	.st125{clip-path:url(#SVGID_118_);}\n	.st126{fill:url(#SVGID_119_);}\n	.st127{fill:none;stroke:#DFE2E7;stroke-width:0.75;stroke-miterlimit:10;}\n	.st128{fill:#9DA1A5;stroke:#FFFFFF;stroke-miterlimit:10;}\n	.st129{fill:url(#SVGID_120_);}\n	.st130{fill:none;stroke:#677380;stroke-width:0.75;stroke-miterlimit:10;}\n	.st131{opacity:0.4;}\n	.st132{clip-path:url(#SVGID_122_);}\n	.st133{clip-path:url(#SVGID_124_);}\n	.st134{fill:url(#SVGID_125_);}\n	.st135{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;}\n	.st136{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:0.9951,0.9951;}\n	.st137{fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1.004,1.004;}\n	.st138{fill:none;stroke:url(#SVGID_126_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st139{fill:url(#SVGID_127_);}\n	.st140{fill:none;stroke:#DDE0E4;stroke-width:0.35;stroke-miterlimit:10;}\n	.st141{fill:#2D2D2D;stroke:#A9B3BE;stroke-width:0.275;stroke-miterlimit:10;}\n	.st142{fill-rule:evenodd;clip-rule:evenodd;fill:#126EF4;}\n	.st143{fill:#FFFFFF;stroke:#B1BAC4;stroke-width:0.275;stroke-miterlimit:10;}\n	.st144{fill:#CE6C50;}\n	.st145{fill:#5B5B5B;}\n	.st146{fill:#8392A3;}\n	.st147{fill:none;stroke:url(#SVGID_128_);stroke-width:1.5;stroke-miterlimit:10;}\n	.st148{fill:url(#SVGID_129_);}\n	.st149{fill:none;stroke:#B5BDC4;stroke-width:0.7;stroke-miterlimit:10;}\n	.st150{opacity:0.6;fill:none;stroke:#78838E;stroke-width:0.35;stroke-miterlimit:10;}\n	.st151{opacity:0.2;fill:none;stroke:#8392A3;stroke-width:0.35;stroke-miterlimit:10;stroke-dasharray:1,1;}\n	.st152{fill:none;stroke:#DDE0E4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st153{fill:none;stroke:#8392A3;stroke-width:0.5;stroke-miterlimit:10;}\n	.st154{opacity:0.2;fill:none;stroke:#677380;stroke-width:0.3564;stroke-miterlimit:10;stroke-dasharray:1.0182,1.0182;}\n	.st155{fill:none;stroke:#DDE0E4;stroke-width:0.765;stroke-miterlimit:10;}\n	.st156{fill:url(#SVGID_130_);}\n	.st157{fill:url(#SVGID_131_);}\n	.st158{fill:#B1BAC4;}\n	.st159{fill:#CBD1D8;}\n	.st160{fill:#0B1B2B;}\n	.st161{fill:#91D119;}\n	.st162{opacity:0.7;}\n	.st163{fill:#FFFFFF;stroke:#000000;stroke-width:0.4418;stroke-miterlimit:10;}\n	.st164{fill:none;stroke:#939CAA;stroke-width:0.2209;stroke-miterlimit:10;}\n	.st165{fill:none;stroke:#FFFFFF;stroke-width:3.0924;stroke-miterlimit:10;}\n	.st166{fill:url(#SVGID_132_);}\n	.st167{fill:none;stroke:url(#SVGID_133_);stroke-width:1.714;stroke-miterlimit:10;}\n	.st168{fill:url(#SVGID_134_);}\n	.st169{fill:url(#SVGID_135_);}\n	.st170{fill:url(#SVGID_136_);}\n	.st171{fill:url(#SVGID_137_);}\n	.st172{fill:url(#SVGID_138_);}\n	.st173{fill:url(#SVGID_139_);}\n	.st174{fill:url(#SVGID_140_);}\n	.st175{fill:url(#SVGID_141_);}\n	.st176{fill:url(#SVGID_142_);}\n	.st177{fill:url(#SVGID_143_);}\n	.st178{fill:url(#SVGID_144_);}\n	.st179{fill:none;stroke:#1F63EC;stroke-width:4;stroke-miterlimit:10;}\n	.st180{fill:none;stroke:#0B1B2B;stroke-width:4;stroke-miterlimit:10;}\n	.st181{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st182{fill:none;stroke:#677380;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st183{fill:#257AF1;}\n	.st184{opacity:0.3;fill:#FFFFFF;}\n	.st185{fill:none;stroke:#98A5B2;stroke-width:4;stroke-miterlimit:10;}\n	.st186{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;}\n	.st187{fill:none;stroke:#65727F;stroke-width:0.3989;stroke-miterlimit:10;stroke-dasharray:1.14,1.14;}\n	.st188{fill:none;stroke:#DDDFE4;stroke-width:0.75;stroke-miterlimit:10;}\n	.st189{fill:#9A9EA2;}\n	.st190{fill-rule:evenodd;clip-rule:evenodd;fill:#3267AC;}\n	.st191{fill:#FFFFFF;stroke:#AFB8C3;stroke-width:0.275;stroke-miterlimit:10;}\n	.st192{fill:#C5694E;}\n	.st193{fill:#8192A2;}\n	.st194{fill:#2D2D2D;stroke:#FFFFFF;stroke-width:0.6317;stroke-miterlimit:10;}\n</style>\n<g id="\u56FE\u5C42_2">\n</g>\n<g id="\u56FE\u5C42_1">\n	<path class="st194" d="M24.51,28.51H5.49c-2.21,0-4-1.79-4-4V5.49c0-2.21,1.79-4,4-4h19.03c2.21,0,4,1.79,4,4v19.03\n		C28.51,26.72,26.72,28.51,24.51,28.51z"/>\n	<g>\n		<g>\n			<g>\n				<g>\n					<path class="st23" d="M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z"/>\n					<polygon class="st23" points="24.3,7.1 13.14,22.91 5.7,22.91 16.86,7.1 					"/>\n					<path class="st23" d="M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z"/>\n				</g>\n			</g>\n		</g>\n	</g>\n</g>\n</svg>' };
+
+// nodo:engine-names:nodo:engine-names
+var ENGINE_NAMES = { "codex": "Codex", "dsh": "DeepSeek Harness", "claude": "Claude Code", "qoder": "Qoder", "pi": "Pi", "zcode": "ZCode", "opencode": "OpenCode", "codebuddy": "CodeBuddy" };
+
+// src/client/engine-logos.js
+var engineDisplayName = (item) => ENGINE_NAMES[item.id] ?? String(item.label ?? item.id).replace(/\s*CLI$/, "");
+function EngineMark({ engine, size = 20 }) {
+  const svg = ENGINE_LOGO_SVGS[engine];
+  if (!svg) return (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCodeOutlineRegular, { size });
+  return (0, import_react.createElement)("span", {
+    className: "nodo-engine-art",
+    style: { width: size, height: size },
+    dangerouslySetInnerHTML: { __html: svg },
+    "aria-hidden": true
+  });
+}
+var ENGINE_LOGO_CSS = `
+.nodo-engine-art{display:inline-block;flex:none}
+.nodo-engine-art>svg{display:block;width:100%;height:100%}
+`;
+
+// src/client/model-options.js
+function modelName(raw) {
+  let id = typeof raw === "string" ? raw : "";
+  if (id.startsWith("[")) {
+    try {
+      const [, model] = JSON.parse(id);
+      if (typeof model === "string" && model !== "") id = model;
+    } catch {
+    }
+  }
+  const name = id.slice(Math.max(id.lastIndexOf("$"), id.lastIndexOf("/")) + 1);
+  return name || id;
+}
+var modelLabel = (item) => item.label && /\s/.test(item.label) ? item.label : modelName(item.label ?? item.id);
+var unlistedOption = (value, choices) => value && !choices.some((item) => item.id === value) ? [(0, import_react.createElement)("option", { key: value, value }, `\u4E0D\u5728\u6E05\u5355\uFF1A${value}`)] : [];
+var groupModelsByProvider = (models) => {
+  const providers = /* @__PURE__ */ new Map();
+  for (const item of models) providers.set(item.group ?? "", [...providers.get(item.group ?? "") ?? [], item]);
+  return providers;
+};
+function modelChoices(models, value = "", fallback = "") {
+  const selected = models.find((item) => item.id === (value || fallback));
+  const providers = groupModelsByProvider(models);
+  const options = [...providers].flatMap(([group, items]) => {
+    const rows = items.map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id, title: item.id }, modelLabel(item)));
+    return group === "" ? rows : [(0, import_react.createElement)("optgroup", { key: `group:${group}`, label: group }, ...rows)];
+  });
+  return { selected, value: selected?.id ?? value, levels: selected?.thinking ?? [], options: [...unlistedOption(value, models), ...options] };
+}
+var thinkingAfterModelChange = (models, model, thinking) => (models.find((item) => item.id === model)?.thinking ?? []).some((level) => level.id === thinking) ? thinking : "";
+
+// core/shared/avatar-templates.json
+var avatar_templates_default = [
+  { id: "sky", label: "\u5929\u7A7A\u56E2\u5B50", color: "#7CC8F5", tilt: -12, shape: "M32 5C48 3 58 14 58 31C60 48 49 59 31 58C13 59 5 49 5 32C3 16 15 5 32 5Z" },
+  { id: "peach", label: "\u871C\u6843\u56E2\u5B50", color: "#F7A27A", tilt: -14, shape: "M32 4C47 4 56 16 59 32C62 47 47 58 32 60C17 63 3 48 5 33C7 18 16 4 32 4Z" },
+  { id: "olive", label: "\u6A44\u6984\u56E2\u5B50", color: "#B8BF4C", tilt: 8, shape: "M31 6C44 3 56 14 59 29C61 42 50 56 36 58C20 62 6 49 6 35C4 21 16 8 31 6Z" },
+  { id: "mint", label: "\u8584\u8377\u56E2\u5B50", color: "#7FD39B", tilt: -6, shape: "M33 7C49 5 58 17 58 32C61 47 47 57 31 57C17 60 4 48 5 33C4 18 18 6 33 7Z" },
+  { id: "lavender", label: "\u85B0\u8863\u8349\u56E2\u5B50", color: "#B9A3F5", tilt: 10, shape: "M30 5C45 3 57 13 58 29C61 46 49 58 33 59C18 61 6 51 5 35C2 19 14 6 30 5Z" },
+  { id: "butter", label: "\u5976\u6CB9\u56E2\u5B50", color: "#F5C84C", tilt: -8, shape: "M32 6C48 4 59 17 58 32C59 47 47 60 30 58C15 60 4 48 5 32C4 16 17 5 32 6Z" }
+];
+
+// src/client/avatar.tsx
+var avatarTemplateOf = (profile = {}) => avatar_templates_default.find((item) => item.id === profile.avatarTemplate) ?? avatar_templates_default[Array.from(profile.id || profile.name || "").reduce((sum, letter) => sum + (letter.codePointAt(0) ?? 0), 0) % avatar_templates_default.length];
+function RoleAvatar({ profile, running = false, size = 32 }) {
+  const template = avatarTemplateOf(profile);
+  return /* @__PURE__ */ (0, import_react.createElement)(
+    "span",
+    {
+      className: "nodo-avatar",
+      "data-running": running ? "true" : void 0,
+      "data-template": template.id,
+      "aria-hidden": true,
+      style: { width: size, height: size, color: template.color }
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("svg", { viewBox: "0 0 64 64", width: size, height: size, focusable: false }, /* @__PURE__ */ (0, import_react.createElement)("rect", { className: "nodo-avatar-tile", width: 64, height: 64, rx: 18 }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: "translate(6.86 6.86) scale(.786)" }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-art" }, /* @__PURE__ */ (0, import_react.createElement)("path", { className: "nodo-avatar-body", d: template.shape, fill: template.color }), /* @__PURE__ */ (0, import_react.createElement)("g", { transform: `rotate(${template.tilt} 32 30)` }, /* @__PURE__ */ (0, import_react.createElement)("g", { className: "nodo-avatar-eyes", fill: "#172021" }, /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 21, y: 23, width: 5.5, height: 15, rx: 2.75 }), /* @__PURE__ */ (0, import_react.createElement)("rect", { x: 38, y: 23, width: 5.5, height: 15, rx: 2.75 }))))))
+  );
+}
+var AVATAR_CSS = `
+.nodo-avatar{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:28%}
+.nodo-avatar>svg{display:block;overflow:visible}
+.nodo-avatar-tile{fill:color-mix(in srgb,currentColor 20%,var(--dsw-alias-bg-base))}
+.nodo-avatar-art{transform-box:fill-box;transform-origin:50% 85%}
+.nodo-avatar-eyes{transform-box:fill-box;transform-origin:center}
+.nodo-avatar[data-running=true] .nodo-avatar-art{animation:nodo-avatar-hop 1.6s ease-in-out infinite}
+.nodo-avatar[data-running=true] .nodo-avatar-eyes{animation:nodo-avatar-blink 3.8s ease-in-out infinite}
+.nodo-roster-item:hover .nodo-avatar:not([data-running]) .nodo-avatar-art{animation:nodo-avatar-greet .45s ease-in-out}
+.nodo-avatar-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.nodo-avatar-option{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:78px;padding:8px 4px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
+.nodo-avatar-option:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-avatar-option[aria-pressed=true]{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-label-primary)}
+.nodo-avatar-option:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-avatar-option:disabled{opacity:.5;cursor:default}
+@keyframes nodo-avatar-hop{0%,100%{transform:translateY(0) rotate(-3deg) scale(1.02,.98)}50%{transform:translateY(-8px) rotate(4deg) scale(.98,1.02)}}
+@keyframes nodo-avatar-blink{0%,42%,48%,100%{transform:scaleY(1)}45%{transform:scaleY(.12)}}
+@keyframes nodo-avatar-greet{0%,100%{transform:rotate(0)}35%{transform:rotate(-9deg)}70%{transform:rotate(7deg)}}
+@media(prefers-reduced-motion:reduce){.nodo-avatar .nodo-avatar-art,.nodo-avatar .nodo-avatar-eyes{animation:none!important}}
 `;
 
 // src/client/tool-timeline.tsx
@@ -13071,45 +13934,7 @@ var TOOL_TIMELINE_CSS = `
 @media(prefers-reduced-motion:reduce){.nodo-tool-timeline-chevron,.nodo-tool-timeline-panel{transition:none}.nodo-tool-timeline-step,.nodo-tool-timeline-step[data-active=true]>.nodo-tool-timeline-icon{animation:none}.nodo-tool-timeline[data-streaming=true] .nodo-tool-timeline-label{animation:none;background:none;color:var(--dsw-alias-label-secondary)}}
 `;
 
-// core/shared/lead.js
-var leadModeOf = (profile, session) => profile?.lead === true && session?.leadMode !== false;
-
-// src/client/feed.js
-var EMPTY_LINES = [];
-var FOLLOW_PX = 25;
-var brief = (text) => (text ?? "").slice(0, 400);
-function requestReply(item) {
-  const response = item.phase === "end" && ["allow", "deny", "answer"].includes(item.response?.decision) ? item.response : void 0;
-  const status2 = item.phase === "start" ? "\u7B49\u5F85\u56DE\u7B54" : item.cancelled ? "\u5DF2\u53D6\u6D88" : { allow: "\u5DF2\u5141\u8BB8", deny: "\u5DF2\u62D2\u7EDD", answer: "\u5DF2\u56DE\u7B54" }[response?.decision] ?? "\u5DF2\u5173\u95ED";
-  let text = typeof response?.value === "string" ? response.value : item.text ?? "";
-  if (response?.decision === "answer" && response.questions?.length > 1) {
-    try {
-      const answers = JSON.parse(text);
-      const questions = response.questions;
-      if (answers && typeof answers === "object" && !Array.isArray(answers) && Object.keys(answers).length === questions.length && questions.every((question) => typeof answers[question.id] === "string" || Array.isArray(answers[question.id]) && answers[question.id].every((answer) => typeof answer === "string"))) {
-        text = questions.map((question) => `${question.label}\uFF1A${Array.isArray(answers[question.id]) ? answers[question.id].join("\u3001") : answers[question.id]}`).join("\n");
-      }
-    } catch {
-    }
-  }
-  return { status: status2, text };
-}
-var completedLead = (text) => {
-  let lead = "";
-  let start = 0;
-  const separator = /\r?\n(?:[\t ]*\r?\n)+/g;
-  for (; ; ) {
-    const next = separator.exec(text);
-    const end = next === null ? text.length : next.index + next[0].indexOf("\n");
-    const newline = text.indexOf("\n", start);
-    if (newline !== -1 && newline <= end) {
-      const candidate = text.slice(start, newline).trim();
-      if (candidate !== "") lead = candidate;
-    }
-    if (next === null) return lead;
-    start = next.index + next[0].length;
-  }
-};
+// src/client/transcript-rows.js
 function ProcessRow({ kind, variant, title, summary, body, input, output, progress: progress2, running, error: error2, status: status2, timeline, file, scope, fileLinks }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const hover = useHoverPreview();
@@ -13380,475 +14205,6 @@ var decisionAnswerText = (item, decisions) => {
 ${question.options?.find((option) => option.id === value?.optionId)?.label ?? value?.text ?? ""}`;
   }).join("\n\n");
 };
-function Feed({ profile, session, work, sentTick, round, decisions }) {
-  const [following, setFollowing] = (0, import_react.useState)(true);
-  const [activeTurn, setActiveTurn] = (0, import_react.useState)(null);
-  const key = `${profile.id}:${session?.id ?? ""}`;
-  const opened = (0, import_react.useRef)({ key, at: Date.now() });
-  if (opened.current?.key !== key) opened.current = { key, at: Date.now() };
-  const box = (0, import_react.useRef)(null);
-  const probe = (0, import_react.useRef)(0);
-  const sample = () => {
-    if (probe.current || typeof requestAnimationFrame !== "function") return;
-    probe.current = requestAnimationFrame(() => {
-      probe.current = 0;
-      const node = box.current;
-      if (node === null) return;
-      const near = node.scrollHeight - node.scrollTop - node.clientHeight <= FOLLOW_PX;
-      setFollowing((current) => current === near ? current : near);
-      let turn = null;
-      const rows2 = node.querySelectorAll("[data-nodo-turn]");
-      if (rows2.length) {
-        turn = Number(rows2[0].getAttribute("data-nodo-turn"));
-        const reading = node.getBoundingClientRect().top + node.clientHeight / 3;
-        for (const row of rows2) {
-          if (row.getBoundingClientRect().top > reading) break;
-          turn = Number(row.getAttribute("data-nodo-turn"));
-        }
-      }
-      setActiveTurn(turn);
-    });
-  };
-  (0, import_react.useEffect)(() => () => {
-    if (probe.current) cancelAnimationFrame(probe.current);
-  }, []);
-  const version = (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
-  (0, import_react.useEffect)(() => session ? watchTranscript(profile.id, session.id) : void 0, [key]);
-  const shown = session ? transcriptOf(key) : EMPTY_LINES;
-  const feedError = session ? transcriptError(key) : "";
-  (0, import_react.useEffect)(() => {
-    if (box.current !== null && following) box.current.scrollTop = box.current.scrollHeight;
-    sample();
-  }, [version, following]);
-  (0, import_react.useEffect)(() => {
-    setFollowing(true);
-  }, [sentTick]);
-  const source = round ? roundLines(shown, work?.active === true) : shown;
-  const visible = leadModeOf(profile, session) ? source.filter((line2) => line2.kind !== "usage") : source;
-  const turns = [];
-  for (const [index, item] of visible.entries()) {
-    if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
-    else if (item.who === "agent" && item.kind === "text" && !item.parentCallId && turns.length !== 0) {
-      const turn = turns.at(-1);
-      if (!turn.reply || item.reply === true) {
-        turn.response = brief(item.final ?? item.text);
-        turn.reply = item.reply === true;
-      }
-    }
-  }
-  const goto = (turn) => {
-    const node = box.current;
-    const row = node?.querySelector(`[data-nodo-turn="${turn}"]`);
-    if (!node || !row) return;
-    setFollowing(false);
-    node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop;
-  };
-  const lines = visible;
-  const latestUser = lines.findLastIndex((item) => item.who === "user");
-  const replyEnds = /* @__PURE__ */ new Set();
-  let replyPending = work?.active !== true;
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const item = lines[index];
-    if (item.who === "user") replyPending = true;
-    else if (replyPending && item.who === "agent" && item.kind === "text" && !item.parentCallId && (item.reply === true || item.timeline !== true)) {
-      replyEnds.add(index);
-      replyPending = false;
-    }
-  }
-  const turnUsage = /* @__PURE__ */ new Map();
-  const mergedUsage = /* @__PURE__ */ new Set();
-  let stamp = null;
-  let usageAt = null;
-  for (let index = 0; index <= lines.length; index += 1) {
-    const item = lines[index];
-    if (item === void 0 || item.who === "user") {
-      if (stamp !== null && usageAt !== null) {
-        turnUsage.set(stamp, usageAt);
-        mergedUsage.add(usageAt);
-      }
-      stamp = null;
-      usageAt = null;
-    } else if (replyEnds.has(index)) stamp = index;
-    else if (item.kind === "usage" && usageAt === null) usageAt = index;
-  }
-  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === "user" || lines.at(-1).kind === "member");
-  const lastSpeaker = lines.findLastIndex((item) => item.kind === "speaker");
-  const rows = transcriptRows(lines).filter((row) => row.item.kind !== "changes" || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser));
-  const newest = rows.length - 1;
-  const line = (row, position, timeline = false) => {
-    const { item, index } = row;
-    if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
-    if (item.kind === "changes") return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id }, cwd: session.cwd });
-    if (item.kind === "tool") return toolRow(row, { profile, session, work, timeline });
-    if (item.kind === "thinking") {
-      const text = item.text ?? "";
-      const running = work?.active === true && (item.timeline === true ? item.open === true : position === newest && (work.buffer ?? "") === "");
-      const lead = (running ? completedLead(text) : "") || text.split("\n")[0] || "";
-      return (0, import_react.createElement)(ProcessRow, {
-        key: index,
-        kind: "thinking",
-        variant: { icon: import_dsh_client_ui_primitives.IconThinkOutlineRegular },
-        timeline,
-        title: "\u601D\u8003",
-        summary: lead.replaceAll("**", "") || null,
-        body: text,
-        running
-      });
-    }
-    if (item.kind === "speaker") return (0, import_react.createElement)(RoundSpeaker, { key: index, role: profile, running: work?.active === true && !speakerDue && index === lastSpeaker });
-    if (item.kind === "delegate") return (0, import_react.createElement)(RoundChip, { key: index, step: item.step, round });
-    if (item.kind === "member") return (0, import_react.createElement)(RoundMember, { key: index, step: item.step, round });
-    if (item.kind === "error") {
-      return (0, import_react.createElement)(
-        "div",
-        { key: index, className: "nodo-turn-error" },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "error", size: 8, className: "nodo-turn-error-dot" }),
-        (0, import_react.createElement)("span", null, (0, import_react.createElement)("span", { className: "nodo-turn-error-title" }, "\u672C\u8F6E\u8FD0\u884C\u5931\u8D25"), item.text)
-      );
-    }
-    if (item.kind === "lifecycle") return (0, import_react.createElement)(
-      "p",
-      { key: index, className: "nodo-note" },
-      `${{ retry: "\u91CD\u8BD5", compaction: "\u4E0A\u4E0B\u6587\u538B\u7F29" }[item.event] ?? item.event} \xB7 ${item.phase === "start" ? "\u5F00\u59CB" : item.isError ? "\u5931\u8D25" : item.cancelled ? "\u5DF2\u53D6\u6D88" : item.event === "retry" ? "\u5DF2\u6062\u590D" : "\u7ED3\u675F"}`,
-      item.text ? ` \xB7 ${item.text}` : ""
-    );
-    if (item.kind === "request") {
-      const reply = requestReply(item);
-      return (0, import_react.createElement)(
-        "p",
-        { key: index, className: "nodo-note", "data-request-phase": item.phase },
-        `${item.requestKind === "question" ? "\u63D0\u95EE" : "\u6743\u9650\u8BF7\u6C42"} \xB7 ${reply.status}`,
-        reply.text && (0, import_react.createElement)("span", { className: "nodo-request-answer" }, ` \xB7 ${reply.text}`)
-      );
-    }
-    if (item.kind === "usage") return lines[index - 1]?.who === "agent" && lines[index - 1].kind === "text" || mergedUsage.has(index) ? null : (0, import_react.createElement)(TurnUsage, { key: index, usage: item.usage });
-    if (item.who === "user") {
-      return (0, import_react.createElement)(
-        "div",
-        { key: index, className: "nodo-user", "data-flow": "user", "data-nodo-turn": index },
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-bubble" },
-          item.files?.length > 0 && (0, import_react.createElement)("span", { className: "nodo-user-files" }, item.files.map((file, at2) => (0, import_react.createElement)(
-            "span",
-            { key: file.id ?? at2, className: "nodo-composer-file" },
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPaperclipOutlineRegular, { size: 14 }),
-            (0, import_react.createElement)("span", { title: file.name }, file.name)
-          ))),
-          item.images?.map((image) => (0, import_react.createElement)(TranscriptImage, { key: image.id, image })),
-          decisionAnswerText(item, decisions) ?? item.text
-        ),
-        (0, import_react.createElement)(MessageTime, { at: item.at }),
-        item.references?.length > 0 && referenceHistory(item.references)
-      );
-    }
-    if (item.who === "agent") {
-      const streaming = item.timeline === true && item.open === true && work?.active === true;
-      const usageAt2 = turnUsage.get(index);
-      const usage = usageAt2 !== void 0 ? lines[usageAt2].usage : !mergedUsage.has(index + 1) && lines[index + 1]?.kind === "usage" ? lines[index + 1].usage : null;
-      return (0, import_react.createElement)(
-        "div",
-        {
-          key: index,
-          className: "nodo-reply",
-          "data-flow": "response",
-          "data-message-id": item.messageId,
-          "data-source-channel": item.channel,
-          "data-parent-call-id": item.parentCallId,
-          ...item.parentCallId ? { style: { marginLeft: 16 } } : {}
-        },
-        (0, import_react.createElement)(StreamingText, { text: item.text, streaming, animate: streaming || item.at >= opened.current.at, labels: MARKDOWN_LABELS }),
-        item.images?.map((image) => (0, import_react.createElement)(TranscriptImage, { key: image.id, image })),
-        !streaming && (replyEnds.has(index) || usage) && (0, import_react.createElement)(
-          "div",
-          { className: "nodo-reply-foot" },
-          replyEnds.has(index) && (0, import_react.createElement)(MessageTime, { at: item.at }),
-          usage && (0, import_react.createElement)(TurnUsage, { usage })
-        )
-      );
-    }
-    return item.text ? (0, import_react.createElement)("p", { key: index, className: "nodo-note" }, item.text) : null;
-  };
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-feedwrap" },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-feed", ref: box, onScroll: sample, "data-following": following ? "" : void 0, role: "log", "aria-label": `${profile.name} transcript` },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-feed-inner", "data-round": round ? "" : void 0 },
-        session && feedError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, feedError),
-        lines.length === 0 && !work?.active && (0, import_react.createElement)(
-          "p",
-          { className: "nodo-note nodo-feed-empty" },
-          `\u8FD8\u6CA1\u6709\u6D88\u606F\u3002\u7ED9\u300C${profile.name}\u300D\u53D1\u4E00\u6761\u4EFB\u52A1\uFF0C\u4E00\u6761\u6D88\u606F\u5373\u4E00\u4E2A\u4EFB\u52A1\u3002`
-        ),
-        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
-          ProcessGroup,
-          {
-            key: block.rows[0].row.index,
-            rows: block.rows.map(({ row }) => row.item),
-            depths: block.rows.map(({ row }) => row.depth),
-            running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true))
-          },
-          block.rows.map(({ row, position }) => line(row, position, true))
-        ) : line(block.rows[0].row, block.rows[0].position)),
-        speakerDue && work?.active && work.timeline !== true && stripNodo(work.buffer) !== "" && (0, import_react.createElement)(RoundSpeaker, { role: profile, running: true }),
-        work?.active && work.timeline !== true && work.buffer != null && work.buffer !== "" && (0, import_react.createElement)(
-          "div",
-          { className: "nodo-reply", "data-flow": "response" },
-          (0, import_react.createElement)(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })
-        )
-      )
-    ),
-    (0, import_react.createElement)(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
-    !following && (0, import_react.createElement)(
-      "button",
-      { type: "button", className: "nodo-tobottom", "aria-label": "\u56DE\u5230\u5E95\u90E8", title: "\u56DE\u5230\u5E95\u90E8", onClick: () => setFollowing(true) },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular)
-    )
-  );
-}
-function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
-  const [previewTurn, setPreviewTurn] = (0, import_react.useState)(null);
-  const [focusedTurn, setFocusedTurn] = (0, import_react.useState)(null);
-  const [edges, setEdges] = (0, import_react.useState)({ top: false, bottom: false });
-  const scroller = (0, import_react.useRef)(null);
-  const inside = (0, import_react.useRef)(false);
-  const previewId = (0, import_react.useRef)(`nodo-turn-preview-${Math.random().toString(36).slice(2, 8)}`).current;
-  const activeIndex = turns.findIndex((item) => item.turn === activeTurn);
-  const previewIndex = turns.findIndex((item) => item.turn === (focusedTurn ?? previewTurn));
-  const syncEdges = () => {
-    const node = scroller.current;
-    if (node === null) return;
-    const next = { top: node.scrollTop > 1, bottom: node.scrollTop < node.scrollHeight - node.clientHeight - 1 };
-    setEdges((current) => current.top === next.top && current.bottom === next.bottom ? current : next);
-  };
-  (0, import_react.useEffect)(() => {
-    syncEdges();
-    const node = scroller.current;
-    const mark = activeIndex >= 0 ? node?.querySelector(`[data-index="${activeIndex}"]`) : null;
-    if (node === null || mark === null || inside.current) return;
-    const center2 = mark.offsetTop + mark.offsetHeight / 2;
-    if (center2 < node.scrollTop + 24 || center2 > node.scrollTop + node.clientHeight - 24) node.scrollTop = center2 - node.clientHeight / 2;
-  });
-  if (turns.length < 2) return null;
-  const preview = previewIndex >= 0 ? turns[previewIndex] : null;
-  const previewMark = previewIndex >= 0 ? scroller.current?.querySelector(`[data-index="${previewIndex}"]`) : null;
-  const center = previewMark ? previewMark.offsetTop + previewMark.offsetHeight / 2 - (scroller.current?.scrollTop ?? 0) : 0;
-  return (0, import_react.createElement)(
-    "nav",
-    {
-      className: "nodo-turnrail",
-      "aria-label": "\u8F6E\u6B21\u5BFC\u822A",
-      onPointerEnter: () => {
-        inside.current = true;
-      },
-      onPointerLeave: () => {
-        inside.current = false;
-        setPreviewTurn(null);
-        setFocusedTurn(null);
-      }
-    },
-    (0, import_react.createElement)(
-      "div",
-      { className: `nodo-turnrail-scroller${edges.top ? " nodo-turnrail-fade-top" : ""}${edges.bottom ? " nodo-turnrail-fade-bottom" : ""}`, ref: scroller, onScroll: syncEdges },
-      (0, import_react.createElement)("div", { className: "nodo-turnrail-marks" }, turns.map((item, index) => (0, import_react.createElement)("button", {
-        key: item.turn,
-        type: "button",
-        "data-index": index,
-        className: `nodo-turnmark${item.turn === activeTurn ? " nodo-turnmark-active" : ""}${index === previewIndex ? " nodo-turnmark-preview" : ""}${item.turn === busyTurn ? " nodo-turnmark-busy" : ""}`,
-        "aria-label": `\u8DF3\u8F6C\u5230\u7B2C ${index + 1} \u8F6E`,
-        "aria-current": item.turn === activeTurn ? "true" : void 0,
-        "aria-describedby": index === previewIndex ? previewId : void 0,
-        onPointerMove: () => setPreviewTurn(item.turn),
-        onFocus: () => {
-          setFocusedTurn(item.turn);
-          setPreviewTurn(item.turn);
-        },
-        onBlur: () => setFocusedTurn(null),
-        onClick: () => onNavigate(item.turn)
-      })))
-    ),
-    preview && (0, import_react.createElement)(
-      "div",
-      { id: previewId, role: "tooltip", className: "nodo-turnpreview", style: { "--nodo-preview-center": `${center}px` } },
-      (0, import_react.createElement)("div", { className: "nodo-turnpreview-prompt" }, preview.prompt || `\u7B2C ${previewIndex + 1} \u8F6E`),
-      preview.response !== "" && (0, import_react.createElement)("div", { className: "nodo-turnpreview-response" }, preview.response)
-    )
-  );
-}
-function ModelPicker({ profile, disabled, onChange }) {
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const [pane, setPane] = (0, import_react.useState)("root");
-  const [engines, setEngines] = (0, import_react.useState)([]);
-  const [scanning, setScanning] = (0, import_react.useState)(false);
-  const [error2, setError] = (0, import_react.useState)("");
-  const loaded = (0, import_react.useRef)(/* @__PURE__ */ new Set());
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call2("engine-catalog").then((items2) => {
-      if (live) setEngines(items2);
-    }).catch(() => {
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  const engine = engines.find((item) => item.id === profile.engine);
-  const models = engine?.catalog?.models ?? [];
-  const selectedModel = models.find((item) => item.id === (profile.model || engine?.catalog?.defaultModel));
-  const model = selectedModel?.id ?? profile.model ?? "";
-  const levels = selectedModel?.thinking ?? [];
-  const thinking = profile.thinking || (levels.some((level) => level.id === selectedModel?.defaultThinking) ? selectedModel.defaultThinking : "");
-  const modelText = selectedModel ? modelLabel(selectedModel) : modelName(model) || engine?.label || profile.engine;
-  const levelText = thinking ? levels.find((level) => level.id === thinking)?.label ?? thinking : "";
-  const close = () => {
-    setOpen(false);
-    setPane("root");
-  };
-  const openMenu = () => {
-    if (open) return close();
-    setOpen(true);
-    if (loaded.current.has(profile.engine)) return;
-    loaded.current.add(profile.engine);
-    void call2("engine-catalog").then((items2) => {
-      setEngines(items2);
-      if (!items2.some((item) => item.id === profile.engine && !item.catalog)) return;
-      setScanning(true);
-      return call2("engine-scan", { engine: profile.engine }).then((catalog) => setEngines((current) => current.map((item) => item.id === profile.engine ? { ...item, catalog } : item)));
-    }).catch((failure) => {
-      loaded.current.delete(profile.engine);
-      setError(failure.message);
-    }).finally(() => setScanning(false));
-  };
-  const providers = /* @__PURE__ */ new Map();
-  for (const item of models) providers.set(item.group ?? "", [...providers.get(item.group ?? "") ?? [], item]);
-  const modelItems = [...providers].flatMap(([group, items2]) => [
-    ...group === "" ? [] : [{ type: "label", id: `group:${group}`, text: group }],
-    ...items2.map((item) => ({ id: `model:${item.id}`, label: modelLabel(item) }))
-  ]);
-  const pick = (id) => {
-    if (id === "model" || id === "thinking") {
-      setPane(id);
-      return;
-    }
-    if (id.startsWith("group:")) return;
-    const changes = id.startsWith("model:") ? { model: id.slice(6), thinking: thinkingAfterModelChange(models, id.slice(6), thinking) } : { ...model ? { model } : {}, thinking: id.slice(9) };
-    close();
-    onChange(changes);
-  };
-  const cell = (label, value, filled) => (0, import_react.createElement)(
-    "span",
-    { className: "nodo-model-cell" },
-    (0, import_react.createElement)("span", { className: "nodo-model-cell-label" }, label),
-    (0, import_react.createElement)("span", { className: "nodo-model-cell-value" }, value),
-    filled && (0, import_react.createElement)("span", { className: "nodo-model-cell-chev" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }))
-  );
-  const items = pane === "model" ? models.length ? modelItems : [{ type: "label", id: "hint", text: scanning ? "\u6B63\u5728\u626B\u63CF\u672C\u5730\u914D\u7F6E\u2026" : error2 || "\u672A\u626B\u63CF\u5230\u6A21\u578B\uFF0C\u53EF\u5728\u8BBE\u7F6E\u4E2D\u91CD\u65B0\u626B\u63CF" }] : pane === "thinking" ? [
-    { id: "thinking:", label: "\u9ED8\u8BA4\uFF08\u8DDF\u968F Agent \u8BBE\u7F6E\uFF09" },
-    ...levels.map((level) => ({
-      id: `thinking:${level.id}`,
-      label: level.id === selectedModel?.defaultThinking ? `${level.label ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.label ?? level.id
-    }))
-  ] : [
-    { id: "model", label: cell("\u6A21\u578B", modelText, models.length > 0), disabled: !models.length },
-    { id: "thinking", label: cell("\u63A8\u7406\u7B49\u7EA7", levelText || "\u9ED8\u8BA4", levels.length > 0), disabled: !levels.length }
-  ];
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-    open,
-    onClose: close,
-    portal: true,
-    side: "top",
-    align: "end",
-    autoFocus: true,
-    className: "nodo-model",
-    listClassName: "nodo-model-list",
-    selectedId: pane === "model" ? `model:${model}` : pane === "thinking" ? `thinking:${thinking}` : void 0,
-    items,
-    onSelect: pick,
-    anchor: (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-model-trigger",
-        disabled,
-        "aria-haspopup": "menu",
-        "aria-expanded": open,
-        "aria-label": `\u9009\u62E9\u6A21\u578B\uFF0C\u5F53\u524D ${modelText}${levelText ? `\uFF0C\u63A8\u7406\u7B49\u7EA7 ${levelText}` : ""}`,
-        onClick: openMenu
-      },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDataOutlineRegular, { size: 16, className: "nodo-model-icon" }),
-      (0, import_react.createElement)("span", { className: "nodo-model-label" }, modelText),
-      levelText !== "" && (0, import_react.createElement)("span", { className: "nodo-model-effort" }, levelText),
-      (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
-    )
-  });
-}
-function TranscriptImage({ image }) {
-  const [src, setSrc] = (0, import_react.useState)(null);
-  const [error2, setError] = (0, import_react.useState)(false);
-  const [preview, setPreview] = (0, import_react.useState)(false);
-  const hover = useHoverPreview();
-  const panel = rightPanelService?.getSnapshot().target;
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    setSrc(null);
-    setError(false);
-    setPreview(false);
-    call2("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
-      if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
-    }).catch(() => {
-      if (live) setError(true);
-    });
-    return () => {
-      live = false;
-    };
-  }, [image.id, image.mediaType]);
-  useHoverPreviewPlacement(hover, 320);
-  const alt = image.name || "\u56FE\u7247";
-  const show = (row) => {
-    if (src !== null) hover.show(src, row);
-  };
-  const open = () => {
-    if (!panel) return false;
-    rightPanelService.openImage({ id: image.id, mediaType: image.mediaType, name: image.name });
-    hover.hide();
-    return true;
-  };
-  return (0, import_react.createElement)(
-    import_react.Fragment,
-    null,
-    error2 ? (0, import_react.createElement)("span", { className: "nodo-note", role: "status" }, `${alt}\uFF1A\u56FE\u7247\u4E0D\u53EF\u7528`) : (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-image-preview",
-        disabled: !src,
-        "aria-label": `\u9884\u89C8 ${alt}`,
-        "aria-haspopup": "dialog",
-        onClick: () => {
-          if (!open()) setPreview(true);
-        },
-        onPointerEnter: (event) => {
-          if (event.pointerType !== "touch") show(event.currentTarget);
-        },
-        onPointerLeave: hover.close,
-        onFocus: (event) => show(event.currentTarget),
-        onBlur: hover.close
-      },
-      src ? (0, import_react.createElement)("img", { className: "nodo-attachment", src, alt, onError: () => setError(true) }) : "\u6B63\u5728\u52A0\u8F7D\u56FE\u7247\u2026"
-    ),
-    hover.value !== null && (0, import_react.createElement)(HoverPreview, {
-      preview: hover,
-      className: "nodo-hover-preview nodo-hover-picture",
-      label: alt,
-      children: (0, import_react.createElement)("img", { src, alt })
-    }),
-    preview && src && (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setPreview(false) })
-  );
-}
 var clockText = (at2) => {
   if (!Number.isFinite(at2)) return "";
   const date = new Date(at2);
@@ -13858,94 +14214,6 @@ var clockText = (at2) => {
 function MessageTime({ at: at2 }) {
   const text = clockText(at2);
   return text === "" ? null : (0, import_react.createElement)("time", { className: "nodo-msg-time", dateTime: new Date(at2).toISOString() }, text);
-}
-function TurnUsage({ usage }) {
-  const total = turnTokens(usage ?? {});
-  return total > 0 ? (0, import_react.createElement)("div", { className: "nodo-turn-usage", title: "\u672C\u8F6E\u7528\u91CF" }, `${compactTokens(total)} tok`) : null;
-}
-function SessionStats({ stats, onOpen }) {
-  if (stats === void 0) return null;
-  const billed = billedTokens(stats);
-  const total = billed + stats.outputTokens;
-  const hit = cacheHitPercent(stats);
-  const context = contextPercent(stats);
-  const group = (key, icon, values) => (0, import_react.createElement)(
-    "span",
-    { key, className: "nodo-stats-group" },
-    icon && (0, import_react.createElement)(icon, { size: 14 }),
-    (0, import_react.createElement)("span", null, values.filter((value) => value !== "").join(" \xB7 "))
-  );
-  const groups = [];
-  if (stats.turns > 0 || stats.decodeMs > 0) {
-    groups.push(group("counts", null, [
-      stats.turns > 0 ? `${stats.turns} \u8F6E ${stats.steps} \u6B65` : "",
-      stats.decodeMs > 0 && stats.decodeTokens > 0 ? `${tokensPerSecond(stats.decodeTokens, stats.decodeMs)} tok/s` : ""
-    ]));
-  }
-  if (total > 0) {
-    groups.push(group("tokens", null, [
-      `${compactTokens(total)} tok`,
-      hit === "" ? "" : `\u7F13\u5B58\u547D\u4E2D ${hit}%`
-    ]));
-  }
-  if (context !== null) groups.push(group("context", import_dsh_client_ui_primitives.IconGaugeOutlineRegular, [`${context}%`]));
-  if (groups.length === 0) return null;
-  return (0, import_react.createElement)("button", {
-    type: "button",
-    className: "nodo-stats-pill",
-    onClick: onOpen,
-    "aria-haspopup": "dialog",
-    "aria-label": "\u4F1A\u8BDD\u7EDF\u8BA1",
-    title: "\u4F1A\u8BDD\u7EDF\u8BA1"
-  }, groups);
-}
-function StatsDialog({ stats, onClose }) {
-  const row = (label, value) => (0, import_react.createElement)(
-    "div",
-    { key: label, className: "nodo-stats-row" },
-    (0, import_react.createElement)("span", { className: "nodo-stats-row-label" }, label),
-    (0, import_react.createElement)("span", { className: "nodo-stats-row-value" }, value)
-  );
-  const billed = billedTokens(stats);
-  const hit = cacheHitPercent(stats);
-  const context = contextPercent(stats);
-  return (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Modal,
-    {
-      open: true,
-      onClose,
-      closeLabel: "\u5173\u95ED",
-      title: "\u4F1A\u8BDD\u7EDF\u8BA1",
-      className: "nodo-dialog",
-      footer: [(0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "close", variant: "primary", onClick: onClose }, "\u5173\u95ED")]
-    },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-dialog-fields" },
-      billed + stats.outputTokens > 0 && (0, import_react.createElement)(
-        "div",
-        { className: "nodo-stats-section" },
-        (0, import_react.createElement)("h3", { className: "nodo-stats-heading" }, "Token \u7528\u91CF"),
-        row("\u672A\u7F13\u5B58\u8F93\u5165", exactTokens(stats.inputTokens)),
-        row("\u7F13\u5B58\u8BFB\u53D6", exactTokens(stats.cacheReadTokens)),
-        row("\u7F13\u5B58\u5199\u5165", exactTokens(stats.cacheWriteTokens)),
-        row("\u8F93\u51FA", exactTokens(stats.outputTokens)),
-        hit !== "" && row("\u7F13\u5B58\u547D\u4E2D", `${hit}%`)
-      ),
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-stats-section" },
-        (0, import_react.createElement)("h3", { className: "nodo-stats-heading" }, "\u7528\u65F6\u4E0E\u901F\u5EA6"),
-        row("\u8F6E\u6B21 / \u6B65\u6570", `${stats.turns} \u8F6E ${stats.steps} \u6B65`),
-        row("\u6A21\u578B\u7528\u65F6", compactDuration(stats.llmMs)),
-        row("\u5DE5\u5177\u8C03\u7528\u7528\u65F6", compactDuration(stats.toolMs)),
-        stats.ttftSteps > 0 && stats.ttftMs > 0 && row("\u9996 token \u5E73\u5747\uFF08TTFT\uFF09", compactDuration(stats.ttftMs / stats.ttftSteps)),
-        stats.decodeMs > 0 && stats.decodeTokens > 0 && row("\u8F93\u51FA\u901F\u5EA6\uFF08TPS\uFF09", `${tokensPerSecond(stats.decodeTokens, stats.decodeMs)} tok/s`),
-        context !== null && row("\u4E0A\u4E0B\u6587", `${exactTokens(stats.contextUsed)} / ${exactTokens(stats.contextSize)}\uFF08${context}%\uFF09`)
-      ),
-      (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u53EA\u7D2F\u8BA1\u672C\u4F1A\u8BDD\u7684\u4E8B\u4EF6\uFF1BAgent \u6CA1\u6709\u4E0A\u62A5\u7684\u5B57\u6BB5\u4E0D\u663E\u793A\uFF0C\u901F\u5EA6\u9700\u8981 Agent \u4EE5\u6D41\u5F0F\u8F93\u51FA\u624D\u6D4B\u5F97\u5230\u3002")
-    )
-  );
 }
 
 // src/client/todo-dock.js
@@ -14305,7 +14573,7 @@ function RoundTask({ step }) {
   (0, import_react.useEffect)(() => {
     let live = true;
     setError("");
-    call2("task-get", { taskId: step.taskId }).then((task) => {
+    call("task-get", { taskId: step.taskId }).then((task) => {
       if (live) setDetail(task);
     }).catch((failure) => {
       if (live) setError(failure.message || "\u4EFB\u52A1\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25");
@@ -14620,7 +14888,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
   (0, import_react.useEffect)(() => {
     if (folded) return;
     let current = true;
-    call2("task-list", { workspace }).then((list) => {
+    call("task-list", { workspace }).then((list) => {
       if (!current) return;
       const newest = /* @__PURE__ */ new Map(), owner = /* @__PURE__ */ new Map();
       for (const task of list ?? []) for (const execution of task.executions ?? []) {
@@ -14755,518 +15023,736 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
   );
 }
 
-// src/client/session-rail.tsx
-var ROLE_FOLD = 5;
-var ROSTER_HEIGHT_KEY = "nodo.rosterHeight";
-var TREE_MIN = 120;
-var UPDATE_SKIP_KEY = "nodo.updateSkipped";
-var UPDATE_COMMAND = "git pull && npm ci --ignore-scripts && npm run build:check";
-function UpdateCard({ info, onClose, onSkip }) {
-  const [copied, setCopied] = (0, import_react.useState)(false);
-  const root = (0, import_react.useRef)(null);
-  (0, import_react.useEffect)(() => {
-    for (const item of root.current?.querySelectorAll(".nodo-update-notes li") ?? [])
-      item.classList.toggle("nodo-update-breaking", item.textContent?.includes("\u4E0D\u517C\u5BB9") ?? false);
-  }, [info.notes]);
-  const at2 = info.publishedAt ? new Date(info.publishedAt) : null;
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-card", role: "dialog", "aria-label": "Nodo \u6709\u65B0\u7248\u672C", ref: root }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-update-title" }, "Nodo \u6709\u65B0\u7248\u672C"), /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-update-line" }, "v", info.current, " \u2192 v", info.latest, at2 && !Number.isNaN(at2.getTime()) ? ` \xB7 ${at2.toLocaleDateString("sv-SE")}` : ""), info.notes && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-notes" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: info.notes, labels: MARKDOWN_LABELS })), info.source && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-command" }, /* @__PURE__ */ (0, import_react.createElement)("code", null, UPDATE_COMMAND), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-copy", "aria-label": copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236", title: copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236", onClick: async () => {
-    if (await (0, import_dsh_client_ui_primitives.writeClipboard)(UPDATE_COMMAND)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2e3);
+// core/shared/lead.js
+var leadModeOf = (profile, session) => profile?.lead === true && session?.leadMode !== false;
+
+// src/client/feed.js
+var EMPTY_LINES = [];
+var FOLLOW_PX = 25;
+var brief = (text) => (text ?? "").slice(0, 400);
+function requestReply(item) {
+  const response = item.phase === "end" && ["allow", "deny", "answer"].includes(item.response?.decision) ? item.response : void 0;
+  const status2 = item.phase === "start" ? "\u7B49\u5F85\u56DE\u7B54" : item.cancelled ? "\u5DF2\u53D6\u6D88" : { allow: "\u5DF2\u5141\u8BB8", deny: "\u5DF2\u62D2\u7EDD", answer: "\u5DF2\u56DE\u7B54" }[response?.decision] ?? "\u5DF2\u5173\u95ED";
+  let text = typeof response?.value === "string" ? response.value : item.text ?? "";
+  if (response?.decision === "answer" && response.questions?.length > 1) {
+    try {
+      const answers = JSON.parse(text);
+      const questions = response.questions;
+      if (answers && typeof answers === "object" && !Array.isArray(answers) && Object.keys(answers).length === questions.length && questions.every((question) => typeof answers[question.id] === "string" || Array.isArray(answers[question.id]) && answers[question.id].every((answer) => typeof answer === "string"))) {
+        text = questions.map((question) => `${question.label}\uFF1A${Array.isArray(answers[question.id]) ? answers[question.id].join("\u3001") : answers[question.id]}`).join("\n");
+      }
+    } catch {
     }
-  } }, copied ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCopyOutlineRegular, { size: 14 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-actions" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-quiet", onClick: onSkip }, "\u8DF3\u8FC7\u6B64\u7248\u672C"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-quiet", onClick: onClose }, "\u7A0D\u540E"), info.url && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", size: "sm", onClick: () => globalThis.open(info.url, "_blank", "noopener,noreferrer") }, "\u67E5\u770B\u53D1\u5E03\u9875")));
+  }
+  return { status: status2, text };
 }
-function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const archived = !!session.archivedAt;
-  const pinned = !!session.pinnedAt;
-  const running = work?.active === true;
-  const status2 = workLabel(work);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-session-item", "data-menu": open ? "open" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
+var completedLead = (text) => {
+  let lead = "";
+  let start = 0;
+  const separator = /\r?\n(?:[\t ]*\r?\n)+/g;
+  for (; ; ) {
+    const next = separator.exec(text);
+    const end = next === null ? text.length : next.index + next[0].indexOf("\n");
+    const newline = text.indexOf("\n", start);
+    if (newline !== -1 && newline <= end) {
+      const candidate = text.slice(start, newline).trim();
+      if (candidate !== "") lead = candidate;
+    }
+    if (next === null) return lead;
+    start = next.index + next[0].length;
+  }
+};
+function Feed({ profile, session, work, sentTick, round, decisions }) {
+  const [following, setFollowing] = (0, import_react.useState)(true);
+  const [activeTurn, setActiveTurn] = (0, import_react.useState)(null);
+  const key = `${profile.id}:${session?.id ?? ""}`;
+  const opened = (0, import_react.useRef)({ key, at: Date.now() });
+  if (opened.current?.key !== key) opened.current = { key, at: Date.now() };
+  const box = (0, import_react.useRef)(null);
+  const probe = (0, import_react.useRef)(0);
+  const sample = () => {
+    if (probe.current || typeof requestAnimationFrame !== "function") return;
+    probe.current = requestAnimationFrame(() => {
+      probe.current = 0;
+      const node = box.current;
+      if (node === null) return;
+      const near = node.scrollHeight - node.scrollTop - node.clientHeight <= FOLLOW_PX;
+      setFollowing((current) => current === near ? current : near);
+      let turn = null;
+      const rows2 = node.querySelectorAll("[data-nodo-turn]");
+      if (rows2.length) {
+        turn = Number(rows2[0].getAttribute("data-nodo-turn"));
+        const reading = node.getBoundingClientRect().top + node.clientHeight / 3;
+        for (const row of rows2) {
+          if (row.getBoundingClientRect().top > reading) break;
+          turn = Number(row.getAttribute("data-nodo-turn"));
+        }
+      }
+      setActiveTurn(turn);
+    });
+  };
+  (0, import_react.useEffect)(() => () => {
+    if (probe.current) cancelAnimationFrame(probe.current);
+  }, []);
+  const version = (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
+  (0, import_react.useEffect)(() => session ? watchTranscript(profile.id, session.id) : void 0, [key]);
+  const shown = session ? transcriptOf(key) : EMPTY_LINES;
+  const feedError = session ? transcriptError(key) : "";
+  (0, import_react.useEffect)(() => {
+    if (box.current !== null && following) box.current.scrollTop = box.current.scrollHeight;
+    sample();
+  }, [version, following]);
+  (0, import_react.useEffect)(() => {
+    setFollowing(true);
+  }, [sentTick]);
+  const source = round ? roundLines(shown, work?.active === true) : shown;
+  const visible = leadModeOf(profile, session) ? source.filter((line2) => line2.kind !== "usage") : source;
+  const turns = [];
+  for (const [index, item] of visible.entries()) {
+    if (item.who === "user") turns.push({ turn: index, prompt: brief(item.text), response: "" });
+    else if (item.who === "agent" && item.kind === "text" && !item.parentCallId && turns.length !== 0) {
+      const turn = turns.at(-1);
+      if (!turn.reply || item.reply === true) {
+        turn.response = brief(item.final ?? item.text);
+        turn.reply = item.reply === true;
+      }
+    }
+  }
+  const goto = (turn) => {
+    const node = box.current;
+    const row = node?.querySelector(`[data-nodo-turn="${turn}"]`);
+    if (!node || !row) return;
+    setFollowing(false);
+    node.scrollTop = row.getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop;
+  };
+  const lines = visible;
+  const latestUser = lines.findLastIndex((item) => item.who === "user");
+  const replyEnds = /* @__PURE__ */ new Set();
+  let replyPending = work?.active !== true;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const item = lines[index];
+    if (item.who === "user") replyPending = true;
+    else if (replyPending && item.who === "agent" && item.kind === "text" && !item.parentCallId && (item.reply === true || item.timeline !== true)) {
+      replyEnds.add(index);
+      replyPending = false;
+    }
+  }
+  const turnUsage = /* @__PURE__ */ new Map();
+  const mergedUsage = /* @__PURE__ */ new Set();
+  let stamp = null;
+  let usageAt = null;
+  for (let index = 0; index <= lines.length; index += 1) {
+    const item = lines[index];
+    if (item === void 0 || item.who === "user") {
+      if (stamp !== null && usageAt !== null) {
+        turnUsage.set(stamp, usageAt);
+        mergedUsage.add(usageAt);
+      }
+      stamp = null;
+      usageAt = null;
+    } else if (replyEnds.has(index)) stamp = index;
+    else if (item.kind === "usage" && usageAt === null) usageAt = index;
+  }
+  const speakerDue = round && (lines.length === 0 || lines.at(-1).who === "user" || lines.at(-1).kind === "member");
+  const lastSpeaker = lines.findLastIndex((item) => item.kind === "speaker");
+  const rows = transcriptRows(lines).filter((row) => row.item.kind !== "changes" || supportedStreamRecord(row.item.presentation) && row.item.presentation.body.fileCount > 0 && !(work?.active && row.index > latestUser));
+  const newest = rows.length - 1;
+  const line = (row, position, timeline = false) => {
+    const { item, index } = row;
+    if (item.kind === "plan") return (0, import_react.createElement)(PlanRow, { key: index, plan: item, timeline, running: work?.active === true && position === newest });
+    if (item.kind === "changes") return (0, import_react.createElement)(StreamRecordCard, { key: index, record: item.presentation, request: { profile: profile.id, session: session.id }, cwd: session.cwd });
+    if (item.kind === "tool") return toolRow(row, { profile, session, work, timeline });
+    if (item.kind === "thinking") {
+      const text = item.text ?? "";
+      const running = work?.active === true && (item.timeline === true ? item.open === true : position === newest && (work.buffer ?? "") === "");
+      const lead = (running ? completedLead(text) : "") || text.split("\n")[0] || "";
+      return (0, import_react.createElement)(ProcessRow, {
+        key: index,
+        kind: "thinking",
+        variant: { icon: import_dsh_client_ui_primitives.IconThinkOutlineRegular },
+        timeline,
+        title: "\u601D\u8003",
+        summary: lead.replaceAll("**", "") || null,
+        body: text,
+        running
+      });
+    }
+    if (item.kind === "speaker") return (0, import_react.createElement)(RoundSpeaker, { key: index, role: profile, running: work?.active === true && !speakerDue && index === lastSpeaker });
+    if (item.kind === "delegate") return (0, import_react.createElement)(RoundChip, { key: index, step: item.step, round });
+    if (item.kind === "member") return (0, import_react.createElement)(RoundMember, { key: index, step: item.step, round });
+    if (item.kind === "error") {
+      return (0, import_react.createElement)(
+        "div",
+        { key: index, className: "nodo-turn-error" },
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "error", size: 8, className: "nodo-turn-error-dot" }),
+        (0, import_react.createElement)("span", null, (0, import_react.createElement)("span", { className: "nodo-turn-error-title" }, "\u672C\u8F6E\u8FD0\u884C\u5931\u8D25"), item.text)
+      );
+    }
+    if (item.kind === "lifecycle") return (0, import_react.createElement)(
+      "p",
+      { key: index, className: "nodo-note" },
+      `${{ retry: "\u91CD\u8BD5", compaction: "\u4E0A\u4E0B\u6587\u538B\u7F29" }[item.event] ?? item.event} \xB7 ${item.phase === "start" ? "\u5F00\u59CB" : item.isError ? "\u5931\u8D25" : item.cancelled ? "\u5DF2\u53D6\u6D88" : item.event === "retry" ? "\u5DF2\u6062\u590D" : "\u7ED3\u675F"}`,
+      item.text ? ` \xB7 ${item.text}` : ""
+    );
+    if (item.kind === "request") {
+      const reply = requestReply(item);
+      return (0, import_react.createElement)(
+        "p",
+        { key: index, className: "nodo-note", "data-request-phase": item.phase },
+        `${item.requestKind === "question" ? "\u63D0\u95EE" : "\u6743\u9650\u8BF7\u6C42"} \xB7 ${reply.status}`,
+        reply.text && (0, import_react.createElement)("span", { className: "nodo-request-answer" }, ` \xB7 ${reply.text}`)
+      );
+    }
+    if (item.kind === "usage") return lines[index - 1]?.who === "agent" && lines[index - 1].kind === "text" || mergedUsage.has(index) ? null : (0, import_react.createElement)(TurnUsage, { key: index, usage: item.usage });
+    if (item.who === "user") {
+      return (0, import_react.createElement)(
+        "div",
+        { key: index, className: "nodo-user", "data-flow": "user", "data-nodo-turn": index },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-bubble" },
+          item.files?.length > 0 && (0, import_react.createElement)("span", { className: "nodo-user-files" }, item.files.map((file, at2) => (0, import_react.createElement)(
+            "span",
+            { key: file.id ?? at2, className: "nodo-composer-file" },
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPaperclipOutlineRegular, { size: 14 }),
+            (0, import_react.createElement)("span", { title: file.name }, file.name)
+          ))),
+          item.images?.map((image) => (0, import_react.createElement)(TranscriptImage, { key: image.id, image })),
+          decisionAnswerText(item, decisions) ?? item.text
+        ),
+        (0, import_react.createElement)(MessageTime, { at: item.at }),
+        item.references?.length > 0 && referenceHistory(item.references)
+      );
+    }
+    if (item.who === "agent") {
+      const streaming = item.timeline === true && item.open === true && work?.active === true;
+      const usageAt2 = turnUsage.get(index);
+      const usage = usageAt2 !== void 0 ? lines[usageAt2].usage : !mergedUsage.has(index + 1) && lines[index + 1]?.kind === "usage" ? lines[index + 1].usage : null;
+      return (0, import_react.createElement)(
+        "div",
+        {
+          key: index,
+          className: "nodo-reply",
+          "data-flow": "response",
+          "data-message-id": item.messageId,
+          "data-source-channel": item.channel,
+          "data-parent-call-id": item.parentCallId,
+          ...item.parentCallId ? { style: { marginLeft: 16 } } : {}
+        },
+        (0, import_react.createElement)(StreamingText, { text: item.text, streaming, animate: streaming || item.at >= opened.current.at, labels: MARKDOWN_LABELS }),
+        item.images?.map((image) => (0, import_react.createElement)(TranscriptImage, { key: image.id, image })),
+        !streaming && (replyEnds.has(index) || usage) && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-reply-foot" },
+          replyEnds.has(index) && (0, import_react.createElement)(MessageTime, { at: item.at }),
+          usage && (0, import_react.createElement)(TurnUsage, { usage })
+        )
+      );
+    }
+    return item.text ? (0, import_react.createElement)("p", { key: index, className: "nodo-note" }, item.text) : null;
+  };
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-feedwrap" },
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-feed", ref: box, onScroll: sample, "data-following": following ? "" : void 0, role: "log", "aria-label": `${profile.name} transcript` },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-feed-inner", "data-round": round ? "" : void 0 },
+        session && feedError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, feedError),
+        lines.length === 0 && !work?.active && (0, import_react.createElement)(
+          "p",
+          { className: "nodo-note nodo-feed-empty" },
+          `\u8FD8\u6CA1\u6709\u6D88\u606F\u3002\u7ED9\u300C${profile.name}\u300D\u53D1\u4E00\u6761\u4EFB\u52A1\uFF0C\u4E00\u6761\u6D88\u606F\u5373\u4E00\u4E2A\u4EFB\u52A1\u3002`
+        ),
+        ...processBlocks(rows).map((block, index, all) => block.process && block.rows.length > 1 ? (0, import_react.createElement)(
+          ProcessGroup,
+          {
+            key: block.rows[0].row.index,
+            rows: block.rows.map(({ row }) => row.item),
+            depths: block.rows.map(({ row }) => row.depth),
+            running: work?.active === true && (index === all.length - 1 || block.rows.some(({ row }) => row.running || row.item.open === true))
+          },
+          block.rows.map(({ row, position }) => line(row, position, true))
+        ) : line(block.rows[0].row, block.rows[0].position)),
+        speakerDue && work?.active && work.timeline !== true && stripNodo(work.buffer) !== "" && (0, import_react.createElement)(RoundSpeaker, { role: profile, running: true }),
+        work?.active && work.timeline !== true && work.buffer != null && work.buffer !== "" && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-reply", "data-flow": "response" },
+          (0, import_react.createElement)(StreamingText, { key, text: round ? stripNodo(work.buffer) : work.buffer, streaming: true, labels: MARKDOWN_LABELS })
+        )
+      )
+    ),
+    (0, import_react.createElement)(TurnRail, { turns, activeTurn, busyTurn: work?.active === true ? turns.at(-1)?.turn ?? null : null, onNavigate: goto }),
+    !following && (0, import_react.createElement)(
+      "button",
+      { type: "button", className: "nodo-tobottom", "aria-label": "\u56DE\u5230\u5E95\u90E8", title: "\u56DE\u5230\u5E95\u90E8", onClick: () => setFollowing(true) },
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular)
+    )
+  );
+}
+function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
+  const [previewTurn, setPreviewTurn] = (0, import_react.useState)(null);
+  const [focusedTurn, setFocusedTurn] = (0, import_react.useState)(null);
+  const [edges, setEdges] = (0, import_react.useState)({ top: false, bottom: false });
+  const scroller = (0, import_react.useRef)(null);
+  const inside = (0, import_react.useRef)(false);
+  const previewId = (0, import_react.useRef)(`nodo-turn-preview-${Math.random().toString(36).slice(2, 8)}`).current;
+  const activeIndex = turns.findIndex((item) => item.turn === activeTurn);
+  const previewIndex = turns.findIndex((item) => item.turn === (focusedTurn ?? previewTurn));
+  const syncEdges = () => {
+    const node = scroller.current;
+    if (node === null) return;
+    const next = { top: node.scrollTop > 1, bottom: node.scrollTop < node.scrollHeight - node.clientHeight - 1 };
+    setEdges((current) => current.top === next.top && current.bottom === next.bottom ? current : next);
+  };
+  (0, import_react.useEffect)(() => {
+    syncEdges();
+    const node = scroller.current;
+    const mark = activeIndex >= 0 ? node?.querySelector(`[data-index="${activeIndex}"]`) : null;
+    if (node === null || mark === null || inside.current) return;
+    const center2 = mark.offsetTop + mark.offsetHeight / 2;
+    if (center2 < node.scrollTop + 24 || center2 > node.scrollTop + node.clientHeight - 24) node.scrollTop = center2 - node.clientHeight / 2;
+  });
+  if (turns.length < 2) return null;
+  const preview = previewIndex >= 0 ? turns[previewIndex] : null;
+  const previewMark = previewIndex >= 0 ? scroller.current?.querySelector(`[data-index="${previewIndex}"]`) : null;
+  const center = previewMark ? previewMark.offsetTop + previewMark.offsetHeight / 2 - (scroller.current?.scrollTop ?? 0) : 0;
+  return (0, import_react.createElement)(
+    "nav",
     {
-      type: "button",
-      className: "nodo-row nodo-session",
-      disabled: busy,
-      "data-archived": archived ? "" : void 0,
-      "aria-current": current ? "page" : void 0,
-      "aria-description": archived ? "\u5DF2\u5F52\u6863\u4F1A\u8BDD\uFF0C\u53EA\u8BFB\u67E5\u770B" : void 0,
-      onClick: onSelect,
-      title: `${role.name} \xB7 ${session.name}`
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, context ? `${context} \xB7 ${session.name}` : session.name),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, "\u5DF2\u5F52\u6863") : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status2 }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(work) }), status2) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
-  ), !readOnly && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-row-action",
-      disabled: busy || running,
-      "aria-label": archived ? `\u53D6\u6D88\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D` : `\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D`,
-      title: archived ? "\u53D6\u6D88\u5F52\u6863" : "\u5F52\u6863\u4F1A\u8BDD",
-      onClick: (event) => {
-        event.stopPropagation();
-        onArchive(!archived);
+      className: "nodo-turnrail",
+      "aria-label": "\u8F6E\u6B21\u5BFC\u822A",
+      onPointerEnter: () => {
+        inside.current = true;
+      },
+      onPointerLeave: () => {
+        inside.current = false;
+        setPreviewTurn(null);
+        setFocusedTurn(null);
       }
     },
-    archived ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUnarchiveOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
-  ), /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Menu,
-    {
-      open,
-      onClose: () => setOpen(false),
-      portal: true,
-      closeOnPointerLeave: true,
-      items: [
-        { id: "rename", label: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busy },
-        { id: "pin", label: pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876\u4F1A\u8BDD", icon: pinned ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinOutlineRegular, null), disabled: busy || archived }
-      ],
-      onSelect: (id) => {
-        setOpen(false);
-        if (id === "rename") onRename();
-        else onPin(!pinned);
+    (0, import_react.createElement)(
+      "div",
+      { className: `nodo-turnrail-scroller${edges.top ? " nodo-turnrail-fade-top" : ""}${edges.bottom ? " nodo-turnrail-fade-bottom" : ""}`, ref: scroller, onScroll: syncEdges },
+      (0, import_react.createElement)("div", { className: "nodo-turnrail-marks" }, turns.map((item, index) => (0, import_react.createElement)("button", {
+        key: item.turn,
+        type: "button",
+        "data-index": index,
+        className: `nodo-turnmark${item.turn === activeTurn ? " nodo-turnmark-active" : ""}${index === previewIndex ? " nodo-turnmark-preview" : ""}${item.turn === busyTurn ? " nodo-turnmark-busy" : ""}`,
+        "aria-label": `\u8DF3\u8F6C\u5230\u7B2C ${index + 1} \u8F6E`,
+        "aria-current": item.turn === activeTurn ? "true" : void 0,
+        "aria-describedby": index === previewIndex ? previewId : void 0,
+        onPointerMove: () => setPreviewTurn(item.turn),
+        onFocus: () => {
+          setFocusedTurn(item.turn);
+          setPreviewTurn(item.turn);
+        },
+        onBlur: () => setFocusedTurn(null),
+        onClick: () => onNavigate(item.turn)
+      })))
+    ),
+    preview && (0, import_react.createElement)(
+      "div",
+      { id: previewId, role: "tooltip", className: "nodo-turnpreview", style: { "--nodo-preview-center": `${center}px` } },
+      (0, import_react.createElement)("div", { className: "nodo-turnpreview-prompt" }, preview.prompt || `\u7B2C ${previewIndex + 1} \u8F6E`),
+      preview.response !== "" && (0, import_react.createElement)("div", { className: "nodo-turnpreview-response" }, preview.response)
+    )
+  );
+}
+function ModelPicker({ profile, disabled, onChange }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [pane, setPane] = (0, import_react.useState)("root");
+  const [engines, setEngines] = (0, import_react.useState)([]);
+  const [scanning, setScanning] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)("");
+  const loaded = (0, import_react.useRef)(/* @__PURE__ */ new Set());
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("engine-catalog").then((items2) => {
+      if (live) setEngines(items2);
+    }).catch(() => {
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const engine = engines.find((item) => item.id === profile.engine);
+  const models = engine?.catalog?.models ?? [];
+  const selectedModel = models.find((item) => item.id === (profile.model || engine?.catalog?.defaultModel));
+  const model = selectedModel?.id ?? profile.model ?? "";
+  const levels = selectedModel?.thinking ?? [];
+  const thinking = profile.thinking || (levels.some((level) => level.id === selectedModel?.defaultThinking) ? selectedModel.defaultThinking : "");
+  const modelText = selectedModel ? modelLabel(selectedModel) : modelName(model) || engine?.label || profile.engine;
+  const levelText = thinking ? levels.find((level) => level.id === thinking)?.label ?? thinking : "";
+  const close = () => {
+    setOpen(false);
+    setPane("root");
+  };
+  const openMenu = () => {
+    if (open) return close();
+    setOpen(true);
+    if (loaded.current.has(profile.engine)) return;
+    loaded.current.add(profile.engine);
+    void call("engine-catalog").then((items2) => {
+      setEngines(items2);
+      if (!items2.some((item) => item.id === profile.engine && !item.catalog)) return;
+      setScanning(true);
+      return call("engine-scan", { engine: profile.engine }).then((catalog) => setEngines((current) => current.map((item) => item.id === profile.engine ? { ...item, catalog } : item)));
+    }).catch((failure) => {
+      loaded.current.delete(profile.engine);
+      setError(failure.message);
+    }).finally(() => setScanning(false));
+  };
+  const providers = groupModelsByProvider(models);
+  const modelItems = [...providers].flatMap(([group, items2]) => [
+    ...group === "" ? [] : [{ type: "label", id: `group:${group}`, text: group }],
+    ...items2.map((item) => ({ id: `model:${item.id}`, label: modelLabel(item) }))
+  ]);
+  const pick = (id) => {
+    if (id === "model" || id === "thinking") {
+      setPane(id);
+      return;
+    }
+    if (id.startsWith("group:")) return;
+    const changes = id.startsWith("model:") ? { model: id.slice(6), thinking: thinkingAfterModelChange(models, id.slice(6), thinking) } : { ...model ? { model } : {}, thinking: id.slice(9) };
+    close();
+    onChange(changes);
+  };
+  const cell = (label, value, filled) => (0, import_react.createElement)(
+    "span",
+    { className: "nodo-model-cell" },
+    (0, import_react.createElement)("span", { className: "nodo-model-cell-label" }, label),
+    (0, import_react.createElement)("span", { className: "nodo-model-cell-value" }, value),
+    filled && (0, import_react.createElement)("span", { className: "nodo-model-cell-chev" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }))
+  );
+  const items = pane === "model" ? models.length ? modelItems : [{ type: "label", id: "hint", text: scanning ? "\u6B63\u5728\u626B\u63CF\u672C\u5730\u914D\u7F6E\u2026" : error2 || "\u672A\u626B\u63CF\u5230\u6A21\u578B\uFF0C\u53EF\u5728\u8BBE\u7F6E\u4E2D\u91CD\u65B0\u626B\u63CF" }] : pane === "thinking" ? [
+    { id: "thinking:", label: "\u9ED8\u8BA4\uFF08\u8DDF\u968F Agent \u8BBE\u7F6E\uFF09" },
+    ...levels.map((level) => ({
+      id: `thinking:${level.id}`,
+      label: level.id === selectedModel?.defaultThinking ? `${level.label ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.label ?? level.id
+    }))
+  ] : [
+    { id: "model", label: cell("\u6A21\u578B", modelText, models.length > 0), disabled: !models.length },
+    { id: "thinking", label: cell("\u63A8\u7406\u7B49\u7EA7", levelText || "\u9ED8\u8BA4", levels.length > 0), disabled: !levels.length }
+  ];
+  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+    open,
+    onClose: close,
+    portal: true,
+    side: "top",
+    align: "end",
+    autoFocus: true,
+    className: "nodo-model",
+    listClassName: "nodo-model-list",
+    selectedId: pane === "model" ? `model:${model}` : pane === "thinking" ? `thinking:${thinking}` : void 0,
+    items,
+    onSelect: pick,
+    anchor: (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-model-trigger",
+        disabled,
+        "aria-haspopup": "menu",
+        "aria-expanded": open,
+        "aria-label": `\u9009\u62E9\u6A21\u578B\uFF0C\u5F53\u524D ${modelText}${levelText ? `\uFF0C\u63A8\u7406\u7B49\u7EA7 ${levelText}` : ""}`,
+        onClick: openMenu
       },
-      anchor: /* @__PURE__ */ (0, import_react.createElement)(
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDataOutlineRegular, { size: 16, className: "nodo-model-icon" }),
+      (0, import_react.createElement)("span", { className: "nodo-model-label" }, modelText),
+      levelText !== "" && (0, import_react.createElement)("span", { className: "nodo-model-effort" }, levelText),
+      (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
+    )
+  });
+}
+function TurnUsage({ usage }) {
+  const total = turnTokens(usage ?? {});
+  return total > 0 ? (0, import_react.createElement)("div", { className: "nodo-turn-usage", title: "\u672C\u8F6E\u7528\u91CF" }, `${compactTokens(total)} tok`) : null;
+}
+function SessionStats({ stats, onOpen }) {
+  if (stats === void 0) return null;
+  const billed = billedTokens(stats);
+  const total = billed + stats.outputTokens;
+  const hit = cacheHitPercent(stats);
+  const context = contextPercent(stats);
+  const group = (key, icon, values) => (0, import_react.createElement)(
+    "span",
+    { key, className: "nodo-stats-group" },
+    icon && (0, import_react.createElement)(icon, { size: 14 }),
+    (0, import_react.createElement)("span", null, values.filter((value) => value !== "").join(" \xB7 "))
+  );
+  const groups = [];
+  if (stats.turns > 0 || stats.decodeMs > 0) {
+    groups.push(group("counts", null, [
+      stats.turns > 0 ? `${stats.turns} \u8F6E ${stats.steps} \u6B65` : "",
+      stats.decodeMs > 0 && stats.decodeTokens > 0 ? `${tokensPerSecond(stats.decodeTokens, stats.decodeMs)} tok/s` : ""
+    ]));
+  }
+  if (total > 0) {
+    groups.push(group("tokens", null, [
+      `${compactTokens(total)} tok`,
+      hit === "" ? "" : `\u7F13\u5B58\u547D\u4E2D ${hit}%`
+    ]));
+  }
+  if (context !== null) groups.push(group("context", import_dsh_client_ui_primitives.IconGaugeOutlineRegular, [`${context}%`]));
+  if (groups.length === 0) return null;
+  return (0, import_react.createElement)("button", {
+    type: "button",
+    className: "nodo-stats-pill",
+    onClick: onOpen,
+    "aria-haspopup": "dialog",
+    "aria-label": "\u4F1A\u8BDD\u7EDF\u8BA1",
+    title: "\u4F1A\u8BDD\u7EDF\u8BA1"
+  }, groups);
+}
+function StatsDialog({ stats, onClose }) {
+  const row = (label, value) => (0, import_react.createElement)(
+    "div",
+    { key: label, className: "nodo-stats-row" },
+    (0, import_react.createElement)("span", { className: "nodo-stats-row-label" }, label),
+    (0, import_react.createElement)("span", { className: "nodo-stats-row-value" }, value)
+  );
+  const billed = billedTokens(stats);
+  const hit = cacheHitPercent(stats);
+  const context = contextPercent(stats);
+  return (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Modal,
+    {
+      open: true,
+      onClose,
+      closeLabel: "\u5173\u95ED",
+      title: "\u4F1A\u8BDD\u7EDF\u8BA1",
+      className: "nodo-dialog",
+      footer: [(0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "close", variant: "primary", onClick: onClose }, "\u5173\u95ED")]
+    },
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-dialog-fields" },
+      billed + stats.outputTokens > 0 && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-stats-section" },
+        (0, import_react.createElement)("h3", { className: "nodo-stats-heading" }, "Token \u7528\u91CF"),
+        row("\u672A\u7F13\u5B58\u8F93\u5165", exactTokens(stats.inputTokens)),
+        row("\u7F13\u5B58\u8BFB\u53D6", exactTokens(stats.cacheReadTokens)),
+        row("\u7F13\u5B58\u5199\u5165", exactTokens(stats.cacheWriteTokens)),
+        row("\u8F93\u51FA", exactTokens(stats.outputTokens)),
+        hit !== "" && row("\u7F13\u5B58\u547D\u4E2D", `${hit}%`)
+      ),
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-stats-section" },
+        (0, import_react.createElement)("h3", { className: "nodo-stats-heading" }, "\u7528\u65F6\u4E0E\u901F\u5EA6"),
+        row("\u8F6E\u6B21 / \u6B65\u6570", `${stats.turns} \u8F6E ${stats.steps} \u6B65`),
+        row("\u6A21\u578B\u7528\u65F6", compactDuration(stats.llmMs)),
+        row("\u5DE5\u5177\u8C03\u7528\u7528\u65F6", compactDuration(stats.toolMs)),
+        stats.ttftSteps > 0 && stats.ttftMs > 0 && row("\u9996 token \u5E73\u5747\uFF08TTFT\uFF09", compactDuration(stats.ttftMs / stats.ttftSteps)),
+        stats.decodeMs > 0 && stats.decodeTokens > 0 && row("\u8F93\u51FA\u901F\u5EA6\uFF08TPS\uFF09", `${tokensPerSecond(stats.decodeTokens, stats.decodeMs)} tok/s`),
+        context !== null && row("\u4E0A\u4E0B\u6587", `${exactTokens(stats.contextUsed)} / ${exactTokens(stats.contextSize)}\uFF08${context}%\uFF09`)
+      ),
+      (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u53EA\u7D2F\u8BA1\u672C\u4F1A\u8BDD\u7684\u4E8B\u4EF6\uFF1BAgent \u6CA1\u6709\u4E0A\u62A5\u7684\u5B57\u6BB5\u4E0D\u663E\u793A\uFF0C\u901F\u5EA6\u9700\u8981 Agent \u4EE5\u6D41\u5F0F\u8F93\u51FA\u624D\u6D4B\u5F97\u5230\u3002")
+    )
+  );
+}
+
+// src/client/model-seat.js
+function createModelSeat(ctx, space) {
+  function ModelSeat(props) {
+    const { sessionId, locked } = props;
+    const available = typeof ctx.sessions?.subagentAddress !== "function" || ctx.sessions.subagentAddress(sessionId) === void 0;
+    const directory = ctx.modelDirectories.directoryFor(sessionId);
+    const state = (0, import_react.useSyncExternalStore)(directory.store.subscribe, directory.store.getSnapshot);
+    const [open, setOpen] = (0, import_react.useState)(false);
+    const [pane, setPane] = (0, import_react.useState)("root");
+    const [error2, setError] = (0, import_react.useState)("");
+    if (!available) return null;
+    const close = () => {
+      setOpen(false);
+      setPane("root");
+    };
+    const openMenu = () => {
+      if (open) return close();
+      setOpen(true);
+      void directory.load().catch(() => {
+      });
+    };
+    const catalog = state;
+    const groups = (catalog?.groups ?? []).filter((group) => group.models.length > 0);
+    const current = catalog?.current ?? null;
+    const currentModel = groups.find((group) => group.id === current?.provider)?.models.find((model) => model.id === current?.model);
+    const modelText = current ? currentModel?.name ?? modelName(current.model) : state?.status === "ready" ? "\u9009\u62E9\u6A21\u578B" : "\u6A21\u578B";
+    const efforts = currentModel?.reasoning?.efforts ?? [];
+    const effortText = current?.reasoningEffort ? efforts.find((level) => level.id === current.reasoningEffort)?.name ?? current.reasoningEffort : "";
+    const busy = state?.status === "loading" || state?.status === "selecting";
+    const select = (selection) => {
+      setError("");
+      void directory.select(selection).then(() => close()).catch((failure) => setError(failure.message));
+    };
+    const pick = (id) => {
+      if (id === "model") {
+        setPane("model");
+        return;
+      }
+      if (id === "thinking") {
+        setPane("thinking");
+        return;
+      }
+      if (id.startsWith("model:")) {
+        const [provider, model] = JSON.parse(id.slice(6));
+        select({ provider, model });
+      } else if (id.startsWith("thinking:")) {
+        const level = id.slice(9);
+        const selection = { provider: current.provider, model: current.model };
+        if (level !== "") selection.reasoningEffort = level;
+        select(selection);
+      }
+    };
+    const cell = (label, value, filled) => (0, import_react.createElement)(
+      "span",
+      { className: "nodo-model-cell" },
+      (0, import_react.createElement)("span", { className: "nodo-model-cell-label" }, label),
+      (0, import_react.createElement)("span", { className: "nodo-model-cell-value" }, value),
+      filled && (0, import_react.createElement)("span", { className: "nodo-model-cell-chev" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }))
+    );
+    const items = pane === "model" ? groups.length ? groups.flatMap((group) => [
+      { type: "label", id: `group:${group.id}`, text: group.name },
+      ...group.models.map((model) => ({ id: `model:${JSON.stringify([group.id, model.id])}`, label: model.name }))
+    ]) : [{ type: "label", id: "hint", text: busy ? "\u6B63\u5728\u8F7D\u5165\u6A21\u578B\u76EE\u5F55\u2026" : state?.error || "\u5F53\u524D\u4F1A\u8BDD\u6CA1\u6709\u53EF\u7528\u7684\u6A21\u578B" }] : pane === "thinking" ? [
+      { id: "thinking:", label: "\u9ED8\u8BA4\uFF08\u8DDF\u968F\u6A21\u578B\u8BBE\u7F6E\uFF09" },
+      ...efforts.map((level) => ({
+        id: `thinking:${level.id}`,
+        label: level.id === currentModel?.reasoning?.defaultEffort ? `${level.name ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.name ?? level.id
+      }))
+    ] : [
+      ...error2 ? [{ type: "label", id: "error", text: error2 }] : [],
+      { id: "model", label: cell("\u6A21\u578B", modelText, groups.length > 0), disabled: !groups.length },
+      { id: "thinking", label: cell("\u63A8\u7406\u7B49\u7EA7", effortText || "\u9ED8\u8BA4", efforts.length > 0), disabled: !efforts.length }
+    ];
+    return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+      open,
+      onClose: close,
+      portal: true,
+      side: "top",
+      align: "end",
+      className: "nodo-model",
+      listClassName: "nodo-model-list",
+      selectedId: pane === "model" && current ? `model:${JSON.stringify([current.provider, current.model])}` : pane === "thinking" && current?.reasoningEffort ? `thinking:${current.reasoningEffort}` : void 0,
+      items,
+      onSelect: pick,
+      anchor: (0, import_react.createElement)(
         "button",
         {
           type: "button",
-          className: "nodo-row-action",
+          className: "nodo-model-trigger",
+          disabled: locked === true || busy,
+          "data-nodo-model-seat": "true",
           "aria-haspopup": "menu",
           "aria-expanded": open,
-          "aria-label": `\u4F1A\u8BDD\u201C${session.name}\u201D\u7684\u66F4\u591A\u64CD\u4F5C`,
-          disabled: busy,
-          onClick: (event) => {
-            event.stopPropagation();
-            setOpen((current2) => !current2);
-          }
+          "aria-label": `\u9009\u62E9\u6A21\u578B\uFF0C\u5F53\u524D ${modelText}${effortText ? `\uFF0C\u63A8\u7406\u7B49\u7EA7 ${effortText}` : ""}`,
+          onClick: openMenu
         },
-        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDataOutlineRegular, { size: 16, className: "nodo-model-seat-icon" }),
+        (0, import_react.createElement)("span", { className: "nodo-model-label" }, modelText),
+        effortText !== "" && (0, import_react.createElement)("span", { className: "nodo-model-effort" }, effortText),
+        busy ? (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing" }) : (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
       )
-    }
-  )));
-}
-function Rail({ view: view2, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onNewTeam, onEditTeam, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
-  const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
-  const [archives, setArchives] = (0, import_react.useState)({});
-  const [searching, setSearching] = (0, import_react.useState)(false);
-  const [roleFilter, setRoleFilter] = (0, import_react.useState)(null);
-  const [opened, setOpened] = (0, import_react.useState)({});
-  const [expanded, setExpanded] = (0, import_react.useState)({});
-  const [rolesOpen, setRolesOpen] = (0, import_react.useState)(false);
-  const [update, setUpdate] = (0, import_react.useState)(null);
-  const [updateOpen, setUpdateOpen] = (0, import_react.useState)(false);
-  const [updateSkipped, setUpdateSkipped] = (0, import_react.useState)(() => {
-    try {
-      return localStorage.getItem(UPDATE_SKIP_KEY) || null;
-    } catch {
-      return null;
-    }
-  });
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    const refresh = () => {
-      void call2("update-info").then((info) => {
-        if (live) setUpdate(info ?? null);
-      }).catch(() => {
-      });
+    });
+  }
+  ctx.slots.inject("conversation.input.model", () => {
+    let unregister;
+    const update = () => {
+      const state = space.getSnapshot();
+      if (state.active && !state.legacy && !unregister) unregister = ctx.slots.register({ name: "conversation.input.model", priority: -100 }, ModelSeat);
+      else if ((!state.active || state.legacy) && unregister) {
+        unregister();
+        unregister = null;
+      }
     };
-    refresh();
-    const timer2 = setInterval(refresh, 30 * 60 * 1e3);
+    const stop = space.subscribe(update);
+    update();
     return () => {
-      live = false;
-      clearInterval(timer2);
+      stop();
+      unregister?.();
     };
-  }, []);
-  const [rosterHeight, setRosterHeight] = (0, import_react.useState)(() => {
-    try {
-      return Number(localStorage.getItem(ROSTER_HEIGHT_KEY)) || null;
-    } catch {
-      return null;
-    }
   });
-  const busyNow = readOnly || busy;
-  const team = navigation?.view === "team";
-  const rounds = roundIndex(view2);
-  const sessions = view2.profiles.flatMap((role) => role.sessions.map((session) => {
-    const workspaceId = workspaceIdOf(view2, role, session);
-    return { role, session, workspaceId, projectId: projectAnchorOf(view2.workspaces, workspaceId) };
-  }));
-  const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh" && session.leadMode !== false;
-  const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
-  const rowOf = (role, session) => {
-    const group = groupOf(role, session);
-    return group.length === 1 ? { session, work: view2.work[session.id], current: session.id === sessionId } : {
-      session: { ...session, updatedAt: Math.max(...group.map((entry) => entry.session.updatedAt ?? 0)) },
-      work: runningOf({ sessions: group.map((entry) => entry.session) }, view2.work),
-      current: group.some((entry) => entry.session.id === sessionId)
-    };
-  };
-  const roles = view2.profiles.filter((role) => !role.deletedAt && (!team || role.lead === true && role.engine !== "dsh"));
-  const stateAt = (role) => {
-    const state = roleStateOf(role, view2, workspace);
-    return state.active || state.status ? Math.max(state.since ?? 1, state.finishedAt ?? 0, state.lastAt ?? 0) : 0;
-  };
-  const roster = [...roles].sort((a, b2) => Number(b2.lead === true) - Number(a.lead === true)).map((role) => ({ role, at: stateAt(role) })).sort((a, b2) => b2.at - a.at).map((entry) => entry.role);
-  const teamRows = (view2.teams ?? []).map((item) => ({ team: item, lead: roles.find((role) => role.id === item.lead) }));
-  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view2.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
-  const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
-  const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
-  const draftProfile = roles.find((role) => role.id === draft?.profile);
-  const ordered = [...view2.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0)).filter((item) => item.worktree?.project == null);
-  const scopeOf = (item) => {
-    const archived = archives[item.id] ?? "hide";
-    return { archived, filtering: !!filterRole || archived === "only" };
-  };
-  const entriesOf = (item) => {
-    const { archived } = scopeOf(item);
-    return sessions.filter(({ role, session, projectId }) => !role.deletedAt && projectId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt)).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
-  };
-  const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
-  const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-row-action",
-      "aria-label": label,
-      disabled,
-      onClick: (event) => {
-        event.stopPropagation();
-        onClick();
+  return { ModelSeat };
+}
+
+// src/client/role-seat.js
+function RolePicker({ profiles, profile, disabled, onSelect }) {
+  profiles = profiles.filter((role) => !role.deletedAt);
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const name = profile?.name ?? "\u9009\u62E9\u89D2\u8272";
+  const face = [profile && (0, import_react.createElement)(RoleAvatar, { profile, size: 20 }), (0, import_react.createElement)("span", { className: "nodo-role-seat-label" }, name)];
+  if (!onSelect) return profile ? (0, import_react.createElement)("span", {
+    className: "nodo-role-seat nodo-role-seat-fixed",
+    "aria-label": `\u4F1A\u8BDD\u89D2\u8272\uFF1A${name}\uFF0C\u4E0D\u53EF\u4FEE\u6539`,
+    title: "\u4F1A\u8BDD\u89D2\u8272\u5DF2\u56FA\u5B9A"
+  }, ...face) : null;
+  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+    open,
+    onClose: () => setOpen(false),
+    portal: true,
+    side: "top",
+    align: "end",
+    className: "nodo-role-seat",
+    listClassName: "nodo-role-seat-list",
+    selectedId: profile?.id,
+    items: profiles.length ? profiles.map((role) => ({
+      id: role.id,
+      label: role.name,
+      icon: (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
+      disabled
+    })) : [{ type: "label", id: "empty", text: "\u8BF7\u5148\u6DFB\u52A0\u89D2\u8272" }],
+    onSelect: (id) => {
+      if (!disabled && profiles.some((role) => role.id === id)) {
+        onSelect(id);
+        setOpen(false);
       }
     },
-    icon
-  ));
-  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.projectId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view2.work[entry.session.id]?.active);
-  const toggle = (key, open, Glyph, title, tip, live) => {
-    const waiting = live.some((entry) => workKind(view2.work[entry.session.id]) === "wait");
-    return /* @__PURE__ */ (0, import_react.createElement)(
+    anchor: (0, import_react.createElement)(
       "button",
       {
         type: "button",
-        className: "nodo-project-select",
+        className: "nodo-role-seat-trigger",
+        disabled,
+        "data-nodo-role-seat": true,
+        "aria-haspopup": "menu",
         "aria-expanded": open,
-        title: tip,
-        onClick: () => setOpened((current) => ({ ...current, [key]: !open }))
+        "aria-label": `\u9009\u62E9\u89D2\u8272\uFF0C\u5F53\u524D ${name}`,
+        onClick: () => setOpen((value) => !value)
       },
-      Glyph && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 20 })),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, title),
-      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: waiting ? "wait" : "run" }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
-    );
-  };
-  const list = (item, entries, pending) => {
-    const { archived } = scopeOf(item);
-    const folded = entries.length > SESSION_FOLD;
-    const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries;
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, draftProfile ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: draftProfile, size: 20 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 20 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
-      const row = rowOf(role, session);
-      return /* @__PURE__ */ (0, import_react.createElement)(
-        SessionRow,
-        {
-          key: session.id,
-          role,
-          session: row.session,
-          busy,
-          current: row.current && !editing && !drafting,
-          work: row.work,
-          onSelect: () => onSelectSession(role, session.id, item),
-          onArchive: (archived2) => onArchiveSession(role, session.id, archived2),
-          onRename: () => onRenameSession(role, session),
-          onPin: (pinned) => onPinSession(role, session.id, pinned)
-        }
-      );
-    }), folded && /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-show-more",
-        "aria-expanded": !!expanded[item.id],
-        onClick: () => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))
-      },
-      expanded[item.id] ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
-    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
-  };
-  const node = (item) => {
-    const { archived, filtering } = scopeOf(item);
-    const entries = entriesOf(item);
-    const pending = draftIn(item);
-    if (filtering && !entries.length && !pending && archived !== "only") return null;
-    const open = opened[item.id] ?? (filtering || item.id === workspace?.id);
-    const worktrees = view2.workspaces.filter((other) => other.worktree?.project === item.id);
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
-      item.id,
-      open,
-      item.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular,
-      item.name,
-      item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
-      liveIn([item])
-    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(draftRole, item), busyNow || team && !roles.length), /* @__PURE__ */ (0, import_react.createElement)(
-      import_dsh_client_ui_primitives.Menu,
-      {
-        open: menuOpen === item.id,
-        onClose: () => setMenuOpen(null),
-        portal: true,
-        closeOnPointerLeave: true,
-        selectedId: `archived:${archived}`,
-        items: [
-          ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({
-            id: `archived:${id}`,
-            label,
-            icon: id === "hide" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
-          })),
-          ...item.worktree ? [] : [{ id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), disabled: busyNow }],
-          ...worktrees.map((other) => ({
-            id: `worktree-delete:${other.id}`,
-            label: `\u5220\u9664\u5DE5\u4F5C\u6811\u201C${other.name}\u201D`,
-            icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null),
-            danger: true,
-            disabled: busyNow
-          })),
-          { id: "rename", label: "\u91CD\u547D\u540D", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busyNow },
-          { id: "delete", label: "\u5220\u9664\u9879\u76EE", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, null), danger: true, disabled: busyNow }
-        ],
-        onSelect: (id) => {
-          setMenuOpen(null);
-          if (id.startsWith("archived:")) setArchives((current) => ({ ...current, [item.id]: id.slice("archived:".length) }));
-          else if (id === "worktree") onNewWorktree(item);
-          else if (id.startsWith("worktree-delete:")) onDeleteWorkspace(worktrees.find((other) => other.id === id.slice("worktree-delete:".length)));
-          else if (id === "rename") onRenameWorkspace(item);
-          else if (id === "delete") onDeleteWorkspace(item);
-        },
-        anchor: /* @__PURE__ */ (0, import_react.createElement)(
-          "button",
-          {
-            type: "button",
-            className: "nodo-row-action",
-            "aria-haspopup": "menu",
-            "aria-expanded": menuOpen === item.id,
-            "aria-label": `\u9879\u76EE\u201C${item.name}\u201D\u7684\u64CD\u4F5C`,
-            onClick: (event) => {
-              event.stopPropagation();
-              setMenuOpen((current) => current === item.id ? null : item.id);
-            }
-          },
-          /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
-        )
+      ...face,
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
+    )
+  });
+}
+function createRoleSeat(ctx, space) {
+  function RoleSeat({ sessionId }) {
+    const { view: view2 } = useStateView();
+    const profile = view2?.profiles.find((role) => !role.deletedAt && role.sessions.some((session) => (session.engine === "dsh" ? session.driverSessionId : void 0) === sessionId));
+    if (typeof ctx.sessions.subagentAddress === "function" && ctx.sessions.subagentAddress(sessionId) !== void 0) return null;
+    return (0, import_react.createElement)(RolePicker, { profiles: view2?.profiles ?? [], profile });
+  }
+  ctx.slots.inject("conversation.input.right", () => {
+    let unregister;
+    const update = () => {
+      const state = space.getSnapshot();
+      if (state.active && !state.legacy && !unregister) unregister = ctx.slots.register({ name: "conversation.input.right", id: "nodo-role" }, RoleSeat);
+      else if ((!state.active || state.legacy) && unregister) {
+        unregister();
+        unregister = null;
       }
-    ))), open && list(item, entries, pending));
-  };
-  const tree = ordered.map(node).filter(Boolean);
-  const shownRoles = rolesOpen ? roster : roster.filter((item, index) => index < ROLE_FOLD || item === filterRole);
-  const shownTeams = rolesOpen ? teamRows : teamRows.filter((row, index) => index < ROLE_FOLD || row.lead?.id === filterRole?.id);
-  const rosterItem = (item) => {
-    const state = roleStateOf(item, view2, workspace);
-    const pressed = item.id === filterRole?.id;
-    const label = workLabel(state);
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-roster-item",
-        "aria-current": pressed || void 0,
-        title: item.name,
-        "aria-label": label ? `${item.name}\uFF0C${label}` : item.name,
-        onClick: () => {
-          if (pressed) setRoleFilter(null);
-          else {
-            onSelect(item.id);
-            setRoleFilter(item.id);
-          }
-        }
-      },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 20 })),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name),
-      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(state) }), label)
-    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-row-action",
-        "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
-        title: "\u914D\u7F6E\u89D2\u8272",
-        disabled: busyNow || state.active,
-        onClick: () => onEditRole(item)
-      },
-      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null)
-    )));
-  };
-  const teamItem = ({ team: team2, lead }) => {
-    const state = lead ? roleStateOf(lead, view2, workspace) : runningOf({}, view2.work);
-    const pressed = lead !== void 0 && lead.id === filterRole?.id;
-    const label = workLabel(state);
-    const name = team2.name || "\u672A\u547D\u540D\u56E2\u961F";
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: team2.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-roster-item",
-        "aria-current": pressed || void 0,
-        title: name,
-        "aria-label": label ? `${name}\uFF0C${label}` : name,
-        onClick: () => {
-          if (!lead) return onEditTeam(team2.id);
-          if (pressed) setRoleFilter(null);
-          else {
-            onSelect(lead.id);
-            setRoleFilter(lead.id);
-          }
-        }
-      },
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, lead ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: lead, running: state.active, size: 20 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-plus" })),
-      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, name),
-      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(state) }), label)
-    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-row-action",
-        "aria-label": `\u914D\u7F6E\u56E2\u961F ${name}`,
-        title: "\u914D\u7F6E\u56E2\u961F",
-        disabled: busyNow || state.active,
-        onClick: () => onEditTeam(team2.id)
-      },
-      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null)
-    )));
-  };
-  const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
-  const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
-  const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view2.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
-    const project = view2.workspaces.find((item) => item.id === projectAnchorOf(view2.workspaces, workspaceId)), row = rowOf(role, session);
-    return {
-      id: session.id,
-      role,
-      name: session.name,
-      project,
-      updatedAt: row.session.updatedAt,
-      work: row.work,
-      terms: [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, project.name],
-      pick: () => onSelectSession(role, session.id, project)
     };
-  }).sort((a, b2) => (b2.updatedAt ?? 0) - (a.updatedAt ?? 0));
-  const saveRosterHeight = (height) => {
-    setRosterHeight(height);
-    try {
-      if (height) localStorage.setItem(ROSTER_HEIGHT_KEY, String(height));
-      else localStorage.removeItem(ROSTER_HEIGHT_KEY);
-    } catch {
-    }
-  };
-  const skipUpdate = () => {
-    if (update) {
-      setUpdateSkipped(update.latest);
-      try {
-        localStorage.setItem(UPDATE_SKIP_KEY, update.latest);
-      } catch {
-      }
-    }
-    setUpdateOpen(false);
-  };
-  const rosterLimit = (split) => {
-    const roster2 = split.previousElementSibling, list2 = roster2.firstElementChild;
-    const rows = [...list2.children].slice(0, 2).reduce((sum, row) => sum + row.offsetHeight + 2, 0);
-    const rest = roster2.offsetHeight - list2.clientHeight, room = split.parentElement.getBoundingClientRect().bottom - roster2.getBoundingClientRect().top - split.offsetHeight - TREE_MIN;
-    const min = rest + rows, max = Math.max(min, Math.min(rest + list2.scrollHeight, room));
-    return { start: roster2.offsetHeight, clamp: (height) => Math.round(Math.min(Math.max(height, min), max)) };
-  };
-  const nudgeRoster = (split, delta) => {
-    const { start, clamp } = rosterLimit(split);
-    saveRosterHeight(clamp(start + delta));
-  };
-  const resizeRoster = (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const { start, clamp } = rosterLimit(event.currentTarget), from = event.clientY;
-    let height = start;
-    const move = (next) => {
-      height = clamp(start + next.clientY - from);
-      setRosterHeight(height);
+    const stop = space.subscribe(update);
+    update();
+    return () => {
+      stop();
+      unregister?.();
     };
-    const end = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      saveRosterHeight(height);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation?.content, onClick: navigation?.content ? onSessions : void 0 }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
-    onClick: () => onNewSession(draftRole),
-    disabled: busyNow || !workspace || navigation?.view === "roles" || team && !roles.length
-  }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
-    "aria-pressed": searching,
-    onClick: () => {
-      if (navigation?.view === "roles") onSessions();
-      setSearching((current) => !current);
-    }
-  }), dock("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 }), {
-    "aria-pressed": navigation?.view === "roles",
-    onClick: navigation?.view === "roles" ? void 0 : onRoles
-  }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), update && isNewer(updateSkipped, update.latest) && /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Menu,
-    {
-      open: updateOpen,
-      onClose: () => setUpdateOpen(false),
-      portal: true,
-      side: "right",
-      className: "nodo-update",
-      anchor: dock(
-        `\u65B0\u7248\u672C v${update.latest}`,
-        /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDownloadOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("i", { className: "nodo-update-dot", "aria-hidden": true })),
-        { "aria-haspopup": "menu", "aria-expanded": updateOpen, onClick: () => setUpdateOpen((open) => !open) }
-      )
-    },
-    updateOpen && /* @__PURE__ */ (0, import_react.createElement)(UpdateCard, { info: update, onClose: () => setUpdateOpen(false), onSkip: skipUpdate })
-  ), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
-    onClick: onBack,
-    disabled: typeof layoutService?.selectPanel !== "function"
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-tabs", role: "tablist", "aria-label": "\u4E3B\u9875\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", role: "tab", "aria-selected": !team, onClick: team ? onSessions : void 0 }, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", role: "tab", "aria-selected": team, onClick: team ? void 0 : onTeam }, "\u56E2\u961F")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD", style: rosterHeight ? { maxHeight: rosterHeight } : void 0 }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster-list" }, team ? shownTeams.map(teamItem) : shownRoles.map(rosterItem)), (team ? teamRows.length : roster.length) > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-roster-more",
-      "aria-expanded": rolesOpen,
-      onClick: () => {
-        if (!rolesOpen) saveRosterHeight(null);
-        setRolesOpen((current) => !current);
-      }
-    },
-    rolesOpen ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
-  ), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-new", disabled: busyNow, onClick: team ? onNewTeam : onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-plus" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 12 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, team ? "\u65B0\u5EFA\u56E2\u961F" : "\u65B0\u5EFA\u89D2\u8272")))), /* @__PURE__ */ (0, import_react.createElement)(
-    "div",
-    {
-      className: "nodo-rail-split",
-      role: "separator",
-      "aria-orientation": "horizontal",
-      "aria-label": "\u8C03\u6574\u89D2\u8272\u533A\u9AD8\u5EA6",
-      tabIndex: 0,
-      onPointerDown: resizeRoster,
-      onDoubleClick: () => saveRosterHeight(null),
-      onKeyDown: (event) => {
-        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-          event.preventDefault();
-          nudgeRoster(event.currentTarget, event.key === "ArrowUp" ? -16 : 16);
-        }
-      }
-    }
-  ), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, head("\u9879\u76EE\u533A", action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow)), tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view2.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], import_dsh_client_ui_primitives.IconArchiveOutlineRegular, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
-    SessionRow,
-    {
-      key: session.id,
-      role,
-      session,
-      busy,
-      readOnly: true,
-      current: rowOf(role, session).current && !editing && !drafting,
-      context: `${session.profileName ?? role.name} \xB7 ${session.workspaceName ?? view2.workspaces.find((item) => item.id === workspaceId)?.name ?? session.cwd ?? "\u672A\u6307\u5B9A\u9879\u76EE"}`,
-      onSelect: () => onSelectSession(role, session.id),
-      onArchive: () => {
-      },
-      onRename: () => {
-      },
-      onPin: () => {
-      }
-    }
-  )))))), searching && /* @__PURE__ */ (0, import_react.createElement)(SearchDialog, { items: searchItems(), onClose: () => setSearching(false) }), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+  });
+  return { RoleSeat };
 }
 
 // src/client/composer-attachments.tsx
@@ -15440,7 +15926,7 @@ function Composer({ profile, workspace, value, images, running, stoppable = runn
     if (!fileOpen) return;
     let live = true;
     const timer2 = setTimeout(() => {
-      call2("workspace-files", { workspace: workspace.id, query: mention.query }).then((result) => {
+      call("workspace-files", { workspace: workspace.id, query: mention.query }).then((result) => {
         if (live) setFiles(result.files);
       }).catch(() => {
         if (live) setFiles([]);
@@ -15660,8 +16146,8 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
       return;
     }
     setScanning(true);
-    void call2("engine-commands", { engine: profile.engine, workspace: workspace?.id }).then((value) => setScan(value)).catch(() => setScan({ source: "unavailable", commands: [] })).finally(() => setScanning(false));
-    void call2("engine-catalog", {}).then((value) => setCatalog(value)).catch(() => setCatalog([]));
+    void call("engine-commands", { engine: profile.engine, workspace: workspace?.id }).then((value) => setScan(value)).catch(() => setScan({ source: "unavailable", commands: [] })).finally(() => setScanning(false));
+    void call("engine-catalog", {}).then((value) => setCatalog(value)).catch(() => setCatalog([]));
   };
   const open = manual || trigger !== null && trigger.start !== dismissed;
   (0, import_react.useEffect)(() => {
@@ -15863,7 +16349,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
     if (loaded.current === profile.engine) return;
     loaded.current = profile.engine;
     setModes(null);
-    void call2("engine-catalog").then((items2) => {
+    void call("engine-catalog").then((items2) => {
       const offered2 = items2.find((item) => item.id === profile.engine)?.capabilities?.permissionModes;
       setModes(Array.isArray(offered2) ? offered2 : []);
     }).catch(() => {
@@ -15977,597 +16463,6 @@ function GoalDialog({ profile, onSaved, onCancel }) {
   );
 }
 
-// src/client/artifacts.js
-var URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
-function artifactsOf(lines, cwd) {
-  const files = /* @__PURE__ */ new Map(), links = /* @__PURE__ */ new Set(), images = /* @__PURE__ */ new Map(), calls = /* @__PURE__ */ new Set();
-  for (const line of lines) {
-    if (line.kind === "tool") {
-      if (!["write", "edit"].includes(toolVariant(line.name))) continue;
-      const call3 = line.callId ? JSON.stringify([line.turnId ?? null, line.callId]) : void 0;
-      if (call3 && calls.has(call3)) continue;
-      if (call3) calls.add(call3);
-      const file = toolFileChange(line.input, cwd);
-      if (file && !file.display.startsWith("/")) files.set(file.display, { ...file, diffs: [...files.get(file.display)?.diffs ?? [], ...file.diffs] });
-      continue;
-    }
-    if (line.who === "user") continue;
-    if (line.kind === "text") for (const url of String(line.text ?? "").match(URL_RE) ?? []) links.add(url.replace(/[.,;:!?，。；：！？]+$/, ""));
-    for (const image of line.images ?? []) images.set(image.id, image);
-  }
-  return { files: [...files.values()], links: [...links], images: [...images.values()] };
-}
-
-// src/client/session-panel.js
-function Environment({ workspace, cwd, running }) {
-  const [info, setInfo] = (0, import_react.useState)(null);
-  const [branches, setBranches] = (0, import_react.useState)([]);
-  const [open, setOpen] = (0, import_react.useState)(false);
-  const [error2, setError] = (0, import_react.useState)("");
-  const load = () => call2("workspace-git", { workspace }).then((value) => {
-    setInfo(value);
-    setError("");
-  }).catch((failure) => setError(failure.message));
-  (0, import_react.useEffect)(() => {
-    void load();
-  }, [workspace, running]);
-  (0, import_react.useEffect)(() => {
-    window.addEventListener("focus", load);
-    return () => window.removeEventListener("focus", load);
-  }, [workspace]);
-  (0, import_react.useEffect)(() => {
-    if (open) void call2("worktree-refs", { workspace }).then((value) => setBranches(value.branches)).catch(() => setBranches([]));
-  }, [open]);
-  const switchTo = (name) => {
-    setOpen(false);
-    setError("");
-    call2("workspace-switch", { workspace, branch: name }).then(setInfo).catch((failure) => setError(failure.message));
-  };
-  const path = info?.cwd ?? cwd;
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-env" },
-    (0, import_react.createElement)("div", { className: "nodo-panel-head" }, (0, import_react.createElement)("span", null, "\u672C\u673A\u73AF\u5883")),
-    (0, import_react.createElement)("div", { className: "nodo-env-row", title: path }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 16 }), (0, import_react.createElement)("span", { className: "nodo-env-text" }, path)),
-    info?.git && (0, import_react.createElement)(
-      "div",
-      { className: "nodo-env-row" },
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-        open,
-        onClose: () => setOpen(false),
-        portal: true,
-        align: "start",
-        selectedId: info.head.name,
-        items: branches.map((branch) => ({ id: branch.name, label: branch.name, disabled: branch.checkedOutAt !== void 0 && branch.name !== info.head.name })),
-        onSelect: switchTo,
-        anchor: (0, import_react.createElement)(
-          "button",
-          { type: "button", className: "nodo-env-branch", "aria-haspopup": "menu", "aria-expanded": open, title: "\u5207\u6362\u5206\u652F", onClick: () => setOpen((value) => !value) },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, { size: 16 }),
-          (0, import_react.createElement)("span", { className: "nodo-env-text" }, info.head.name ?? `${info.head.commit ?? ""}\uFF08\u6E38\u79BB\uFF09`),
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
-        )
-      }),
-      (0, import_react.createElement)("span", { className: "nodo-env-counts", title: `${info.files} \u4E2A\u6587\u4EF6\u6709\u6539\u52A8` }, (0, import_react.createElement)(Counts, { value: { added: info.added, removed: info.removed } }))
-    ),
-    error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
-  );
-}
-function Artifacts({ sources, running }) {
-  const [folded, setFolded] = (0, import_react.useState)(false);
-  const [turnDiffs, setTurnDiffs] = (0, import_react.useState)({});
-  (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
-  const key = sources.map((item) => `${item.profile}:${item.session}`).join();
-  (0, import_react.useEffect)(() => {
-    const stops = sources.map((item) => watchTranscript(item.profile, item.session));
-    return () => stops.forEach((stop) => stop());
-  }, [key]);
-  const lists = sources.map((item) => transcriptOf(`${item.profile}:${item.session}`));
-  const gathered = (0, import_react.useRef)(null);
-  if (gathered.current?.key !== key || lists.some((lines, index) => lines !== gathered.current.lists[index])) {
-    const groups2 = /* @__PURE__ */ new Map(), links2 = /* @__PURE__ */ new Set(), images2 = /* @__PURE__ */ new Map();
-    sources.forEach((item, index) => {
-      const found = artifactsOf(lists[index], item.cwd);
-      const group = groups2.get(item.workspace) ?? { workspace: item.workspace, cwd: item.cwd, files: /* @__PURE__ */ new Map() };
-      groups2.set(item.workspace, group);
-      for (const file of found.files) group.files.set(file.display, { ...file, diffs: [...group.files.get(file.display)?.diffs ?? [], ...file.diffs] });
-      found.links.forEach((url) => links2.add(url));
-      found.images.forEach((image) => images2.set(image.id, image));
-    });
-    gathered.current = {
-      key,
-      lists,
-      links: [...links2],
-      images: [...images2.values()],
-      revision: lists.reduce((sum, lines) => sum + lines.length, 0),
-      groups: [...groups2.values()].map((group) => ({ ...group, files: [...group.files.values()] })).filter((group) => group.files.length > 0)
-    };
-  }
-  const { groups, links, images, revision } = gathered.current;
-  const pathsKey = groups.map((group) => `${group.workspace}\0${group.files.map((file) => file.display).join("\0")}`).join("\n");
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    for (const group of groups) void call2("workspace-diff", { workspace: group.workspace, paths: group.files.map((file) => file.display) }).then(({ patch }) => {
-      if (live) setTurnDiffs((current) => ({ ...current, [group.workspace]: patch }));
-    }).catch(() => {
-    });
-    return () => {
-      live = false;
-    };
-  }, [pathsKey, running]);
-  const shown = (0, import_react.useMemo)(() => groups.map((group) => {
-    const body = { ...changesBody(group.files, group.cwd), ...turnDiffs[group.workspace] && { turnDiff: turnDiffs[group.workspace] } };
-    return { ...group, body, counts: summarizeChanges(body).files.map((item) => item.counts) };
-  }), [groups, turnDiffs]);
-  const fileCount = groups.reduce((sum, group) => sum + group.files.length, 0);
-  if (fileCount + links.length + images.length === 0) return null;
-  const openChanges = (group, path) => showChanges(group.body, path, { cwd: group.cwd, revision, load: async () => {
-    const { patch } = await call2("workspace-diff", { workspace: group.workspace, paths: group.files.map((file) => file.display) }).catch(() => ({ patch: "" }));
-    return patch ? { ...group.body, turnDiff: patch } : group.body;
-  } });
-  const reveal = () => {
-    if (!rightPanelService.getSnapshot().expanded) rightPanelService.toggle();
-  };
-  const row = (key2, icon, label, title, onClick, count) => (0, import_react.createElement)(
-    "button",
-    { key: key2, type: "button", className: "nodo-team-row", title, onClick },
-    icon,
-    (0, import_react.createElement)("span", { className: "nodo-round-title" }, label),
-    count && (0, import_react.createElement)("span", { className: "nodo-env-counts" }, (0, import_react.createElement)(Counts, { value: count }))
-  );
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-team nodo-artifacts" },
-    (0, import_react.createElement)(
-      "button",
-      { type: "button", className: "nodo-panel-head nodo-panel-fold", "aria-expanded": !folded, onClick: () => setFolded((value) => !value) },
-      (0, import_react.createElement)("span", null, "\u4EA7\u7269"),
-      (0, import_react.createElement)(
-        "span",
-        { className: "nodo-panel-meta" },
-        [fileCount && `${fileCount} \u6587\u4EF6`, links.length && `${links.length} \u94FE\u63A5`, images.length && `${images.length} \u56FE\u7247`].filter(Boolean).join(" \xB7 "),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14, style: folded ? { transform: "rotate(-90deg)" } : void 0 })
-      )
-    ),
-    !folded && (0, import_react.createElement)(
-      "div",
-      { className: "nodo-team-list" },
-      ...shown.flatMap((group) => group.files.map((file, index) => row(
-        `f:${group.workspace}:${file.display}`,
-        (0, import_react.createElement)(FileIcon, { name: file.name, size: 16 }),
-        file.display,
-        shown.length > 1 ? file.path : file.display,
-        () => openChanges(group, file.path),
-        group.counts[index]
-      ))),
-      ...images.map((image) => row(
-        `i:${image.id}`,
-        (0, import_react.createElement)(FileIcon, { name: image.name ?? "image.png", size: 16 }),
-        image.name ?? "\u56FE\u7247",
-        image.name ?? "\u56FE\u7247",
-        () => rightPanelService.openImage({ id: image.id, mediaType: image.mediaType, name: image.name })
-      )),
-      ...links.map((url) => row(`l:${url}`, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconLinkOutlineRegular, { size: 16 }), url.replace(/^https?:\/\//, ""), url, () => {
-        reveal();
-        rightPanelService.newBrowser(url);
-      }))
-    )
-  );
-}
-function SessionPanel({ workspace, cwd, team, running, profile, session }) {
-  return (0, import_react.createElement)(
-    "aside",
-    { className: "nodo-session-panel", "aria-label": "\u6458\u8981\u9762\u677F" },
-    (0, import_react.createElement)(Environment, { key: `env:${workspace}`, workspace, cwd, running }),
-    team && (0, import_react.createElement)(RoundTeam, { key: `team:${workspace}`, ...team, workspace }),
-    session && (0, import_react.createElement)(Artifacts, { running, sources: (team ? [team.lead, ...team.members] : [{ role: { id: profile }, session: { id: session, cwd, workspaceRef: workspace } }]).map((item) => ({ profile: item.role.id, session: item.session.id, cwd: item.session.cwd ?? cwd, workspace: item.session.workspaceRef ?? workspace })) })
-  );
-}
-
-// src/client/run-cards.js
-var RECOMMENDED_LABEL = /\s*(?:\((?:recommended|推荐)\)|（(?:recommended|推荐)）)\s*$/i;
-var optionText = (label) => RECOMMENDED_LABEL.test(label) ? { text: label.replace(RECOMMENDED_LABEL, ""), recommended: true } : { text: label, recommended: false };
-var questionOption = ({ key, index, selected, disabled, onClick, label, recommended, line }, ...children) => (0, import_react.createElement)(
-  "button",
-  {
-    key,
-    type: "button",
-    role: "radio",
-    "aria-checked": selected,
-    className: "nodo-question-option",
-    "data-selected": selected ? "" : void 0,
-    disabled,
-    onClick
-  },
-  (0, import_react.createElement)("span", { className: "nodo-question-number", "aria-hidden": true }, index + 1),
-  (0, import_react.createElement)(
-    "span",
-    { className: "nodo-question-copy" },
-    (0, import_react.createElement)(
-      "span",
-      { className: "nodo-question-line" },
-      (0, import_react.createElement)("span", { className: "nodo-question-label" }, label),
-      recommended && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "accent" }, "\u63A8\u8350"),
-      line
-    ),
-    ...children
-  )
-);
-var questionAnswer = ({ key, value, disabled, label, placeholder, autoFocus, onChange, onEnter }) => (0, import_react.createElement)("textarea", {
-  key,
-  className: "nodo-question-answer",
-  rows: 1,
-  disabled,
-  value,
-  "aria-label": label,
-  placeholder,
-  autoFocus,
-  onChange: (event) => onChange(event.target.value),
-  onKeyDown: (event) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
-      event.preventDefault();
-      onEnter();
-    }
-  }
-});
-var questionPager = ({ step, count, disabled, onBack, onNext }) => count > 1 && (0, import_react.createElement)(
-  "div",
-  { className: "nodo-question-pager" },
-  (0, import_react.createElement)(
-    "button",
-    { type: "button", className: "nodo-question-icon", "aria-label": "\u4E0A\u4E00\u9898", disabled: step === 0 || disabled, onClick: onBack },
-    (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 })
-  ),
-  (0, import_react.createElement)("span", { className: "nodo-question-progress" }, `${step + 1} / ${count}`),
-  (0, import_react.createElement)(
-    "button",
-    { type: "button", className: "nodo-question-icon", "aria-label": "\u4E0B\u4E00\u9898", disabled: step === count - 1 || disabled, onClick: onNext },
-    (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 })
-  )
-);
-function ApprovalCard({ card, refresh, readOnly, from }) {
-  const questions = card.detail?.questions?.length ? card.detail.questions : [{ id: "answer", question: card.reason, options: (card.detail?.options ?? []).map((label) => ({ label })) }];
-  const [step, setStep] = (0, import_react.useState)(0);
-  const [answers, setAnswers] = (0, import_react.useState)({});
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error2, setError] = (0, import_react.useState)("");
-  const blocked = busy || readOnly;
-  const question = questions[Math.min(step, questions.length - 1)];
-  const draft = answers[question.id] ?? "";
-  const last = step === questions.length - 1;
-  const pick = (next2) => setAnswers((current) => ({ ...current, [question.id]: next2 }));
-  const answer = async (decision, value) => {
-    if (blocked) return;
-    setBusy(true);
-    setError("");
-    try {
-      await call2("approval-answer", { id: card.id, decision, ...decision === "answer" ? { value } : {} });
-      await refresh(true);
-    } catch (failure) {
-      setError(failure.message);
-      setBusy(false);
-      await refresh(true);
-    }
-  };
-  const submit = () => {
-    if (questions.some((item) => (answers[item.id] ?? "").trim() === "")) return setError("\u8BF7\u9009\u62E9\u4E00\u4E2A\u9009\u9879\u6216\u586B\u5199\u81EA\u5B9A\u4E49\u7B54\u6848\u3002");
-    void answer("answer", questions.length === 1 ? answers[question.id] : JSON.stringify(answers));
-  };
-  const next = () => {
-    if (draft.trim() === "") return setError("\u8BF7\u5148\u5B8C\u6210\u8FD9\u9053\u95EE\u9898\u3002");
-    setError("");
-    if (last) submit();
-    else setStep(step + 1);
-  };
-  if (card.kind === "permission") {
-    const keydown = (event) => {
-      if (blocked || event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      if (event.key !== "Enter" && event.key !== "Escape") return;
-      if (event.target.closest?.("input, textarea, select, button, a[href], [contenteditable]")) return;
-      event.preventDefault();
-      void answer(event.key === "Enter" ? "allow" : "deny");
-    };
-    return (0, import_react.createElement)(
-      "div",
-      { className: "nodo-approval", onKeyDown: keydown, "aria-busy": busy ? "true" : void 0 },
-      (0, import_react.createElement)(
-        "section",
-        { className: "nodo-approval-card" },
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-approval-strip", role: "alert" },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: busy ? "ongoing" : "warning" }),
-          (0, import_react.createElement)("span", { className: "nodo-approval-label" }, from || card.taskTitle ? "\u7B49\u5F85\u5BA1\u6279 \xB7" : "\u7B49\u5F85\u5BA1\u6279"),
-          card.taskTitle && card.taskTitle !== from?.session.name && (0, import_react.createElement)("span", { className: "nodo-approval-task" }, card.taskTitle),
-          from && (0, import_react.createElement)(
-            "span",
-            { className: "nodo-approval-from" },
-            (0, import_react.createElement)(RoleAvatar, { profile: from.role, size: 16 }),
-            (0, import_react.createElement)("span", null, [from.role.name, from.role.engine && engineDisplayName({ id: from.role.engine }), from.session.name].filter(Boolean).join(" \xB7 "))
-          )
-        ),
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-approval-body", tabIndex: 0, role: "group", "aria-label": "\u5BA1\u6279\u8BE6\u60C5" },
-          (0, import_react.createElement)("p", { className: "nodo-approval-headline" }, card.tool ? `\u5DE5\u5177\u300C${card.tool}\u300D\u8BF7\u6C42\u6267\u884C` : card.reason),
-          card.tool && card.reason ? (0, import_react.createElement)("p", { className: "nodo-approval-command" }, card.reason) : null,
-          card.tool === "ExitPlanMode" && typeof (card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan) === "string" && (0, import_react.createElement)("div", { className: "nodo-approval-plan" }, card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan)
-        ),
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-approval-actions" },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", className: "nodo-approval-reject", disabled: blocked, onClick: () => void answer("deny") }, "\u62D2\u7EDD"),
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: blocked, onClick: () => void answer("allow") }, "\u5141\u8BB8\u4E00\u6B21")
-        )
-      ),
-      error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
-    );
-  }
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-question-frame" },
-    (0, import_react.createElement)(
-      "section",
-      { className: "nodo-question-card", "aria-labelledby": `nodo-question-${card.id}` },
-      (0, import_react.createElement)(
-        "header",
-        { className: "nodo-question-head" },
-        (0, import_react.createElement)(
-          "div",
-          null,
-          (0, import_react.createElement)("div", { className: "nodo-question-eyebrow", role: "alert" }, card.taskTitle ?? question.header ?? "\u7B49\u5F85\u56DE\u7B54"),
-          (0, import_react.createElement)("h2", { className: "nodo-question-title", id: `nodo-question-${card.id}` }, question.question)
-        )
-      ),
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-question-body" },
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-question-options", role: "radiogroup", "aria-label": question.header ?? question.question },
-          ...(question.options ?? []).map((option, index) => {
-            const display = optionText(option.label);
-            return questionOption({
-              key: `${option.label}-${index}`,
-              index,
-              selected: draft === option.label,
-              disabled: blocked,
-              onClick: () => {
-                setError("");
-                pick(option.label);
-              },
-              label: display.text,
-              recommended: display.recommended,
-              line: option.description && (0, import_react.createElement)("span", { className: "nodo-question-description" }, option.description)
-            });
-          })
-        ),
-        question.allowText !== false && card.detail?.allowText !== false && questionAnswer({
-          value: draft,
-          disabled: blocked,
-          label: question.header ?? question.question,
-          placeholder: "\u8F93\u5165\u4F60\u7684\u7B54\u6848",
-          onChange: (value) => {
-            setError("");
-            pick(value);
-          },
-          onEnter: next
-        })
-      ),
-      (0, import_react.createElement)(
-        "footer",
-        { className: "nodo-question-foot" },
-        questionPager({ step, count: questions.length, disabled: blocked, onBack: () => {
-          setError("");
-          setStep(step - 1);
-        }, onNext: next }),
-        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "status" }, error2),
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-question-actions" },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: blocked, onClick: next }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : last ? "\u63D0\u4EA4" : "\u4E0B\u4E00\u9898")
-        )
-      )
-    )
-  );
-}
-var DECISION_DRAFTS = "nodo.decisionDrafts";
-var readDecisionDrafts = () => {
-  try {
-    return JSON.parse(localStorage.getItem(DECISION_DRAFTS)) ?? {};
-  } catch {
-    return {};
-  }
-};
-var writeDecisionDraft = (id, draft) => {
-  const { [id]: _old, ...rest } = readDecisionDrafts();
-  try {
-    localStorage.setItem(DECISION_DRAFTS, JSON.stringify(draft ? { ...rest, [id]: draft } : rest));
-  } catch {
-  }
-};
-var pruneDecisionDrafts = (decisions) => {
-  const drafts = readDecisionDrafts();
-  const stale = Object.keys(drafts).filter((id) => !decisions.some((decision) => decision.id === id && decision.status === "pending"));
-  if (stale.length > 0) try {
-    localStorage.setItem(DECISION_DRAFTS, JSON.stringify(Object.fromEntries(Object.entries(drafts).filter(([id]) => !stale.includes(id)))));
-  } catch {
-  }
-};
-var DECISION_HEAD = { pending: "\u7B49\u5F85\u7528\u6237\u51B3\u5B9A", answered: "\u7B54\u6848\u5DF2\u63D0\u4EA4 \xB7 \u7B49\u5F85\u4EA4\u63A5" };
-function DecisionCard({ decision, profileId, readOnly, refresh, profiles = [], tasks = [], work = {} }) {
-  const [saved] = (0, import_react.useState)(() => readDecisionDrafts()[decision.id] ?? { answers: {}, open: true, step: 0 });
-  const [answers, setAnswersState] = (0, import_react.useState)(saved.answers);
-  const [open, setOpenState] = (0, import_react.useState)(saved.open);
-  const [step, setStepState] = (0, import_react.useState)(saved.step);
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [confirming, setConfirming] = (0, import_react.useState)(false);
-  const [feedback, setFeedback] = (0, import_react.useState)("");
-  const remember = (patch) => writeDecisionDraft(decision.id, { answers, open, step, ...patch });
-  const setAnswers = (next2) => {
-    setAnswersState(next2);
-    remember({ answers: next2 });
-  };
-  const setOpen = (next2) => {
-    setOpenState(next2);
-    remember({ open: next2 });
-  };
-  const setStep = (next2) => {
-    setFeedback("");
-    setStepState(next2);
-    remember({ step: next2 });
-  };
-  const pending = decision.status === "pending";
-  const values = pending ? answers : decision.answer?.values ?? {};
-  const blocked = busy || readOnly || !pending;
-  const answered = (question2) => values[question2.id]?.text?.trim() || question2.options?.some((option) => option.id === values[question2.id]?.optionId);
-  const complete = decision.questions.every(answered);
-  const act = async (endpoint, payload) => {
-    if (busy || readOnly) return;
-    setBusy(true);
-    setFeedback("");
-    try {
-      const result = await call2(endpoint, { profile: profileId, session: decision.coordinatorSessionId, decisionId: decision.id, ...payload });
-      if (result?.status !== (endpoint === "decision-answer" ? "answered" : "cancelled")) setFeedback(result?.message ?? "");
-      if (result?.status !== "pending") writeDecisionDraft(decision.id);
-    } catch (failure) {
-      setFeedback(failure.message);
-    }
-    setBusy(false);
-    setConfirming(false);
-    await refresh(true);
-  };
-  const roleName = (sessionId) => profiles.find((role) => role.sessions?.some((session) => session.id === sessionId));
-  const running = (decision.runningExecutions ?? []).map((execution) => ({
-    ...execution,
-    active: work[execution.sessionId]?.active ?? execution.active,
-    stopping: work[execution.sessionId]?.stopping ?? execution.stopping
-  })).filter((execution) => execution.active || execution.stopping);
-  const linked = decision.taskIds.map((id) => tasks.find((task) => task.id === id)).filter(Boolean);
-  const tag = (text, tone) => (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": tone }, text);
-  const count = decision.questions.length;
-  const at2 = Math.min(step, count - 1);
-  const last = at2 === count - 1;
-  const question = decision.questions[at2];
-  const value = values[question.id];
-  const choices = question.options ?? [];
-  const custom = value?.text !== void 0 || choices.length === 0;
-  const choose = (next2) => {
-    setFeedback("");
-    setAnswers({ ...answers, [question.id]: next2 });
-  };
-  const submit = () => void act("decision-answer", { answers: Object.fromEntries(decision.questions.map((item) => [item.id, values[item.id]])) });
-  const next = () => {
-    if (!pending) return setStep(at2 + 1);
-    if (!answered(question)) return setFeedback("\u8BF7\u5148\u5B8C\u6210\u8FD9\u9053\u95EE\u9898\u3002");
-    if (!last) setStep(at2 + 1);
-    else if (complete) submit();
-  };
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-question-frame" },
-    (0, import_react.createElement)(
-      "section",
-      { className: "nodo-question-card nodo-decision", "aria-labelledby": `nodo-decision-${decision.id}`, "aria-busy": busy ? "true" : void 0 },
-      (0, import_react.createElement)(
-        "header",
-        { className: "nodo-question-head" },
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-decision-heading" },
-          (0, import_react.createElement)(
-            "div",
-            { className: "nodo-decision-status", role: "status", id: `nodo-decision-${decision.id}` },
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: pending ? "warning" : "ongoing", size: 7 }),
-            decision.status === "answered" && decision.handoffStopped ? "\u7B54\u6848\u5DF2\u63D0\u4EA4 \xB7 \u4E3B\u63A7\u5DF2\u505C\u6B62" : DECISION_HEAD[decision.status]
-          ),
-          (linked.length > 0 || running.length > 0) && (0, import_react.createElement)(
-            "div",
-            { className: "nodo-decision-meta" },
-            ...linked.map((task) => (0, import_react.createElement)("span", { key: task.id, className: "nodo-tag", title: task.title }, task.title)),
-            ...running.map((execution) => {
-              const role = roleName(execution.sessionId);
-              const word = execution.stopping ? "\u505C\u6B62\u4E2D" : decision.stopExecutionIds.includes(execution.executionId) ? "\u505C\u6B62\u672A\u786E\u8BA4" : "\u8FD0\u884C\u4E2D";
-              return (0, import_react.createElement)(
-                "span",
-                { key: execution.executionId, className: "nodo-decision-run" },
-                role && (0, import_react.createElement)(RoleAvatar, { profile: role, size: 16 }),
-                tag(`${role?.name ?? execution.sessionId} \xB7 ${word}`, "caution")
-              );
-            })
-          )
-        ),
-        (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-question-icon nodo-decision-toggle",
-          "aria-expanded": open,
-          "aria-label": open ? "\u6536\u8D77" : "\u5C55\u5F00",
-          onClick: () => setOpen(!open)
-        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 16 }))
-      ),
-      open && (0, import_react.createElement)(
-        "div",
-        { className: "nodo-question-body nodo-decision-body", role: "group", "aria-labelledby": `nodo-decision-q-${decision.id}` },
-        (0, import_react.createElement)("h2", { className: "nodo-question-title", id: `nodo-decision-q-${decision.id}` }, question.question),
-        (0, import_react.createElement)("p", { className: "nodo-decision-why" }, question.whyUser),
-        choices.length > 0 && (0, import_react.createElement)(
-          "div",
-          { className: "nodo-question-options", role: "radiogroup", "aria-label": question.question },
-          ...choices.map((option, index) => {
-            const recommended = question.recommendation?.optionId === option.id;
-            return questionOption(
-              {
-                key: option.id,
-                index,
-                selected: value?.optionId === option.id,
-                disabled: blocked,
-                onClick: () => choose({ optionId: option.id }),
-                label: option.label,
-                recommended
-              },
-              (0, import_react.createElement)("span", { className: "nodo-decision-consequence" }, option.consequence),
-              recommended && (0, import_react.createElement)("span", { className: "nodo-decision-reason" }, question.recommendation.reason)
-            );
-          }),
-          questionOption({
-            key: "custom",
-            index: choices.length,
-            selected: custom,
-            disabled: blocked,
-            label: "\u81EA\u5B9A\u4E49\u56DE\u7B54",
-            onClick: () => choose({ text: value?.text ?? "" })
-          })
-        ),
-        custom && questionAnswer({
-          value: value?.text ?? "",
-          disabled: blocked,
-          label: `${question.question} \u81EA\u5B9A\u4E49\u56DE\u7B54`,
-          placeholder: "\u8F93\u5165\u4F60\u7684\u7B54\u6848",
-          key: question.id,
-          autoFocus: pending,
-          onChange: (text) => choose({ text }),
-          onEnter: next
-        })
-      ),
-      open && (0, import_react.createElement)(
-        "footer",
-        { className: "nodo-question-foot" },
-        questionPager({ step: at2, count, disabled: busy, onBack: () => setStep(at2 - 1), onNext: next }),
-        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "alert" }, feedback),
-        pending && (0, import_react.createElement)(
-          "div",
-          { className: "nodo-question-actions" },
-          confirming ? [
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "back", variant: "outline", disabled: busy, onClick: () => setConfirming(false) }, "\u8FD4\u56DE"),
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "confirm", variant: "outline", className: "nodo-approval-reject", disabled: busy || readOnly, onClick: () => void act("decision-cancel", {}) }, "\u786E\u8BA4\u64A4\u9500")
-          ] : (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", className: "nodo-approval-reject", disabled: busy || readOnly, onClick: () => setConfirming(true) }, "\u64A4\u9500"),
-          !confirming && (last ? (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: busy || readOnly || !complete, onClick: submit }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u63D0\u4EA4") : (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: busy || readOnly, onClick: next }, "\u4E0B\u4E00\u9898"))
-        )
-      )
-    )
-  );
-}
-
 // core/shared/role-presets.json
 var role_presets_default = [
   {
@@ -16655,7 +16550,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
   const identityTaken = saved.some((item) => item.name.trim().toLowerCase() === identityTitle.toLowerCase());
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call2("engine-catalog").then((items) => {
+    void call("engine-catalog").then((items) => {
       if (!live) return;
       const scoped = profile === null && enabledEngines !== null ? items.filter((item) => enabledEngines.includes(item.id)) : items;
       const choices = scoped.length > 0 ? scoped : items;
@@ -16677,7 +16572,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     if (!engine || engine.catalog || scanned.current.has(engine.id)) return;
     scanned.current.add(engine.id);
     setScanning(true);
-    void call2("engine-scan", { engine: engine.id }).then((catalog) => setEngines((current2) => current2.map((item) => item.id === engine.id ? { ...item, catalog } : item))).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
+    void call("engine-scan", { engine: engine.id }).then((catalog) => setEngines((current2) => current2.map((item) => item.id === engine.id ? { ...item, catalog } : item))).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
   }, [engine]);
   (0, import_react.useEffect)(() => {
     onDirtyChange?.(dirty);
@@ -16729,7 +16624,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
         thinking: draft.thinking,
         permission: draft.permission
       };
-      const saved2 = await call2(profile ? "profile-update" : "profile-create", profile ? { id: profile.id, changes: values } : values);
+      const saved2 = await call(profile ? "profile-update" : "profile-create", profile ? { id: profile.id, changes: values } : values);
       setBusy(false);
       setDirty(false);
       await onSaved(saved2);
@@ -16743,7 +16638,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     setBusy(true);
     setError("");
     try {
-      await call2("role-preset-save", { name: identityName, role: draft.role, instructions: draft.instructions });
+      await call("role-preset-save", { name: identityName, role: draft.role, instructions: draft.instructions });
       setIdentityName(null);
       void refresh?.(true);
     } catch (failure) {
@@ -17097,7 +16992,7 @@ function IdentityDeleteDialog({ identity, onDeleted, onCancel }) {
     setBusy(true);
     setError("");
     try {
-      await call2("role-preset-delete", { name: identity.name });
+      await call("role-preset-delete", { name: identity.name });
       onDeleted(identity.name);
     } catch (failure) {
       setError(failure.message);
@@ -17194,7 +17089,7 @@ function WorkspaceDialog({ workspace = null, onSaved, onCancel }) {
     setError("");
     try {
       const values = { name: draft.name.trim(), cwd: draft.cwd.trim() };
-      const saved = await call2(workspace ? "workspace-update" : "workspace-create", workspace ? { id: workspace.id, changes: values } : values);
+      const saved = await call(workspace ? "workspace-update" : "workspace-create", workspace ? { id: workspace.id, changes: values } : values);
       await onSaved(saved);
     } catch (failure) {
       setError(failure.message);
@@ -17247,7 +17142,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
   const [error2, setError] = (0, import_react.useState)("");
   (0, import_react.useEffect)(() => {
     let live = true;
-    call2("worktree-refs", { workspace: workspace.id }).then((result) => {
+    call("worktree-refs", { workspace: workspace.id }).then((result) => {
       if (!live) return;
       setRefs(result);
       setBase((current) => current === "HEAD" && result.head?.name ? result.head.name : current);
@@ -17288,7 +17183,7 @@ function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
     setBusy(true);
     setError("");
     try {
-      const created = await call2("worktree-create", existingMode ? {
+      const created = await call("worktree-create", existingMode ? {
         workspace: workspace.id,
         mode: "existing",
         branch: workBranch,
@@ -17634,1418 +17529,7 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   );
 }
 
-// src/client/remote-access.js
-function RemoteAccessSettings({ readOnly = false }) {
-  const [view2, setView] = (0, import_react.useState)(null);
-  const [busy, setBusy] = (0, import_react.useState)("");
-  const [error2, setError] = (0, import_react.useState)("");
-  const [login, setLogin] = (0, import_react.useState)(null);
-  const [copied, setCopied] = (0, import_react.useState)(false);
-  const act = async (action = "status") => {
-    setBusy(action);
-    setError("");
-    setLogin(null);
-    setCopied(false);
-    try {
-      const result = await call2(`remote-${action}`);
-      if (action === "login") setLogin(result);
-      else if (action !== "open") setView(result);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy("");
-    }
-  };
-  (0, import_react.useEffect)(() => {
-    let active = true;
-    call2("remote-status").then((value) => {
-      if (active) setView(value);
-    }).catch((failure) => {
-      if (active) setError(failure.message);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-  const locked = !!busy || !!view2?.busy || readOnly;
-  const enabled = view2?.phase === "enabled";
-  const labels = {
-    unsupported: "\u5F53\u524D\u73AF\u5883\u6682\u4E0D\u652F\u6301",
-    install: "\u5B89\u88C5 Tailscale",
-    unavailable: "\u6253\u5F00 Tailscale",
-    connect: "\u8FDE\u63A5 Tailscale",
-    network: "\u7F51\u7EDC\u9700\u8981\u5904\u7406",
-    conflict: "\u5165\u53E3\u9700\u8981\u5904\u7406",
-    authorize: "\u6388\u6743 HTTPS",
-    ready: "\u51C6\u5907\u5C31\u7EEA",
-    enabled: "\u624B\u673A\u8FDC\u7A0B\u5DF2\u542F\u7528"
-  };
-  return (0, import_react.createElement)(
-    "section",
-    { className: "nodo-remote", "aria-label": "\u624B\u673A\u8FDC\u7A0B" },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-remote-heading" },
-      (0, import_react.createElement)("h3", null, "\u624B\u673A\u8FDC\u7A0B"),
-      (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", disabled: !!busy, onClick: () => void act() }, busy === "status" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5")
-    ),
-    !view2 && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u67E5 Desktop \u4E0E Tailscale\u2026"),
-    view2 && (0, import_react.createElement)(
-      "div",
-      { className: "nodo-remote-status", role: "status", "aria-live": "polite" },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-remote-status-title" },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: enabled ? "done" : ["network", "conflict", "unavailable"].includes(view2.phase) ? "error" : "idle", size: 8 }),
-        (0, import_react.createElement)("strong", null, labels[view2.phase] ?? "\u68C0\u67E5\u8FDE\u63A5")
-      ),
-      view2.reason && (0, import_react.createElement)("p", null, view2.reason),
-      view2.origin && (0, import_react.createElement)("p", { className: "nodo-remote-address" }, view2.origin)
-    ),
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-remote-actions" },
-      view2 && ["install", "unavailable", "connect", "network"].includes(view2.phase) && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void act("open") }, view2.phase === "install" ? "\u5B89\u88C5 Tailscale" : "\u6253\u5F00 Tailscale"),
-      view2?.phase === "authorize" && (0, import_react.createElement)("a", { href: view2.authorizationUrl, target: "_blank", rel: "noopener noreferrer", className: "nodo-remote-link" }, "\u6253\u5F00 HTTPS \u6388\u6743\u9875"),
-      view2 && ["ready", "authorize"].includes(view2.phase) && (0, import_react.createElement)(
-        import_dsh_client_ui_primitives.Button,
-        { variant: "primary", disabled: locked, onClick: () => void act("enable") },
-        busy === "enable" ? "\u914D\u7F6E\u4E2D\u2026" : view2.phase === "authorize" ? "\u5DF2\u6388\u6743\uFF0C\u7EE7\u7EED\u914D\u7F6E" : "\u542F\u7528\u624B\u673A\u8FDC\u7A0B"
-      ),
-      enabled && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void act("login") }, busy === "login" ? "\u751F\u6210\u4E2D\u2026" : login ? "\u5237\u65B0\u4E8C\u7EF4\u7801" : "\u8FDE\u63A5\u624B\u673A"),
-      view2?.enabled && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: () => void act("disable") }, busy === "disable" ? "\u5173\u95ED\u4E2D\u2026" : "\u5173\u95ED\u8FDC\u7A0B\u8BBF\u95EE")
-    ),
-    login && (0, import_react.createElement)(
-      "div",
-      { className: "nodo-remote-pair" },
-      (0, import_react.createElement)("div", { className: "nodo-remote-qr" }, (0, import_react.createElement)("img", { src: login.qr, alt: "\u624B\u673A\u767B\u5F55\u4E8C\u7EF4\u7801", width: 192, height: 192 })),
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-remote-pair-copy" },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: async () => {
-          try {
-            if (await (0, import_dsh_client_ui_primitives.writeClipboard)(login.url)) setCopied(true);
-            else setError("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
-          } catch {
-            setError("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
-          }
-        } }, copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u624B\u673A\u767B\u5F55\u94FE\u63A5"),
-        (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u4E8C\u7EF4\u7801\u6388\u4E88\u5F53\u524D DSH \u5BBF\u4E3B\u7684\u6240\u6709\u8005\u8BBF\u95EE\u6743\u9650\uFF0C\u8BF7\u52FF\u5206\u4EAB\u3002")
-      )
-    ),
-    error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2),
-    readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5F53\u524D\u5BBF\u4E3B\u4E3A\u53EA\u8BFB\u6A21\u5F0F\uFF0C\u8BF7\u5728\u6B63\u5728\u8FD0\u884C\u4EFB\u52A1\u7684 Desktop \u4E2D\u8BBE\u7F6E\u3002")
-  );
-}
-
-// src/client/engine-settings.js
-function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly, onClose }) {
-  const seed = (engineId) => {
-    const source = view2.prefs?.engineConfigs?.[engineId];
-    return { engineOptions: { ...source?.engineOptions } };
-  };
-  const [engines, setEngines] = (0, import_react.useState)([]);
-  const [enabled, setEnabled] = (0, import_react.useState)(() => view2?.prefs?.enabledEngines ?? null);
-  const [selected, setSelected] = (0, import_react.useState)("");
-  const [draft, setDraft] = (0, import_react.useState)(() => seed(""));
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [scanning, setScanning] = (0, import_react.useState)("");
-  const [checks, setChecks] = (0, import_react.useState)({});
-  const [checking, setChecking] = (0, import_react.useState)("");
-  const [loading, setLoading] = (0, import_react.useState)(true);
-  const [saved, setSaved] = (0, import_react.useState)(false);
-  const [error2, setError] = (0, import_react.useState)("");
-  const [section, setSection] = (0, import_react.useState)("engines");
-  const pick = (engineId) => {
-    setSelected(engineId);
-    setDraft(seed(engineId));
-    setSaved(false);
-    setError("");
-  };
-  const scan = async (id) => {
-    if (id === "" || scanning !== "") return;
-    setScanning(id);
-    setError("");
-    try {
-      const catalog = await call2("engine-scan", { engine: id });
-      setEngines((current) => current.map((item) => item.id === id ? { ...item, catalog } : item));
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setScanning("");
-    }
-  };
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call2("engine-detect").then((items) => {
-      if (live) setEngines(items);
-    }).catch((failure) => {
-      if (live) setError(failure.message);
-    }).finally(() => {
-      if (live) setLoading(false);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  const engine = engines.find((item) => item.id === selected);
-  const locked = busy || checking !== "" || scanning !== "";
-  const detected = engines.filter((item) => item.usable);
-  const others = engines.filter((item) => !item.usable);
-  const enabledSet = enabled ?? detected.map((item) => item.id);
-  const toggleEnabled = async (item) => {
-    if (locked || readOnly) return;
-    const next = enabledSet.includes(item.id) ? enabledSet.filter((id) => id !== item.id) : [...enabledSet, item.id];
-    setEnabled(next);
-    setError("");
-    try {
-      const saved2 = await call2("engine-enable-set", { engines: next });
-      setEnabled(saved2.enabledEngines ?? next);
-      await refresh(true);
-    } catch (failure) {
-      setError(failure.message);
-      setEnabled(enabled);
-    }
-  };
-  const checkKey = (id) => JSON.stringify([id, workspace?.id]);
-  const check = checks[checkKey(selected)];
-  const inspect = async (all = false) => {
-    if (locked || !all && !engine) return;
-    setChecking(all ? "all" : selected);
-    setError("");
-    try {
-      const items = all ? engines : [engine];
-      await Promise.all(items.map(async (item) => {
-        const key = checkKey(item.id);
-        const result = await call2("engine-check", { engine: item.id, ...seed(item.id), cwd: workspace?.cwd }).catch((failure) => ({ ok: false, checks: [{ label: "\u68C0\u67E5\u5931\u8D25", ok: false, message: failure.message }] }));
-        setChecks((current) => ({ ...current, [key]: result }));
-      }));
-    } finally {
-      setChecking("");
-    }
-  };
-  const editField = (field) => (event) => {
-    const value = event.target.value;
-    setSaved(false);
-    setDraft((current) => ({ ...current, engineOptions: { ...current.engineOptions, [field.name]: value } }));
-  };
-  const run = async (event) => {
-    event.preventDefault();
-    if (locked || engine === void 0 || readOnly) return;
-    setBusy(true);
-    setError("");
-    setSaved(false);
-    try {
-      const values = { engine: engine.id, engineOptions: draft.engineOptions };
-      await call2("engine-config-set", values);
-      await refresh(true);
-      setChecks((current) => Object.fromEntries(Object.entries(current).filter(([key]) => JSON.parse(key)[0] !== selected)));
-      setSaved(true);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const fields = (engine?.fields ?? []).filter((field) => field.target === "engineOptions").map((field) => (0, import_react.createElement)(
-    Field,
-    { key: field.name, label: { bin: "\u7A0B\u5E8F\u8DEF\u5F84", socket: "\u5171\u4EAB Codex Socket" }[field.name] ?? field.label },
-    field.type === "select" ? (0, import_react.createElement)(
-      "select",
-      { className: "nodo-dialog-input nodo-dialog-select", disabled: locked || readOnly, value: draft.engineOptions[field.name] ?? field.default ?? "", onChange: editField(field) },
-      ...field.choices.map((choice) => (0, import_react.createElement)("option", { key: choice.value, value: choice.value }, choice.label))
-    ) : (0, import_react.createElement)("input", {
-      className: "nodo-dialog-input",
-      disabled: locked || readOnly,
-      value: draft.engineOptions[field.name] ?? "",
-      onChange: editField(field),
-      placeholder: field.name === "bin" ? "\u7559\u7A7A\u81EA\u52A8\u68C0\u6D4B\uFF0C\u68C0\u6D4B\u4E0D\u5230\u65F6\u586B\u5199\u5B8C\u6574\u8DEF\u5F84" : field.placeholder,
-      maxLength: 1e3
-    })
-  ));
-  const card = (item) => {
-    const expanded = selected === item.id;
-    const result = checks[checkKey(item.id)];
-    const on2 = item.usable && enabledSet.includes(item.id);
-    const rawVersion = result?.ok ? String(result.version || "").replace(/\s*\([^)]*\)/g, "").trim() : "";
-    const version = result?.ok ? /(?:^|\s)v?(\d[\w.]*(?:[-+][\w.]+)?)(?:\s|$)/.exec(rawVersion)?.[1] ?? rawVersion : "";
-    const caption = checking === "all" || checking === item.id ? "\u68C0\u67E5\u4E2D\u2026" : result ? result.ok ? version || "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : !item.usable || item.executable ? "" : item.nativeRuntime ? "\u539F\u751F" : "\u81EA\u5B9A\u4E49\u8DEF\u5F84";
-    const title = engineDisplayName(item);
-    return (0, import_react.createElement)(
-      "section",
-      { key: item.id, className: "nodo-engine-card", "data-expanded": expanded ? "" : void 0, "data-muted": item.usable ? void 0 : "" },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-engine-row" },
-        (0, import_react.createElement)(
-          "button",
-          {
-            type: "button",
-            className: "nodo-engine-toggle",
-            disabled: locked,
-            "aria-expanded": expanded,
-            "aria-controls": `nodo-engine-${item.id}`,
-            onClick: () => pick(expanded ? "" : item.id)
-          },
-          (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
-          (0, import_react.createElement)(
-            "span",
-            { className: "nodo-engine-name" },
-            (0, import_react.createElement)("strong", null, title),
-            caption && (0, import_react.createElement)("span", { className: "nodo-engine-caption", "data-bad": result?.ok === false ? "" : void 0 }, caption)
-          ),
-          (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": expanded ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
-        ),
-        item.usable && (0, import_react.createElement)("button", {
-          type: "button",
-          className: "nodo-engine-switch",
-          "aria-pressed": on2,
-          "aria-label": `${on2 ? "\u505C\u7528" : "\u542F\u7528"} ${title}`,
-          disabled: locked || readOnly,
-          onClick: () => void toggleEnabled(item)
-        })
-      ),
-      expanded && (0, import_react.createElement)(
-        "div",
-        { id: `nodo-engine-${item.id}`, className: "nodo-engine-detail" },
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-engine-connection" },
-          (0, import_react.createElement)("strong", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: check ? check.ok ? "done" : "error" : "idle", size: 8 }), check ? check.ok ? "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : "\u672A\u68C0\u67E5"),
-          (0, import_react.createElement)(
-            import_dsh_client_ui_primitives.Button,
-            { variant: "outline", size: "sm", disabled: locked || engine.requiresCwd && !workspace, onClick: () => void inspect() },
-            checking === selected ? "\u68C0\u67E5\u4E2D\u2026" : "\u68C0\u67E5\u8FDE\u63A5"
-          )
-        ),
-        (0, import_react.createElement)(
-          "form",
-          { id: ENGINE_FORM, className: "nodo-dialog-fields nodo-engine-fields", onSubmit: run, "aria-label": "\u914D\u7F6E Agent" },
-          (fields.length > 0 || engine.executable || readOnly) && (0, import_react.createElement)(
-            "div",
-            { className: "nodo-engine-section" },
-            fields.length > 0 && (0, import_react.createElement)("div", { className: "nodo-engine-config" }, fields),
-            engine.executable && (0, import_react.createElement)("p", { className: "nodo-dialog-path" }, engine.executable),
-            readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002")
-          ),
-          check && (0, import_react.createElement)(
-            "dl",
-            { className: "nodo-engine-section nodo-engine-check", role: "status" },
-            ...check.checks.map((entry, index) => (0, import_react.createElement)(
-              "div",
-              { key: index, className: "nodo-engine-check-row" },
-              (0, import_react.createElement)("dt", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: entry.ok === null ? "idle" : entry.ok ? "done" : "error", size: 6 }), entry.label),
-              (0, import_react.createElement)("dd", { className: entry.ok === false ? "nodo-bad" : void 0 }, entry.message)
-            ))
-          ),
-          (0, import_react.createElement)(
-            "div",
-            { className: "nodo-engine-section nodo-engine-scan" },
-            (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `${engine.catalog.models?.length ?? 0} \u4E2A` : "\u672A\u626B\u63CF")),
-            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? "\u626B\u63CF\u4E2D\u2026" : "\u626B\u63CF")
-          ),
-          saved && (0, import_react.createElement)("p", { className: "nodo-ok", role: "status" }, "Agent \u914D\u7F6E\u5DF2\u4FDD\u5B58")
-        )
-      )
-    );
-  };
-  const heading = (title, items) => (0, import_react.createElement)("h3", { key: title, className: "nodo-engine-group" }, title, (0, import_react.createElement)("span", null, items.length));
-  const grid = (key, items) => items.length > 0 && (0, import_react.createElement)("div", { key, className: "nodo-engine-grid" }, ...items.map((item) => card(item)));
-  return (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Modal,
-    {
-      open: true,
-      onClose: () => {
-        if (!locked) onClose();
-      },
-      closeLabel: "\u5173\u95ED",
-      title: "Nodo \u8BBE\u7F6E",
-      className: "nodo-dialog nodo-engine-dialog",
-      contentClassName: "nodo-engine-shell",
-      footer: section === "engines" && engine ? [
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-          key: "run",
-          type: "submit",
-          form: ENGINE_FORM,
-          variant: "primary",
-          size: "sm",
-          disabled: locked || readOnly
-        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58")
-      ] : void 0
-    },
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-settings-tabs", role: "tablist", "aria-label": "\u8BBE\u7F6E\u5206\u7C7B" },
-      ...[["engines", "\u6A21\u578B\u63D0\u4F9B\u65B9\u4E0E Agent"], ["remote", "\u624B\u673A\u8FDC\u7A0B"]].map(([id, title]) => (0, import_react.createElement)("button", {
-        key: id,
-        type: "button",
-        role: "tab",
-        id: `nodo-settings-${id}`,
-        "aria-selected": section === id,
-        tabIndex: section === id ? 0 : -1,
-        "aria-controls": `nodo-settings-panel-${id}`,
-        disabled: locked,
-        onClick: () => setSection(id),
-        onKeyDown: (event) => {
-          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-          event.preventDefault();
-          const next = event.key === "Home" ? "engines" : event.key === "End" ? "remote" : id === "engines" ? "remote" : "engines";
-          setSection(next);
-          event.currentTarget.parentElement.querySelector(`#nodo-settings-${next}`)?.focus();
-        }
-      }, title))
-    ),
-    section === "remote" ? (0, import_react.createElement)(
-      "div",
-      { role: "tabpanel", id: "nodo-settings-panel-remote", "aria-labelledby": "nodo-settings-remote", className: "nodo-engine-content" },
-      (0, import_react.createElement)(RemoteAccessSettings, { readOnly })
-    ) : (0, import_react.createElement)(
-      "div",
-      { className: "nodo-engine-content", role: "tabpanel", id: "nodo-settings-panel-engines", "aria-labelledby": "nodo-settings-engines" },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-engine-toolbar" },
-        loading ? (0, import_react.createElement)("span", null, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026") : heading("\u5DF2\u68C0\u6D4B", detected),
-        (0, import_react.createElement)(
-          import_dsh_client_ui_primitives.Button,
-          { variant: "ghost", size: "sm", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRefreshOutlineRegular, { size: 14 }), title: "\u68C0\u67E5\u6240\u6709 Agent \u7684\u9ED8\u8BA4\u914D\u7F6E", disabled: locked || loading || !engines.length, onClick: () => void inspect(true) },
-          checking === "all" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5"
-        )
-      ),
-      !loading && !engines.length && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6682\u65E0\u53EF\u7528 Agent"),
-      grid("detected", detected),
-      others.length > 0 && heading("\u672A\u68C0\u6D4B\u5230", others),
-      grid("others", others),
-      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
-    )
-  );
-}
-function OnboardingDialog({ view: view2, onDone }) {
-  const [engines, setEngines] = (0, import_react.useState)(null);
-  const [picked, setPicked] = (0, import_react.useState)(null);
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error2, setError] = (0, import_react.useState)("");
-  const [step, setStep] = (0, import_react.useState)("engines");
-  const [name, setName] = (0, import_react.useState)("\u4E07\u80FD\u52A9\u624B");
-  const [engine, setEngine] = (0, import_react.useState)("");
-  const [project, setProject] = (0, import_react.useState)({ name: "", cwd: "" });
-  const [picking, setPicking] = (0, import_react.useState)(false);
-  const [created, setCreated] = (0, import_react.useState)({});
-  const executor = view2?.profiles.find((profile) => !profile.deletedAt && profile.lead !== true);
-  const hasWorkspace = (view2?.workspaces.length ?? 0) > 0;
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call2("engine-detect").then((items) => {
-      if (!live) return;
-      const detected = items.filter((item) => item.usable);
-      setEngines(detected);
-      setPicked(new Set(detected.map((item) => item.id)));
-    }).catch((failure) => {
-      if (live) {
-        setEngines([]);
-        setError(failure.message);
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  const finish = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (step === "engines") await call2("engine-enable-set", { engines: picked ? [...picked] : [] });
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-    onDone();
-  };
-  const complete = (saved) => {
-    if (saved.profile || saved.workspace) {
-      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view2?.workspaces[0]?.id };
-      setNavigation((current) => ({ ...current, archivedSession: void 0, ...selection }));
-      nativeSpace?.startDraft(selection);
-    }
-    onDone();
-  };
-  const next = async () => {
-    if (busy || step === "engines" && !picked?.size || step === "role" && (!name.trim() || !picked?.has(engine)) || step === "workspace" && (!project.name.trim() || !project.cwd.trim())) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (step === "engines") {
-        await call2("engine-enable-set", { engines: [...picked] });
-        if (!executor) {
-          setEngine([...picked][0]);
-          setStep("role");
-        } else if (!hasWorkspace) setStep("workspace");
-        else complete(created);
-      } else if (step === "role") {
-        const profile = await call2("profile-create", { name: name.trim(), engine, avatarTemplate: avatar_templates_default[0].id });
-        const saved = { ...created, profile: profile.id };
-        setCreated(saved);
-        if (!hasWorkspace) setStep("workspace");
-        else complete(saved);
-      } else {
-        const workspace = await call2("workspace-create", { name: project.name.trim(), cwd: project.cwd.trim() });
-        complete({ ...created, workspace: workspace.id });
-      }
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const choose = async () => {
-    if (busy || picking || !nativePickDirectory) return;
-    setPicking(true);
-    setError("");
-    try {
-      const path = await nativePickDirectory();
-      if (path) setProject((current) => ({ ...current, cwd: path }));
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setPicking(false);
-    }
-  };
-  const edit = (key) => (event) => setProject((current) => ({ ...current, [key]: event.target.value }));
-  const toggle = (id) => setPicked((current) => {
-    if (current.has(id) && current.size === 1) return current;
-    const next2 = new Set(current);
-    if (next2.has(id)) next2.delete(id);
-    else next2.add(id);
-    return next2;
-  });
-  return (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Modal,
-    {
-      open: true,
-      onClose: () => void finish(),
-      closeLabel: "\u8DF3\u8FC7",
-      title: step === "engines" ? "\u542F\u7528 Agent" : step === "role" ? "\u521B\u5EFA\u4E07\u80FD\u89D2\u8272" : "\u6DFB\u52A0\u9879\u76EE",
-      description: step === "engines" ? "\u9009\u62E9\u8981\u542F\u7528\u7684 Agent\uFF0C\u968F\u65F6\u53EF\u5728\u8BBE\u7F6E\u4E2D\u8C03\u6574\u3002" : step === "role" ? "\u4E3A\u4E07\u80FD\u52A9\u624B\u53D6\u4E2A\u540D\u5B57\uFF0C\u9009\u62E9\u4F7F\u7528\u7684 Agent\u3002" : void 0,
-      className: "nodo-dialog nodo-onboard-dialog",
-      contentClassName: "nodo-engine-shell",
-      footer: [
-        (0, import_react.createElement)("span", { key: "hint", className: "nodo-dialog-leading nodo-dialog-hint" }, step === "engines" ? "\u65B0\u89D2\u8272\u9ED8\u8BA4\u4F7F\u7528\u7B2C\u4E00\u4E2A\u542F\u7528\u7684 Agent" : ""),
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-          key: "go",
-          type: "submit",
-          form: "nodo-onboard-form",
-          variant: "primary",
-          disabled: busy || (step === "engines" ? !picked?.size : step === "role" ? !name.trim() || !picked?.has(engine) : !project.name.trim() || !project.cwd.trim())
-        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : step === "workspace" ? "\u5B8C\u6210" : "\u4E0B\u4E00\u6B65")
-      ]
-    },
-    (0, import_react.createElement)(
-      "form",
-      { id: "nodo-onboard-form", className: "nodo-engine-content", onSubmit: (event) => {
-        event.preventDefault();
-        void next();
-      } },
-      step === "engines" && engines === null && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026"),
-      step === "engines" && engines !== null && [
-        (0, import_react.createElement)("h3", { key: "group", className: "nodo-engine-group" }, "\u5728\u7CFB\u7EDF\u4E2D\u5DF2\u68C0\u6D4B", (0, import_react.createElement)("span", null, engines.length)),
-        (0, import_react.createElement)("div", { key: "grid", className: "nodo-engine-grid" }, ...engines.map((item) => {
-          const on2 = picked?.has(item.id) === true;
-          return (0, import_react.createElement)(
-            "button",
-            { key: item.id, type: "button", className: "nodo-engine-card nodo-engine-pick", "aria-pressed": on2, disabled: busy, onClick: () => toggle(item.id) },
-            (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
-            (0, import_react.createElement)(
-              "span",
-              { className: "nodo-engine-name" },
-              (0, import_react.createElement)("strong", null, engineDisplayName(item)),
-              (0, import_react.createElement)("span", { className: "nodo-engine-caption" }, item.nativeRuntime ? "\u539F\u751F Agent" : item.executable ? "\u5DF2\u68C0\u6D4B\u5230" : "\u5DF2\u914D\u7F6E\u81EA\u5B9A\u4E49\u8DEF\u5F84")
-            ),
-            (0, import_react.createElement)("span", { className: "nodo-engine-switch", "aria-hidden": true }, on2 && (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 }))
-          );
-        })),
-        engines.length === 0 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u672A\u68C0\u6D4B\u5230\u5DF2\u9002\u914D\u7684 Agent\uFF1B\u5B89\u88C5 CLI \u6216\u5728\u8BBE\u7F6E\u7684 Agent \u5361\u7247\u4E2D\u586B\u5199\u8DEF\u5F84\u540E\u5373\u53EF\u4F7F\u7528\u3002")
-      ],
-      step === "role" && (0, import_react.createElement)(
-        "div",
-        { className: "nodo-dialog-fields" },
-        (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
-          className: "nodo-dialog-input",
-          "aria-label": "\u540D\u5B57",
-          "data-modal-autofocus": true,
-          required: true,
-          maxLength: 40,
-          disabled: busy,
-          value: name,
-          onChange: (event) => setName(event.target.value)
-        })),
-        (0, import_react.createElement)(Field, { label: "Agent", required: true }, (0, import_react.createElement)(
-          "select",
-          {
-            className: "nodo-dialog-input nodo-dialog-select",
-            "aria-label": "Agent",
-            disabled: busy,
-            value: engine,
-            onChange: (event) => setEngine(event.target.value)
-          },
-          ...[...picked].map((id) => (0, import_react.createElement)("option", { key: id, value: id }, engineDisplayName(engines.find((item) => item.id === id))))
-        ))
-      ),
-      step === "workspace" && (0, import_react.createElement)(
-        "div",
-        { className: "nodo-dialog-fields nodo-workspace-fields" },
-        WorkspaceFields({ draft: project, busy, picking, onEdit: edit, onPick: () => void choose() })
-      ),
-      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
-    )
-  );
-}
-
-// core/shared/route.js
-var route = (assign, type, hard) => {
-  const entry = assign?.[type];
-  const pick = hard && entry?.hard ? entry.hard : entry?.normal;
-  if (!pick?.profile) return { miss: true };
-  return { profile: pick.profile, choices: Object.fromEntries(["model", "thinking"].filter((key) => pick[key]).map((key) => [key, pick[key]])) };
-};
-
-// src/client/teams.tsx
-var fitText = (el2) => {
-  if (el2) {
-    el2.style.height = "auto";
-    el2.style.height = `${el2.scrollHeight}px`;
-  }
-};
-var TEAM_NAME_MAX = 20;
-var TYPES_MAX = 20;
-var CARD = 76;
-var GAP = 8;
-var withoutRole = (team, id) => ({
-  ...team,
-  lead: team.lead === id ? null : team.lead,
-  members: team.members.filter((member) => member !== id),
-  assign: Object.fromEntries(Object.entries(team.assign).map(([type, entry]) => [type, Object.fromEntries(Object.entries(entry).map(([key, pick]) => [key, pick.profile === id ? { ...pick, profile: void 0 } : pick]))]))
-});
-var roleModel = (role) => modelName(role.model) || "\u9ED8\u8BA4\u6A21\u578B";
-var tint = (role) => {
-  const color = avatarTemplateOf(role).color;
-  return { background: `color-mix(in srgb,${color} 18%,var(--dsw-alias-bg-base))`, color: `color-mix(in srgb,${color} 35%,var(--dsw-alias-label-primary))` };
-};
-function TeamsSection({ roles, teams, activeId, locked, onActive, save, openRole, onAssign, createButton }) {
-  const [drag, setDrag] = (0, import_react.useState)(null);
-  const [over, setOver] = (0, import_react.useState)(null);
-  const [pending, setPending] = (0, import_react.useState)(null);
-  const byId = (id) => roles.find((role) => role.id === id);
-  const current = teams.find((team) => team.id === activeId) ?? teams[0];
-  const edit = (id, change) => save(teams.map((team) => team.id === id ? change(team) : team));
-  const target = (zone) => ({
-    onDragOver: (event) => {
-      if (drag && !locked) {
-        event.preventDefault();
-        event.stopPropagation?.();
-        setOver(zone);
-      }
-    },
-    onDragLeave: () => setOver((value) => value === zone ? null : value)
-  });
-  const setLead = (teamId, roleId) => {
-    save(teams.map((team) => team.id === teamId ? { ...withoutRole(team, roleId), lead: roleId } : withoutRole(team, roleId)));
-    onActive(teamId);
-  };
-  const joinMember = (teamId, roleId) => {
-    save(teams.map((team) => {
-      if (team.id !== teamId) return team.lead === roleId ? { ...team, lead: null } : team;
-      return {
-        ...team,
-        lead: team.lead === roleId ? null : team.lead,
-        members: team.members.includes(roleId) ? team.members : [...team.members, roleId]
-      };
-    }));
-    onActive(teamId);
-  };
-  const drop = (zone) => (event) => {
-    event.preventDefault();
-    event.stopPropagation?.();
-    const moved = drag && byId(drag.id);
-    setDrag(null);
-    setOver(null);
-    if (!moved || !drag || zone === drag.from || zone === "lib") return;
-    const leadOf = zone.startsWith("lead:") ? zone.slice(5) : null;
-    const id = leadOf ?? zone;
-    if (leadOf) {
-      const leading2 = teams.find((team) => team.lead === moved.id && team.id !== id);
-      if (leading2) return setPending({ kind: "leading", id: moved.id, teamId: leading2.id });
-      const memberships = teams.filter((team) => team.id !== id && team.members.includes(moved.id));
-      if (memberships.length) return setPending({ kind: "lead", id: moved.id, teamId: id, from: memberships.map((team) => team.id) });
-      return setLead(id, moved.id);
-    }
-    const leading = teams.find((team) => team.lead === moved.id);
-    if (leading) return setPending({ kind: "member", id: moved.id, teamId: id, from: leading.id });
-    joinMember(id, moved.id);
-  };
-  const teamLabel = (teamId) => {
-    const team = teams.find((item) => item.id === teamId);
-    return team ? team.name || `\u56E2\u961F ${teams.indexOf(team) + 1}` : "";
-  };
-  const dialog = pending && (() => {
-    const name = byId(pending.id)?.name ?? "";
-    if (pending.kind === "leading") return {
-      title: `\u300C${name}\u300D\u5DF2\u662F\u300C${teamLabel(pending.teamId)}\u300D\u7684\u4E3B\u63A7`,
-      body: "\u4E00\u4E2A\u4E3B\u63A7\u53EA\u80FD\u9886\u5BFC\u4E00\u4E2A\u56E2\u961F\u3002\u5982\u9700\u5728\u591A\u4E2A\u56E2\u961F\u4F7F\u7528\u540C\u4E00\u5957\u8BBE\u5B9A\uFF0C\u8BF7\u590D\u5236\u8BE5\u89D2\u8272\u3002",
-      footer: [/* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "ok", variant: "outline", onClick: () => setPending(null) }, "\u77E5\u9053\u4E86")]
-    };
-    if (pending.kind === "lead") return {
-      title: `\u5C06\u300C${name}\u300D\u8BBE\u4E3A\u300C${teamLabel(pending.teamId)}\u300D\u7684\u4E3B\u63A7\uFF1F`,
-      body: `\u4E3B\u63A7\u4E0D\u80FD\u540C\u65F6\u662F\u5176\u5B83\u56E2\u961F\u7684\u6210\u5458\u3002\u7EE7\u7EED\u4F1A\u628A\u300C${name}\u300D\u4ECE${pending.from.map((teamId) => `\u300C${teamLabel(teamId)}\u300D`).join("")}\u7684\u6210\u5458\u4E2D\u79FB\u9664\u3002`,
-      footer: [
-        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", onClick: () => setPending(null) }, "\u53D6\u6D88"),
-        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "ok", variant: "primary", onClick: () => {
-          const next = pending;
-          setPending(null);
-          setLead(next.teamId, next.id);
-        } }, "\u79FB\u9664\u5E76\u8BBE\u4E3A\u4E3B\u63A7")
-      ]
-    };
-    return {
-      title: `\u5C06\u300C${name}\u300D\u52A0\u5165\u300C${teamLabel(pending.teamId)}\u300D\u7684\u6210\u5458\uFF1F`,
-      body: `\u300C${name}\u300D\u76EE\u524D\u662F\u300C${teamLabel(pending.from)}\u300D\u7684\u4E3B\u63A7\uFF0C\u4E0D\u80FD\u540C\u65F6\u662F\u6210\u5458\u3002\u7EE7\u7EED\u4F1A\u53D6\u6D88\u5B83\u7684\u4E3B\u63A7\u8EAB\u4EFD\uFF0C\u300C${teamLabel(pending.from)}\u300D\u5C06\u6CA1\u6709\u4E3B\u63A7\u3002`,
-      footer: [
-        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", onClick: () => setPending(null) }, "\u53D6\u6D88"),
-        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "ok", variant: "primary", onClick: () => {
-          const next = pending;
-          setPending(null);
-          joinMember(next.teamId, next.id);
-        } }, "\u53D6\u6D88\u4E3B\u63A7\u5E76\u52A0\u5165")
-      ]
-    };
-  })();
-  const card = (role, from, team) => /* @__PURE__ */ (0, import_react.createElement)(
-    "div",
-    {
-      key: role.id,
-      className: "nodo-team-card",
-      draggable: !locked,
-      "data-dragging": drag?.id === role.id ? "" : void 0,
-      onDragStart: (event) => {
-        setDrag({ id: role.id, from });
-        event.dataTransfer.effectAllowed = "move";
-      },
-      onDragEnd: () => {
-        setDrag(null);
-        setOver(null);
-      }
-    },
-    /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-team-card-main", title: role.name, onClick: () => openRole(role.id) }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 44 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name" }, role.name), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-meta" }, /* @__PURE__ */ (0, import_react.createElement)("span", { title: engineDisplayName({ id: role.engine ?? "" }) }, /* @__PURE__ */ (0, import_react.createElement)(EngineMark, { engine: role.engine, size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-model", style: tint(role) }, roleModel(role))))),
-    team ? /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-team-card-act",
-        "aria-label": `\u628A ${role.name} \u79FB\u51FA\u56E2\u961F`,
-        title: "\u4ECE\u56E2\u961F\u79FB\u9664",
-        disabled: locked,
-        onClick: () => edit(team.id, (item) => withoutRole(item, role.id))
-      },
-      "\xD7"
-    ) : (() => {
-      const count = teams.filter((item) => item.lead === role.id || item.members.includes(role.id)).length;
-      return count > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-count", title: `\u5728 ${count} \u4E2A\u56E2\u961F\u4E2D` }, count);
-    })()
-  );
-  const slot = (label) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-slot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), label);
-  const lead = current?.lead ? byId(current.lead) : void 0;
-  const members = current?.members.map(byId).filter((role) => role !== void 0) ?? [];
-  const rows = [...members, void 0];
-  const height = rows.length * CARD + (rows.length - 1) * GAP;
-  return /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-all" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-all" }, "\u5168\u90E8\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-types-count" }, roles.length)), createButton), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-grid", "data-over": over === "lib" ? "" : void 0, ...target("lib"), onDrop: drop("lib") }, roles.map((role) => card(role, "lib")))), /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-teams" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tabs", role: "tablist", "aria-label": "\u56E2\u961F" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-teams" }, "\u56E2\u961F"), teams.map((team, index) => /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      key: team.id,
-      type: "button",
-      role: "tab",
-      className: "nodo-team-tab",
-      "aria-selected": team === current,
-      "data-over": over === `tab:${team.id}` ? "" : void 0,
-      onClick: () => onActive(team.id),
-      ...target(`tab:${team.id}`),
-      onDrop: drop(team.id)
-    },
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-no" }, index + 1),
-    team.name || "\u672A\u547D\u540D\u56E2\u961F"
-  )), /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-team-card-act",
-      "aria-label": "\u65B0\u589E\u56E2\u961F",
-      title: "\u65B0\u589E\u56E2\u961F",
-      disabled: locked,
-      onClick: () => {
-        const id = crypto.randomUUID();
-        save([...teams, { id, name: "", lead: null, members: [], types: [], assign: {} }]);
-        onActive(id);
-      }
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })
-  )), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", onClick: onAssign }, "\u4EFB\u52A1\u5206\u914D")), current && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-panel", "data-over": over === current.id ? "" : void 0, "aria-label": `\u56E2\u961F ${teams.indexOf(current) + 1}`, ...target(current.id), onDrop: drop(current.id) }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-head" }, /* @__PURE__ */ (0, import_react.createElement)(
-    "input",
-    {
-      className: "nodo-team-name",
-      key: current.id,
-      defaultValue: current.name,
-      maxLength: TEAM_NAME_MAX,
-      placeholder: "\u672A\u547D\u540D\u56E2\u961F",
-      "aria-label": "\u56E2\u961F\u540D\u79F0",
-      disabled: locked,
-      onBlur: (event) => {
-        if (event.target.value !== current.name) edit(current.id, (item) => ({ ...item, name: event.target.value }));
-      }
-    }
-  ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, `${members.length + (lead ? 1 : 0)} \u4EBA`), /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-team-card-act nodo-team-del",
-      "aria-label": "\u5220\u9664\u56E2\u961F",
-      title: "\u5220\u9664\u56E2\u961F",
-      disabled: locked,
-      onClick: () => save(teams.filter((team) => team !== current))
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
-  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tree" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col", "data-over": over === `lead:${current.id}` ? "" : void 0, ...target(`lead:${current.id}`), onDrop: drop(`lead:${current.id}`) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-cap" }, "\u4E3B\u63A7"), lead ? card(lead, `lead:${current.id}`, current) : slot("\u62D6\u5165\u4E3B\u63A7")), /* @__PURE__ */ (0, import_react.createElement)("svg", { className: "nodo-team-lines", width: "72", height, viewBox: `0 0 72 ${height}`, fill: "none", "aria-hidden": "true" }, rows.map((_2, index) => {
-    const y = index * (CARD + GAP) + CARD / 2;
-    return /* @__PURE__ */ (0, import_react.createElement)(
-      "path",
-      {
-        key: index,
-        d: `M0 ${height / 2} C36 ${height / 2} 36 ${y} 72 ${y}`,
-        stroke: "var(--dsw-alias-state-business-primary)",
-        strokeWidth: "1.5",
-        opacity: ".75",
-        strokeDasharray: !lead || index === rows.length - 1 ? "4 4" : void 0
-      }
-    );
-  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-cap" }, "\u6210\u5458"), members.map((role) => card(role, current.id, current)), slot("\u62D6\u5165\u89D2\u8272"))))), pending && dialog && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: dialog.title, onClose: () => setPending(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: dialog.footer }, /* @__PURE__ */ (0, import_react.createElement)("p", null, dialog.body)));
-}
-function PickCell({ label, caption, pick, team, roles, engines, optional, disabled, onChange, remove }) {
-  const [open, setOpen] = (0, import_react.useState)(false);
-  (0, import_react.useEffect)(() => {
-    if (!open) return;
-    const close = (event) => {
-      if (!event.target?.closest?.("[data-pick-open]")) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-  const holder = roles.find((role) => role.id === pick?.profile);
-  const catalog = engines.find((engine) => engine.id === holder?.engine)?.catalog;
-  const models = catalog?.models ?? [];
-  const model = models.find((item) => item.id === (pick?.model || holder?.model || catalog?.defaultModel));
-  const levels = model?.thinking ?? [];
-  const providers = /* @__PURE__ */ new Map();
-  for (const item of models) providers.set(item.group ?? "", [...providers.get(item.group ?? "") ?? [], item]);
-  const set = (changes) => onChange({ ...pick, ...changes });
-  const tags = [pick?.model ? modelLabel(models.find((item) => item.id === pick.model) ?? { id: pick.model }) : "", pick?.thinking ? levels.find((level) => level.id === pick.thinking)?.label ?? pick.thinking : ""].filter(Boolean);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick", "data-warn": holder ? void 0 : "", "data-removable": remove ? "" : void 0, "data-pick-open": open ? "" : void 0 }, caption && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-cap" }, caption), /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      className: "nodo-pick-trigger",
-      "aria-haspopup": "dialog",
-      "aria-expanded": open,
-      "aria-label": `${label} ${holder?.name ?? "\u65E0\u4EBA\u627F\u63A5"}`,
-      disabled,
-      onClick: () => setOpen(!open)
-    },
-    holder ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: holder, size: 24 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-none" }),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-name" }, holder?.name ?? "\u65E0\u4EBA\u627F\u63A5"),
-    holder && tags.map((tag, index) => /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-team-model", style: tint(holder) }, tag)),
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 })
-  ), remove, open && /* @__PURE__ */ (0, import_react.createElement)(
-    "div",
-    {
-      className: "nodo-pick-pop",
-      role: "dialog",
-      "aria-label": `${label} \u7684\u89D2\u8272`,
-      onKeyDown: (event) => {
-        if (event.key === "Escape") setOpen(false);
-      }
-    },
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u89D2\u8272"),
-    /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, optional && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-pick-option", "aria-pressed": !holder, onClick: () => onChange(void 0) }, "\u4E0D\u5355\u72EC\u6307\u5B9A"), team.members.map((id) => roles.find((role) => role.id === id)).filter((role) => role !== void 0).map((role) => /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        key: role.id,
-        type: "button",
-        className: "nodo-pick-option",
-        "aria-pressed": role.id === holder?.id,
-        onClick: () => onChange({ profile: role.id })
-      },
-      /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
-      role.name
-    ))),
-    holder && models.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u6A21\u578B"),
-    holder && models.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-models", role: "group", "aria-label": "\u6A21\u578B" }, [...providers].map(([group, items]) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, { key: group }, group && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-provider" }, group), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, items.map((item) => /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        key: item.id,
-        type: "button",
-        className: "nodo-pick-option",
-        "aria-pressed": item.id === pick?.model,
-        onClick: () => set({ model: item.id, thinking: thinkingAfterModelChange(models, item.id, pick?.thinking) || void 0 })
-      },
-      modelLabel(item)
-    )))))),
-    holder && levels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u601D\u8003\u5F3A\u5EA6"),
-    holder && levels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group", role: "group", "aria-label": "\u601D\u8003\u5F3A\u5EA6" }, levels.map((level) => /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        key: level.id,
-        type: "button",
-        className: "nodo-pick-option",
-        "aria-pressed": level.id === pick?.thinking,
-        onClick: () => set({ thinking: level.id })
-      },
-      level.label ?? level.id
-    )))
-  ));
-}
-function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBack, save }) {
-  const [adding, setAdding] = (0, import_react.useState)(false);
-  const [name, setName] = (0, import_react.useState)("");
-  const [when, setWhen] = (0, import_react.useState)("");
-  const [removing, setRemoving] = (0, import_react.useState)(null);
-  const team = teams.find((item) => item.id === activeId) ?? teams[0];
-  const types = team?.types ?? [];
-  const edit = (typeId, key, pick) => save(teams.map((item) => {
-    if (item !== team) return item;
-    const entry = { ...item.assign[typeId] };
-    if (pick) entry[key] = pick;
-    else delete entry[key];
-    return { ...item, assign: { ...item.assign, [typeId]: entry } };
-  }));
-  const gaps = team ? types.reduce((sum, { id = "" }) => sum + ("miss" in route(team.assign, id, false) ? 1 : 0) + (team.assign[id]?.hard && "miss" in route(team.assign, id, true) ? 1 : 0), 0) : 0;
-  const draftOk = name.trim() !== "" && !types.some((type) => type.name === name.trim());
-  const leadRole = roles.find((role) => role.id === team?.lead);
-  const patchTypes = (next) => save(teams.map((item) => item === team ? { ...item, types: next } : item));
-  const patchType = (index, changes) => patchTypes(types.map((type, i) => i === index ? { ...type, ...changes } : type));
-  const removeType = (type) => save(teams.map((item) => item === team ? {
-    ...item,
-    types: item.types.filter((item2) => item2 !== type),
-    assign: Object.fromEntries(Object.entries(item.assign).filter(([id]) => id !== (type.id ?? "")))
-  } : item));
-  const reset = () => {
-    setAdding(false);
-    setName("");
-    setWhen("");
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-assign", "aria-label": "\u4EFB\u52A1\u5206\u914D" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-back", onClick: onBack }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }), "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tabs", role: "tablist", "aria-label": "\u56E2\u961F" }, /* @__PURE__ */ (0, import_react.createElement)("h2", null, "\u4EFB\u52A1\u5206\u914D"), teams.map((item, index) => /* @__PURE__ */ (0, import_react.createElement)("button", { key: item.id, type: "button", role: "tab", className: "nodo-team-tab", "aria-selected": item === team, onClick: () => onActive(item.id) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-no" }, index + 1), item.name || "\u672A\u547D\u540D\u56E2\u961F"))), team && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-meta" }, gaps > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-gap", role: "status" }, `${gaps} \u5904\u65E0\u4EBA\u627F\u63A5`), leadRole && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-lead" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: leadRole, size: 22 }), leadRole.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u4E3B\u63A7")))), !team ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5148\u5728\u89D2\u8272\u9875\u5EFA\u7ACB\u56E2\u961F") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-panel" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-row nodo-assign-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8D1F\u8D23\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E\uFF08\u53EF\u9009\uFF09")), types.map((type, index) => {
-    const entry = team.assign[type.id ?? ""] ?? {};
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: type.id, className: "nodo-assign-row", role: "group", "aria-label": type.name }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-type" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-type-top" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "input",
-      {
-        className: "nodo-type-input",
-        key: `${type.id}:${type.name}`,
-        defaultValue: type.name,
-        maxLength: 20,
-        "aria-label": `\u4EFB\u52A1\u7C7B\u578B\u540D\u79F0 ${type.name}`,
-        disabled,
-        onBlur: (event) => {
-          const value = event.target.value.trim();
-          if (value && value !== type.name) patchType(index, { name: value });
-        }
-      }
-    ), /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-type-independent" }, /* @__PURE__ */ (0, import_react.createElement)(
-      "input",
-      {
-        type: "checkbox",
-        checked: type.independent === true,
-        disabled,
-        onChange: (event) => patchType(index, event.target.checked ? { independent: true } : { independent: void 0 })
-      }
-    ), "\u72EC\u7ACB\u89C6\u89D2")), /* @__PURE__ */ (0, import_react.createElement)(
-      "textarea",
-      {
-        rows: 1,
-        ref: fitText,
-        onInput: (event) => fitText(event.currentTarget),
-        className: "nodo-type-input nodo-type-sub",
-        key: `${type.id}:${type.when}`,
-        defaultValue: type.when ?? "",
-        maxLength: 200,
-        placeholder: "\u4EC0\u4E48\u65F6\u5019\u6D3E\u8FD9\u7C7B\u4EFB\u52A1",
-        "aria-label": `\u4EFB\u52A1\u7C7B\u578B\u8BF4\u660E ${type.name}`,
-        disabled,
-        onKeyDown: (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            event.currentTarget.blur();
-          }
-        },
-        onBlur: (event) => {
-          if (event.target.value !== (type.when ?? "")) patchType(index, { when: event.target.value });
-        }
-      }
-    )), /* @__PURE__ */ (0, import_react.createElement)(
-      PickCell,
-      {
-        caption: "\u8D1F\u8D23\u89D2\u8272",
-        label: `${type.name}${entry.hard ? " \xB7 \u666E\u901A\u4EFB\u52A1" : " \xB7 \u666E\u901A\u548C\u56F0\u96BE\u4EFB\u52A1"}`,
-        pick: entry.normal,
-        team,
-        roles,
-        engines,
-        optional: false,
-        disabled,
-        onChange: (pick) => edit(type.id ?? "", "normal", pick ?? {}),
-        remove: removing === type.id ? /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-confirm", disabled, onClick: () => {
-          setRemoving(null);
-          removeType(type);
-        } }, "\u5220\u9664") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-remove", "aria-label": `\u5220\u9664 ${type.name}`, disabled, onClick: () => setRemoving(type.id ?? null) }, "\xD7")
-      }
-    ), entry.hard ? /* @__PURE__ */ (0, import_react.createElement)(
-      PickCell,
-      {
-        caption: "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E",
-        label: `${type.name} \xB7 \u56F0\u96BE\u4EFB\u52A1`,
-        pick: entry.hard,
-        team,
-        roles,
-        engines,
-        optional: true,
-        disabled,
-        onChange: (pick) => edit(type.id ?? "", "hard", pick ?? void 0),
-        remove: /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-remove", "aria-label": `${type.name} \u4E0D\u518D\u5355\u72EC\u6307\u5B9A\u56F0\u96BE\u4EFB\u52A1`, disabled, onClick: () => edit(type.id ?? "", "hard", void 0) }, "\xD7")
-      }
-    ) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-split", disabled, onClick: () => edit(type.id ?? "", "hard", {}) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u56F0\u96BE\u4EFB\u52A1\u5355\u72EC\u6307\u5B9A"));
-  }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-foot" }, adding ? /* @__PURE__ */ (0, import_react.createElement)(
-    "form",
-    {
-      className: "nodo-assign-add",
-      onSubmit: (event) => {
-        event.preventDefault();
-        if (draftOk) {
-          patchTypes([...types, { name: name.trim(), when: when.trim() }]);
-          reset();
-        }
-      },
-      onKeyDown: (event) => {
-        if (event.key === "Escape") reset();
-      }
-    },
-    /* @__PURE__ */ (0, import_react.createElement)("input", { className: "nodo-assign-field nodo-assign-field-name", autoFocus: true, placeholder: "\u7C7B\u578B\u540D\u79F0", "aria-label": "\u7C7B\u578B\u540D\u79F0", maxLength: 20, value: name, onChange: (event) => setName(event.target.value) }),
-    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-field" }, /* @__PURE__ */ (0, import_react.createElement)("input", { placeholder: "\u4EC0\u4E48\u65F6\u5019\u6D3E\u8FD9\u7C7B\u4EFB\u52A1", "aria-label": "\u7C7B\u578B\u8BF4\u660E", maxLength: 200, value: when, onChange: (event) => setWhen(event.target.value) }), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-text-button", onClick: reset }, "\u53D6\u6D88"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "submit", className: "nodo-text-button", disabled: disabled || !draftOk }, "\u6DFB\u52A0"))
-  ) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", disabled: disabled || types.length >= TYPES_MAX, onClick: () => setAdding(true) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u6DFB\u52A0\u4EFB\u52A1\u7C7B\u578B"))));
-}
-var TEAMS_CSS = `
-.nodo-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px;margin:-8px;padding:8px}
-.nodo-team-grid[data-over],.nodo-team-panel[data-over],.nodo-team-col[data-over]{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary)}
-.nodo-team-col[data-over]{border-radius:10px}
-.nodo-team-card{position:relative;display:flex;align-items:center;gap:8px;box-sizing:border-box;height:76px;min-width:0;padding:0 12px 0 16px;border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-alias-bg-base));box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);cursor:grab}
-.nodo-team-card:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,var(--dsw-alias-bg-base))}
-.nodo-team-card[data-dragging]{opacity:.4}
-.nodo-team-card-main{display:flex;align-items:center;gap:14px;flex:1;min-width:0;padding:0;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:inherit}
-.nodo-team-card-main:hover .nodo-roles-name>:first-child{text-decoration:underline}
-.nodo-team-card .nodo-avatar{border-radius:14px}
-.nodo-team-meta{display:flex;align-items:center;gap:8px;min-width:0;height:22px}
-.nodo-team-meta>span:first-child{display:inline-flex;flex:none;color:var(--dsw-alias-label-secondary)}
-.nodo-team-model{min-width:0;height:22px;padding:0 9px;overflow:hidden;border-radius:999px;font-size:12px;line-height:22px;text-overflow:ellipsis;white-space:nowrap}
-.nodo-team-card-act{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--nodo-role-radius,8px);background:0 0;color:var(--dsw-alias-label-tertiary);font-size:16px;cursor:pointer}
-.nodo-team-card-act:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-team-del:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}
-.nodo-team-count{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-interactive-bg-hover);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
-.nodo-team-slot{display:flex;align-items:center;justify-content:center;gap:10px;box-sizing:border-box;height:76px;border:1px dashed var(--dsw-alias-border-l1);border-radius:10px;color:var(--dsw-alias-label-tertiary);font-size:13px}
-.nodo-team-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0}
-.nodo-team-tabs h2{margin:0 8px 0 0}
-.nodo-team-tab{display:inline-flex;align-items:center;gap:8px;max-width:200px;height:32px;padding:0 12px 0 6px;border:0;border-radius:10px;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
-.nodo-team-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-team-tab[aria-selected=true]{background:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);color:var(--dsw-alias-label-primary)}
-.nodo-team-tab[data-over]{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary)}
-.nodo-team-no{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-interactive-bg-hover);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
-.nodo-team-tab[aria-selected=true] .nodo-team-no{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-base)}
-.nodo-team-panel{display:flex;flex-direction:column;gap:4px;padding:8px 0}
-.nodo-team-head{display:flex;align-items:center;gap:8px;height:40px;padding:0 4px 0 8px}
-.nodo-team-name{field-sizing:content;flex:0 1 auto;min-width:96px;max-width:320px;height:28px;padding:0 8px;border:0;border-radius:8px;background:0 0;color:inherit;font:inherit;font-size:14px;font-weight:600}
-.nodo-team-name:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-team-tree{display:flex;align-items:center;justify-content:center}
-.nodo-team-col{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%;flex:none}
-/* Column captions only appear where the tree and the assign table stack, i.e. on phones. */
-.nodo-tree-cap,.nodo-pick-cap{display:none}
-.nodo-team-lines{flex:none}
-.nodo-assign{display:flex;flex-direction:column;gap:12px}
-.nodo-assign-back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;height:36px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;color:inherit;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
-.nodo-assign-back:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-assign-back>svg{transform:rotate(180deg)}
-.nodo-assign-meta{display:flex;align-items:center;gap:8px}
-.nodo-assign-gap{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:8px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:12px;font-weight:500}
-.nodo-assign-lead{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
-.nodo-assign-row{display:grid;grid-template-columns:168px 1fr 1fr;align-items:center;column-gap:12px;min-height:60px;padding:6px 8px}
-.nodo-assign-row+.nodo-assign-row,.nodo-assign-foot{box-shadow:inset 0 .5px 0 var(--dsw-alias-border-l2)}
-.nodo-assign-head{min-height:44px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500}
-.nodo-assign-type{display:flex;flex-direction:column;min-width:0}
-.nodo-assign-type-top{display:flex;align-items:center;gap:4px}
-.nodo-type-independent{display:inline-flex;align-items:center;gap:4px;margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;white-space:nowrap;cursor:pointer}
-.nodo-type-independent input{accent-color:var(--dsw-alias-state-business-primary)}
-.nodo-assign-type .nodo-type-input{height:26px;padding:0 4px;font-size:14px;font-weight:500}
-.nodo-assign-type .nodo-type-sub{box-sizing:border-box;height:24px;max-height:120px;padding:2px 4px;resize:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
-.nodo-assign-remove,.nodo-assign-confirm{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:22px;height:22px;padding:0 4px;border:0;border-radius:6px;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;cursor:pointer}
-.nodo-assign-remove{opacity:0}
-.nodo-pick>:is(.nodo-assign-remove,.nodo-assign-confirm){position:absolute;top:50%;right:8px;transform:translateY(-50%)}
-.nodo-pick[data-removable] .nodo-pick-trigger{padding-right:46px}
-.nodo-assign-row:hover .nodo-assign-remove,.nodo-assign-remove:focus-visible{opacity:1}
-.nodo-assign-remove:hover:not(:disabled),.nodo-assign-confirm{color:var(--dsw-alias-state-error-primary)}
-.nodo-pick{position:relative;min-width:0}
-.nodo-pick-trigger{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 10px 0 8px;border:0;border-radius:10px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font:inherit;text-align:left;cursor:pointer}
-.nodo-pick-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-pick-trigger:disabled{cursor:default}
-.nodo-pick[data-warn] .nodo-pick-trigger{background:var(--dsw-alias-state-warn-tertiary);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
-.nodo-pick[data-warn] .nodo-pick-name{color:${WARN_INK}}
-.nodo-pick-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500}
-.nodo-pick-none{width:24px;height:24px;flex:none;border-radius:8px;box-shadow:inset 0 0 0 1.5px var(--dsw-alias-border-l1)}
-.nodo-pick-trigger>.nodo-team-model{flex:none;max-width:40%}
-.nodo-pick-trigger>svg{transform:rotate(90deg)}
-.nodo-pick-pop{position:absolute;z-index:20;top:calc(100% + 6px);left:0;display:flex;flex-direction:column;gap:10px;box-sizing:border-box;width:320px;padding:12px;border-radius:14px;background:var(--dsw-alias-bg-base);box-shadow:0 0 0 .5px var(--dsw-alias-border-l2),var(--dsw-shadow-lv2)}
-.nodo-pick-group{display:flex;flex-wrap:wrap;gap:4px}
-.nodo-pick-label{margin-bottom:-4px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
-:is(.nodo-pick-group,.nodo-pick-models)+.nodo-pick-label{padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
-.nodo-pick-models{display:flex;flex-direction:column;gap:6px}
-.nodo-pick-provider{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}
-.nodo-pick-group+.nodo-pick-provider{padding-top:4px}
-.nodo-pick-option{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:8px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
-.nodo-pick-option:hover{color:var(--dsw-alias-label-primary)}
-.nodo-pick-option[aria-pressed=true]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);box-shadow:none;color:var(--dsw-alias-state-business-primary)}
-.nodo-assign-split{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;font-weight:500;cursor:pointer;width:100%}
-.nodo-assign-split:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-assign-foot{display:flex;align-items:center;min-height:56px;padding:8px}
-.nodo-assign-add{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
-.nodo-assign-field{display:flex;align-items:center;box-sizing:border-box;height:40px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1)}
-.nodo-assign-field:focus-within{box-shadow:inset 0 0 0 1.5px var(--dsw-alias-state-business-primary)}
-.nodo-assign-field input,input.nodo-assign-field{min-width:0;height:38px;padding:0 12px;border:0;outline:0!important;background:none;color:inherit;font:inherit;font-size:13px}
-.nodo-assign-field-name{width:180px;flex:none;border:0}
-.nodo-assign-add>span.nodo-assign-field{flex:1;padding-right:8px;gap:4px}
-.nodo-assign-add>span.nodo-assign-field>input{flex:1}
-@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
-`;
-
-// src/client/roles.tsx
-var sidebarContent = null;
-var sidebarListeners = /* @__PURE__ */ new Set();
-var rolesSidebarSnapshot = () => sidebarContent;
-var rolesSubscribeSidebar = (listener) => {
-  sidebarListeners.add(listener);
-  return () => {
-    sidebarListeners.delete(listener);
-  };
-};
-var rolesPublishSidebar = (content) => {
-  if (content === sidebarContent) return;
-  sidebarContent = content;
-  for (const listener of sidebarListeners) listener();
-};
-var rolesTarget = null;
-var targetListeners = /* @__PURE__ */ new Set();
-var readRolesTarget = () => rolesTarget;
-var subscribeRolesTarget = (listener) => {
-  targetListeners.add(listener);
-  return () => {
-    targetListeners.delete(listener);
-  };
-};
-var openRoles = (target = {}) => {
-  rolesTarget = target;
-  for (const listener of targetListeners) listener();
-};
-var consumeRolesTarget = () => {
-  if (rolesTarget === null) return;
-  rolesTarget = null;
-  for (const listener of targetListeners) listener();
-};
-var leaveGuard = null;
-var rolesGuard = (action) => {
-  if (leaveGuard) leaveGuard(action);
-  else action();
-};
-var draftRemovers = /* @__PURE__ */ new Set();
-var registerDraftRemover = (remover) => {
-  draftRemovers.add(remover);
-  return () => {
-    draftRemovers.delete(remover);
-  };
-};
-function RolesPage({ view: view2, readOnly, refresh }) {
-  const target = (0, import_react.useSyncExternalStore)(subscribeRolesTarget, readRolesTarget);
-  const [roleId, setRoleId] = (0, import_react.useState)(() => target?.profileId && target.profileId !== "new" ? target.profileId : null);
-  const [assignOpen, setAssignOpen] = (0, import_react.useState)(false);
-  const [teamId, setTeamId] = (0, import_react.useState)(null);
-  const [confirm2, setConfirm] = (0, import_react.useState)(null);
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [error2, setError] = (0, import_react.useState)("");
-  const [nonce, setNonce] = (0, import_react.useState)(0);
-  const [adding, setAdding] = (0, import_react.useState)(() => target?.profileId === "new");
-  const [engines, setEngines] = (0, import_react.useState)(null);
-  const dirtyRef = (0, import_react.useRef)(false);
-  const roles = view2.profiles.filter((role) => !role.deletedAt);
-  const teams = view2.teams ?? [];
-  const types = (teams.find((item) => item.id === teamId) ?? teams[0])?.types ?? [];
-  const executors = roles.filter((item) => item.lead !== true);
-  const creating = adding || !executors.length;
-  const perform = async (action) => {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      await action();
-      await refresh(true);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const run = (action) => {
-    setAdding(false);
-    setError("");
-    action();
-  };
-  const switchTo = (action) => {
-    if (dirtyRef.current) setConfirm({ action: () => run(action) });
-    else run(action);
-  };
-  const showOverview = () => {
-    setAssignOpen(false);
-    setRoleId(null);
-  };
-  const openRole = (id) => {
-    setAssignOpen(false);
-    setRoleId(id);
-  };
-  const startAdding = () => {
-    showOverview();
-    setAdding(true);
-  };
-  (0, import_react.useEffect)(() => {
-    leaveGuard = switchTo;
-    return () => {
-      leaveGuard = null;
-    };
-  }, []);
-  (0, import_react.useEffect)(() => {
-    if (!target) return;
-    consumeRolesTarget();
-    switchTo(() => {
-      if (!target.team) return target.profileId && target.profileId !== "new" ? openRole(target.profileId) : startAdding();
-      showOverview();
-      if (target.team !== "new") return setTeamId(target.team);
-      const id = crypto.randomUUID();
-      saveTeams([...teams, { id, name: "", lead: null, members: [], types: [], assign: {} }]);
-      setTeamId(id);
-    });
-  }, [target]);
-  (0, import_react.useEffect)(() => {
-    if (engines !== null) return;
-    setEngines([]);
-    void call2("engine-catalog").then((items) => {
-      setEngines(items);
-    }).catch((failure) => setError(failure.message));
-  }, [engines]);
-  const savedRole = async (saved) => {
-    await refresh(true);
-    setAdding(false);
-    setRoleId(saved.id);
-  };
-  const deletedRole = async (item) => {
-    await call2("profile-delete", { id: item.id });
-    await refresh(true);
-    const sessionIds = (item.sessions ?? []).map((session) => session.id);
-    for (const remove of draftRemovers) remove(sessionIds);
-    try {
-      const drafts = JSON.parse(localStorage.getItem("nodo.drafts") ?? "{}");
-      for (const id of sessionIds) delete drafts[id];
-      localStorage.setItem("nodo.drafts", JSON.stringify(drafts));
-    } catch {
-    }
-    setRoleId((current) => current === item.id ? null : current);
-  };
-  const saveTeams = (next) => void perform(async () => {
-    const leads = new Set(next.map((team) => team.lead));
-    const changed = roles.filter((role) => role.lead === true !== leads.has(role.id)).sort((a, b2) => Number(a.lead !== true) - Number(b2.lead !== true));
-    for (const role of changed) await call2("profile-update", { id: role.id, changes: { lead: role.lead !== true } });
-    await call2("teams-update", { teams: next });
-  });
-  const deleteReason = (role) => roles.some((item) => item.lead === true) && role.lead !== true && executors.length === 1 ? "\u4E3B\u63A7\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : void 0;
-  const locked = readOnly || busy;
-  const overview = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-overview" }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-roles-head" }, /* @__PURE__ */ (0, import_react.createElement)("h1", null, "\u89D2\u8272\u4E0E\u56E2\u961F")), /* @__PURE__ */ (0, import_react.createElement)(
-    TeamsSection,
-    {
-      roles,
-      teams,
-      activeId: teamId,
-      locked,
-      onActive: setTeamId,
-      save: saveTeams,
-      openRole: (id) => switchTo(() => openRole(id)),
-      onAssign: () => switchTo(() => setAssignOpen(true)),
-      createButton: /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", disabled: locked, onClick: () => switchTo(startAdding) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u521B\u5EFA\u89D2\u8272")
-    }
-  ));
-  const sidebar = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-nav", role: "navigation", "aria-label": "\u89D2\u8272" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": !assignOpen, onClick: () => switchTo(showOverview) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, roles.length)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": assignOpen, onClick: () => switchTo(() => setAssignOpen(true)) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChecklistOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u4EFB\u52A1\u5206\u914D"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, types.length)));
-  (0, import_react.useEffect)(() => {
-    rolesPublishSidebar({ view: "roles", content: sidebar });
-  });
-  const selected = roleId !== null ? roles.find((item) => item.id === roleId) ?? null : null;
-  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles", "aria-label": "\u89D2\u8272\u7BA1\u7406" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-chrome", "aria-hidden": true }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-body" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-role-dialog nodo-roles-main", "data-screen": assignOpen ? "assign" : selected || creating ? "role" : "overview" }, assignOpen ? /* @__PURE__ */ (0, import_react.createElement)(
-    AssignPage,
-    {
-      roles,
-      teams,
-      engines: engines ?? [],
-      activeId: teamId,
-      disabled: locked,
-      onActive: setTeamId,
-      onBack: () => switchTo(showOverview),
-      save: saveTeams
-    }
-  ) : selected ? /* @__PURE__ */ (0, import_react.createElement)(
-    RoleEditor,
-    {
-      key: `${selected.id}:${nonce}`,
-      profile: selected,
-      deleteReason: deleteReason(selected),
-      enabledEngines: view2.prefs?.enabledEngines ?? null,
-      savedIdentities: view2.prefs?.rolePresets ?? null,
-      refresh,
-      readOnly,
-      onSaved: savedRole,
-      onCancel: () => {
-        setNonce((value) => value + 1);
-        showOverview();
-      },
-      onBack: () => switchTo(showOverview),
-      onDeleted: deletedRole,
-      onDirtyChange: (value) => {
-        dirtyRef.current = value;
-      }
-    }
-  ) : creating ? /* @__PURE__ */ (0, import_react.createElement)(
-    RoleEditor,
-    {
-      key: `new:${nonce}`,
-      profile: null,
-      avatarSeed: roles.length,
-      enabledEngines: view2.prefs?.enabledEngines ?? null,
-      savedIdentities: view2.prefs?.rolePresets ?? null,
-      refresh,
-      readOnly,
-      onSaved: savedRole,
-      onCancel: () => {
-        setNonce((value) => value + 1);
-        setAdding(false);
-      },
-      onBack: executors.length ? () => switchTo(showOverview) : null,
-      onDeleted: deletedRole,
-      onDirtyChange: (value) => {
-        dirtyRef.current = value;
-      }
-    }
-  ) : overview, error2 && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2))), confirm2 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", onClick: () => setConfirm(null) }, "\u7EE7\u7EED\u7F16\u8F91"),
-    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "drop", variant: "primary", onClick: () => {
-      const { action } = confirm2;
-      setConfirm(null);
-      action();
-    } }, "\u653E\u5F03\u4FEE\u6539")
-  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, "\u5F53\u524D\u4FEE\u6539\u5C1A\u672A\u4FDD\u5B58\u3002")));
-}
-function RolesEntry() {
-  const { view: view2, error: error2, refresh } = useStateView();
-  (0, import_react.useEffect)(() => {
-    if (document.querySelector("[data-sidebar-collapsed]")) layoutService?.toggleSidebar?.();
-    return () => rolesPublishSidebar(null);
-  }, []);
-  if (!view2) return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles" }, error2 || "\u6B63\u5728\u8BFB\u53D6\u89D2\u8272\u2026");
-  return /* @__PURE__ */ (0, import_react.createElement)(RolesPage, { view: view2, readOnly: !!view2.readOnly, refresh });
-}
-var ROLES_CSS = `
-.nodo-roles{overflow:hidden}
-.nodo-roles-chrome{flex:none;height:var(--nodo-top-clearance,0px);-webkit-app-region:drag}
-.nodo-roles-body{display:flex;flex:1;min-width:0;min-height:0;overflow:auto;padding:20px 32px 40px}
-.nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content;margin-inline:auto}
-.nodo-roles-main[data-screen=overview]{min-width:820px}
-.nodo-roles-main[data-screen=role]{width:min(800px,100%)}
-.nodo-roles-main[data-screen=assign]{width:min(980px,100%)}
-.nodo-roles-nav{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
-.nodo-role-types{display:flex;align-items:center;gap:8px;flex:none;width:100%;height:36px;padding:0 12px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}
-.nodo-role-types:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
-.nodo-role-types-label{flex:1;min-width:0}
-.nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
-.nodo-roles-overview{display:flex;flex-direction:column;gap:20px}
-.nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.nodo-roles-head h1{display:flex;align-items:baseline;gap:8px;margin:0;font-size:18px;font-weight:600;line-height:26px}
-.nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
-.nodo-roles-copy>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nodo-roles-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
-.nodo-roles-sub{font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
-.nodo-roles-section{display:flex;flex-direction:column;gap:8px}
-.nodo-roles-section h2{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;font-weight:600;line-height:20px}
-.nodo-roles-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 12px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
-.nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.nodo-text-button{height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;cursor:pointer}
-.nodo-text-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-text-button:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
-.nodo-types-count{color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
-.nodo-type-input{width:100%;height:32px;padding:0 8px;border:1px solid transparent;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
-.nodo-type-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
-.nodo-type-input:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-type-input:focus{outline:0;border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}
-@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}.nodo-roles-main[data-screen=overview]{min-width:0}}
-${TEAMS_CSS}`;
-
-// core/shared/session.js
-var nativeIdOf = (session) => session?.engine === "dsh" ? session.driverSessionId : void 0;
-
-// src/client/page.js
-var heldImages = {};
-var readDrafts = () => {
-  try {
-    return JSON.parse(localStorage.getItem("nodo.drafts")) ?? {};
-  } catch {
-    return {};
-  }
-};
-var readScopes = () => {
-  try {
-    return JSON.parse(localStorage.getItem("nodo.taskScope")) ?? {};
-  } catch {
-    return {};
-  }
-};
-var navigationSnapshot;
-var navigationListeners = /* @__PURE__ */ new Set();
-var readNavigation = () => {
-  if (navigationSnapshot === void 0) {
-    try {
-      navigationSnapshot = JSON.parse(localStorage.getItem("nodo.navigation") ?? localStorage.getItem("orchestrator.navigation")) ?? {};
-    } catch {
-      navigationSnapshot = {};
-    }
-  }
-  return navigationSnapshot;
-};
-var subscribeNavigation = (listener) => {
-  navigationListeners.add(listener);
-  return () => navigationListeners.delete(listener);
-};
-var setNavigation = (update) => {
-  navigationSnapshot = typeof update === "function" ? update(readNavigation()) : update;
-  try {
-    localStorage.setItem("nodo.navigation", JSON.stringify(navigationSnapshot));
-  } catch {
-  }
-  for (const listener of navigationListeners) listener();
-};
+// src/client/page-sessions.js
 var nativeRole = (profile) => profile?.engine === "dsh";
 var sessionForWorkspace = (profile, workspace, workspaces, selected) => {
   if (!profile || !workspace) return;
@@ -19084,13 +17568,13 @@ var selectSession = async (role, id, project, page) => {
       else if (sidebarOnly) nativeSpace.showLegacy();
       origin = nativeSpace.getSnapshot();
       if (!readOnly) {
-        await call2("session-select", { profile: role.id, session: id });
+        await call("session-select", { profile: role.id, session: id });
         if (current()) await refresh(true);
       }
       return;
     }
     if (native) {
-      const opened = await call2("session-open", { profile: role.id, session: id, workspace: project.id });
+      const opened = await call("session-open", { profile: role.id, session: id, workspace: project.id });
       if (!current()) return;
       remember(role.id, project.id, opened.conversationId);
       setEditing(null);
@@ -19099,7 +17583,7 @@ var selectSession = async (role, id, project, page) => {
       return;
     }
     if (!readOnly) {
-      await call2("session-select", { profile: role.id, session: id });
+      await call("session-select", { profile: role.id, session: id });
       if (!current()) return;
       await refresh(true);
     }
@@ -19130,1795 +17614,32 @@ var sessionPanelBottom = (body) => {
   const composer = body.querySelector(".nodo-composer");
   return composer ? `${Math.max(0, body.getBoundingClientRect().bottom - composer.getBoundingClientRect().top)}px` : "0px";
 };
-function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
-  const { view: view2, error: error2, refresh } = useStateView();
-  const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
-  const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
-  const currentNativeSession = (0, import_react.useSyncExternalStore)(subscribeNativeSession, readNativeSession);
-  const seen = (0, import_react.useSyncExternalStore)(completionTracker.subscribe, completionTracker.getSnapshot);
-  const [foreground, setForeground] = (0, import_react.useState)(() => document.visibilityState === "visible" && document.hasFocus());
-  (0, import_react.useEffect)(() => {
-    const update = () => setForeground(document.visibilityState === "visible" && document.hasFocus());
-    document.addEventListener("visibilitychange", update);
-    window.addEventListener("focus", update);
-    window.addEventListener("blur", update);
-    return () => {
-      document.removeEventListener("visibilitychange", update);
-      window.removeEventListener("focus", update);
-      window.removeEventListener("blur", update);
-    };
-  }, []);
-  const [editing, setEditing] = (0, import_react.useState)(null);
-  const [workspaceDialog, setWorkspaceDialog] = (0, import_react.useState)(null);
-  const [worktreeOpen, setWorktreeOpen] = (0, import_react.useState)(false);
-  const [sessionDialog, setSessionDialog] = (0, import_react.useState)(null);
-  const [drafts, setDrafts] = (0, import_react.useState)(readDrafts);
-  const [pastedImages, setPastedImages] = (0, import_react.useState)(() => heldImages);
-  const [scopes, setScopes] = (0, import_react.useState)(readScopes);
-  (0, import_react.useEffect)(() => {
-    localStorage.setItem("nodo.drafts", JSON.stringify(drafts));
-  }, [drafts]);
-  (0, import_react.useEffect)(() => {
-    localStorage.setItem("nodo.taskScope", JSON.stringify(scopes));
-  }, [scopes]);
-  (0, import_react.useEffect)(() => {
-    heldImages = pastedImages;
-  }, [pastedImages]);
-  (0, import_react.useEffect)(() => {
-    if (view2?.decisions) pruneDecisionDrafts(view2.decisions);
-  }, [view2?.decisions]);
-  (0, import_react.useEffect)(() => {
-    const remove = (ids) => {
-      setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
-      setScopes((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
-    };
-    return registerDraftRemover(remove);
-  }, []);
-  const rightbarOpen = (0, import_react.useSyncExternalStore)(rightPanelService?.subscribe ?? (() => () => {
-  }), () => rightPanelService?.getSnapshot().expanded === true);
-  const [opened, setOpened] = (0, import_react.useState)([]);
-  const [panelOpen, setPanelOpen] = (0, import_react.useState)(false);
-  const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
-  const [statsOpen, setStatsOpen] = (0, import_react.useState)(false);
-  const [onboardDone, setOnboardDone] = (0, import_react.useState)(false);
-  const onboarding = (0, import_react.useRef)(false);
-  if (view2 && view2.prefs?.onboardedAt == null) onboarding.current = true;
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const selection = (0, import_react.useRef)(0);
-  const [pending, setPending] = (0, import_react.useState)([]);
-  const [compacting, setCompacting] = (0, import_react.useState)([]);
-  const [sentTick, setSentTick] = (0, import_react.useState)(0);
-  const [actionError, setActionError] = (0, import_react.useState)("");
-  const team = navigation.view === "team";
-  const leadSession = (role, session2) => role.lead === true && (session2.engine ?? role.engine) !== "dsh" && session2.leadMode !== false;
-  const archived = view2?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || leadSession(role, session2))).map((session2) => ({ role, session: session2 })))[0];
-  const profiles = view2?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
-  const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
-  const workspaces = view2?.workspaces ?? [];
-  const workspace = archived ? workspaces.find((item) => item.id === projectAnchorOf(workspaces, archived.session.workspaceRef)) ?? null : workspaces.find((item) => item.id === projectAnchorOf(workspaces, navigation.workspace)) ?? workspaces[0] ?? null;
-  const navigationKey = `${workspace?.id}:${profile?.id}`;
-  const session = archived?.session ?? sessionForWorkspace(
-    team && profile ? { ...profile, sessions: profile.sessions.filter((item) => leadSession(profile, item)) } : profile,
-    workspace,
-    workspaces,
-    navigation.sessions?.[navigationKey]
-  );
-  const sessionId = session?.id;
-  const draftKey = sessionId ?? `new:${navigationKey}`;
-  const scopeTask = view2?.tasks?.find((item) => item.id === scopes[draftKey]);
-  const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
-  const setSessionBusy = (value) => setPending((current) => value ? [...current, draftKey] : current.filter((key) => key !== draftKey));
-  const readOnly = view2 !== null && view2.readOnly != null;
-  const archivedConversation = !!session?.archivedAt || !!profile?.deletedAt;
-  const conversationReadOnly = readOnly || archivedConversation;
-  const work = sessionId ? view2.work[sessionId] : null;
-  const rounds = view2 ? roundIndex(view2) : null;
-  const members = team && sessionId && rounds?.members.get(sessionId) || [];
-  const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
-  const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : void 0);
-  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => item.session.id === sessionId || opened.includes(item.session.id))] : [];
-  const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map((item) => item.role)] : [];
-  const activeTasks = members.filter((item) => view2.work[item.session.id]?.active === true).length;
-  const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
-  (0, import_react.useLayoutEffect)(() => {
-    if (sidebarOnly || !space.active || !space.legacy || editing) return;
-    if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
-    if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
-  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
-  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
-  const sessionWorkspace = session ? workspaces.find((item) => item.id === session.workspaceRef) ?? workspace : workspace;
-  const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view2?.profiles.flatMap((role) => role.sessions).find((item) => nativeIdOf(item) === currentNativeSession) : null;
-  const viewedWork = view2?.work[viewed?.id];
-  (0, import_react.useEffect)(() => {
-    if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq);
-  }, [viewed?.id, viewedWork?.active, viewedWork?.completionSeq]);
-  const railView = view2 && { ...view2, work: Object.fromEntries(Object.entries(view2.work).map(([id, work2]) => [
-    id,
-    { ...work2, seen: Number.isFinite(work2.completionSeq) && seen[id] >= work2.completionSeq }
-  ])) };
-  (0, import_react.useEffect)(() => {
-    if (!profile || !workspace || archivedConversation) return;
-    setNavigation((current) => ({
-      ...current,
-      profile: profile.id,
-      workspace: workspace.id,
-      sessions: { ...current.sessions, ...sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {} }
-    }));
-  }, [profile?.id, workspace?.id, sessionId, archivedConversation]);
-  const remember = (roleId, projectId, id, archived2 = false) => {
-    const anchor = projectAnchorOf(workspaces, projectId);
-    return setNavigation((current) => ({
-      ...current,
-      profile: roleId,
-      workspace: anchor,
-      archivedSession: archived2 ? id : void 0,
-      sessions: { ...current.sessions, ...id && !archived2 ? { [`${anchor}:${roleId}`]: id } : {} }
-    }));
-  };
-  const trackSelection = (sameSession = false) => {
-    const origin = nativeSpace.getSnapshot(), request = selection.current;
-    return () => {
-      const next = readNavigation();
-      return nativeSpace.getSnapshot() === origin && (sameSession || selection.current === request) && next.profile === profile?.id && next.workspace === workspace?.id && next.sessions?.[navigationKey] === navigation.sessions?.[navigationKey];
-    };
-  };
-  const cancelEditing = () => setEditing(null);
-  const edit = (value) => {
-    selection.current++;
-    setEditing(value);
-  };
-  const attempt = async (tracked, work2) => {
-    setActionError("");
-    try {
-      await work2();
-    } catch (failure) {
-      if (tracked()) setActionError(failure.message);
-    }
-  };
-  const openRolesPage = (target) => {
-    selection.current++;
-    openRoles(target);
-    layoutService?.selectPanel("nodo-roles");
-  };
-  const updateEngineChoice = async (changes) => {
-    if (!profile || sessionBusy || conversationReadOnly) return;
-    setSessionBusy(true);
-    const current = trackSelection();
-    await attempt(trackSelection(true), async () => {
-      if (sessionId && ["model", "thinking", "permission", "nativeGoal"].some((key) => changes[key] !== void 0)) {
-        await call2("session-update", { profile: profile.id, session: sessionId, changes });
-      } else {
-        const saved = await call2("profile-update", { id: profile.id, changes });
-        if (current()) remember(saved.id, workspace?.id, saved.activeSessionId);
-      }
-      await refresh(true);
-    });
-    setSessionBusy(false);
-  };
-  const savedWorkspace = async (saved) => {
-    await refresh(true);
-    remember(profile?.id, saved.id);
-    setEditing(null);
-  };
-  const createdWorktree = async (created) => {
-    setWorktreeOpen(false);
-    await refresh(true);
-    remember(profile?.id, created.workspace.id);
-    setActionError("");
-    if (!profile || !created.openSession) return;
-    setBusy(true);
-    try {
-      let sessionId2;
-      if (nativeRole(profile) && openNativeSession) {
-        const opened2 = await call2("session-open", { profile: profile.id, workspace: created.workspace.id });
-        sessionId2 = opened2.conversationId;
-        if (created.sessionName !== "") await call2("session-update", { profile: profile.id, session: sessionId2, changes: { name: created.sessionName } });
-        openNativeSession(opened2.sessionId);
-      } else {
-        const saved = await call2("session-create", {
-          profile: profile.id,
-          workspace: created.workspace.id,
-          lazy: true,
-          team,
-          ...created.sessionName === "" ? {} : { name: created.sessionName }
-        });
-        sessionId2 = saved.id;
-        if (sidebarOnly) nativeSpace.showLegacy();
-      }
-      await refresh(true);
-      remember(profile.id, created.workspace.id, sessionId2);
-      setEditing(null);
-    } catch (failure) {
-      setActionError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const renamedWorkspace = async (id, name) => {
-    await call2("workspace-update", { id, changes: { name } });
-    await refresh(true);
-    setWorkspaceDialog(null);
-  };
-  const deletedWorkspace = async (id) => {
-    await call2("workspace-delete", { id });
-    await refresh(true);
-    if (workspace?.id === id) setNavigation((current) => ({ ...current, workspace: null }));
-    setWorkspaceDialog(null);
-  };
-  const pageEnv = { workspace, busy, workspaces, work: view2?.work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing };
-  const select = (role, id, project) => selectSession(role, id, project, pageEnv);
-  const archiveSession = async (role, id, archived2) => {
-    if (busy || readOnly) return;
-    setBusy(true);
-    await attempt(() => true, async () => {
-      await call2("session-archive", { profile: role.id, session: id, archived: archived2 });
-      await refresh(true);
-    });
-    setBusy(false);
-  };
-  const updateSession = async (role, id, changes) => {
-    if (busy || readOnly) return;
-    setBusy(true);
-    await attempt(() => true, async () => {
-      await call2("session-update", { profile: role.id, session: id, changes });
-      await refresh(true);
-    });
-    setBusy(false);
-  };
-  const renamedSession = async ({ role, session: session2 }, name) => {
-    await call2("session-update", { profile: role.id, session: session2.id, changes: { name } });
-    await refresh(true);
-    setSessionDialog(null);
-  };
-  const startDraft = (roleId, project) => {
-    if (team) roleId = profiles.find((role) => role.id === roleId)?.id ?? profile?.id;
-    if (team && !roleId) return;
-    startConversation(roleId, pageEnv, project);
-  };
-  const imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-  const attach = async (files) => {
-    try {
-      if (!files.length) return;
-      const images = files.filter((file) => imageTypes.includes(file.type));
-      if (images.length !== files.length) throw new Error("\u4F1A\u8BDD\u91CC\u53EA\u80FD\u6DFB\u52A0\u56FE\u7247\uFF0C\u5176\u4ED6\u6587\u4EF6\u8BF7\u5728\u65B0\u5EFA\u4F1A\u8BDD\u9875\u6DFB\u52A0\u3002");
-      const added = await Promise.all(images.map(readImage));
-      setPastedImages((current) => ({ ...current, [draftKey]: [...current[draftKey] ?? [], ...added] }));
-    } catch (failure) {
-      setActionError(failure.message);
-    }
-  };
-  const removeImage = (index) => setPastedImages((current) => ({ ...current, [draftKey]: (current[draftKey] ?? []).filter((_2, position) => position !== index) }));
-  const insertDraft = (insertion) => setDrafts((current) => {
-    const value = current[draftKey] ?? "";
-    return { ...current, [draftKey]: value === "" || /\s$/.test(value) ? `${value}${insertion}` : `${value} ${insertion}` };
-  });
-  const [focusTick, setFocusTick] = (0, import_react.useState)(0);
-  const supplement = (step) => {
-    setScopes((current) => ({ ...current, [draftKey]: step.taskId }));
-    setFocusTick((value) => value + 1);
-  };
-  const removeScope = () => setScopes((current) => {
-    const next = { ...current };
-    delete next[draftKey];
-    return next;
-  });
-  const send = async () => {
-    const text = (drafts[draftKey] ?? "").trim();
-    const images = pastedImages[draftKey] ?? [];
-    if (!profile || !workspace || !text && images.length === 0 || sessionBusy || conversationReadOnly) return;
-    setSessionBusy(true);
-    const current = trackSelection();
-    await attempt(trackSelection(true), async () => {
-      const id = sessionId ?? (await call2("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
-      const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }));
-      await call2("send", { profile: profile.id, session: id, text, images: payload, mode: "queue", ...scopeTask ? { taskId: scopeTask.id } : {} });
-      if (current()) setSentTick((tick) => tick + 1);
-      setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
-      setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
-      await refresh(!sessionId);
-      if (current()) remember(profile.id, workspace.id, id);
-    });
-    setSessionBusy(false);
-  };
-  const queueAction = async (seq, action) => {
-    if (!profile || !sessionId || sessionBusy || conversationReadOnly) return;
-    setSessionBusy(true);
-    const relevant = trackSelection(true);
-    await attempt(relevant, async () => {
-      const result = await call2("queued-message", { profile: profile.id, session: sessionId, seq, action });
-      if (action === "edit") {
-        setDrafts((current) => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join("\n\n") }));
-        setPastedImages((current) => ({ ...current, [draftKey]: [
-          ...result.images.map((image) => ({ ...image, dataUrl: `data:${image.mediaType};base64,${image.data}` })),
-          ...current[draftKey] ?? []
-        ] }));
-      }
-      if (action === "send" && relevant()) {
-        if (result.mode === "queued") setActionError("\u5F53\u524D\u65E0\u6CD5\u63D2\u5165\u672C\u8F6E\uFF0C\u6D88\u606F\u4ECD\u5728\u6392\u961F");
-        else if (result.mode !== "cancelled") setSentTick((tick) => tick + 1);
-      }
-      await refresh(false);
-    });
-    setSessionBusy(false);
-  };
-  const interrupt = async () => {
-    if (!profile || sessionBusy || conversationReadOnly) return;
-    setSessionBusy(true);
-    await attempt(trackSelection(true), async () => {
-      await call2("interrupt", { profile: profile.id, session: sessionId });
-      await refresh(false);
-    });
-    setSessionBusy(false);
-  };
-  const stopMember = async (step) => {
-    try {
-      await call2("interrupt", { profile: step.profile, session: step.session });
-      await refresh(false);
-    } catch (failure) {
-      setActionError(failure.message);
-    }
-  };
-  const compactSession = async () => {
-    if (!profile || sessionBusy || conversationReadOnly || work?.active === true) return;
-    if (!sessionId) {
-      setActionError("\u5148\u5F00\u59CB\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u538B\u7F29\u4E0A\u4E0B\u6587");
-      return;
-    }
-    setCompacting((current) => [...current, sessionId]);
-    await attempt(trackSelection(true), async () => {
-      await call2("session-compact", { profile: profile.id, session: sessionId });
-      await refresh(true);
-    });
-    setCompacting((current) => current.filter((id) => id !== sessionId));
-  };
-  const openSession = (id) => {
-    setOpened((current) => current.includes(id) ? current : [...current, id]);
-    const role = view2.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
-    if (role) {
-      setNavigation((current) => ({ ...current, view: "sessions" }));
-      void select(role, id, workspaces.find((item) => item.id === role.sessions.find((entry) => entry.id === id)?.workspaceRef));
-    }
-  };
-  const openRound = (id) => {
-    if (id !== lead.session.id) return openSession(id);
-    setNavigation((current) => ({ ...current, view: "team" }));
-    void select(lead.role, id, workspaces.find((item) => item.id === lead.session.workspaceRef));
-  };
-  const showSessions = (view3) => rolesGuard(() => {
-    setNavigation((current) => ({ ...current, view: view3 }));
-    setEditing(null);
-    nativeSpace.showLegacy();
-  });
-  const panelBody = (0, import_react.useRef)(null);
-  (0, import_react.useLayoutEffect)(() => {
-    const node = panelBody.current;
-    if (!node) return;
-    const measure = () => node.style.setProperty("--nodo-session-bottom", sessionPanelBottom(node));
-    measure();
-    if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    const composer = node.querySelector(".nodo-composer");
-    if (composer) observer.observe(composer);
-    return () => observer.disconnect();
-  }, [sessionId, archivedConversation, profile?.id, workspace?.id, view2 !== null, panelOpen]);
-  const conversation = () => (0, import_react.createElement)(
-    "div",
-    { className: "nodo-conversation" },
-    // The host conversation header: the session's own name in the window-chrome
-    // row and one hairline closing the block.
-    (0, import_react.createElement)(
-      "header",
-      { className: "nodo-head", "data-rightbar-open": rightbarOpen || void 0 },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-title-row" },
-        ...tabs.map(({ role, session: entry }) => {
-          const open = () => {
-            setNavigation((current) => ({ ...current, view: entry.id === lead.session.id ? "team" : "sessions" }));
-            void select(role, entry.id, workspaces.find((item) => item.id === entry.workspaceRef));
-          };
-          const close = (event) => {
-            event.stopPropagation();
-            setOpened((current) => current.filter((id) => id !== entry.id));
-            if (entry.id === sessionId) {
-              setNavigation((current) => ({ ...current, view: "team" }));
-              void select(lead.role, lead.session.id, workspaces.find((item) => item.id === lead.session.workspaceRef));
-            }
-          };
-          return (0, import_react.createElement)(
-            "span",
-            { key: entry.id, className: "nodo-tab", "data-current": entry.id === sessionId || void 0 },
-            (0, import_react.createElement)(
-              "button",
-              { type: "button", className: entry.id === sessionId ? "nodo-crumb" : "nodo-crumb nodo-crumb-link", title: entry.name, onClick: open },
-              (0, import_react.createElement)(RoundFaces, { roles: entry.id === lead.session.id ? [...new Map(tabRoles.map((item) => [item.id, item])).values()] : [role] }),
-              (0, import_react.createElement)("span", { className: "nodo-crumb-text" }, entry.name)
-            ),
-            entry.id !== lead.session.id && (0, import_react.createElement)("button", { type: "button", className: "nodo-tab-close", "aria-label": "\u5173\u95ED", onClick: close }, "\xD7")
-          );
-        }),
-        tabs.length === 0 && (0, import_react.createElement)(
-          "span",
-          { className: "nodo-crumb", title: session?.name ?? workspace?.name ?? profile.name },
-          session?.name ?? workspace?.name ?? profile.name
-        ),
-        sessionWorkspace && (0, import_react.createElement)(
-          "span",
-          { className: "nodo-head-actions" },
-          (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-            label: "\u6458\u8981\u9762\u677F",
-            side: "bottom",
-            align: "end",
-            delayMs: 500,
-            children: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-              variant: "ghost",
-              className: "nodo-right-toggle",
-              "aria-label": "\u6458\u8981\u9762\u677F",
-              "aria-pressed": panelOpen,
-              onClick: () => setPanelOpen((value) => !value),
-              icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16, className: "nodo-summary-glyph" })
-            })
-          })
-        )
-      )
-    ),
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-body", ref: panelBody },
-      (0, import_react.createElement)(
-        "div",
-        { className: "nodo-body-main" },
-        (0, import_react.createElement)(Feed, {
-          key: `${team}:${sessionId}`,
-          profile,
-          session,
-          work,
-          sentTick,
-          decisions: view2.decisions,
-          round: team ? {
-            profiles: view2.profiles,
-            teams: view2.teams,
-            tasks: view2.tasks,
-            decisions: view2.decisions,
-            leadId: profile.id,
-            work: view2.work,
-            onOpen: openSession,
-            onStop: conversationReadOnly ? void 0 : stopMember,
-            onSupplement: conversationReadOnly ? void 0 : supplement
-          } : void 0
-        }),
-        (work?.active === true || activeTasks > 0) && (0, import_react.createElement)(
-          "div",
-          { className: "nodo-running-dock" },
-          work?.active === true && (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work }),
-          activeTasks > 0 && (0, import_react.createElement)(TaskCountLine, { count: activeTasks })
-        ),
-        ...(!archivedConversation ? view2.decisions ?? [] : []).filter((decision) => decision.coordinatorSessionId === sessionId && (decision.status === "pending" || decision.status === "answered")).map((decision) => (0, import_react.createElement)(DecisionCard, {
-          key: decision.id,
-          decision,
-          profileId: profile.id,
-          readOnly,
-          refresh,
-          profiles: view2.profiles,
-          tasks: view2.tasks,
-          work: view2.work
-        })),
-        ...(!archivedConversation ? view2.approvals ?? [] : []).filter((card) => card.profileId == null || card.profileId === sessionId || members.some((item) => item.session.id === card.profileId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
-          key: card.id,
-          card: card.taskId ? { ...card, taskTitle: view2.tasks?.find((task) => task.id === card.taskId)?.title } : card,
-          refresh,
-          readOnly,
-          from: members.find((item) => item.session.id === card.profileId)
-        })),
-        (0, import_react.createElement)(PlanDock, { profileId: profile.id, sessionId }),
-        !archivedConversation && (0, import_react.createElement)(Composer, {
-          profile: composerProfile,
-          workspace: sessionWorkspace,
-          value: drafts[draftKey] ?? "",
-          images: pastedImages[draftKey] ?? [],
-          running: work?.active === true,
-          busy: sessionBusy,
-          readOnly: readOnly || !workspace,
-          modelDisabled: sessionBusy || readOnly,
-          onChange: (value) => setDrafts((current) => ({ ...current, [draftKey]: value })),
-          onSend: () => void send(),
-          onStop: () => void interrupt(),
-          onAttach: attach,
-          onRemoveImage: removeImage,
-          onAttachFiles: attach,
-          accept: "image/png,image/jpeg,image/webp,image/gif",
-          attachLabel: "\u4E0A\u4F20\u56FE\u7247",
-          pending: work?.pending?.some((item) => item.taskId) ? work.pending.map((item) => item.taskId ? { ...item, taskTitle: view2.tasks?.find((task) => task.id === item.taskId)?.title } : item) : work?.pending,
-          onQueueAction: (seq, action) => void queueAction(seq, action),
-          taskScope: scopeTask?.title,
-          onRemoveTaskScope: removeScope,
-          focusTick,
-          onInsert: insertDraft,
-          onGoal: sessionId ? () => setGoalOpen(true) : void 0,
-          onCompact: () => void compactSession(),
-          onModelChange: (changes) => void updateEngineChoice(changes),
-          rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view2.profiles, profile })
-        }),
-        // The host chat's statistics line sits right below the input card, one per
-        // session, inside the dock the composer keeps: the dock holds its height
-        // before the session has any figure, so the input card never moves.
-        (0, import_react.createElement)(
-          "div",
-          { className: "nodo-stats" },
-          (0, import_react.createElement)(SessionStats, { stats: leadModeOf(profile, session) ? void 0 : (view2?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
-        )
-      ),
-      panelOpen && sessionWorkspace && (0, import_react.createElement)(SessionPanel, {
-        workspace: sessionWorkspace.id,
-        cwd: sessionWorkspace.cwd,
-        running: work?.active === true || activeTasks > 0,
-        profile: profile.id,
-        session: sessionId,
-        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view2.work, tasks: view2.tasks, decisions: view2.decisions, stats: view2.stats, onOpen: openRound } : void 0
-      })
-    )
-  );
-  const page = () => {
-    if (profile && (workspace || session)) return conversation();
-    return (0, import_react.createElement)(
-      "div",
-      { className: "nodo-empty" },
-      (0, import_react.createElement)("p", { className: "nodo-headline" }, workspace ? "\u9009\u62E9\u4E00\u4E2A\u89D2\u8272" : "\u6DFB\u52A0\u4E00\u4E2A\u9879\u76EE"),
-      (0, import_react.createElement)("p", null, workspace ? "\u6DFB\u52A0\u6216\u9009\u62E9\u5DE6\u4FA7\u89D2\u8272\uFF0C\u4E0E\u5176\u5728\u5F53\u524D\u9879\u76EE\u4E2D\u5BF9\u8BDD\u3002" : "\u70B9\u51FB\u5DE6\u4FA7\u9879\u76EE\u65C1\u7684 +\uFF0C\u9009\u62E9\u5DE5\u4F5C\u76EE\u5F55\u3002")
-    );
-  };
-  const initiallyOpened = (0, import_react.useRef)(false);
-  (0, import_react.useEffect)(() => {
-    openInitialSidebarSession({ sidebarOnly, initiallyOpened, profile, workspace, sessionId, ...pageEnv });
-  }, [sidebarOnly, profile?.id, workspace?.id]);
-  return (0, import_react.createElement)(
-    "section",
-    { className: `nodo-page${sidebarOnly ? " nodo-space-sidebar" : ""}`, "aria-label": sidebarOnly ? "Nodo \u7A7A\u95F4" : "Nodo" },
-    error2 && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2),
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-frame" },
-      !contentOnly && view2 && (0, import_react.createElement)(Rail, {
-        key: team ? "team" : "sessions",
-        view: railView,
-        profile,
-        workspace,
-        sessionId,
-        editing,
-        draft: space.draft,
-        drafting: space.drafting,
-        onResumeDraft: () => nativeSpace.resumeDraft(),
-        readOnly,
-        busy,
-        navigation: railNavigation ?? (team ? { view: "team" } : null),
-        onSelect: (id) => {
-          const role = view2.profiles.find((item) => item.id === id);
-          if (role && workspace) void select(role);
-          else {
-            remember(id, workspace?.id);
-            setActionError("");
-            setEditing(null);
-            if (sidebarOnly) nativeSpace.showLegacy();
-          }
-        },
-        onSelectSession: (role, id, project) => void select(role, id, project),
-        onArchiveSession: (role, id, archived2) => void archiveSession(role, id, archived2),
-        onRenameSession: (role, session2) => setSessionDialog({ role, session: session2 }),
-        onPinSession: (role, id, pinned) => void updateSession(role, id, { pinned }),
-        onNewSession: startDraft,
-        onNewWorktree: (project) => {
-          if (!readOnly) setWorktreeOpen(project);
-        },
-        onNewRole: () => openRolesPage({ profileId: "new" }),
-        onEditRole: (item) => openRolesPage({ profileId: item.id }),
-        onNewTeam: () => openRolesPage({ team: "new" }),
-        onEditTeam: (id) => openRolesPage({ team: id }),
-        onSettings: () => edit({ kind: "settings" }),
-        onRoles: () => layoutService?.selectPanel("nodo-roles"),
-        onSessions: () => showSessions("sessions"),
-        onTeam: () => showSessions("team"),
-        onBack: () => rolesGuard(() => nativeSpace.leave()),
-        onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
-        onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
-        onDeleteWorkspace: (workspace2) => setWorkspaceDialog({ kind: "delete", workspace: workspace2 })
-      }),
-      !sidebarOnly && (0, import_react.createElement)(
-        "main",
-        { className: "nodo-main" },
-        !view2 ? (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026") : page(),
-        actionError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, actionError)
-      )
-    ),
-    sidebarOnly && actionError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, actionError),
-    sessionDialog && (0, import_react.createElement)(SessionRenameDialog, {
-      key: `session:${sessionDialog.session.id}`,
-      session: sessionDialog.session,
-      onCancel: () => setSessionDialog(null),
-      onSaved: (name) => renamedSession(sessionDialog, name)
-    }),
-    workspaceDialog && (0, import_react.createElement)(workspaceDialog.kind === "rename" ? WorkspaceRenameDialog : WorkspaceDeleteDialog, {
-      key: `${workspaceDialog.kind}:${workspaceDialog.workspace.id}`,
-      workspace: workspaceDialog.workspace,
-      ...workspaceDialog.kind === "rename" ? { names: workspaces } : {},
-      onCancel: () => setWorkspaceDialog(null),
-      ...workspaceDialog.kind === "rename" ? { onSaved: renamedWorkspace } : { onDeleted: deletedWorkspace }
-    }),
-    worktreeOpen && (0, import_react.createElement)(WorktreeDialog, {
-      key: `worktree:${worktreeOpen.id}`,
-      workspace: worktreeOpen,
-      profile,
-      onCancel: () => setWorktreeOpen(false),
-      onCreated: createdWorktree
-    }),
-    goalOpen && profile && (0, import_react.createElement)(GoalDialog, {
-      key: `goal:${sessionId}`,
-      profile: composerProfile,
-      onSaved: (value) => {
-        setGoalOpen(false);
-        void updateEngineChoice({ nativeGoal: value });
-      },
-      onCancel: () => setGoalOpen(false)
-    }),
-    statsOpen && !leadModeOf(profile, session) && view2 !== void 0 && (view2.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
-      key: `stats:${sessionId}`,
-      stats: view2.stats[sessionId],
-      onClose: () => setStatsOpen(false)
-    }),
-    editing?.kind === "workspace" && (0, import_react.createElement)(WorkspaceDialog, {
-      key: `ws:${editing.id}`,
-      workspace: editing.workspace ?? null,
-      onCancel: cancelEditing,
-      onSaved: savedWorkspace
-    }),
-    editing?.kind === "settings" && (0, import_react.createElement)(EngineSettingsDialog, {
-      key: "settings",
-      view: view2,
-      workspace,
-      refresh,
-      readOnly,
-      onClose: cancelEditing
-    }),
-    view2 && !readOnly && !onboardDone && onboarding.current && (0, import_react.createElement)(OnboardingDialog, {
-      key: "onboard",
-      view: view2,
-      onDone: () => {
-        setOnboardDone(true);
-        refresh(true);
-      }
-    })
-  );
-}
-function PanelIcon({ size = 16 }) {
-  return (0, import_react.createElement)("span", { className: "nodo-panel-logo" }, (0, import_react.createElement)(NodoLogo, { compact: size === 18, width: size === 18 ? size : 96 }));
-}
-function NativeWelcome({ sessionId }) {
-  return (0, import_react.createElement)(NewConversation, { key: sessionId, sourceSessionId: sessionId });
-}
-function NodoEntry() {
-  const state = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
-  (0, import_react.useEffect)(() => {
-    nativeSpace.enter();
-  }, []);
-  return state.legacy ? (0, import_react.createElement)(NodoPage, { contentOnly: true }) : state.drafting && state.draft ? (0, import_react.createElement)(NewConversation, { key: state.draft.id, draft: state.draft }) : null;
-}
-var sidebarFold = { collapsed: false, listeners: /* @__PURE__ */ new Set() };
-var subscribeSidebarFold = (listener) => {
-  sidebarFold.listeners.add(listener);
-  return () => sidebarFold.listeners.delete(listener);
-};
-function SidebarToggle({ collapsed }) {
-  const label = collapsed ? "\u5C55\u5F00\u4FA7\u8FB9\u680F" : "\u6536\u8D77\u4FA7\u8FB9\u680F";
-  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
-    label,
-    side: "bottom",
-    delayMs: 500,
-    children: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
-      variant: "ghost",
-      onClick: () => layoutService.toggleSidebar(),
-      icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16 }),
-      "aria-label": label
-    })
-  });
-}
-function NodoSidebarControl() {
-  const collapsed = (0, import_react.useSyncExternalStore)(subscribeSidebarFold, () => sidebarFold.collapsed);
-  return (0, import_react.createElement)("div", { className: "nodo-left-control" }, (0, import_react.createElement)(SidebarToggle, { collapsed }));
-}
-function NodoSidebar({ collapsed }) {
-  const rolesNavigation = (0, import_react.useSyncExternalStore)(rolesSubscribeSidebar, rolesSidebarSnapshot);
-  const space = (0, import_react.useRef)(null);
-  const wasCollapsed = (0, import_react.useRef)(collapsed);
-  (0, import_react.useLayoutEffect)(() => {
-    sidebarFold.collapsed = !!collapsed;
-    for (const listener of sidebarFold.listeners) listener();
-    const root = document.documentElement;
-    const opening = wasCollapsed.current && !collapsed;
-    wasCollapsed.current = collapsed;
-    if (!opening || !root.matches("[data-platform=darwin]")) return;
-    const chrome = root.hasAttribute("data-fullscreen") ? 84 : 160;
-    let frames = 0;
-    const follow = () => {
-      const rest = Math.max(0, chrome - (space.current?.getBoundingClientRect().width ?? chrome));
-      root.style.setProperty("--nodo-leading-clearance", `${rest}px`);
-      frame = rest > 0 && ++frames < 120 ? requestAnimationFrame(follow) : void 0;
-    };
-    root.style.setProperty("--nodo-leading-clearance", `${chrome}px`);
-    let frame = requestAnimationFrame(follow);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      root.style.removeProperty("--nodo-leading-clearance");
-    };
-  }, [collapsed]);
-  return (0, import_react.createElement)(
-    "div",
-    { className: "nodo-space", ref: space },
-    (0, import_react.createElement)("div", { className: "nodo-space-chrome" }, (0, import_react.createElement)(SidebarToggle, { collapsed })),
-    (0, import_react.createElement)(
-      "div",
-      { className: "nodo-space-content", style: collapsed ? { display: "none" } : void 0 },
-      (0, import_react.createElement)(NodoPage, { sidebarOnly: true, railNavigation: rolesNavigation })
-    )
-  );
-}
 
-// src/client/native-space.js
-function createNativeSpace(ctx, Sidebar, SidebarControl) {
-  let saved;
+// src/client/navigation.js
+var navigationSnapshot;
+var navigationListeners = /* @__PURE__ */ new Set();
+var readNavigation = () => {
+  if (navigationSnapshot === void 0) {
+    try {
+      navigationSnapshot = JSON.parse(localStorage.getItem("nodo.navigation") ?? localStorage.getItem("orchestrator.navigation")) ?? {};
+    } catch {
+      navigationSnapshot = {};
+    }
+  }
+  return navigationSnapshot;
+};
+var subscribeNavigation = (listener) => {
+  navigationListeners.add(listener);
+  return () => navigationListeners.delete(listener);
+};
+var setNavigation = (update) => {
+  navigationSnapshot = typeof update === "function" ? update(readNavigation()) : update;
   try {
-    saved = JSON.parse(localStorage.getItem("nodo.space"));
+    localStorage.setItem("nodo.navigation", JSON.stringify(navigationSnapshot));
   } catch {
   }
-  let state = { active: false, legacy: saved?.legacy === true, nativeSession: saved?.nativeSession, nodoSession: saved?.nodoSession, draft: saved?.draft, drafting: saved?.drafting ?? !!saved?.draft };
-  let awaitingEntry = false;
-  const listeners2 = /* @__PURE__ */ new Set();
-  const current = () => ctx.uiSession.adapter.current.getSnapshot().key;
-  const publish = (changes) => {
-    const next = { ...state, ...changes };
-    if (Object.keys(next).every((key) => next[key] === state[key])) return;
-    state = next;
-    try {
-      localStorage.setItem("nodo.space", JSON.stringify(state));
-    } catch {
-    }
-    for (const listener of listeners2) listener();
-  };
-  const subscribe = (listener) => {
-    listeners2.add(listener);
-    return () => listeners2.delete(listener);
-  };
-  const draftEmpty = (draft) => {
-    const read = (key2) => {
-      try {
-        return JSON.parse(localStorage.getItem(key2));
-      } catch {
-      }
-    };
-    const key = `new:${draft.id}`;
-    return String(read("nodo.drafts")?.[key] ?? "").trim() === "" && !read("nodo.draft-options")?.[key]?.references?.length && !read("nodo.draft-options")?.[key]?.files?.length && !heldImages?.[key]?.length;
-  };
-  const keptDraft = () => state.draft && draftEmpty(state.draft) ? { draft: void 0 } : {};
-  const away = () => ({ drafting: false, ...keptDraft() });
-  const resume = () => {
-    const catalog = ctx.sessions.list.getSnapshot();
-    if (!awaitingEntry || catalog.phase !== "ready") return;
-    awaitingEntry = false;
-    if (state.legacy || state.drafting) ctx.layout.selectPanel("nodo");
-    else if (state.nodoSession && catalog.byId[state.nodoSession]) ctx.uiWorkspace.openSession(state.nodoSession);
-    else {
-      publish({ nodoSession: void 0 });
-      ctx.layout.selectPanel(null);
-    }
-  };
-  const enter = () => {
-    if (!state.active) publish({ active: true, nativeSession: current() === state.nodoSession ? state.nativeSession : current() ?? state.nativeSession });
-    awaitingEntry = true;
-    resume();
-    if (document.querySelector("[data-sidebar-collapsed]")) ctx.layout.toggleSidebar();
-  };
-  const seat = (slot, Component) => ctx.slots.inject(slot.name, () => {
-    let unregister;
-    const update = () => {
-      if (state.active && !unregister) unregister = ctx.slots.register(slot, Component);
-      else if (!state.active && unregister) {
-        unregister();
-        unregister = null;
-      }
-    };
-    const stop = subscribe(update);
-    update();
-    return () => {
-      stop();
-      unregister?.();
-    };
-  });
-  seat({ name: "sidebar", priority: -100 }, Sidebar);
-  seat({ name: "shell.overlay", id: "nodo.sidebar-toggle" }, SidebarControl);
-  ctx.effect(() => {
-    let live = true;
-    let selected = current();
-    const stop = ctx.uiSession.adapter.current.subscribe(() => {
-      const id = current();
-      if (id === selected) return;
-      selected = id;
-      if (state.active && !state.legacy && id) publish({ nodoSession: id, ...away() });
-    });
-    const stopCatalog = ctx.sessions.list.subscribe(resume);
-    if (saved?.active) queueMicrotask(() => {
-      if (live) enter();
-    });
-    return () => {
-      live = false;
-      stop();
-      stopCatalog();
-      listeners2.clear();
-    };
-  }, "nodo: native space");
-  return {
-    subscribe,
-    getSnapshot: () => state,
-    enter,
-    leave() {
-      awaitingEntry = false;
-      publish({ active: false, ...keptDraft() });
-      if (state.nativeSession && ctx.sessions.list.getSnapshot().byId[state.nativeSession]) ctx.uiWorkspace.openSession(state.nativeSession);
-      else ctx.layout.selectPanel(null);
-    },
-    // The draft outlives session switches when it has input and is reachable
-    // from the rail's "新会话" row; only its own successful send ends it.
-    // `drafting` marks the draft as the page on show, apart from merely kept.
-    // Another recipient gets its own draft: the open one would keep showing the
-    // role its composer was seeded with, not the requested one.
-    startDraft(options) {
-      const held = state.draft && (options.profile === void 0 || options.profile === state.draft.profile);
-      publish({ legacy: false, drafting: true, draft: held ? { ...state.draft, ...options, id: state.draft.id } : { ...options, id: crypto.randomUUID() } });
-      ctx.layout.selectPanel("nodo");
-    },
-    resumeDraft() {
-      publish({ legacy: false, drafting: true });
-      ctx.layout.selectPanel("nodo");
-    },
-    endDraft(id) {
-      if (state.draft?.id === id) publish({ draft: void 0, drafting: false });
-    },
-    open(id) {
-      publish({ legacy: false, nodoSession: id, ...away() });
-      ctx.uiWorkspace.openSession(id);
-    },
-    showLegacy() {
-      publish({ legacy: true, ...away() });
-      ctx.layout.selectPanel("nodo");
-    }
-  };
-}
-
-// src/client/changes-panel.tsx
-var RENDER_BUDGET = 2e3;
-var treeOf = (entries) => {
-  const root = { dirs: /* @__PURE__ */ new Map(), files: [] };
-  for (const { rel, entry } of entries) {
-    const parts = rel.split("/");
-    let at2 = root;
-    for (const part of parts.slice(0, -1)) {
-      if (!at2.dirs.has(part)) at2.dirs.set(part, { dirs: /* @__PURE__ */ new Map(), files: [] });
-      at2 = at2.dirs.get(part);
-    }
-    at2.files.push({ name: parts.at(-1), path: entry.file.path, entry });
-  }
-  return root;
+  for (const listener of navigationListeners) listener();
 };
-function ChangesView({ source, initialPath = "", openFile }) {
-  const [body, setBody] = (0, import_react.useState)(source.body);
-  const [selected, setSelected] = (0, import_react.useState)(initialPath);
-  const [query, setQuery] = (0, import_react.useState)("");
-  const [folded, setFolded] = (0, import_react.useState)({});
-  const [expanded, setExpanded] = (0, import_react.useState)({});
-  const [busy, setBusy] = (0, import_react.useState)(!!source.load);
-  const [error2, setError] = (0, import_react.useState)("");
-  const [attempt, setAttempt] = (0, import_react.useState)(0);
-  const sections = (0, import_react.useRef)({});
-  (0, import_react.useEffect)(() => {
-    if (!source.load) return;
-    let live = true;
-    setBusy(true);
-    setError("");
-    void source.load().then((value) => {
-      if (live) setBody(value);
-    }).catch((failure) => {
-      if (live) setError(failure.message || "\u53D8\u66F4\u8BE6\u60C5\u8BFB\u53D6\u5931\u8D25");
-    }).finally(() => {
-      if (live) setBusy(false);
-    });
-    return () => {
-      live = false;
-    };
-  }, [source, attempt]);
-  const { files, totals } = (0, import_react.useMemo)(() => summarizeChanges(body), [body]);
-  const reveal = (path) => sections.current[path]?.scrollIntoView?.({ block: "start" });
-  (0, import_react.useEffect)(() => {
-    if (selected && !busy) reveal(selected);
-  }, [busy]);
-  const rows = files.map((entry) => ({ rel: relativeFile(entry.file.path, body.cwd), entry }));
-  const wanted = query.trim().toLowerCase();
-  const tree = treeOf(rows.filter(({ rel }) => !wanted || rel.toLowerCase().includes(wanted)));
-  const branch = (dir, prefix, depth) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, [...dir.dirs].map(([name, child]) => {
-    const key = `${prefix}${name}/`;
-    return /* @__PURE__ */ (0, import_react.createElement)("div", { key }, /* @__PURE__ */ (0, import_react.createElement)(
-      "button",
-      {
-        type: "button",
-        className: "nodo-changes-node",
-        style: { paddingInlineStart: 8 + depth * 14 },
-        "aria-expanded": !folded[key],
-        onClick: () => setFolded((current) => ({ ...current, [key]: !current[key] }))
-      },
-      folded[key] ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }),
-      /* @__PURE__ */ (0, import_react.createElement)("span", null, name)
-    ), !folded[key] && branch(child, key, depth + 1));
-  }), dir.files.map((file) => /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      key: file.path,
-      type: "button",
-      className: "nodo-changes-node",
-      "data-selected": file.path === selected || void 0,
-      style: { paddingInlineStart: 8 + depth * 14 },
-      title: relativeFile(file.path, body.cwd),
-      onClick: () => {
-        setSelected(file.path);
-        reveal(file.path);
-      }
-    },
-    /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: file.name, size: 14 }),
-    /* @__PURE__ */ (0, import_react.createElement)("span", null, file.name),
-    /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: file.entry.counts })
-  )));
-  let spent = 0;
-  const within = /* @__PURE__ */ new Set();
-  for (const { entry } of rows) {
-    const size = entry.counts ? entry.counts.added + entry.counts.removed : 100;
-    if (spent + size <= RENDER_BUDGET) {
-      within.add(entry.file.path);
-      spent += size;
-    }
-  }
-  const section = ({ rel, entry }) => {
-    const name = rel.slice(rel.lastIndexOf("/") + 1);
-    const shown = within.has(entry.file.path) || expanded[entry.file.path] || entry.file.path === selected;
-    return /* @__PURE__ */ (0, import_react.createElement)("section", { key: entry.file.path, className: "nodo-changes-file-section", ref: (element) => {
-      sections.current[entry.file.path] = element;
-    } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-changes-row-title" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: rel }, /* @__PURE__ */ (0, import_react.createElement)("strong", null, name)), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${rel}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) })), shown ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff" }, source.renderFile(entry.file, entry.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-collapsed" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setExpanded((current) => ({ ...current, [entry.file.path]: true })) }, "\u5C55\u5F00 diff")));
-  };
-  const message = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-viewer" }, busy ? message("\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, message(error2), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, rows.map(section), files.length < body.fileCount && message(`\u4EC5\u4FDD\u5B58 ${files.length} / ${body.fileCount} \u4E2A\u6587\u4EF6`), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : message("\u65E0\u6587\u4EF6\u53D8\u66F4")))), files.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5DF2\u66F4\u6539\u7684\u6587\u4EF6"), totals && /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-nodes" }, branch(tree, "", 0))));
-}
-var CHANGES_PANEL_CSS = `
-.nodo-right-changes{display:flex;flex:1;flex-direction:row;min-width:0;min-height:0;overflow:hidden}
-.nodo-changes-viewer{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden}
-.nodo-changes-file-section{flex:none;min-width:0}
-.nodo-changes-diff{min-width:0;overflow-x:hidden}
-.nodo-changes-collapsed{padding:10px 12px}
-.nodo-changes-tree{display:flex;flex:0 0 min(280px,45%);flex-direction:column;min-width:0;min-height:0;border-left:.5px solid var(--dsw-alias-border-l3)}
-.nodo-changes-tree-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:10px 16px 4px;color:var(--dsw-alias-label-secondary);font-size:13px}
-.nodo-changes-nodes{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto;padding:0 8px 12px}
-.nodo-changes-node{display:flex;align-items:center;gap:6px;width:100%;min-height:30px;padding:4px 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left;cursor:pointer}
-.nodo-changes-node:hover,.nodo-changes-node[data-selected]{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-changes-node>svg,.nodo-changes-node>img{flex:none;color:var(--dsw-alias-label-tertiary)}
-.nodo-changes-node>span:not(.nodo-changes-counts){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nodo-changes-row-title{display:flex;align-items:center;gap:8px;min-width:0;min-height:36px;padding:4px 8px 4px 12px;border-bottom:.5px solid var(--dsw-alias-border-l3);font-size:13px}
-.nodo-changes-row-title>svg,.nodo-changes-row-title>img{flex:none;color:var(--dsw-alias-label-tertiary)}
-.nodo-changes-path{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.nodo-changes-path strong{font-weight:600}
-.nodo-changes-load-error{display:flex;align-items:center;gap:8px;padding-right:8px}
-.nodo-changes-node:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}
-.nodo-right-changes .nodo-note{padding:0 12px;overflow-wrap:anywhere}
-`;
-
-// src/client/browser.tsx
-var desktopBrowser = () => globalThis.dshDesktop?.browser;
-function normalizeBrowserAddress(input) {
-  let address = input.trim();
-  if (!address || address.length > 16384 || /[\s\\]/.test(address)) return null;
-  if (/^:?\d+$/.test(address)) address = `http://localhost:${address.replace(/^:/, "")}`;
-  else if (/^(localhost|127(?:\.\d{1,3}){1,3}|\[[^\]]+\])(?=[:/?#]|$)/i.test(address)) address = `http://${address}`;
-  else if (!/^[a-z][a-z\d+.-]*:/i.test(address) || /^[a-z\d.-]+\.[a-z\d-]+:\d+(?=[/?#]|$)/i.test(address)) address = `https://${address}`;
-  try {
-    const url = new URL(address);
-    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password || url.port === "0") return null;
-    const origin = globalThis.location?.origin;
-    if (origin && origin !== "null" && url.origin === origin) return null;
-    return url.href;
-  } catch {
-    return null;
-  }
-}
-var browserTitle = (url) => url ? new URL(url).hostname : "\u6D4F\u89C8\u5668";
-function BrowserView({ cwd, initialUrl, onChange, onOpen }) {
-  const [bridge] = (0, import_react.useState)(desktopBrowser);
-  const [address, setAddress] = (0, import_react.useState)(initialUrl);
-  const [url, setUrl] = (0, import_react.useState)(initialUrl);
-  const [error2, setError] = (0, import_react.useState)("");
-  const [navigation, setNavigation2] = (0, import_react.useState)({ back: false, forward: false });
-  const [revision, setRevision] = (0, import_react.useState)(0);
-  const viewport = (0, import_react.useRef)(null);
-  const commands = (0, import_react.useRef)(null);
-  const latestUrl = (0, import_react.useRef)(initialUrl);
-  latestUrl.current = initialUrl;
-  const callbacks = (0, import_react.useRef)({ onChange, onOpen });
-  callbacks.current = { onChange, onOpen };
-  (0, import_react.useEffect)(() => {
-    if (!bridge) return;
-    if (!cwd) {
-      setError("\u5DE5\u4F5C\u533A\u4E0D\u53EF\u7528");
-      return;
-    }
-    let live = true, ready = false, firstDocument = true, loadRevision = 0;
-    let pending = latestUrl.current, observed = latestUrl.current;
-    let guest, lease, unsubscribe;
-    const dispose = () => {
-      unsubscribe?.();
-      unsubscribe = void 0;
-      commands.current = null;
-      guest?.remove();
-      guest = void 0;
-      if (lease) {
-        void bridge.release(lease).catch(() => {
-        });
-        lease = void 0;
-      }
-    };
-    const load = (value) => {
-      pending = value;
-      if (!ready || !guest) return;
-      pending = "";
-      const current = ++loadRevision;
-      void guest.loadURL(value).catch((failure) => {
-        if (live && current === loadRevision && !(typeof failure === "object" && failure !== null && "code" in failure && failure.code === "ERR_ABORTED")) setError("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25");
-      });
-    };
-    const observe = () => {
-      if (!live || !ready || !guest) return;
-      try {
-        const current = normalizeBrowserAddress(guest.getURL());
-        if (!current) return;
-        setError("");
-        if (firstDocument) {
-          guest.clearHistory();
-          firstDocument = false;
-        }
-        if (current !== observed) {
-          observed = current;
-          setAddress(current);
-          setUrl(current);
-        }
-        const title = guest.getTitle().trim();
-        if (title) guest.setAttribute("aria-label", title);
-        callbacks.current.onChange(current, title || browserTitle(current));
-        setNavigation2({ back: guest.canGoBack(), forward: guest.canGoForward() });
-      } catch {
-        setError("\u65E0\u6CD5\u8BFB\u53D6\u7F51\u9875\u72B6\u6001");
-      }
-    };
-    commands.current = { navigate: load, back: () => guest?.goBack(), forward: () => guest?.goForward(), reload: () => guest?.reload() };
-    void (async () => {
-      const reservation = await bridge.acquire(`cwd:${cwd}`);
-      if (!live) {
-        await bridge.release(reservation.lease);
-        return;
-      }
-      lease = reservation.lease;
-      setError("");
-      const element = document.createElement("webview");
-      guest = element;
-      element.className = "nodo-browser-frame";
-      element.setAttribute("name", reservation.lease);
-      element.setAttribute("partition", reservation.partition);
-      element.setAttribute("allowpopups", "");
-      element.setAttribute("src", `about:blank#${reservation.lease}`);
-      element.setAttribute("aria-label", "\u6D4F\u89C8\u5668\u9875\u9762");
-      unsubscribe = bridge.onOpenRequested(reservation.lease, (value) => {
-        const next = normalizeBrowserAddress(value);
-        if (live && next) callbacks.current.onOpen(next);
-      });
-      element.addEventListener("dom-ready", () => {
-        if (live) {
-          ready = true;
-          setError("");
-          observe();
-          if (pending) load(pending);
-        }
-      });
-      for (const event of ["did-navigate", "did-navigate-in-page", "did-stop-loading", "page-title-updated"]) element.addEventListener(event, observe);
-      element.addEventListener("did-fail-load", (event) => {
-        const failure = event;
-        if (live && failure.isMainFrame && failure.errorCode !== -3) setError("\u7F51\u9875\u52A0\u8F7D\u5931\u8D25");
-      });
-      viewport.current?.appendChild(element);
-    })().catch(() => {
-      if (live) {
-        dispose();
-        setError("\u65E0\u6CD5\u6253\u5F00\u6D4F\u89C8\u5668");
-      }
-    });
-    return () => {
-      live = false;
-      dispose();
-    };
-  }, [bridge, cwd]);
-  const navigate = () => {
-    const next = normalizeBrowserAddress(address);
-    if (!next) {
-      setError("\u4EC5\u652F\u6301 HTTP \u6216 HTTPS \u5730\u5740");
-      return;
-    }
-    setError("");
-    setAddress(next);
-    setUrl(next);
-    callbacks.current.onChange(next, browserTitle(next));
-    commands.current?.navigate(next);
-  };
-  const command = (action) => {
-    setError("");
-    try {
-      if (bridge) commands.current?.[action]();
-      else if (action === "reload") setRevision((value) => value + 1);
-    } catch {
-      setError("\u7F51\u9875\u64CD\u4F5C\u5931\u8D25");
-    }
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser-toolbar" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u540E\u9000", disabled: !navigation.back, onClick: () => command("back"), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u524D\u8FDB", disabled: !navigation.forward, onClick: () => command("forward"), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u5237\u65B0\u7F51\u9875", disabled: !url, onClick: () => command("reload"), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRefreshOutlineRegular, { size: 16 }) }), /* @__PURE__ */ (0, import_react.createElement)("form", { onSubmit: (event) => {
-    event.preventDefault();
-    navigate();
-  } }, /* @__PURE__ */ (0, import_react.createElement)(
-    "input",
-    {
-      "aria-label": "\u7F51\u9875\u5730\u5740",
-      placeholder: "\u8F93\u5165\u7F51\u5740\u6216\u7AEF\u53E3",
-      value: address,
-      onChange: (event) => setAddress(event.currentTarget.value),
-      autoCapitalize: "off",
-      autoCorrect: "off",
-      spellCheck: false
-    }
-  )), !bridge && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", disabled: !url, onClick: () => globalThis.open(url, "_blank", "noopener,noreferrer") }, "\u5728\u5916\u90E8\u6253\u5F00")), error2 && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, error2), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-browser-viewport", ref: viewport }, !bridge && /* @__PURE__ */ (0, import_react.createElement)(
-    "iframe",
-    {
-      key: revision,
-      className: "nodo-browser-frame",
-      title: "\u6D4F\u89C8\u5668\u9875\u9762",
-      src: url || "about:blank",
-      referrerPolicy: "no-referrer",
-      sandbox: "allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-    }
-  )));
-}
-
-// src/client/right-panel.tsx
-var terminalTab = ({ id, cols, rows, shell }) => ({ kind: "terminal", id, ...cols && rows ? { cols, rows } : {}, ...shell ? { shell } : {} });
-var tabId = (tab) => tab.kind === "files" ? "files" : tab.id;
-var scopeKey = (target) => target.workspace !== void 0 ? `workspace:${target.workspace}` : `session:${target.profile}:${target.session}`;
-function createRightPanel(ctx) {
-  let state = { target: null, expanded: false, tabs: [], active: "", selected: "", available: false, creating: false, error: "" };
-  let generation = 0;
-  let browserSequence = 0;
-  let changesSequence = 0;
-  let bound;
-  let boundCwd;
-  const listeners2 = /* @__PURE__ */ new Set();
-  const closed = /* @__PURE__ */ new Set();
-  const directories = /* @__PURE__ */ new Map();
-  const normalized = (cwd) => cwd && (directories.get(cwd) ?? cwd);
-  const publish = (changes) => {
-    state = { ...state, ...changes };
-    for (const listener of listeners2) listener();
-  };
-  const panel = {
-    subscribe: (listener) => {
-      listeners2.add(listener);
-      return () => {
-        listeners2.delete(listener);
-      };
-    },
-    getSnapshot: () => state,
-    bind(target) {
-      const current = ++generation;
-      const previous = bound;
-      const scope = scopeKey(target);
-      const resolvedCwd = boundCwd !== target.cwd && normalized(boundCwd) === normalized(target.cwd);
-      boundCwd = target.cwd;
-      const unbind = () => {
-        void Promise.resolve().then(() => {
-          if (current === generation) {
-            generation++;
-            publish({ target: null });
-          }
-        });
-      };
-      if (previous && state.available && resolvedCwd && scopeKey(previous) === scope && previous.readOnly === target.readOnly) {
-        bound = { ...target, cwd: normalized(target.cwd) };
-        publish({ target: bound });
-        return unbind;
-      }
-      let adopted = false;
-      const adopt = (cwd = target.cwd) => {
-        const same = !!cwd && normalized((adopted ? bound : previous)?.cwd) === normalized(cwd);
-        bound = { ...target, cwd: normalized(cwd) };
-        const tabs = (same ? state.tabs.filter((tab) => tab.kind !== "image" || tab.scope === scope) : state.tabs.filter((tab) => tab.kind === "files")).filter((tab) => !target.readOnly || tab.kind !== "terminal");
-        publish({ target: bound, tabs, selected: same ? state.selected : "", active: same && (state.active === "" || tabs.some((tab) => tabId(tab) === state.active)) ? state.active : tabs[0] ? tabId(tabs[0]) : "", available: false, creating: false, ...adopted ? {} : { error: "" } });
-        adopted = true;
-      };
-      if (!previous || normalized(previous.cwd) === normalized(target.cwd) || target.readOnly) adopt();
-      else publish({ available: false, creating: false, error: "" });
-      const restore = async () => {
-        for (let attempt = 0; attempt < 2 && current === generation; attempt++) {
-          try {
-            const value = await terminalRequest("list", terminalScope(target));
-            if (target.cwd && value.cwd) directories.set(target.cwd, value.cwd);
-            if (current !== generation) return;
-            adopt(value.cwd ?? target.cwd);
-            const restored = value.terminals.filter((terminal) => !closed.has(terminal.id));
-            const tabs = [
-              ...state.tabs.filter((tab) => tab.kind !== "terminal" || restored.some((terminal) => terminal.id === tab.id)),
-              ...restored.filter((terminal) => !state.tabs.some((tab) => tabId(tab) === terminal.id)).map(terminalTab)
-            ];
-            publish({
-              target: bound,
-              tabs,
-              available: value.available,
-              active: tabs.some((tab) => tabId(tab) === state.active) ? state.active : tabs[0] ? tabId(tabs[0]) : "",
-              error: state.error === "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" || state.error === "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" ? "" : state.error
-            });
-            return;
-          } catch {
-            if (current === generation) {
-              if (!adopted) adopt();
-              publish({ error: attempt ? "\u65E0\u6CD5\u52A0\u8F7D\u7EC8\u7AEF\u5217\u8868" : "\u7EC8\u7AEF\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF0C\u6B63\u5728\u91CD\u8BD5\u2026" });
-            }
-          }
-        }
-      };
-      if (!target.readOnly) void restore();
-      return unbind;
-    },
-    toggle: () => publish({ expanded: !state.expanded }),
-    openFiles: () => publish({ tabs: state.tabs.some((tab) => tab.kind === "files") ? state.tabs : [...state.tabs, { kind: "files" }], active: "files" }),
-    openFile(path) {
-      if (state.target) {
-        panel.openFiles();
-        publish({ expanded: true, selected: path });
-      }
-    },
-    openChanges(source, path) {
-      if (!state.target) return;
-      const tab = { kind: "changes", id: "changes", source, path, version: ++changesSequence };
-      publish({ tabs: state.tabs.some((tab2) => tab2.kind === "changes") ? state.tabs.map((current) => current.kind === "changes" ? tab : current) : [...state.tabs, tab], active: "changes", expanded: true });
-    },
-    openImage(image) {
-      if (!state.target) return;
-      const id = `image-${image.id}`;
-      const tab = { kind: "image", id, scope: scopeKey(state.target), image: { ...image } };
-      publish({ tabs: state.tabs.some((current) => current.kind !== "files" && current.id === id) ? state.tabs.map((current) => current.kind === "image" && current.id === id ? tab : current) : [...state.tabs, tab], active: id, expanded: true });
-    },
-    selectFile: (selected) => publish({ selected }),
-    openHome: () => {
-      if (state.active) publish({ active: "" });
-    },
-    selectTab: (active) => publish({ active }),
-    newBrowser(value = "") {
-      if (!state.target) return;
-      const url = value ? normalizeBrowserAddress(value) : "";
-      if (url === null) return;
-      const id = `browser-${++browserSequence}`;
-      publish({ tabs: [...state.tabs, { kind: "browser", id, url, title: browserTitle(url) }], active: id });
-    },
-    updateBrowser(id, url, title) {
-      if (state.tabs.some((tab) => tab.kind === "browser" && tab.id === id && (tab.title !== title || tab.url !== url))) {
-        publish({ tabs: state.tabs.map((tab) => tab.kind === "browser" && tab.id === id ? { ...tab, url, title } : tab) });
-      }
-    },
-    async newTerminal(element) {
-      if (!state.target || !state.available || state.creating) return;
-      const current = generation, scope = terminalScope(state.target);
-      publish({ creating: true, error: "" });
-      try {
-        const size = await measureTerminal(element);
-        if (current !== generation) return;
-        const terminal = await terminalRequest("create", { ...scope, ...size });
-        if (current === generation) publish({ tabs: [...state.tabs, terminalTab({ ...size, ...terminal })], active: terminal.id });
-      } catch {
-        if (current === generation) publish({ error: "\u65E0\u6CD5\u65B0\u5EFA\u7EC8\u7AEF" });
-      } finally {
-        if (current === generation) publish({ creating: false });
-      }
-    },
-    forgetTab(id) {
-      const tabs = state.tabs.filter((tab) => tabId(tab) !== id);
-      publish({ tabs, active: state.active === id ? tabs.at(-1) ? tabId(tabs[tabs.length - 1]) : "" : state.active, error: "" });
-    },
-    async closeTab(id) {
-      const current = generation, target = state.target;
-      const index = state.tabs.findIndex((tab2) => tabId(tab2) === id), tab = state.tabs[index];
-      if (!tab || tab.kind === "terminal" && target?.readOnly) return;
-      if (tab.kind === "terminal") closed.add(id);
-      panel.forgetTab(id);
-      try {
-        if (tab.kind === "terminal" && target) await terminalRequest("close", { ...terminalScope(target), id });
-      } catch (error2) {
-        if (!(error2 instanceof TerminalMissingError)) {
-          closed.delete(id);
-          if (current === generation) publish({
-            tabs: [...state.tabs.slice(0, index), tab, ...state.tabs.slice(index)],
-            active: state.active || id,
-            error: "\u65E0\u6CD5\u5173\u95ED\u7EC8\u7AEF"
-          });
-        }
-      }
-    }
-  };
-  ctx.slots.inject("rightbar", () => {
-    let unregister;
-    let owned = false;
-    const close = () => {
-      if (owned) ctx.layout.closeRightbar();
-      owned = false;
-    };
-    const Owner = ({ width }) => {
-      const { expanded } = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
-      (0, import_react.useLayoutEffect)(() => {
-        owned = true;
-        return () => {
-          owned = false;
-        };
-      }, []);
-      (0, import_react.useLayoutEffect)(() => {
-        if (expanded) ctx.layout.openRightbar(true, false);
-        else ctx.layout.closeRightbar();
-      }, [expanded]);
-      return /* @__PURE__ */ (0, import_react.createElement)(RightPanel, { panel, width });
-    };
-    const update = () => {
-      if (state.target && !unregister) unregister = ctx.slots.register({ name: "rightbar", priority: -100 }, Owner);
-      if (!state.target && unregister) {
-        close();
-        unregister();
-        unregister = void 0;
-      }
-    };
-    const stop = panel.subscribe(update);
-    update();
-    return () => {
-      stop();
-      if (unregister) {
-        close();
-        unregister();
-      }
-    };
-  });
-  ctx.slots.inject("shell.overlay", () => {
-    let unregister;
-    const Toggle = () => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-control" }, /* @__PURE__ */ (0, import_react.createElement)(RightPanelToggle, { panel }));
-    const update = () => {
-      if (state.target && !unregister) unregister = ctx.slots.register({ name: "shell.overlay", id: "nodo.right-toggle" }, Toggle);
-      if (!state.target && unregister) {
-        unregister();
-        unregister = void 0;
-      }
-    };
-    const stop = panel.subscribe(update);
-    update();
-    return () => {
-      stop();
-      unregister?.();
-    };
-  });
-  return panel;
-}
-function RightPanelToggle({ panel }) {
-  const state = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
-  return /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Button,
-    {
-      variant: "ghost",
-      className: "nodo-right-toggle",
-      "aria-label": state.expanded ? "\u6536\u8D77\u53F3\u4FA7\u680F" : "\u5C55\u5F00\u53F3\u4FA7\u680F",
-      "aria-expanded": state.expanded,
-      onClick: panel.toggle,
-      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16, className: "nodo-right-glyph" })
-    }
-  );
-}
-function RightPanel({ panel, width }) {
-  const state = (0, import_react.useSyncExternalStore)(panel.subscribe, panel.getSnapshot);
-  const content = (0, import_react.useRef)(null);
-  const create = () => void panel.newTerminal(content.current);
-  const target = state.target;
-  if (!target) return null;
-  const counts = /* @__PURE__ */ new Map();
-  const titles = state.tabs.map((tab) => {
-    const title = tab.kind === "files" ? "\u9879\u76EE\u6587\u4EF6" : tab.kind === "changes" ? "\u53D8\u66F4" : tab.kind === "image" ? tab.image.name ?? "\u56FE\u7247" : tab.kind === "browser" ? tab.title : tab.shell || "\u7EC8\u7AEF";
-    const base = (tab.kind === "browser" || tab.kind === "image") && title.length > 28 ? `${title.slice(0, 27)}\u2026` : title;
-    const nth = (counts.get(base) ?? 0) + 1;
-    counts.set(base, nth);
-    return nth > 1 ? `${base} ${nth}` : base;
-  });
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-right-panel", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", hidden: !state.expanded, style: { width } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-right-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tabs", role: "tablist", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", onKeyDown: (event) => {
-    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-    const at2 = state.tabs.findIndex((tab) => tabId(tab) === state.active);
-    if (!step || at2 < 0 || !event.target.matches("[role=tab]")) return;
-    event.preventDefault();
-    const next = tabId(state.tabs[(at2 + step + state.tabs.length) % state.tabs.length]);
-    panel.selectTab(next);
-    document.getElementById(`nodo-right-tab-${next}`)?.focus();
-  } }, state.tabs.map((tab, index) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: tabId(tab), className: "nodo-right-tab", "data-active": state.active === tabId(tab) || void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
-    "button",
-    {
-      type: "button",
-      role: "tab",
-      id: `nodo-right-tab-${tabId(tab)}`,
-      "aria-controls": `nodo-right-pane-${tabId(tab)}`,
-      "aria-selected": state.active === tabId(tab),
-      tabIndex: state.active === tabId(tab) ? 0 : -1,
-      onClick: () => panel.selectTab(tabId(tab))
-    },
-    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCompareSplitOutlineRegular, { size: 14 }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 14 }) : tab.kind === "image" ? /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: tab.image.name ?? "", size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconApiOutlineRegular, { size: 14 }),
-    titles[index]
-  ), /* @__PURE__ */ (0, import_react.createElement)(
-    import_dsh_client_ui_primitives.Button,
-    {
-      variant: "ghost",
-      className: "nodo-right-tab-close",
-      "aria-label": `\u5173\u95ED${titles[index]}`,
-      onClick: () => void panel.closeTab(tabId(tab)),
-      icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 14 })
-    }
-  ))), state.tabs.length > 0 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u65B0\u5EFA\u6807\u7B7E\u9875", onClick: panel.openHome, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }) }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-content", ref: content }, state.error && status(state.error), state.tabs.map((tab) => /* @__PURE__ */ (0, import_react.createElement)(
-    "div",
-    {
-      key: tabId(tab),
-      id: `nodo-right-pane-${tabId(tab)}`,
-      className: "nodo-right-pane",
-      role: "tabpanel",
-      "aria-labelledby": `nodo-right-tab-${tabId(tab)}`,
-      hidden: state.active !== tabId(tab)
-    },
-    tab.kind === "files" ? /* @__PURE__ */ (0, import_react.createElement)(WorkspaceFiles, { key: target.cwd, target, selected: state.selected, onSelect: panel.selectFile }) : tab.kind === "changes" ? /* @__PURE__ */ (0, import_react.createElement)(ChangesView, { key: tab.version, source: tab.source, initialPath: tab.path, openFile: panel.openFile }) : tab.kind === "browser" ? /* @__PURE__ */ (0, import_react.createElement)(
-      BrowserView,
-      {
-        cwd: target.cwd,
-        initialUrl: tab.url,
-        onChange: (url, title) => panel.updateBrowser(tab.id, url, title),
-        onOpen: panel.newBrowser
-      }
-    ) : tab.kind === "image" ? /* @__PURE__ */ (0, import_react.createElement)(ImageView, { key: tab.id, image: tab.image }) : /* @__PURE__ */ (0, import_react.createElement)(
-      TerminalView,
-      {
-        id: tab.id,
-        target,
-        initialSize: tab.cols && tab.rows ? { cols: tab.cols, rows: tab.rows } : void 0,
-        active: state.active === tab.id && state.expanded,
-        onGone: () => panel.forgetTab(tab.id)
-      }
-    )
-  )), state.active === "" && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-home" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", onClick: panel.openFiles }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u9879\u76EE\u6587\u4EF6"), target.cwd && /* @__PURE__ */ (0, import_react.createElement)("small", { title: target.cwd }, target.cwd))), state.available && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", disabled: state.creating, onClick: create }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconApiOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u65B0\u5EFA\u7EC8\u7AEF"), target.cwd && /* @__PURE__ */ (0, import_react.createElement)("small", { title: target.cwd }, target.cwd))), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-card", onClick: () => panel.newBrowser() }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconGlobeOutlineRegular, { size: 20 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u6D4F\u89C8\u5668"))))));
-}
-var status = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
-function WorkspaceFiles({ target, selected: selection, onSelect }) {
-  const [directories, setDirectories] = (0, import_react.useState)({});
-  const [expanded, setExpanded] = (0, import_react.useState)({ "": true });
-  const [localSelected, setLocalSelected] = (0, import_react.useState)("");
-  const [query, setQuery] = (0, import_react.useState)("");
-  const selected = selection ?? localSelected, setSelected = onSelect ?? setLocalSelected;
-  const live = (0, import_react.useRef)(false);
-  const pending = (0, import_react.useRef)(/* @__PURE__ */ new Set());
-  (0, import_react.useEffect)(() => {
-    live.current = true;
-    return () => {
-      live.current = false;
-      pending.current.clear();
-    };
-  }, []);
-  (0, import_react.useEffect)(() => {
-    for (const path of Object.keys(expanded).filter((path2) => expanded[path2] && !directories[path2] && !pending.current.has(path2))) {
-      pending.current.add(path);
-      void call2("workspace-dir", { ...terminalScope(target), path }).then((value) => {
-        if (live.current) setDirectories((current) => ({ ...current, [path]: value }));
-      }).catch(() => {
-        if (live.current) setDirectories((current) => ({ ...current, [path]: { error: true } }));
-      });
-    }
-  }, [expanded, directories, target]);
-  const wanted = query.trim().toLowerCase();
-  const hit = (path, name, kind) => name.toLowerCase().includes(wanted) || kind === "dir" && !!directories[path]?.entries?.some((entry) => hit(`${path}/${entry.name}`, entry.name, entry.kind));
-  const branch = (path, depth, inside = false) => {
-    const directory = directories[path];
-    if (!directory) return status("\u52A0\u8F7D\u4E2D\u2026");
-    if (directory.error) return status("\u76EE\u5F55\u4E0D\u53EF\u7528");
-    return /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, directory.entries?.filter((entry) => inside || !wanted || hit(path ? `${path}/${entry.name}` : entry.name, entry.name, entry.kind)).map((entry) => {
-      const child = path ? `${path}/${entry.name}` : entry.name;
-      const isDir = entry.kind === "dir";
-      const open = isDir && (!!expanded[child] || !!wanted && !!directories[child]);
-      return /* @__PURE__ */ (0, import_react.createElement)("div", { key: child }, /* @__PURE__ */ (0, import_react.createElement)(
-        "button",
-        {
-          type: "button",
-          className: "nodo-right-file",
-          style: { paddingInlineStart: 8 + depth * 14 },
-          "data-selected": child === selected || void 0,
-          "aria-expanded": isDir ? open : void 0,
-          title: child,
-          onClick: () => isDir ? setExpanded((current) => ({ ...current, [child]: !open })) : setSelected(child)
-        },
-        isDir ? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, open ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 12 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }), open ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 14 })) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-right-file-icon" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: entry.name, size: 14 })),
-        /* @__PURE__ */ (0, import_react.createElement)("span", null, entry.name)
-      ), open && branch(child, depth + 1, inside || isDir && !!wanted && entry.name.toLowerCase().includes(wanted)));
-    }), directory.truncated && status("\u76EE\u5F55\u5DF2\u622A\u65AD"), directory.entries?.length === 0 && status("\u7A7A\u76EE\u5F55"));
-  };
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-files" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-viewer" }, selected ? /* @__PURE__ */ (0, import_react.createElement)(FilePreview, { key: selected, target, path: selected, onBack: () => setSelected("") }) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-empty" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderCloseRegular, { size: 32 }), /* @__PURE__ */ (0, import_react.createElement)("strong", null, "\u6253\u5F00\u7684\u6587\u4EF6\u663E\u793A\u5728\u8FD9\u91CC"))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-directory" }, branch("", 0))));
-}
-var LANGUAGES = {
-  js: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  jsx: "jsx",
-  ts: "typescript",
-  tsx: "tsx",
-  md: "markdown",
-  json: "json",
-  css: "css",
-  html: "html",
-  py: "python",
-  rb: "ruby",
-  rs: "rust",
-  go: "go",
-  java: "java",
-  c: "c",
-  h: "c",
-  cpp: "cpp",
-  sh: "bash",
-  bash: "bash",
-  zsh: "bash",
-  yml: "yaml",
-  yaml: "yaml",
-  toml: "toml"
-};
-function FilePreview({ target, path, onBack }) {
-  const [content, setContent] = (0, import_react.useState)(null);
-  const [error2, setError] = (0, import_react.useState)(false);
-  const [source, setSource] = (0, import_react.useState)(false);
-  const [lightbox, setLightbox] = (0, import_react.useState)(false);
-  const [imageError, setImageError] = (0, import_react.useState)(false);
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    void call2("workspace-file", { ...terminalScope(target), path }).then((value) => {
-      if (live) setContent(value);
-    }).catch(() => {
-      if (live) setError(true);
-    });
-    return () => {
-      live = false;
-    };
-  }, [target, path]);
-  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
-  const markdown = extension === "md" && typeof content?.text === "string";
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-head" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name: path, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { title: path }, path), markdown && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-pressed": source, onClick: () => setSource((value) => !value) }, source ? "\u9884\u89C8" : "\u6E90\u7801"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": "\u5173\u95ED\u6587\u4EF6", onClick: onBack, icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 14 }) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, content?.truncated && status("\u6587\u4EF6\u5DF2\u622A\u65AD"), error2 ? status("\u6587\u4EF6\u4E0D\u53EF\u7528") : !content ? status("\u52A0\u8F7D\u4E2D\u2026") : content.missing ? status("\u6587\u4EF6\u4E0D\u5B58\u5728") : content.binary ? status("\u4E8C\u8FDB\u5236\u6587\u4EF6") : content.image ? imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src: content.image.dataUrl, alt: path, onError: () => setImageError(true) })) : markdown && !source ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: content.text ?? "", labels: MARKDOWN_LABELS }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: content.text ?? "", lang: LANGUAGES[extension] ?? "text", wrap: true, showHeader: false })), lightbox && !imageError && content?.image && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src: content.image.dataUrl, alt: path, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
-}
-function ImageView({ image }) {
-  const [src, setSrc] = (0, import_react.useState)(null);
-  const [error2, setError] = (0, import_react.useState)(false);
-  const [lightbox, setLightbox] = (0, import_react.useState)(false);
-  const [imageError, setImageError] = (0, import_react.useState)(false);
-  const alt = image.name || "\u56FE\u7247";
-  (0, import_react.useEffect)(() => {
-    let live = true;
-    setSrc(null);
-    setError(false);
-    setImageError(false);
-    call2("attachment", { id: image.id, mediaType: image.mediaType }).then((value) => {
-      if (live) setSrc(`data:${value.mediaType};base64,${value.data}`);
-    }).catch(() => {
-      if (live) setError(true);
-    });
-    return () => {
-      live = false;
-    };
-  }, [image.id, image.mediaType]);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-preview-body" }, error2 ? status("\u56FE\u7247\u4E0D\u53EF\u7528") : !src ? status("\u52A0\u8F7D\u4E2D\u2026") : imageError ? status("\u65E0\u6CD5\u663E\u793A") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-right-image", "aria-label": "\u653E\u5927\u56FE\u7247", onClick: () => setLightbox(true) }, /* @__PURE__ */ (0, import_react.createElement)("img", { src, alt, onError: () => setImageError(true) }))), lightbox && !imageError && src && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.ImageLightbox, { src, alt, labels: { dialog: "\u56FE\u7247\u9884\u89C8", close: "\u5173\u95ED\u9884\u89C8" }, onClose: () => setLightbox(false) }));
-}
-
-// src/client/native-welcome.js
-function createNativeWelcome(ctx, space, Welcome) {
-  let release;
-  const update = () => {
-    const state = space.getSnapshot();
-    const id = ctx.uiSession.adapter.current.getSnapshot().key;
-    const show = state.active && !state.legacy && !state.drafting && (id == null || ctx.sessions.list.getSnapshot().byId[id]?.blank === true);
-    if (show && !release) release = ctx.slots.register({ name: "main.conversation", priority: -100 }, Welcome);
-    else if (!show && release) {
-      release();
-      release = null;
-    }
-  };
-  return () => {
-    const stops = [space.subscribe(update), ctx.sessions.list.subscribe(update), ctx.uiSession.adapter.current.subscribe(update)];
-    update();
-    return () => {
-      for (const stop of stops) stop();
-      release?.();
-      release = null;
-    };
-  };
-}
-
-// src/client/completion-tracker.js
-function createCompletionTracker(storage, events) {
-  const key = "nodo.completions.seen";
-  const read = () => {
-    try {
-      const value = JSON.parse(storage.getItem(key));
-      return Object.fromEntries(Object.entries(value ?? {}).filter(([, at2]) => Number.isFinite(at2)));
-    } catch {
-      return {};
-    }
-  };
-  let snapshot = read();
-  const listeners2 = /* @__PURE__ */ new Set();
-  const notify = () => {
-    for (const listener of listeners2) listener();
-  };
-  const changed = (event) => {
-    if (event.key === key || event.key === null) {
-      snapshot = read();
-      notify();
-    }
-  };
-  events.addEventListener?.("storage", changed);
-  return {
-    getSnapshot: () => snapshot,
-    subscribe(listener) {
-      listeners2.add(listener);
-      return () => listeners2.delete(listener);
-    },
-    mark(id, at2) {
-      if (!Number.isFinite(at2) || (snapshot[id] ?? -1) >= at2) return;
-      const latest = read();
-      for (const [id2, at3] of Object.entries(snapshot)) latest[id2] = Math.max(latest[id2] ?? -1, at3);
-      latest[id] = Math.max(latest[id] ?? -1, at2);
-      snapshot = latest;
-      try {
-        storage.setItem(key, JSON.stringify(snapshot));
-      } catch {
-      }
-      notify();
-    },
-    dispose() {
-      events.removeEventListener?.("storage", changed);
-      listeners2.clear();
-    }
-  };
-}
-
-// src/client/model-seat.js
-function createModelSeat(ctx, space) {
-  function ModelSeat(props) {
-    const { sessionId, locked } = props;
-    const available = typeof ctx.sessions?.subagentAddress !== "function" || ctx.sessions.subagentAddress(sessionId) === void 0;
-    const directory = ctx.modelDirectories.directoryFor(sessionId);
-    const state = (0, import_react.useSyncExternalStore)(directory.store.subscribe, directory.store.getSnapshot);
-    const [open, setOpen] = (0, import_react.useState)(false);
-    const [pane, setPane] = (0, import_react.useState)("root");
-    const [error2, setError] = (0, import_react.useState)("");
-    if (!available) return null;
-    const close = () => {
-      setOpen(false);
-      setPane("root");
-    };
-    const openMenu = () => {
-      if (open) return close();
-      setOpen(true);
-      void directory.load().catch(() => {
-      });
-    };
-    const catalog = state;
-    const groups = (catalog?.groups ?? []).filter((group) => group.models.length > 0);
-    const current = catalog?.current ?? null;
-    const currentModel = groups.find((group) => group.id === current?.provider)?.models.find((model) => model.id === current?.model) ?? catalog?.groups.find((group) => group.id === current?.provider)?.models.find((model) => model.id === current?.model);
-    const modelText = current ? currentModel?.name ?? modelName(current.model) : state?.status === "ready" ? "\u9009\u62E9\u6A21\u578B" : "\u6A21\u578B";
-    const efforts = currentModel?.reasoning?.efforts ?? [];
-    const effortText = current?.reasoningEffort ? efforts.find((level) => level.id === current.reasoningEffort)?.name ?? current.reasoningEffort : "";
-    const busy = state?.status === "loading" || state?.status === "selecting";
-    const select = (selection) => {
-      setError("");
-      void directory.select(selection).then(() => close()).catch((failure) => setError(failure.message));
-    };
-    const pick = (id) => {
-      if (id === "model") {
-        setPane("model");
-        return;
-      }
-      if (id === "thinking") {
-        setPane("thinking");
-        return;
-      }
-      if (id.startsWith("model:")) {
-        const [provider, model] = JSON.parse(id.slice(6));
-        select({ provider, model });
-      } else if (id.startsWith("thinking:")) {
-        const level = id.slice(9);
-        const selection = { provider: current.provider, model: current.model };
-        if (level !== "") selection.reasoningEffort = level;
-        select(selection);
-      }
-    };
-    const cell = (label, value, filled) => (0, import_react.createElement)(
-      "span",
-      { className: "nodo-model-cell" },
-      (0, import_react.createElement)("span", { className: "nodo-model-cell-label" }, label),
-      (0, import_react.createElement)("span", { className: "nodo-model-cell-value" }, value),
-      filled && (0, import_react.createElement)("span", { className: "nodo-model-cell-chev" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }))
-    );
-    const items = pane === "model" ? groups.length ? groups.flatMap((group) => [
-      { type: "label", id: `group:${group.id}`, text: group.name },
-      ...group.models.map((model) => ({ id: `model:${JSON.stringify([group.id, model.id])}`, label: model.name }))
-    ]) : [{ type: "label", id: "hint", text: busy ? "\u6B63\u5728\u8F7D\u5165\u6A21\u578B\u76EE\u5F55\u2026" : state?.error || "\u5F53\u524D\u4F1A\u8BDD\u6CA1\u6709\u53EF\u7528\u7684\u6A21\u578B" }] : pane === "thinking" ? [
-      { id: "thinking:", label: "\u9ED8\u8BA4\uFF08\u8DDF\u968F\u6A21\u578B\u8BBE\u7F6E\uFF09" },
-      ...efforts.map((level) => ({
-        id: `thinking:${level.id}`,
-        label: level.id === currentModel?.reasoning?.defaultEffort ? `${level.name ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.name ?? level.id
-      }))
-    ] : [
-      ...error2 ? [{ type: "label", id: "error", text: error2 }] : [],
-      { id: "model", label: cell("\u6A21\u578B", modelText, groups.length > 0), disabled: !groups.length },
-      { id: "thinking", label: cell("\u63A8\u7406\u7B49\u7EA7", effortText || "\u9ED8\u8BA4", efforts.length > 0), disabled: !efforts.length }
-    ];
-    return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
-      open,
-      onClose: close,
-      portal: true,
-      side: "top",
-      align: "end",
-      className: "nodo-model",
-      listClassName: "nodo-model-list",
-      selectedId: pane === "model" && current ? `model:${JSON.stringify([current.provider, current.model])}` : pane === "thinking" && current?.reasoningEffort ? `thinking:${current.reasoningEffort}` : void 0,
-      items,
-      onSelect: pick,
-      anchor: (0, import_react.createElement)(
-        "button",
-        {
-          type: "button",
-          className: "nodo-model-trigger",
-          disabled: locked === true || busy,
-          "data-nodo-model-seat": "true",
-          "aria-haspopup": "menu",
-          "aria-expanded": open,
-          "aria-label": `\u9009\u62E9\u6A21\u578B\uFF0C\u5F53\u524D ${modelText}${effortText ? `\uFF0C\u63A8\u7406\u7B49\u7EA7 ${effortText}` : ""}`,
-          onClick: openMenu
-        },
-        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDataOutlineRegular, { size: 16, className: "nodo-model-seat-icon" }),
-        (0, import_react.createElement)("span", { className: "nodo-model-label" }, modelText),
-        effortText !== "" && (0, import_react.createElement)("span", { className: "nodo-model-effort" }, effortText),
-        busy ? (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "ongoing" }) : (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": open ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
-      )
-    });
-  }
-  ctx.slots.inject("conversation.input.model", () => {
-    let unregister;
-    const update = () => {
-      const state = space.getSnapshot();
-      if (state.active && !state.legacy && !unregister) unregister = ctx.slots.register({ name: "conversation.input.model", priority: -100 }, ModelSeat);
-      else if ((!state.active || state.legacy) && unregister) {
-        unregister();
-        unregister = null;
-      }
-    };
-    const stop = space.subscribe(update);
-    update();
-    return () => {
-      stop();
-      unregister?.();
-    };
-  });
-  return { ModelSeat };
-}
 
 // src/client/new-conversation.js
 function createNewConversation(ctx, space, ReferenceDialog) {
@@ -21010,7 +17731,7 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         if (added.length + images.length > 8 || documents.length + files.length > 8) throw new Error("\u6BCF\u6761\u6D88\u606F\u6700\u591A\u6DFB\u52A0 8 \u5F20\u56FE\u7247\u548C 8 \u4E2A\u6587\u4EF6\u3002");
         if (added.length) changeImages((current) => [...current, ...added]);
         if (documents.length) {
-          const saved = await call2("attachment-save", {
+          const saved = await call("attachment-save", {
             images: [],
             files: documents.map((item) => ({ name: item.name, mediaType: item.mediaType, data: base64Of(item.dataUrl) }))
           });
@@ -21039,18 +17760,18 @@ function createNewConversation(ctx, space, ReferenceDialog) {
         const team = !!draft && navigation.view === "team";
         const signature = JSON.stringify([profile.id, workspace.id, choices, team]);
         if (created.current?.signature !== signature) {
-          const session2 = await call2("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices, team });
+          const session2 = await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, choices, team });
           created.current = { signature, session: session2 };
         }
         if (!active()) return;
         const session = created.current.session;
         if (nativeRole(profile)) {
-          const placed = files.length ? await call2("attachment-place", { files, workspace: workspace.id }) : { text: "" };
-          const opened = await call2("session-open", { profile: profile.id, session: session.id, workspace: workspace.id });
+          const placed = files.length ? await call("attachment-place", { files, workspace: workspace.id }) : { text: "" };
+          const opened = await call("session-open", { profile: profile.id, session: session.id, workspace: workspace.id });
           await ctx.sessions.using(opened.sessionId, { source: "controllerOperation" }, async (reference2) => {
             const binding = await reference2.ready;
             if (!active()) return;
-            const bound = await Promise.all(references.map((item) => call2("reference-bind", { id: item.id, draft: selection.referenceDraft, target: opened.sessionId })));
+            const bound = await Promise.all(references.map((item) => call("reference-bind", { id: item.id, draft: selection.referenceDraft, target: opened.sessionId })));
             if (!active()) return;
             const input = [text, placed.text, ...bound.map((item) => `[\u5F15\u7528\u4F1A\u8BDD](nodo-reference:${item.id})`)].filter(Boolean).join("\n");
             const result = await binding.session.prompt([
@@ -21074,9 +17795,9 @@ function createNewConversation(ctx, space, ReferenceDialog) {
             clearDraft();
           });
         } else {
-          const bound = await Promise.all(references.map((item) => call2("reference-bind", { id: item.id, draft: selection.referenceDraft, target: session.id })));
+          const bound = await Promise.all(references.map((item) => call("reference-bind", { id: item.id, draft: selection.referenceDraft, target: session.id })));
           if (!active()) return;
-          await call2("send", {
+          await call("send", {
             profile: profile.id,
             session: session.id,
             text: text || (references.length ? "\u8BF7\u53C2\u8003\u5F15\u7528\u7684\u4F1A\u8BDD\u7ED3\u679C\u3002" : ""),
@@ -22421,6 +19142,3292 @@ function installScrollbars(document2) {
       rest(element);
     }
   };
+}
+
+// core/shared/version.js
+var isNewer = (base, candidate) => {
+  const parse = (value) => typeof value === "string" && /^v?\d+\.\d+\.\d+$/i.test(value) ? value.replace(/^v/i, "").split(".").map(Number) : null;
+  const a = parse(typeof base === "string" ? base.split(/[-+]/)[0] : base ?? "0.0.0"), b2 = parse(candidate ?? "");
+  if (!a || !b2) return false;
+  for (let index = 0; index < 3; index++) if (b2[index] !== a[index]) return b2[index] > a[index];
+  return false;
+};
+
+// src/client/search-dialog.tsx
+function SearchDialog({ items, onClose }) {
+  const [query, setQuery] = (0, import_react.useState)("");
+  const [active, setActive] = (0, import_react.useState)(0);
+  const list = (0, import_react.useRef)(null);
+  const needle = query.trim().toLocaleLowerCase();
+  const found = needle ? items.filter((item) => item.terms.some((term) => String(term ?? "").toLocaleLowerCase().includes(needle))) : items;
+  const current = Math.min(active, found.length - 1);
+  const pick = (item) => {
+    onClose();
+    item.pick();
+  };
+  (0, import_react.useEffect)(() => {
+    list.current?.children[current]?.scrollIntoView?.({ block: "nearest" });
+  }, [current]);
+  const onKeyDown = (event) => {
+    if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
+    const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (step && found.length) {
+      event.preventDefault();
+      setActive((current + step + found.length) % found.length);
+    } else if (event.key === "Enter" && found[current]) {
+      event.preventDefault();
+      pick(found[current]);
+    }
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, onClose, closeLabel: "\u5173\u95ED", title: "\u641C\u7D22\u4F1A\u8BDD", headless: true, className: "nodo-search-dialog" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-search-box" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), /* @__PURE__ */ (0, import_react.createElement)(
+    "input",
+    {
+      type: "search",
+      "data-modal-autofocus": true,
+      value: query,
+      placeholder: "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
+      "aria-label": "\u641C\u7D22\u4F1A\u8BDD\u548C\u9879\u76EE",
+      onChange: (event) => {
+        setQuery(event.target.value);
+        setActive(0);
+      },
+      onKeyDown
+    }
+  ), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": "\u5173\u95ED\u641C\u7D22", onClick: onClose }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCloseOutlineRegular, { size: 16 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-search-list", role: "listbox", "aria-label": "\u4F1A\u8BDD", ref: list }, found.map((item, index) => {
+    const on2 = index === current;
+    const status2 = workLabel(item.work);
+    const Glyph = item.project.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular;
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        key: item.id,
+        type: "button",
+        role: "option",
+        className: "nodo-search-row",
+        "aria-selected": on2,
+        "data-active": on2 || void 0,
+        title: `${item.role.name} \xB7 ${item.name}`,
+        onMouseMove: () => {
+          if (!on2) setActive(index);
+        },
+        onClick: () => pick(item)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-avatar", "data-lead": item.role.lead === true ? "" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item.role, size: 20 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-name" }, item.name),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-project" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", null, item.project.name)),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-search-meta" }, on2 ? "\u21B5" : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(item.work) }), status2) : sessionTime(item.updatedAt))
+    );
+  }), !found.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, items.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD")));
+}
+
+// src/client/session-rail.tsx
+var ROLE_FOLD = 5;
+var ROSTER_HEIGHT_KEY = "nodo.rosterHeight";
+var TREE_MIN = 120;
+var UPDATE_SKIP_KEY = "nodo.updateSkipped";
+var UPDATE_COMMAND = "git pull && npm ci --ignore-scripts && npm run build:check";
+function UpdateCard({ info, onClose, onSkip }) {
+  const [copied, setCopied] = (0, import_react.useState)(false);
+  const root = (0, import_react.useRef)(null);
+  (0, import_react.useEffect)(() => {
+    for (const item of root.current?.querySelectorAll(".nodo-update-notes li") ?? [])
+      item.classList.toggle("nodo-update-breaking", item.textContent?.includes("\u4E0D\u517C\u5BB9") ?? false);
+  }, [info.notes]);
+  const at2 = info.publishedAt ? new Date(info.publishedAt) : null;
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-card", role: "dialog", "aria-label": "Nodo \u6709\u65B0\u7248\u672C", ref: root }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-update-title" }, "Nodo \u6709\u65B0\u7248\u672C"), /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-update-line" }, "v", info.current, " \u2192 v", info.latest, at2 && !Number.isNaN(at2.getTime()) ? ` \xB7 ${at2.toLocaleDateString("sv-SE")}` : ""), info.notes && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-notes" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: info.notes, labels: MARKDOWN_LABELS })), info.source && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-command" }, /* @__PURE__ */ (0, import_react.createElement)("code", null, UPDATE_COMMAND), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-copy", "aria-label": copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236", title: copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236", onClick: async () => {
+    if (await (0, import_dsh_client_ui_primitives.writeClipboard)(UPDATE_COMMAND)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2e3);
+    }
+  } }, copied ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 14 }) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCopyOutlineRegular, { size: 14 }))), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-update-actions" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-quiet", onClick: onSkip }, "\u8DF3\u8FC7\u6B64\u7248\u672C"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-update-quiet", onClick: onClose }, "\u7A0D\u540E"), info.url && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", size: "sm", onClick: () => globalThis.open(info.url, "_blank", "noopener,noreferrer") }, "\u67E5\u770B\u53D1\u5E03\u9875")));
+}
+function SessionRow({ role, session, current, work, busy, readOnly, context, onSelect, onArchive, onRename, onPin }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const archived = !!session.archivedAt;
+  const pinned = !!session.pinnedAt;
+  const running = work?.active === true;
+  const status2 = workLabel(work);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-session-item", "data-menu": open ? "open" : void 0 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row nodo-session",
+      disabled: busy,
+      "data-archived": archived ? "" : void 0,
+      "aria-current": current ? "page" : void 0,
+      "aria-description": archived ? "\u5DF2\u5F52\u6863\u4F1A\u8BDD\uFF0C\u53EA\u8BFB\u67E5\u770B" : void 0,
+      onClick: onSelect,
+      title: `${role.name} \xB7 ${session.name}`
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, context ? `${context} \xB7 ${session.name}` : session.name),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-meta" }, archived ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-archived" }, "\u5DF2\u5F52\u6863") : status2 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running", title: status2 }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(work) }), status2) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, pinned && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, { size: 12 }), sessionTime(session.updatedAt)))
+  ), !readOnly && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row-action",
+      disabled: busy || running,
+      "aria-label": archived ? `\u53D6\u6D88\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D` : `\u5F52\u6863\u4F1A\u8BDD\u201C${session.name}\u201D`,
+      title: archived ? "\u53D6\u6D88\u5F52\u6863" : "\u5F52\u6863\u4F1A\u8BDD",
+      onClick: (event) => {
+        event.stopPropagation();
+        onArchive(!archived);
+      }
+    },
+    archived ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUnarchiveOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
+  ), /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open,
+      onClose: () => setOpen(false),
+      portal: true,
+      closeOnPointerLeave: true,
+      items: [
+        { id: "rename", label: "\u4FEE\u6539\u4F1A\u8BDD\u540D\u79F0", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busy },
+        { id: "pin", label: pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876\u4F1A\u8BDD", icon: pinned ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinFillRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPinOutlineRegular, null), disabled: busy || archived }
+      ],
+      onSelect: (id) => {
+        setOpen(false);
+        if (id === "rename") onRename();
+        else onPin(!pinned);
+      },
+      anchor: /* @__PURE__ */ (0, import_react.createElement)(
+        "button",
+        {
+          type: "button",
+          className: "nodo-row-action",
+          "aria-haspopup": "menu",
+          "aria-expanded": open,
+          "aria-label": `\u4F1A\u8BDD\u201C${session.name}\u201D\u7684\u66F4\u591A\u64CD\u4F5C`,
+          disabled: busy,
+          onClick: (event) => {
+            event.stopPropagation();
+            setOpen((current2) => !current2);
+          }
+        },
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+      )
+    }
+  )));
+}
+function Rail({ view: view2, profile, workspace, sessionId, editing, draft, drafting, onResumeDraft, onSelect, onSelectSession, onArchiveSession, onRenameSession, onPinSession, onNewSession, onNewWorktree, onNewRole, onEditRole, onNewTeam, onEditTeam, onSettings, onSessions, onTeam, onRoles, onBack, onNewWorkspace, onRenameWorkspace, onDeleteWorkspace, readOnly, busy, navigation }) {
+  const [menuOpen, setMenuOpen] = (0, import_react.useState)(null);
+  const [archives, setArchives] = (0, import_react.useState)({});
+  const [searching, setSearching] = (0, import_react.useState)(false);
+  const [roleFilter, setRoleFilter] = (0, import_react.useState)(null);
+  const [opened, setOpened] = (0, import_react.useState)({});
+  const [expanded, setExpanded] = (0, import_react.useState)({});
+  const [rolesOpen, setRolesOpen] = (0, import_react.useState)(false);
+  const [update, setUpdate] = (0, import_react.useState)(null);
+  const [updateOpen, setUpdateOpen] = (0, import_react.useState)(false);
+  const [updateSkipped, setUpdateSkipped] = (0, import_react.useState)(() => {
+    try {
+      return localStorage.getItem(UPDATE_SKIP_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    const refresh = () => {
+      void call("update-info").then((info) => {
+        if (live) setUpdate(info ?? null);
+      }).catch(() => {
+      });
+    };
+    refresh();
+    const timer2 = setInterval(refresh, 30 * 60 * 1e3);
+    return () => {
+      live = false;
+      clearInterval(timer2);
+    };
+  }, []);
+  const [rosterHeight, setRosterHeight] = (0, import_react.useState)(() => {
+    try {
+      return Number(localStorage.getItem(ROSTER_HEIGHT_KEY)) || null;
+    } catch {
+      return null;
+    }
+  });
+  const busyNow = readOnly || busy;
+  const team = navigation?.view === "team";
+  const rounds = roundIndex(view2);
+  const sessions = view2.profiles.flatMap((role) => role.sessions.map((session) => {
+    const workspaceId = workspaceIdOf(view2, role, session);
+    return { role, session, workspaceId, projectId: projectAnchorOf(view2.workspaces, workspaceId) };
+  }));
+  const visibleSession = (role, session) => !team || role.lead === true && (session.engine ?? role.engine) !== "dsh" && session.leadMode !== false;
+  const groupOf = (role, session) => [{ role, session }, ...team ? rounds.members.get(session.id) ?? [] : []];
+  const rowOf = (role, session) => {
+    const group = groupOf(role, session);
+    return group.length === 1 ? { session, work: view2.work[session.id], current: session.id === sessionId } : {
+      session: { ...session, updatedAt: Math.max(...group.map((entry) => entry.session.updatedAt ?? 0)) },
+      work: runningOf({ sessions: group.map((entry) => entry.session) }, view2.work),
+      current: group.some((entry) => entry.session.id === sessionId)
+    };
+  };
+  const roles = view2.profiles.filter((role) => !role.deletedAt && (!team || role.lead === true && role.engine !== "dsh"));
+  const stateAt = (role) => {
+    const state = roleStateOf(role, view2, workspace);
+    return state.active || state.status ? Math.max(state.since ?? 1, state.finishedAt ?? 0, state.lastAt ?? 0) : 0;
+  };
+  const roster = [...roles].sort((a, b2) => Number(b2.lead === true) - Number(a.lead === true)).map((role) => ({ role, at: stateAt(role) })).sort((a, b2) => b2.at - a.at).map((entry) => entry.role);
+  const teamRows = (view2.teams ?? []).map((item) => ({ team: item, lead: roles.find((role) => role.id === item.lead) }));
+  const archivedSessions = sessions.filter(({ role, session, workspaceId }) => session.archivedAt && visibleSession(role, session) && (!session.draftedAt || session.briefSent) && (role.deletedAt || !view2.workspaces.some((item) => item.id === workspaceId))).sort((a, b2) => (b2.session.updatedAt ?? 0) - (a.session.updatedAt ?? 0));
+  const filterRole = roles.find((item) => item.id === roleFilter) ?? null;
+  const draftRole = filterRole?.id ?? (team ? roles.find((role) => role.id === profile?.id)?.id ?? roles[0]?.id : profile?.id);
+  const draftProfile = roles.find((role) => role.id === draft?.profile);
+  const ordered = [...view2.workspaces].reverse().sort((a, b2) => (b2.createdAt ?? 0) - (a.createdAt ?? 0)).filter((item) => item.worktree?.project == null);
+  const scopeOf = (item) => {
+    const archived = archives[item.id] ?? "hide";
+    return { archived, filtering: !!filterRole || archived === "only" };
+  };
+  const entriesOf = (item) => {
+    const { archived } = scopeOf(item);
+    return sessions.filter(({ role, session, projectId }) => !role.deletedAt && projectId === item.id && visibleSession(role, session) && (!filterRole || groupOf(role, session).some((entry) => entry.role === filterRole)) && (archived === "all" || archived === "only" === !!session.archivedAt)).sort((a, b2) => Number(!!b2.session.pinnedAt) - Number(!!a.session.pinnedAt) || (rowOf(b2.role, b2.session).session.updatedAt ?? 0) - (rowOf(a.role, a.session).session.updatedAt ?? 0));
+  };
+  const draftIn = (item) => !!draft && (!team || roles.some((role) => role.id === draft.profile)) && draft.workspace === item.id && scopeOf(item).archived !== "only" && (!filterRole || filterRole.id === draft.profile);
+  const action = (tip, label, icon, onClick, disabled) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label: tip, side: "bottom", align: "end", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-row-action",
+      "aria-label": label,
+      disabled,
+      onClick: (event) => {
+        event.stopPropagation();
+        onClick();
+      }
+    },
+    icon
+  ));
+  const liveIn = (items) => sessions.filter((entry) => items.some((other) => other.id === entry.projectId) && (!team || visibleSession(entry.role, entry.session) || rounds.lead.get(entry.session.id)?.role.lead === true) && view2.work[entry.session.id]?.active);
+  const toggle = (key, open, Glyph, title, tip, live) => {
+    const waiting = live.some((entry) => workKind(view2.work[entry.session.id]) === "wait");
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-project-select",
+        "aria-expanded": open,
+        title: tip,
+        onClick: () => setOpened((current) => ({ ...current, [key]: !open }))
+      },
+      Glyph && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(Glyph, { size: 20 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, title),
+      !open && live.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-state" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: waiting ? "wait" : "run" }), waiting ? "\u5F85\u5904\u7406" : `${live.length} \u4E2A\u8FD0\u884C\u4E2D`)
+    );
+  };
+  const list = (item, entries, pending) => {
+    const { archived } = scopeOf(item);
+    const folded = entries.length > SESSION_FOLD;
+    const visible = folded && !expanded[item.id] ? entries.slice(0, SESSION_FOLD) : entries;
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, pending && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-row nodo-session", "aria-current": drafting ? "page" : void 0, onClick: onResumeDraft, title: "\u65B0\u4F1A\u8BDD\uFF08\u8349\u7A3F\uFF09" }, draftProfile ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: draftProfile, size: 20 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-folder" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 20 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-title" }, "\u65B0\u4F1A\u8BDD")), visible.map(({ role, session }) => {
+      const row = rowOf(role, session);
+      return /* @__PURE__ */ (0, import_react.createElement)(
+        SessionRow,
+        {
+          key: session.id,
+          role,
+          session: row.session,
+          busy,
+          current: row.current && !editing && !drafting,
+          work: row.work,
+          onSelect: () => onSelectSession(role, session.id, item),
+          onArchive: (archived2) => onArchiveSession(role, session.id, archived2),
+          onRename: () => onRenameSession(role, session),
+          onPin: (pinned) => onPinSession(role, session.id, pinned)
+        }
+      );
+    }), folded && /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-show-more",
+        "aria-expanded": !!expanded[item.id],
+        onClick: () => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))
+      },
+      expanded[item.id] ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
+    ), !entries.length && !pending && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty nodo-session-empty", role: "status" }, filterRole ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : archived === "only" ? "\u6682\u65E0\u5DF2\u5F52\u6863\u4F1A\u8BDD" : "\u6682\u65E0\u4F1A\u8BDD"));
+  };
+  const node = (item) => {
+    const { archived, filtering } = scopeOf(item);
+    const entries = entriesOf(item);
+    const pending = draftIn(item);
+    if (filtering && !entries.length && !pending && archived !== "only") return null;
+    const open = opened[item.id] ?? (filtering || item.id === workspace?.id);
+    const worktrees = view2.workspaces.filter((other) => other.worktree?.project === item.id);
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project", "data-menu": menuOpen === item.id ? "open" : void 0 }, toggle(
+      item.id,
+      open,
+      item.worktree ? import_dsh_client_ui_primitives.IconBranchOutlineRegular : import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular,
+      item.name,
+      item.worktree ? `${item.worktree.branch} \xB7 ${item.cwd}` : item.cwd,
+      liveIn([item])
+    ), archived !== "hide" && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-flag", title: ARCHIVED_VIEWS[archived] }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, { size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, action("\u65B0\u4F1A\u8BDD", `\u5728\u201C${item.name}\u201D\u4E2D\u65B0\u5EFA\u4F1A\u8BDD`, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, null), () => onNewSession(draftRole, item), busyNow || team && !roles.length), /* @__PURE__ */ (0, import_react.createElement)(
+      import_dsh_client_ui_primitives.Menu,
+      {
+        open: menuOpen === item.id,
+        onClose: () => setMenuOpen(null),
+        portal: true,
+        closeOnPointerLeave: true,
+        selectedId: `archived:${archived}`,
+        items: [
+          ...Object.entries(ARCHIVED_VIEWS).map(([id, label]) => ({
+            id: `archived:${id}`,
+            label,
+            icon: id === "hide" ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOffOutlineRegular, null) : /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconArchiveOutlineRegular, null)
+          })),
+          ...item.worktree ? [] : [{ id: "worktree", label: "\u521B\u5EFA\u5DE5\u4F5C\u6811\u2026", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null), disabled: busyNow }],
+          ...worktrees.map((other) => ({
+            id: `worktree-delete:${other.id}`,
+            label: `\u5220\u9664\u5DE5\u4F5C\u6811\u201C${other.name}\u201D`,
+            icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, null),
+            danger: true,
+            disabled: busyNow
+          })),
+          { id: "rename", label: "\u91CD\u547D\u540D", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null), disabled: busyNow },
+          { id: "delete", label: "\u5220\u9664\u9879\u76EE", icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, null), danger: true, disabled: busyNow }
+        ],
+        onSelect: (id) => {
+          setMenuOpen(null);
+          if (id.startsWith("archived:")) setArchives((current) => ({ ...current, [item.id]: id.slice("archived:".length) }));
+          else if (id === "worktree") onNewWorktree(item);
+          else if (id.startsWith("worktree-delete:")) onDeleteWorkspace(worktrees.find((other) => other.id === id.slice("worktree-delete:".length)));
+          else if (id === "rename") onRenameWorkspace(item);
+          else if (id === "delete") onDeleteWorkspace(item);
+        },
+        anchor: /* @__PURE__ */ (0, import_react.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "nodo-row-action",
+            "aria-haspopup": "menu",
+            "aria-expanded": menuOpen === item.id,
+            "aria-label": `\u9879\u76EE\u201C${item.name}\u201D\u7684\u64CD\u4F5C`,
+            onClick: (event) => {
+              event.stopPropagation();
+              setMenuOpen((current) => current === item.id ? null : item.id);
+            }
+          },
+          /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEllipsisOutlineRegular, null)
+        )
+      }
+    ))), open && list(item, entries, pending));
+  };
+  const tree = ordered.map(node).filter(Boolean);
+  const shownRoles = rolesOpen ? roster : roster.filter((item, index) => index < ROLE_FOLD || item === filterRole);
+  const shownTeams = rolesOpen ? teamRows : teamRows.filter((row, index) => index < ROLE_FOLD || row.lead?.id === filterRole?.id);
+  const rosterItem = (item) => {
+    const state = roleStateOf(item, view2, workspace);
+    const pressed = item.id === filterRole?.id;
+    const label = workLabel(state);
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: item.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-roster-item",
+        "aria-current": pressed || void 0,
+        title: item.name,
+        "aria-label": label ? `${item.name}\uFF0C${label}` : item.name,
+        onClick: () => {
+          if (pressed) setRoleFilter(null);
+          else {
+            onSelect(item.id);
+            setRoleFilter(item.id);
+          }
+        }
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: item, running: state.active, size: 20 })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, item.name),
+      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(state) }), label)
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-row-action",
+        "aria-label": `\u914D\u7F6E\u89D2\u8272 ${item.name}`,
+        title: "\u914D\u7F6E\u89D2\u8272",
+        disabled: busyNow || state.active,
+        onClick: () => onEditRole(item)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null)
+    )));
+  };
+  const teamItem = ({ team: team2, lead }) => {
+    const state = lead ? roleStateOf(lead, view2, workspace) : runningOf({}, view2.work);
+    const pressed = lead !== void 0 && lead.id === filterRole?.id;
+    const label = workLabel(state);
+    const name = team2.name || "\u672A\u547D\u540D\u56E2\u961F";
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: team2.id, className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-roster-item",
+        "aria-current": pressed || void 0,
+        title: name,
+        "aria-label": label ? `${name}\uFF0C${label}` : name,
+        onClick: () => {
+          if (!lead) return onEditTeam(team2.id);
+          if (pressed) setRoleFilter(null);
+          else {
+            onSelect(lead.id);
+            setRoleFilter(lead.id);
+          }
+        }
+      },
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-avatar" }, lead ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: lead, running: state.active, size: 20 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-plus" })),
+      /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, name),
+      label && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-running" }, /* @__PURE__ */ (0, import_react.createElement)(WorkDot, { kind: workKind(state) }), label)
+    ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-row-actions" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-row-action",
+        "aria-label": `\u914D\u7F6E\u56E2\u961F ${name}`,
+        title: "\u914D\u7F6E\u56E2\u961F",
+        disabled: busyNow || state.active,
+        onClick: () => onEditTeam(team2.id)
+      },
+      /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconEditOutlineRegular, null)
+    )));
+  };
+  const head = (title, add) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-title" }, title), add);
+  const dock = (label, icon, props) => /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, { label, side: "right", delayMs: 500 }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-icon-btn nodo-visible", "aria-label": label, ...props }, icon));
+  const searchItems = () => sessions.filter(({ role, session, workspaceId }) => !role.deletedAt && !session.archivedAt && visibleSession(role, session) && view2.workspaces.some((item) => item.id === workspaceId)).map(({ role, session, workspaceId }) => {
+    const project = view2.workspaces.find((item) => item.id === projectAnchorOf(view2.workspaces, workspaceId)), row = rowOf(role, session);
+    return {
+      id: session.id,
+      role,
+      name: session.name,
+      project,
+      updatedAt: row.session.updatedAt,
+      work: row.work,
+      terms: [...groupOf(role, session).flatMap((entry) => [entry.role.name, entry.session.name]), session.engine, project.name],
+      pick: () => onSelectSession(role, session.id, project)
+    };
+  }).sort((a, b2) => (b2.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  const saveRosterHeight = (height) => {
+    setRosterHeight(height);
+    try {
+      if (height) localStorage.setItem(ROSTER_HEIGHT_KEY, String(height));
+      else localStorage.removeItem(ROSTER_HEIGHT_KEY);
+    } catch {
+    }
+  };
+  const skipUpdate = () => {
+    if (update) {
+      setUpdateSkipped(update.latest);
+      try {
+        localStorage.setItem(UPDATE_SKIP_KEY, update.latest);
+      } catch {
+      }
+    }
+    setUpdateOpen(false);
+  };
+  const rosterLimit = (split) => {
+    const roster2 = split.previousElementSibling, list2 = roster2.firstElementChild;
+    const rows = [...list2.children].slice(0, 2).reduce((sum, row) => sum + row.offsetHeight + 2, 0);
+    const rest = roster2.offsetHeight - list2.clientHeight, room = split.parentElement.getBoundingClientRect().bottom - roster2.getBoundingClientRect().top - split.offsetHeight - TREE_MIN;
+    const min = rest + rows, max = Math.max(min, Math.min(rest + list2.scrollHeight, room));
+    return { start: roster2.offsetHeight, clamp: (height) => Math.round(Math.min(Math.max(height, min), max)) };
+  };
+  const nudgeRoster = (split, delta) => {
+    const { start, clamp } = rosterLimit(split);
+    saveRosterHeight(clamp(start + delta));
+  };
+  const resizeRoster = (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const { start, clamp } = rosterLimit(event.currentTarget), from = event.clientY;
+    let height = start;
+    const move = (next) => {
+      height = clamp(start + next.clientY - from);
+      setRosterHeight(height);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      saveRosterHeight(height);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-rail", "aria-label": navigation?.view === "roles" ? "\u89D2\u8272\u5BFC\u822A" : "\u89D2\u8272\u4E0E\u9879\u76EE\u4F1A\u8BDD" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-dock" }, dock("\u4E3B\u9875", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFlatListOutlineRegular, { size: 18 }), { "aria-pressed": !navigation?.content, onClick: navigation?.content ? onSessions : void 0 }), dock("\u65B0\u5EFA\u4F1A\u8BDD", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconNewChatOutlineRegular, { size: 18 }), {
+    onClick: () => onNewSession(draftRole),
+    disabled: busyNow || !workspace || navigation?.view === "roles" || team && !roles.length
+  }), dock("\u641C\u7D22", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 18 }), {
+    "aria-pressed": searching,
+    onClick: () => {
+      if (navigation?.view === "roles") onSessions();
+      setSearching((current) => !current);
+    }
+  }), dock("\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 18 }), {
+    "aria-pressed": navigation?.view === "roles",
+    onClick: navigation?.view === "roles" ? void 0 : onRoles
+  }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-rail-spacer" }), update && isNewer(updateSkipped, update.latest) && /* @__PURE__ */ (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Menu,
+    {
+      open: updateOpen,
+      onClose: () => setUpdateOpen(false),
+      portal: true,
+      side: "right",
+      className: "nodo-update",
+      anchor: dock(
+        `\u65B0\u7248\u672C v${update.latest}`,
+        /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconDownloadOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("i", { className: "nodo-update-dot", "aria-hidden": true })),
+        { "aria-haspopup": "menu", "aria-expanded": updateOpen, onClick: () => setUpdateOpen((open) => !open) }
+      )
+    },
+    updateOpen && /* @__PURE__ */ (0, import_react.createElement)(UpdateCard, { info: update, onClose: () => setUpdateOpen(false), onSkip: skipUpdate })
+  ), dock("\u8BBE\u7F6E", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSettingsOutlineRegular, { size: 16 }), { onClick: onSettings, "aria-pressed": editing?.kind === "settings" ? "true" : void 0 }), dock("\u8FD4\u56DE\u666E\u901A\u7A7A\u95F4", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 }), {
+    onClick: onBack,
+    disabled: typeof layoutService?.selectPanel !== "function"
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-body" }, navigation?.content ?? /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-rail-tabs", role: "tablist", "aria-label": "\u4E3B\u9875\u89C6\u56FE" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", role: "tab", "aria-selected": !team, onClick: team ? onSessions : void 0 }, "\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", role: "tab", "aria-selected": team, onClick: team ? void 0 : onTeam }, "\u56E2\u961F")), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster", role: "group", "aria-label": "\u6309\u89D2\u8272\u67E5\u770B\u4F1A\u8BDD", style: rosterHeight ? { maxHeight: rosterHeight } : void 0 }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster-list" }, team ? shownTeams.map(teamItem) : shownRoles.map(rosterItem)), (team ? teamRows.length : roster.length) > ROLE_FOLD && /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-roster-more",
+      "aria-expanded": rolesOpen,
+      onClick: () => {
+        if (!rolesOpen) saveRosterHeight(null);
+        setRolesOpen((current) => !current);
+      }
+    },
+    rolesOpen ? "\u6536\u8D77" : "\u663E\u793A\u66F4\u591A"
+  ), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roster-cell" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roster-item nodo-roster-new", disabled: busyNow, onClick: team ? onNewTeam : onNewRole }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-plus" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 12 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roster-name" }, team ? "\u65B0\u5EFA\u56E2\u961F" : "\u65B0\u5EFA\u89D2\u8272")))), /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      className: "nodo-rail-split",
+      role: "separator",
+      "aria-orientation": "horizontal",
+      "aria-label": "\u8C03\u6574\u89D2\u8272\u533A\u9AD8\u5EA6",
+      tabIndex: 0,
+      onPointerDown: resizeRoster,
+      onDoubleClick: () => saveRosterHeight(null),
+      onKeyDown: (event) => {
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          nudgeRoster(event.currentTarget, event.key === "ArrowUp" ? -16 : 16);
+        }
+      }
+    }
+  ), /* @__PURE__ */ (0, import_react.createElement)("nav", { className: "nodo-tree", "aria-label": "\u9879\u76EE" }, head("\u9879\u76EE\u533A", action("\u6DFB\u52A0\u9879\u76EE", "\u6DFB\u52A0\u9879\u76EE", /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconProjectAddOutlineRegular, null), onNewWorkspace, busyNow)), tree, !tree.length && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-empty", role: "status" }, view2.workspaces.length ? "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u4F1A\u8BDD" : "\u6DFB\u52A0\u9879\u76EE"), !!archivedSessions.length && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-node" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-project" }, toggle(":archived", !!opened[":archived"], import_dsh_client_ui_primitives.IconArchiveOutlineRegular, "\u5DF2\u79FB\u9664", void 0, [])), opened[":archived"] && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-tree-children" }, archivedSessions.map(({ role, session, workspaceId }) => /* @__PURE__ */ (0, import_react.createElement)(
+    SessionRow,
+    {
+      key: session.id,
+      role,
+      session,
+      busy,
+      readOnly: true,
+      current: rowOf(role, session).current && !editing && !drafting,
+      context: `${session.profileName ?? role.name} \xB7 ${session.workspaceName ?? view2.workspaces.find((item) => item.id === workspaceId)?.name ?? session.cwd ?? "\u672A\u6307\u5B9A\u9879\u76EE"}`,
+      onSelect: () => onSelectSession(role, session.id),
+      onArchive: () => {
+      },
+      onRename: () => {
+      },
+      onPin: () => {
+      }
+    }
+  )))))), searching && /* @__PURE__ */ (0, import_react.createElement)(SearchDialog, { items: searchItems(), onClose: () => setSearching(false) }), readOnly && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-rail-foot" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u53EA\u8BFB\u6A21\u5F0F"))));
+}
+
+// src/client/artifacts.js
+var URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
+function artifactsOf(lines, cwd) {
+  const files = /* @__PURE__ */ new Map(), links = /* @__PURE__ */ new Set(), images = /* @__PURE__ */ new Map(), calls = /* @__PURE__ */ new Set();
+  for (const line of lines) {
+    if (line.kind === "tool") {
+      if (!["write", "edit"].includes(toolVariant(line.name))) continue;
+      const call2 = line.callId ? JSON.stringify([line.turnId ?? null, line.callId]) : void 0;
+      if (call2 && calls.has(call2)) continue;
+      if (call2) calls.add(call2);
+      const file = toolFileChange(line.input, cwd);
+      if (file && !file.display.startsWith("/")) files.set(file.display, { ...file, diffs: [...files.get(file.display)?.diffs ?? [], ...file.diffs] });
+      continue;
+    }
+    if (line.who === "user") continue;
+    if (line.kind === "text") for (const url of String(line.text ?? "").match(URL_RE) ?? []) links.add(url.replace(/[.,;:!?，。；：！？]+$/, ""));
+    for (const image of line.images ?? []) images.set(image.id, image);
+  }
+  return { files: [...files.values()], links: [...links], images: [...images.values()] };
+}
+
+// src/client/session-panel.js
+function Environment({ workspace, cwd, running }) {
+  const [info, setInfo] = (0, import_react.useState)(null);
+  const [branches, setBranches] = (0, import_react.useState)([]);
+  const [open, setOpen] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)("");
+  const load = () => call("workspace-git", { workspace }).then((value) => {
+    setInfo(value);
+    setError("");
+  }).catch((failure) => setError(failure.message));
+  (0, import_react.useEffect)(() => {
+    void load();
+  }, [workspace, running]);
+  (0, import_react.useEffect)(() => {
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [workspace]);
+  (0, import_react.useEffect)(() => {
+    if (open) void call("worktree-refs", { workspace }).then((value) => setBranches(value.branches)).catch(() => setBranches([]));
+  }, [open]);
+  const switchTo = (name) => {
+    setOpen(false);
+    setError("");
+    call("workspace-switch", { workspace, branch: name }).then(setInfo).catch((failure) => setError(failure.message));
+  };
+  const path = info?.cwd ?? cwd;
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-env" },
+    (0, import_react.createElement)("div", { className: "nodo-panel-head" }, (0, import_react.createElement)("span", null, "\u672C\u673A\u73AF\u5883")),
+    (0, import_react.createElement)("div", { className: "nodo-env-row", title: path }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconFolderOpenOutlineRegular, { size: 16 }), (0, import_react.createElement)("span", { className: "nodo-env-text" }, path)),
+    info?.git && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-env-row" },
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
+        open,
+        onClose: () => setOpen(false),
+        portal: true,
+        align: "start",
+        selectedId: info.head.name,
+        items: branches.map((branch) => ({ id: branch.name, label: branch.name, disabled: branch.checkedOutAt !== void 0 && branch.name !== info.head.name })),
+        onSelect: switchTo,
+        anchor: (0, import_react.createElement)(
+          "button",
+          { type: "button", className: "nodo-env-branch", "aria-haspopup": "menu", "aria-expanded": open, title: "\u5207\u6362\u5206\u652F", onClick: () => setOpen((value) => !value) },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconBranchOutlineRegular, { size: 16 }),
+          (0, import_react.createElement)("span", { className: "nodo-env-text" }, info.head.name ?? `${info.head.commit ?? ""}\uFF08\u6E38\u79BB\uFF09`),
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 })
+        )
+      }),
+      (0, import_react.createElement)("span", { className: "nodo-env-counts", title: `${info.files} \u4E2A\u6587\u4EF6\u6709\u6539\u52A8` }, (0, import_react.createElement)(Counts, { value: { added: info.added, removed: info.removed } }))
+    ),
+    error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
+  );
+}
+function Artifacts({ sources, running }) {
+  const [folded, setFolded] = (0, import_react.useState)(false);
+  const [turnDiffs, setTurnDiffs] = (0, import_react.useState)({});
+  (0, import_react.useSyncExternalStore)(subscribeStore, getStoreVersion);
+  const key = sources.map((item) => `${item.profile}:${item.session}`).join();
+  (0, import_react.useEffect)(() => {
+    const stops = sources.map((item) => watchTranscript(item.profile, item.session));
+    return () => stops.forEach((stop) => stop());
+  }, [key]);
+  const lists = sources.map((item) => transcriptOf(`${item.profile}:${item.session}`));
+  const gathered = (0, import_react.useRef)(null);
+  if (gathered.current?.key !== key || lists.some((lines, index) => lines !== gathered.current.lists[index])) {
+    const groups2 = /* @__PURE__ */ new Map(), links2 = /* @__PURE__ */ new Set(), images2 = /* @__PURE__ */ new Map();
+    sources.forEach((item, index) => {
+      const found = artifactsOf(lists[index], item.cwd);
+      const group = groups2.get(item.workspace) ?? { workspace: item.workspace, cwd: item.cwd, files: /* @__PURE__ */ new Map() };
+      groups2.set(item.workspace, group);
+      for (const file of found.files) group.files.set(file.display, { ...file, diffs: [...group.files.get(file.display)?.diffs ?? [], ...file.diffs] });
+      found.links.forEach((url) => links2.add(url));
+      found.images.forEach((image) => images2.set(image.id, image));
+    });
+    gathered.current = {
+      key,
+      lists,
+      links: [...links2],
+      images: [...images2.values()],
+      revision: lists.reduce((sum, lines) => sum + lines.length, 0),
+      groups: [...groups2.values()].map((group) => ({ ...group, files: [...group.files.values()] })).filter((group) => group.files.length > 0)
+    };
+  }
+  const { groups, links, images, revision } = gathered.current;
+  const pathsKey = groups.map((group) => `${group.workspace}\0${group.files.map((file) => file.display).join("\0")}`).join("\n");
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    for (const group of groups) void call("workspace-diff", { workspace: group.workspace, paths: group.files.map((file) => file.display) }).then(({ patch }) => {
+      if (live) setTurnDiffs((current) => ({ ...current, [group.workspace]: patch }));
+    }).catch(() => {
+    });
+    return () => {
+      live = false;
+    };
+  }, [pathsKey, running]);
+  const shown = (0, import_react.useMemo)(() => groups.map((group) => {
+    const body = { ...changesBody(group.files, group.cwd), ...turnDiffs[group.workspace] && { turnDiff: turnDiffs[group.workspace] } };
+    return { ...group, body, counts: summarizeChanges(body).files.map((item) => item.counts) };
+  }), [groups, turnDiffs]);
+  const fileCount = groups.reduce((sum, group) => sum + group.files.length, 0);
+  if (fileCount + links.length + images.length === 0) return null;
+  const openChanges = (group, path) => showChanges(group.body, path, { cwd: group.cwd, revision, load: async () => {
+    const { patch } = await call("workspace-diff", { workspace: group.workspace, paths: group.files.map((file) => file.display) }).catch(() => ({ patch: "" }));
+    return patch ? { ...group.body, turnDiff: patch } : group.body;
+  } });
+  const reveal = () => {
+    if (!rightPanelService.getSnapshot().expanded) rightPanelService.toggle();
+  };
+  const row = (key2, icon, label, title, onClick, count) => (0, import_react.createElement)(
+    "button",
+    { key: key2, type: "button", className: "nodo-team-row", title, onClick },
+    icon,
+    (0, import_react.createElement)("span", { className: "nodo-round-title" }, label),
+    count && (0, import_react.createElement)("span", { className: "nodo-env-counts" }, (0, import_react.createElement)(Counts, { value: count }))
+  );
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-team nodo-artifacts" },
+    (0, import_react.createElement)(
+      "button",
+      { type: "button", className: "nodo-panel-head nodo-panel-fold", "aria-expanded": !folded, onClick: () => setFolded((value) => !value) },
+      (0, import_react.createElement)("span", null, "\u4EA7\u7269"),
+      (0, import_react.createElement)(
+        "span",
+        { className: "nodo-panel-meta" },
+        [fileCount && `${fileCount} \u6587\u4EF6`, links.length && `${links.length} \u94FE\u63A5`, images.length && `${images.length} \u56FE\u7247`].filter(Boolean).join(" \xB7 "),
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14, style: folded ? { transform: "rotate(-90deg)" } : void 0 })
+      )
+    ),
+    !folded && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-team-list" },
+      ...shown.flatMap((group) => group.files.map((file, index) => row(
+        `f:${group.workspace}:${file.display}`,
+        (0, import_react.createElement)(FileIcon, { name: file.name, size: 16 }),
+        file.display,
+        shown.length > 1 ? file.path : file.display,
+        () => openChanges(group, file.path),
+        group.counts[index]
+      ))),
+      ...images.map((image) => row(
+        `i:${image.id}`,
+        (0, import_react.createElement)(FileIcon, { name: image.name ?? "image.png", size: 16 }),
+        image.name ?? "\u56FE\u7247",
+        image.name ?? "\u56FE\u7247",
+        () => rightPanelService.openImage({ id: image.id, mediaType: image.mediaType, name: image.name })
+      )),
+      ...links.map((url) => row(`l:${url}`, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconLinkOutlineRegular, { size: 16 }), url.replace(/^https?:\/\//, ""), url, () => {
+        reveal();
+        rightPanelService.newBrowser(url);
+      }))
+    )
+  );
+}
+function SessionPanel({ workspace, cwd, team, running, profile, session }) {
+  return (0, import_react.createElement)(
+    "aside",
+    { className: "nodo-session-panel", "aria-label": "\u6458\u8981\u9762\u677F" },
+    (0, import_react.createElement)(Environment, { key: `env:${workspace}`, workspace, cwd, running }),
+    team && (0, import_react.createElement)(RoundTeam, { key: `team:${workspace}`, ...team, workspace }),
+    session && (0, import_react.createElement)(Artifacts, { running, sources: (team ? [team.lead, ...team.members] : [{ role: { id: profile }, session: { id: session, cwd, workspaceRef: workspace } }]).map((item) => ({ profile: item.role.id, session: item.session.id, cwd: item.session.cwd ?? cwd, workspace: item.session.workspaceRef ?? workspace })) })
+  );
+}
+
+// src/client/run-cards.js
+var RECOMMENDED_LABEL = /\s*(?:\((?:recommended|推荐)\)|（(?:recommended|推荐)）)\s*$/i;
+var optionText = (label) => RECOMMENDED_LABEL.test(label) ? { text: label.replace(RECOMMENDED_LABEL, ""), recommended: true } : { text: label, recommended: false };
+var questionOption = ({ key, index, selected, disabled, onClick, label, recommended, line }, ...children) => (0, import_react.createElement)(
+  "button",
+  {
+    key,
+    type: "button",
+    role: "radio",
+    "aria-checked": selected,
+    className: "nodo-question-option",
+    "data-selected": selected ? "" : void 0,
+    disabled,
+    onClick
+  },
+  (0, import_react.createElement)("span", { className: "nodo-question-number", "aria-hidden": true }, index + 1),
+  (0, import_react.createElement)(
+    "span",
+    { className: "nodo-question-copy" },
+    (0, import_react.createElement)(
+      "span",
+      { className: "nodo-question-line" },
+      (0, import_react.createElement)("span", { className: "nodo-question-label" }, label),
+      recommended && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "accent" }, "\u63A8\u8350"),
+      line
+    ),
+    ...children
+  )
+);
+var questionAnswer = ({ key, value, disabled, label, placeholder, autoFocus, onChange, onEnter }) => (0, import_react.createElement)("textarea", {
+  key,
+  className: "nodo-question-answer",
+  rows: 1,
+  disabled,
+  value,
+  "aria-label": label,
+  placeholder,
+  autoFocus,
+  onChange: (event) => onChange(event.target.value),
+  onKeyDown: (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+      event.preventDefault();
+      onEnter();
+    }
+  }
+});
+var questionPager = ({ step, count, disabled, onBack, onNext }) => count > 1 && (0, import_react.createElement)(
+  "div",
+  { className: "nodo-question-pager" },
+  (0, import_react.createElement)(
+    "button",
+    { type: "button", className: "nodo-question-icon", "aria-label": "\u4E0A\u4E00\u9898", disabled: step === 0 || disabled, onClick: onBack },
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronLeftOutlineRegular, { size: 16 })
+  ),
+  (0, import_react.createElement)("span", { className: "nodo-question-progress" }, `${step + 1} / ${count}`),
+  (0, import_react.createElement)(
+    "button",
+    { type: "button", className: "nodo-question-icon", "aria-label": "\u4E0B\u4E00\u9898", disabled: step === count - 1 || disabled, onClick: onNext },
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 16 })
+  )
+);
+function ApprovalCard({ card, refresh, readOnly, from }) {
+  const questions = card.detail?.questions?.length ? card.detail.questions : [{ id: "answer", question: card.reason, options: (card.detail?.options ?? []).map((label) => ({ label })) }];
+  const [step, setStep] = (0, import_react.useState)(0);
+  const [answers, setAnswers] = (0, import_react.useState)({});
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)("");
+  const blocked = busy || readOnly;
+  const question = questions[Math.min(step, questions.length - 1)];
+  const draft = answers[question.id] ?? "";
+  const last = step === questions.length - 1;
+  const pick = (next2) => setAnswers((current) => ({ ...current, [question.id]: next2 }));
+  const answer = async (decision, value) => {
+    if (blocked) return;
+    setBusy(true);
+    setError("");
+    try {
+      await call("approval-answer", { id: card.id, decision, ...decision === "answer" ? { value } : {} });
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+      setBusy(false);
+      await refresh(true);
+    }
+  };
+  const submit = () => {
+    if (questions.some((item) => (answers[item.id] ?? "").trim() === "")) return setError("\u8BF7\u9009\u62E9\u4E00\u4E2A\u9009\u9879\u6216\u586B\u5199\u81EA\u5B9A\u4E49\u7B54\u6848\u3002");
+    void answer("answer", questions.length === 1 ? answers[question.id] : JSON.stringify(answers));
+  };
+  const next = () => {
+    if (draft.trim() === "") return setError("\u8BF7\u5148\u5B8C\u6210\u8FD9\u9053\u95EE\u9898\u3002");
+    setError("");
+    if (last) submit();
+    else setStep(step + 1);
+  };
+  if (card.kind === "permission") {
+    const keydown = (event) => {
+      if (blocked || event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.key !== "Enter" && event.key !== "Escape") return;
+      if (event.target.closest?.("input, textarea, select, button, a[href], [contenteditable]")) return;
+      event.preventDefault();
+      void answer(event.key === "Enter" ? "allow" : "deny");
+    };
+    return (0, import_react.createElement)(
+      "div",
+      { className: "nodo-approval", onKeyDown: keydown, "aria-busy": busy ? "true" : void 0 },
+      (0, import_react.createElement)(
+        "section",
+        { className: "nodo-approval-card" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-approval-strip", role: "alert" },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: busy ? "ongoing" : "warning" }),
+          (0, import_react.createElement)("span", { className: "nodo-approval-label" }, from || card.taskTitle ? "\u7B49\u5F85\u5BA1\u6279 \xB7" : "\u7B49\u5F85\u5BA1\u6279"),
+          card.taskTitle && card.taskTitle !== from?.session.name && (0, import_react.createElement)("span", { className: "nodo-approval-task" }, card.taskTitle),
+          from && (0, import_react.createElement)(
+            "span",
+            { className: "nodo-approval-from" },
+            (0, import_react.createElement)(RoleAvatar, { profile: from.role, size: 16 }),
+            (0, import_react.createElement)("span", null, [from.role.name, from.role.engine && engineDisplayName({ id: from.role.engine }), from.session.name].filter(Boolean).join(" \xB7 "))
+          )
+        ),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-approval-body", tabIndex: 0, role: "group", "aria-label": "\u5BA1\u6279\u8BE6\u60C5" },
+          (0, import_react.createElement)("p", { className: "nodo-approval-headline" }, card.tool ? `\u5DE5\u5177\u300C${card.tool}\u300D\u8BF7\u6C42\u6267\u884C` : card.reason),
+          card.tool && card.reason ? (0, import_react.createElement)("p", { className: "nodo-approval-command" }, card.reason) : null,
+          card.tool === "ExitPlanMode" && typeof (card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan) === "string" && (0, import_react.createElement)("div", { className: "nodo-approval-plan" }, card.detail?.input?.plan ?? card.detail?.toolCall?.rawInput?.plan)
+        ),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-approval-actions" },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", className: "nodo-approval-reject", disabled: blocked, onClick: () => void answer("deny") }, "\u62D2\u7EDD"),
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: blocked, onClick: () => void answer("allow") }, "\u5141\u8BB8\u4E00\u6B21")
+        )
+      ),
+      error2 && (0, import_react.createElement)("p", { className: "nodo-approval-error", role: "alert" }, error2)
+    );
+  }
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-question-frame" },
+    (0, import_react.createElement)(
+      "section",
+      { className: "nodo-question-card", "aria-labelledby": `nodo-question-${card.id}` },
+      (0, import_react.createElement)(
+        "header",
+        { className: "nodo-question-head" },
+        (0, import_react.createElement)(
+          "div",
+          null,
+          (0, import_react.createElement)("div", { className: "nodo-question-eyebrow", role: "alert" }, card.taskTitle ?? question.header ?? "\u7B49\u5F85\u56DE\u7B54"),
+          (0, import_react.createElement)("h2", { className: "nodo-question-title", id: `nodo-question-${card.id}` }, question.question)
+        )
+      ),
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-question-body" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-question-options", role: "radiogroup", "aria-label": question.header ?? question.question },
+          ...(question.options ?? []).map((option, index) => {
+            const display = optionText(option.label);
+            return questionOption({
+              key: `${option.label}-${index}`,
+              index,
+              selected: draft === option.label,
+              disabled: blocked,
+              onClick: () => {
+                setError("");
+                pick(option.label);
+              },
+              label: display.text,
+              recommended: display.recommended,
+              line: option.description && (0, import_react.createElement)("span", { className: "nodo-question-description" }, option.description)
+            });
+          })
+        ),
+        question.allowText !== false && card.detail?.allowText !== false && questionAnswer({
+          value: draft,
+          disabled: blocked,
+          label: question.header ?? question.question,
+          placeholder: "\u8F93\u5165\u4F60\u7684\u7B54\u6848",
+          onChange: (value) => {
+            setError("");
+            pick(value);
+          },
+          onEnter: next
+        })
+      ),
+      (0, import_react.createElement)(
+        "footer",
+        { className: "nodo-question-foot" },
+        questionPager({ step, count: questions.length, disabled: blocked, onBack: () => {
+          setError("");
+          setStep(step - 1);
+        }, onNext: next }),
+        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "status" }, error2),
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-question-actions" },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: blocked, onClick: next }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : last ? "\u63D0\u4EA4" : "\u4E0B\u4E00\u9898")
+        )
+      )
+    )
+  );
+}
+var DECISION_DRAFTS = "nodo.decisionDrafts";
+var readDecisionDrafts = () => {
+  try {
+    return JSON.parse(localStorage.getItem(DECISION_DRAFTS)) ?? {};
+  } catch {
+    return {};
+  }
+};
+var writeDecisionDraft = (id, draft) => {
+  const { [id]: _old, ...rest } = readDecisionDrafts();
+  try {
+    localStorage.setItem(DECISION_DRAFTS, JSON.stringify(draft ? { ...rest, [id]: draft } : rest));
+  } catch {
+  }
+};
+var pruneDecisionDrafts = (decisions) => {
+  const drafts = readDecisionDrafts();
+  const stale = Object.keys(drafts).filter((id) => !decisions.some((decision) => decision.id === id && decision.status === "pending"));
+  if (stale.length > 0) try {
+    localStorage.setItem(DECISION_DRAFTS, JSON.stringify(Object.fromEntries(Object.entries(drafts).filter(([id]) => !stale.includes(id)))));
+  } catch {
+  }
+};
+var DECISION_HEAD = { pending: "\u7B49\u5F85\u7528\u6237\u51B3\u5B9A", answered: "\u7B54\u6848\u5DF2\u63D0\u4EA4 \xB7 \u7B49\u5F85\u4EA4\u63A5" };
+function DecisionCard({ decision, profileId, readOnly, refresh, profiles = [], tasks = [], work = {} }) {
+  const [saved] = (0, import_react.useState)(() => readDecisionDrafts()[decision.id] ?? { answers: {}, open: true, step: 0 });
+  const [answers, setAnswersState] = (0, import_react.useState)(saved.answers);
+  const [open, setOpenState] = (0, import_react.useState)(saved.open);
+  const [step, setStepState] = (0, import_react.useState)(saved.step);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [confirming, setConfirming] = (0, import_react.useState)(false);
+  const [feedback, setFeedback] = (0, import_react.useState)("");
+  const remember = (patch) => writeDecisionDraft(decision.id, { answers, open, step, ...patch });
+  const setAnswers = (next2) => {
+    setAnswersState(next2);
+    remember({ answers: next2 });
+  };
+  const setOpen = (next2) => {
+    setOpenState(next2);
+    remember({ open: next2 });
+  };
+  const setStep = (next2) => {
+    setFeedback("");
+    setStepState(next2);
+    remember({ step: next2 });
+  };
+  const pending = decision.status === "pending";
+  const values = pending ? answers : decision.answer?.values ?? {};
+  const blocked = busy || readOnly || !pending;
+  const answered = (question2) => values[question2.id]?.text?.trim() || question2.options?.some((option) => option.id === values[question2.id]?.optionId);
+  const complete = decision.questions.every(answered);
+  const act = async (endpoint, payload) => {
+    if (busy || readOnly) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      const result = await call(endpoint, { profile: profileId, session: decision.coordinatorSessionId, decisionId: decision.id, ...payload });
+      if (result?.status !== (endpoint === "decision-answer" ? "answered" : "cancelled")) setFeedback(result?.message ?? "");
+      if (result?.status !== "pending") writeDecisionDraft(decision.id);
+    } catch (failure) {
+      setFeedback(failure.message);
+    }
+    setBusy(false);
+    setConfirming(false);
+    await refresh(true);
+  };
+  const roleName = (sessionId) => profiles.find((role) => role.sessions?.some((session) => session.id === sessionId));
+  const running = (decision.runningExecutions ?? []).map((execution) => ({
+    ...execution,
+    active: work[execution.sessionId]?.active ?? execution.active,
+    stopping: work[execution.sessionId]?.stopping ?? execution.stopping
+  })).filter((execution) => execution.active || execution.stopping);
+  const linked = decision.taskIds.map((id) => tasks.find((task) => task.id === id)).filter(Boolean);
+  const tag = (text, tone) => (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": tone }, text);
+  const count = decision.questions.length;
+  const at2 = Math.min(step, count - 1);
+  const last = at2 === count - 1;
+  const question = decision.questions[at2];
+  const value = values[question.id];
+  const choices = question.options ?? [];
+  const custom = value?.text !== void 0 || choices.length === 0;
+  const choose = (next2) => {
+    setFeedback("");
+    setAnswers({ ...answers, [question.id]: next2 });
+  };
+  const submit = () => void act("decision-answer", { answers: Object.fromEntries(decision.questions.map((item) => [item.id, values[item.id]])) });
+  const next = () => {
+    if (!pending) return setStep(at2 + 1);
+    if (!answered(question)) return setFeedback("\u8BF7\u5148\u5B8C\u6210\u8FD9\u9053\u95EE\u9898\u3002");
+    if (!last) setStep(at2 + 1);
+    else if (complete) submit();
+  };
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-question-frame" },
+    (0, import_react.createElement)(
+      "section",
+      { className: "nodo-question-card nodo-decision", "aria-labelledby": `nodo-decision-${decision.id}`, "aria-busy": busy ? "true" : void 0 },
+      (0, import_react.createElement)(
+        "header",
+        { className: "nodo-question-head" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-decision-heading" },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-decision-status", role: "status", id: `nodo-decision-${decision.id}` },
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: pending ? "warning" : "ongoing", size: 7 }),
+            decision.status === "answered" && decision.handoffStopped ? "\u7B54\u6848\u5DF2\u63D0\u4EA4 \xB7 \u4E3B\u63A7\u5DF2\u505C\u6B62" : DECISION_HEAD[decision.status]
+          ),
+          (linked.length > 0 || running.length > 0) && (0, import_react.createElement)(
+            "div",
+            { className: "nodo-decision-meta" },
+            ...linked.map((task) => (0, import_react.createElement)("span", { key: task.id, className: "nodo-tag", title: task.title }, task.title)),
+            ...running.map((execution) => {
+              const role = roleName(execution.sessionId);
+              const word = execution.stopping ? "\u505C\u6B62\u4E2D" : decision.stopExecutionIds.includes(execution.executionId) ? "\u505C\u6B62\u672A\u786E\u8BA4" : "\u8FD0\u884C\u4E2D";
+              return (0, import_react.createElement)(
+                "span",
+                { key: execution.executionId, className: "nodo-decision-run" },
+                role && (0, import_react.createElement)(RoleAvatar, { profile: role, size: 16 }),
+                tag(`${role?.name ?? execution.sessionId} \xB7 ${word}`, "caution")
+              );
+            })
+          )
+        ),
+        (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-question-icon nodo-decision-toggle",
+          "aria-expanded": open,
+          "aria-label": open ? "\u6536\u8D77" : "\u5C55\u5F00",
+          onClick: () => setOpen(!open)
+        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 16 }))
+      ),
+      open && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-question-body nodo-decision-body", role: "group", "aria-labelledby": `nodo-decision-q-${decision.id}` },
+        (0, import_react.createElement)("h2", { className: "nodo-question-title", id: `nodo-decision-q-${decision.id}` }, question.question),
+        (0, import_react.createElement)("p", { className: "nodo-decision-why" }, question.whyUser),
+        choices.length > 0 && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-question-options", role: "radiogroup", "aria-label": question.question },
+          ...choices.map((option, index) => {
+            const recommended = question.recommendation?.optionId === option.id;
+            return questionOption(
+              {
+                key: option.id,
+                index,
+                selected: value?.optionId === option.id,
+                disabled: blocked,
+                onClick: () => choose({ optionId: option.id }),
+                label: option.label,
+                recommended
+              },
+              (0, import_react.createElement)("span", { className: "nodo-decision-consequence" }, option.consequence),
+              recommended && (0, import_react.createElement)("span", { className: "nodo-decision-reason" }, question.recommendation.reason)
+            );
+          }),
+          questionOption({
+            key: "custom",
+            index: choices.length,
+            selected: custom,
+            disabled: blocked,
+            label: "\u81EA\u5B9A\u4E49\u56DE\u7B54",
+            onClick: () => choose({ text: value?.text ?? "" })
+          })
+        ),
+        custom && questionAnswer({
+          value: value?.text ?? "",
+          disabled: blocked,
+          label: `${question.question} \u81EA\u5B9A\u4E49\u56DE\u7B54`,
+          placeholder: "\u8F93\u5165\u4F60\u7684\u7B54\u6848",
+          key: question.id,
+          autoFocus: pending,
+          onChange: (text) => choose({ text }),
+          onEnter: next
+        })
+      ),
+      open && (0, import_react.createElement)(
+        "footer",
+        { className: "nodo-question-foot" },
+        questionPager({ step: at2, count, disabled: busy, onBack: () => setStep(at2 - 1), onNext: next }),
+        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "alert" }, feedback),
+        pending && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-question-actions" },
+          confirming ? [
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "back", variant: "outline", disabled: busy, onClick: () => setConfirming(false) }, "\u8FD4\u56DE"),
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "confirm", variant: "outline", className: "nodo-approval-reject", disabled: busy || readOnly, onClick: () => void act("decision-cancel", {}) }, "\u786E\u8BA4\u64A4\u9500")
+          ] : (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", className: "nodo-approval-reject", disabled: busy || readOnly, onClick: () => setConfirming(true) }, "\u64A4\u9500"),
+          !confirming && (last ? (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: busy || readOnly || !complete, onClick: submit }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u63D0\u4EA4") : (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: busy || readOnly, onClick: next }, "\u4E0B\u4E00\u9898"))
+        )
+      )
+    )
+  );
+}
+
+// src/client/remote-access.js
+function RemoteAccessSettings({ readOnly = false }) {
+  const [view2, setView] = (0, import_react.useState)(null);
+  const [busy, setBusy] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
+  const [login, setLogin] = (0, import_react.useState)(null);
+  const [copied, setCopied] = (0, import_react.useState)(false);
+  const act = async (action = "status") => {
+    setBusy(action);
+    setError("");
+    setLogin(null);
+    setCopied(false);
+    try {
+      const result = await call(`remote-${action}`);
+      if (action === "login") setLogin(result);
+      else if (action !== "open") setView(result);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy("");
+    }
+  };
+  (0, import_react.useEffect)(() => {
+    let active = true;
+    call("remote-status").then((value) => {
+      if (active) setView(value);
+    }).catch((failure) => {
+      if (active) setError(failure.message);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const locked = !!busy || !!view2?.busy || readOnly;
+  const enabled = view2?.phase === "enabled";
+  const labels = {
+    unsupported: "\u5F53\u524D\u73AF\u5883\u6682\u4E0D\u652F\u6301",
+    install: "\u5B89\u88C5 Tailscale",
+    unavailable: "\u6253\u5F00 Tailscale",
+    connect: "\u8FDE\u63A5 Tailscale",
+    network: "\u7F51\u7EDC\u9700\u8981\u5904\u7406",
+    conflict: "\u5165\u53E3\u9700\u8981\u5904\u7406",
+    authorize: "\u6388\u6743 HTTPS",
+    ready: "\u51C6\u5907\u5C31\u7EEA",
+    enabled: "\u624B\u673A\u8FDC\u7A0B\u5DF2\u542F\u7528"
+  };
+  return (0, import_react.createElement)(
+    "section",
+    { className: "nodo-remote", "aria-label": "\u624B\u673A\u8FDC\u7A0B" },
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-heading" },
+      (0, import_react.createElement)("h3", null, "\u624B\u673A\u8FDC\u7A0B"),
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", disabled: !!busy, onClick: () => void act() }, busy === "status" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5")
+    ),
+    !view2 && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u67E5 Desktop \u4E0E Tailscale\u2026"),
+    view2 && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-status", role: "status", "aria-live": "polite" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-remote-status-title" },
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: enabled ? "done" : ["network", "conflict", "unavailable"].includes(view2.phase) ? "error" : "idle", size: 8 }),
+        (0, import_react.createElement)("strong", null, labels[view2.phase] ?? "\u68C0\u67E5\u8FDE\u63A5")
+      ),
+      view2.reason && (0, import_react.createElement)("p", null, view2.reason),
+      view2.origin && (0, import_react.createElement)("p", { className: "nodo-remote-address" }, view2.origin)
+    ),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-actions" },
+      view2 && ["install", "unavailable", "connect", "network"].includes(view2.phase) && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void act("open") }, view2.phase === "install" ? "\u5B89\u88C5 Tailscale" : "\u6253\u5F00 Tailscale"),
+      view2?.phase === "authorize" && (0, import_react.createElement)("a", { href: view2.authorizationUrl, target: "_blank", rel: "noopener noreferrer", className: "nodo-remote-link" }, "\u6253\u5F00 HTTPS \u6388\u6743\u9875"),
+      view2 && ["ready", "authorize"].includes(view2.phase) && (0, import_react.createElement)(
+        import_dsh_client_ui_primitives.Button,
+        { variant: "primary", disabled: locked, onClick: () => void act("enable") },
+        busy === "enable" ? "\u914D\u7F6E\u4E2D\u2026" : view2.phase === "authorize" ? "\u5DF2\u6388\u6743\uFF0C\u7EE7\u7EED\u914D\u7F6E" : "\u542F\u7528\u624B\u673A\u8FDC\u7A0B"
+      ),
+      enabled && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void act("login") }, busy === "login" ? "\u751F\u6210\u4E2D\u2026" : login ? "\u5237\u65B0\u4E8C\u7EF4\u7801" : "\u8FDE\u63A5\u624B\u673A"),
+      view2?.enabled && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: () => void act("disable") }, busy === "disable" ? "\u5173\u95ED\u4E2D\u2026" : "\u5173\u95ED\u8FDC\u7A0B\u8BBF\u95EE")
+    ),
+    login && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-pair" },
+      (0, import_react.createElement)("div", { className: "nodo-remote-qr" }, (0, import_react.createElement)("img", { src: login.qr, alt: "\u624B\u673A\u767B\u5F55\u4E8C\u7EF4\u7801", width: 192, height: 192 })),
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-remote-pair-copy" },
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: async () => {
+          try {
+            if (await (0, import_dsh_client_ui_primitives.writeClipboard)(login.url)) setCopied(true);
+            else setError("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+          } catch {
+            setError("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+          }
+        } }, copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u624B\u673A\u767B\u5F55\u94FE\u63A5"),
+        (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u4E8C\u7EF4\u7801\u6388\u4E88\u5F53\u524D DSH \u5BBF\u4E3B\u7684\u6240\u6709\u8005\u8BBF\u95EE\u6743\u9650\uFF0C\u8BF7\u52FF\u5206\u4EAB\u3002")
+      )
+    ),
+    error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2),
+    readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5F53\u524D\u5BBF\u4E3B\u4E3A\u53EA\u8BFB\u6A21\u5F0F\uFF0C\u8BF7\u5728\u6B63\u5728\u8FD0\u884C\u4EFB\u52A1\u7684 Desktop \u4E2D\u8BBE\u7F6E\u3002")
+  );
+}
+
+// src/client/engine-settings.js
+function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly, onClose }) {
+  const seed = (engineId) => {
+    const source = view2.prefs?.engineConfigs?.[engineId];
+    return { engineOptions: { ...source?.engineOptions } };
+  };
+  const [engines, setEngines] = (0, import_react.useState)([]);
+  const [enabled, setEnabled] = (0, import_react.useState)(() => view2?.prefs?.enabledEngines ?? null);
+  const [selected, setSelected] = (0, import_react.useState)("");
+  const [draft, setDraft] = (0, import_react.useState)(() => seed(""));
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [scanning, setScanning] = (0, import_react.useState)("");
+  const [checks, setChecks] = (0, import_react.useState)({});
+  const [checking, setChecking] = (0, import_react.useState)("");
+  const [loading, setLoading] = (0, import_react.useState)(true);
+  const [saved, setSaved] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)("");
+  const [section, setSection] = (0, import_react.useState)("engines");
+  const pick = (engineId) => {
+    setSelected(engineId);
+    setDraft(seed(engineId));
+    setSaved(false);
+    setError("");
+  };
+  const scan = async (id) => {
+    if (id === "" || scanning !== "") return;
+    setScanning(id);
+    setError("");
+    try {
+      const catalog = await call("engine-scan", { engine: id });
+      setEngines((current) => current.map((item) => item.id === id ? { ...item, catalog } : item));
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setScanning("");
+    }
+  };
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("engine-detect").then((items) => {
+      if (live) setEngines(items);
+    }).catch((failure) => {
+      if (live) setError(failure.message);
+    }).finally(() => {
+      if (live) setLoading(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const engine = engines.find((item) => item.id === selected);
+  const locked = busy || checking !== "" || scanning !== "";
+  const detected = engines.filter((item) => item.usable);
+  const others = engines.filter((item) => !item.usable);
+  const enabledSet = enabled ?? detected.map((item) => item.id);
+  const toggleEnabled = async (item) => {
+    if (locked || readOnly) return;
+    const next = enabledSet.includes(item.id) ? enabledSet.filter((id) => id !== item.id) : [...enabledSet, item.id];
+    setEnabled(next);
+    setError("");
+    try {
+      const saved2 = await call("engine-enable-set", { engines: next });
+      setEnabled(saved2.enabledEngines ?? next);
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+      setEnabled(enabled);
+    }
+  };
+  const checkKey = (id) => JSON.stringify([id, workspace?.id]);
+  const check = checks[checkKey(selected)];
+  const inspect = async (all = false) => {
+    if (locked || !all && !engine) return;
+    setChecking(all ? "all" : selected);
+    setError("");
+    try {
+      const items = all ? engines : [engine];
+      await Promise.all(items.map(async (item) => {
+        const key = checkKey(item.id);
+        const result = await call("engine-check", { engine: item.id, ...seed(item.id), cwd: workspace?.cwd }).catch((failure) => ({ ok: false, checks: [{ label: "\u68C0\u67E5\u5931\u8D25", ok: false, message: failure.message }] }));
+        setChecks((current) => ({ ...current, [key]: result }));
+      }));
+    } finally {
+      setChecking("");
+    }
+  };
+  const editField = (field) => (event) => {
+    const value = event.target.value;
+    setSaved(false);
+    setDraft((current) => ({ ...current, engineOptions: { ...current.engineOptions, [field.name]: value } }));
+  };
+  const run = async (event) => {
+    event.preventDefault();
+    if (locked || engine === void 0 || readOnly) return;
+    setBusy(true);
+    setError("");
+    setSaved(false);
+    try {
+      const values = { engine: engine.id, engineOptions: draft.engineOptions };
+      await call("engine-config-set", values);
+      await refresh(true);
+      setChecks((current) => Object.fromEntries(Object.entries(current).filter(([key]) => JSON.parse(key)[0] !== selected)));
+      setSaved(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fields = (engine?.fields ?? []).filter((field) => field.target === "engineOptions").map((field) => (0, import_react.createElement)(
+    Field,
+    { key: field.name, label: { bin: "\u7A0B\u5E8F\u8DEF\u5F84", socket: "\u5171\u4EAB Codex Socket" }[field.name] ?? field.label },
+    field.type === "select" ? (0, import_react.createElement)(
+      "select",
+      { className: "nodo-dialog-input nodo-dialog-select", disabled: locked || readOnly, value: draft.engineOptions[field.name] ?? field.default ?? "", onChange: editField(field) },
+      ...field.choices.map((choice) => (0, import_react.createElement)("option", { key: choice.value, value: choice.value }, choice.label))
+    ) : (0, import_react.createElement)("input", {
+      className: "nodo-dialog-input",
+      disabled: locked || readOnly,
+      value: draft.engineOptions[field.name] ?? "",
+      onChange: editField(field),
+      placeholder: field.name === "bin" ? "\u7559\u7A7A\u81EA\u52A8\u68C0\u6D4B\uFF0C\u68C0\u6D4B\u4E0D\u5230\u65F6\u586B\u5199\u5B8C\u6574\u8DEF\u5F84" : field.placeholder,
+      maxLength: 1e3
+    })
+  ));
+  const card = (item) => {
+    const expanded = selected === item.id;
+    const result = checks[checkKey(item.id)];
+    const on2 = item.usable && enabledSet.includes(item.id);
+    const rawVersion = result?.ok ? String(result.version || "").replace(/\s*\([^)]*\)/g, "").trim() : "";
+    const version = result?.ok ? /(?:^|\s)v?(\d[\w.]*(?:[-+][\w.]+)?)(?:\s|$)/.exec(rawVersion)?.[1] ?? rawVersion : "";
+    const caption = checking === "all" || checking === item.id ? "\u68C0\u67E5\u4E2D\u2026" : result ? result.ok ? version || "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : !item.usable || item.executable ? "" : item.nativeRuntime ? "\u539F\u751F" : "\u81EA\u5B9A\u4E49\u8DEF\u5F84";
+    const title = engineDisplayName(item);
+    return (0, import_react.createElement)(
+      "section",
+      { key: item.id, className: "nodo-engine-card", "data-expanded": expanded ? "" : void 0, "data-muted": item.usable ? void 0 : "" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-engine-row" },
+        (0, import_react.createElement)(
+          "button",
+          {
+            type: "button",
+            className: "nodo-engine-toggle",
+            disabled: locked,
+            "aria-expanded": expanded,
+            "aria-controls": `nodo-engine-${item.id}`,
+            onClick: () => pick(expanded ? "" : item.id)
+          },
+          (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
+          (0, import_react.createElement)(
+            "span",
+            { className: "nodo-engine-name" },
+            (0, import_react.createElement)("strong", null, title),
+            caption && (0, import_react.createElement)("span", { className: "nodo-engine-caption", "data-bad": result?.ok === false ? "" : void 0 }, caption)
+          ),
+          (0, import_react.createElement)("span", { className: "nodo-chevron", "data-open": expanded ? "" : void 0 }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 14 }))
+        ),
+        item.usable && (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-engine-switch",
+          "aria-pressed": on2,
+          "aria-label": `${on2 ? "\u505C\u7528" : "\u542F\u7528"} ${title}`,
+          disabled: locked || readOnly,
+          onClick: () => void toggleEnabled(item)
+        })
+      ),
+      expanded && (0, import_react.createElement)(
+        "div",
+        { id: `nodo-engine-${item.id}`, className: "nodo-engine-detail" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-engine-connection" },
+          (0, import_react.createElement)("strong", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: check ? check.ok ? "done" : "error" : "idle", size: 8 }), check ? check.ok ? "\u73AF\u5883\u5C31\u7EEA" : "\u73AF\u5883\u9700\u8981\u5904\u7406" : "\u672A\u68C0\u67E5"),
+          (0, import_react.createElement)(
+            import_dsh_client_ui_primitives.Button,
+            { variant: "outline", size: "sm", disabled: locked || engine.requiresCwd && !workspace, onClick: () => void inspect() },
+            checking === selected ? "\u68C0\u67E5\u4E2D\u2026" : "\u68C0\u67E5\u8FDE\u63A5"
+          )
+        ),
+        (0, import_react.createElement)(
+          "form",
+          { id: ENGINE_FORM, className: "nodo-dialog-fields nodo-engine-fields", onSubmit: run, "aria-label": "\u914D\u7F6E Agent" },
+          (fields.length > 0 || engine.executable || readOnly) && (0, import_react.createElement)(
+            "div",
+            { className: "nodo-engine-section" },
+            fields.length > 0 && (0, import_react.createElement)("div", { className: "nodo-engine-config" }, fields),
+            engine.executable && (0, import_react.createElement)("p", { className: "nodo-dialog-path" }, engine.executable),
+            readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002")
+          ),
+          check && (0, import_react.createElement)(
+            "dl",
+            { className: "nodo-engine-section nodo-engine-check", role: "status" },
+            ...check.checks.map((entry, index) => (0, import_react.createElement)(
+              "div",
+              { key: index, className: "nodo-engine-check-row" },
+              (0, import_react.createElement)("dt", null, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: entry.ok === null ? "idle" : entry.ok ? "done" : "error", size: 6 }), entry.label),
+              (0, import_react.createElement)("dd", { className: entry.ok === false ? "nodo-bad" : void 0 }, entry.message)
+            ))
+          ),
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-engine-section nodo-engine-scan" },
+            (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `${engine.catalog.models?.length ?? 0} \u4E2A` : "\u672A\u626B\u63CF")),
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? "\u626B\u63CF\u4E2D\u2026" : "\u626B\u63CF")
+          ),
+          saved && (0, import_react.createElement)("p", { className: "nodo-ok", role: "status" }, "Agent \u914D\u7F6E\u5DF2\u4FDD\u5B58")
+        )
+      )
+    );
+  };
+  const heading = (title, items) => (0, import_react.createElement)("h3", { key: title, className: "nodo-engine-group" }, title, (0, import_react.createElement)("span", null, items.length));
+  const grid = (key, items) => items.length > 0 && (0, import_react.createElement)("div", { key, className: "nodo-engine-grid" }, ...items.map((item) => card(item)));
+  return (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Modal,
+    {
+      open: true,
+      onClose: () => {
+        if (!locked) onClose();
+      },
+      closeLabel: "\u5173\u95ED",
+      title: "Nodo \u8BBE\u7F6E",
+      className: "nodo-dialog nodo-engine-dialog",
+      contentClassName: "nodo-engine-shell",
+      footer: section === "engines" && engine ? [
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+          key: "run",
+          type: "submit",
+          form: ENGINE_FORM,
+          variant: "primary",
+          size: "sm",
+          disabled: locked || readOnly
+        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : "\u4FDD\u5B58")
+      ] : void 0
+    },
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-settings-tabs", role: "tablist", "aria-label": "\u8BBE\u7F6E\u5206\u7C7B" },
+      ...[["engines", "\u6A21\u578B\u63D0\u4F9B\u65B9\u4E0E Agent"], ["remote", "\u624B\u673A\u8FDC\u7A0B"]].map(([id, title]) => (0, import_react.createElement)("button", {
+        key: id,
+        type: "button",
+        role: "tab",
+        id: `nodo-settings-${id}`,
+        "aria-selected": section === id,
+        tabIndex: section === id ? 0 : -1,
+        "aria-controls": `nodo-settings-panel-${id}`,
+        disabled: locked,
+        onClick: () => setSection(id),
+        onKeyDown: (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? "engines" : event.key === "End" ? "remote" : id === "engines" ? "remote" : "engines";
+          setSection(next);
+          event.currentTarget.parentElement.querySelector(`#nodo-settings-${next}`)?.focus();
+        }
+      }, title))
+    ),
+    section === "remote" ? (0, import_react.createElement)(
+      "div",
+      { role: "tabpanel", id: "nodo-settings-panel-remote", "aria-labelledby": "nodo-settings-remote", className: "nodo-engine-content" },
+      (0, import_react.createElement)(RemoteAccessSettings, { readOnly })
+    ) : (0, import_react.createElement)(
+      "div",
+      { className: "nodo-engine-content", role: "tabpanel", id: "nodo-settings-panel-engines", "aria-labelledby": "nodo-settings-engines" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-engine-toolbar" },
+        loading ? (0, import_react.createElement)("span", null, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026") : heading("\u5DF2\u68C0\u6D4B", detected),
+        (0, import_react.createElement)(
+          import_dsh_client_ui_primitives.Button,
+          { variant: "ghost", size: "sm", icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRefreshOutlineRegular, { size: 14 }), title: "\u68C0\u67E5\u6240\u6709 Agent \u7684\u9ED8\u8BA4\u914D\u7F6E", disabled: locked || loading || !engines.length, onClick: () => void inspect(true) },
+          checking === "all" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5"
+        )
+      ),
+      !loading && !engines.length && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6682\u65E0\u53EF\u7528 Agent"),
+      grid("detected", detected),
+      others.length > 0 && heading("\u672A\u68C0\u6D4B\u5230", others),
+      grid("others", others),
+      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
+    )
+  );
+}
+function OnboardingDialog({ view: view2, onDone }) {
+  const [engines, setEngines] = (0, import_react.useState)(null);
+  const [picked, setPicked] = (0, import_react.useState)(null);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)("");
+  const [step, setStep] = (0, import_react.useState)("engines");
+  const [name, setName] = (0, import_react.useState)("\u4E07\u80FD\u52A9\u624B");
+  const [engine, setEngine] = (0, import_react.useState)("");
+  const [project, setProject] = (0, import_react.useState)({ name: "", cwd: "" });
+  const [picking, setPicking] = (0, import_react.useState)(false);
+  const [created, setCreated] = (0, import_react.useState)({});
+  const executor = view2?.profiles.find((profile) => !profile.deletedAt && profile.lead !== true);
+  const hasWorkspace = (view2?.workspaces.length ?? 0) > 0;
+  (0, import_react.useEffect)(() => {
+    let live = true;
+    void call("engine-detect").then((items) => {
+      if (!live) return;
+      const detected = items.filter((item) => item.usable);
+      setEngines(detected);
+      setPicked(new Set(detected.map((item) => item.id)));
+    }).catch((failure) => {
+      if (live) {
+        setEngines([]);
+        setError(failure.message);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (step === "engines") await call("engine-enable-set", { engines: picked ? [...picked] : [] });
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+    onDone();
+  };
+  const complete = (saved) => {
+    if (saved.profile || saved.workspace) {
+      const selection = { profile: saved.profile ?? executor?.id, workspace: saved.workspace ?? view2?.workspaces[0]?.id };
+      setNavigation((current) => ({ ...current, archivedSession: void 0, ...selection }));
+      nativeSpace?.startDraft(selection);
+    }
+    onDone();
+  };
+  const next = async () => {
+    if (busy || step === "engines" && !picked?.size || step === "role" && (!name.trim() || !picked?.has(engine)) || step === "workspace" && (!project.name.trim() || !project.cwd.trim())) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (step === "engines") {
+        await call("engine-enable-set", { engines: [...picked] });
+        if (!executor) {
+          setEngine([...picked][0]);
+          setStep("role");
+        } else if (!hasWorkspace) setStep("workspace");
+        else complete(created);
+      } else if (step === "role") {
+        const profile = await call("profile-create", { name: name.trim(), engine, avatarTemplate: avatar_templates_default[0].id });
+        const saved = { ...created, profile: profile.id };
+        setCreated(saved);
+        if (!hasWorkspace) setStep("workspace");
+        else complete(saved);
+      } else {
+        const workspace = await call("workspace-create", { name: project.name.trim(), cwd: project.cwd.trim() });
+        complete({ ...created, workspace: workspace.id });
+      }
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const choose = async () => {
+    if (busy || picking || !nativePickDirectory) return;
+    setPicking(true);
+    setError("");
+    try {
+      const path = await nativePickDirectory();
+      if (path) setProject((current) => ({ ...current, cwd: path }));
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setPicking(false);
+    }
+  };
+  const edit = (key) => (event) => setProject((current) => ({ ...current, [key]: event.target.value }));
+  const toggle = (id) => setPicked((current) => {
+    if (current.has(id) && current.size === 1) return current;
+    const next2 = new Set(current);
+    if (next2.has(id)) next2.delete(id);
+    else next2.add(id);
+    return next2;
+  });
+  return (0, import_react.createElement)(
+    import_dsh_client_ui_primitives.Modal,
+    {
+      open: true,
+      onClose: () => void finish(),
+      closeLabel: "\u8DF3\u8FC7",
+      title: step === "engines" ? "\u542F\u7528 Agent" : step === "role" ? "\u521B\u5EFA\u4E07\u80FD\u89D2\u8272" : "\u6DFB\u52A0\u9879\u76EE",
+      description: step === "engines" ? "\u9009\u62E9\u8981\u542F\u7528\u7684 Agent\uFF0C\u968F\u65F6\u53EF\u5728\u8BBE\u7F6E\u4E2D\u8C03\u6574\u3002" : step === "role" ? "\u4E3A\u4E07\u80FD\u52A9\u624B\u53D6\u4E2A\u540D\u5B57\uFF0C\u9009\u62E9\u4F7F\u7528\u7684 Agent\u3002" : void 0,
+      className: "nodo-dialog nodo-onboard-dialog",
+      contentClassName: "nodo-engine-shell",
+      footer: [
+        (0, import_react.createElement)("span", { key: "hint", className: "nodo-dialog-leading nodo-dialog-hint" }, step === "engines" ? "\u65B0\u89D2\u8272\u9ED8\u8BA4\u4F7F\u7528\u7B2C\u4E00\u4E2A\u542F\u7528\u7684 Agent" : ""),
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+          key: "go",
+          type: "submit",
+          form: "nodo-onboard-form",
+          variant: "primary",
+          disabled: busy || (step === "engines" ? !picked?.size : step === "role" ? !name.trim() || !picked?.has(engine) : !project.name.trim() || !project.cwd.trim())
+        }, busy ? "\u4FDD\u5B58\u4E2D\u2026" : step === "workspace" ? "\u5B8C\u6210" : "\u4E0B\u4E00\u6B65")
+      ]
+    },
+    (0, import_react.createElement)(
+      "form",
+      { id: "nodo-onboard-form", className: "nodo-engine-content", onSubmit: (event) => {
+        event.preventDefault();
+        void next();
+      } },
+      step === "engines" && engines === null && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u6D4B\u672C\u673A Agent\u2026"),
+      step === "engines" && engines !== null && [
+        (0, import_react.createElement)("h3", { key: "group", className: "nodo-engine-group" }, "\u5728\u7CFB\u7EDF\u4E2D\u5DF2\u68C0\u6D4B", (0, import_react.createElement)("span", null, engines.length)),
+        (0, import_react.createElement)("div", { key: "grid", className: "nodo-engine-grid" }, ...engines.map((item) => {
+          const on2 = picked?.has(item.id) === true;
+          return (0, import_react.createElement)(
+            "button",
+            { key: item.id, type: "button", className: "nodo-engine-card nodo-engine-pick", "aria-pressed": on2, disabled: busy, onClick: () => toggle(item.id) },
+            (0, import_react.createElement)("span", { className: "nodo-engine-mark", "aria-hidden": true }, (0, import_react.createElement)(EngineMark, { engine: item.id })),
+            (0, import_react.createElement)(
+              "span",
+              { className: "nodo-engine-name" },
+              (0, import_react.createElement)("strong", null, engineDisplayName(item)),
+              (0, import_react.createElement)("span", { className: "nodo-engine-caption" }, item.nativeRuntime ? "\u539F\u751F Agent" : item.executable ? "\u5DF2\u68C0\u6D4B\u5230" : "\u5DF2\u914D\u7F6E\u81EA\u5B9A\u4E49\u8DEF\u5F84")
+            ),
+            (0, import_react.createElement)("span", { className: "nodo-engine-switch", "aria-hidden": true }, on2 && (0, import_react.createElement)(import_dsh_client_ui_primitives.IconCheckOutlineRegular, { size: 12 }))
+          );
+        })),
+        engines.length === 0 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u672A\u68C0\u6D4B\u5230\u5DF2\u9002\u914D\u7684 Agent\uFF1B\u5B89\u88C5 CLI \u6216\u5728\u8BBE\u7F6E\u7684 Agent \u5361\u7247\u4E2D\u586B\u5199\u8DEF\u5F84\u540E\u5373\u53EF\u4F7F\u7528\u3002")
+      ],
+      step === "role" && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-dialog-fields" },
+        (0, import_react.createElement)(Field, { label: "\u540D\u5B57", required: true }, (0, import_react.createElement)("input", {
+          className: "nodo-dialog-input",
+          "aria-label": "\u540D\u5B57",
+          "data-modal-autofocus": true,
+          required: true,
+          maxLength: 40,
+          disabled: busy,
+          value: name,
+          onChange: (event) => setName(event.target.value)
+        })),
+        (0, import_react.createElement)(Field, { label: "Agent", required: true }, (0, import_react.createElement)(
+          "select",
+          {
+            className: "nodo-dialog-input nodo-dialog-select",
+            "aria-label": "Agent",
+            disabled: busy,
+            value: engine,
+            onChange: (event) => setEngine(event.target.value)
+          },
+          ...[...picked].map((id) => (0, import_react.createElement)("option", { key: id, value: id }, engineDisplayName(engines.find((item) => item.id === id))))
+        ))
+      ),
+      step === "workspace" && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-dialog-fields nodo-workspace-fields" },
+        WorkspaceFields({ draft: project, busy, picking, onEdit: edit, onPick: () => void choose() })
+      ),
+      error2 !== "" && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2)
+    )
+  );
+}
+
+// core/shared/route.js
+var route = (assign, type, hard) => {
+  const entry = assign?.[type];
+  const pick = hard && entry?.hard ? entry.hard : entry?.normal;
+  if (!pick?.profile) return { miss: true };
+  return { profile: pick.profile, choices: Object.fromEntries(["model", "thinking"].filter((key) => pick[key]).map((key) => [key, pick[key]])) };
+};
+
+// src/client/teams.tsx
+var fitText = (el2) => {
+  if (el2) {
+    el2.style.height = "auto";
+    el2.style.height = `${el2.scrollHeight}px`;
+  }
+};
+var TEAM_NAME_MAX = 20;
+var TYPES_MAX = 20;
+var CARD = 76;
+var GAP = 8;
+var withoutRole = (team, id) => ({
+  ...team,
+  lead: team.lead === id ? null : team.lead,
+  members: team.members.filter((member) => member !== id),
+  assign: Object.fromEntries(Object.entries(team.assign).map(([type, entry]) => [type, Object.fromEntries(Object.entries(entry).map(([key, pick]) => [key, pick.profile === id ? { ...pick, profile: void 0 } : pick]))]))
+});
+var roleModel = (role) => modelName(role.model) || "\u9ED8\u8BA4\u6A21\u578B";
+var tint = (role) => {
+  const color = avatarTemplateOf(role).color;
+  return { background: `color-mix(in srgb,${color} 18%,var(--dsw-alias-bg-base))`, color: `color-mix(in srgb,${color} 35%,var(--dsw-alias-label-primary))` };
+};
+function TeamsSection({ roles, teams, activeId, locked, onActive, save, openRole, onAssign, createButton }) {
+  const [drag, setDrag] = (0, import_react.useState)(null);
+  const [over, setOver] = (0, import_react.useState)(null);
+  const [pending, setPending] = (0, import_react.useState)(null);
+  const byId = (id) => roles.find((role) => role.id === id);
+  const current = teams.find((team) => team.id === activeId) ?? teams[0];
+  const edit = (id, change) => save(teams.map((team) => team.id === id ? change(team) : team));
+  const target = (zone) => ({
+    onDragOver: (event) => {
+      if (drag && !locked) {
+        event.preventDefault();
+        event.stopPropagation?.();
+        setOver(zone);
+      }
+    },
+    onDragLeave: () => setOver((value) => value === zone ? null : value)
+  });
+  const setLead = (teamId, roleId) => {
+    save(teams.map((team) => team.id === teamId ? { ...withoutRole(team, roleId), lead: roleId } : withoutRole(team, roleId)));
+    onActive(teamId);
+  };
+  const joinMember = (teamId, roleId) => {
+    save(teams.map((team) => {
+      if (team.id !== teamId) return team.lead === roleId ? { ...team, lead: null } : team;
+      return {
+        ...team,
+        lead: team.lead === roleId ? null : team.lead,
+        members: team.members.includes(roleId) ? team.members : [...team.members, roleId]
+      };
+    }));
+    onActive(teamId);
+  };
+  const drop = (zone) => (event) => {
+    event.preventDefault();
+    event.stopPropagation?.();
+    const moved = drag && byId(drag.id);
+    setDrag(null);
+    setOver(null);
+    if (!moved || !drag || zone === drag.from || zone === "lib") return;
+    const leadOf = zone.startsWith("lead:") ? zone.slice(5) : null;
+    const id = leadOf ?? zone;
+    if (leadOf) {
+      const leading2 = teams.find((team) => team.lead === moved.id && team.id !== id);
+      if (leading2) return setPending({ kind: "leading", id: moved.id, teamId: leading2.id });
+      const memberships = teams.filter((team) => team.id !== id && team.members.includes(moved.id));
+      if (memberships.length) return setPending({ kind: "lead", id: moved.id, teamId: id, from: memberships.map((team) => team.id) });
+      return setLead(id, moved.id);
+    }
+    const leading = teams.find((team) => team.lead === moved.id);
+    if (leading) return setPending({ kind: "member", id: moved.id, teamId: id, from: leading.id });
+    joinMember(id, moved.id);
+  };
+  const teamLabel = (teamId) => {
+    const team = teams.find((item) => item.id === teamId);
+    return team ? team.name || `\u56E2\u961F ${teams.indexOf(team) + 1}` : "";
+  };
+  const dialog = pending && (() => {
+    const name = byId(pending.id)?.name ?? "";
+    if (pending.kind === "leading") return {
+      title: `\u300C${name}\u300D\u5DF2\u662F\u300C${teamLabel(pending.teamId)}\u300D\u7684\u4E3B\u63A7`,
+      body: "\u4E00\u4E2A\u4E3B\u63A7\u53EA\u80FD\u9886\u5BFC\u4E00\u4E2A\u56E2\u961F\u3002\u5982\u9700\u5728\u591A\u4E2A\u56E2\u961F\u4F7F\u7528\u540C\u4E00\u5957\u8BBE\u5B9A\uFF0C\u8BF7\u590D\u5236\u8BE5\u89D2\u8272\u3002",
+      footer: [/* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "ok", variant: "outline", onClick: () => setPending(null) }, "\u77E5\u9053\u4E86")]
+    };
+    if (pending.kind === "lead") return {
+      title: `\u5C06\u300C${name}\u300D\u8BBE\u4E3A\u300C${teamLabel(pending.teamId)}\u300D\u7684\u4E3B\u63A7\uFF1F`,
+      body: `\u4E3B\u63A7\u4E0D\u80FD\u540C\u65F6\u662F\u5176\u5B83\u56E2\u961F\u7684\u6210\u5458\u3002\u7EE7\u7EED\u4F1A\u628A\u300C${name}\u300D\u4ECE${pending.from.map((teamId) => `\u300C${teamLabel(teamId)}\u300D`).join("")}\u7684\u6210\u5458\u4E2D\u79FB\u9664\u3002`,
+      footer: [
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", onClick: () => setPending(null) }, "\u53D6\u6D88"),
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "ok", variant: "primary", onClick: () => {
+          const next = pending;
+          setPending(null);
+          setLead(next.teamId, next.id);
+        } }, "\u79FB\u9664\u5E76\u8BBE\u4E3A\u4E3B\u63A7")
+      ]
+    };
+    return {
+      title: `\u5C06\u300C${name}\u300D\u52A0\u5165\u300C${teamLabel(pending.teamId)}\u300D\u7684\u6210\u5458\uFF1F`,
+      body: `\u300C${name}\u300D\u76EE\u524D\u662F\u300C${teamLabel(pending.from)}\u300D\u7684\u4E3B\u63A7\uFF0C\u4E0D\u80FD\u540C\u65F6\u662F\u6210\u5458\u3002\u7EE7\u7EED\u4F1A\u53D6\u6D88\u5B83\u7684\u4E3B\u63A7\u8EAB\u4EFD\uFF0C\u300C${teamLabel(pending.from)}\u300D\u5C06\u6CA1\u6709\u4E3B\u63A7\u3002`,
+      footer: [
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", onClick: () => setPending(null) }, "\u53D6\u6D88"),
+        /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "ok", variant: "primary", onClick: () => {
+          const next = pending;
+          setPending(null);
+          joinMember(next.teamId, next.id);
+        } }, "\u53D6\u6D88\u4E3B\u63A7\u5E76\u52A0\u5165")
+      ]
+    };
+  })();
+  const card = (role, from, team) => /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      key: role.id,
+      className: "nodo-team-card",
+      draggable: !locked,
+      "data-dragging": drag?.id === role.id ? "" : void 0,
+      onDragStart: (event) => {
+        setDrag({ id: role.id, from });
+        event.dataTransfer.effectAllowed = "move";
+      },
+      onDragEnd: () => {
+        setDrag(null);
+        setOver(null);
+      }
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-team-card-main", title: role.name, onClick: () => openRole(role.id) }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 44 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-copy" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-name" }, role.name), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-meta" }, /* @__PURE__ */ (0, import_react.createElement)("span", { title: engineDisplayName({ id: role.engine ?? "" }) }, /* @__PURE__ */ (0, import_react.createElement)(EngineMark, { engine: role.engine, size: 16 })), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-model", style: tint(role) }, roleModel(role))))),
+    team ? /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "nodo-team-card-act",
+        "aria-label": `\u628A ${role.name} \u79FB\u51FA\u56E2\u961F`,
+        title: "\u4ECE\u56E2\u961F\u79FB\u9664",
+        disabled: locked,
+        onClick: () => edit(team.id, (item) => withoutRole(item, role.id))
+      },
+      "\xD7"
+    ) : (() => {
+      const count = teams.filter((item) => item.lead === role.id || item.members.includes(role.id)).length;
+      return count > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-count", title: `\u5728 ${count} \u4E2A\u56E2\u961F\u4E2D` }, count);
+    })()
+  );
+  const slot = (label) => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-slot" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), label);
+  const lead = current?.lead ? byId(current.lead) : void 0;
+  const members = current?.members.map(byId).filter((role) => role !== void 0) ?? [];
+  const rows = [...members, void 0];
+  const height = rows.length * CARD + (rows.length - 1) * GAP;
+  return /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-all" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-all" }, "\u5168\u90E8\u89D2\u8272", /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-types-count" }, roles.length)), createButton), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-grid", "data-over": over === "lib" ? "" : void 0, ...target("lib"), onDrop: drop("lib") }, roles.map((role) => card(role, "lib")))), /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-roles-section", "aria-labelledby": "nodo-roles-teams" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tabs", role: "tablist", "aria-label": "\u56E2\u961F" }, /* @__PURE__ */ (0, import_react.createElement)("h2", { id: "nodo-roles-teams" }, "\u56E2\u961F"), teams.map((team, index) => /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      key: team.id,
+      type: "button",
+      role: "tab",
+      className: "nodo-team-tab",
+      "aria-selected": team === current,
+      "data-over": over === `tab:${team.id}` ? "" : void 0,
+      onClick: () => onActive(team.id),
+      ...target(`tab:${team.id}`),
+      onDrop: drop(team.id)
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-no" }, index + 1),
+    team.name || "\u672A\u547D\u540D\u56E2\u961F"
+  )), /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-team-card-act",
+      "aria-label": "\u65B0\u589E\u56E2\u961F",
+      title: "\u65B0\u589E\u56E2\u961F",
+      disabled: locked,
+      onClick: () => {
+        const id = crypto.randomUUID();
+        save([...teams, { id, name: "", lead: null, members: [], types: [], assign: {} }]);
+        onActive(id);
+      }
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 })
+  )), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", onClick: onAssign }, "\u4EFB\u52A1\u5206\u914D")), current && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-panel", "data-over": over === current.id ? "" : void 0, "aria-label": `\u56E2\u961F ${teams.indexOf(current) + 1}`, ...target(current.id), onDrop: drop(current.id) }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-head" }, /* @__PURE__ */ (0, import_react.createElement)(
+    "input",
+    {
+      className: "nodo-team-name",
+      key: current.id,
+      defaultValue: current.name,
+      maxLength: TEAM_NAME_MAX,
+      placeholder: "\u672A\u547D\u540D\u56E2\u961F",
+      "aria-label": "\u56E2\u961F\u540D\u79F0",
+      disabled: locked,
+      onBlur: (event) => {
+        if (event.target.value !== current.name) edit(current.id, (item) => ({ ...item, name: event.target.value }));
+      }
+    }
+  ), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-roles-sub" }, `${members.length + (lead ? 1 : 0)} \u4EBA`), /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-team-card-act nodo-team-del",
+      "aria-label": "\u5220\u9664\u56E2\u961F",
+      title: "\u5220\u9664\u56E2\u961F",
+      disabled: locked,
+      onClick: () => save(teams.filter((team) => team !== current))
+    },
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconTrashOutlineRegular, { size: 14 })
+  )), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tree" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col", "data-over": over === `lead:${current.id}` ? "" : void 0, ...target(`lead:${current.id}`), onDrop: drop(`lead:${current.id}`) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-cap" }, "\u4E3B\u63A7"), lead ? card(lead, `lead:${current.id}`, current) : slot("\u62D6\u5165\u4E3B\u63A7")), /* @__PURE__ */ (0, import_react.createElement)("svg", { className: "nodo-team-lines", width: "72", height, viewBox: `0 0 72 ${height}`, fill: "none", "aria-hidden": "true" }, rows.map((_2, index) => {
+    const y = index * (CARD + GAP) + CARD / 2;
+    return /* @__PURE__ */ (0, import_react.createElement)(
+      "path",
+      {
+        key: index,
+        d: `M0 ${height / 2} C36 ${height / 2} 36 ${y} 72 ${y}`,
+        stroke: "var(--dsw-alias-state-business-primary)",
+        strokeWidth: "1.5",
+        opacity: ".75",
+        strokeDasharray: !lead || index === rows.length - 1 ? "4 4" : void 0
+      }
+    );
+  })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-col" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tree-cap" }, "\u6210\u5458"), members.map((role) => card(role, current.id, current)), slot("\u62D6\u5165\u89D2\u8272"))))), pending && dialog && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: dialog.title, onClose: () => setPending(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: dialog.footer }, /* @__PURE__ */ (0, import_react.createElement)("p", null, dialog.body)));
+}
+function PickCell({ label, caption, pick, team, roles, engines, optional, disabled, onChange, remove }) {
+  const [open, setOpen] = (0, import_react.useState)(false);
+  (0, import_react.useEffect)(() => {
+    if (!open) return;
+    const close = (event) => {
+      if (!event.target?.closest?.("[data-pick-open]")) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const holder = roles.find((role) => role.id === pick?.profile);
+  const catalog = engines.find((engine) => engine.id === holder?.engine)?.catalog;
+  const models = catalog?.models ?? [];
+  const model = models.find((item) => item.id === (pick?.model || holder?.model || catalog?.defaultModel));
+  const levels = model?.thinking ?? [];
+  const providers = groupModelsByProvider(models);
+  const set = (changes) => onChange({ ...pick, ...changes });
+  const tags = [pick?.model ? modelLabel(models.find((item) => item.id === pick.model) ?? { id: pick.model }) : "", pick?.thinking ? levels.find((level) => level.id === pick.thinking)?.label ?? pick.thinking : ""].filter(Boolean);
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick", "data-warn": holder ? void 0 : "", "data-removable": remove ? "" : void 0, "data-pick-open": open ? "" : void 0 }, caption && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-cap" }, caption), /* @__PURE__ */ (0, import_react.createElement)(
+    "button",
+    {
+      type: "button",
+      className: "nodo-pick-trigger",
+      "aria-haspopup": "dialog",
+      "aria-expanded": open,
+      "aria-label": `${label} ${holder?.name ?? "\u65E0\u4EBA\u627F\u63A5"}`,
+      disabled,
+      onClick: () => setOpen(!open)
+    },
+    holder ? /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: holder, size: 24 }) : /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-none" }),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-name" }, holder?.name ?? "\u65E0\u4EBA\u627F\u63A5"),
+    holder && tags.map((tag, index) => /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-team-model", style: tint(holder) }, tag)),
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 })
+  ), remove, open && /* @__PURE__ */ (0, import_react.createElement)(
+    "div",
+    {
+      className: "nodo-pick-pop",
+      role: "dialog",
+      "aria-label": `${label} \u7684\u89D2\u8272`,
+      onKeyDown: (event) => {
+        if (event.key === "Escape") setOpen(false);
+      }
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u89D2\u8272"),
+    /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, optional && /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-pick-option", "aria-pressed": !holder, onClick: () => onChange(void 0) }, "\u4E0D\u5355\u72EC\u6307\u5B9A"), team.members.map((id) => roles.find((role) => role.id === id)).filter((role) => role !== void 0).map((role) => /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        key: role.id,
+        type: "button",
+        className: "nodo-pick-option",
+        "aria-pressed": role.id === holder?.id,
+        onClick: () => onChange({ profile: role.id })
+      },
+      /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
+      role.name
+    ))),
+    holder && models.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u6A21\u578B"),
+    holder && models.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-models", role: "group", "aria-label": "\u6A21\u578B" }, [...providers].map(([group, items]) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, { key: group }, group && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-provider" }, group), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, items.map((item) => /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        key: item.id,
+        type: "button",
+        className: "nodo-pick-option",
+        "aria-pressed": item.id === pick?.model,
+        onClick: () => set({ model: item.id, thinking: thinkingAfterModelChange(models, item.id, pick?.thinking) || void 0 })
+      },
+      modelLabel(item)
+    )))))),
+    holder && levels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u601D\u8003\u5F3A\u5EA6"),
+    holder && levels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group", role: "group", "aria-label": "\u601D\u8003\u5F3A\u5EA6" }, levels.map((level) => /* @__PURE__ */ (0, import_react.createElement)(
+      "button",
+      {
+        key: level.id,
+        type: "button",
+        className: "nodo-pick-option",
+        "aria-pressed": level.id === pick?.thinking,
+        onClick: () => set({ thinking: level.id })
+      },
+      level.label ?? level.id
+    )))
+  ));
+}
+function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBack, save }) {
+  const [adding, setAdding] = (0, import_react.useState)(false);
+  const [name, setName] = (0, import_react.useState)("");
+  const [when, setWhen] = (0, import_react.useState)("");
+  const [removing, setRemoving] = (0, import_react.useState)(null);
+  const team = teams.find((item) => item.id === activeId) ?? teams[0];
+  const types = team?.types ?? [];
+  const edit = (typeId, key, pick) => save(teams.map((item) => {
+    if (item !== team) return item;
+    const entry = { ...item.assign[typeId] };
+    if (pick) entry[key] = pick;
+    else delete entry[key];
+    return { ...item, assign: { ...item.assign, [typeId]: entry } };
+  }));
+  const gaps = team ? types.reduce((sum, { id = "" }) => sum + ("miss" in route(team.assign, id, false) ? 1 : 0) + (team.assign[id]?.hard && "miss" in route(team.assign, id, true) ? 1 : 0), 0) : 0;
+  const draftOk = name.trim() !== "" && !types.some((type) => type.name === name.trim());
+  const leadRole = roles.find((role) => role.id === team?.lead);
+  const patchTypes = (next) => save(teams.map((item) => item === team ? { ...item, types: next } : item));
+  const patchType = (index, changes) => patchTypes(types.map((type, i) => i === index ? { ...type, ...changes } : type));
+  const removeType = (type) => save(teams.map((item) => item === team ? {
+    ...item,
+    types: item.types.filter((item2) => item2 !== type),
+    assign: Object.fromEntries(Object.entries(item.assign).filter(([id]) => id !== (type.id ?? "")))
+  } : item));
+  const reset = () => {
+    setAdding(false);
+    setName("");
+    setWhen("");
+  };
+  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-assign", "aria-label": "\u4EFB\u52A1\u5206\u914D" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-back", onClick: onBack }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }), "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tabs", role: "tablist", "aria-label": "\u56E2\u961F" }, /* @__PURE__ */ (0, import_react.createElement)("h2", null, "\u4EFB\u52A1\u5206\u914D"), teams.map((item, index) => /* @__PURE__ */ (0, import_react.createElement)("button", { key: item.id, type: "button", role: "tab", className: "nodo-team-tab", "aria-selected": item === team, onClick: () => onActive(item.id) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-no" }, index + 1), item.name || "\u672A\u547D\u540D\u56E2\u961F"))), team && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-meta" }, gaps > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-gap", role: "status" }, `${gaps} \u5904\u65E0\u4EBA\u627F\u63A5`), leadRole && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-lead" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: leadRole, size: 22 }), leadRole.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u4E3B\u63A7")))), !team ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5148\u5728\u89D2\u8272\u9875\u5EFA\u7ACB\u56E2\u961F") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-panel" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-row nodo-assign-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8D1F\u8D23\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E\uFF08\u53EF\u9009\uFF09")), types.map((type, index) => {
+    const entry = team.assign[type.id ?? ""] ?? {};
+    const removeKey = type.id ?? `new:${index}`;
+    return /* @__PURE__ */ (0, import_react.createElement)("div", { key: type.id, className: "nodo-assign-row", role: "group", "aria-label": type.name }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-type" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-type-top" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        className: "nodo-type-input",
+        key: `${type.id}:${type.name}`,
+        defaultValue: type.name,
+        maxLength: 20,
+        "aria-label": `\u4EFB\u52A1\u7C7B\u578B\u540D\u79F0 ${type.name}`,
+        disabled,
+        onBlur: (event) => {
+          const value = event.target.value.trim();
+          if (value && value !== type.name) patchType(index, { name: value });
+        }
+      }
+    ), /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-type-independent" }, /* @__PURE__ */ (0, import_react.createElement)(
+      "input",
+      {
+        type: "checkbox",
+        checked: type.independent === true,
+        disabled,
+        onChange: (event) => patchType(index, event.target.checked ? { independent: true } : { independent: void 0 })
+      }
+    ), "\u72EC\u7ACB\u89C6\u89D2")), /* @__PURE__ */ (0, import_react.createElement)(
+      "textarea",
+      {
+        rows: 1,
+        ref: fitText,
+        onInput: (event) => fitText(event.currentTarget),
+        className: "nodo-type-input nodo-type-sub",
+        key: `${type.id}:${type.when}`,
+        defaultValue: type.when ?? "",
+        maxLength: 200,
+        placeholder: "\u4EC0\u4E48\u65F6\u5019\u6D3E\u8FD9\u7C7B\u4EFB\u52A1",
+        "aria-label": `\u4EFB\u52A1\u7C7B\u578B\u8BF4\u660E ${type.name}`,
+        disabled,
+        onKeyDown: (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        },
+        onBlur: (event) => {
+          if (event.target.value !== (type.when ?? "")) patchType(index, { when: event.target.value });
+        }
+      }
+    )), /* @__PURE__ */ (0, import_react.createElement)(
+      PickCell,
+      {
+        caption: "\u8D1F\u8D23\u89D2\u8272",
+        label: `${type.name}${entry.hard ? " \xB7 \u666E\u901A\u4EFB\u52A1" : " \xB7 \u666E\u901A\u548C\u56F0\u96BE\u4EFB\u52A1"}`,
+        pick: entry.normal,
+        team,
+        roles,
+        engines,
+        optional: false,
+        disabled,
+        onChange: (pick) => edit(type.id ?? "", "normal", pick ?? {}),
+        remove: removing === removeKey ? /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-confirm", disabled, onClick: () => {
+          setRemoving(null);
+          removeType(type);
+        } }, "\u5220\u9664") : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-remove", "aria-label": `\u5220\u9664 ${type.name}`, disabled, onClick: () => setRemoving(removeKey) }, "\xD7")
+      }
+    ), entry.hard ? /* @__PURE__ */ (0, import_react.createElement)(
+      PickCell,
+      {
+        caption: "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E",
+        label: `${type.name} \xB7 \u56F0\u96BE\u4EFB\u52A1`,
+        pick: entry.hard,
+        team,
+        roles,
+        engines,
+        optional: true,
+        disabled,
+        onChange: (pick) => edit(type.id ?? "", "hard", pick ?? void 0),
+        remove: /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-remove", "aria-label": `${type.name} \u4E0D\u518D\u5355\u72EC\u6307\u5B9A\u56F0\u96BE\u4EFB\u52A1`, disabled, onClick: () => edit(type.id ?? "", "hard", void 0) }, "\xD7")
+      }
+    ) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-split", disabled, onClick: () => edit(type.id ?? "", "hard", {}) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u56F0\u96BE\u4EFB\u52A1\u5355\u72EC\u6307\u5B9A"));
+  }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-foot" }, adding ? /* @__PURE__ */ (0, import_react.createElement)(
+    "form",
+    {
+      className: "nodo-assign-add",
+      onSubmit: (event) => {
+        event.preventDefault();
+        if (draftOk) {
+          patchTypes([...types, { name: name.trim(), when: when.trim() }]);
+          reset();
+        }
+      },
+      onKeyDown: (event) => {
+        if (event.key === "Escape") reset();
+      }
+    },
+    /* @__PURE__ */ (0, import_react.createElement)("input", { className: "nodo-assign-field nodo-assign-field-name", autoFocus: true, placeholder: "\u7C7B\u578B\u540D\u79F0", "aria-label": "\u7C7B\u578B\u540D\u79F0", maxLength: 20, value: name, onChange: (event) => setName(event.target.value) }),
+    /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-field" }, /* @__PURE__ */ (0, import_react.createElement)("input", { placeholder: "\u4EC0\u4E48\u65F6\u5019\u6D3E\u8FD9\u7C7B\u4EFB\u52A1", "aria-label": "\u7C7B\u578B\u8BF4\u660E", maxLength: 200, value: when, onChange: (event) => setWhen(event.target.value) }), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-text-button", onClick: reset }, "\u53D6\u6D88"), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "submit", className: "nodo-text-button", disabled: disabled || !draftOk }, "\u6DFB\u52A0"))
+  ) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", disabled: disabled || types.length >= TYPES_MAX, onClick: () => setAdding(true) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u6DFB\u52A0\u4EFB\u52A1\u7C7B\u578B"))));
+}
+var TEAMS_CSS = `
+.nodo-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px;margin:-8px;padding:8px}
+.nodo-team-grid[data-over],.nodo-team-panel[data-over],.nodo-team-col[data-over]{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary)}
+.nodo-team-col[data-over]{border-radius:10px}
+.nodo-team-card{position:relative;display:flex;align-items:center;gap:8px;box-sizing:border-box;height:76px;min-width:0;padding:0 12px 0 16px;border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 4%,var(--dsw-alias-bg-base));box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);cursor:grab}
+.nodo-team-card:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,var(--dsw-alias-bg-base))}
+.nodo-team-card[data-dragging]{opacity:.4}
+.nodo-team-card-main{display:flex;align-items:center;gap:14px;flex:1;min-width:0;padding:0;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:inherit}
+.nodo-team-card-main:hover .nodo-roles-name>:first-child{text-decoration:underline}
+.nodo-team-card .nodo-avatar{border-radius:14px}
+.nodo-team-meta{display:flex;align-items:center;gap:8px;min-width:0;height:22px}
+.nodo-team-meta>span:first-child{display:inline-flex;flex:none;color:var(--dsw-alias-label-secondary)}
+.nodo-team-model{min-width:0;height:22px;padding:0 9px;overflow:hidden;border-radius:999px;font-size:12px;line-height:22px;text-overflow:ellipsis;white-space:nowrap}
+.nodo-team-card-act{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:var(--nodo-role-radius,8px);background:0 0;color:var(--dsw-alias-label-tertiary);font-size:16px;cursor:pointer}
+.nodo-team-card-act:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-team-del:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}
+.nodo-team-count{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-interactive-bg-hover);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.nodo-team-slot{display:flex;align-items:center;justify-content:center;gap:10px;box-sizing:border-box;height:76px;border:1px dashed var(--dsw-alias-border-l1);border-radius:10px;color:var(--dsw-alias-label-tertiary);font-size:13px}
+.nodo-team-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0}
+.nodo-team-tabs h2{margin:0 8px 0 0}
+.nodo-team-tab{display:inline-flex;align-items:center;gap:8px;max-width:200px;height:32px;padding:0 12px 0 6px;border:0;border-radius:10px;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.nodo-team-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-team-tab[aria-selected=true]{background:color-mix(in srgb,var(--dsw-alias-label-primary) 10%,transparent);color:var(--dsw-alias-label-primary)}
+.nodo-team-tab[data-over]{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary)}
+.nodo-team-no{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-interactive-bg-hover);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.nodo-team-tab[aria-selected=true] .nodo-team-no{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-base)}
+.nodo-team-panel{display:flex;flex-direction:column;gap:4px;padding:8px 0}
+.nodo-team-head{display:flex;align-items:center;gap:8px;height:40px;padding:0 4px 0 8px}
+.nodo-team-name{field-sizing:content;flex:0 1 auto;min-width:96px;max-width:320px;height:28px;padding:0 8px;border:0;border-radius:8px;background:0 0;color:inherit;font:inherit;font-size:14px;font-weight:600}
+.nodo-team-name:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-team-tree{display:flex;align-items:center;justify-content:center}
+.nodo-team-col{display:flex;flex-direction:column;gap:8px;width:300px;max-width:100%;flex:none}
+/* Column captions only appear where the tree and the assign table stack, i.e. on phones. */
+.nodo-tree-cap,.nodo-pick-cap{display:none}
+.nodo-team-lines{flex:none}
+.nodo-assign{display:flex;flex-direction:column;gap:12px}
+.nodo-assign-back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;height:36px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;color:inherit;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
+.nodo-assign-back:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-assign-back>svg{transform:rotate(180deg)}
+.nodo-assign-meta{display:flex;align-items:center;gap:8px}
+.nodo-assign-gap{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:8px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:12px;font-weight:500}
+.nodo-assign-lead{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
+.nodo-assign-row{display:grid;grid-template-columns:168px 1fr 1fr;align-items:center;column-gap:12px;min-height:60px;padding:6px 8px}
+.nodo-assign-row+.nodo-assign-row,.nodo-assign-foot{box-shadow:inset 0 .5px 0 var(--dsw-alias-border-l2)}
+.nodo-assign-head{min-height:44px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500}
+.nodo-assign-type{display:flex;flex-direction:column;min-width:0}
+.nodo-assign-type-top{display:flex;align-items:center;gap:4px}
+.nodo-type-independent{display:inline-flex;align-items:center;gap:4px;margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;white-space:nowrap;cursor:pointer}
+.nodo-type-independent input{accent-color:var(--dsw-alias-state-business-primary)}
+.nodo-assign-type .nodo-type-input{height:26px;padding:0 4px;font-size:14px;font-weight:500}
+.nodo-assign-type .nodo-type-sub{box-sizing:border-box;height:24px;max-height:120px;padding:2px 4px;resize:none;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+.nodo-assign-remove,.nodo-assign-confirm{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:22px;height:22px;padding:0 4px;border:0;border-radius:6px;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-assign-remove{opacity:0}
+.nodo-pick>:is(.nodo-assign-remove,.nodo-assign-confirm){position:absolute;top:50%;right:8px;transform:translateY(-50%)}
+.nodo-pick[data-removable] .nodo-pick-trigger{padding-right:46px}
+.nodo-assign-row:hover .nodo-assign-remove,.nodo-assign-remove:focus-visible{opacity:1}
+.nodo-assign-remove:hover:not(:disabled),.nodo-assign-confirm{color:var(--dsw-alias-state-error-primary)}
+.nodo-pick{position:relative;min-width:0}
+.nodo-pick-trigger{display:flex;align-items:center;gap:10px;width:100%;height:40px;padding:0 10px 0 8px;border:0;border-radius:10px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font:inherit;text-align:left;cursor:pointer}
+.nodo-pick-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-pick-trigger:disabled{cursor:default}
+.nodo-pick[data-warn] .nodo-pick-trigger{background:var(--dsw-alias-state-warn-tertiary);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
+.nodo-pick[data-warn] .nodo-pick-name{color:${WARN_INK}}
+.nodo-pick-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500}
+.nodo-pick-none{width:24px;height:24px;flex:none;border-radius:8px;box-shadow:inset 0 0 0 1.5px var(--dsw-alias-border-l1)}
+.nodo-pick-trigger>.nodo-team-model{flex:none;max-width:40%}
+.nodo-pick-trigger>svg{transform:rotate(90deg)}
+.nodo-pick-pop{position:absolute;z-index:20;top:calc(100% + 6px);left:0;display:flex;flex-direction:column;gap:10px;box-sizing:border-box;width:320px;padding:12px;border-radius:14px;background:var(--dsw-alias-bg-base);box-shadow:0 0 0 .5px var(--dsw-alias-border-l2),var(--dsw-shadow-lv2)}
+.nodo-pick-group{display:flex;flex-wrap:wrap;gap:4px}
+.nodo-pick-label{margin-bottom:-4px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
+:is(.nodo-pick-group,.nodo-pick-models)+.nodo-pick-label{padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
+.nodo-pick-models{display:flex;flex-direction:column;gap:6px}
+.nodo-pick-provider{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}
+.nodo-pick-group+.nodo-pick-provider{padding-top:4px}
+.nodo-pick-option{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:8px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
+.nodo-pick-option:hover{color:var(--dsw-alias-label-primary)}
+.nodo-pick-option[aria-pressed=true]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);box-shadow:none;color:var(--dsw-alias-state-business-primary)}
+.nodo-assign-split{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;font-weight:500;cursor:pointer;width:100%}
+.nodo-assign-split:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-assign-foot{display:flex;align-items:center;min-height:56px;padding:8px}
+.nodo-assign-add{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.nodo-assign-field{display:flex;align-items:center;box-sizing:border-box;height:40px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1)}
+.nodo-assign-field:focus-within{box-shadow:inset 0 0 0 1.5px var(--dsw-alias-state-business-primary)}
+.nodo-assign-field input,input.nodo-assign-field{min-width:0;height:38px;padding:0 12px;border:0;outline:0!important;background:none;color:inherit;font:inherit;font-size:13px}
+.nodo-assign-field-name{width:180px;flex:none;border:0}
+.nodo-assign-add>span.nodo-assign-field{flex:1;padding-right:8px;gap:4px}
+.nodo-assign-add>span.nodo-assign-field>input{flex:1}
+@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
+`;
+
+// src/client/roles.tsx
+var sidebarContent = null;
+var sidebarListeners = /* @__PURE__ */ new Set();
+var rolesSidebarSnapshot = () => sidebarContent;
+var rolesSubscribeSidebar = (listener) => {
+  sidebarListeners.add(listener);
+  return () => {
+    sidebarListeners.delete(listener);
+  };
+};
+var rolesPublishSidebar = (content) => {
+  if (content === sidebarContent) return;
+  sidebarContent = content;
+  for (const listener of sidebarListeners) listener();
+};
+var rolesTarget = null;
+var targetListeners = /* @__PURE__ */ new Set();
+var readRolesTarget = () => rolesTarget;
+var subscribeRolesTarget = (listener) => {
+  targetListeners.add(listener);
+  return () => {
+    targetListeners.delete(listener);
+  };
+};
+var openRoles = (target = {}) => {
+  rolesTarget = target;
+  for (const listener of targetListeners) listener();
+};
+var consumeRolesTarget = () => {
+  if (rolesTarget === null) return;
+  rolesTarget = null;
+  for (const listener of targetListeners) listener();
+};
+var leaveGuard = null;
+var rolesGuard = (action) => {
+  if (leaveGuard) leaveGuard(action);
+  else action();
+};
+var draftRemovers = /* @__PURE__ */ new Set();
+var registerDraftRemover = (remover) => {
+  draftRemovers.add(remover);
+  return () => {
+    draftRemovers.delete(remover);
+  };
+};
+function RolesPage({ view: view2, readOnly, refresh }) {
+  const target = (0, import_react.useSyncExternalStore)(subscribeRolesTarget, readRolesTarget);
+  const [roleId, setRoleId] = (0, import_react.useState)(() => target?.profileId && target.profileId !== "new" ? target.profileId : null);
+  const [assignOpen, setAssignOpen] = (0, import_react.useState)(false);
+  const [teamId, setTeamId] = (0, import_react.useState)(null);
+  const [confirm2, setConfirm] = (0, import_react.useState)(null);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [error2, setError] = (0, import_react.useState)("");
+  const [nonce, setNonce] = (0, import_react.useState)(0);
+  const [adding, setAdding] = (0, import_react.useState)(() => target?.profileId === "new");
+  const [engines, setEngines] = (0, import_react.useState)(null);
+  const dirtyRef = (0, import_react.useRef)(false);
+  const roles = view2.profiles.filter((role) => !role.deletedAt);
+  const teams = view2.teams ?? [];
+  const types = (teams.find((item) => item.id === teamId) ?? teams[0])?.types ?? [];
+  const executors = roles.filter((item) => item.lead !== true);
+  const creating = adding || !executors.length;
+  const perform = async (action) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      await refresh(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const run = (action) => {
+    setAdding(false);
+    setError("");
+    action();
+  };
+  const switchTo = (action) => {
+    if (dirtyRef.current) setConfirm({ action: () => run(action) });
+    else run(action);
+  };
+  const showOverview = () => {
+    setAssignOpen(false);
+    setRoleId(null);
+  };
+  const openRole = (id) => {
+    setAssignOpen(false);
+    setRoleId(id);
+  };
+  const startAdding = () => {
+    showOverview();
+    setAdding(true);
+  };
+  (0, import_react.useEffect)(() => {
+    leaveGuard = switchTo;
+    return () => {
+      leaveGuard = null;
+    };
+  }, []);
+  (0, import_react.useEffect)(() => {
+    if (!target) return;
+    consumeRolesTarget();
+    switchTo(() => {
+      if (!target.team) return target.profileId && target.profileId !== "new" ? openRole(target.profileId) : startAdding();
+      showOverview();
+      if (target.team !== "new") return setTeamId(target.team);
+      const id = crypto.randomUUID();
+      saveTeams([...teams, { id, name: "", lead: null, members: [], types: [], assign: {} }]);
+      setTeamId(id);
+    });
+  }, [target]);
+  (0, import_react.useEffect)(() => {
+    if (engines !== null) return;
+    setEngines([]);
+    void call("engine-catalog").then((items) => {
+      setEngines(items);
+    }).catch((failure) => setError(failure.message));
+  }, [engines]);
+  const savedRole = async (saved) => {
+    await refresh(true);
+    setAdding(false);
+    setRoleId(saved.id);
+  };
+  const deletedRole = async (item) => {
+    await call("profile-delete", { id: item.id });
+    await refresh(true);
+    const sessionIds = (item.sessions ?? []).map((session) => session.id);
+    for (const remove of draftRemovers) remove(sessionIds);
+    try {
+      const drafts = JSON.parse(localStorage.getItem("nodo.drafts") ?? "{}");
+      for (const id of sessionIds) delete drafts[id];
+      localStorage.setItem("nodo.drafts", JSON.stringify(drafts));
+    } catch {
+    }
+    setRoleId((current) => current === item.id ? null : current);
+  };
+  const saveTeams = (next) => void perform(async () => {
+    const leads = new Set(next.map((team) => team.lead));
+    const changed = roles.filter((role) => role.lead === true !== leads.has(role.id)).sort((a, b2) => Number(a.lead !== true) - Number(b2.lead !== true));
+    for (const role of changed) await call("profile-update", { id: role.id, changes: { lead: role.lead !== true } });
+    await call("teams-update", { teams: next });
+  });
+  const deleteReason = (role) => roles.some((item) => item.lead === true) && role.lead !== true && executors.length === 1 ? "\u4E3B\u63A7\u81F3\u5C11\u9700\u8981\u4E00\u4E2A\u6267\u884C\u89D2\u8272" : void 0;
+  const locked = readOnly || busy;
+  const overview = /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-overview" }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-roles-head" }, /* @__PURE__ */ (0, import_react.createElement)("h1", null, "\u89D2\u8272\u4E0E\u56E2\u961F")), /* @__PURE__ */ (0, import_react.createElement)(
+    TeamsSection,
+    {
+      roles,
+      teams,
+      activeId: teamId,
+      locked,
+      onActive: setTeamId,
+      save: saveTeams,
+      openRole: (id) => switchTo(() => openRole(id)),
+      onAssign: () => switchTo(() => setAssignOpen(true)),
+      createButton: /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-roles-add", disabled: locked, onClick: () => switchTo(startAdding) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u521B\u5EFA\u89D2\u8272")
+    }
+  ));
+  const sidebar = (0, import_react.useMemo)(() => /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-nav", role: "navigation", "aria-label": "\u89D2\u8272" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": !assignOpen, onClick: () => switchTo(showOverview) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconUsersOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, roles.length)), /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-role-types", "aria-pressed": assignOpen, onClick: () => switchTo(() => setAssignOpen(true)) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChecklistOutlineRegular, { size: 16 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-label" }, "\u4EFB\u52A1\u5206\u914D"), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-role-types-count" }, types.length))), [assignOpen, roles.length, types.length]);
+  (0, import_react.useEffect)(() => {
+    rolesPublishSidebar({ view: "roles", content: sidebar });
+  }, [sidebar]);
+  const selected = roleId !== null ? roles.find((item) => item.id === roleId) ?? null : null;
+  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles", "aria-label": "\u89D2\u8272\u7BA1\u7406" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-chrome", "aria-hidden": true }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-body" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-role-dialog nodo-roles-main", "data-screen": assignOpen ? "assign" : selected || creating ? "role" : "overview" }, assignOpen ? /* @__PURE__ */ (0, import_react.createElement)(
+    AssignPage,
+    {
+      roles,
+      teams,
+      engines: engines ?? [],
+      activeId: teamId,
+      disabled: locked,
+      onActive: setTeamId,
+      onBack: () => switchTo(showOverview),
+      save: saveTeams
+    }
+  ) : selected ? /* @__PURE__ */ (0, import_react.createElement)(
+    RoleEditor,
+    {
+      key: `${selected.id}:${nonce}`,
+      profile: selected,
+      deleteReason: deleteReason(selected),
+      enabledEngines: view2.prefs?.enabledEngines ?? null,
+      savedIdentities: view2.prefs?.rolePresets ?? null,
+      refresh,
+      readOnly,
+      onSaved: savedRole,
+      onCancel: () => {
+        setNonce((value) => value + 1);
+        showOverview();
+      },
+      onBack: () => switchTo(showOverview),
+      onDeleted: deletedRole,
+      onDirtyChange: (value) => {
+        dirtyRef.current = value;
+      }
+    }
+  ) : creating ? /* @__PURE__ */ (0, import_react.createElement)(
+    RoleEditor,
+    {
+      key: `new:${nonce}`,
+      profile: null,
+      avatarSeed: roles.length,
+      enabledEngines: view2.prefs?.enabledEngines ?? null,
+      savedIdentities: view2.prefs?.rolePresets ?? null,
+      refresh,
+      readOnly,
+      onSaved: savedRole,
+      onCancel: () => {
+        setNonce((value) => value + 1);
+        setAdding(false);
+      },
+      onBack: executors.length ? () => switchTo(showOverview) : null,
+      onDeleted: deletedRole,
+      onDirtyChange: (value) => {
+        dirtyRef.current = value;
+      }
+    }
+  ) : overview, error2 && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2))), confirm2 && /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Modal, { open: true, title: "\u653E\u5F03\u672A\u4FDD\u5B58\u7684\u4FEE\u6539\uFF1F", onClose: () => setConfirm(null), closeLabel: "\u5173\u95ED", className: "nodo-dialog", footer: [
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "keep", variant: "outline", onClick: () => setConfirm(null) }, "\u7EE7\u7EED\u7F16\u8F91"),
+    /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "drop", variant: "primary", onClick: () => {
+      const { action } = confirm2;
+      setConfirm(null);
+      action();
+    } }, "\u653E\u5F03\u4FEE\u6539")
+  ] }, /* @__PURE__ */ (0, import_react.createElement)("p", null, "\u5F53\u524D\u4FEE\u6539\u5C1A\u672A\u4FDD\u5B58\u3002")));
+}
+function RolesEntry() {
+  const { view: view2, error: error2, refresh } = useStateView();
+  (0, import_react.useEffect)(() => {
+    if (document.querySelector("[data-sidebar-collapsed]")) layoutService?.toggleSidebar?.();
+    return () => rolesPublishSidebar(null);
+  }, []);
+  if (!view2) return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-page nodo-roles" }, error2 || "\u6B63\u5728\u8BFB\u53D6\u89D2\u8272\u2026");
+  return /* @__PURE__ */ (0, import_react.createElement)(RolesPage, { view: view2, readOnly: !!view2.readOnly, refresh });
+}
+var ROLES_CSS = `
+.nodo-roles{overflow:hidden}
+.nodo-roles-chrome{flex:none;height:var(--nodo-top-clearance,0px);-webkit-app-region:drag}
+.nodo-roles-body{display:flex;flex:1;min-width:0;min-height:0;overflow:auto;padding:20px 32px 40px}
+.nodo-roles-main{display:flex;flex-direction:column;gap:16px;flex:none;width:min(1080px,100%);height:fit-content;margin-inline:auto}
+.nodo-roles-main[data-screen=overview]{min-width:820px}
+.nodo-roles-main[data-screen=role]{width:min(800px,100%)}
+.nodo-roles-main[data-screen=assign]{width:min(980px,100%)}
+.nodo-roles-nav{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+.nodo-role-types{display:flex;align-items:center;gap:8px;flex:none;width:100%;height:36px;padding:0 12px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;text-align:left;cursor:pointer}
+.nodo-role-types:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-role-types[aria-pressed=true]{background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 2px var(--dsw-alias-border-l2),0 0 0 .5px var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
+.nodo-role-types-label{flex:1;min-width:0}
+.nodo-role-types-count{font-size:12px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.nodo-roles-overview{display:flex;flex-direction:column;gap:20px}
+.nodo-roles-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nodo-roles-head h1{display:flex;align-items:baseline;gap:8px;margin:0;font-size:18px;font-weight:600;line-height:26px}
+.nodo-roles-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:14px;line-height:20px}
+.nodo-roles-copy>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-roles-name{display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary)}
+.nodo-roles-sub{font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
+.nodo-roles-section{display:flex;flex-direction:column;gap:8px}
+.nodo-roles-section h2{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;font-weight:600;line-height:20px}
+.nodo-roles-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nodo-roles-add{display:flex;align-items:center;gap:8px;width:fit-content;height:32px;padding:0 12px 0 6px;border:0;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.nodo-roles-add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-text-button{height:28px;padding:0 8px;border:0;border-radius:var(--dsw-radius-md);background:0 0;color:var(--dsw-alias-state-business-primary);font:inherit;font-size:13px;cursor:pointer}
+.nodo-text-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-text-button:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
+.nodo-types-count{color:var(--dsw-alias-label-tertiary);font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
+.nodo-type-input{width:100%;height:32px;padding:0 8px;border:1px solid transparent;border-radius:var(--nodo-role-radius);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
+.nodo-type-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
+.nodo-type-input:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.nodo-type-input:focus{outline:0;border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}
+@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}.nodo-roles-main[data-screen=overview]{min-width:0}}
+${TEAMS_CSS}`;
+
+// core/shared/session.js
+var nativeIdOf = (session) => session?.engine === "dsh" ? session.driverSessionId : void 0;
+
+// src/client/page.js
+function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
+  const { view: view2, error: error2, refresh } = useStateView();
+  const navigation = (0, import_react.useSyncExternalStore)(subscribeNavigation, readNavigation);
+  const space = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
+  const currentNativeSession = (0, import_react.useSyncExternalStore)(subscribeNativeSession, readNativeSession);
+  const seen = (0, import_react.useSyncExternalStore)(completionTracker.subscribe, completionTracker.getSnapshot);
+  const [foreground, setForeground] = (0, import_react.useState)(() => document.visibilityState === "visible" && document.hasFocus());
+  (0, import_react.useEffect)(() => {
+    const update = () => setForeground(document.visibilityState === "visible" && document.hasFocus());
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("focus", update);
+    window.addEventListener("blur", update);
+    return () => {
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("focus", update);
+      window.removeEventListener("blur", update);
+    };
+  }, []);
+  const [editing, setEditing] = (0, import_react.useState)(null);
+  const [workspaceDialog, setWorkspaceDialog] = (0, import_react.useState)(null);
+  const [worktreeOpen, setWorktreeOpen] = (0, import_react.useState)(false);
+  const [sessionDialog, setSessionDialog] = (0, import_react.useState)(null);
+  const [drafts, setDrafts] = (0, import_react.useState)(readDrafts);
+  const [pastedImages, setPastedImages] = (0, import_react.useState)(() => heldImages);
+  const [scopes, setScopes] = (0, import_react.useState)(readScopes);
+  (0, import_react.useEffect)(() => {
+    localStorage.setItem("nodo.drafts", JSON.stringify(drafts));
+  }, [drafts]);
+  (0, import_react.useEffect)(() => {
+    localStorage.setItem("nodo.taskScope", JSON.stringify(scopes));
+  }, [scopes]);
+  (0, import_react.useEffect)(() => {
+    setHeldImages(pastedImages);
+  }, [pastedImages]);
+  (0, import_react.useEffect)(() => {
+    if (view2?.decisions) pruneDecisionDrafts(view2.decisions);
+  }, [view2?.decisions]);
+  (0, import_react.useEffect)(() => {
+    const remove = (ids) => {
+      setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
+      setScopes((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !ids.includes(key))));
+    };
+    return registerDraftRemover(remove);
+  }, []);
+  const rightbarOpen = (0, import_react.useSyncExternalStore)(rightPanelService?.subscribe ?? (() => () => {
+  }), () => rightPanelService?.getSnapshot().expanded === true);
+  const [opened, setOpened] = (0, import_react.useState)([]);
+  const [panelOpen, setPanelOpen] = (0, import_react.useState)(false);
+  const [goalOpen, setGoalOpen] = (0, import_react.useState)(false);
+  const [statsOpen, setStatsOpen] = (0, import_react.useState)(false);
+  const [onboardDone, setOnboardDone] = (0, import_react.useState)(false);
+  const onboarding = (0, import_react.useRef)(false);
+  if (view2 && view2.prefs?.onboardedAt == null) onboarding.current = true;
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const selection = (0, import_react.useRef)(0);
+  const [pending, setPending] = (0, import_react.useState)([]);
+  const [compacting, setCompacting] = (0, import_react.useState)([]);
+  const [sentTick, setSentTick] = (0, import_react.useState)(0);
+  const [actionError, setActionError] = (0, import_react.useState)("");
+  const team = navigation.view === "team";
+  const leadSession = (role, session2) => role.lead === true && (session2.engine ?? role.engine) !== "dsh" && session2.leadMode !== false;
+  const archived = view2?.profiles.flatMap((role) => role.sessions.filter((session2) => session2.id === navigation.archivedSession && session2.archivedAt && (!team || leadSession(role, session2))).map((session2) => ({ role, session: session2 })))[0];
+  const profiles = view2?.profiles.filter((item) => !item.deletedAt && (!team || item.lead === true && item.engine !== "dsh")) ?? [];
+  const profile = archived?.role ?? profiles.find((item) => item.id === navigation.profile) ?? profiles[0] ?? null;
+  const workspaces = view2?.workspaces ?? [];
+  const workspace = archived ? workspaces.find((item) => item.id === projectAnchorOf(workspaces, archived.session.workspaceRef)) ?? null : workspaces.find((item) => item.id === projectAnchorOf(workspaces, navigation.workspace)) ?? workspaces[0] ?? null;
+  const navigationKey = `${workspace?.id}:${profile?.id}`;
+  const session = archived?.session ?? sessionForWorkspace(
+    team && profile ? { ...profile, sessions: profile.sessions.filter((item) => leadSession(profile, item)) } : profile,
+    workspace,
+    workspaces,
+    navigation.sessions?.[navigationKey]
+  );
+  const sessionId = session?.id;
+  const draftKey = sessionId ?? `new:${navigationKey}`;
+  const scopeTask = view2?.tasks?.find((item) => item.id === scopes[draftKey]);
+  const sessionBusy = busy || pending.includes(draftKey) || compacting.includes(sessionId);
+  const setSessionBusy = (value) => setPending((current) => value ? [...current, draftKey] : current.filter((key) => key !== draftKey));
+  const readOnly = view2 !== null && view2.readOnly != null;
+  const archivedConversation = !!session?.archivedAt || !!profile?.deletedAt;
+  const conversationReadOnly = readOnly || archivedConversation;
+  const work = sessionId ? view2.work[sessionId] : null;
+  const rounds = view2 ? roundIndex(view2) : null;
+  const members = team && sessionId && rounds?.members.get(sessionId) || [];
+  const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
+  const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : void 0);
+  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => item.session.id === sessionId || opened.includes(item.session.id))] : [];
+  const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map((item) => item.role)] : [];
+  const activeTasks = members.filter((item) => view2.work[item.session.id]?.active === true).length;
+  const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
+  (0, import_react.useLayoutEffect)(() => {
+    if (sidebarOnly || !space.active || !space.legacy || editing) return;
+    if (sessionId) return rightPanelService?.bind({ profile: profile.id, session: sessionId, cwd: panelCwd, ...conversationReadOnly ? { readOnly: true } : {} });
+    if (workspace) return rightPanelService?.bind({ workspace: workspace.id, cwd: panelCwd, ...readOnly ? { readOnly: true } : {} });
+  }, [sidebarOnly, space.active, space.legacy, profile?.id, sessionId, workspace?.id, panelCwd, conversationReadOnly, !!editing]);
+  const composerProfile = profile && session ? { ...profile, model: session.model ?? profile.model, thinking: session.thinking ?? profile.thinking, permission: session.permission ?? profile.permission, leadMode: session.leadMode, nativeGoal: session.nativeGoal } : profile?.lead === true ? { ...profile, leadMode: team } : profile;
+  const sessionWorkspace = session ? workspaces.find((item) => item.id === session.workspaceRef) ?? workspace : workspace;
+  const viewed = foreground && space.active && !space.legacy && !editing && currentNativeSession ? view2?.profiles.flatMap((role) => role.sessions).find((item) => nativeIdOf(item) === currentNativeSession) : null;
+  const viewedWork = view2?.work[viewed?.id];
+  (0, import_react.useEffect)(() => {
+    if (viewed && viewedWork?.active !== true && Number.isFinite(viewedWork?.completionSeq)) completionTracker.mark(viewed.id, viewedWork.completionSeq);
+  }, [viewed?.id, viewedWork?.active, viewedWork?.completionSeq]);
+  const railView = view2 && { ...view2, work: Object.fromEntries(Object.entries(view2.work).map(([id, work2]) => [
+    id,
+    { ...work2, seen: Number.isFinite(work2.completionSeq) && seen[id] >= work2.completionSeq }
+  ])) };
+  (0, import_react.useEffect)(() => {
+    if (!profile || !workspace || archivedConversation) return;
+    setNavigation((current) => ({
+      ...current,
+      profile: profile.id,
+      workspace: workspace.id,
+      sessions: { ...current.sessions, ...sessionId && !current.sessions?.[navigationKey] ? { [navigationKey]: sessionId } : {} }
+    }));
+  }, [profile?.id, workspace?.id, sessionId, archivedConversation]);
+  const remember = (roleId, projectId, id, archived2 = false) => {
+    const anchor = projectAnchorOf(workspaces, projectId);
+    return setNavigation((current) => ({
+      ...current,
+      profile: roleId,
+      workspace: anchor,
+      archivedSession: archived2 ? id : void 0,
+      sessions: { ...current.sessions, ...id && !archived2 ? { [`${anchor}:${roleId}`]: id } : {} }
+    }));
+  };
+  const trackSelection = (sameSession = false) => {
+    const origin = nativeSpace.getSnapshot(), request = selection.current;
+    return () => {
+      const next = readNavigation();
+      return nativeSpace.getSnapshot() === origin && (sameSession || selection.current === request) && next.profile === profile?.id && next.workspace === workspace?.id && next.sessions?.[navigationKey] === navigation.sessions?.[navigationKey];
+    };
+  };
+  const cancelEditing = () => setEditing(null);
+  const edit = (value) => {
+    selection.current++;
+    setEditing(value);
+  };
+  const attempt = async (tracked, work2) => {
+    setActionError("");
+    try {
+      await work2();
+    } catch (failure) {
+      if (tracked()) setActionError(failure.message);
+    }
+  };
+  const openRolesPage = (target) => {
+    selection.current++;
+    openRoles(target);
+    layoutService?.selectPanel("nodo-roles");
+  };
+  const updateEngineChoice = async (changes) => {
+    if (!profile || sessionBusy || conversationReadOnly) return;
+    setSessionBusy(true);
+    const current = trackSelection();
+    await attempt(trackSelection(true), async () => {
+      if (sessionId && ["model", "thinking", "permission", "nativeGoal"].some((key) => changes[key] !== void 0)) {
+        await call("session-update", { profile: profile.id, session: sessionId, changes });
+      } else {
+        const saved = await call("profile-update", { id: profile.id, changes });
+        if (current()) remember(saved.id, workspace?.id, saved.activeSessionId);
+      }
+      await refresh(true);
+    });
+    setSessionBusy(false);
+  };
+  const savedWorkspace = async (saved) => {
+    await refresh(true);
+    remember(profile?.id, saved.id);
+    setEditing(null);
+  };
+  const createdWorktree = async (created) => {
+    setWorktreeOpen(false);
+    await refresh(true);
+    remember(profile?.id, created.workspace.id);
+    setActionError("");
+    if (!profile || !created.openSession) return;
+    setBusy(true);
+    try {
+      let sessionId2;
+      if (nativeRole(profile) && openNativeSession) {
+        const opened2 = await call("session-open", { profile: profile.id, workspace: created.workspace.id });
+        sessionId2 = opened2.conversationId;
+        if (created.sessionName !== "") await call("session-update", { profile: profile.id, session: sessionId2, changes: { name: created.sessionName } });
+        openNativeSession(opened2.sessionId);
+      } else {
+        const saved = await call("session-create", {
+          profile: profile.id,
+          workspace: created.workspace.id,
+          lazy: true,
+          team,
+          ...created.sessionName === "" ? {} : { name: created.sessionName }
+        });
+        sessionId2 = saved.id;
+        if (sidebarOnly) nativeSpace.showLegacy();
+      }
+      await refresh(true);
+      remember(profile.id, created.workspace.id, sessionId2);
+      setEditing(null);
+    } catch (failure) {
+      setActionError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const renamedWorkspace = async (id, name) => {
+    await call("workspace-update", { id, changes: { name } });
+    await refresh(true);
+    setWorkspaceDialog(null);
+  };
+  const deletedWorkspace = async (id) => {
+    await call("workspace-delete", { id });
+    await refresh(true);
+    if (workspace?.id === id) setNavigation((current) => ({ ...current, workspace: null }));
+    setWorkspaceDialog(null);
+  };
+  const pageEnv = { workspace, busy, workspaces, work: view2?.work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing };
+  const select = (role, id, project) => selectSession(role, id, project, pageEnv);
+  const archiveSession = async (role, id, archived2) => {
+    if (busy || readOnly) return;
+    setBusy(true);
+    await attempt(() => true, async () => {
+      await call("session-archive", { profile: role.id, session: id, archived: archived2 });
+      await refresh(true);
+    });
+    setBusy(false);
+  };
+  const updateSession = async (role, id, changes) => {
+    if (busy || readOnly) return;
+    setBusy(true);
+    await attempt(() => true, async () => {
+      await call("session-update", { profile: role.id, session: id, changes });
+      await refresh(true);
+    });
+    setBusy(false);
+  };
+  const renamedSession = async ({ role, session: session2 }, name) => {
+    await call("session-update", { profile: role.id, session: session2.id, changes: { name } });
+    await refresh(true);
+    setSessionDialog(null);
+  };
+  const startDraft = (roleId, project) => {
+    if (team) roleId = profiles.find((role) => role.id === roleId)?.id ?? profile?.id;
+    if (team && !roleId) return;
+    startConversation(roleId, pageEnv, project);
+  };
+  const imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+  const attach = async (files) => {
+    try {
+      if (!files.length) return;
+      const images = files.filter((file) => imageTypes.includes(file.type));
+      if (images.length !== files.length) throw new Error("\u4F1A\u8BDD\u91CC\u53EA\u80FD\u6DFB\u52A0\u56FE\u7247\uFF0C\u5176\u4ED6\u6587\u4EF6\u8BF7\u5728\u65B0\u5EFA\u4F1A\u8BDD\u9875\u6DFB\u52A0\u3002");
+      const added = await Promise.all(images.map(readImage));
+      setPastedImages((current) => ({ ...current, [draftKey]: [...current[draftKey] ?? [], ...added] }));
+    } catch (failure) {
+      setActionError(failure.message);
+    }
+  };
+  const removeImage = (index) => setPastedImages((current) => ({ ...current, [draftKey]: (current[draftKey] ?? []).filter((_2, position) => position !== index) }));
+  const insertDraft = (insertion) => setDrafts((current) => {
+    const value = current[draftKey] ?? "";
+    return { ...current, [draftKey]: value === "" || /\s$/.test(value) ? `${value}${insertion}` : `${value} ${insertion}` };
+  });
+  const [focusTick, setFocusTick] = (0, import_react.useState)(0);
+  const supplement = (step) => {
+    setScopes((current) => ({ ...current, [draftKey]: step.taskId }));
+    setFocusTick((value) => value + 1);
+  };
+  const removeScope = () => setScopes((current) => {
+    const next = { ...current };
+    delete next[draftKey];
+    return next;
+  });
+  const send = async () => {
+    const text = (drafts[draftKey] ?? "").trim();
+    const images = pastedImages[draftKey] ?? [];
+    if (!profile || !workspace || !text && images.length === 0 || sessionBusy || conversationReadOnly) return;
+    setSessionBusy(true);
+    const current = trackSelection();
+    await attempt(trackSelection(true), async () => {
+      const id = sessionId ?? (await call("session-create", { profile: profile.id, workspace: workspace.id, lazy: true, team })).id;
+      const payload = images.map((image) => ({ mediaType: image.mediaType, name: image.name, data: base64Of(image.dataUrl) }));
+      await call("send", { profile: profile.id, session: id, text, images: payload, mode: "queue", ...scopeTask ? { taskId: scopeTask.id } : {} });
+      if (current()) setSentTick((tick) => tick + 1);
+      setDrafts((current2) => current2[draftKey]?.trim() === text ? { ...current2, [draftKey]: "" } : current2);
+      setPastedImages((current2) => current2[draftKey] === images ? { ...current2, [draftKey]: [] } : current2);
+      await refresh(!sessionId);
+      if (current()) remember(profile.id, workspace.id, id);
+    });
+    setSessionBusy(false);
+  };
+  const queueAction = async (seq, action) => {
+    if (!profile || !sessionId || sessionBusy || conversationReadOnly) return;
+    setSessionBusy(true);
+    const relevant = trackSelection(true);
+    await attempt(relevant, async () => {
+      const result = await call("queued-message", { profile: profile.id, session: sessionId, seq, action });
+      if (action === "edit") {
+        setDrafts((current) => ({ ...current, [draftKey]: [result.text, current[draftKey]].filter(Boolean).join("\n\n") }));
+        setPastedImages((current) => ({ ...current, [draftKey]: [
+          ...result.images.map((image) => ({ ...image, dataUrl: `data:${image.mediaType};base64,${image.data}` })),
+          ...current[draftKey] ?? []
+        ] }));
+      }
+      if (action === "send" && relevant()) {
+        if (result.mode === "queued") setActionError("\u5F53\u524D\u65E0\u6CD5\u63D2\u5165\u672C\u8F6E\uFF0C\u6D88\u606F\u4ECD\u5728\u6392\u961F");
+        else if (result.mode !== "cancelled") setSentTick((tick) => tick + 1);
+      }
+      await refresh(false);
+    });
+    setSessionBusy(false);
+  };
+  const interrupt = async () => {
+    if (!profile || sessionBusy || conversationReadOnly) return;
+    setSessionBusy(true);
+    await attempt(trackSelection(true), async () => {
+      await call("interrupt", { profile: profile.id, session: sessionId });
+      await refresh(false);
+    });
+    setSessionBusy(false);
+  };
+  const stopMember = async (step) => {
+    try {
+      await call("interrupt", { profile: step.profile, session: step.session });
+      await refresh(false);
+    } catch (failure) {
+      setActionError(failure.message);
+    }
+  };
+  const compactSession = async () => {
+    if (!profile || sessionBusy || conversationReadOnly || work?.active === true) return;
+    if (!sessionId) {
+      setActionError("\u5148\u5F00\u59CB\u4E00\u4E2A\u4F1A\u8BDD\uFF0C\u518D\u538B\u7F29\u4E0A\u4E0B\u6587");
+      return;
+    }
+    setCompacting((current) => [...current, sessionId]);
+    await attempt(trackSelection(true), async () => {
+      await call("session-compact", { profile: profile.id, session: sessionId });
+      await refresh(true);
+    });
+    setCompacting((current) => current.filter((id) => id !== sessionId));
+  };
+  const openSession = (id) => {
+    setOpened((current) => current.includes(id) ? current : [...current, id]);
+    const role = view2.profiles.find((item) => item.sessions.some((entry) => entry.id === id));
+    if (role) {
+      setNavigation((current) => ({ ...current, view: "sessions" }));
+      void select(role, id, workspaces.find((item) => item.id === role.sessions.find((entry) => entry.id === id)?.workspaceRef));
+    }
+  };
+  const openRound = (id) => {
+    if (id !== lead.session.id) return openSession(id);
+    setNavigation((current) => ({ ...current, view: "team" }));
+    void select(lead.role, id, workspaces.find((item) => item.id === lead.session.workspaceRef));
+  };
+  const showSessions = (view3) => rolesGuard(() => {
+    setNavigation((current) => ({ ...current, view: view3 }));
+    setEditing(null);
+    nativeSpace.showLegacy();
+  });
+  const panelBody = (0, import_react.useRef)(null);
+  (0, import_react.useLayoutEffect)(() => {
+    const node = panelBody.current;
+    if (!node) return;
+    const measure = () => node.style.setProperty("--nodo-session-bottom", sessionPanelBottom(node));
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    const composer = node.querySelector(".nodo-composer");
+    if (composer) observer.observe(composer);
+    return () => observer.disconnect();
+  }, [sessionId, archivedConversation, profile?.id, workspace?.id, view2 !== null, panelOpen]);
+  const conversation = () => (0, import_react.createElement)(
+    "div",
+    { className: "nodo-conversation" },
+    // The host conversation header: the session's own name in the window-chrome
+    // row and one hairline closing the block.
+    (0, import_react.createElement)(
+      "header",
+      { className: "nodo-head", "data-rightbar-open": rightbarOpen || void 0 },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-title-row" },
+        ...tabs.map(({ role, session: entry }) => {
+          const open = () => {
+            setNavigation((current) => ({ ...current, view: entry.id === lead.session.id ? "team" : "sessions" }));
+            void select(role, entry.id, workspaces.find((item) => item.id === entry.workspaceRef));
+          };
+          const close = (event) => {
+            event.stopPropagation();
+            setOpened((current) => current.filter((id) => id !== entry.id));
+            if (entry.id === sessionId) {
+              setNavigation((current) => ({ ...current, view: "team" }));
+              void select(lead.role, lead.session.id, workspaces.find((item) => item.id === lead.session.workspaceRef));
+            }
+          };
+          return (0, import_react.createElement)(
+            "span",
+            { key: entry.id, className: "nodo-tab", "data-current": entry.id === sessionId || void 0 },
+            (0, import_react.createElement)(
+              "button",
+              { type: "button", className: entry.id === sessionId ? "nodo-crumb" : "nodo-crumb nodo-crumb-link", title: entry.name, onClick: open },
+              (0, import_react.createElement)(RoundFaces, { roles: entry.id === lead.session.id ? [...new Map(tabRoles.map((item) => [item.id, item])).values()] : [role] }),
+              (0, import_react.createElement)("span", { className: "nodo-crumb-text" }, entry.name)
+            ),
+            entry.id !== lead.session.id && (0, import_react.createElement)("button", { type: "button", className: "nodo-tab-close", "aria-label": "\u5173\u95ED", onClick: close }, "\xD7")
+          );
+        }),
+        tabs.length === 0 && (0, import_react.createElement)(
+          "span",
+          { className: "nodo-crumb", title: session?.name ?? workspace?.name ?? profile.name },
+          session?.name ?? workspace?.name ?? profile.name
+        ),
+        sessionWorkspace && (0, import_react.createElement)(
+          "span",
+          { className: "nodo-head-actions" },
+          (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
+            label: "\u6458\u8981\u9762\u677F",
+            side: "bottom",
+            align: "end",
+            delayMs: 500,
+            children: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+              variant: "ghost",
+              className: "nodo-right-toggle",
+              "aria-label": "\u6458\u8981\u9762\u677F",
+              "aria-pressed": panelOpen,
+              onClick: () => setPanelOpen((value) => !value),
+              icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16, className: "nodo-summary-glyph" })
+            })
+          })
+        )
+      )
+    ),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-body", ref: panelBody },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-body-main" },
+        (0, import_react.createElement)(Feed, {
+          key: `${team}:${sessionId}`,
+          profile,
+          session,
+          work,
+          sentTick,
+          decisions: view2.decisions,
+          round: team ? {
+            profiles: view2.profiles,
+            teams: view2.teams,
+            tasks: view2.tasks,
+            decisions: view2.decisions,
+            leadId: profile.id,
+            work: view2.work,
+            onOpen: openSession,
+            onStop: conversationReadOnly ? void 0 : stopMember,
+            onSupplement: conversationReadOnly ? void 0 : supplement
+          } : void 0
+        }),
+        (work?.active === true || activeTasks > 0) && (0, import_react.createElement)(
+          "div",
+          { className: "nodo-running-dock" },
+          work?.active === true && (0, import_react.createElement)(RunningLine, { key: sessionId, since: work.since, work }),
+          activeTasks > 0 && (0, import_react.createElement)(TaskCountLine, { count: activeTasks })
+        ),
+        ...(!archivedConversation ? view2.decisions ?? [] : []).filter((decision) => decision.coordinatorSessionId === sessionId && (decision.status === "pending" || decision.status === "answered")).map((decision) => (0, import_react.createElement)(DecisionCard, {
+          key: decision.id,
+          decision,
+          profileId: profile.id,
+          readOnly,
+          refresh,
+          profiles: view2.profiles,
+          tasks: view2.tasks,
+          work: view2.work
+        })),
+        ...(!archivedConversation ? view2.approvals ?? [] : []).filter((card) => card.sessionId == null || card.sessionId === sessionId || members.some((item) => item.session.id === card.sessionId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
+          key: card.id,
+          card: card.taskId ? { ...card, taskTitle: view2.tasks?.find((task) => task.id === card.taskId)?.title } : card,
+          refresh,
+          readOnly,
+          from: members.find((item) => item.session.id === card.profileId)
+        })),
+        (0, import_react.createElement)(PlanDock, { profileId: profile.id, sessionId }),
+        !archivedConversation && (0, import_react.createElement)(Composer, {
+          profile: composerProfile,
+          workspace: sessionWorkspace,
+          value: drafts[draftKey] ?? "",
+          images: pastedImages[draftKey] ?? [],
+          running: work?.active === true,
+          busy: sessionBusy,
+          readOnly: readOnly || !workspace,
+          modelDisabled: sessionBusy || readOnly,
+          onChange: (value) => setDrafts((current) => ({ ...current, [draftKey]: value })),
+          onSend: () => void send(),
+          onStop: () => void interrupt(),
+          onAttach: attach,
+          onRemoveImage: removeImage,
+          onAttachFiles: attach,
+          accept: "image/png,image/jpeg,image/webp,image/gif",
+          attachLabel: "\u4E0A\u4F20\u56FE\u7247",
+          pending: work?.pending?.some((item) => item.taskId) ? work.pending.map((item) => item.taskId ? { ...item, taskTitle: view2.tasks?.find((task) => task.id === item.taskId)?.title } : item) : work?.pending,
+          onQueueAction: (seq, action) => void queueAction(seq, action),
+          taskScope: scopeTask?.title,
+          onRemoveTaskScope: removeScope,
+          focusTick,
+          onInsert: insertDraft,
+          onGoal: sessionId ? () => setGoalOpen(true) : void 0,
+          onCompact: () => void compactSession(),
+          onModelChange: (changes) => void updateEngineChoice(changes),
+          rolePicker: (0, import_react.createElement)(RolePicker, { profiles: team ? profiles : view2.profiles, profile })
+        }),
+        // The host chat's statistics line sits right below the input card, one per
+        // session, inside the dock the composer keeps: the dock holds its height
+        // before the session has any figure, so the input card never moves.
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-stats" },
+          (0, import_react.createElement)(SessionStats, { stats: leadModeOf(profile, session) ? void 0 : (view2?.stats ?? {})[sessionId], onOpen: () => setStatsOpen(true) })
+        )
+      ),
+      panelOpen && sessionWorkspace && (0, import_react.createElement)(SessionPanel, {
+        workspace: sessionWorkspace.id,
+        cwd: sessionWorkspace.cwd,
+        running: work?.active === true || activeTasks > 0,
+        profile: profile.id,
+        session: sessionId,
+        team: lead ? { lead, members: rounds.members.get(lead.session.id), work: view2.work, tasks: view2.tasks, decisions: view2.decisions, stats: view2.stats, onOpen: openRound } : void 0
+      })
+    )
+  );
+  const page = () => {
+    if (profile && (workspace || session)) return conversation();
+    return (0, import_react.createElement)(
+      "div",
+      { className: "nodo-empty" },
+      (0, import_react.createElement)("p", { className: "nodo-headline" }, workspace ? "\u9009\u62E9\u4E00\u4E2A\u89D2\u8272" : "\u6DFB\u52A0\u4E00\u4E2A\u9879\u76EE"),
+      (0, import_react.createElement)("p", null, workspace ? "\u6DFB\u52A0\u6216\u9009\u62E9\u5DE6\u4FA7\u89D2\u8272\uFF0C\u4E0E\u5176\u5728\u5F53\u524D\u9879\u76EE\u4E2D\u5BF9\u8BDD\u3002" : "\u70B9\u51FB\u5DE6\u4FA7\u9879\u76EE\u65C1\u7684 +\uFF0C\u9009\u62E9\u5DE5\u4F5C\u76EE\u5F55\u3002")
+    );
+  };
+  const initiallyOpened = (0, import_react.useRef)(false);
+  (0, import_react.useEffect)(() => {
+    openInitialSidebarSession({ sidebarOnly, initiallyOpened, profile, workspace, sessionId, ...pageEnv });
+  }, [sidebarOnly, profile?.id, workspace?.id]);
+  return (0, import_react.createElement)(
+    "section",
+    { className: `nodo-page${sidebarOnly ? " nodo-space-sidebar" : ""}`, "aria-label": sidebarOnly ? "Nodo \u7A7A\u95F4" : "Nodo" },
+    error2 && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, error2),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-frame" },
+      !contentOnly && view2 && (0, import_react.createElement)(Rail, {
+        key: team ? "team" : "sessions",
+        view: railView,
+        profile,
+        workspace,
+        sessionId,
+        editing,
+        draft: space.draft,
+        drafting: space.drafting,
+        onResumeDraft: () => nativeSpace.resumeDraft(),
+        readOnly,
+        busy,
+        navigation: railNavigation ?? (team ? { view: "team" } : null),
+        onSelect: (id) => {
+          const role = view2.profiles.find((item) => item.id === id);
+          if (role && workspace) void select(role);
+          else {
+            remember(id, workspace?.id);
+            setActionError("");
+            setEditing(null);
+            if (sidebarOnly) nativeSpace.showLegacy();
+          }
+        },
+        onSelectSession: (role, id, project) => void select(role, id, project),
+        onArchiveSession: (role, id, archived2) => void archiveSession(role, id, archived2),
+        onRenameSession: (role, session2) => setSessionDialog({ role, session: session2 }),
+        onPinSession: (role, id, pinned) => void updateSession(role, id, { pinned }),
+        onNewSession: startDraft,
+        onNewWorktree: (project) => {
+          if (!readOnly) setWorktreeOpen(project);
+        },
+        onNewRole: () => openRolesPage({ profileId: "new" }),
+        onEditRole: (item) => openRolesPage({ profileId: item.id }),
+        onNewTeam: () => openRolesPage({ team: "new" }),
+        onEditTeam: (id) => openRolesPage({ team: id }),
+        onSettings: () => edit({ kind: "settings" }),
+        onRoles: () => layoutService?.selectPanel("nodo-roles"),
+        onSessions: () => showSessions("sessions"),
+        onTeam: () => showSessions("team"),
+        onBack: () => rolesGuard(() => nativeSpace.leave()),
+        onNewWorkspace: () => edit({ kind: "workspace", id: "new", workspace: null }),
+        onRenameWorkspace: (workspace2) => setWorkspaceDialog({ kind: "rename", workspace: workspace2 }),
+        onDeleteWorkspace: (workspace2) => setWorkspaceDialog({ kind: "delete", workspace: workspace2 })
+      }),
+      !sidebarOnly && (0, import_react.createElement)(
+        "main",
+        { className: "nodo-main" },
+        !view2 ? (0, import_react.createElement)("p", { className: "nodo-note" }, "\u52A0\u8F7D\u4E2D\u2026") : page(),
+        actionError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, actionError)
+      )
+    ),
+    sidebarOnly && actionError && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, actionError),
+    sessionDialog && (0, import_react.createElement)(SessionRenameDialog, {
+      key: `session:${sessionDialog.session.id}`,
+      session: sessionDialog.session,
+      onCancel: () => setSessionDialog(null),
+      onSaved: (name) => renamedSession(sessionDialog, name)
+    }),
+    workspaceDialog && (0, import_react.createElement)(workspaceDialog.kind === "rename" ? WorkspaceRenameDialog : WorkspaceDeleteDialog, {
+      key: `${workspaceDialog.kind}:${workspaceDialog.workspace.id}`,
+      workspace: workspaceDialog.workspace,
+      ...workspaceDialog.kind === "rename" ? { names: workspaces } : {},
+      onCancel: () => setWorkspaceDialog(null),
+      ...workspaceDialog.kind === "rename" ? { onSaved: renamedWorkspace } : { onDeleted: deletedWorkspace }
+    }),
+    worktreeOpen && (0, import_react.createElement)(WorktreeDialog, {
+      key: `worktree:${worktreeOpen.id}`,
+      workspace: worktreeOpen,
+      profile,
+      onCancel: () => setWorktreeOpen(false),
+      onCreated: createdWorktree
+    }),
+    goalOpen && profile && (0, import_react.createElement)(GoalDialog, {
+      key: `goal:${sessionId}`,
+      profile: composerProfile,
+      onSaved: (value) => {
+        setGoalOpen(false);
+        void updateEngineChoice({ nativeGoal: value });
+      },
+      onCancel: () => setGoalOpen(false)
+    }),
+    statsOpen && !leadModeOf(profile, session) && view2 !== void 0 && (view2.stats ?? {})[sessionId] !== void 0 && (0, import_react.createElement)(StatsDialog, {
+      key: `stats:${sessionId}`,
+      stats: view2.stats[sessionId],
+      onClose: () => setStatsOpen(false)
+    }),
+    editing?.kind === "workspace" && (0, import_react.createElement)(WorkspaceDialog, {
+      key: `ws:${editing.id}`,
+      workspace: editing.workspace ?? null,
+      onCancel: cancelEditing,
+      onSaved: savedWorkspace
+    }),
+    editing?.kind === "settings" && (0, import_react.createElement)(EngineSettingsDialog, {
+      key: "settings",
+      view: view2,
+      workspace,
+      refresh,
+      readOnly,
+      onClose: cancelEditing
+    }),
+    view2 && !readOnly && !onboardDone && onboarding.current && (0, import_react.createElement)(OnboardingDialog, {
+      key: "onboard",
+      view: view2,
+      onDone: () => {
+        setOnboardDone(true);
+        refresh(true);
+      }
+    })
+  );
+}
+function PanelIcon({ size = 16 }) {
+  return (0, import_react.createElement)("span", { className: "nodo-panel-logo" }, (0, import_react.createElement)(NodoLogo, { compact: size === 18, width: size === 18 ? size : 96 }));
+}
+function NativeWelcome({ sessionId }) {
+  return (0, import_react.createElement)(NewConversation, { key: sessionId, sourceSessionId: sessionId });
+}
+function NodoEntry() {
+  const state = (0, import_react.useSyncExternalStore)(nativeSpace.subscribe, nativeSpace.getSnapshot);
+  (0, import_react.useEffect)(() => {
+    nativeSpace.enter();
+  }, []);
+  return state.legacy ? (0, import_react.createElement)(NodoPage, { contentOnly: true }) : state.drafting && state.draft ? (0, import_react.createElement)(NewConversation, { key: state.draft.id, draft: state.draft }) : null;
+}
+var sidebarFold = { collapsed: false, listeners: /* @__PURE__ */ new Set() };
+var subscribeSidebarFold = (listener) => {
+  sidebarFold.listeners.add(listener);
+  return () => sidebarFold.listeners.delete(listener);
+};
+function SidebarToggle({ collapsed }) {
+  const label = collapsed ? "\u5C55\u5F00\u4FA7\u8FB9\u680F" : "\u6536\u8D77\u4FA7\u8FB9\u680F";
+  return (0, import_react.createElement)(import_dsh_client_ui_primitives.Tooltip, {
+    label,
+    side: "bottom",
+    delayMs: 500,
+    children: (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
+      variant: "ghost",
+      onClick: () => layoutService.toggleSidebar(),
+      icon: (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPanelLeftOutlineRegular, { size: 16 }),
+      "aria-label": label
+    })
+  });
+}
+function NodoSidebarControl() {
+  const collapsed = (0, import_react.useSyncExternalStore)(subscribeSidebarFold, () => sidebarFold.collapsed);
+  return (0, import_react.createElement)("div", { className: "nodo-left-control" }, (0, import_react.createElement)(SidebarToggle, { collapsed }));
+}
+function NodoSidebar({ collapsed }) {
+  const rolesNavigation = (0, import_react.useSyncExternalStore)(rolesSubscribeSidebar, rolesSidebarSnapshot);
+  const space = (0, import_react.useRef)(null);
+  const wasCollapsed = (0, import_react.useRef)(collapsed);
+  (0, import_react.useLayoutEffect)(() => {
+    sidebarFold.collapsed = !!collapsed;
+    for (const listener of sidebarFold.listeners) listener();
+    const root = document.documentElement;
+    const opening = wasCollapsed.current && !collapsed;
+    wasCollapsed.current = collapsed;
+    if (!opening || !root.matches("[data-platform=darwin]")) return;
+    const chrome = root.hasAttribute("data-fullscreen") ? 84 : 160;
+    let frames = 0;
+    const follow = () => {
+      const rest = Math.max(0, chrome - (space.current?.getBoundingClientRect().width ?? chrome));
+      root.style.setProperty("--nodo-leading-clearance", `${rest}px`);
+      frame = rest > 0 && ++frames < 120 ? requestAnimationFrame(follow) : void 0;
+    };
+    root.style.setProperty("--nodo-leading-clearance", `${chrome}px`);
+    let frame = requestAnimationFrame(follow);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      root.style.removeProperty("--nodo-leading-clearance");
+    };
+  }, [collapsed]);
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-space", ref: space },
+    (0, import_react.createElement)("div", { className: "nodo-space-chrome" }, (0, import_react.createElement)(SidebarToggle, { collapsed })),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-space-content", style: collapsed ? { display: "none" } : void 0 },
+      (0, import_react.createElement)(NodoPage, { sidebarOnly: true, railNavigation: rolesNavigation })
+    )
+  );
 }
 
 // src/client/index.js

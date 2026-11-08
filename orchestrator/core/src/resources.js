@@ -3,15 +3,16 @@
 // Only confirmed blocks become resources. Text keeps the legacy flat form, and
 // inline bytes stay transient until the detail writer replaces them with
 // stored attachment references. Remote URIs remain references.
-import { imageFileType, imageReferences } from './image-files.js'
-export const RESOURCE_LIMITS = Object.freeze({ count: 16, preview: 4, images: 8, text: 4000, uri: 1000, name: 200, mimeType: 100, imageBytes: 5 * 1024 * 1024 })
+import { imageFileType, imageReferences, readImageFile } from './image-files.js'
+import { IMAGE_BYTES_MAX } from './constants.js'
+import { IMAGE_MIME_TYPES } from './image-types.js'
+import { isRecord, isUuidLike } from './text.js'
+export const RESOURCE_LIMITS = Object.freeze({ count: 16, preview: 4, images: 8, text: 4000, uri: 1000, name: 200, mimeType: 100, imageBytes: IMAGE_BYTES_MAX })
 const RESOURCE_KINDS = Object.freeze(['image', 'file', 'link', 'audio', 'text'])
 const RESOURCE_STATES = Object.freeze(['pending', 'stored', 'reference', 'unsupported', 'unavailable'])
 const RESOURCE_REASONS = Object.freeze(['unsupported-type', 'invalid-image', 'image-too-large', 'storage-unavailable', 'attachment-unavailable', 'source-limit', 'no-reader'])
-const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const blobs = new Set(['image', 'audio', 'resource_link', 'file', 'inputImage', 'inputAudio'])
-const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const cut = (value, max) => typeof value === 'string' && value !== '' ? value.slice(0, max) : undefined
 const mediaTypeOf = value => typeof value === 'string' && value !== '' ? value.toLowerCase().slice(0, RESOURCE_LIMITS.mimeType) : undefined
 const base64Bytes = data => Buffer.byteLength(data, 'base64')
@@ -46,7 +47,7 @@ const base = (kind, fields) => ({ kind, state: 'pending', ...Object.fromEntries(
 function imageEntry({ mimeType, data, uri, name, bytes }) {
   const type = mediaTypeOf(mimeType)
   const entry = base('image', { mimeType: type, uri: uriOf(uri), name: nameOf(name, uri), bytes: sizeOf(bytes) })
-  if (!type || !IMAGE_TYPES.has(type)) return { ...entry, state: 'unsupported', reason: 'unsupported-type' }
+  if (!type || !IMAGE_MIME_TYPES.has(type)) return { ...entry, state: 'unsupported', reason: 'unsupported-type' }
   const decoded = decodeImage(data)
   if (!decoded) return { ...entry, state: 'unavailable', reason: 'invalid-image' }
   if (decoded.length > RESOURCE_LIMITS.imageBytes) return { ...entry, bytes: decoded.length, state: 'unavailable', reason: 'image-too-large' }
@@ -57,15 +58,15 @@ function imageEntry({ mimeType, data, uri, name, bytes }) {
 // The engine's verified ImageAttachmentRef is passed to the attachment store
 // unchanged; its width/height/bytes must still match the stored bytes.
 function attachmentRef(value) {
-  if (!plain(value)) return undefined
+  if (!isRecord(value)) return undefined
   const type = mediaTypeOf(value.mediaType)
-  if (typeof value.attachmentId !== 'string' || value.attachmentId === '' || !IMAGE_TYPES.has(type)) return undefined
+  if (typeof value.attachmentId !== 'string' || value.attachmentId === '' || !IMAGE_MIME_TYPES.has(type)) return undefined
   if (![value.bytes, value.width, value.height].every(positive)) return undefined
   const reference = { attachmentId: value.attachmentId, mediaType: type, bytes: value.bytes, width: value.width, height: value.height }
   const name = cut(value.name, RESOURCE_LIMITS.name)
   if (name) reference.name = name
   const original = value.originalDimensions
-  if (plain(original) && positive(original.width) && positive(original.height)) reference.originalDimensions = { width: original.width, height: original.height }
+  if (isRecord(original) && positive(original.width) && positive(original.height)) reference.originalDimensions = { width: original.width, height: original.height }
   return reference
 }
 
@@ -73,7 +74,7 @@ function linkEntry({ uri, mimeType, size, name }) {
   const inline = dataUrl(uri)
   if (inline) {
     const entry = base('file', { mimeType: mediaTypeOf(inline.mimeType), bytes: base64Bytes(inline.data), name: nameOf(name, uri) })
-    if (IMAGE_TYPES.has(entry.mimeType)) return imageEntry({ mimeType: inline.mimeType, data: inline.data, name })
+    if (IMAGE_MIME_TYPES.has(entry.mimeType)) return imageEntry({ mimeType: inline.mimeType, data: inline.data, name })
     return { ...entry, state: 'reference', reason: 'no-reader' }
   }
   const entry = { ...base('link', { mimeType: mediaTypeOf(mimeType), uri: uriOf(uri), bytes: sizeOf(size), name: nameOf(name, uri) }), state: 'reference' }
@@ -85,15 +86,15 @@ function blockEntry(block) {
   const type = typeof block.type === 'string' ? block.type : ''
   switch (type) {
     case 'content':
-      return plain(block.content) ? blockEntry(block.content) : undefined
+      return isRecord(block.content) ? blockEntry(block.content) : undefined
     case 'image':
     case 'inputImage': {
-      if (plain(block.attachment)) {
+      if (isRecord(block.attachment)) {
         const reference = attachmentRef(block.attachment)
         if (!reference) return { kind: 'image', state: 'unavailable', reason: 'invalid-image' }
         return { ...base('image', { mimeType: mediaTypeOf(reference.mediaType), bytes: reference.bytes, name: reference.name }), attachment: reference }
       }
-      if (plain(block.source)) {
+      if (isRecord(block.source)) {
         if (block.source.type === 'base64') return imageEntry({ mimeType: block.source.media_type, data: block.source.data, uri: block.uri, name: block.name })
         if (block.source.type === 'url') return linkEntry({ uri: block.source.url, name: block.name })
         return { kind: 'image', state: 'unavailable', reason: 'invalid-image' }
@@ -115,18 +116,18 @@ function blockEntry(block) {
     case 'resource_link':
       return linkEntry({ uri: block.uri, mimeType: block.mimeType, size: block.size, name: block.name })
     case 'resource': {
-      const inner = plain(block.resource) ? block.resource : block
+      const inner = isRecord(block.resource) ? block.resource : block
       if (typeof inner.text === 'string') {
         return { ...base('text', { mimeType: mediaTypeOf(inner.mimeType), uri: uriOf(inner.uri), bytes: Buffer.byteLength(inner.text), name: nameOf(inner.name, inner.uri) }), state: 'reference' }
       }
       if (typeof inner.blob === 'string') {
-        if (IMAGE_TYPES.has(mediaTypeOf(inner.mimeType))) return imageEntry({ mimeType: inner.mimeType, data: inner.blob, uri: inner.uri, name: inner.name })
+        if (IMAGE_MIME_TYPES.has(mediaTypeOf(inner.mimeType))) return imageEntry({ mimeType: inner.mimeType, data: inner.blob, uri: inner.uri, name: inner.name })
         return { ...base('file', { mimeType: mediaTypeOf(inner.mimeType), uri: uriOf(inner.uri), bytes: base64Bytes(inner.blob), name: nameOf(inner.name, inner.uri) }), state: 'reference', reason: 'no-reader' }
       }
       return linkEntry({ uri: inner.uri, mimeType: inner.mimeType, name: inner.name })
     }
     case 'file': {
-      const reference = plain(block.attachment) ? block.attachment : undefined
+      const reference = isRecord(block.attachment) ? block.attachment : undefined
       return { ...base('file', { bytes: sizeOf(reference?.bytes), name: nameOf(reference?.name) }), state: 'reference', reason: 'no-reader' }
     }
     default:
@@ -158,21 +159,21 @@ export function projectContent(value, imageOutput = false) {
     if (item === null || item === undefined) return
     if (typeof item === 'string') {
       const decoded = imageOutput ? decodeImage(item) : undefined
-      const mimeType = decoded && [...IMAGE_TYPES].find(type => signatureOk(type, decoded))
+      const mimeType = decoded && [...IMAGE_MIME_TYPES].find(type => signatureOk(type, decoded))
       if (mimeType) { push(imageEntry({ mimeType, data: item })); return }
       text.push(safeText(item))
       for (const uri of imageReferences(item)) push(linkEntry({ uri }))
       return
     }
     if (Array.isArray(item)) { for (const member of item) walk(member); return }
-    if (!plain(item)) { text.push(String(item)); return }
+    if (!isRecord(item)) { text.push(String(item)); return }
     const type = typeof item.type === 'string' ? item.type : ''
     if (type === 'content') { walk(item.content); return }
     if (type === 'text' || type === 'inputText') { if (typeof item.text === 'string') walk(item.text); return }
     if (!type && Array.isArray(item.content)) { walk(item.content); return }
     if (type === 'reasoning' || type === 'tool-call' || type === 'tool-addition' || type === 'tool-removal') return
     if (type === 'resource') {
-      const inner = plain(item.resource) ? item.resource : item
+      const inner = isRecord(item.resource) ? item.resource : item
       if (typeof inner.text === 'string') text.push(safeText(inner.text))
       push(blockEntry(item))
       return
@@ -198,12 +199,12 @@ export function normalizeResources(value) {
   if (!Array.isArray(value)) return null
   const resources = []
   for (const item of value.slice(0, RESOURCE_LIMITS.count)) {
-    if (!plain(item) || !RESOURCE_KINDS.includes(item.kind) || !RESOURCE_STATES.includes(item.state)) continue
+    if (!isRecord(item) || !RESOURCE_KINDS.includes(item.kind) || !RESOURCE_STATES.includes(item.state)) continue
     const entry = { kind: item.kind, state: item.state }
     if (RESOURCE_REASONS.includes(item.reason)) entry.reason = item.reason
     for (const key of ['name', 'mimeType', 'uri']) if (cut(item[key], RESOURCE_LIMITS[key]) !== undefined) entry[key] = item[key].slice(0, RESOURCE_LIMITS[key])
     if (sizeOf(item.bytes) !== undefined) entry.bytes = item.bytes
-    if (plain(item.ref) && typeof item.ref.id === 'string' && /^[0-9a-f-]{36}$/.test(item.ref.id) && IMAGE_TYPES.has(mediaTypeOf(item.ref.mediaType))) {
+    if (isRecord(item.ref) && isUuidLike(item.ref.id) && IMAGE_MIME_TYPES.has(mediaTypeOf(item.ref.mediaType))) {
       entry.ref = { id: item.ref.id, mediaType: mediaTypeOf(item.ref.mediaType) }
     }
     if (entry.kind === 'image' && entry.state === 'stored' && !entry.ref) { entry.state = 'unavailable'; entry.reason = 'storage-unavailable' }
@@ -220,6 +221,22 @@ export function previewResources(value) {
   })
 }
 
+export function imageSinkHandlers(rt, cwd) {
+  return {
+    readFileImage: uri => readImageFile(uri, cwd),
+    validateImage: async image => {
+      if (typeof rt.ctx?.attachments?.validateImage !== 'function') return false
+      await rt.ctx.attachments.validateImage(image)
+      return true
+    },
+    saveImage: async image => {
+      if (typeof rt.saveImages !== 'function') return undefined
+      const [saved] = await rt.saveImages([image])
+      return saved
+    },
+  }
+}
+
 // Worst-case size of the record after materialization: each pending image is
 // replaced by its stored reference form, so the detail writer can refuse a
 // record before creating attachment files that would become orphans.
@@ -227,10 +244,10 @@ export function estimateResources(record) {
   const list = record?.body?.resources
   if (!Array.isArray(list) || list.length === 0) return record
   const resources = list.map(entry => {
-    if (!plain(entry) || entry.kind !== 'image' || entry.state !== 'pending') return entry
+    if (!isRecord(entry) || entry.kind !== 'image' || entry.state !== 'pending') return entry
     const { data: _data, attachment: _attachment, state: _state, reason: _reason, ...saved } = entry
-    const mediaType = saved.mimeType ?? (plain(entry.attachment) ? mediaTypeOf(entry.attachment.mediaType) : undefined)
-    const hasPayload = typeof entry.data === 'string' && entry.data !== '' || plain(entry.attachment) || imageFileType(entry.uri)
+    const mediaType = saved.mimeType ?? (isRecord(entry.attachment) ? mediaTypeOf(entry.attachment.mediaType) : undefined)
+    const hasPayload = typeof entry.data === 'string' && entry.data !== '' || isRecord(entry.attachment) || imageFileType(entry.uri)
     if (!hasPayload || !mediaType) return { ...saved, state: 'unavailable', reason: 'invalid-image' }
     return { ...saved, state: 'stored', ref: { id: '0'.repeat(36), mediaType } }
   })
@@ -245,7 +262,7 @@ export async function materializeResources(record, { saveImage, readAttachment, 
   if (!Array.isArray(list) || list.length === 0) return record
   const resources = []
   for (const entry of list) {
-    if (!plain(entry) || entry.kind !== 'image' || entry.state !== 'pending') { resources.push(entry); continue }
+    if (!isRecord(entry) || entry.kind !== 'image' || entry.state !== 'pending') { resources.push(entry); continue }
     const saved = { ...entry }
     delete saved.data
     delete saved.attachment
@@ -254,7 +271,7 @@ export async function materializeResources(record, { saveImage, readAttachment, 
     let payload = typeof entry.data === 'string' && entry.data !== '' ? entry.data : undefined
     let mediaType = saved.mimeType
     let name = saved.name
-    if (payload === undefined && !plain(entry.attachment) && imageFileType(entry.uri)) {
+    if (payload === undefined && !isRecord(entry.attachment) && imageFileType(entry.uri)) {
       try {
         const read = await readFileImage?.(entry.uri)
         if (!read) throw new Error('attachment-unavailable')
@@ -267,8 +284,8 @@ export async function materializeResources(record, { saveImage, readAttachment, 
       }
     }
     if (payload === undefined) {
-      if (!plain(entry.attachment) || typeof readAttachment !== 'function') {
-        resources.push({ ...saved, state: 'unavailable', reason: plain(entry.attachment) ? 'attachment-unavailable' : 'invalid-image' })
+      if (!isRecord(entry.attachment) || typeof readAttachment !== 'function') {
+        resources.push({ ...saved, state: 'unavailable', reason: isRecord(entry.attachment) ? 'attachment-unavailable' : 'invalid-image' })
         continue
       }
       try {

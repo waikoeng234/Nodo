@@ -32,7 +32,7 @@ orchestrator/
   src/host/            dsh-only host modules: native session status, HTTP routes and streams, project terminals, and the loopback MCP endpoint
   src/client/          Sidebar, roles and teams, conversations, settings, and the right sidebar
   agent-drivers/       Agent registration, protocol adapters, and capability interfaces
-  scripts/             Build, check, and verification scripts
+  scripts/             Build and check scripts, plus manual probes under scripts/manual/
   test/                Automated tests, simulated CLIs, and test helpers
   client.js            Generated browser entry
   cordis.patch.yml     dsh bundle declaration
@@ -40,7 +40,7 @@ orchestrator/
 
 ## Host modules
 
-Each module under `core/src/` exports `install(rt)` and attaches its functions to the shared `rt` object. `MODULES` in `core/src/index.js` loads modules in order: `diag` comes first and provides the shared `rt.warn`; `channel` comes last and exposes interfaces over the other modules. The dsh plugin's own modules (`src/host/native-status.js`, `src/host/route.js`, `src/host/terminal.js`) install after the core modules. Modules do not call each other during installation; they interact through `rt` only at runtime.
+Each runtime module under `core/src/` exports `install(rt)` and attaches its functions to the shared `rt` object. Pure helpers imported by those modules (`dispatch-sinks.js`, `lead-rules.js`, `lead-view.js`, `lead-recovery.js`, `image-types.js`) add no `rt` surface. `MODULES` in `core/src/index.js` loads runtime modules in order: `diag` comes first and provides the shared `rt.warn`; `channel` comes last and exposes interfaces over the other modules. The dsh plugin's own modules (`src/host/native-status.js`, `src/host/route.js`, `src/host/terminal.js`) install after the core modules. Modules do not call each other during installation; they interact through `rt` only at runtime.
 
 | Responsibility | Modules |
 | --- | --- |

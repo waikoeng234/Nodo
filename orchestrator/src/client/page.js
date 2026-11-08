@@ -17,123 +17,11 @@ import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, reg
 import { leadModeOf } from '../../core/shared/lead.js'
 import { nativeIdOf } from '../../core/shared/session.js'
 import { projectAnchorOf } from '../../core/shared/workspaces.js'
+import { readNavigation, subscribeNavigation, setNavigation } from './navigation.js'
+import { heldImages, setHeldImages, readDrafts, readScopes } from './drafts.js'
+import { nativeRole, sessionForWorkspace, selectSession, startConversation, openInitialSidebarSession, sessionPanelBottom } from './page-sessions.js'
 
-// Unsent drafts outlive the page: text is kept in localStorage across reloads,
-// pasted images (too large for storage) in memory across remounts. A session's
-// task scope (which task the next messages supplement) persists the same way.
-export let heldImages = {}
-export const readDrafts = () => {
-  try { return JSON.parse(localStorage.getItem('nodo.drafts')) ?? {} } catch { return {} }
-}
-const readScopes = () => {
-  try { return JSON.parse(localStorage.getItem('nodo.taskScope')) ?? {} } catch { return {} }
-}
-
-let navigationSnapshot
-const navigationListeners = new Set()
-export const readNavigation = () => {
-  if (navigationSnapshot === undefined) {
-    try { navigationSnapshot = JSON.parse(localStorage.getItem('nodo.navigation') ?? localStorage.getItem('orchestrator.navigation')) ?? {} } catch { navigationSnapshot = {} }
-  }
-  return navigationSnapshot
-}
-export const subscribeNavigation = listener => { navigationListeners.add(listener); return () => navigationListeners.delete(listener) }
-export const setNavigation = update => {
-  navigationSnapshot = typeof update === 'function' ? update(readNavigation()) : update
-  try { localStorage.setItem('nodo.navigation', JSON.stringify(navigationSnapshot)) } catch {}
-  for (const listener of navigationListeners) listener()
-}
-export const nativeRole = profile => profile?.engine === 'dsh'
-export const sessionForWorkspace = (profile, workspace, workspaces, selected) => {
-  if (!profile || !workspace) return
-  const sessions = profile.sessions.filter(item => !item.archivedAt
-    && projectAnchorOf(workspaces, item.workspaceRef ?? workspaces.find(workspace => workspace.cwd === item.cwd)?.id ?? profile.workspaceId) === workspace.id)
-  return sessions.find(item => item.id === selected)
-    ?? sessions.find(item => item.id === profile.activeSessionId)
-    ?? sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0]
-}
-
-// The rail's session handlers keep the page's state in one object so the rail
-// wiring and tests drive the same path.
-export const selectSession = async (role, id, project, page) => {
-  const { workspace, workspaces, work, navigation, sidebarOnly, readOnly, remember, refresh, selection, setActionError, setEditing } = page
-  project ??= workspace
-  const request = selection ? ++selection.current : undefined
-  let origin = nativeSpace.getSnapshot()
-  const current = () => nativeSpace.getSnapshot() === origin && (!selection || selection.current === request)
-  setActionError('')
-  try {
-    id ??= sessionForWorkspace(role, project, workspaces, navigation.sessions?.[`${project?.id}:${role.id}`])?.id
-    if (!id) {
-      remember(role.id, project?.id); setEditing(null)
-      if (sidebarOnly) nativeSpace.showLegacy()
-      return
-    }
-    const selected = role.sessions.find(session => session.id === id)
-    if (selected?.archivedAt || role.deletedAt) {
-      remember(role.id, selected?.workspaceRef ?? project?.id, id, true)
-      setEditing(null)
-      if (sidebarOnly) nativeSpace.showLegacy()
-      return
-    }
-    const native = nativeRole(role) && openNativeSession
-    if (!current()) return
-    const twin = native && role.sessions.find(session => session.id === id)?.driverSessionId
-    if (work?.[id]?.active === true && (!native || twin)) {
-      remember(role.id, project.id, id); setEditing(null)
-      if (native) openNativeSession(twin)
-      else if (sidebarOnly) nativeSpace.showLegacy()
-      origin = nativeSpace.getSnapshot()
-      if (!readOnly) {
-        await call('session-select', { profile: role.id, session: id })
-        if (current()) await refresh(true)
-      }
-      return
-    }
-    if (native) {
-      const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
-      if (!current()) return
-      remember(role.id, project.id, opened.conversationId)
-      setEditing(null)
-      openNativeSession(opened.sessionId)
-      await refresh(true)
-      return
-    }
-    if (!readOnly) {
-      await call('session-select', { profile: role.id, session: id })
-      if (!current()) return
-      await refresh(true)
-    }
-    if (!current()) return
-    remember(role.id, project.id, id); setEditing(null)
-    if (sidebarOnly) nativeSpace.showLegacy()
-  } catch (failure) { if (current()) setActionError(failure.message) }
-}
-
-export const startConversation = (roleId, page, project = page.workspace) => {
-  const { busy, readOnly, setEditing } = page
-  if (!project || busy || readOnly) return
-  setEditing(null)
-  nativeSpace.startDraft({ profile: roleId, workspace: project.id })
-}
-
-export const openInitialSidebarSession = page => {
-  const { sidebarOnly, initiallyOpened, profile, workspace, sessionId } = page
-  if (!sidebarOnly || initiallyOpened.current || !profile || !workspace) return
-  initiallyOpened.current = true
-  const state = nativeSpace.getSnapshot()
-  if (state.nodoSession || state.drafting) return
-  if (nativeRole(profile)) void selectSession(profile, sessionId, workspace, page)
-  else nativeSpace.showLegacy()
-}
-
-// The phone summary panel overlays the transcript, so the body hands it the room
-// the composer needs below; an archived conversation has no composer and keeps
-// the whole column.
-export const sessionPanelBottom = body => {
-  const composer = body.querySelector('.nodo-composer')
-  return composer ? `${Math.max(0, body.getBoundingClientRect().bottom - composer.getBoundingClientRect().top)}px` : '0px'
-}
+export { readNavigation, subscribeNavigation, setNavigation, heldImages, readDrafts, nativeRole, sessionForWorkspace, selectSession, startConversation, openInitialSidebarSession, sessionPanelBottom }
 
 export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = null } = {}) {
   const { view, error, refresh } = useStateView()
@@ -162,7 +50,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const [scopes, setScopes] = useState(readScopes)
   useEffect(() => { localStorage.setItem('nodo.drafts', JSON.stringify(drafts)) }, [drafts])
   useEffect(() => { localStorage.setItem('nodo.taskScope', JSON.stringify(scopes)) }, [scopes])
-  useEffect(() => { heldImages = pastedImages }, [pastedImages])
+  useEffect(() => { setHeldImages(pastedImages) }, [pastedImages])
   useEffect(() => { if (view?.decisions) pruneDecisionDrafts(view.decisions) }, [view?.decisions])
   // Deleting a role drops its sessions' drafts and task scopes here, before the
   // next edit mirrors the in-memory copy back to storage.
@@ -524,8 +412,8 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     ...(!archivedConversation ? view.decisions ?? [] : []).filter(decision => decision.coordinatorSessionId === sessionId
       && (decision.status === 'pending' || decision.status === 'answered')).map(decision => h(DecisionCard, { key: decision.id,
       decision, profileId: profile.id, readOnly, refresh, profiles: view.profiles, tasks: view.tasks, work: view.work })),
-    ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.profileId == null || card.profileId === sessionId
-      || members.some(item => item.session.id === card.profileId)).map(card => h(ApprovalCard, { key: card.id,
+    ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.sessionId == null || card.sessionId === sessionId
+      || members.some(item => item.session.id === card.sessionId)).map(card => h(ApprovalCard, { key: card.id,
       card: card.taskId ? { ...card, taskTitle: view.tasks?.find(task => task.id === card.taskId)?.title } : card, refresh, readOnly,
       from: members.find(item => item.session.id === card.profileId) })),
     h(PlanDock, { profileId: profile.id, sessionId }),

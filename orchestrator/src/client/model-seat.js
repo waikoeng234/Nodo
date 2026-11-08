@@ -22,7 +22,6 @@ export function createModelSeat(ctx, space) {
     const groups = (catalog?.groups ?? []).filter(group => group.models.length > 0)
     const current = catalog?.current ?? null
     const currentModel = groups.find(group => group.id === current?.provider)?.models.find(model => model.id === current?.model)
-      ?? catalog?.groups.find(group => group.id === current?.provider)?.models.find(model => model.id === current?.model)
     const modelText = current ? currentModel?.name ?? modelName(current.model) : state?.status === 'ready' ? '选择模型' : '模型'
     const efforts = currentModel?.reasoning?.efforts ?? []
     const effortText = current?.reasoningEffort ? efforts.find(level => level.id === current.reasoningEffort)?.name ?? current.reasoningEffort : ''

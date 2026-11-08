@@ -17,10 +17,9 @@ import { SearchDialog } from './search-dialog.tsx'
 import { roundIndex } from './round.js'
 import { projectAnchorOf } from '../../core/shared/workspaces.js'
 
-export interface RailSession { id: string; name: string; createdAt?: number; source?: { kind?: string; leadSessionId?: string }; leadMode?: boolean; archivedAt?: number; draftedAt?: number; briefSent?: boolean; pinnedAt?: number; updatedAt?: number; engine?: string; workspaceRef?: string; workspaceName?: string; profileName?: string; cwd?: string }
-export interface RailRole { id: string; name: string; deletedAt?: number; role?: string; instructions?: string; engine?: string; avatarTemplate?: string; workspaceId?: string; lead?: boolean; sessions: RailSession[] }
-export interface RailWorkspace { id: string; name: string; cwd: string; createdAt?: number; worktree?: { branch: string; project?: string | null } }
-export interface RailView { teams?: { id: string; name: string; lead: string | null }[]; profiles: RailRole[]; workspaces: RailWorkspace[]; work: Record<string, { active?: boolean } | undefined> }
+import type { RailSession, RailRole, RailWorkspace, RailView } from './rail-types.ts'
+export type { RailSession, RailRole, RailWorkspace, RailView }
+
 export type RailNavigation = { view: 'roles'; content: ReactNode } | { view: 'team'; content?: never }
 type Archived = keyof typeof ARCHIVED_VIEWS
 const ROLE_FOLD = 5
@@ -387,7 +386,7 @@ export function Rail({ view, profile, workspace, sessionId, editing, draft, draf
         </Menu>}
         {dock('设置', <IconSettingsOutlineRegular size={16} />, { onClick: onSettings, 'aria-pressed': editing?.kind === 'settings' ? 'true' : undefined })}
         {dock('返回普通空间', <IconChevronLeftOutlineRegular size={16} />, { onClick: onBack,
-          disabled: typeof (layoutService as { selectPanel?: unknown } | null)?.selectPanel !== 'function' })}
+          disabled: typeof layoutService?.selectPanel !== 'function' })}
       </div>
       <div className="nodo-rail-body">
         {navigation?.content ?? <Fragment>

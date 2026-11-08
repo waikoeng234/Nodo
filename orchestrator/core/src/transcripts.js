@@ -3,6 +3,7 @@ import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, 
 import { appendFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TRANSCRIPT_MAX } from './constants.js'
+import { stamp } from './fs.js'
 
 const encode = lines => lines.map(line => JSON.stringify(line) + '\n').join('')
 // A trailing row without its newline is still being written.
@@ -10,9 +11,6 @@ const parse = text => {
   const end = text.lastIndexOf('\n') + 1
   return { rows: text.slice(0, end).split('\n').filter(Boolean).map(line => JSON.parse(line)),
     bytes: Buffer.byteLength(text.slice(0, end)), partial: end < text.length }
-}
-const stamp = path => {
-  try { const s = statSync(path); return `${s.size}@${s.mtimeMs}` } catch { return '' }
 }
 const recent = lines => {
   const tail = []

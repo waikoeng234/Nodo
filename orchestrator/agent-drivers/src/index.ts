@@ -108,8 +108,6 @@ export function validateEngineOptions(engine: string, raw: unknown = {}) {
   return ENGINES[engine].validate(clean)
 }
 
-export function requiresWorkspace(engine: string) { return ENGINES[engine]?.info.requiresCwd === true }
-
 // The autonomy tiers an engine actually offers (see spi.js `permission`); an
 // undeclared engine keeps only the default tier.
 export function enginePermissionModes(engine: string, nativeHost?: unknown): PermissionMode[] {

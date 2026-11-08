@@ -1,17 +1,6 @@
 // Every surface shares one stream and one copy of each conversation's rows.
 import { subscribeUpdatePause, updateInstalling } from './dsh-updates.js'
-
-const ROUTE = '/api/nodo'
-const call = async (endpoint, payload) => {
-  const response = await fetch(ROUTE, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ endpoint, payload }),
-  })
-  const answer = await response.json()
-  if (answer?.ok !== true) throw new Error(answer?.error?.message ?? 'request failed')
-  return answer.value
-}
+import { ROUTE, call } from './api.js'
 
 let view = null
 let error = ''
@@ -223,7 +212,6 @@ export const watchTranscript = (profileId, sessionId) => {
   }
 }
 export const transcriptError = key => transcripts.get(key)?.error ?? ''
-export const dropTranscript = key => transcripts.delete(key)
 
 // 仅随记录内容变化的版本号：Feed 等用它决定何时重读共享行，而不随每次
 // state 轮询重渲染。

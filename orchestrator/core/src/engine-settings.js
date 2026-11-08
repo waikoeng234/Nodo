@@ -37,8 +37,9 @@ export function install(rt) {
   // What the settings page sees: field metadata plus the cached catalog. Only
   // engines usable on this machine are listed — the CLI was detected, the user
   // pinned an absolute path in bin, or the engine runs on the host itself.
+  const usable = info => !!(info.executable || info.nativeRuntime || engineConfig(info.id).engineOptions?.bin)
   const engineCatalogView = () => rt.engineCatalog()
-    .filter(info => info.executable || info.nativeRuntime || engineConfig(info.id).engineOptions?.bin)
+    .filter(usable)
     .map(info => ({ ...info, catalog: engineCatalogOf(info.id) }))
 
   // The full registry with local detection, for the settings page's detected /
@@ -46,7 +47,7 @@ export function install(rt) {
   const engineDetectView = () => rt.engineCatalog().map(info => ({
     ...info,
     catalog: engineCatalogOf(info.id),
-    usable: !!(info.executable || info.nativeRuntime || engineConfig(info.id).engineOptions?.bin),
+    usable: usable(info),
   }))
 
   // First-run onboarding: the chosen engine set drives the role dialog; an empty

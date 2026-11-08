@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, isAbsolute } from 'node:path';
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { checkCliBase, findExecutable, invalidConfig, validateBin } from '../cli.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
 import { initializeAcp } from '../acp/core.js';
 import { nativeDshPermissions, nativeDshCompaction } from './native-services.js';
@@ -73,29 +73,14 @@ export async function initializeDsh(peer) {
 export async function checkDsh({ cwd, engineOptions = {}, nativeHost } = {}) {
     if (nativeHost?.workspaceRegistry && nativeHost?.sessionController)
         return { engine: 'dsh', ok: true, checks: [{ label: 'Native runtime', ok: true, message: 'Desktop workspace/session controller is available; model credentials are verified by a conversation.' }] };
-    const checks = [];
-    try {
-        validateWorkspace(cwd, true);
-        checks.push({ label: 'Working directory', ok: true, message: cwd });
-    }
-    catch (error) {
-        checks.push({ label: 'Working directory', ok: false, message: error.message });
-    }
     const options = validateDshOptions(engineOptions);
-    const executable = findDshExecutable(options.bin);
-    if (!executable)
-        return { engine: 'dsh', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'DSH executable not found. Enter the path to an installed dsh CLI.' }] };
-    let version;
-    try {
-        version = await cliVersion(executable);
-        checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
-    }
-    catch {
-        return { engine: 'dsh', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] };
-    }
+    const base = await checkCliBase('dsh', cwd, findDshExecutable(options.bin), 'DSH executable not found. Enter the path to an installed dsh CLI.');
+    if (base.failed)
+        return base.failed;
+    const { checks, executable, version } = base;
     if (checks.some(check => !check.ok))
         return { engine: 'dsh', ok: false, executable, version, checks };
-    const peer = connectDsh({ executable, cwd, options, onRequest: request => peer.refuse(request.id) });
+    const peer = connectDsh({ executable: executable, cwd, options, onRequest: request => peer.refuse(request.id) });
     try {
         const capabilities = await initializeDsh(peer);
         checks.push({ label: 'Protocol', ok: true, message: `DSH ACP connected (${options.profile}); resume ${capabilities.sessionCapabilities?.resume ? 'available' : capabilities.loadSession ? 'via session/load' : 'unavailable'}` });

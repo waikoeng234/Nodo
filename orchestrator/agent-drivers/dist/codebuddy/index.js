@@ -3,7 +3,7 @@ import { acpModelCatalog } from '../acp/catalog.js';
 import { formElicitation } from '../acp/elicitation.js';
 import { jsonRpcProcess } from '../json-rpc-process.js';
 import { UnsupportedCapabilityError } from '../spi.js';
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { checkCliBase, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { textToolChanges } from '../file-changes.js';
 export const codebuddyInfo = {
     id: 'codebuddy', label: 'CodeBuddy', command: 'codebuddy', requiresCwd: true,
@@ -39,29 +39,14 @@ async function handshakeCodebuddy({ executable, cwd }) {
     }
 }
 export async function checkCodebuddy({ cwd, engineOptions = {} } = {}) {
-    const checks = [];
-    try {
-        validateWorkspace(cwd, true);
-        checks.push({ label: 'Working directory', ok: true, message: cwd });
-    }
-    catch (error) {
-        checks.push({ label: 'Working directory', ok: false, message: error.message });
-    }
     const options = validateCodebuddyOptions(engineOptions);
-    const executable = findExecutable(options.bin ?? 'codebuddy');
-    if (!executable)
-        return { engine: 'codebuddy', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'CodeBuddy executable not found. Install CodeBuddy or enter its absolute path.' }] };
-    let version;
-    try {
-        version = await cliVersion(executable);
-        checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
-    }
-    catch {
-        return { engine: 'codebuddy', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] };
-    }
+    const base = await checkCliBase('codebuddy', cwd, findExecutable(options.bin ?? 'codebuddy'), 'CodeBuddy executable not found. Install CodeBuddy or enter its absolute path.');
+    if (base.failed)
+        return base.failed;
+    const { checks, executable, version } = base;
     let peer;
     try {
-        peer = await handshakeCodebuddy({ executable, cwd });
+        peer = await handshakeCodebuddy({ executable: executable, cwd });
         checks.push({ label: 'Protocol', ok: true, message: 'CodeBuddy ACP server connected' });
         checks.push({ label: 'Model / credentials', ok: null, message: 'The handshake needs no login; run the CLI once to log in first. A conversation is needed to verify the model route.' });
     }

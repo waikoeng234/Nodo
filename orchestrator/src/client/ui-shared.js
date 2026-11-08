@@ -7,6 +7,7 @@
 // light, dark and any font-size setting.
 import { createElement as h, Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useId, useSyncExternalStore } from 'react'
 import { subscribeLive, getLive, liveError, refreshLive } from './live.js'
+export { call } from './api.js'
 import { projectAnchorOf } from '../../core/shared/workspaces.js'
 /** @typedef {import('react').ReactNode} ReactNode */
 // The shell seeds this UI kit in the same module table as React, so the panel
@@ -51,7 +52,6 @@ export {
 }
 
 export const PANEL_ID = 'nodo'
-const ROUTE = '/api/nodo'
 // Form ids let a dialog's footer button submit the form that lives in its body.
 export const ROLE_FORM = 'nodo-role-form'
 export const WORKSPACE_FORM = 'nodo-workspace-form'
@@ -84,17 +84,6 @@ export function setHostServices(services) {
   NewConversation = services.NewConversation
   layoutService = services.layoutService
   rightPanelService = services.rightPanelService
-}
-
-export const call = async (endpoint, payload) => {
-  const response = await fetch(ROUTE, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ endpoint, payload }),
-  })
-  const answer = await response.json()
-  if (answer?.ok !== true) throw new Error(answer?.error?.message ?? 'request failed')
-  return answer.value
 }
 
 export const readImage = file => new Promise((resolve, reject) => {

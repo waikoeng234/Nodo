@@ -1,26 +1,23 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { toolText } from './text.js'
-import { estimateResources, materializeResources, normalizeResources, previewResources, projectContent } from './resources.js'
+import { toolText, isRecord, isUuid } from './text.js'
+import { estimateResources, imageSinkHandlers, materializeResources, normalizeResources, previewResources, projectContent } from './resources.js'
 import { normalizeChanges } from '../../agent-drivers/dist/file-changes.js'
-import { readImageFile } from './image-files.js'
 import { failure } from './errors.js'
 import { atomicWrite } from './fs.js'
 import { nativeIdOf } from '../shared/session.js'
 
 export const STREAM_LIMITS = Object.freeze({ detailBytes: 1024 * 1024, sessionBytes: 16 * 1024 * 1024, entries: 1024 })
 const ATTACHMENT_READ_TIMEOUT = 10_000
-const UUID = /^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/
 const captures = ['complete', 'partial', 'unavailable']
 const reasons = ['unsupported', 'source-limit', 'source-truncated', 'detail-limit', 'quota', 'write-failed', 'read-only', 'conflict', 'unconfirmed']
-const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const bytes = value => Buffer.byteLength(JSON.stringify(value))
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const invalid = () => failure('该工具详情不可用或不属于此会话。', 'orch/stream-detail')
 
 export function normalizePresentation(value) {
-  if (!plain(value) || value.version !== 1 || !['tool', 'changes'].includes(value.kind) || value.mode !== 'snapshot' || !plain(value.body)) return null
+  if (!isRecord(value) || value.version !== 1 || !['tool', 'changes'].includes(value.kind) || value.mode !== 'snapshot' || !isRecord(value.body)) return null
   if (value.revision !== undefined && (!Number.isSafeInteger(value.revision) || value.revision < 0)) return null
   if (value.capture !== undefined && !captures.includes(value.capture)) return null
   if (value.kind === 'changes') {
@@ -52,7 +49,7 @@ export function normalizePresentation(value) {
     if (!Array.isArray(value.body.diffs) || value.body.diffs.length > 64) return null
     body.diffs = []
     for (const diff of value.body.diffs) {
-      if (!plain(diff) || typeof diff.path !== 'string' || !diff.path || typeof diff.newText !== 'string'
+      if (!isRecord(diff) || typeof diff.path !== 'string' || !diff.path || typeof diff.newText !== 'string'
         || !(typeof diff.oldText === 'string' || diff.oldText === null && diff.created === true)) return null
       body.diffs.push({ path: diff.path, oldText: diff.oldText, newText: diff.newText, ...(diff.created === true ? { created: true } : {}) })
     }
@@ -71,7 +68,7 @@ const PROGRESS_NUMBERS = ['elapsedMs', 'stdoutBytes', 'stderrBytes', 'outputByte
 
 /** Display-only progress facts; every absent source field stays absent. */
 export function normalizeProgress(value) {
-  if (!plain(value)) return null
+  if (!isRecord(value)) return null
   const progress = {}
   for (const key of PROGRESS_NUMBERS) if (Number.isFinite(value[key]) && value[key] >= 0) progress[key] = Math.round(value[key])
   for (const key of PROGRESS_TEXT) if (typeof value[key] === 'string' && value[key] !== '') progress[key] = value[key].slice(0, 4000)
@@ -227,7 +224,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
   const folder = join(rt.home, 'stream-details')
   let writing = Promise.resolve()
   const index = () => {
-    if (!plain(rt.state.streamDetails)) rt.state.streamDetails = {}
+    if (!isRecord(rt.state.streamDetails)) rt.state.streamDetails = {}
     return rt.state.streamDetails
   }
   const owner = (profileId, sessionId) => {
@@ -260,17 +257,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
       if (all.length >= limits.entries || all.reduce((sum, entry) => sum + entry.bytes, 0) + estimated > limits.sessionBytes) return unavailable(record, 'quota')
       let sessionAttachments
       record = await materializeResources(record, {
-        readFileImage: uri => readImageFile(uri, rt.sessionWorkspace?.(found.profile, found.session)?.cwd),
-        validateImage: async image => {
-          if (typeof rt.ctx?.attachments?.validateImage !== 'function') return false
-          await rt.ctx.attachments.validateImage(image)
-          return true
-        },
-        saveImage: async ({ mediaType, data, name }) => {
-          if (typeof rt.saveImages !== 'function') return undefined
-          const [saved] = await rt.saveImages([{ mediaType, data, name }])
-          return saved
-        },
+        ...imageSinkHandlers(rt, rt.sessionWorkspace?.(found.profile, found.session)?.cwd),
         readAttachment: async attachment => {
           const signal = AbortSignal.timeout(ATTACHMENT_READ_TIMEOUT)
           const nativeId = nativeIdOf(found.session)
@@ -319,7 +306,7 @@ export function createStreamDetailStore(rt, limits = STREAM_LIMITS) {
     save,
     async read({ profile, session, target, ref }) {
       await rt.load()
-      if (!UUID.test(ref ?? '')) throw invalid()
+      if (!isUuid(ref)) throw invalid()
       if (target) {
         const found = Object.values(rt.state.profiles).flatMap(p => rt.sessionsOf(p).map(s => ({ profile: p.id, session: s.id,
           native: nativeIdOf(s) }))).find(item => item.native === target)
