@@ -248,5 +248,5 @@ export const ROLES_CSS = `
 .nodo-type-input::placeholder{color:var(--dsw-alias-label-tertiary);opacity:1}
 .nodo-type-input:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .nodo-type-input:focus{outline:0;border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}
-@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}}
+@media(max-width:720px){.nodo-roles-body{padding:16px 12px 32px}.nodo-roles-main[data-screen=overview]{min-width:0}}
 ${TEAMS_CSS}`

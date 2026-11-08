@@ -142,6 +142,67 @@ test('the phone layout keeps the conversation within the viewport width', async 
   assert.doesNotMatch(desktop('.nodo-feed'), /overflow-x/, 'wider layouts keep their own overflow')
   assert.match(desktop('.nodo-round-speaker,.nodo-round-head'), /height:28px/)
   assert.equal(desktop('.nodo-round-actions'), '.nodo-round-actions{display:contents}', 'wider layouts keep the buttons inline')
+  const summary = CSS.split('\n').find(line => line.startsWith('@container nodo-body (max-width:760px)')) ?? ''
+  assert.match(summary, /\.nodo-session-panel\{[^}]*bottom:var\(--nodo-session-bottom,0px\)/, 'the summary panel stops above the composer')
+})
+
+test('the summary panel leaves the composer its room and follows it as the draft grows', async () => {
+  const effects = [], callbacks = []
+  const view = { profiles: [{ id: 'role', engine: 'echo', sessions: [{ id: 's1', workspaceRef: 'p' }] }],
+    workspaces: [{ id: 'p' }], work: {}, stats: {}, prefs: { onboardedAt: 1 } }
+  const loaded = await loadClient('page.js', {
+    uiShared: {
+      useStateView: () => ({ view, refresh: async () => {} }),
+      nativeSpace: { subscribe() {}, getSnapshot: () => ({ active: true, legacy: true }) },
+      completionTracker: { subscribe() {}, getSnapshot: () => ({}) }, subscribeNativeSession() {}, readNativeSession: () => null,
+    },
+    react: { useLayoutEffect: effect => effects.push(effect) },
+    globals: {
+      document: { visibilityState: 'visible', hasFocus: () => true },
+      localStorage: { getItem: key => key === 'nodo.navigation'
+        ? JSON.stringify({ profile: 'role', workspace: 'p', sessions: { 'p:role': 's1' } }) : null, setItem() {} },
+      ResizeObserver: class { constructor(callback) { callbacks.push(callback) } observe() {} disconnect() {} },
+    },
+  })
+  const all = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(all)] : []
+  const style = new Map()
+  const bodyRect = { bottom: 800 }
+  let composerTop = 604
+  const composer = { getBoundingClientRect: () => ({ top: composerTop }) }
+  const body = {
+    style: { setProperty: (name, value) => style.set(name, value) },
+    getBoundingClientRect: () => bodyRect,
+    querySelector: () => composer,
+  }
+  const bodyNode = all(loaded.NodoPage({ contentOnly: true })).find(node => node.props?.className === 'nodo-body')
+  bodyNode.props.ref.current = body
+  effects.forEach(effect => effect())
+  assert.equal(style.get('--nodo-session-bottom'), '196px', 'the panel leaves the composer and its margin below')
+  composerTop = 500
+  callbacks.at(-1)()
+  assert.equal(style.get('--nodo-session-bottom'), '300px', 'a taller draft pushes the panel up')
+  assert.equal(loaded.sessionPanelBottom({ ...body, querySelector: () => null }), '0px', 'an archived conversation without a composer keeps the whole column')
+})
+
+test('the phone roles and assign pages stack into one column with named groups', async () => {
+  const { ROLES_CSS } = await loadClient('roles.tsx')
+  const line = needle => ROLES_CSS.split('\n').find(l => l.startsWith(needle)) ?? ''
+  assert.match(line('@media(max-width:720px){.nodo-roles-body'), /\.nodo-roles-main\[data-screen=overview\]\{min-width:0\}/, 'the overview drops its 820px floor on phones')
+  assert.equal(line('.nodo-tree-cap,.nodo-pick-cap'), '.nodo-tree-cap,.nodo-pick-cap{display:none}', 'wider layouts keep the header row and the drawn tree')
+  const narrow = line('@media(max-width:720px){.nodo-assign-row')
+  assert.match(narrow, /\.nodo-tree-cap\{display:block/)
+  assert.match(narrow, /\.nodo-pick-cap\{display:block/)
+  assert.match(narrow, /\.nodo-pick-pop\{[^}]*max-width/, 'the picker popover never widens the screen')
+  assert.match(narrow, /\.nodo-assign-add\{[^}]*flex-direction:column/, 'the add-type form stacks')
+  const { PickCell, TeamsSection } = await loadClient('teams.tsx')
+  const flat = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(flat)] : []
+  const pick = PickCell({ label: '改 bug 无人承接', caption: '负责角色', pick: { profile: 'r1' }, team: { members: ['r1'], lead: null },
+    roles: [{ id: 'r1', name: '小算' }], engines: [], optional: false, disabled: false, onChange: () => {} })
+  assert.equal(flat(pick).find(node => node.props?.className === 'nodo-pick-cap')?.children?.[0], '负责角色')
+  const section = TeamsSection({ roles: [{ id: 'lead', name: '主控甲', engine: 'dsh' }, { id: 'm1', name: '执行乙', engine: 'dsh' }],
+    teams: [{ id: 't1', name: '网站', lead: 'lead', members: ['m1'], types: [], assign: {} }], activeId: 't1', locked: true,
+    onActive: () => {}, save: () => {}, openRole: () => {}, onAssign: () => {}, createButton: null })
+  assert.deepEqual(flat(section).filter(node => node.props?.className === 'nodo-tree-cap').map(node => node.children?.[0]), ['主控', '成员'])
 })
 
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
@@ -3155,7 +3216,7 @@ test('the teams section edits membership by drag and button and saves the whole 
   assert.deepEqual(saved.at(-1)[0].members, ['A', 'B'], 'dropping on the panel adds the role')
   assert.deepEqual(actives.at(-1), 't1')
 
-  assert.equal(render().some(node => rolesText(node) === '主控'), false, 'cards carry no lead mark or toggle')
+  assert.equal(cards().some(node => rolesText(node) === '主控'), false, 'cards carry no lead mark or toggle; only the stacked tree captions name the lead column')
   const leadColumn = () => render().find(node => node.props?.className === 'nodo-team-col' && node.props.onDrop)
   dragFromGrid('前端')
   leadColumn().props.onDrop({ preventDefault() {} })
