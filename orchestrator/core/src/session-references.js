@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TRANSCRIPT_TEXT_MAX } from './constants.js'
 import { invalid } from './errors.js'
+import { isUuid } from './text.js'
 import { nativeIdOf } from '../shared/session.js'
 
 const textOf = content => typeof content === 'string' ? content
@@ -63,7 +64,7 @@ export function install(rt) {
   }
   const createReference = async ({ target, draft, profile, session, messageId }) => {
     await rt.load()
-    if (draft !== undefined ? target !== undefined || !/^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/.test(draft) : !owns(target)) throw invalid('请在 Nodo 角色会话或有效草稿中引用结果。')
+    if (draft !== undefined ? target !== undefined || !isUuid(draft) : !owns(target)) throw invalid('请在 Nodo 角色会话或有效草稿中引用结果。')
     const result = await referenceReplies({ profile, session })
     if (target !== undefined && [result.source.sessionId, result.source.nativeSessionId].includes(target)) throw invalid('请选择其他会话的回复。')
     const message = result.messages.find(item => item.id === messageId)
@@ -72,7 +73,7 @@ export function install(rt) {
     return saveReference({ id: randomUUID(), ...(draft === undefined ? { target } : { draft }), capturedAt: Date.now(), source: result.source, messages: [message] })
   }
   const readReference = async ({ id, target, draft }) => {
-    if (!/^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/.test(id ?? '')) throw invalid('无效的会话引用。')
+    if (!isUuid(id)) throw invalid('无效的会话引用。')
     const snapshot = JSON.parse(await readFile(join(folder, `${id}.json`), 'utf8').catch(() => { throw invalid('会话引用已不可用，请重新选择。') }))
     if (snapshot.target !== target || snapshot.draft !== draft) throw invalid('该引用属于另一个接收会话或草稿。')
     await rt.loadSecrets()
@@ -141,13 +142,5 @@ export function install(rt) {
     }
     return { ...decision, messages }
   }, { prepend: true })
-  const dropReferences = async sessions => {
-    const targets = new Set(sessions.flatMap(session => [session.id, nativeIdOf(session)]).filter(Boolean))
-    for (const file of await readdir(folder).catch(() => [])) {
-      const path = join(folder, file)
-      const target = await readFile(path, 'utf8').then(JSON.parse).then(snapshot => snapshot?.target, () => undefined)
-      if (targets.has(target)) await rm(path, { force: true }).catch(() => rt.warn?.('nodo: a deleted session reference could not be removed'))
-    }
-  }
-  Object.assign(rt, { referenceReplies, createReference, readReference, bindReference, referenceHistory, dropReferences })
+  Object.assign(rt, { referenceReplies, createReference, readReference, bindReference, referenceHistory })
 }

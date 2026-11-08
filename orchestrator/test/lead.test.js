@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { copyFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RUN_LIMITS, TURN_IDLE_TIMEOUT_MS } from '../core/src/constants.js'
-import { leadRules, route } from '../core/src/lead.js'
+import { leadRules } from '../core/src/lead-rules.js'
 import { install as installLead } from '../core/src/lead.js'
+import { route } from '../core/shared/route.js'
 import defaultTaskTypes from '../core/shared/task-types.json' with { type: 'json' }
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { echoEntry, registerClaudeFixtureEngine } from './helpers/echo-driver.js'
@@ -385,7 +386,7 @@ test('a running delegation is left alone and a follow-up opens another session',
   const conversation = await session(lead)
   const first = toolTask(rt, conversation.id, delegateType('feature', false))
   const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
-  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await until(() => rt.approvalsView().some(item => item.sessionId === work.id))
   const second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change'))
   assert.equal(second.continued, false)
   assert.equal(second.reason, '没有接续来源任务')
@@ -410,7 +411,7 @@ test('a lead can interrupt only its own running delegation before replacing it',
   const pending = toolTask(rt, conversation.id, delegateType('feature', false))
   const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
   await until(() => lines(conversation).some(line => line.delegation?.session === work.id))
-  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await until(() => rt.approvalsView().some(item => item.sessionId === work.id))
   try {
     assert.match(rt.leadSnapshot(conversation.id), new RegExp(work.id))
     await host.api('send', { profile: lead.id, session: conversation.id, text: 'How is it going?' })
@@ -879,7 +880,7 @@ test('disabling lead mode during delegated work still returns the report and sto
   const conversation = await session(lead)
   const pending = toolTask(rt, conversation.id, delegateType('feature', false))
   const work = await until(() => rt.sessionsOf(rt.findProfile(worker.id))[0])
-  const approval = await until(() => rt.approvalsView().find(item => item.profileId === work.id))
+  const approval = await until(() => rt.approvalsView().find(item => item.sessionId === work.id))
   await host.api('profile-update', { id: lead.id, changes: { lead: false } })
   await host.api('approval-answer', { id: approval.id, decision: 'allow' })
   await pending
@@ -1129,7 +1130,7 @@ test('an interrupted candidate keeps continuing the same session', () => withLea
   const second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change', { taskId: first.taskId }))
   assert.equal(second.session, work.id)
   await rt.followLead(conversation.id, completed('Dispatched'))
-  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await until(() => rt.approvalsView().some(item => item.sessionId === work.id))
   await rt.interrupt(worker.id, work.id)
   await until(() => rt.delegationSummary(work).status === 'interrupted-user')
   rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'text', text: 'Done' }
@@ -1154,7 +1155,7 @@ test('continues reuses the source session or hands over its last result', () => 
   assert.equal(inputs.filter(item => item.sessionId === work.id).length, 2)
   rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'ask' }
   const poke = rt.send(worker.id, 'Poke', work.id, [], [])
-  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await until(() => rt.approvalsView().some(item => item.sessionId === work.id))
   const third = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Rework the parser', { continues: first.taskId }))
   assert.equal(third.continued, false)
   assert.equal(third.reason, '候选会话正忙')
@@ -1230,7 +1231,7 @@ test('a busy candidate session falls back to a new session', () => withLead(asyn
   const work = rt.sessionsOf(rt.findProfile(worker.id))[0]
   rt.conversation(worker.id, work.id).session.engineOptions.script[0] = { kind: 'ask' }
   const poke = rt.send(worker.id, 'Poke', work.id, [], [])
-  await until(() => rt.approvalsView().some(item => item.profileId === work.id))
+  await until(() => rt.approvalsView().some(item => item.sessionId === work.id))
   const second = await rt.leadDispatch.delegate(conversation.id, delegateType('feature', false, 'Second change', { taskId: first.taskId }))
   assert.equal(second.continued, false)
   assert.equal(second.reason, '候选会话正忙')

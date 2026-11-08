@@ -98,9 +98,9 @@ export function install(rt) {
       if (reuse) { if (activate) profile.activeSessionId = reuse.id; await rt.save(); return reuse }
     }
     const inherited = sessionChoices(profile)
-    const model = choices.model !== undefined ? cleanModel(choices.model) : inherited.model
-    const thinking = choices.thinking !== undefined ? cleanThinking(choices.thinking) : inherited.thinking
-    const permission = choices.permission !== undefined ? rt.cleanPermission(profile.engine, choices.permission) : inherited.permission
+    const model = choices.model === '' ? undefined : choices.model ?? inherited.model
+    const thinking = choices.thinking === '' ? undefined : choices.thinking ?? inherited.thinking
+    const permission = choices.permission === '' ? undefined : choices.permission ?? inherited.permission
     const leadMode = profile.lead === true && team !== false
     if (leadMode && permission === 'plan') throw invalid('主控不能使用计划模式权限，请改选其他权限')
     const session = { id: randomUUID(), name: String(name ?? (draft ? '新会话' : `Session ${profile.sessions.length + 1}`)).slice(0, 80), workspaceRef: workspace.id,

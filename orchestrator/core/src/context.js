@@ -62,7 +62,8 @@ export function install(rt) {
   // messages (located by timestamp plus a content hash, so a display index is
   // never treated as a permanent address), tool detail snapshots and task
   // acceptances. No standalone Source store exists behind them.
-  const messageSourceId = (sessionId, line) => `message:${sessionId}:${line.at}:${createHash('sha256').update(String(line.text ?? '')).digest('hex').slice(0, 8)}`
+  const messageHash = text => createHash('sha256').update(String(text ?? '')).digest('hex').slice(0, 8)
+  const messageSourceId = (sessionId, line) => `message:${sessionId}:${line.at}:${messageHash(line.text)}`
   const parseSourceId = raw => {
     if (typeof raw !== 'string') return null
     const parts = raw.split(':')
@@ -136,7 +137,7 @@ export function install(rt) {
     }
     if (parsed.kind === 'message') {
       if (!sessionAllowed(id, parsed.sessionId)) throw invalid('消息不属于本主控会话或其任务')
-      const line = rt.transcriptOf(parsed.sessionId).find(line => line.at === parsed.at && createHash('sha256').update(String(line.text ?? '')).digest('hex').slice(0, 8) === parsed.hash)
+      const line = rt.transcriptOf(parsed.sessionId).find(line => line.at === parsed.at && messageHash(line.text) === parsed.hash)
       return line
         ? { sourceId, kind: 'message', source: 'message', sessionId: parsed.sessionId, who: line.who, at: line.at,
             description: shorten(line.text, 120), completeness: 'complete', text: String(line.text ?? '') }

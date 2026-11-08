@@ -111,3 +111,27 @@ export async function cliVersion(bin: string, options: CliVersionOptions & { arg
   })
   return stdout.trim().split('\n')[0].slice(0, 120)
 }
+
+export type CliCheckItem = { label: string; ok: boolean | null; message: string }
+export type CliCheckBase<E extends string = string> = {
+  checks: CliCheckItem[]
+  executable?: string
+  version?: string
+  failed?: { engine: E; ok: false; executable?: string; version?: string; checks: CliCheckItem[] }
+}
+
+// The workspace, executable and version checks every adapter shares. `failed`
+// already carries the adapter's engine id, so a caller returns it unchanged.
+export async function checkCliBase<E extends string>(engine: E, cwd: string | undefined, executable: string | undefined,
+  missingMessage: string, versionOf: (bin: string) => Promise<string> = cliVersion): Promise<CliCheckBase<E>> {
+  const checks: CliCheckItem[] = []
+  try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd! }) }
+  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
+  if (!executable) return { checks, failed: { engine, ok: false, checks: [...checks, { label: 'CLI', ok: false, message: missingMessage }] } }
+  try {
+    const version = await versionOf(executable)
+    return { checks: [...checks, { label: 'CLI', ok: true, message: `${version} · ${executable}` }], executable, version }
+  } catch {
+    return { checks, executable, failed: { engine, ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] } }
+  }
+}

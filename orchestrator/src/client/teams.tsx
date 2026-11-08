@@ -3,7 +3,7 @@ import { RoleAvatar, avatarTemplateOf } from './avatar.tsx'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
 import { route } from '../../core/shared/route.js'
 import type { ReactNode } from './ui-shared.js'
-import { modelName, modelLabel, thinkingAfterModelChange } from './model-options.js'
+import { groupModelsByProvider, modelName, modelLabel, thinkingAfterModelChange } from './model-options.js'
 import type { ModelChoice } from './model-options.js'
 
 const fitText = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }
@@ -231,8 +231,7 @@ export function PickCell({ label, caption, pick, team, roles, engines, optional,
   const models = catalog?.models ?? []
   const model = models.find(item => item.id === (pick?.model || holder?.model || catalog?.defaultModel))
   const levels = model?.thinking ?? []
-  const providers = new Map<string, ModelChoice[]>()
-  for (const item of models) providers.set(item.group ?? '', [...(providers.get(item.group ?? '') ?? []), item])
+  const providers = groupModelsByProvider(models)
   const set = (changes: TeamPick) => onChange({ ...pick, ...changes })
   const tags = [pick?.model ? modelLabel(models.find(item => item.id === pick.model) ?? { id: pick.model }) : '', pick?.thinking ? levels.find(level => level.id === pick.thinking)?.label ?? pick.thinking : ''].filter(Boolean)
   return (
@@ -329,6 +328,7 @@ export function AssignPage({ roles, teams, engines, activeId, disabled, onActive
           <div className="nodo-assign-row nodo-assign-head"><span /><span>负责角色</span><span>困难任务另派（可选）</span></div>
           {types.map((type, index) => {
             const entry = team.assign[type.id ?? ''] ?? {}
+            const removeKey = type.id ?? `new:${index}`
             return (
               <div key={type.id} className="nodo-assign-row" role="group" aria-label={type.name}>
                 <div className="nodo-assign-type">
@@ -347,9 +347,9 @@ export function AssignPage({ roles, teams, engines, activeId, disabled, onActive
                 </div>
                 <PickCell caption="负责角色" label={`${type.name}${entry.hard ? ' · 普通任务' : ' · 普通和困难任务'}`} pick={entry.normal} team={team} roles={roles} engines={engines}
                   optional={false} disabled={disabled} onChange={pick => edit(type.id ?? '', 'normal', pick ?? {})}
-                  remove={removing === type.id
+                  remove={removing === removeKey
                     ? <button type="button" className="nodo-assign-confirm" disabled={disabled} onClick={() => { setRemoving(null); removeType(type) }}>删除</button>
-                    : <button type="button" className="nodo-assign-remove" aria-label={`删除 ${type.name}`} disabled={disabled} onClick={() => setRemoving(type.id ?? null)}>×</button>} />
+                    : <button type="button" className="nodo-assign-remove" aria-label={`删除 ${type.name}`} disabled={disabled} onClick={() => setRemoving(removeKey)}>×</button>} />
                 {entry.hard
                   ? <PickCell caption="困难任务另派" label={`${type.name} · 困难任务`} pick={entry.hard} team={team} roles={roles} engines={engines} optional disabled={disabled} onChange={pick => edit(type.id ?? '', 'hard', pick ?? undefined)}
                     remove={<button type="button" className="nodo-assign-remove" aria-label={`${type.name} 不再单独指定困难任务`} disabled={disabled} onClick={() => edit(type.id ?? '', 'hard', undefined)}>×</button>} />

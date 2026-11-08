@@ -1,15 +1,12 @@
 import { constants } from 'node:fs'
 import { open, realpath } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IMAGE_BYTES_MAX } from './constants.js'
+import { IMAGE_MIME_BY_EXT } from './image-types.js'
+import { inside } from './fs.js'
 
-const TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' }
-const inside = (root, path) => {
-  const rest = relative(root, path)
-  return rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
-}
 const localPath = uri => {
   if (typeof uri !== 'string' || !uri || uri.includes('\0')) return undefined
   try {
@@ -19,7 +16,7 @@ const localPath = uri => {
   } catch { return undefined }
 }
 
-export const imageFileType = uri => TYPES[extname(localPath(uri) ?? '').toLowerCase()]
+export const imageFileType = uri => IMAGE_MIME_BY_EXT[extname(localPath(uri) ?? '').toLowerCase()]
 
 export async function readImageFile(uri, cwd) {
   const path = localPath(uri)

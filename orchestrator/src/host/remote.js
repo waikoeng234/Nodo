@@ -1,5 +1,13 @@
 import { createRemoteAccess } from '../../remote-access/index.js'
 
+const METHODS = {
+  'remote-status': 'status',
+  'remote-open': 'open',
+  'remote-enable': 'enable',
+  'remote-disable': 'disable',
+  'remote-login': 'login',
+}
+
 export function install(rt) {
   const service = createRemoteAccess({
     host: rt.ctx.get?.('webServer'),
@@ -9,8 +17,7 @@ export function install(rt) {
   })
   const handle = rt.handle
   rt.handle = async (endpoint, payload) => {
-    const method = ({ 'remote-status': 'status', 'remote-open': 'open', 'remote-enable': 'enable',
-      'remote-disable': 'disable', 'remote-login': 'login' })[endpoint]
+    const method = METHODS[endpoint]
     if (!method) return handle(endpoint, payload)
     if (method !== 'status' && rt.readOnly()) return { ok: false, error: { code: 'orch/read-only', message: rt.readOnly() } }
     try { return { ok: true, value: await service[method]() } }

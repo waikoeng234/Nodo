@@ -1,6 +1,6 @@
 import type { ReactNode } from './ui-shared.js'
 import {
-  h, Fragment, useState, useEffect, useRef, useSyncExternalStore, useStateView, call,
+  h, Fragment, useState, useEffect, useRef, useMemo, useSyncExternalStore, useStateView, call,
   Modal, Button, roleStateOf, layoutService, IconChecklistOutlineRegular, IconPlusOutlineRegular, IconUsersOutlineRegular, WARN_INK,
 } from './ui-shared.js'
 import { RoleEditor } from './profile-dialogs.js'
@@ -27,7 +27,7 @@ let sidebarContent: { view: 'roles'; content: ReactNode } | null = null
 const sidebarListeners = new Set<() => void>()
 export const rolesSidebarSnapshot = () => sidebarContent
 export const rolesSubscribeSidebar = (listener: () => void) => { sidebarListeners.add(listener); return () => { sidebarListeners.delete(listener) } }
-export const rolesPublishSidebar = (content: { view: 'roles'; content: ReactNode } | null) => {
+const rolesPublishSidebar = (content: { view: 'roles'; content: ReactNode } | null) => {
   if (content === sidebarContent) return
   sidebarContent = content
   for (const listener of sidebarListeners) listener()
@@ -38,7 +38,7 @@ export const rolesPublishSidebar = (content: { view: 'roles'; content: ReactNode
 let rolesTarget: { profileId?: string; team?: string } | null = null
 const targetListeners = new Set<() => void>()
 export const readRolesTarget = () => rolesTarget
-export const subscribeRolesTarget = (listener: () => void) => { targetListeners.add(listener); return () => { targetListeners.delete(listener) } }
+const subscribeRolesTarget = (listener: () => void) => { targetListeners.add(listener); return () => { targetListeners.delete(listener) } }
 export const openRoles = (target: { profileId?: string; team?: string } = {}) => {
   rolesTarget = target
   for (const listener of targetListeners) listener()
@@ -152,7 +152,7 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
     </div>
   )
 
-  const sidebar = (
+  const sidebar = useMemo(() => (
     <div className="nodo-roles-nav" role="navigation" aria-label="角色">
       <button type="button" className="nodo-role-types" aria-pressed={!assignOpen} onClick={() => switchTo(showOverview)}>
         <IconUsersOutlineRegular size={16} /><span className="nodo-role-types-label">全部角色</span><span className="nodo-role-types-count">{roles.length}</span>
@@ -161,8 +161,8 @@ export function RolesPage({ view, readOnly, refresh }: { view: RolesView; readOn
         <IconChecklistOutlineRegular size={16} /><span className="nodo-role-types-label">任务分配</span><span className="nodo-role-types-count">{types.length}</span>
       </button>
     </div>
-  )
-  useEffect(() => { rolesPublishSidebar({ view: 'roles', content: sidebar }) })
+  ), [assignOpen, roles.length, types.length])
+  useEffect(() => { rolesPublishSidebar({ view: 'roles', content: sidebar }) }, [sidebar])
   const selected = roleId !== null ? roles.find(item => item.id === roleId) ?? null : null
   return (
     <section className="nodo-page nodo-roles" aria-label="角色管理">

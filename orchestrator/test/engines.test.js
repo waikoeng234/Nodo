@@ -741,6 +741,7 @@ test('scanning an engine lists its models with their thinking levels, and falls 
     writeFileSync(join(home, 'config.toml'), [
       'model = "gpt-local"', 'model_reasoning_effort = "high"', '',
       '[profiles.fast]', 'model = "gpt-fast"', 'model_reasoning_effort = "low"', '',
+      '[profiles.slow]', 'model_reasoning_effort = "high"', 'model = "gpt-slow"', '',
       '[mcp_servers.fixture]', 'command = "true"', '',
     ].join('\n'))
     const previous = process.env.CODEX_HOME
@@ -749,10 +750,11 @@ test('scanning an engine lists its models with their thinking levels, and falls 
       const fallback = await scanEngine('codex', { engineOptions: { bin: join(cwd, 'missing-codex') } })
       assert.equal(fallback.source, 'Codex config.toml')
       assert.equal(fallback.defaultModel, 'gpt-local')
-      assert.deepEqual(fallback.models.map(model => model.id), ['gpt-local', 'gpt-fast'])
+      assert.deepEqual(fallback.models.map(model => model.id), ['gpt-local', 'gpt-fast', 'gpt-slow'])
       assert.equal(fallback.models[0].defaultThinking, 'high', 'the configured effort stays as the default')
       assert.equal(fallback.models[0].thinking, undefined, 'the config fallback does not invent effort levels')
       assert.equal(fallback.models[1].label, 'fast')
+      assert.equal(fallback.models[2].defaultThinking, 'high', 'effort before model in a profile table is kept')
     } finally {
       if (previous === undefined) delete process.env.CODEX_HOME
       else process.env.CODEX_HOME = previous

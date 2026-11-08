@@ -24,11 +24,20 @@ export const modelLabel = item => item.label && /\s/.test(item.label) ? item.lab
 const unlistedOption = (value, choices) => value && !choices.some(item => item.id === value)
   ? [h('option', { key: value, value }, `不在清单：${value}`)] : []
 
+/**
+ * @param {ModelChoice[]} models
+ * @returns {Map<string, ModelChoice[]>}
+ */
+export const groupModelsByProvider = models => {
+  const providers = new Map()
+  for (const item of models) providers.set(item.group ?? '', [...(providers.get(item.group ?? '') ?? []), item])
+  return providers
+}
+
 /** @param {ModelChoice[]} models */
 export function modelChoices(models, value = '', fallback = '') {
   const selected = models.find(item => item.id === (value || fallback))
-  const providers = new Map()
-  for (const item of models) providers.set(item.group ?? '', [...(providers.get(item.group ?? '') ?? []), item])
+  const providers = groupModelsByProvider(models)
   const options = [...providers].flatMap(([group, items]) => {
     const rows = items.map(item => h('option', { key: item.id, value: item.id, title: item.id }, modelLabel(item)))
     return group === '' ? rows : [h('optgroup', { key: `group:${group}`, label: group }, ...rows)]

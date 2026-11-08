@@ -1,5 +1,5 @@
 import { h, useState, useEffect, useRef, call, DisclosureRow, CodeBlock, Button, TerminalBlock, toolVariant, rightPanelService } from './ui-shared.js'
-import { TranscriptImage } from './feed.js'
+import { TranscriptImage } from './transcript-image.js'
 import { ToolCall, toolCallQuery } from './tool-call.tsx'
 import { HoverPreview, HoverFilePreview, ToolFileChip, useHoverPreview, useHoverPreviewPlacement } from './hover-preview.tsx'
 import { toolFileChange, referenceFile } from './tool-file.ts'

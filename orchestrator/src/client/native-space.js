@@ -1,4 +1,4 @@
-import { heldImages } from './page.js'
+import { heldImages } from './drafts.js'
 
 export function createNativeSpace(ctx, Sidebar, SidebarControl) {
   let saved

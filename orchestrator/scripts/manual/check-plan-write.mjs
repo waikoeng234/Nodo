@@ -6,7 +6,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDriver } from '../agent-drivers/dist/index.js'
+import { createDriver } from '../../agent-drivers/dist/index.js'
 import { probeModels } from './probe-models.mjs'
 
 const TASK = 'Create a file named nodo-plan-probe.txt in the current directory containing the word hello. Use your file writing tool now.'

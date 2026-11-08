@@ -78,7 +78,6 @@ export function validateEngineOptions(engine, raw = {}) {
         throw invalidConfig('engineOptions too large (4 kB at most)');
     return ENGINES[engine].validate(clean);
 }
-export function requiresWorkspace(engine) { return ENGINES[engine]?.info.requiresCwd === true; }
 // The autonomy tiers an engine actually offers (see spi.js `permission`); an
 // undeclared engine keeps only the default tier.
 export function enginePermissionModes(engine, nativeHost) {

@@ -1,9 +1,9 @@
 // ES-01 coverage index and bounded unknown-event tracking. The index distills
-// the reviewed declarations (engine-stream, 2026-10-17 revision) into data: one
-// status per declared discriminant, no payload schemas. It is the assertion
-// source for coverage — driver branches are never read back as the declaration.
-// Trackers count unknown discriminants by finite category only; the raw name
-// and payload of an unknown event never reach a log, storage or this module.
+// the reviewed declarations (per-engine revisions) into data: one status per
+// declared discriminant, no payload schemas. It is the assertion source for
+// coverage — driver branches are never read back as the declaration. Trackers
+// count unknown discriminants by finite category only; the raw name and payload
+// of an unknown event never reach a log, storage or this module.
 export const STATUS = Object.freeze(['mapped', 'partial', 'excluded', 'unmapped']);
 export const CATEGORIES = Object.freeze(['unknown-notification', 'unknown-request', 'unknown-variant']);
 const MILESTONE = 50;

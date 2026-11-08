@@ -1,18 +1,22 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, statSync, watch } from 'node:fs'
-import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { mkdirSync, watch } from 'node:fs'
+import { copyFile, readFile, rm } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { NAME_MAX } from './constants.js'
-import { normalize } from './text.js'
+import { normalize, isRecord } from './text.js'
 import { failure } from './errors.js'
 import { homeLock } from './home-lock.js'
 import { createTranscripts } from './transcripts.js'
+import { atomicWrite, stamp } from './fs.js'
 
 const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'decisions', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
+const ACTIVITY_KEYS = ['transcriptIndex', 'stats', 'streamDetails']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
 const blank = () => ({ version: 5, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
 const STAMP_MS = 1000
-const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const mergeActivity = (target, source) => {
+  for (const key of ACTIVITY_KEYS) if (isRecord(source[key])) target[key] = source[key]
+}
 
 export function install(rt) {
   const { ctx, home, warn } = rt
@@ -44,10 +48,11 @@ export function install(rt) {
   let blocked
   let warnedBlocked = false
   let seen = ''
-  // 两个客户端版本号：结构版本随 save 增加（活动数据除外），活动计数只随对话内容增加。
+  // `struct` moves on structural saves; `activity` moves with transcript content.
   let struct = 0
   let activity = 0
-  // 行编号的有效期标记：客户端回传的位置带它；换了宿主或重新读入状态就换新，客户端随之全量重取。
+  // Boot token in client line positions: a new host or a reloaded state makes the
+  // client refetch everything.
   let bootToken = randomUUID()
   const listeners = new Set()
   const notifyLive = () => { for (const listener of listeners) listener() }
@@ -134,7 +139,7 @@ export function install(rt) {
     retiredState = ['adapterSessions', 'streamDetails'].some(key => Object.hasOwn(saved, key))
     try {
       const live = JSON.parse(await readFile(activityPath, 'utf8'))
-      for (const key of ['transcriptIndex', 'stats', 'streamDetails']) if (isRecord(live[key])) saved[key] = live[key]
+      mergeActivity(saved, live)
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     activitySeen = stamp(activityPath)
     return saved
@@ -256,7 +261,7 @@ export function install(rt) {
     else {
       if (stamp(activityPath) !== activitySeen) {
         const live = JSON.parse(await readFile(activityPath, 'utf8'))
-        for (const key of ['transcriptIndex', 'stats', 'streamDetails']) if (isRecord(live[key])) state[key] = live[key]
+        mergeActivity(state, live)
         activitySeen = stamp(activityPath)
         activity += 1
       }
@@ -282,26 +287,8 @@ export function install(rt) {
   const assertLock = () => {
     if (!unlockable && !lock.owns(true)) throw lockLost()
   }
-  const writeLocked = async (path, text) => {
-    const temp = `${path}.${randomUUID()}.tmp`
-    await mkdir(dirname(path), { recursive: true })
-    try {
-      assertLock()
-      await writeFile(temp, text, 'utf8')
-      assertLock()
-      await rename(temp, path)
-    } catch (error) {
-      await rm(temp, { force: true })
-      throw error
-    }
-  }
-  const stamp = path => {
-    try { const s = statSync(path); return `${s.size}@${s.mtimeMs}` } catch { return '' }
-  }
-  const active = id => {
-    const work = rt.workView?.()[id]
-    return work?.active || work?.starting
-  }
+  const writeLocked = (path, text) => atomicWrite(path, text, undefined, assertLock)
+  const active = id => rt.workView?.()[id]?.active === true
   const transcripts = createTranscripts({ home, state, warn, writable: () => readOnly() === undefined,
     assertLock, active, settling: id => rt.settlingAnswer?.(id), changed: () => { activityDirty = true; activity += 1; notifyLive(); return activity } })
   const writeState = async (force) => {
@@ -314,12 +301,13 @@ export function install(rt) {
       failed = await transcripts.flush(force)
       for (const id of Object.keys(state.stats)) if (state.transcriptIndex[id] === undefined) delete state.stats[id]
       if (live || structural) {
-        await writeLocked(activityPath, JSON.stringify({ transcriptIndex: state.transcriptIndex, stats: state.stats, ...(state.streamDetails ? { streamDetails: state.streamDetails } : {}) }))
+        await writeLocked(activityPath, JSON.stringify(Object.fromEntries(ACTIVITY_KEYS
+          .filter(key => state[key] != null).map(key => [key, state[key]]))))
         activitySeen = stamp(activityPath)
       }
       if (structural) {
         await writeLocked(statePath, JSON.stringify(state, function (key, value) {
-          return this === state && ['transcripts', 'transcriptIndex', 'stats', 'streamDetails'].includes(key) ? undefined : value
+          return this === state && (ACTIVITY_KEYS.includes(key) || key === 'transcripts') ? undefined : value
         }))
         fileStamp.value = null
         seen = fileVersion()
@@ -356,7 +344,7 @@ export function install(rt) {
     if (!activitySave) { struct += 1; structureDirty = true }
     activityDirty = true
     notifyLive()
-    const running = Object.values(rt.workView?.() ?? {}).some(work => work.active || work.starting)
+    const running = Object.values(rt.workView?.() ?? {}).some(work => work.active)
     if (!force && (activitySave || running)) {
       if (timer === undefined) {
         timer = setTimeout(() => { void flush().catch(() => {}) }, Math.max(0, 1000 - (Date.now() - lastWrite))).unref()

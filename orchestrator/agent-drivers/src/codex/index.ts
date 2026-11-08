@@ -3,7 +3,7 @@ import type { Dirent } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { STEER, addUsage, steerFailed, usageOf } from '../spi.js'
-import { cliVersion, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
+import { checkCliBase, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { collector, listDirs, newestPluginVersions } from '../skills.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import type { Coverage } from '../coverage.js'
@@ -144,16 +144,11 @@ async function initialize(peer: CodexPeer) {
 }
 
 export async function checkCodex({ cwd, engineOptions = {} }: CodexOptions = {}) {
-  const checks = []
-  try { validateWorkspace(cwd, true); checks.push({ label: 'Working directory', ok: true, message: cwd }) }
-  catch (error) { checks.push({ label: 'Working directory', ok: false, message: (error as Error).message }) }
   const options = validateCodexOptions(engineOptions)
-  const executable = findCodexExecutable(options.bin ?? 'codex')
-  if (!executable) return { engine: 'codex', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'Codex executable not found. Enter its absolute path.' }] }
-  let version
-  try { version = await cliVersion(executable); checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` }) }
-  catch { return { engine: 'codex', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] } }
-  const peer = await connectCodex({ executable, socket: options.socket, start: false })
+  const base = await checkCliBase('codex', cwd, findCodexExecutable(options.bin ?? 'codex'), 'Codex executable not found. Enter its absolute path.')
+  if (base.failed) return base.failed
+  const { checks, executable, version } = base
+  const peer = await connectCodex({ executable: executable!, socket: options.socket, start: false })
   try {
     await initialize(peer)
     checks.push({ label: 'Protocol', ok: true, message: 'Shared Codex app-server connected' })
@@ -168,6 +163,7 @@ export async function checkCodex({ cwd, engineOptions = {} }: CodexOptions = {})
 
 // Targeted key scan of config.toml (not a TOML parser): the model and reasoning
 // effort of the top-level table and of every [profiles.*] table.
+const codexHome = () => process.env.CODEX_HOME || join(homedir(), '.codex')
 function codexConfigModels(path: string) {
   let lines
   try { lines = readFileSync(path, 'utf8').split('\n') } catch { return [] }
@@ -186,8 +182,7 @@ function codexConfigModels(path: string) {
     const value = (/^"(.*)"$/.exec(pair[2].trim())?.[1] ?? pair[2].trim())
     if (!/^[\w.:/-]{1,200}$/.test(value)) continue
     current ??= { id: undefined, ...(profile ? { label: profile } : {}) }
-    if (profile !== undefined && pair[1] === 'model') { flush(); current = { id: value, label: profile }; continue }
-    if (profile === undefined && pair[1] === 'model') current.id = value
+    if (pair[1] === 'model') current.id = value
     if (pair[1] === 'model_reasoning_effort') current.defaultThinking = value
   }
   flush()
@@ -198,7 +193,7 @@ function codexConfigModels(path: string) {
 export async function scanCodex({ engineOptions = {} }: CodexOptions = {}) {
   const options = validateCodexOptions(engineOptions)
   const configModels = () => {
-    const models = codexConfigModels(join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'config.toml'))
+    const models = codexConfigModels(join(codexHome(), 'config.toml'))
     return { source: 'Codex config.toml', ...(models[0] ? { defaultModel: models[0].id } : {}), models }
   }
   const executable = findCodexExecutable(options.bin ?? 'codex')
@@ -424,22 +419,22 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     const declared = DECLARED.codex.requests[method]
     if (!declared) coverage.count('unknown-request')
     if (!running || params.threadId !== threadId || params.turnId !== undefined && params.turnId !== running.id) return peer!.refuse(id, 'No matching active turn')
-    const permission = ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(method)
-    const question = method === 'item/tool/requestUserInput'
-    if (!permission && !question) {
+    const isPermission = ['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(method)
+    const isQuestion = method === 'item/tool/requestUserInput'
+    if (!isPermission && !isQuestion) {
       // A refusal reads as a decline, so a declared request this client cannot
       // surface still leaves a line instead of vanishing.
       if (declared) emit({ type: 'note', text: `Codex requested ${method}, which this client does not support; the request was declined.` })
       return peer!.refuse(id)
     }
-    if (question && (!Array.isArray(params.questions) || params.questions.length === 0)) return peer!.refuse(id, 'No questions supplied')
+    if (isQuestion && (!Array.isArray(params.questions) || params.questions.length === 0)) return peer!.refuse(id, 'No questions supplied')
     const cardId = `codex:${threadId}:${typeof id}:${id}`
     requests.set(cardId, message as CodexRequest & { params: CodexParams })
     emit({
-      type: 'request/opened', id: cardId, kind: question ? 'question' : 'permission',
-      tool: permission ? method.split('/')[1] : undefined,
-      reason: question ? params.questions.map(item => item.question).join('\n') : params.reason ?? params.command ?? 'Codex requests permission',
-      detail: question ? { questions: params.questions } : { command: params.command, cwd: params.cwd },
+      type: 'request/opened', id: cardId, kind: isQuestion ? 'question' : 'permission',
+      tool: isPermission ? method.split('/')[1] : undefined,
+      reason: isQuestion ? params.questions.map(item => item.question).join('\n') : params.reason ?? params.command ?? 'Codex requests permission',
+      detail: isQuestion ? { questions: params.questions } : { command: params.command, cwd: params.cwd },
     })
   }
   const boot = () => {
@@ -622,7 +617,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
 export async function scanCodexCommands({ engineOptions = {}, cwd }: CodexOptions = {}) {
   const options = validateCodexOptions(engineOptions)
   const found = collector()
-  const home = process.env.CODEX_HOME || join(homedir(), '.codex')
+  const home = codexHome()
   let entries: Dirent[]
   try { entries = readdirSync(join(home, 'prompts'), { withFileTypes: true }) } catch { entries = [] }
   for (const entry of entries) if (entry.isFile() && entry.name.endsWith('.md')) found.add(join(home, 'prompts', entry.name), entry.name.replace(/\.md$/, ''))

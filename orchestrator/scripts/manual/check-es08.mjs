@@ -11,7 +11,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
+import { findDshExecutable } from '../../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running this check')
@@ -42,7 +42,7 @@ mkdirSync(plugin)
 mkdirSync(cwd)
 writeFileSync(join(plugin, 'package.json'), JSON.stringify({ name: 'nodo-es08-fixture', version: '0.0.0', type: 'module', main: 'index.js',
   exports: { '.': './index.js', './package.json': './package.json' } }))
-const drivers = new URL('../agent-drivers/dist/index.js', import.meta.url).href
+const drivers = new URL('../../agent-drivers/dist/index.js', import.meta.url).href
 writeFileSync(join(plugin, 'index.js'), `
 import { writeFileSync } from 'node:fs'
 import { registerEngine } from ${JSON.stringify(drivers)}
@@ -112,7 +112,7 @@ writeFileSync(patch, JSON.stringify([
   { id: 'llm-deepseek', config: { baseURL: relayUrl, apiKeyEnv: 'NODO_ES08_FIXTURE_KEY' } },
   { id: 'session-title-llm', disabled: true },
   { insert: [{ id: 'nodo-es08-fixture', name: join(plugin, 'index.js') },
-    { id: 'nodo', name: fileURLToPath(new URL('../index.js', import.meta.url)), config: { home: join(home, 'nodo') } }] },
+    { id: 'nodo', name: fileURLToPath(new URL('../../index.js', import.meta.url)), config: { home: join(home, 'nodo') } }] },
 ]))
 let cookie, cookies = [], child, log = '', facts, unexpectedModelCalls = 0
 const start = () => {

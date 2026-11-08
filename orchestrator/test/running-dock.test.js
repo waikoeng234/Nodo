@@ -17,6 +17,7 @@ async function mount() {
   const navigation = { profile: 'coder', workspace: 'w1', sessions: { 'w1:coder': 's1' } }
   const view = { revision: 1, profiles: [profile], workspaces: [{ id: 'w1' }], work: {}, stats: {}, approvals: [] }
   const loaded = await loadClient(['page.js', 'session-rail.tsx', 'composer.js', 'feed.js', 'running.js', 'run-cards.js', 'role-seat.js'], {
+    stubs: { 'navigation.js': { readNavigation: () => navigation, subscribeNavigation: () => () => {}, setNavigation: update => { navigation = update(navigation) } } },
     uiShared: {
       useStateView: () => ({ view, refresh: async () => {} }),
       readNavigation: () => navigation, subscribeNavigation() {},

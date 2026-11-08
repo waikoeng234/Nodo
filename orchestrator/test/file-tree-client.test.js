@@ -5,7 +5,7 @@ import { loadClient } from './helpers/client-module.js'
 const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
 
 test('file tree groups interleaved directories while preserving file identities, root files and input order', async () => {
-  const { buildFileTree, FileTree } = await loadClient('file-tree.tsx')
+  const { groupFilesByDirectory, FileTree } = await loadClient('file-tree.tsx')
   const files = [
     { path: '/ws/src/index.ts', relativePath: 'src/index.ts', additions: 3 },
     { path: '/ws/test/index.ts', relativePath: 'test/index.ts', deletions: 2 },
@@ -13,7 +13,7 @@ test('file tree groups interleaved directories while preserving file identities,
     { path: '/ws/src/helper.ts', relativePath: 'src/helper.ts' },
     { path: '/ws/README.md', relativePath: 'README.md' },
   ]
-  const tree = buildFileTree(files)
+  const tree = groupFilesByDirectory(files)
   assert.deepEqual(Array.from(tree, node => [node.kind, node.name, node.depth]), [
     ['folder', 'src', 0], ['file', 'index.ts', 1], ['file', 'helper.ts', 1],
     ['folder', 'test', 0], ['file', 'index.ts', 1],

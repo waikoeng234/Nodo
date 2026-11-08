@@ -1,5 +1,5 @@
 import { envName } from './secrets.js'
-import { leadRules } from './lead.js'
+import { leadRules } from './lead-rules.js'
 import { leadModeOf } from '../shared/lead.js'
 
 // Prompt: the task brief — the one piece of intelligence the orchestrator does

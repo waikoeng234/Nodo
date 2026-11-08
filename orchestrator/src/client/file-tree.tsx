@@ -11,7 +11,7 @@ export interface FileTreeNode {
   deletions?: number
 }
 
-export function buildFileTree(files: readonly { path: string; relativePath?: string; additions?: number; deletions?: number }[]): FileTreeNode[] {
+export function groupFilesByDirectory(files: readonly { path: string; relativePath?: string; additions?: number; deletions?: number }[]): FileTreeNode[] {
   const groups = new Map<string, FileTreeNode[]>()
   for (const file of files) {
     const path = file.relativePath ?? file.path
@@ -25,24 +25,17 @@ export function buildFileTree(files: readonly { path: string; relativePath?: str
     ? [{ path: directory, name: directory, depth: 0, kind: 'folder' as const }, ...files] : files).flat()
 }
 
-export function FileTree({ nodes, visibleCount = nodes.length, totalAdditions, totalDeletions, header, renderFile, className = '', ...props }:
+export function FileTree({ nodes, header, renderFile, className = '', ...props }:
   Omit<ComponentProps<'div'>, 'children'> & {
     nodes: readonly FileTreeNode[]
-    visibleCount?: number
-    totalAdditions?: number
-    totalDeletions?: number
     header?: ReactNode
     renderFile?: (node: FileTreeNode, content: ReactNode) => ReactNode
   }) {
   return <div data-slot="file-tree" className={`nodo-file-tree ${className}`} {...props}>
     {header ?? <div className="nodo-file-tree-header">
       <span>{nodes.filter(node => node.kind === 'file').length} 个文件变更</span>
-      <span className="nodo-file-tree-counts">
-        {totalAdditions !== undefined && <span className="nodo-file-tree-added">+{totalAdditions.toLocaleString()}</span>}
-        {totalDeletions !== undefined && <span className="nodo-file-tree-removed">−{totalDeletions.toLocaleString()}</span>}
-      </span>
     </div>}
-    {nodes.slice(0, Math.max(0, visibleCount)).map(node => {
+    {nodes.map(node => {
       const content = <span className="nodo-file-tree-row" style={{ paddingInlineStart: `${4 + node.depth * 14}px` }}>
         {node.kind === 'folder' ? <><IconChevronDownOutlineRegular size={12} /><IconFolderOpenOutlineRegular size={14} /></>
           : <span className="nodo-file-tree-icon"><FileIcon name={node.name} size={14} /></span>}

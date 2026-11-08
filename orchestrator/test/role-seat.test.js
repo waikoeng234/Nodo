@@ -31,6 +31,7 @@ async function harness({ defaultRole = 'a', readOnly = null, sourceSessionId } =
   const cells = []
   let cursor = 0
   const loaded = await loadClient(['new-conversation.js', 'page.js', 'composer.js', 'role-seat.js'], {
+    stubs: { 'navigation.js': { readNavigation: () => navigation, subscribeNavigation: () => () => {}, setNavigation: update => { navigation = update(navigation) } } },
     uiShared: {
       useStateView: () => ({ view, error: '' }),
       subscribeNavigation: () => () => {}, readNavigation: () => navigation,

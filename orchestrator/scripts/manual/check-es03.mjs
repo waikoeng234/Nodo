@@ -6,7 +6,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findDshExecutable } from '../agent-drivers/dist/dsh/config.js'
+import { findDshExecutable } from '../../agent-drivers/dist/dsh/config.js'
 
 const executable = findDshExecutable()
 assert.ok(executable, 'Install DSH before running this check')
@@ -17,7 +17,7 @@ const cwd = join(home, 'workspace')
 mkdirSync(plugin); mkdirSync(cwd)
 writeFileSync(join(plugin, 'package.json'), JSON.stringify({ name: 'nodo-es03-fixture', version: '0.0.0', type: 'module', main: 'index.js',
   exports: { '.': './index.js', './client': './client.js', './package.json': './package.json' }, dsh: { client: { inject: ['@deepseek-ai/dsh-client-ui-layout'], platform: 'web' } } }))
-const drivers = new URL('../agent-drivers/dist/index.js', import.meta.url).href
+const drivers = new URL('../../agent-drivers/dist/index.js', import.meta.url).href
 writeFileSync(join(plugin, 'index.js'), `
 import { registerEngine } from ${JSON.stringify(drivers)}
 const snapshot = (body, revision) => ({ version: 1, kind: 'tool', mode: 'snapshot', body, revision })
@@ -53,7 +53,7 @@ writeFileSync(join(plugin, 'client.js'), `window.__ModuleLoader__.load({ id: 'no
 } }) })`)
 if (changesProbe) {
   const bin = join(plugin, 'opencode.cjs')
-  copyFileSync(new URL('../test/fixtures/opencode-flow-cli.cjs', import.meta.url), bin)
+  copyFileSync(new URL('../../test/fixtures/opencode-flow-cli.cjs', import.meta.url), bin)
   chmodSync(bin, 0o755)
   writeFileSync(join(plugin, 'index.js'), `import { registerEngine, createDriver } from ${JSON.stringify(drivers)}
 registerEngine('es03-legacy', { info: { id: 'es03-legacy', label: 'ES05 protocol fixture', requiresCwd: true }, validate: value => value,
@@ -81,7 +81,7 @@ writeFileSync(patch, JSON.stringify([
   { id: 'llm-deepseek', config: { baseURL: relayUrl, apiKeyEnv: 'NODO_ES03_FIXTURE_KEY' } },
   { id: 'session-title-llm', disabled: true },
   { insert: [{ id: 'nodo-es03-fixture', name: join(plugin, 'index.js') },
-    { id: 'nodo', name: fileURLToPath(new URL('../index.js', import.meta.url)), config: { home: join(home, 'nodo') } }] },
+    { id: 'nodo', name: fileURLToPath(new URL('../../index.js', import.meta.url)), config: { home: join(home, 'nodo') } }] },
 ]))
 const start = () => {
   log = ''

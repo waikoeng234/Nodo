@@ -4,15 +4,15 @@ import { command } from './command.js'
 import { startMobileProxy } from './proxy.js'
 
 const TAILSCALE = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
-const message = (phase, reason, extra = {}) => ({ phase, reason, ...extra })
+const message = (phase, reason) => ({ phase, reason })
 
 export function createRemoteAccess({ host, connection, preferences, save, platform = process.platform,
   exists = existsSync, run = command, proxy = startMobileProxy }) {
   let stop, port, busy = false, closed = false
   const state = () => ({ enabled: preferences().enabled === true, busy })
-  // Preferences saved before ports were persisted forwarded to the former fixed port.
-  const persisted = () => { const { port } = preferences(); return Number.isInteger(port) && port > 0 && port < 65536 ? port : 43819 }
-  const target = () => state().enabled ? `http://127.0.0.1:${persisted()}` : ''
+  // Before ports were persisted, forwarding used the former fixed port.
+  const savedPort = () => { const { port } = preferences(); return Number.isInteger(port) && port > 0 && port < 65536 ? port : 43819 }
+  const target = () => state().enabled ? `http://127.0.0.1:${savedPort()}` : ''
   const retract = async () => {
     const origin = preferences().origin
     if (!origin || !URL.canParse(origin) || !exists(TAILSCALE)) return true
@@ -75,7 +75,7 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
         view = await inspect()
         if (view.phase !== 'ready') return { ...view, ...state(), busy: false }
         origin = view.origin
-        await start(origin, view.configured ? persisted() : undefined)
+        await start(origin, view.configured ? savedPort() : undefined)
         if (!view.configured) {
           const result = await run(TAILSCALE, ['serve', '--bg', '--yes', '--https=443', '--set-path=/', `http://127.0.0.1:${port}`], { timeout: 8_000 })
           if (result.code !== 0) {
@@ -118,7 +118,7 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
     async resume() {
       if (!state().enabled) return
       const view = await inspect()
-      if (view.phase === 'ready' && view.configured) await start(view.origin, persisted()).catch(() => {})
+      if (view.phase === 'ready' && view.configured) await start(view.origin, savedPort()).catch(() => {})
       if (!stop) await retract()
     },
     async close() { closed = true; await release() },

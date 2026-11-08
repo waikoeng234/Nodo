@@ -155,7 +155,7 @@ export function createRightPanel(ctx: {
     },
     forgetTab(id) {
       const tabs = state.tabs.filter(tab => tabId(tab) !== id)
-      publish({ tabs, active: state.active === id ? tabs.at(-1) ? tabId(tabs[tabs.length - 1]) : '' : state.active, error: '' })
+      publish({ tabs, active: state.active === id ? (tabs.at(-1) ? tabId(tabs.at(-1)!) : '') : state.active, error: '' })
     },
     async closeTab(id) {
       const current = generation, target = state.target

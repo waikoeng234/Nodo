@@ -871,6 +871,7 @@ const onboardingFixture = async ({ view = { profiles: [], workspaces: [] }, fail
     react: { useEffect(effect) { if (!mounted) loaded.host.effects.push(effect) } },
     stubs: {
       'page.js': { setNavigation: update => navigation.push(JSON.parse(JSON.stringify(update({ archivedSession: 'old' })))) },
+      'navigation.js': { setNavigation: update => navigation.push(JSON.parse(JSON.stringify(update({ archivedSession: 'old' })))) },
       'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label },
     },
     uiShared: { nativePickDirectory: pickDirectory, nativeSpace: { startDraft: selection => drafts.push({ ...selection }) }, call: async (endpoint, payload) => {

@@ -325,16 +325,12 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
   })
 }
 
-// The @-context picker: the workspace's own files, searched host-side and
-// bounded there; picking one inserts its relative path into the draft. The
-// agent reads the path with its own file tools, so no engine protocol is
-// involved and every engine gets the same answer.
 // The composer's permission control, a copy of the host's own PermissionSelect
 // (dsh-client-ui-permission-presets): the kit's permission glyphs and trigger
 // metrics, the same menu, and the same risk confirmation gating the top tier.
 // Tiers map per engine at session open; only the declared tiers are offered.
-export const PERMISSION_LABELS = { plan: '仅可查看', workspace: '工作区内修改', full: '完全权限' }
-export const PERMISSION_GLYPHS = { plan: PermissionIconReadOnlyRegular, workspace: PermissionIconWorkspaceWriteRegular, full: PermissionIconFullAccessRegular }
+const PERMISSION_LABELS = { plan: '仅可查看', workspace: '工作区内修改', full: '完全权限' }
+const PERMISSION_GLYPHS = { plan: PermissionIconReadOnlyRegular, workspace: PermissionIconWorkspaceWriteRegular, full: PermissionIconFullAccessRegular }
 export const permissionForEngine = (engine, current) => {
   const modes = engine?.capabilities?.permissionModes ?? []
   return modes.includes(current) ? current : modes.includes('workspace') ? 'workspace' : modes[0]

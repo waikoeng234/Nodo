@@ -1,18 +1,19 @@
-// Workspaces: the desks, hoisted out of the role cards. A workspace is one
-// directory on this machine; profiles (roles) are configured under it and may
-// share it, so the model is workspace first, roles after. A profile's working
-// directory is resolved through its workspace — see sessions.js.
+// Workspaces: one directory per project. Profiles (roles) are configured under
+// it and may share it; a profile's working directory resolves through its
+// workspace (sessions.js).
 //
-//   { id, name, cwd, createdAt, updatedAt }
+//   { id, name, cwd, worktree?, deletedAt?, createdAt, updatedAt }
 import { randomUUID } from 'node:crypto'
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { extname, isAbsolute, join, resolve } from 'node:path'
 import { readdirSync, realpathSync } from 'node:fs'
 import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { validateWorkspace } from '../../agent-drivers/dist/cli.js'
-import { IMAGE_BYTES_MAX, NAME_MAX } from './constants.js'
+import { IMAGE_BYTES_MAX } from './constants.js'
+import { DISPLAY_IMAGE_MIME_BY_EXT } from './image-types.js'
 import { readImageFile } from './image-files.js'
 import { normalize, unquote, uniqueName } from './text.js'
 import { failure, invalid } from './errors.js'
+import { inside } from './fs.js'
 import { nativeIdOf } from '../shared/session.js'
 
 // The @-context search answers at most this many paths and walks at most this
@@ -22,12 +23,7 @@ const FILES_DEPTH = 6
 // The changes card's on-demand file view reads at most this many bytes.
 const FILE_VIEW_LIMIT = 512 * 1024
 const DIR_MAX = 1000
-const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
 
-const inside = (base, path) => {
-  const rest = relative(base, path)
-  return rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
-}
 const confine = (base, path) => {
   if (!inside(base, path)) throw invalid('文件不在会话工作区内')
 }
@@ -75,8 +71,7 @@ export function install(rt) {
     if (changes.cwd !== undefined) next.cwd = cleanCwd(changes.cwd)
     const moved = next.cwd !== workspace.cwd
     Object.assign(workspace, next, { updatedAt: Date.now() })
-    // A moved directory invalidates every engine conversation under it, exactly
-    // as editing a profile's own directory did before workspaces existed.
+    // A moved directory invalidates every engine conversation under it.
     if (moved) for (const profile of profiles) await rt.restartConversations(profile, workspace.id)
     await rt.save()
     return { ...workspace }
@@ -239,7 +234,7 @@ export function install(rt) {
     if (real === null) return { path: full, missing: true }
     const info = await stat(real).catch(unreadable)
     if (!info?.isFile()) return { path: full, missing: true }
-    const mediaType = IMAGE_TYPES[extname(full).toLowerCase()]
+    const mediaType = DISPLAY_IMAGE_MIME_BY_EXT[extname(full).toLowerCase()]
     if (mediaType && info.size > IMAGE_BYTES_MAX) return { path: full, binary: true }
     await rt.loadSecrets()
     const handle = await open(real, 'r')
@@ -267,7 +262,7 @@ export function install(rt) {
   const workspaceFile = async body => {
     try { return await readWorkspaceFile(body) } catch (error) {
       const wanted = typeof body?.path === 'string' ? body.path : ''
-      if (error.message !== '文件不在会话工作区内' || !IMAGE_TYPES[extname(wanted).toLowerCase()]) throw error
+      if (error.message !== '文件不在会话工作区内' || !DISPLAY_IMAGE_MIME_BY_EXT[extname(wanted).toLowerCase()]) throw error
       const root = resolve(await sessionCwd(body))
       const full = resolve(root, wanted)
       if (inside(root, full)) throw error // escaped through a symlink after passing containment — keep it refused

@@ -252,8 +252,6 @@ export function WorktreeDialog({ workspace, profile, onCreated, onCancel }) {
     error !== '' && h('p', { className: 'nodo-dialog-error', role: 'alert' }, error)))
 }
 
-// Rename a workspace by name alone, like dsh's own dialog: the folder itself is
-// not touched, and the name has to stay unique across the list.
 // One rename dialog for projects and sessions: draft/busy/error/composing
 // handling with Enter submit; the callers keep the save path and the labels.
 function RenameDialog({ title, label, action, maxLength, initial, conflict, conflictMessage, onSaved, onCancel }) {

@@ -2,7 +2,7 @@ import { readdirSync, statSync, constants, accessSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { STEER, addUsage, promptTokensOf, usageOf } from '../spi.js';
-import { cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { checkCliBase, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { qoderArgs, connectQoder } from './native.js';
@@ -85,29 +85,14 @@ export function handshakeQoder({ executable, cwd, env }) {
     });
 }
 export async function checkQoder({ cwd, engineOptions = {} } = {}) {
-    const checks = [];
-    try {
-        validateWorkspace(cwd, true);
-        checks.push({ label: 'Working directory', ok: true, message: cwd });
-    }
-    catch (error) {
-        checks.push({ label: 'Working directory', ok: false, message: error.message });
-    }
     const options = validateQoderOptions(engineOptions);
-    const executable = findQoderExecutable(options.bin);
-    if (!executable)
-        return { engine: 'qoder', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'Qoder CLI executable not found. Install Qoder or enter its absolute path.' }] };
-    let version;
-    try {
-        version = await cliVersion(executable);
-        checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
-    }
-    catch {
-        return { engine: 'qoder', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] };
-    }
+    const base = await checkCliBase('qoder', cwd, findQoderExecutable(options.bin), 'Qoder CLI executable not found. Install Qoder or enter its absolute path.');
+    if (base.failed)
+        return base.failed;
+    const { checks, executable, version } = base;
     let peer;
     try {
-        const peek = await handshakeQoder({ executable, cwd });
+        const peek = await handshakeQoder({ executable: executable, cwd });
         peer = peek.peer;
         const protocol = typeof peek.response.protocol_version === 'string' ? peek.response.protocol_version : undefined;
         const login = peek.response.account?.userId !== undefined;

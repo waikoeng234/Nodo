@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { STEER, addUsage, isTodoTool, steerFailed, todoPlanSteps, usageOf } from '../spi.js';
-import { invalidConfig, validateBin, validateWorkspace } from '../cli.js';
+import { checkCliBase, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { collector, listDirs, newestPluginVersions } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, textToolChanges } from '../file-changes.js';
@@ -30,27 +30,12 @@ export function validateZcodeOptions(raw = {}) {
     return bin ? { bin } : {};
 }
 export async function checkZcode({ cwd, engineOptions = {} } = {}) {
-    const checks = [];
-    try {
-        validateWorkspace(cwd, true);
-        checks.push({ label: 'Working directory', ok: true, message: cwd });
-    }
-    catch (error) {
-        checks.push({ label: 'Working directory', ok: false, message: error.message });
-    }
     const options = validateZcodeOptions(engineOptions);
-    const executable = findZcodeExecutable(options.bin ?? 'zcode');
-    if (!executable)
-        return { engine: 'zcode', ok: false, checks: [...checks, { label: 'CLI', ok: false, message: 'ZCode executable not found. Install ZCode or enter its absolute path.' }] };
-    let version;
-    try {
-        version = await zcodeCliVersion(executable);
-        checks.push({ label: 'CLI', ok: true, message: `${version} · ${executable}` });
-    }
-    catch {
-        return { engine: 'zcode', ok: false, executable, checks: [...checks, { label: 'CLI', ok: false, message: 'CLI version check failed or timed out.' }] };
-    }
-    const peer = connectZcode({ executable, cwd, onRequest: request => {
+    const base = await checkCliBase('zcode', cwd, findZcodeExecutable(options.bin ?? 'zcode'), 'ZCode executable not found. Install ZCode or enter its absolute path.', zcodeCliVersion);
+    if (base.failed)
+        return base.failed;
+    const { checks, executable, version } = base;
+    const peer = connectZcode({ executable: executable, cwd, onRequest: request => {
             if (request.method === 'interaction/requestOfficialMcpAuthHeaders')
                 peer.reply(request.id, { headers: {} });
             else
@@ -748,7 +733,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                     }
                     if (!values || typeof values !== 'object' || Array.isArray(values))
                         throw new Error('Answer each question using the form');
-                    questions.forEach((item, index) => {
+                    questions.forEach((_, index) => {
                         parts[index] = Array.isArray(values[`q${index}`]) ? values[`q${index}`].filter(Boolean).join('\n') : String(values[`q${index}`] ?? '').trim();
                     });
                     if (parts.some(part => !part))

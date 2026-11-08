@@ -1,14 +1,7 @@
-// Profiles: the role cards. One profile is who an agent is and which engine
-// runs it — the orchestrator's equivalent of a hire: name, role, tools. Each
-// conversation chooses its workspace independently; keys reach a profile
-// through each key's own scope (secrets.js).
-//
-//   { id, name, identity?, role, engine, workspaceId?, model?, thinking?,
-//     instructions, driverSessionId?, deletedAt?, createdAt, updatedAt }
-//
-// The driverSessionId is the engine-side conversation id (e.g. a Codex thread
-// id) captured from the driver; it lets a fresh process resume where the
-// last one left off. Nothing here knows how to talk to an engine — that is drivers.js.
+// Profiles: the role cards. One profile is who an agent is and which engine runs
+// it (name, role, tools); conversations choose their workspace independently and
+// keys reach a profile through each key's scope (secrets.js). driverSessionId is
+// the engine-side conversation cursor; talking to engines is drivers.js.
 import { randomUUID } from 'node:crypto'
 import { INSTRUCTIONS_MAX, MAX_PROFILES, NAME_MAX, ROLE_MAX } from './constants.js'
 import { normalize, unquote, uniqueName } from './text.js'
@@ -115,8 +108,9 @@ export function install(rt) {
   // implicit first conversation — the first live session, exactly as the rail
   // shows it.
   const activeSessionOf = profile => {
-    const activeId = profile.activeSessionId ?? rt.sessionsOf(profile).find(session => !session.archivedAt)?.id
-    return rt.sessionsOf(profile).find(item => item.id === activeId)
+    const sessions = rt.sessionsOf(profile)
+    const activeId = profile.activeSessionId ?? sessions.find(session => !session.archivedAt)?.id
+    return sessions.find(item => item.id === activeId)
   }
 
   const updateProfile = async (id, changes) => {
@@ -304,7 +298,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    createProfile, updateProfile, deleteProfile, findProfile, activeProfiles, profileView, restartConversations, orderProfiles,
+    createProfile, updateProfile, deleteProfile, findProfile, activeProfiles, restartConversations, orderProfiles,
     saveRolePreset, deleteRolePreset, cleanPermission, defaultPermission,
     profilesView: () => Object.values(state.profiles).map(profileView),
   })

@@ -8,7 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createDriver } from '../agent-drivers/dist/index.js'
+import { createDriver } from '../../agent-drivers/dist/index.js'
 import { probeModels } from './probe-models.mjs'
 
 const TOKEN = 'NODO_PROBE_OK'

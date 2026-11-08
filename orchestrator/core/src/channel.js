@@ -1,6 +1,6 @@
-// POST /api/nodo: one endpoint name and payload per request, answered as
-// { ok: true, value } or { ok: false, error }. `state` returns only the live parts
-// while the client's revision is current.
+// The API surface: one handler per endpoint name, answered as { ok: true, value }
+// or { ok: false, error }. `state` returns only the live parts while the client's
+// revision is current.
 import { leadModeOf } from '../shared/lead.js'
 import { failure, invalid } from './errors.js'
 
@@ -13,7 +13,6 @@ function errorCode(error) {
   return BUGS.some(type => error instanceof type) || /^E[A-Z_]+$/.test(code) ? 'orch/internal' : 'orch/refused'
 }
 
-// 增量应答里的行做同样的脱敏；appended/changed 的行对象换成脱敏副本，位置原样保留。
 function redactDelta(rt, delta) {
   if (delta.full) return { ...delta, lines: rt.redactDeepSecrets(delta.lines) }
   return { ...delta, appended: rt.redactDeepSecrets(delta.appended), changed: rt.redactDeepSecrets(delta.changed) }
@@ -89,11 +88,9 @@ export function install(rt) {
           && (body.teamId === undefined || task.teamId === body.teamId)).map(({ brief, source, acceptances, ...task }) => {
           const list = executions.get(task.id) ?? []
           return { ...task, latestExecutionStatus: list.at(-1)?.status ?? null,
-            executions: list.map(({ id, sessionId, createdAt, startedAt, endedAt, status, reason }) => ({ id, sessionId, createdAt, startedAt, endedAt, status, reason })) }
-        })).map(task => {
-          for (const execution of task.executions) execution.reason = execution.reason?.slice(0, 200) ?? null
-          return task
-        })
+            executions: list.map(({ id, sessionId, createdAt, startedAt, endedAt, status, reason }) =>
+              ({ id, sessionId, createdAt, startedAt, endedAt, status, reason: typeof reason === 'string' ? rt.redactDeepSecrets(reason).slice(0, 200) : null })) }
+        }))
       }
       case 'task-get': {
         const task = await rt.taskView(body.taskId)

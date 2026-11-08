@@ -3,6 +3,10 @@ import { NAME_MAX } from './constants.js'
 import { invalid } from './errors.js'
 
 export const normalize = value => `${value ?? ''}`.trim().toLowerCase()
+export const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const UUID = /^[\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}$/i
+export const isUuid = value => typeof value === 'string' && UUID.test(value)
+export const isUuidLike = value => typeof value === 'string' && /^[\da-f-]{36}$/i.test(value)
 
 // Quote marks a user may type around a name, ASCII and CJK.
 const QUOTES = new Set('"\'“”‘’「」『』《》')

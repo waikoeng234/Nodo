@@ -221,7 +221,8 @@ export function install(rt) {
           : ops.some(item => item.operation === 'add') ? 'add'
           : ops.some(item => item.operation === 'move') ? 'move'
           : last.operation === 'unknown' ? 'unknown' : 'update'
-        const from = op === 'move' ? relPath(ops.findLast(item => item.operation === 'move').fromPath ?? '', ops.findLast(item => item.operation === 'move').cwd) : undefined
+        const move = op === 'move' ? ops.findLast(item => item.operation === 'move') : undefined
+        const from = move ? relPath(move.fromPath ?? '', move.cwd) : undefined
         return { path, op, ...(from ? { from } : {}) }
       }).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
       const total = items.length

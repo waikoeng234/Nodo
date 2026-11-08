@@ -4,12 +4,9 @@
 // model, env). This module owns engine lifecycle only; message routing is
 // dispatch.js and cards are approvals.js.
 //
-// The package import is dynamic and degrades to an empty engine list when
-// agent-drivers cannot be loaded, so the plugin still loads and can say why. It
-// is imported by relative path from ./agent-drivers (a package-shaped directory
-// kept inside the plugin so any install method — link, copy, or git — resolves
-// it); extracting it back to a standalone package means republishing it and
-// switching this specifier.
+// agent-drivers is imported by relative path (a package-shaped directory kept
+// inside the plugin so link, copy and git installs all resolve it). A failed
+// import degrades to an empty engine list so the plugin still loads and can say why.
 import { join } from 'node:path'
 import { createIdentityFiles } from '../../agent-drivers/dist/identity-files.js'
 import { DRIVER_IDLE_RELEASE_MS } from './constants.js'
@@ -48,9 +45,10 @@ export function install(rt) {
   const ensureDriver = async (profile) => {
     await driversReady()
     if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`, 'orch/no-drivers')
-    const signature = JSON.stringify([signatureOf(profile), leadModeOf(profile, profile)])
+    const leadMode = leadModeOf(profile, profile)
+    const signature = JSON.stringify([signatureOf(profile), leadMode])
     const existing = instances.get(profile.id)
-    if (existing !== undefined && existing.signature === signature && (!leadModeOf(profile, profile) || existing.revoke)) return armIdle(profile.id, existing).driver
+    if (existing !== undefined && existing.signature === signature && (!leadMode || existing.revoke)) return armIdle(profile.id, existing).driver
     const leadMcp = await rt.issueLeadMcp?.(profile.id)
     if (existing !== undefined && existing.signature === signature && !leadMcp) return armIdle(profile.id, existing).driver
     if (existing !== undefined) releaseDriver(profile.id)
@@ -106,23 +104,23 @@ export function install(rt) {
   }
 
   // DSH sessions run inside the host, not in a child process, so they are never armed.
-  const armIdle = (profileId, entry) => {
+  const armIdle = (sessionId, entry) => {
     if (!entry.releasable) return entry
     clearTimeout(entry.idle)
     entry.idle = setTimeout(() => {
-      if (instances.get(profileId) !== entry) return
-      const work = rt.workView?.()[profileId]
-      if (work?.active || work?.queued) armIdle(profileId, entry)
-      else { idled.add(entry.driver); releaseDriver(profileId) }
+      if (instances.get(sessionId) !== entry) return
+      const work = rt.workView?.()[sessionId]
+      if (work?.active || work?.queued) armIdle(sessionId, entry)
+      else { idled.add(entry.driver); releaseDriver(sessionId) }
     }, DRIVER_IDLE_RELEASE_MS)
     entry.idle.unref?.()
     return entry
   }
-  const driverOf = (profileId) => instances.get(profileId)?.driver
-  const releaseDriver = (profileId) => {
-    const entry = instances.get(profileId)
+  const driverOf = (sessionId) => instances.get(sessionId)?.driver
+  const releaseDriver = (sessionId) => {
+    const entry = instances.get(sessionId)
     if (entry === undefined) return
-    instances.delete(profileId)
+    instances.delete(sessionId)
     clearTimeout(entry.idle)
     entry.revoke?.()
     try { entry.driver.dispose() } catch { /* a half-dead engine is fine to drop */ }
@@ -131,33 +129,33 @@ export function install(rt) {
     try { identityFiles.collect(Object.values(rt.state.profiles).flatMap(profile => rt.sessionsOf(profile).map(session => session.id))) }
     catch { rt.warn('nodo: unused identity versions could not be collected') }
   }
-  const answerRequest = (profileId, requestId, payload) => {
-    const driver = driverOf(profileId)
+  const answerRequest = (sessionId, requestId, payload) => {
+    const driver = driverOf(sessionId)
     if (driver === undefined) return Promise.resolve(false)
     return Promise.resolve(driver.respondToRequest(requestId, payload))
   }
-  const interruptDriver = (profileId) => {
-    const driver = driverOf(profileId)
+  const interruptDriver = (sessionId) => {
+    const driver = driverOf(sessionId)
     if (driver === undefined) return Promise.resolve(false)
     return Promise.resolve(driver.interruptTurn()).then(() => true).catch(() => false)
   }
   // Compaction addresses the active driver; an engine without the optional
   // SPI channel is refused instead of pretending.
-  const compactDriver = async (profileId) => {
-    if (rt.workView()[profileId]?.active) throw failure('Stop or finish the task before compacting this session', 'orch/busy')
-    compactions.add(profileId)
+  const compactDriver = async (sessionId) => {
+    if (rt.workView()[sessionId]?.active) throw failure('Stop or finish the task before compacting this session', 'orch/busy')
+    compactions.add(sessionId)
     try {
-      const driver = await ensureDriver(await rt.prepareConversation(profileId))
+      const driver = await ensureDriver(await rt.prepareConversation(sessionId))
       if (typeof driver.compact !== 'function') throw invalid('This engine has no compaction channel')
       await driver.openSession()
-      const { session } = rt.conversationOf(profileId)
+      const { session } = rt.conversationOf(sessionId)
       session.restoreContext = true
       await rt.save()
       await driver.compact()
     } finally {
-      compactions.delete(profileId)
-      rt.drainQueue(profileId)
-      void rt.flushLeadReports?.(profileId)
+      compactions.delete(sessionId)
+      rt.drainQueue(sessionId)
+      void rt.flushLeadReports?.(sessionId)
     }
     return true
   }
@@ -203,7 +201,7 @@ export function install(rt) {
   ctx.effect(() => {
     void runProbe()
     return () => {
-      for (const profileId of [...instances.keys()]) releaseDriver(profileId)
+      for (const sessionId of [...instances.keys()]) releaseDriver(sessionId)
     }
   }, 'nodo: drivers')
 

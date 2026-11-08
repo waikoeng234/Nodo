@@ -1,14 +1,14 @@
-// Teams: a lead, its members, the task types the team routes with and the
-// per-type assignment table lead routing reads. The list lives in prefs.teams.
-// The first read after upgrading derives one team per lead from the per-role
-// taskTypes/hard settings those used to carry, and the first read after the
-// per-team switch copies the shared catalog into every team, then drops it.
+// Teams live in prefs.teams: a lead, its members, the task types it routes with
+// and the per-type assignment table lead routing reads. The first read after an
+// upgrade runs the two migrations at derive/migrate below.
 import { randomUUID } from 'node:crypto'
 import { TEAMS_MAX, TEAM_NAME_MAX, TASK_TYPES_MAX, TASK_TYPE_NAME_MAX, TASK_TYPE_WHEN_MAX } from './constants.js'
 import { normalize, unquote } from './text.js'
 import { cleanModel, cleanThinking } from './profiles.js'
 import { invalid } from './errors.js'
 import defaultTaskTypes from '../shared/task-types.json' with { type: 'json' }
+
+const catalogOf = types => types.map(({ id, name, when, independent }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}) }))
 
 export function install(rt) {
   const { state } = rt
@@ -17,7 +17,7 @@ export function install(rt) {
   const derive = () => {
     const roster = live().filter(profile => profile.lead !== true)
     const types = Array.isArray(state.prefs.taskTypes) ? state.prefs.taskTypes : defaultTaskTypes
-    const catalog = types.map(({ id, name, when, independent }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}) }))
+    const catalog = catalogOf(types)
     const teams = live().filter(profile => profile.lead === true).map(lead => {
       const assign = {}
       for (const type of types) {
@@ -50,8 +50,7 @@ export function install(rt) {
   // save persists it, and until then every re-read migrates the same way.
   const migrate = () => {
     if (!Array.isArray(state.prefs.teams) || !state.prefs.teams.some(team => !Array.isArray(team.types))) return
-    const catalog = (Array.isArray(state.prefs.taskTypes) ? state.prefs.taskTypes : defaultTaskTypes)
-      .map(({ id, name, when, independent }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}) }))
+    const catalog = catalogOf(Array.isArray(state.prefs.taskTypes) ? state.prefs.taskTypes : defaultTaskTypes)
     for (const team of state.prefs.teams) team.types = catalog.map(type => ({ ...type }))
     delete state.prefs.taskTypes
   }
