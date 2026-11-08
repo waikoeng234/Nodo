@@ -1,0 +1,15 @@
+ObjC.import('Foundation')
+ObjC.import('CoreImage')
+ObjC.import('AppKit')
+
+const input = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile
+const filter = $.CIFilter.filterWithName('CIQRCodeGenerator')
+filter.setValueForKey(input, 'inputMessage')
+filter.setValueForKey('M', 'inputCorrectionLevel')
+const image = filter.outputImage
+const background = $.CIImage.imageWithColor($.CIColor.colorWithRedGreenBlueAlpha(1, 1, 1, 1))
+const context = $.CIContext.contextWithOptions($.NSDictionary.dictionary)
+const frame = $.CGRectInset(image.extent, -4, -4)
+const bitmap = $.NSBitmapImageRep.alloc.initWithCGImage(context.createCGImageFromRect(image.imageByCompositingOverImage(background), frame))
+const data = bitmap.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $.NSDictionary.dictionary)
+$.NSFileHandle.fileHandleWithStandardOutput.writeData(data)

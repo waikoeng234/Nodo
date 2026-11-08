@@ -17629,6 +17629,110 @@ function WorkspaceDeleteDialog({ workspace, onCancel, onDeleted }) {
   );
 }
 
+// src/client/remote-access.js
+function RemoteAccessSettings({ readOnly = false }) {
+  const [view2, setView] = (0, import_react.useState)(null);
+  const [busy, setBusy] = (0, import_react.useState)("");
+  const [error2, setError] = (0, import_react.useState)("");
+  const [login, setLogin] = (0, import_react.useState)(null);
+  const [copied, setCopied] = (0, import_react.useState)(false);
+  const act = async (action = "status") => {
+    setBusy(action);
+    setError("");
+    setLogin(null);
+    setCopied(false);
+    try {
+      const result = await call2(`remote-${action}`);
+      if (action === "login") setLogin(result);
+      else if (action !== "open") setView(result);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy("");
+    }
+  };
+  (0, import_react.useEffect)(() => {
+    let active = true;
+    call2("remote-status").then((value) => {
+      if (active) setView(value);
+    }).catch((failure) => {
+      if (active) setError(failure.message);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const locked = !!busy || !!view2?.busy || readOnly;
+  const enabled = view2?.phase === "enabled";
+  const labels = {
+    unsupported: "\u5F53\u524D\u73AF\u5883\u6682\u4E0D\u652F\u6301",
+    install: "\u5B89\u88C5 Tailscale",
+    unavailable: "\u6253\u5F00 Tailscale",
+    connect: "\u8FDE\u63A5 Tailscale",
+    network: "\u7F51\u7EDC\u9700\u8981\u5904\u7406",
+    conflict: "\u5165\u53E3\u9700\u8981\u5904\u7406",
+    authorize: "\u6388\u6743 HTTPS",
+    ready: "\u51C6\u5907\u5C31\u7EEA",
+    enabled: "\u624B\u673A\u8FDC\u7A0B\u5DF2\u542F\u7528"
+  };
+  return (0, import_react.createElement)(
+    "section",
+    { className: "nodo-remote", "aria-label": "\u624B\u673A\u8FDC\u7A0B" },
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-heading" },
+      (0, import_react.createElement)("h3", null, "\u624B\u673A\u8FDC\u7A0B"),
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", disabled: !!busy, onClick: () => void act() }, busy === "status" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5")
+    ),
+    !view2 && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u67E5 Desktop \u4E0E Tailscale\u2026"),
+    view2 && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-status", role: "status", "aria-live": "polite" },
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-remote-status-title" },
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: enabled ? "done" : ["network", "conflict", "unavailable"].includes(view2.phase) ? "error" : "idle", size: 8 }),
+        (0, import_react.createElement)("strong", null, labels[view2.phase] ?? "\u68C0\u67E5\u8FDE\u63A5")
+      ),
+      view2.reason && (0, import_react.createElement)("p", null, view2.reason),
+      view2.origin && (0, import_react.createElement)("p", { className: "nodo-remote-address" }, view2.origin)
+    ),
+    (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-actions" },
+      view2 && ["install", "unavailable", "connect", "network"].includes(view2.phase) && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void act("open") }, view2.phase === "install" ? "\u5B89\u88C5 Tailscale" : "\u6253\u5F00 Tailscale"),
+      view2?.phase === "authorize" && (0, import_react.createElement)("a", { href: view2.authorizationUrl, target: "_blank", rel: "noopener noreferrer", className: "nodo-remote-link" }, "\u6253\u5F00 HTTPS \u6388\u6743\u9875"),
+      view2 && ["ready", "authorize"].includes(view2.phase) && (0, import_react.createElement)(
+        import_dsh_client_ui_primitives.Button,
+        { variant: "primary", disabled: locked, onClick: () => void act("enable") },
+        busy === "enable" ? "\u914D\u7F6E\u4E2D\u2026" : view2.phase === "authorize" ? "\u5DF2\u6388\u6743\uFF0C\u7EE7\u7EED\u914D\u7F6E" : "\u542F\u7528\u624B\u673A\u8FDC\u7A0B"
+      ),
+      enabled && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "primary", disabled: locked, onClick: () => void act("login") }, busy === "login" ? "\u751F\u6210\u4E2D\u2026" : login ? "\u5237\u65B0\u4E8C\u7EF4\u7801" : "\u8FDE\u63A5\u624B\u673A"),
+      view2?.enabled && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: () => void act("disable") }, busy === "disable" ? "\u5173\u95ED\u4E2D\u2026" : "\u5173\u95ED\u8FDC\u7A0B\u8BBF\u95EE")
+    ),
+    login && (0, import_react.createElement)(
+      "div",
+      { className: "nodo-remote-pair" },
+      (0, import_react.createElement)("div", { className: "nodo-remote-qr" }, (0, import_react.createElement)("img", { src: login.qr, alt: "\u624B\u673A\u767B\u5F55\u4E8C\u7EF4\u7801", width: 192, height: 192 })),
+      (0, import_react.createElement)(
+        "div",
+        { className: "nodo-remote-pair-copy" },
+        (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: async () => {
+          try {
+            if (await (0, import_dsh_client_ui_primitives.writeClipboard)(login.url)) setCopied(true);
+            else setError("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+          } catch {
+            setError("\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+          }
+        } }, copied ? "\u5DF2\u590D\u5236" : "\u590D\u5236\u624B\u673A\u767B\u5F55\u94FE\u63A5"),
+        (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u4E8C\u7EF4\u7801\u6388\u4E88\u5F53\u524D DSH \u5BBF\u4E3B\u7684\u6240\u6709\u8005\u8BBF\u95EE\u6743\u9650\uFF0C\u8BF7\u52FF\u5206\u4EAB\u3002")
+      )
+    ),
+    error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-error", role: "alert" }, error2),
+    readOnly && (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5F53\u524D\u5BBF\u4E3B\u4E3A\u53EA\u8BFB\u6A21\u5F0F\uFF0C\u8BF7\u5728\u6B63\u5728\u8FD0\u884C\u4EFB\u52A1\u7684 Desktop \u4E2D\u8BBE\u7F6E\u3002")
+  );
+}
+
 // src/client/engine-settings.js
 function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly, onClose }) {
   const seed = (engineId) => {
@@ -17646,6 +17750,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
   const [loading, setLoading] = (0, import_react.useState)(true);
   const [saved, setSaved] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
+  const [section, setSection] = (0, import_react.useState)("engines");
   const pick = (engineId) => {
     setSelected(engineId);
     setDraft(seed(engineId));
@@ -17849,10 +17954,10 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
         if (!locked) onClose();
       },
       closeLabel: "\u5173\u95ED",
-      title: "\u6A21\u578B\u63D0\u4F9B\u65B9\u4E0E Agent",
+      title: "Nodo \u8BBE\u7F6E",
       className: "nodo-dialog nodo-engine-dialog",
       contentClassName: "nodo-engine-shell",
-      footer: engine ? [
+      footer: section === "engines" && engine ? [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
           key: "run",
           type: "submit",
@@ -17865,7 +17970,33 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
     },
     (0, import_react.createElement)(
       "div",
-      { className: "nodo-engine-content" },
+      { className: "nodo-settings-tabs", role: "tablist", "aria-label": "\u8BBE\u7F6E\u5206\u7C7B" },
+      ...[["engines", "\u6A21\u578B\u63D0\u4F9B\u65B9\u4E0E Agent"], ["remote", "\u624B\u673A\u8FDC\u7A0B"]].map(([id, title]) => (0, import_react.createElement)("button", {
+        key: id,
+        type: "button",
+        role: "tab",
+        id: `nodo-settings-${id}`,
+        "aria-selected": section === id,
+        tabIndex: section === id ? 0 : -1,
+        "aria-controls": `nodo-settings-panel-${id}`,
+        disabled: locked,
+        onClick: () => setSection(id),
+        onKeyDown: (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? "engines" : event.key === "End" ? "remote" : id === "engines" ? "remote" : "engines";
+          setSection(next);
+          event.currentTarget.parentElement.querySelector(`#nodo-settings-${next}`)?.focus();
+        }
+      }, title))
+    ),
+    section === "remote" ? (0, import_react.createElement)(
+      "div",
+      { role: "tabpanel", id: "nodo-settings-panel-remote", "aria-labelledby": "nodo-settings-remote", className: "nodo-engine-content" },
+      (0, import_react.createElement)(RemoteAccessSettings, { readOnly })
+    ) : (0, import_react.createElement)(
+      "div",
+      { className: "nodo-engine-content", role: "tabpanel", id: "nodo-settings-panel-engines", "aria-labelledby": "nodo-settings-engines" },
       (0, import_react.createElement)(
         "div",
         { className: "nodo-engine-toolbar" },
@@ -22118,6 +22249,25 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-engine-shell>div:last-child{margin-top:12px}
 .nodo-engine-dialog>:last-child{flex-shrink:0}
 .nodo-engine-content{max-height:min(66vh,720px);overflow-y:auto;overscroll-behavior:contain;margin:0 -12px 0 -2px;padding:0 12px 2px 2px}
+.nodo-settings-tabs{display:flex;gap:16px;border-bottom:.5px solid var(--dsw-alias-border-l3)}
+.nodo-settings-tabs>button{padding:8px 0;background:none;border:0;border-radius:0;border-bottom:2px solid transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
+.nodo-settings-tabs>button[aria-selected=true]{border-bottom-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
+.nodo-settings-tabs>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
+.nodo-remote{padding:4px 0 12px;font-size:13px;line-height:22px}
+.nodo-remote-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+.nodo-remote-heading>button{flex-shrink:0;white-space:nowrap}
+.nodo-remote-heading h3{margin:0;font-size:15px;font-weight:600;line-height:24px}
+.nodo-remote p{margin:4px 0 0;color:var(--dsw-alias-label-secondary)}
+.nodo-remote-status{padding:16px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1)}
+.nodo-remote-status-title{display:flex;align-items:center;gap:8px}
+.nodo-remote-address{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.nodo-remote-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:20px}
+.nodo-remote-link{color:var(--dsw-alias-state-business-primary);text-underline-offset:3px}
+.nodo-remote-pair{display:flex;align-items:center;gap:24px;margin-top:24px;padding-top:24px;border-top:.5px solid var(--dsw-alias-border-l3)}
+.nodo-remote-qr{display:flex;flex:none;padding:12px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-base)}
+.nodo-remote-qr img{display:block;image-rendering:pixelated}
+.nodo-remote-pair-copy{display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0}
+@media(max-width:520px){.nodo-remote-pair{flex-direction:column;align-items:flex-start;gap:16px}.nodo-remote-heading{gap:8px}.nodo-settings-tabs{gap:12px}}
 .nodo-engine-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;color:var(--dsw-alias-label-secondary);font-size:12px}
 .nodo-engine-toolbar>.nodo-engine-group{margin:0}
 .nodo-engine-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-items:stretch}
