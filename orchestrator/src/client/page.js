@@ -355,10 +355,12 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     startConversation(roleId, pageEnv, project)
   }
   // The session send path carries images only; documents have no channel here.
+  const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
   const attach = async files => {
     try {
-      const images = files.filter(file => file.type.startsWith('image/'))
-      if (files.length && !images.length) throw new Error('会话里只能添加图片，其他文件请在新建会话页添加。')
+      if (!files.length) return
+      const images = files.filter(file => imageTypes.includes(file.type))
+      if (images.length !== files.length) throw new Error('会话里只能添加图片，其他文件请在新建会话页添加。')
       const added = await Promise.all(images.map(readImage))
       setPastedImages(current => ({ ...current, [draftKey]: [...(current[draftKey] ?? []), ...added] }))
     } catch (failure) { setActionError(failure.message) }
@@ -510,7 +512,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
       modelDisabled: sessionBusy || readOnly,
       onChange: value => setDrafts(current => ({ ...current, [draftKey]: value })),
       onSend: () => void send(), onStop: () => void interrupt(), onAttach: attach, onRemoveImage: removeImage,
-      onAttachFiles: attach,
+      onAttachFiles: attach, accept: 'image/png,image/jpeg,image/webp,image/gif', attachLabel: '上传图片',
       pending: work?.pending?.some(item => item.taskId)
         ? work.pending.map(item => item.taskId ? { ...item, taskTitle: view.tasks?.find(task => task.id === item.taskId)?.title } : item)
         : work?.pending,
