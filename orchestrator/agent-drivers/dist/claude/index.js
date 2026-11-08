@@ -553,6 +553,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             const error = reason === 'error'
                 ? (Array.isArray(frame.errors) && frame.errors.length ? frame.errors.map(item => typeof item === 'string' ? item : item?.message).filter(Boolean).join('; ') : '')
                     || frame.error?.message
+                    || (typeof frame.result === 'string' && frame.result.trim())
                     || `Claude turn failed (${frame.subtype ?? 'unknown result'})`
                 : undefined;
             // A failed turn still owns its final text when nothing streamed.
