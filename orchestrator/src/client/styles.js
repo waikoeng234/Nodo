@@ -841,16 +841,13 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-settings-tabs>button[aria-selected=true]{border-bottom-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
 .nodo-settings-tabs>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-remote{padding:4px 0 12px;font-size:13px;line-height:22px}
-.nodo-remote-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.nodo-remote-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
 .nodo-remote-heading>button{flex-shrink:0;white-space:nowrap}
 .nodo-remote-heading h3{margin:0;font-size:15px;font-weight:600;line-height:24px}
 .nodo-remote p{margin:4px 0 0;color:var(--dsw-alias-label-secondary)}
 .nodo-remote-status{padding:16px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1)}
 .nodo-remote-status-title{display:flex;align-items:center;gap:8px}
 .nodo-remote-address{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.nodo-remote-guide{margin-top:20px}
-.nodo-remote-guide ol{margin:0 0 12px;padding-left:22px}
-.nodo-remote-guide li+li{margin-top:6px}
 .nodo-remote-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:20px}
 .nodo-remote-link{color:var(--dsw-alias-state-business-primary);text-underline-offset:3px}
 .nodo-remote-pair{display:flex;align-items:center;gap:24px;margin-top:24px;padding-top:24px;border-top:.5px solid var(--dsw-alias-border-l3)}

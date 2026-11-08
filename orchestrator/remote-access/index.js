@@ -21,8 +21,8 @@ export function createRemoteAccess({ host, connection, preferences, save, platfo
     try { status = JSON.parse(String(result.stdout)) } catch { return message('unavailable', '无法连接 Tailscale，请打开它后重新检查。') }
     if (result.code !== 0) return message('unavailable', '无法连接 Tailscale，请打开它后重新检查。')
     if (status.BackendState !== 'Running') return message('connect', '请在 Tailscale 中登录并连接。')
-    if (status.Health?.length) return message('network', status.Health.some(value => value.includes('ReceiveIPv4'))
-      ? 'Tailscale 收包模块异常，请完全退出并重新打开 Tailscale。' : 'Tailscale 网络异常，请在 Tailscale 中检查连接后重试。')
+    if (status.Health?.some(value => value.includes('ReceiveIPv4')))
+      return message('network', 'Tailscale 收包模块异常，请完全退出并重新打开 Tailscale。')
     const hostname = String(status.Self?.DNSName ?? '').replace(/\.$/, '').toLowerCase()
     if (!/^[a-z0-9-]+\.[a-z0-9-]+\.ts\.net$/.test(hostname))
       return message('connect', '尚未取得私有域名，请确认 Tailscale 已连接。')

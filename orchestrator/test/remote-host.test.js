@@ -2,15 +2,15 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { install } from '../src/host/remote.js'
 
-function fixture(readOnly = null) {
+function fixture(readOnly = null, { get = () => undefined, prefs = {} } = {}) {
   const cleanups = []
   const rt = {
     ctx: {
-      get: () => undefined,
+      get,
       get webServer() { throw new Error('undeclared service access') },
       connection: {}, effect: factory => { cleanups.push(factory()) },
     },
-    state: { prefs: {} }, readOnly: () => readOnly,
+    state: { prefs }, readOnly: () => readOnly,
     saveStrict: async () => { throw new Error('unexpected preference write') },
     handle: async (endpoint, payload) => ({ endpoint, payload }), load: async () => {},
   }
@@ -39,5 +39,24 @@ test('read-only hosts reject every remote action except inspecting status', asyn
       assert.equal(result.error.code, 'orch/read-only')
     }
     assert.equal((await f.rt.handle('remote-status')).ok, true)
+  } finally { await f.close() }
+})
+
+test('a host without a service accessor or a declared web server still loads and reports unsupported', async () => {
+  const f = fixture(null, { get: null })
+  try {
+    await f.rt.load()
+    assert.equal((await f.rt.handle('remote-status')).value.phase, 'unsupported')
+  } finally { await f.close() }
+})
+
+test('remote access is restored once per host process, not on every load', async () => {
+  let reads = 0
+  const prefs = { get remoteAccess() { reads++; return { enabled: true } } }
+  const f = fixture(null, { prefs })
+  try {
+    for (let i = 0; i < 3; i++) await f.rt.load()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(reads, 1)
   } finally { await f.close() }
 })

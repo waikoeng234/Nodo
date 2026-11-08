@@ -4,7 +4,7 @@
 
 ## 首次设置
 
-目前自动配置支持 macOS 的 DSH Desktop，需要宿主提供 `webServer.getOrigin()` 和 `connection.authenticatedUrl()`。接入原型已在 Desktop 0.2.2-rc.1 验证；设置页会检查当前宿主能力。其他系统暂不支持自动配置。
+目前自动配置支持 macOS 的 DSH Desktop，需要宿主提供 `webServer.getOrigin()` 和 `connection.authenticatedUrl()`。这两项宿主接口能力已在 Desktop 0.2.2-rc.1 验证，完整的手机 + Tailscale 链路尚未经过真实环境验证；设置页会检查当前宿主能力。其他系统暂不支持自动配置。
 
 1. 电脑和手机安装 [Tailscale](https://tailscale.com/download)，登录同一账号，两端都连接。Android 会使用系统 VPN 通道，因此会替换原本正在运行的 VPN；需要同时使用原 VPN 的用户应先考虑这一限制。
 2. 在电脑打开 **Nodo 设置 → 手机远程**。缺少 Tailscale 时点击安装；安装或连接后点击 **重新检查**。
@@ -31,7 +31,7 @@
 | 无法连接 Tailscale | 打开 Tailscale，确认已登录并连接，再重新检查 |
 | 收包模块异常 / ReceiveIPv4 提示 | 完全退出再重新打开 Tailscale，连接后重新检查 |
 | HTTPS 入口已用于其他服务或已开 Funnel | 先在 Tailscale 中处理原配置；Nodo 不覆盖其他服务，也不启用公网 Funnel |
-| 本机转发启动失败 | 处理占用本机转发端口 `43819` 的程序，再启用手机远程 |
+| 本机转发启动失败 | 处理占用本机转发端口 `43819` 的程序，再启用手机远程；占用者也可能是上次异常退出残留的本功能代理，重启电脑或结束该进程即可 |
 | 手机超时 | 检查两端 Tailscale 是否连接、是否在同一网络，以及电脑是否休眠；自定义访问策略还需允许手机访问电脑的 HTTPS 服务 |
 | authentication required | 生成新二维码或完整复制新的手机登录链接；只打开域名不会完成首次认证 |
 

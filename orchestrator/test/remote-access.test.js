@@ -43,6 +43,8 @@ test('environment stages do not start services or expose login credentials', asy
     [{ platform: 'win32' }, 'unsupported'], [{ missing: true }, 'unsupported'],
     [{ status: { BackendState: 'NeedsLogin' } }, 'connect'],
     [{ status: { BackendState: 'Running', Health: ['ReceiveIPv4 is not running'] } }, 'network'],
+    [{ status: { BackendState: 'Running', Self: { DNSName: 'fixture.tail0000.ts.net.' },
+      Health: ["Some peers are advertising routes but --accept-routes is false"] } }, 'ready'],
     [{}, 'ready'],
   ]) {
     const f = fixture(options)

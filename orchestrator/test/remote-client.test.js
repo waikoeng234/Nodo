@@ -32,7 +32,6 @@ async function fixture({ phase = 'ready', readOnly = false, copy = true } = {}) 
 
 test('phone setup completes authorization before offering a fresh login and removes the link when disabled', async () => {
   const f = await fixture()
-  assert(text(f.render()).includes('Android'))
   assert.deepEqual(f.requests, ['remote-status'])
   await f.click('启用手机远程')
   const auth = nodes(f.render()).find(node => node.type === 'a')
@@ -42,12 +41,22 @@ test('phone setup completes authorization before offering a fresh login and remo
   assert(!nodes(f.render()).some(node => node.type === 'img'), 'login is generated only on request')
   await f.click('连接手机')
   assert(nodes(f.render()).some(node => node.type === 'img' && node.props.alt === '手机登录二维码'))
+  assert(text(f.render()).includes('请勿分享'))
+  assert(!text(f.render()).includes('扫描二维码'))
   await f.click('复制手机登录链接')
   assert.deepEqual(f.copied, ['https://fixture.tail0000.ts.net/?fixture=1'])
   assert(f.button('已复制'))
   await f.click('关闭远程访问')
   assert(!nodes(f.render()).some(node => node.type === 'img'))
   assert(!f.button('复制手机登录链接'))
+})
+
+test('settings show only heading, status and actions without a generic setup guide', async () => {
+  for (const phase of ['ready', 'conflict', 'unavailable']) {
+    const f = await fixture({ phase })
+    const shown = text(f.render())
+    for (const guide of ['从手机浏览器', '登录同一账号', 'Android']) assert(!shown.includes(guide), `${phase}: ${guide}`)
+  }
 })
 
 test('read-only settings keep status available and prevent connection changes and login generation', async () => {

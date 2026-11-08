@@ -17681,7 +17681,7 @@ function RemoteAccessSettings({ readOnly = false }) {
     (0, import_react.createElement)(
       "div",
       { className: "nodo-remote-heading" },
-      (0, import_react.createElement)("div", null, (0, import_react.createElement)("h3", null, "\u624B\u673A\u8FDC\u7A0B"), (0, import_react.createElement)("p", null, "\u4ECE\u624B\u673A\u6D4F\u89C8\u5668\u7EE7\u7EED\u8FD9\u53F0\u7535\u8111\u4E0A\u7684\u5DE5\u4F5C\u3002")),
+      (0, import_react.createElement)("h3", null, "\u624B\u673A\u8FDC\u7A0B"),
       (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", disabled: !!busy, onClick: () => void act() }, busy === "status" ? "\u68C0\u67E5\u4E2D\u2026" : "\u91CD\u65B0\u68C0\u67E5")
     ),
     !view2 && !error2 && (0, import_react.createElement)("p", { className: "nodo-dialog-hint", role: "status" }, "\u6B63\u5728\u68C0\u67E5 Desktop \u4E0E Tailscale\u2026"),
@@ -17696,18 +17696,6 @@ function RemoteAccessSettings({ readOnly = false }) {
       ),
       view2.reason && (0, import_react.createElement)("p", null, view2.reason),
       view2.origin && (0, import_react.createElement)("p", { className: "nodo-remote-address" }, view2.origin)
-    ),
-    view2 && !enabled && view2.phase !== "unsupported" && (0, import_react.createElement)(
-      "div",
-      { className: "nodo-remote-guide" },
-      (0, import_react.createElement)(
-        "ol",
-        null,
-        (0, import_react.createElement)("li", null, "\u7535\u8111\u548C\u624B\u673A\u5B89\u88C5 Tailscale\uFF0C\u767B\u5F55\u540C\u4E00\u8D26\u53F7\u5E76\u8FDE\u63A5\u3002"),
-        (0, import_react.createElement)("li", null, "\u542F\u7528\u79C1\u6709 HTTPS \u5165\u53E3\uFF0C\u9996\u6B21\u4F7F\u7528\u65F6\u5B8C\u6210\u7F51\u9875\u6388\u6743\u3002"),
-        (0, import_react.createElement)("li", null, "\u624B\u673A\u626B\u7801\u767B\u5F55\uFF0C\u6253\u5F00 Nodo\u3002")
-      ),
-      (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "Android \u542F\u7528 Tailscale \u4F1A\u66FF\u6362\u6B63\u5728\u8FD0\u884C\u7684 VPN\u3002\u7535\u8111\u9700\u4FDD\u6301\u8054\u7F51\u3001\u5524\u9192\uFF0CDesktop \u4FDD\u6301\u8FD0\u884C\u3002")
     ),
     (0, import_react.createElement)(
       "div",
@@ -17729,8 +17717,6 @@ function RemoteAccessSettings({ readOnly = false }) {
       (0, import_react.createElement)(
         "div",
         { className: "nodo-remote-pair-copy" },
-        (0, import_react.createElement)("strong", null, "\u624B\u673A\u626B\u7801\u767B\u5F55"),
-        (0, import_react.createElement)("p", null, "\u624B\u673A\u8FDE\u63A5 Tailscale \u540E\uFF0C\u7528\u76F8\u673A\u6216\u6D4F\u89C8\u5668\u626B\u63CF\u4E8C\u7EF4\u7801\u3002"),
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", disabled: locked, onClick: async () => {
           try {
             if (await (0, import_dsh_client_ui_primitives.writeClipboard)(login.url)) setCopied(true);
@@ -22258,16 +22244,13 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-settings-tabs>button[aria-selected=true]{border-bottom-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
 .nodo-settings-tabs>button:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}
 .nodo-remote{padding:4px 0 12px;font-size:13px;line-height:22px}
-.nodo-remote-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.nodo-remote-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
 .nodo-remote-heading>button{flex-shrink:0;white-space:nowrap}
 .nodo-remote-heading h3{margin:0;font-size:15px;font-weight:600;line-height:24px}
 .nodo-remote p{margin:4px 0 0;color:var(--dsw-alias-label-secondary)}
 .nodo-remote-status{padding:16px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1)}
 .nodo-remote-status-title{display:flex;align-items:center;gap:8px}
 .nodo-remote-address{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
-.nodo-remote-guide{margin-top:20px}
-.nodo-remote-guide ol{margin:0 0 12px;padding-left:22px}
-.nodo-remote-guide li+li{margin-top:6px}
 .nodo-remote-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:20px}
 .nodo-remote-link{color:var(--dsw-alias-state-business-primary);text-underline-offset:3px}
 .nodo-remote-pair{display:flex;align-items:center;gap:24px;margin-top:24px;padding-top:24px;border-top:.5px solid var(--dsw-alias-border-l3)}

@@ -30,7 +30,7 @@ export function RemoteAccessSettings({ readOnly = false }) {
   }
   return h('section', { className: 'nodo-remote', 'aria-label': '手机远程' },
     h('div', { className: 'nodo-remote-heading' },
-      h('div', null, h('h3', null, '手机远程'), h('p', null, '从手机浏览器继续这台电脑上的工作。')),
+      h('h3', null, '手机远程'),
       h(Button, { variant: 'ghost', size: 'sm', disabled: !!busy, onClick: () => void act() }, busy === 'status' ? '检查中…' : '重新检查')),
     !view && !error && h('p', { className: 'nodo-dialog-hint', role: 'status' }, '正在检查 Desktop 与 Tailscale…'),
     view && h('div', { className: 'nodo-remote-status', role: 'status', 'aria-live': 'polite' },
@@ -39,12 +39,6 @@ export function RemoteAccessSettings({ readOnly = false }) {
         h('strong', null, labels[view.phase] ?? '检查连接')),
       view.reason && h('p', null, view.reason),
       view.origin && h('p', { className: 'nodo-remote-address' }, view.origin)),
-    view && !enabled && view.phase !== 'unsupported' && h('div', { className: 'nodo-remote-guide' },
-      h('ol', null,
-        h('li', null, '电脑和手机安装 Tailscale，登录同一账号并连接。'),
-        h('li', null, '启用私有 HTTPS 入口，首次使用时完成网页授权。'),
-        h('li', null, '手机扫码登录，打开 Nodo。')),
-      h('p', { className: 'nodo-dialog-hint' }, 'Android 启用 Tailscale 会替换正在运行的 VPN。电脑需保持联网、唤醒，Desktop 保持运行。')),
     h('div', { className: 'nodo-remote-actions' },
       view && ['install', 'unavailable', 'connect', 'network'].includes(view.phase)
         && h(Button, { variant: 'primary', disabled: locked, onClick: () => void act('open') }, view.phase === 'install' ? '安装 Tailscale' : '打开 Tailscale'),
@@ -56,8 +50,6 @@ export function RemoteAccessSettings({ readOnly = false }) {
     login && h('div', { className: 'nodo-remote-pair' },
       h('div', { className: 'nodo-remote-qr' }, h('img', { src: login.qr, alt: '手机登录二维码', width: 192, height: 192 })),
       h('div', { className: 'nodo-remote-pair-copy' },
-        h('strong', null, '手机扫码登录'),
-        h('p', null, '手机连接 Tailscale 后，用相机或浏览器扫描二维码。'),
         h(Button, { variant: 'outline', disabled: locked, onClick: async () => {
           try {
             if (await writeClipboard(login.url)) setCopied(true)
