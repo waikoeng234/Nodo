@@ -223,13 +223,14 @@ export function RoundMember({ step, round }) {
                 : step.stoppedBy && (step.ended === 'cancelled' || step.ended === 'interrupted') ? '已停止'
                 : step.ended === 'cancelled' ? '已取消' : step.ended === 'interrupted' ? '已中断' : '已结束')
             : step.report ? h(MessageTime, { at: step.at }) : h('span', { className: 'nodo-round-status' }, '未回报'),
-        live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
-          onClick: () => { setConfirming(true); void round.onStop(step).finally(() => setConfirming(false)) } },
-          h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'currentColor', 'aria-hidden': true }, h('rect', { width: 10, height: 10, rx: 2 })), stopping ? '停止中…' : '停止'),
-        step.taskId && round.onSupplement && h('button', { type: 'button', className: 'nodo-round-open', 'aria-label': `补充 ${task?.title ?? role.name}`,
-          onClick: () => round.onSupplement(step) }, h(IconEditOutlineRegular, { size: 14 }), '补充'),
-        h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
-          h(IconRightUpOutlineRegular, { size: 14 }), '查看会话')),
+        h('span', { className: 'nodo-round-actions' },
+          live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
+            onClick: () => { setConfirming(true); void round.onStop(step).finally(() => setConfirming(false)) } },
+            h('svg', { width: 10, height: 10, viewBox: '0 0 10 10', fill: 'currentColor', 'aria-hidden': true }, h('rect', { width: 10, height: 10, rx: 2 })), stopping ? '停止中…' : '停止'),
+          step.taskId && round.onSupplement && h('button', { type: 'button', className: 'nodo-round-open', 'aria-label': `补充 ${task?.title ?? role.name}`,
+            onClick: () => round.onSupplement(step) }, h(IconEditOutlineRegular, { size: 14 }), '补充'),
+          h('button', { type: 'button', className: 'nodo-round-open', onClick: () => round.onOpen(step.session) },
+            h(IconRightUpOutlineRegular, { size: 14 }), '查看会话'))),
       // The live task list sits between the header and the event stream; a
       // reported member's card is its report and changes instead.
       step.report ? h(Fragment, null,

@@ -124,6 +124,26 @@ test('the conversation frame paints its border above the transcript and keeps it
   assert.match(rule('.nodo-feed'), /overflow-y:auto/, 'the inner feed remains the scroll owner')
 })
 
+test('the phone layout keeps the conversation within the viewport width', async () => {
+  const { CSS } = await loadClient('styles.js')
+  const phone = CSS.split('@media (max-width:767px){\n')[1].split('\n}\n')[0].split('\n')
+  const rule = selector => phone.find(line => line.startsWith(`html[data-nodo-space]:not([data-platform]) ${selector}{`))?.split('{')[1].slice(0, -1) ?? ''
+  assert.equal(rule('.nodo-feed'), 'overflow-x:clip', 'the transcript never scrolls sideways; code and tables scroll in their own blocks')
+  assert.equal(rule('.nodo-title-row'), '', 'the title bar stays one row; its tabs shrink and truncate instead')
+  assert.equal(rule('.nodo-tab:not([data-current]) .nodo-crumb-text'), 'display:none', 'only the current tab keeps its title on a phone')
+  assert.match(rule('.nodo-round-head'), /flex-wrap:wrap;.*height:auto/)
+  assert.match(rule('.nodo-round-role'), /min-width:0;overflow:hidden;text-overflow:ellipsis/)
+  assert.match(rule('.nodo-round-actions'), /display:flex;flex-basis:100%/, 'member buttons take their own row')
+  assert.doesNotMatch(rule('.nodo-round-actions'), /justify-content/)
+  assert.equal(rule('.nodo-round-actions>.nodo-round-open'), 'margin-left:0', 'the row starts at the left edge instead of being pushed right')
+  assert.match(rule('.nodo-question-foot'), /flex-wrap:wrap/)
+  assert.match(rule(':is(.nodo-approval-headline,.nodo-question-title,.nodo-question-label,.nodo-question-description,.nodo-decision-why)'), /overflow-wrap:anywhere/)
+  const desktop = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`)) ?? ''
+  assert.doesNotMatch(desktop('.nodo-feed'), /overflow-x/, 'wider layouts keep their own overflow')
+  assert.match(desktop('.nodo-round-speaker,.nodo-round-head'), /height:28px/)
+  assert.equal(desktop('.nodo-round-actions'), '.nodo-round-actions{display:contents}', 'wider layouts keep the buttons inline')
+})
+
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
   const { transcriptRows, ProcessRow, ToolCall } = await loadClient(['feed.js', 'tool-call.tsx'], {
     uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' } } },
