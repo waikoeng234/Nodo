@@ -30,6 +30,10 @@ export type AcpSupport = {
   fileChanges?: boolean
   fileEdits?(name: string, input: unknown): { path: string; edit: FileChangeEdit }[]
   initialize?(peer: JsonRpcPeer): Promise<AcpCapabilities>
+  // Compaction runs outside the ACP method set on engines whose channel cannot
+  // trigger it: the hook triggers out-of-band and resolves once the engine
+  // reports a terminal status, throwing on failure.
+  compact?(sessionId: string): Promise<unknown>
   instructionMode?: string
   question?(context: AcpQuestionContext): AcpQuestion | undefined
   resumeMethod?: string
@@ -64,7 +68,7 @@ type AcpTool = { name: string; input?: unknown; output?: unknown; rawOutput?: un
 type AcpTurn = {
   id: string; started: boolean; messages: Map<string, string>; tools: Map<string, AcpTool>; completedTools: Set<string>
   children: Map<string, { text: string; title?: string; started?: boolean }>; changes: FileChanges
-  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; retrying?: boolean; retryId?: string; done?: Promise<void>; settle?: () => void
+  context?: Usage; unbounded?: boolean; cancelled?: boolean; unconfirmed?: boolean; retrying?: boolean; retryId?: string; compacting?: boolean; done?: Promise<void>; settle?: () => void
 }
 type AcpPending = { id: RpcId; params: AcpParams; replied?: boolean; gated?: boolean; busy?: boolean } & (
   { kind: 'permission' } | { kind: 'question'; question: AcpQuestion }
@@ -448,6 +452,29 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       }
     },
     async steer() { return STEER.REFUSED },
+    // Out-of-band compaction rides the same turn shape a prompt does: the
+    // channel cannot trigger it, so the hook runs it and the turn closes on
+    // the hook's terminal report. The method exists exactly when an engine
+    // supplies the hook, matching the capability declaration.
+    ...(support.compact ? {
+      async compact() {
+        if (disposed) throw new Error(`${label} driver disposed`)
+        if (running) throw new Error(`${label} already has a running turn`)
+        const turn: AcpTurn = running = { id: `${id}-compact-${++sequence}`, started: false, compacting: true, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) }
+        try {
+          await boot()
+          if (disposed || running !== turn) return
+          turn.started = true
+          turn.done = new Promise<void>(resolve => { turn.settle = resolve })
+          emit({ type: 'turn/start', turnId: turn.id })
+          await support.compact!(sessionId!)
+          if (running === turn) end(turn, 'done')
+        } catch (error) {
+          if (running === turn) end(turn, 'error', translateError(error).message)
+          throw error
+        }
+      },
+    } : {}),
     async interruptTurn() {
       const turn = running
       if (!turn) return

@@ -36,7 +36,7 @@ export const opencodeInfo = {
     { name: 'bin', target: 'engineOptions', label: 'CLI executable (optional)', type: 'text', placeholder: 'Auto-detect opencode; or enter an absolute path' },
     { name: 'model', target: 'profile', label: 'Model (optional)', type: 'text', placeholder: 'provider/model; blank uses OpenCode settings' },
   ],
-  capabilities: { resume: true, steer: false, permissions: true, questions: true, commands: true, permissionModes: ['plan', 'workspace'] },
+  capabilities: { resume: true, steer: false, permissions: true, questions: true, commands: true, compact: true, permissionModes: ['plan', 'workspace'] },
 } satisfies EngineInfo
 
 export function validateOpencodeOptions(raw: Record<string, unknown> = {}): OpencodeOptions {
@@ -94,6 +94,44 @@ export async function scanOpencode({ engineOptions = {}, cwd }: EngineScanOption
 // is text, an unknown command name errors instead of vanishing.
 const opencodeConfigDir = () => join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'opencode')
 
+// Compaction is a background-service verb, not an ACP method: the service.json
+// registration carries the running service's URL and password, the request
+// returns before the summary exists, so the hook polls the compaction record
+// to a terminal status. The password stays a request header and is never logged.
+const opencodeStateDir = () => process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state')
+
+const opencodeService = () => {
+  try {
+    const service = JSON.parse(readFileSync(join(opencodeStateDir(), 'opencode', 'service.json'), 'utf8')) as { url?: unknown; password?: unknown }
+    if (typeof service.url !== 'string' || service.url === '') throw new Error('missing url')
+    return service as { url: string; password?: string }
+  } catch { throw new Error('OpenCode background service is not running') }
+}
+
+const opencodeCompact = async (sessionId: string) => {
+  const service = opencodeService()
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (typeof service.password === 'string' && service.password !== '') headers.authorization = `Basic ${Buffer.from(`opencode:${service.password}`).toString('base64')}`
+  const response = await fetch(`${service.url}/api/session/${sessionId}/compact`, { method: 'POST', body: '{}', headers })
+  if (!response.ok) throw new Error(`OpenCode compaction failed: HTTP ${response.status}`)
+  const record = await response.json() as { data?: { id?: unknown } }
+  if (typeof record.data?.id !== 'string') throw new Error('OpenCode compaction did not start')
+  const deadline = Date.now() + 600_000
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    const poll = await fetch(`${service.url}/api/session/${sessionId}/message`, { headers })
+    if (!poll.ok) throw new Error(`OpenCode compaction failed: HTTP ${poll.status}`)
+    const list = await poll.json() as { data?: { id?: unknown; status?: unknown; error?: unknown }[] }
+    const entry = (list.data ?? []).find(item => item?.id === record.data!.id)
+    if (entry?.status === 'completed') return
+    if (entry?.status === 'failed') {
+      const error = entry.error
+      throw new Error(typeof (error as { message?: unknown } | null | undefined)?.message === 'string' ? (error as { message: string }).message : 'OpenCode compaction failed')
+    }
+  }
+  throw new Error('OpenCode compaction timed out')
+}
+
 // The roots the CLI itself resolves, in order: the project's .opencode and the
 // compatibility trees it also loads (.claude, .agents), then the global config
 // directory. Command roots hold flat markdown files; skill roots hold one
@@ -138,7 +176,7 @@ const opencodeCommandBody = (name: string, cwd?: string) => {
 export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, thinking, instructions, instructionDir, identityFiles, identityOwner, ...options }: OpencodeDriverOptions = {}) {
   const identity = opencodeInstructions(instructions, env, instructionDir, identityFiles, identityOwner)
   return createAcpDriver({ ...options, cwd }, {
-    id: 'opencode', label: 'OpenCode', resumeMethod: 'load', fileChanges: true,
+    id: 'opencode', label: 'OpenCode', resumeMethod: 'load', fileChanges: true, compact: opencodeCompact,
     get instructionMode() { return identity.mode },
     dispose: () => identity.dispose(),
     async expandPrompt(text) {

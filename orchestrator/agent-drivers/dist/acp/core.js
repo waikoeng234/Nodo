@@ -437,6 +437,35 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             }
         },
         async steer() { return STEER.REFUSED; },
+        // Out-of-band compaction rides the same turn shape a prompt does: the
+        // channel cannot trigger it, so the hook runs it and the turn closes on
+        // the hook's terminal report. The method exists exactly when an engine
+        // supplies the hook, matching the capability declaration.
+        ...(support.compact ? {
+            async compact() {
+                if (disposed)
+                    throw new Error(`${label} driver disposed`);
+                if (running)
+                    throw new Error(`${label} already has a running turn`);
+                const turn = running = { id: `${id}-compact-${++sequence}`, started: false, compacting: true, messages: new Map(), tools: new Map(), completedTools: new Set(), children: new Map(), changes: createFileChanges(cwd) };
+                try {
+                    await boot();
+                    if (disposed || running !== turn)
+                        return;
+                    turn.started = true;
+                    turn.done = new Promise(resolve => { turn.settle = resolve; });
+                    emit({ type: 'turn/start', turnId: turn.id });
+                    await support.compact(sessionId);
+                    if (running === turn)
+                        end(turn, 'done');
+                }
+                catch (error) {
+                    if (running === turn)
+                        end(turn, 'error', translateError(error).message);
+                    throw error;
+                }
+            },
+        } : {}),
         async interruptTurn() {
             const turn = running;
             if (!turn)
