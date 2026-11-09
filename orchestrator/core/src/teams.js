@@ -8,7 +8,7 @@ import { cleanModel, cleanThinking } from './profiles.js'
 import { invalid } from './errors.js'
 import defaultTaskTypes from '../shared/task-types.json' with { type: 'json' }
 
-const catalogOf = types => types.map(({ id, name, when, independent }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}) }))
+const catalogOf = types => types.map(({ id, name, when, independent, flow }) => ({ id, name, when, ...(independent === true ? { independent: true } : {}), ...(flow !== undefined ? { flow } : {}) }))
 
 export function install(rt) {
   const { state } = rt
@@ -55,6 +55,13 @@ export function install(rt) {
     delete state.prefs.taskTypes
   }
 
+  const cleanFlow = flow => {
+    if (typeof flow !== 'object' || flow === null || Array.isArray(flow)) throw invalid('A task type "flow" must be an object')
+    if (typeof flow.reviewType !== 'string' || !/^[\w-]{1,40}$/.test(flow.reviewType)) throw invalid('A task type "flow" reviewType must be a task type id')
+    if (!Number.isInteger(flow.maxRework) || flow.maxRework < 0) throw invalid('A task type "flow" maxRework must be a non-negative integer')
+    return { reviewType: flow.reviewType, maxRework: flow.maxRework }
+  }
+
   const cleanTypes = list => {
     if (!Array.isArray(list) || list.length > TASK_TYPES_MAX) throw invalid(`Task types must be a list of at most ${TASK_TYPES_MAX} items`)
     const ids = new Set(), names = new Set()
@@ -71,7 +78,8 @@ export function install(rt) {
       }
       ids.add(id)
       names.add(normalize(name))
-      return { id, name, when: item.when, ...(item.independent === true ? { independent: true } : {}) }
+      return { id, name, when: item.when, ...(item.independent === true ? { independent: true } : {}),
+        ...(item.flow !== undefined ? { flow: cleanFlow(item.flow) } : {}) }
     })
   }
 

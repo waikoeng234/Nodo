@@ -25,6 +25,8 @@ export const executionResultView = async (execution, rt) => {
 }
 
 const pending = execution => ['queued', 'running', 'unconfirmed'].includes(execution.status)
+// A task without flow predates lead routing: it reads as frozen and takes no new work.
+const taskFlowOf = task => task.flow ?? { legacy: true, status: 'frozen' }
 const text = (value, name) => {
   if (typeof value !== 'string' || !value.trim()) throw invalid(`${name} must be a non-empty string`)
   return value
@@ -156,7 +158,7 @@ export function install(rt) {
     if (Object.values(state.executions).some(execution => pending(execution) && (execution.taskId === taskId || execution.sessionId === sessionId))) throw failure('Task or session already has a pending execution', 'orch/busy')
     const now = Date.now()
     const execution = { id: randomUUID(), taskId, profileId, sessionId, type, hard, model: model ?? null, thinking: thinking ?? null,
-      status: 'queued', createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
+      status: 'queued', stage: 'implement', createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
       // The execution workspace only earns a field when it diverges from the task's own.
       ...(workspaceRef === task.workspaceRef ? {} : { workspaceRef }) }
     state.executions[execution.id] = execution
@@ -331,7 +333,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask, reviewReports, askReports,
-    deliveredReports,
+    deliveredReports, taskFlowOf,
     registerDeliveredReport: async (item, deliveredAt) => {
       const execution = executionOf(item.executionId)
       execution.reports ??= []

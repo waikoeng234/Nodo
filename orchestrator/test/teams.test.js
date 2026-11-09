@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { withHost } from './helpers/host.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { boot, withHost } from './helpers/host.js'
 
 const refused = async (post, teams) => {
   const result = await post('teams-update', { teams })
@@ -57,6 +60,30 @@ test('one executor role sits in several teams at once', async () => {
     assert.deepEqual((await api('state')).teams.map(team => team.members), [[a.id], [a.id]])
     assert.equal(rt.teams().length, 2)
   })
+})
+
+test('task type flow survives a save and reload, and invalid flow is refused', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-team-flow-'))
+  let host = boot(home)
+  try {
+    const { lead, a } = await roles(host.api)
+    const team = { name: 'Delivery', lead: lead.id, members: [a.id], types: [
+      { id: 'feature', name: '功能', when: '' },
+      { id: 'review', name: '审查', when: '', flow: { reviewType: 'review', maxRework: 3 } },
+    ], assign: {} }
+    const type = flow => ({ id: 'feature', name: '功能', when: '', flow })
+    assert.match(await refused(host.post, [{ ...team, types: [type('review')] }]), /"flow" must be an object/)
+    assert.match(await refused(host.post, [{ ...team, types: [type({ reviewType: 'no such id', maxRework: 2 })] }]), /reviewType/)
+    assert.match(await refused(host.post, [{ ...team, types: [type({ reviewType: 'review', maxRework: -1 })] }]), /maxRework/)
+    assert.match(await refused(host.post, [{ ...team, types: [type({ reviewType: 'review' })] }]), /maxRework/)
+    const saved = await host.api('teams-update', { teams: [team] })
+    assert.equal(saved[0].types[0].flow, undefined, 'a type without flow stays without one')
+    assert.deepEqual(saved[0].types[1].flow, { reviewType: 'review', maxRework: 3 })
+    await host.dispose()
+    host = boot(home)
+    const rt = await host.runtime
+    assert.deepEqual(rt.teams()[0].types[1].flow, { reviewType: 'review', maxRework: 3 }, 'flow is read back after the restart')
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
 test('a teams-update without the types field keeps the stored types of existing teams', async () => {
