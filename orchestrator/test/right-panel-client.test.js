@@ -1061,6 +1061,7 @@ test('the one overlay toggle keeps its mounted instance throughout opening, clos
       assert.equal(toggle.props.icon.type, 'IconPanelLeftOutlineRegular')
       assert.equal(toggle.props.icon.props.className, 'nodo-right-glyph')
       const head = nodes(tree).find(node => node.props.className === 'nodo-right-head')
+      assert.equal(head.props['data-window-drag'], true)
       assert.equal(nodes(head).some(node => node.props.className === 'nodo-right-toggle'), false)
     }
   }
