@@ -52,14 +52,12 @@ export const selectSession = async (role, id, project, page) => {
       return
     }
     if (native) {
-      // 打开与全量 state 并行；先等打开结果，原生的窗口立刻就能显示。
-      const opening = call('session-open', { profile: role.id, session: id, workspace: project.id })
-      if (current()) void refresh(true)
-      const opened = await opening
+      const opened = await call('session-open', { profile: role.id, session: id, workspace: project.id })
       if (!current()) return
       remember(role.id, project.id, opened.conversationId)
       setEditing(null)
       openNativeSession(opened.sessionId)
+      await refresh(true)
       return
     }
     if (!readOnly) {

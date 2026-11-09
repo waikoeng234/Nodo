@@ -9249,7 +9249,10 @@ var poll = async (force = false) => {
       view = answer.unchanged && view !== null ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
       view = mergeSessions(view, answer.sessions);
       error = "";
-      if (moved && !connected) for (const [key, { profileId, sessionId }] of watched) void pullTranscript(profileId, sessionId, key);
+      if (moved) for (const [key, { profileId, sessionId }] of watched) {
+        const held = transcripts.get(key);
+        if (!connected || held?.error && !held.positions) void pullTranscript(profileId, sessionId, key);
+      }
     } catch (failure) {
       if (polling && order >= applied) {
         error = failure.message;
@@ -17616,13 +17619,12 @@ var selectSession = async (role, id, project, page) => {
       return;
     }
     if (native) {
-      const opening = call("session-open", { profile: role.id, session: id, workspace: project.id });
-      if (current()) void refresh(true);
-      const opened = await opening;
+      const opened = await call("session-open", { profile: role.id, session: id, workspace: project.id });
       if (!current()) return;
       remember(role.id, project.id, opened.conversationId);
       setEditing(null);
       openNativeSession(opened.sessionId);
+      await refresh(true);
       return;
     }
     if (!readOnly) {

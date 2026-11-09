@@ -294,6 +294,48 @@ test('watch set changes ride the open stream: adds and removes never reconnect i
   stopLive()
 })
 
+test('a failed first pull is retried on the next activity move even while the stream stays up', async () => {
+  timers.length = 0
+  const pulls = [], connections = []
+  let controller, states = 0
+  const encode = frame => new TextEncoder().encode(JSON.stringify(frame) + '\n')
+  const fetch = async (url, options) => {
+    if (String(url).includes('/live')) {
+      const stream = new Response(new ReadableStream({ start(value) { controller = value }, cancel() {} }))
+      options.signal.addEventListener('abort', () => controller.close(), { once: true })
+      connections.push(url)
+      return stream
+    }
+    const { endpoint, payload } = JSON.parse(options.body)
+    if (endpoint === 'transcript') {
+      pulls.push(payload)
+      // The first pull dies on the relay; the retry succeeds.
+      return pulls.length === 1
+        ? { json: async () => ({ ok: false, error: { message: 'relay dropped' } }) }
+        : { json: async () => ({ ok: true, value: { full: true, token: 't', base: 1, dirty: 1,
+            lines: [{ n: 1, line: { who: 'agent', kind: 'text', text: 'late' } }] } }) }
+    }
+    if (endpoint === 'state') { states++; return { json: async () => ({ ok: true, value: { struct: states, activity: states, work: {}, profiles: [] } }) } }
+    return { json: async () => ({ ok: true, value: true }) }
+  }
+  const { subscribeLive, watchTranscript, transcriptOf, transcriptError } = await loadClient('live.js', {
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, fetch },
+  })
+  const stopLive = subscribeLive(() => {})
+  const stopWatch = watchTranscript('p', 's')
+  await flush()
+  assert.equal(connections.length, 1, 'the stream is connected')
+  assert.equal(pulls.length, 1)
+  assert.equal(transcriptError('p:s'), 'relay dropped', 'the failed first pull surfaces its error')
+  // An activity move reaches the client as a structure change; its poll must re-pull.
+  controller.enqueue(encode({ type: 'structure', struct: 2 }))
+  await flush()
+  assert.equal(pulls.length, 2, 'the activity move re-pulls the session whose first pull never landed')
+  assert.deepEqual(transcriptOf('p:s').map(line => line.text), ['late'])
+  assert.equal(transcriptError('p:s'), '')
+  stopWatch(); stopLive()
+})
+
 test('the page drops the head the host trimmed, so rows stay aligned past the line cap', async () => {
   await withHost(async host => {
     const rt = await host.runtime
