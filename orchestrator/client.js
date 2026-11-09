@@ -14438,7 +14438,7 @@ function roundIndex(view2) {
   const lead = /* @__PURE__ */ new Map(), members = /* @__PURE__ */ new Map();
   for (const entry of all) {
     const source = entry.session.source;
-    const owner = source?.kind === "lead" && entry.session.engine !== "dsh" ? byId.get(source.leadSessionId) : void 0;
+    const owner = source?.kind === "lead" ? byId.get(source.leadSessionId) : void 0;
     if (!owner || owner.session.engine === "dsh") continue;
     lead.set(entry.session.id, owner);
     members.set(owner.session.id, [...members.get(owner.session.id) ?? [], entry]);
@@ -14930,7 +14930,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
       "data-kind": row.kind,
       "data-tone": row.tone,
       "data-pending": row.kind === "queued" ? "" : void 0,
-      title: "\u67E5\u770B\u4F1A\u8BDD",
+      title: (row.session.engine ?? row.role.engine) === "dsh" ? "\u5728 dsh \u4E2D\u6253\u5F00" : "\u67E5\u770B\u4F1A\u8BDD",
       onClick: () => onOpen(row.id)
     },
     (0, import_react.createElement)(RoleAvatar, { profile: row.role, size: 20, running: row.kind === "running" }),
@@ -21784,7 +21784,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
   const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : void 0);
-  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => item.session.id === sessionId || opened.includes(item.session.id))] : [];
+  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => !nativeRole(item.role) && (item.session.id === sessionId || opened.includes(item.session.id)))] : [];
   const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map((item) => item.role)] : [];
   const activeTasks = members.filter((item) => view2.work[item.session.id]?.active === true).length;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;

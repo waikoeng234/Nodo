@@ -1446,3 +1446,71 @@ test('member task lists stay in their delegation window across reuse, retries an
   step.deferred = true
   assert.equal(dock(), null, 'an unsent delegation does not inherit a prior plan')
 })
+
+test('roundIndex groups dsh executors under a non-dsh lead and keeps a dsh lead ungrouped', async () => {
+  const { roundIndex } = await loadClient('round.js')
+  const from = (id, leadSessionId, engine) => ({ id, engine, createdAt: id.length, source: { kind: 'lead', leadSessionId } })
+  const view = { profiles: [
+    { id: 'lead', lead: true, engine: 'codex', sessions: [{ id: 'l1' }] },
+    { id: 'native', lead: true, engine: 'dsh', sessions: [{ id: 'n1', engine: 'dsh' }] },
+    { id: 'coder', engine: 'codex', sessions: [from('e1', 'l1', 'codex'), from('n-exec', 'n1', 'codex')] },
+    { id: 'fish', engine: 'dsh', sessions: [from('e22', 'l1', 'dsh')] },
+  ] }
+  const { lead, members } = roundIndex(view)
+  assert.deepEqual(plain([...members].map(([id, list]) => [id, list.map(entry => entry.session.id)])), [['l1', ['e1', 'e22']]])
+  assert.deepEqual(plain([...lead].map(([id, owner]) => [id, owner.session.id])), [['e1', 'l1'], ['e22', 'l1']])
+})
+
+test('a dsh member row counts like any executor and opens its native conversation', async () => {
+  const tasks = [
+    { id: 'run', title: 'Run', status: 'open', executions: [{ sessionId: 'd1', createdAt: 1, status: 'running' }] },
+    { id: 'old', title: 'Old', status: 'done', executions: [{ sessionId: 'd2', createdAt: 0 }] },
+  ]
+  const opened = []
+  const { RoundTeam, host } = await loadClient('round.js', { uiShared: { ...TEAM_SHARED, call: async () => tasks } })
+  const fish = { id: 'fish', name: '大肥鱼', engine: 'dsh' }
+  const lead = { role: { id: 'lead', name: 'Lead' }, session: { id: 'l1' } }
+  const members = ['d1', 'd2'].map(id => ({ role: fish, session: { id, name: id, engine: 'dsh' } }))
+  const render = () => { host.reset(); return RoundTeam({ lead, members, work: { d1: { active: true, since: 1 } }, workspace: 'w', onOpen: id => opened.push(id) }) }
+  render()
+  host.effects.at(-1)()
+  await tick()
+  const tree = render(), shown = nodes(tree)
+  assert.deepEqual(plain(treeRows(tree).map(row => [row.id, row.kind])), [['l1', null], ['d1', 'running'], [null, null]])
+  assert.equal(text(shown.find(node => node.props?.className === 'nodo-tree-toggle')), '1 运行中 · 1/2 已完成')
+  assert.equal(text(shown.find(node => node.props?.className === 'nodo-tree-row nodo-tree-fold')), '已完成 1')
+  const row = treeRows(tree)[1].node
+  assert.equal(row.props.title, '在 dsh 中打开')
+  row.props.onClick()
+  assert.deepEqual(opened, ['d1'])
+})
+
+test('Team rail shows a lead row running and counts it while its dsh executor runs', async () => {
+  const { Rail, SessionRow, host } = await loadClient(['session-rail.tsx', 'search-dialog.tsx', 'avatar.tsx', 'ui-shared.js'], {
+    primitives: { relativeTime: () => ({ unit: 'now', n: 0 }) },
+  })
+  const workspaces = [{ id: 'w', name: 'Project', createdAt: 2 }, { id: 'other', name: 'Other', createdAt: 1 }]
+  const view = { workspaces, work: { d1: { active: true } }, teams: [{ id: 't1', name: 'Lead', lead: 'lead' }], profiles: [
+    { id: 'lead', name: 'Lead', lead: true, engine: 'codex', sessions: [{ id: 'l1', name: 'Task', workspaceRef: 'w', updatedAt: 1 }] },
+    { id: 'fish', name: '大肥鱼', engine: 'dsh', sessions: [{ id: 'd1', name: 'Fish run', workspaceRef: 'w', engine: 'dsh', updatedAt: 3, source: { kind: 'lead', leadSessionId: 'l1' } }] },
+  ] }
+  const render = workspace => { host.reset(); return nodes(Rail({ view, workspace, sessionId: 'l1', navigation: { view: 'team' } })) }
+  const rows = render(workspaces[0]).filter(node => node.type === SessionRow).map(node => node.props)
+  assert.deepEqual(rows.map(row => row.session.id), ['l1'], 'the dsh executor takes no row of its own')
+  assert.equal(rows[0].work.active, true)
+  const state = render(workspaces[1]).find(node => node.props?.className === 'nodo-tree-state')
+  assert.deepEqual(state.children.map(child => child.props?.kind ?? child), ['run', '1 个运行中'])
+})
+
+test('a lead page shows dsh executor approvals and opens dsh members without a tab', async () => {
+  const { loaded, view, render, find } = await mount()
+  const coder = view.profiles[1]
+  coder.engine = 'dsh'
+  for (const session of coder.sessions) session.engine = 'dsh'
+  assert.deepEqual(plain(render().filter(node => node.type === loaded.ApprovalCard).map(node => node.props.card.id)), ['a1'])
+  const tabs = () => render().filter(node => node.props.className === 'nodo-tab').map(node => node.props['data-current'] ? 'current' : node.children[0].props.title)
+  find(loaded.Feed).round.onOpen('e2')
+  await tick()
+  assert.equal(find(loaded.Feed).session.id, 'e2')
+  assert.deepEqual(plain(tabs()), ['Fix login'], 'the opened dsh member takes no tab beside its lead')
+})

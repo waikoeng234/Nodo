@@ -22,7 +22,7 @@ export function roundIndex(view) {
   const lead = new Map(), members = new Map()
   for (const entry of all) {
     const source = entry.session.source
-    const owner = source?.kind === 'lead' && entry.session.engine !== 'dsh' ? byId.get(source.leadSessionId) : undefined
+    const owner = source?.kind === 'lead' ? byId.get(source.leadSessionId) : undefined
     if (!owner || owner.session.engine === 'dsh') continue
     lead.set(entry.session.id, owner)
     members.set(owner.session.id, [...members.get(owner.session.id) ?? [], entry])
@@ -422,7 +422,7 @@ export function RoundTeam({ lead, members, work, tasks, decisions, stats, worksp
       h(EngineMark, { engine: session.engine ?? role.engine, size: 12 }), h('span', null, route && modelName(route)))
   }
   const member = row => h('button', { key: row.id, type: 'button', className: 'nodo-tree-row', 'data-session': row.id, 'data-kind': row.kind, 'data-tone': row.tone,
-    'data-pending': row.kind === 'queued' ? '' : undefined, title: '查看会话', onClick: () => onOpen(row.id) },
+    'data-pending': row.kind === 'queued' ? '' : undefined, title: (row.session.engine ?? row.role.engine) === 'dsh' ? '在 dsh 中打开' : '查看会话', onClick: () => onOpen(row.id) },
     h(RoleAvatar, { profile: row.role, size: 20, running: row.kind === 'running' }),
     h('span', { className: 'nodo-tree-line' }, h('span', { className: 'nodo-tree-name' }, row.role.name), model(row.role, row.session), state(row)),
     h('span', { className: 'nodo-tree-line nodo-tree-sub' },
