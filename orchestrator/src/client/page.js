@@ -106,7 +106,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const members = (team && sessionId && rounds?.members.get(sessionId)) || []
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : undefined
   const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : undefined)
-  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter(item => item.session.id === sessionId || opened.includes(item.session.id))] : []
+  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter(item => !nativeRole(item.role) && (item.session.id === sessionId || opened.includes(item.session.id)))] : []
   const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map(item => item.role)] : []
   const activeTasks = members.filter(item => view.work[item.session.id]?.active === true).length
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find(item => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd
