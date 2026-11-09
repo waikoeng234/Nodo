@@ -1453,7 +1453,8 @@ test('member cards keep updating when the user writes into the member session mi
   const plan = (text, at) => ({ who: 'agent', kind: 'plan', at, steps: [{ text, status: 'in_progress' }] })
   const feed = { lines: [task('x0', 1), tool('Old work', 2), task('x1', 10), tool('Started', 11),
     { who: 'user', kind: 'text', text: 'Also check the docs', at: 12 }, tool('After plain input', 13),
-    { who: 'user', kind: 'text', text: 'Task input', origin: { kind: 'task', taskId: 't' }, at: 14 }, tool('After task input', 15), plan('Live plan', 16)] }
+    { who: 'user', kind: 'text', text: 'Task input', origin: { kind: 'task', taskId: 't' }, at: 14 }, tool('After task input', 15),
+    { who: 'user', origin: { kind: 'retry' }, at: 16 }, tool('After retry', 17), plan('Live plan', 18)] }
   const { RoundMember, host } = await loadClient('round.js', { stubs: { 'live.js': liveStub(feed) } })
   const round = { profiles: [{ id: 'coder', name: 'Coder' }], work: { e1: { active: true } }, onOpen() {} }
   const step = { session: 'e1', profile: 'coder', type: 'feature', at: 9, deferred: true, taskId: 't', executionId: 'x1' }
@@ -1466,10 +1467,10 @@ test('member cards keep updating when the user writes into the member session mi
     return { plan: nodes(card).find(node => node.props.className === 'nodo-todo-dock-progress')?.children[0],
       tools: tools.type(tools.props).children.map(row => row.props.summary) }
   }
-  assert.deepEqual(member(), { plan: '进行中 1', tools: ['Started', 'After plain input', 'After task input'] })
+  assert.deepEqual(member(), { plan: '进行中 1', tools: ['Started', 'After plain input', 'After task input', 'After retry'] })
   feed.lines.push(task('x2', 20), tool('Next delegation', 21), plan('Next plan', 22))
-  assert.deepEqual(member().tools, ['Started', 'After plain input', 'After task input'], 'another delegation still ends the window')
+  assert.deepEqual(member().tools, ['Started', 'After plain input', 'After task input', 'After retry'], 'another delegation still ends the window')
   delete step.deferred
   step.at = 10
-  assert.deepEqual(member().tools, ['Started', 'After plain input', 'After task input'], 'a saved non-deferred step anchors to its own execution')
+  assert.deepEqual(member().tools, ['Started', 'After plain input', 'After task input', 'After retry'], 'a saved non-deferred step anchors to its own execution')
 })
