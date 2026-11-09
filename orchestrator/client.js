@@ -14520,6 +14520,11 @@ var taskWord = (task, work, unconfirmed = false) => {
 };
 var typeName = (round, id) => (round.teams?.find((team) => team.lead === round.leadId)?.types ?? []).find((item) => item.id === id)?.name ?? (round.teams ?? []).flatMap((team) => team.types ?? []).find((item) => item.id === id)?.name ?? id;
 var delegationLines = (lines, step) => {
+  if (step.executionId) {
+    const start2 = lines.findIndex((line) => line.origin?.kind === "delegation" && line.origin.executionId === step.executionId) + 1;
+    const end2 = lines.findIndex((line, index) => index >= start2 && line.origin?.kind === "delegation");
+    return start2 === 0 ? [] : lines.slice(start2, end2 < 0 ? void 0 : end2);
+  }
   const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
   const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
   const end = lines.findIndex((line, index) => index >= start && boundary(line));
