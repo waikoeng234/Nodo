@@ -65,7 +65,7 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     const stateText = readFileSync(join(home, 'state.json'), 'utf8')
     for (const oldId of ['missing-lead', 'missing-worker', 'missing-report-recipient']) assert.equal(stateText.includes(oldId), false)
     const saved = JSON.parse(stateText)
-    assert.equal(saved.version, 5)
+    assert.equal(saved.version, 6)
     assert.equal(saved.profiles[lead.id].driverSessionId, freshId)
   } finally {
     delete process.env[errorEnv]

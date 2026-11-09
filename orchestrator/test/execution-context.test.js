@@ -135,7 +135,7 @@ test('reference failure leaves report, context read, review, Decision and comple
   assert.equal(execution.result.text, final)
   await rt.saveStrict()
   const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8'))
-  assert.equal(saved.version, 5)
+  assert.equal(saved.version, 6)
   assert.equal(saved.executions[execution.id].result.text, final)
   for (const value of clients.splice(0)) await value.close()
   for (const binding of bindings.splice(0)) binding.revoke()
