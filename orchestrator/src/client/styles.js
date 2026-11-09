@@ -421,7 +421,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-env-counts{flex:none;margin-left:auto}
 .nodo-team-row{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 8px;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:inherit;font:inherit;text-align:start;cursor:pointer}
 .nodo-team-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.nodo-team-tree{--nodo-tree-line:color-mix(in srgb,var(--dsw-alias-label-primary) 16%,transparent);--nodo-tree-radius:calc(var(--dsw-radius-xl) - 6.5px);align-items:stretch;max-height:440px}
+.nodo-team.nodo-team-tree{--nodo-tree-line:color-mix(in srgb,var(--dsw-alias-label-primary) 16%,transparent);--nodo-tree-radius:calc(var(--dsw-radius-xl) - 6.5px);align-items:stretch;max-height:440px}
 .nodo-tree-head{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-flow:column;grid-auto-columns:auto;align-self:stretch;box-sizing:border-box;width:100%;min-height:26px;padding:0 4px 4px 8px;text-align:start}
 .nodo-tree-toggle{display:inline-flex;align-items:center;gap:6px;margin-left:auto;height:22px;padding:0 4px 0 6px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
 .nodo-tree-toggle:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
