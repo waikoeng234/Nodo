@@ -9222,6 +9222,7 @@ var retry = null;
 var failures = 0;
 var connected = false;
 var restarting = false;
+var stream = null;
 var transcripts = /* @__PURE__ */ new Map();
 var emit = () => {
   for (const listener of listeners) listener();
@@ -9230,25 +9231,41 @@ var mergeSessions = (current, updates) => !updates ? current : {
   ...current,
   profiles: current.profiles.map((profile) => ({ ...profile, sessions: profile.sessions.map((session) => updates[session.id] ? { ...session, ...updates[session.id] } : session) }))
 };
+var flight = null;
 var poll = async (force = false) => {
-  const order = ++requested;
-  try {
-    const answer = await call("state", force || view === null ? void 0 : { since: { struct: view.struct } });
-    if (!polling || order < applied) return;
-    applied = order;
-    const moved = view !== null && answer.activity !== view.activity;
-    view = answer.unchanged && view !== null ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
-    view = mergeSessions(view, answer.sessions);
-    error = "";
-    if (moved && !connected) for (const [key, { profileId, sessionId }] of watched) void pullTranscript(profileId, sessionId, key);
-  } catch (failure) {
-    if (polling && order >= applied) {
-      error = failure.message;
-      emit();
-    }
-    return;
+  if (flight) {
+    flight.upgraded ||= force;
+    return flight.done;
   }
-  emit();
+  const order = ++requested;
+  const running = { upgraded: false, done: null };
+  flight = running;
+  running.done = (async () => {
+    try {
+      const answer = await call("state", force || view === null ? void 0 : { since: { struct: view.struct } });
+      if (!polling || order < applied) return;
+      applied = order;
+      const moved = view !== null && answer.activity !== view.activity;
+      view = answer.unchanged && view !== null ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
+      view = mergeSessions(view, answer.sessions);
+      error = "";
+      if (moved) for (const [key, { profileId, sessionId }] of watched) {
+        const held = transcripts.get(key);
+        if (!connected || held?.error && !held.positions) void pullTranscript(profileId, sessionId, key).then(pushWatch);
+      }
+    } catch (failure) {
+      if (polling && order >= applied) {
+        error = failure.message;
+        emit();
+      }
+      return;
+    } finally {
+      if (flight === running) flight = null;
+    }
+    emit();
+    if (running.upgraded && polling) return poll(true);
+  })();
+  return running.done;
 };
 var schedule = () => {
   if (!polling || connected || timer !== null) return;
@@ -9265,12 +9282,15 @@ var connect = async () => {
   connection?.abort();
   const abort = connection = new AbortController();
   const watch = [...watched.values()].map(({ profileId: profile, sessionId: session }) => ({ profile, session, since: transcripts.get(keyOf(profile, session))?.positions }));
+  const streamId = crypto.randomUUID();
   try {
-    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch) });
+    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch), id: streamId });
     const response = await fetch(`${ROUTE}/live?${query}`, { signal: abort.signal });
     if (!response.ok || !response.body) throw new Error("Stream unavailable");
     if (abort.signal.aborted) return;
     connected = true;
+    stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])) };
+    pushWatch();
     clearTimeout(timer);
     timer = null;
     const reader = response.body.getReader(), decoder = new TextDecoder();
@@ -9331,6 +9351,20 @@ var restart = () => {
     clearTimeout(retry);
     retry = null;
     void connect();
+  });
+};
+var pushWatch = () => {
+  if (!connected || stream === null) return;
+  const add = [], remove = [];
+  for (const [key, { profileId, sessionId }] of watched) {
+    const since = transcripts.get(key)?.positions ?? null;
+    if (stream.synced.get(key) === since) continue;
+    add.push({ profile: profileId, session: sessionId, ...since ? { since } : {} });
+    stream.synced.set(key, since);
+  }
+  for (const key of [...stream.synced.keys()]) if (!watched.has(key)) remove.push(key);
+  for (const key of remove) stream.synced.delete(key);
+  if (add.length || remove.length) void call("live-watch", { id: stream.id, add, remove }).catch(() => {
   });
 };
 var stopUpdatePause = null;
@@ -9440,12 +9474,15 @@ var watchTranscript = (profileId, sessionId) => {
   const current = watched.get(key) ?? { profileId, sessionId, count: 0 };
   current.count += 1;
   watched.set(key, current);
-  if (current.count === 1) void pullTranscript(profileId, sessionId, key).then(restart);
+  if (current.count === 1) {
+    pushWatch();
+    void pullTranscript(profileId, sessionId, key).then(pushWatch);
+  }
   return () => {
     current.count -= 1;
     if (current.count === 0) {
       watched.delete(key);
-      restart();
+      pushWatch();
     }
   };
 };
@@ -15361,6 +15398,13 @@ function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
     )
   );
 }
+var catalogFlight = null;
+var engineCatalog = () => {
+  catalogFlight ??= call("engine-catalog").finally(() => {
+    catalogFlight = null;
+  });
+  return catalogFlight;
+};
 function ModelPicker({ profile, disabled, onChange }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [pane, setPane] = (0, import_react.useState)("root");
@@ -15370,7 +15414,7 @@ function ModelPicker({ profile, disabled, onChange }) {
   const loaded = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("engine-catalog").then((items2) => {
+    void engineCatalog().then((items2) => {
       if (live) setEngines(items2);
     }).catch(() => {
     });
@@ -15395,7 +15439,7 @@ function ModelPicker({ profile, disabled, onChange }) {
     setOpen(true);
     if (loaded.current.has(profile.engine)) return;
     loaded.current.add(profile.engine);
-    void call("engine-catalog").then((items2) => {
+    void engineCatalog().then((items2) => {
       setEngines(items2);
       if (!items2.some((item) => item.id === profile.engine && !item.catalog)) return;
       setScanning(true);
@@ -16147,7 +16191,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     }
     setScanning(true);
     void call("engine-commands", { engine: profile.engine, workspace: workspace?.id }).then((value) => setScan(value)).catch(() => setScan({ source: "unavailable", commands: [] })).finally(() => setScanning(false));
-    void call("engine-catalog", {}).then((value) => setCatalog(value)).catch(() => setCatalog([]));
+    void engineCatalog().then((value) => setCatalog(value)).catch(() => setCatalog([]));
   };
   const open = manual || trigger !== null && trigger.start !== dismissed;
   (0, import_react.useEffect)(() => {
@@ -16349,7 +16393,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
     if (loaded.current === profile.engine) return;
     loaded.current = profile.engine;
     setModes(null);
-    void call("engine-catalog").then((items2) => {
+    void engineCatalog().then((items2) => {
       const offered2 = items2.find((item) => item.id === profile.engine)?.capabilities?.permissionModes;
       setModes(Array.isArray(offered2) ? offered2 : []);
     }).catch(() => {
@@ -17568,8 +17612,9 @@ var selectSession = async (role, id, project, page) => {
       else if (sidebarOnly) nativeSpace.showLegacy();
       origin = nativeSpace.getSnapshot();
       if (!readOnly) {
-        await call("session-select", { profile: role.id, session: id });
+        const selecting = call("session-select", { profile: role.id, session: id });
         if (current()) await refresh(true);
+        await selecting;
       }
       return;
     }
@@ -17583,9 +17628,10 @@ var selectSession = async (role, id, project, page) => {
       return;
     }
     if (!readOnly) {
-      await call("session-select", { profile: role.id, session: id });
-      if (!current()) return;
-      await refresh(true);
+      void pullTranscript(role.id, id);
+      const selecting = call("session-select", { profile: role.id, session: id });
+      if (current()) await refresh(true);
+      await selecting;
     }
     if (!current()) return;
     remember(role.id, project.id, id);

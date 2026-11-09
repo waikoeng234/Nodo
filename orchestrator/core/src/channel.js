@@ -52,8 +52,9 @@ export function install(rt) {
   })
 
   // Endpoints a read-only host still serves. Cards are answered from this host's
-  // memory, not the file, so a reading window keeps them.
-  const READS = new Set(['state', 'task-list', 'task-get', 'decision-list', 'decision-get', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-dir', 'workspace-file', 'worktree-refs', 'workspace-git', 'workspace-diff', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment'])
+  // memory, not the file, so a reading window keeps them; live-watch only
+  // rewrites a stream's in-memory watch set, the same class as the /live GET.
+  const READS = new Set(['state', 'task-list', 'task-get', 'decision-list', 'decision-get', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-dir', 'workspace-file', 'worktree-refs', 'workspace-git', 'workspace-diff', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment', 'live-watch'])
 
   const resolveProfileRef = (ref) => {
     const profile = rt.findProfile(ref)
@@ -180,6 +181,8 @@ export function install(rt) {
         return rt.referenceHistory(body)
       case 'probe':
         return rt.runProbe()
+      case 'live-watch':
+        return rt.liveWatchUpdate(body)
       case 'workspace-create':
         await rt.load()
         return rt.createWorkspace({ name: body.name, cwd: body.cwd })

@@ -371,7 +371,7 @@ test('conversation selection restores its records without creating a new draft',
     assert.deepEqual(opened, scenario.legacy ? [] : ['native'])
     assert.equal(panels.at(-1), scenario.legacy ? 'nodo' : null)
     assert.equal(calls.some(call => call.endpoint === 'session-select'), scenario.legacy && !scenario.readOnly && !scenario.fresh)
-    assert.ok(calls.every(call => ['session-open', 'session-select'].includes(call.endpoint)), 'viewing must not send, stop or recreate the engine task')
+    assert.ok(calls.every(call => ['session-open', 'session-select', 'transcript'].includes(call.endpoint)), 'viewing must not send, stop or recreate the engine task')
     if (scenario.fresh) {
       assert.deepEqual(calls, [], 'selecting an empty role must not persist a draft or open an engine session')
       startConversation(role.id, page)
@@ -2195,6 +2195,41 @@ test('the composer add menu offers the native sections and inserts text picks in
   assert.equal(render({ trigger: { char: '/', start: 6, query: 'de' } }).props.open, false, 'Escape dismisses the token while it keeps growing')
   assert.equal(render({ trigger: { char: '/', start: 9, query: '' } }).props.open, true, 'a token typed elsewhere opens the menu again')
 
+})
+
+test('composer surfaces mounting together share one engine-catalog read, fresh again once it lands', async () => {
+  const states = [], refs = [], effects = [], catalogRequests = []
+  let cursor = 0, release
+  const { ModelPicker, PermissionMenu } = await loadClient(['feed.js', 'composer.js'], {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef(initial) { const at = cursor++; return refs[at] ??= { current: initial } },
+      useEffect(effect) { effects.push(effect) },
+    },
+    async call(endpoint) {
+      if (endpoint !== 'engine-catalog') return []
+      catalogRequests.push(endpoint)
+      if (catalogRequests.length === 1) await new Promise(resolve => { release = resolve })
+      return [{ id: 'claude', capabilities: { permissionModes: ['workspace'] } }]
+    },
+  })
+  const mount = () => {
+    ModelPicker({ profile: { engine: 'claude' }, disabled: false, onChange: () => {} })
+    PermissionMenu({ profile: { engine: 'claude', permission: 'workspace' }, disabled: false, onChange: () => {} })
+    effects.splice(0).forEach(effect => effect())
+  }
+  mount(); mount()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(catalogRequests.length, 1, 'the mount reads share one in-flight request')
+  release()
+  await new Promise(resolve => setImmediate(resolve))
+  mount()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(catalogRequests.length, 2, 'after the flight lands the next mount reads the catalog fresh')
 })
 
 test('a lead card\'s 1:1 chat gets the plan tier while its Team sessions keep it hidden', async () => {
