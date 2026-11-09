@@ -377,7 +377,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
   const conversation = () => h('div', { className: 'nodo-conversation' },
     // The host conversation header: the session's own name in the window-chrome
     // row and one hairline closing the block.
-    h('header', { className: 'nodo-head', 'data-rightbar-open': rightbarOpen || undefined },
+    h('header', { className: 'nodo-head', 'data-window-drag': true, 'data-rightbar-open': rightbarOpen || undefined },
       h('div', { className: 'nodo-title-row' },
         ...tabs.map(({ role, session: entry }) => {
           const open = () => {
