@@ -311,6 +311,13 @@ function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
 // row exists here. Catalog values come from the engine's cached scan, fetched
 // on mount so the trigger can resolve labels without a first open; an engine
 // never scanned is scanned on first open.
+// 挂载时会同时读目录的组件（模型选择、权限档位、指令菜单）共享一次在途请求，
+// 落地后不再缓存，各处照旧拿到新数据。
+let catalogFlight = null
+export const engineCatalog = () => {
+  catalogFlight ??= call('engine-catalog').finally(() => { catalogFlight = null })
+  return catalogFlight
+}
 export function ModelPicker({ profile, disabled, onChange }) {  const [open, setOpen] = useState(false)
   const [pane, setPane] = useState('root')
   const [engines, setEngines] = useState([])
@@ -319,7 +326,7 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
   const loaded = useRef(new Set())
   useEffect(() => {
     let live = true
-    void call('engine-catalog').then(items => { if (live) setEngines(items) }).catch(() => {})
+    void engineCatalog().then(items => { if (live) setEngines(items) }).catch(() => {})
     return () => { live = false }
   }, [])
   const engine = engines.find(item => item.id === profile.engine)
@@ -338,7 +345,7 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
     setOpen(true)
     if (loaded.current.has(profile.engine)) return
     loaded.current.add(profile.engine)
-    void call('engine-catalog').then(items => {
+    void engineCatalog().then(items => {
       setEngines(items)
       if (!items.some(item => item.id === profile.engine && !item.catalog)) return
       setScanning(true)

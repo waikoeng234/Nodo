@@ -4,7 +4,7 @@ import {
   IconLinkOutlineRegular, IconChevronDownOutlineRegular,
   PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, PermissionIconFullAccessRegular,
 } from './ui-shared.js'
-import { ModelPicker } from './feed.js'
+import { ModelPicker, engineCatalog } from './feed.js'
 import { ComposerAttachments, ComposerAttachmentChip, composerAttachment } from './composer-attachments.tsx'
 import { leadModeOf } from '../../core/shared/lead.js'
 
@@ -233,7 +233,7 @@ export function AddMenu({ profile, workspace, disabled, trigger, onInsert, onTok
       .then(value => setScan(value))
       .catch(() => setScan({ source: 'unavailable', commands: [] }))
       .finally(() => setScanning(false))
-    void call('engine-catalog', {})
+    void engineCatalog()
       .then(value => setCatalog(value))
       .catch(() => setCatalog([]))
   }
@@ -398,7 +398,7 @@ export function PermissionMenu({ profile, disabled, onChange }) {
     if (loaded.current === profile.engine) return
     loaded.current = profile.engine
     setModes(null)
-    void call('engine-catalog').then(items => {
+    void engineCatalog().then(items => {
       const offered = items.find(item => item.id === profile.engine)?.capabilities?.permissionModes
       setModes(Array.isArray(offered) ? offered : [])
     }).catch(() => { loaded.current = null; setModes([]) })

@@ -1,4 +1,5 @@
 import { call, nativeSpace, openNativeSession } from './ui-shared.js'
+import { pullTranscript } from './live.js'
 import { projectAnchorOf } from '../../core/shared/workspaces.js'
 
 export const nativeRole = profile => profile?.engine === 'dsh'
@@ -44,8 +45,9 @@ export const selectSession = async (role, id, project, page) => {
       else if (sidebarOnly) nativeSpace.showLegacy()
       origin = nativeSpace.getSnapshot()
       if (!readOnly) {
-        await call('session-select', { profile: role.id, session: id })
+        const selecting = call('session-select', { profile: role.id, session: id })
         if (current()) await refresh(true)
+        await selecting
       }
       return
     }
@@ -59,9 +61,12 @@ export const selectSession = async (role, id, project, page) => {
       return
     }
     if (!readOnly) {
-      await call('session-select', { profile: role.id, session: id })
-      if (!current()) return
-      await refresh(true)
+      // 会话 id 前端已知：选中、全量 state 和 transcript 三路并行发出，
+      // transcript 不等 state 落地才开始。
+      void pullTranscript(role.id, id)
+      const selecting = call('session-select', { profile: role.id, session: id })
+      if (current()) await refresh(true)
+      await selecting
     }
     if (!current()) return
     remember(role.id, project.id, id); setEditing(null)
