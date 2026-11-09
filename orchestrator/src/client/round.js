@@ -106,8 +106,14 @@ const typeName = (round, id) => (round.teams?.find(team => team.lead === round.l
   ?? (round.teams ?? []).flatMap(team => team.types ?? []).find(item => item.id === id)?.name ?? id
 
 // One delegation's transcript window: from its task line to the next one;
-// retry continuations stay inside.
+// retry continuations and the user's own input stay inside. Saves without
+// execution ids treat every non-retry user line as a task line.
 const delegationLines = (lines, step) => {
+  if (step.executionId) {
+    const start = lines.findIndex(line => line.origin?.kind === 'delegation' && line.origin.executionId === step.executionId) + 1
+    const end = lines.findIndex((line, index) => index >= start && line.origin?.kind === 'delegation')
+    return start === 0 ? [] : lines.slice(start, end < 0 ? undefined : end)
+  }
   const boundary = line => line.who === 'user' && line.origin?.kind !== 'retry'
   const start = step.deferred ? lines.findIndex(line => boundary(line) && line.at >= step.at) + 1
     : lines.findLastIndex(line => boundary(line) && (step.at === undefined || line.at <= step.at)) + 1
