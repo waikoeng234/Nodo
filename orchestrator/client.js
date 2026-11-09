@@ -12403,7 +12403,7 @@ function RightPanel({ panel, width }) {
     counts.set(base, nth);
     return nth > 1 ? `${base} ${nth}` : base;
   });
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-right-panel", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", hidden: !state.expanded, style: { width } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-right-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tabs", role: "tablist", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", onKeyDown: (event) => {
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-right-panel", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", hidden: !state.expanded, style: { width } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-right-head", "data-window-drag": true }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tabs", role: "tablist", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", onKeyDown: (event) => {
     const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
     const at2 = state.tabs.findIndex((tab) => tabId(tab) === state.active);
     if (!step || at2 < 0 || !event.target.matches("[role=tab]")) return;
@@ -22082,7 +22082,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     // row and one hairline closing the block.
     (0, import_react.createElement)(
       "header",
-      { className: "nodo-head", "data-rightbar-open": rightbarOpen || void 0 },
+      { className: "nodo-head", "data-window-drag": true, "data-rightbar-open": rightbarOpen || void 0 },
       (0, import_react.createElement)(
         "div",
         { className: "nodo-title-row" },
