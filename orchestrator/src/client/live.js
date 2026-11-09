@@ -14,6 +14,9 @@ let retry = null
 let failures = 0
 let connected = false
 let restarting = false
+// 已连上的流：{ id, synced }，id 供 live-watch 定位这条连接，
+// synced 记录宿主已知的观察集合及其 since。
+let stream = null
 // 会话记录：`${profile}:${session}` → { positions, lines, error }。
 // positions = { token, base, n, dirty }：base 是 lines[0] 的行编号，n 是最后一行的编号；
 // 已归档且只在 dsh 侧有记录的会话是 { archived: true }。
@@ -23,24 +26,39 @@ const emit = () => { for (const listener of listeners) listener() }
 const mergeSessions = (current, updates) => !updates ? current : { ...current,
   profiles: current.profiles.map(profile => ({ ...profile, sessions: profile.sessions.map(session => updates[session.id] ? { ...session, ...updates[session.id] } : session) })) }
 
+// 同一时刻只有一个 state 请求在途；在途期间再要求拉取（structure 帧或强制
+// refresh）只记下标记，落地后补一次，不再并行重复。
+let flight = null
 const poll = async (force = false) => {
-  const order = ++requested
-  try {
-    const answer = await call('state', force || view === null ? undefined : { since: { struct: view.struct } })
-    if (!polling || order < applied) return
-    applied = order
-    const moved = view !== null && answer.activity !== view.activity
-    view = answer.unchanged && view !== null
-      ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats }
-      : answer
-    view = mergeSessions(view, answer.sessions)
-    error = ''
-    if (moved && !connected) for (const [key, { profileId, sessionId }] of watched) void pullTranscript(profileId, sessionId, key)
-  } catch (failure) {
-    if (polling && order >= applied) { error = failure.message; emit() }
-    return
+  if (flight) {
+    flight.upgraded ||= force
+    return flight.done
   }
-  emit()
+  const order = ++requested
+  const running = { upgraded: false, done: null }
+  flight = running
+  running.done = (async () => {
+    try {
+      const answer = await call('state', force || view === null ? undefined : { since: { struct: view.struct } })
+      if (!polling || order < applied) return
+      applied = order
+      const moved = view !== null && answer.activity !== view.activity
+      view = answer.unchanged && view !== null
+        ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats }
+        : answer
+      view = mergeSessions(view, answer.sessions)
+      error = ''
+      if (moved && !connected) for (const [key, { profileId, sessionId }] of watched) void pullTranscript(profileId, sessionId, key)
+    } catch (failure) {
+      if (polling && order >= applied) { error = failure.message; emit() }
+      return
+    } finally {
+      if (flight === running) flight = null
+    }
+    emit()
+    if (running.upgraded && polling) return poll(true)
+  })()
+  return running.done
 }
 
 const schedule = () => {
@@ -54,12 +72,15 @@ const connect = async () => {
   connection?.abort()
   const abort = connection = new AbortController()
   const watch = [...watched.values()].map(({ profileId: profile, sessionId: session }) => ({ profile, session, since: transcripts.get(keyOf(profile, session))?.positions }))
+  const streamId = crypto.randomUUID()
   try {
-    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch) })
+    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch), id: streamId })
     const response = await fetch(`${ROUTE}/live?${query}`, { signal: abort.signal })
     if (!response.ok || !response.body) throw new Error('Stream unavailable')
     if (abort.signal.aborted) return
     connected = true
+    stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])) }
+    pushWatch()
     clearTimeout(timer); timer = null
     const reader = response.body.getReader(), decoder = new TextDecoder()
     let pending = ''
@@ -106,6 +127,24 @@ const restart = () => {
     clearTimeout(retry); retry = null
     void connect()
   })
+}
+
+// The open stream carries the watch set: adds and removes ride the /api/nodo
+// channel keyed by the stream id, so a session switch never aborts the stream.
+// The host is told a session's positions once they are known; until then it
+// stays silent about that session (the pull covers it).
+const pushWatch = () => {
+  if (!connected || stream === null) return
+  const add = [], remove = []
+  for (const [key, { profileId, sessionId }] of watched) {
+    const since = transcripts.get(key)?.positions ?? null
+    if (stream.synced.get(key) === since) continue
+    add.push({ profile: profileId, session: sessionId, ...(since ? { since } : {}) })
+    stream.synced.set(key, since)
+  }
+  for (const key of [...stream.synced.keys()]) if (!watched.has(key)) remove.push(key)
+  for (const key of remove) stream.synced.delete(key)
+  if (add.length || remove.length) void call('live-watch', { id: stream.id, add, remove }).catch(() => {})
 }
 
 // dsh 更新加锁前断开流并停掉重连，轮询兜底继续；离开 installing 由 restart 重连。
@@ -198,17 +237,19 @@ export const pullTranscript = (profileId, sessionId, key = keyOf(profileId, sess
   inflight.set(key, entry)
   return entry.done
 }
-// A newly visible conversation loads once, then joins the shared stream.
+// A newly visible conversation loads once, then joins the shared stream: the
+// pull carries the rows, the watch update carries the positions, and the stream
+// stays up across switches.
 const watched = new Map()
 export const watchTranscript = (profileId, sessionId) => {
   const key = keyOf(profileId, sessionId)
   const current = watched.get(key) ?? { profileId, sessionId, count: 0 }
   current.count += 1
   watched.set(key, current)
-  if (current.count === 1) void pullTranscript(profileId, sessionId, key).then(restart)
+  if (current.count === 1) { pushWatch(); void pullTranscript(profileId, sessionId, key).then(pushWatch) }
   return () => {
     current.count -= 1
-    if (current.count === 0) { watched.delete(key); restart() }
+    if (current.count === 0) { watched.delete(key); pushWatch() }
   }
 }
 export const transcriptError = key => transcripts.get(key)?.error ?? ''

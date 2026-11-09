@@ -11,6 +11,7 @@ const fakeTimers = () => {
   let serial = 0
   return {
     AbortController, URLSearchParams, TextDecoder,
+    crypto: { randomUUID: () => `stream-${++serial}` },
     setTimeout: (callback, ms) => { const id = ++serial; timers.push({ callback, ms, id, run() { const at = timers.findIndex(timer => timer.id === id); if (at >= 0) timers.splice(at, 1); callback() } }); return id },
     clearTimeout: id => { const at = timers.findIndex(timer => timer.id === id); if (at >= 0) timers.splice(at, 1) },
   }
@@ -84,7 +85,7 @@ test('a dsh update install drops the stream, holds reconnects and keeps the fall
   timers.length = 0
   let installing = null, streams = 0
   const { subscribeLive, getLive, liveError } = await loadClient('live.js', {
-    globals: { ...fakeTimers(), dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
     call: endpoint => {
       if (!endpoint) { streams++; throw new Error('stream disconnected') }
       return { struct: 1, activity: 0, work: {}, profiles: [], tasks: [{ id: 'task', status: 'open' }] }
@@ -127,7 +128,7 @@ test('an open live stream is aborted the moment dsh enters installing and reopen
     return { json: async () => ({ ok: true, value: { struct: 1, activity: 0, work: {}, profiles: [] } }) }
   }
   const { subscribeLive, liveError } = await loadClient('live.js', {
-    globals: { ...fakeTimers(), fetch, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, fetch, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
   })
   const stop = subscribeLive(() => {})
   await flush()
@@ -226,6 +227,71 @@ test('a pull asked for while one is in flight runs once after it lands', async (
   await first
   await flush()
   assert.equal(pulls.length, 2)
+})
+
+test('a forced refresh during an in-flight state poll follows up once instead of racing a second', async () => {
+  timers.length = 0
+  let release
+  const states = []
+  const { subscribeLive, refreshLive } = await loadClient('live.js', {
+    globals: fakeTimers(),
+    call: async (endpoint, payload) => {
+      if (!endpoint) throw new Error('stream disconnected')
+      states.push(payload ?? null)
+      if (states.length === 1) await new Promise(resolve => { release = resolve })
+      return { struct: 1, activity: 0, work: {}, profiles: [] }
+    },
+  })
+  const stop = subscribeLive(() => {})
+  await flush()
+  assert.equal(states.length, 1, 'the initial poll is in flight')
+  const refresh = refreshLive(true)
+  await flush()
+  assert.equal(states.length, 1, 'no second request starts while one is in flight')
+  release({ struct: 1, activity: 0, work: {}, profiles: [] })
+  await refresh
+  assert.equal(states.length, 2, 'the forced refresh runs once, after the flight lands')
+  await flush()
+  assert.equal(states.length, 2, 'no further polls follow')
+  stop()
+})
+
+test('watch set changes ride the open stream: adds and removes never reconnect it', async () => {
+  timers.length = 0
+  const connections = [], posts = []
+  const fetch = async (url, options) => {
+    if (String(url).includes('/live')) {
+      let rejectRead
+      const pending = new Promise((resolve, reject) => { rejectRead = reject })
+      options.signal.addEventListener('abort', () => rejectRead(new Error('aborted')), { once: true })
+      const reader = { read: () => pending, cancel: async () => {}, releaseLock: () => {} }
+      connections.push(new URL(url, 'http://test').searchParams)
+      return { ok: true, body: { getReader: () => reader } }
+    }
+    const { endpoint, payload } = JSON.parse(options.body)
+    posts.push({ endpoint, payload })
+    const value = endpoint === 'transcript' ? { full: true, token: 't', base: 1, dirty: 1, lines: [] } : true
+    return { json: async () => ({ ok: true, value }) }
+  }
+  const { subscribeLive, watchTranscript } = await loadClient('live.js', {
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, fetch },
+  })
+  const stopLive = subscribeLive(() => {})
+  await flush()
+  assert.equal(connections.length, 1)
+  const stopWatch = watchTranscript('p', 's')
+  await flush()
+  assert.equal(connections.length, 1, 'watching a session keeps the stream open')
+  assert.deepEqual(posts.map(post => post.endpoint), ['state', 'live-watch', 'transcript', 'live-watch'],
+    'the watch add goes out at once, and the landed pull supplies the positions in a second add')
+  assert.deepEqual(posts[1].payload, { id: 'stream', add: [{ profile: 'p', session: 's' }], remove: [] },
+    'the first add carries no since: the pull owns the first full copy')
+  assert.deepEqual(posts[3].payload.add, [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 0, dirty: 1 } }])
+  stopWatch()
+  await flush()
+  assert.equal(connections.length, 1, 'unwatching keeps the stream open too')
+  assert.deepEqual(posts.at(-1).payload, { id: 'stream', add: [], remove: ['p:s'] })
+  stopLive()
 })
 
 test('the page drops the head the host trimmed, so rows stay aligned past the line cap', async () => {
