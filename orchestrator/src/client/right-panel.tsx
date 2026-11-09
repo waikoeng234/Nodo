@@ -231,7 +231,7 @@ export function RightPanel({ panel, width }: { panel: RightPanelService; width: 
     return nth > 1 ? `${base} ${nth}` : base
   })
   return <aside className="nodo-right-panel" aria-label="会话工具" hidden={!state.expanded} style={{ width }}>
-    <header className="nodo-right-head">
+    <header className="nodo-right-head" data-window-drag>
       <div className="nodo-right-tabs" role="tablist" aria-label="会话工具" onKeyDown={event => {
         const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key]
         const at = state.tabs.findIndex(tab => tabId(tab) === state.active)
