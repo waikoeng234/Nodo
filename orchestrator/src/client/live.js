@@ -50,9 +50,10 @@ const poll = async (force = false) => {
       error = ''
       if (moved) for (const [key, { profileId, sessionId }] of watched) {
         // 离线时照旧全部重拉；在线时只补首份拉取失败（有错无位置）的会话——
-        // 流对它保持沉默，没有这条就没有第二次机会。
+        // 流对它保持沉默，没有这条就没有第二次机会。落地后把新位置发给宿主，
+        // 否则宿主的 since 一直是 undefined，流永远跳过这个会话。
         const held = transcripts.get(key)
-        if (!connected || (held?.error && !held.positions)) void pullTranscript(profileId, sessionId, key)
+        if (!connected || (held?.error && !held.positions)) void pullTranscript(profileId, sessionId, key).then(pushWatch)
       }
     } catch (failure) {
       if (polling && order >= applied) { error = failure.message; emit() }

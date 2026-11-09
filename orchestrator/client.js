@@ -9251,7 +9251,7 @@ var poll = async (force = false) => {
       error = "";
       if (moved) for (const [key, { profileId, sessionId }] of watched) {
         const held = transcripts.get(key);
-        if (!connected || held?.error && !held.positions) void pullTranscript(profileId, sessionId, key);
+        if (!connected || held?.error && !held.positions) void pullTranscript(profileId, sessionId, key).then(pushWatch);
       }
     } catch (failure) {
       if (polling && order >= applied) {

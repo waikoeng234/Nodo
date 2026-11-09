@@ -296,7 +296,7 @@ test('watch set changes ride the open stream: adds and removes never reconnect i
 
 test('a failed first pull is retried on the next activity move even while the stream stays up', async () => {
   timers.length = 0
-  const pulls = [], connections = []
+  const pulls = [], connections = [], posts = []
   let controller, states = 0
   const encode = frame => new TextEncoder().encode(JSON.stringify(frame) + '\n')
   const fetch = async (url, options) => {
@@ -307,6 +307,7 @@ test('a failed first pull is retried on the next activity move even while the st
       return stream
     }
     const { endpoint, payload } = JSON.parse(options.body)
+    posts.push({ endpoint, payload })
     if (endpoint === 'transcript') {
       pulls.push(payload)
       // The first pull dies on the relay; the retry succeeds.
@@ -333,6 +334,14 @@ test('a failed first pull is retried on the next activity move even while the st
   assert.equal(pulls.length, 2, 'the activity move re-pulls the session whose first pull never landed')
   assert.deepEqual(transcriptOf('p:s').map(line => line.text), ['late'])
   assert.equal(transcriptError('p:s'), '')
+  // The retry's positions must reach the host, or the stream stays silent forever.
+  assert.deepEqual(posts.filter(post => post.endpoint === 'live-watch').at(-1).payload.add,
+    [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 1, dirty: 1 } }])
+  assert.equal(connections.length, 1, 'the retry keeps the stream open')
+  // The next activity move pulls nothing: the session holds positions now.
+  controller.enqueue(encode({ type: 'structure', struct: 3 }))
+  await flush()
+  assert.equal(pulls.length, 2, 'a session with positions is not re-pulled again')
   stopWatch(); stopLive()
 })
 
