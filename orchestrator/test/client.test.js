@@ -119,6 +119,8 @@ test('the conversation frame paints its border above the transcript and keeps it
   assert.equal(rule(`${column}::before`), 'z-index:-1;background:var(--dsw-alias-bg-base)')
   assert.equal(rule(`${column}::after`), 'z-index:1;border:var(--nodo-card-edge);border-left:0')
   assert.match(rule('.nodo-head'), /min-height:var\(--nodo-top-clearance,0px\)/)
+  assert.match(clientSource('page.js'), /h\('header', \{ className: 'nodo-head', 'data-window-drag': true,/, 'macOS drags the window from the blank conversation header')
+  assert.match(clientSource('right-panel.tsx'), /<header className="nodo-right-head" data-window-drag>/, 'macOS drags the window from the blank right panel header')
   assert.equal(rule('html[data-platform=darwin]'), '--nodo-top-clearance:var(--dsh-frame-top-clearance,0px);--nodo-card-top:var(--dsh-frame-top-clearance,0px)', 'Windows columns already start below the titlebar')
   assert.match(rule('.nodo-feedwrap'), /flex:1;min-height:0/, 'the feed retains the existing space below the header')
   assert.match(rule('.nodo-feed'), /overflow-y:auto/, 'the inner feed remains the scroll owner')
