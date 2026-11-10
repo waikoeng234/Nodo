@@ -39,3 +39,54 @@ for (const mounted of [true, false, undefined]) {
     }))
   }
 }
+
+test('a driver that mounted without a workerMcpMounted getter still reports in the degraded shape', () => withFlow(async ({ rt, worker, create, start }) => {
+  const ensure = rt.ensureDriver
+  rt.ensureDriver = async profile => {
+    const driver = await ensure(profile)
+    if (profile.profileId === worker.id) {
+      const open = driver.openSession
+      driver.openSession = async () => { await open(); driver.mountedServers = ['nodo_worker'] }
+    }
+    return driver
+  }
+  const execution = await create()
+  await start(execution)
+  const driver = rt.driverOf(execution.sessionId)
+  assert.equal(Object.hasOwn(driver, 'workerMcpMounted'), false, 'the fixture models an engine that mounted but exposes no mount state')
+  assert.deepEqual(driver.mountedServers, ['nodo_worker'])
+  assert.ok(driver.calls[0].endsWith(rt.workerReportMethod({ stage: 'implement', degraded: true })), 'missing mount state must read as unavailable')
+  assert.doesNotMatch(driver.calls[0], /nodo_report 工具/)
+}))
+
+test('a degraded worker turn rewrites the transcript user line to the text the driver received', () => withFlow(async ({ rt, create, start }) => {
+  const execution = await create()
+  rt.conversationOf(execution.sessionId).session.instructionMode = 'none'
+  await start(execution)
+  const driver = rt.driverOf(execution.sessionId)
+  const line = rt.transcriptOf(execution.sessionId).at(-1)
+  assert.equal(line.who, 'user')
+  assert.equal(line.text, driver.calls[0], 'the transcript shows exactly what the engine received')
+  assert.match(line.text, /简短总结结果/)
+}))
+
+test('a mounted worker turn leaves the transcript user line untouched', () => withFlow(async ({ rt, worker, create, start }) => {
+  const ensure = rt.ensureDriver
+  rt.ensureDriver = async profile => {
+    const driver = await ensure(profile)
+    if (profile.profileId === worker.id) {
+      const open = driver.openSession
+      driver.openSession = async () => { await open(); driver.workerMcpMounted = true }
+    }
+    return driver
+  }
+  const execution = await create()
+  rt.conversationOf(execution.sessionId).session.instructionMode = 'none'
+  await start(execution)
+  const driver = rt.driverOf(execution.sessionId)
+  const line = rt.transcriptOf(execution.sessionId).at(-1)
+  assert.equal(line.who, 'user')
+  assert.equal(line.text, driver.calls[0])
+  assert.ok(line.text.endsWith(rt.workerReportMethod({ stage: 'implement' })))
+  assert.doesNotMatch(line.text, /简短总结结果/)
+}))
