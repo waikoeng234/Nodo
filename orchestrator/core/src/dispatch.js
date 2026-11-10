@@ -25,8 +25,9 @@ export function install(rt) {
   const { ctx } = rt
   const settingsOf = (profile, session = profile) => JSON.stringify([session.model, session.thinking, session.permission ?? profile.permission])
   const workerInputFor = (driver, text, origin) => {
-    if (!origin?.executionId || driver?.workerMcpMounted === true) return text
-    const stage = rt.state.executions[origin.executionId].stage
+    const execution = origin?.executionId && rt.state.executions[origin.executionId]
+    if (!execution || driver?.workerMcpMounted === true) return text
+    const stage = execution.stage
     const fallback = rt.workerReportMethod({ stage, degraded: true })
     const method = rt.workerReportMethod({ stage })
     if (text.endsWith(method)) return text.slice(0, -method.length) + fallback
