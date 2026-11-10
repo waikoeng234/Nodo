@@ -97,7 +97,7 @@ export function install(rt) {
   rt.issueWorkerMcp = async id => {
     await rt.load()
     const found = rt.conversationOf(id)
-    if (!found || found.profile.engine === 'dsh' || leadModeOf(found.profile, found.session)
+    if (!found || leadModeOf(found.profile, found.session)
       || !Object.values(rt.state.executions).some(item => item.sessionId === id && ['queued', 'running'].includes(item.status))) return
     if (closed || rt.readOnly?.()) throw invalid('Nodo 当前不能开启 worker 通道')
     let token
