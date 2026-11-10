@@ -401,7 +401,18 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission, mcp
         else if (capabilities.loadSession) method = 'session/load'
         else throw new Error(`${label} ACP cannot restore the saved session`)
       }
-      const attached = await connection.request<AcpAttached>(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: servers }, 30_000)
+      const params = { ...(sessionId ? { sessionId } : {}), cwd }
+      // An agent whose request schema predates `mcpServers` refuses the whole
+      // call instead of ignoring the field, so the mount is retried without it.
+      let mountAccepted = servers.length > 0
+      let attached: AcpAttached
+      try {
+        attached = await connection.request<AcpAttached>(method, { ...params, mcpServers: servers }, 30_000)
+      } catch (error) {
+        if (!mountAccepted || (error as { code?: unknown }).code !== -32602 || !/unknown field\s+[`'"]?mcpServers\b/i.test((error as Error).message)) throw error
+        mountAccepted = false
+        attached = await connection!.request<AcpAttached>(method, params, 30_000)
+      }
       if (!sessionId) sessionId = attached?.sessionId
       else if (attached?.sessionId && attached.sessionId !== sessionId) throw new Error(`${label} restored a different session`)
       if (typeof sessionId !== 'string' || !sessionId) throw new Error(`${label} returned no session id`)
@@ -411,7 +422,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission, mcp
       await support.configure?.({ peer: connection, sessionId, attached, permission })
       if (disposed || peer !== connection) throw new Error(`${label} startup was cancelled`)
       connected = true
-      workerMcpMounted = servers.some(server => server.name === 'nodo_worker')
+      workerMcpMounted = mountAccepted && servers.some(server => server.name === 'nodo_worker')
     })()
     const pending = startup.catch(error => {
       if (peer === connection) disconnect()

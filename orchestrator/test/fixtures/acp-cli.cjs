@@ -17,6 +17,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     if (process.env.ACP_SLOW_BOOT) setTimeout(() => reply(id, result), 300)
     else reply(id, result)
   } else if (['session/new', 'session/load', 'session/resume'].includes(method)) {
+    if (process.env.ACP_FIXTURE_NO_MCP_FIELD && params.mcpServers !== undefined) return send({ id, error: { code: -32602, message: 'Invalid params: unknown field `mcpServers`' } })
     session = params.sessionId ?? session
     update(session, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'history' } })
     reply(id, method === 'session/new' ? { sessionId: session } : process.env.ACP_WRONG_SESSION ? { sessionId: 'wrong' } : {})

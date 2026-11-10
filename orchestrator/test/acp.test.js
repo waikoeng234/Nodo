@@ -49,6 +49,20 @@ test('ACP omits unsupported HTTP mounts without losing stdio or claiming a worke
   }, { mcpServers: [stdio, { name: 'nodo_worker', url: 'http://localhost/worker', token: 'fixture-token' }] })
 })
 
+for (const method of ['session/new', 'session/load', 'session/resume']) {
+  test(`ACP ${method} retries without MCP mounts when the agent rejects the field`, async () => {
+    const mcpServers = [{ name: 'nodo_worker', command: 'node', args: ['worker.js'], env: [] }]
+    await withDriver(async ({ driver, wire }) => {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      const attempts = wire().filter(item => item.method === method)
+      assert.deepEqual(attempts.map(item => item.params.mcpServers), [mcpServers, undefined])
+      assert.equal('mcpServers' in attempts[1].params, false)
+    }, { mcpServers, driverSessionId: method === 'session/new' ? undefined : 'saved',
+      env: { ACP_FIXTURE_NO_MCP_FIELD: '1', ...(method === 'session/resume' ? { ACP_RESUME: '1' } : {}) } })
+  })
+}
+
 test('ACP stdio worker mounts require a successful session attachment', async () => {
   const mcpServers = [{ name: 'nodo_worker', command: 'node', args: [], env: [] }]
   await withDriver(async ({ driver }) => {

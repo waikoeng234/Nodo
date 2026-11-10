@@ -372,7 +372,20 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission, mcp
                 else
                     throw new Error(`${label} ACP cannot restore the saved session`);
             }
-            const attached = await connection.request(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: servers }, 30_000);
+            const params = { ...(sessionId ? { sessionId } : {}), cwd };
+            // An agent whose request schema predates `mcpServers` refuses the whole
+            // call instead of ignoring the field, so the mount is retried without it.
+            let mountAccepted = servers.length > 0;
+            let attached;
+            try {
+                attached = await connection.request(method, { ...params, mcpServers: servers }, 30_000);
+            }
+            catch (error) {
+                if (!mountAccepted || error.code !== -32602 || !/unknown field\s+[`'"]?mcpServers\b/i.test(error.message))
+                    throw error;
+                mountAccepted = false;
+                attached = await connection.request(method, params, 30_000);
+            }
             if (!sessionId)
                 sessionId = attached?.sessionId;
             else if (attached?.sessionId && attached.sessionId !== sessionId)
@@ -386,7 +399,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission, mcp
             if (disposed || peer !== connection)
                 throw new Error(`${label} startup was cancelled`);
             connected = true;
-            workerMcpMounted = servers.some(server => server.name === 'nodo_worker');
+            workerMcpMounted = mountAccepted && servers.some(server => server.name === 'nodo_worker');
         })();
         const pending = startup.catch(error => {
             if (peer === connection)
