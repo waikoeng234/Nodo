@@ -8,6 +8,7 @@ import { createCoverage, DECLARED } from '../coverage.js';
 import { connectCodex, ensureCodexWorkspace, findCodexExecutable } from './native.js';
 import { createFileChanges } from '../file-changes.js';
 import { LEAD_TOOLS } from '../lead-mcp.js';
+import { WORKER_TOOLS } from '../worker-mcp.js';
 export { findCodexExecutable } from './native.js';
 export const codexInfo = {
     id: 'codex', label: 'Codex CLI', command: 'codex', requiresCwd: true,
@@ -453,7 +454,8 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 ...(leadMcpServers?.length ? { config: Object.fromEntries(leadMcpServers.map(server => [`mcp_servers.${server.name}`, {
                             ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
                                 : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
-                            enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(tool => [tool, { approval_mode: 'approve' }])),
+                            enabled_tools: server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS,
+                            tools: Object.fromEntries((server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => [tool, { approval_mode: 'approve' }])),
                         }])) } : {}),
                 ...(permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access', approvalPolicy: 'never' }
                     : permission === 'workspace' ? { sandbox: 'workspace-write' } : {}),

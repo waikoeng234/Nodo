@@ -7,7 +7,7 @@ import { install } from '../core/src/drivers.js'
 
 const harness = () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-drivers-'))
-  const rt = { home, ctx: { effect() {} }, warn() {}, renderIdentity: () => 'Role identity',
+  const rt = { home, state: { executions: {} }, ctx: { effect() {} }, warn() {}, renderIdentity: () => 'Role identity',
     secretEnv: () => ({}), secretStamp: () => '', saveSessionEvent: async () => {} }
   install(rt)
   return { rt, dispose: () => rmSync(home, { recursive: true, force: true }) }

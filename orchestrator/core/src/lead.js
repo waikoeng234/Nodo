@@ -103,6 +103,10 @@ export function install(rt) {
         ...(execution.supplementUnconfirmed ? ['补充未确认送达'] : []),
         ...(item.resumed ? ['Supplemental report after the user manually resumed this session in Nodo.'] : []),
       ].join('\n'))
+      if (execution.reportData) {
+        item.summary = execution.reportData.summary ?? item.summary
+        item.text = rt.workerReportCard(execution)
+      }
       await rt.recordExecutionResult(execution.id, { report: item.summary })
     } else {
       item.summary ??= reportSummary(item)

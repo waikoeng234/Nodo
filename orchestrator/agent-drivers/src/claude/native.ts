@@ -5,6 +5,7 @@ import { connectStreamJson } from '../stream-json.js'
 import type { PermissionMode } from '../spi.js'
 import type { McpMount } from '../role-mcp.js'
 import { LEAD_TOOLS } from '../lead-mcp.js'
+import { WORKER_TOOLS } from '../worker-mcp.js'
 
 export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; leadMcpServers?: McpMount[] }
 export type ClaudeConnectOptions<Frame = unknown, Request = unknown> = Omit<import('../stream-json.js').StreamJsonOptions<Frame, Request>, 'name'>
@@ -20,16 +21,16 @@ export type ClaudeConnection = import('../stream-json.js').StreamJsonConnection
 // of argv and config JSON.
 export function leadMcpEnv(servers?: McpMount[]) {
   return Object.fromEntries((servers ?? []).flatMap(server => 'url' in server ? [['NODO_LEAD_TOKEN', server.token]]
-    : server.env.filter(({ name }) => name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])))
+    : server.env.filter(({ name }) => /^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])))
 }
 
 const leadMcpConfig = (servers: McpMount[]) => JSON.stringify({ mcpServers: Object.fromEntries(servers.map(server => [server.name, 'url' in server
   ? { type: 'http', url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
-  : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !name.startsWith('NODO_LEAD_')).map(({ name, value }) => [name, value])) },
+  : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !/^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])) },
 ])) })
 
 export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers }: ClaudeArgsOptions = {}) {
-  const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => LEAD_TOOLS.map(tool => `mcp__${name}__${tool}`)) : []
+  const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => (name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => `mcp__${name}__${tool}`)) : []
   return [
     '--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
     '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',

@@ -46,10 +46,12 @@ export function install(rt) {
     await driversReady()
     if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`, 'orch/no-drivers')
     const leadMode = leadModeOf(profile, profile)
-    const signature = JSON.stringify([signatureOf(profile), leadMode])
+    const workerMode = !leadMode && ['claude', 'codex', 'zcode'].includes(profile.engine)
+      && Object.values(rt.state.executions ?? {}).some(item => item.sessionId === profile.id && ['queued', 'running'].includes(item.status))
+    const signature = JSON.stringify([signatureOf(profile), leadMode, workerMode])
     const existing = instances.get(profile.id)
-    if (existing !== undefined && existing.signature === signature && (!leadMode || existing.revoke)) return armIdle(profile.id, existing).driver
-    const leadMcp = await rt.issueLeadMcp?.(profile.id)
+    if (existing !== undefined && existing.signature === signature && (!(leadMode || workerMode) || existing.revoke)) return armIdle(profile.id, existing).driver
+    const leadMcp = await rt.issueLeadMcp?.(profile.id) ?? (['claude', 'codex', 'zcode'].includes(profile.engine) ? await rt.issueWorkerMcp?.(profile.id) : undefined)
     if (existing !== undefined && existing.signature === signature && !leadMcp) return armIdle(profile.id, existing).driver
     if (existing !== undefined) releaseDriver(profile.id)
     let driver

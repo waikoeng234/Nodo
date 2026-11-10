@@ -248,6 +248,7 @@ export function install(rt) {
     Object.assign(execution, result, { status, reason, updatedAt: now, endedAt: now })
     if (files) execution.files = files
     if (unsent) execution.startedAt = null
+    rt.archiveWorkerReport?.(execution)
     stopping.delete(id)
     const task = taskOf(execution.taskId)
     if (!late && (status !== 'cancelled' || executionsOf(task.id).length === 1)) Object.assign(task, { status: taskState, updatedAt: now })
@@ -282,7 +283,7 @@ export function install(rt) {
     if (reason.length > TASK_TEXT_MAX || !Array.isArray(basis) || !basis.length
       || basis.some(value => typeof value !== 'string' || !value.trim() || value.length > TASK_TEXT_MAX)) throw invalid('reason 不得超长，basis 必须是非空文本数组且每项不超过文本上限')
     const reports = deliveredReports(taskId, executionId)
-    for (const report of reports) if (!report.review || report.review.awaitingAnswer) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now(),
+    for (const report of reports) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now(),
       ...(disposition === 'investigate' ? { questions: [...questions], awaitingAnswer: true } : {}) })
     const execution = executionOf(executionId)
     if (disposition === 'continue' && execution.sourceReportId) {
