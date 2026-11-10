@@ -24,6 +24,14 @@ export const modelLabel = item => item.label && /\s/.test(item.label) ? item.lab
 const unlistedOption = (value, choices) => value && !choices.some(item => item.id === value)
   ? [h('option', { key: value, value }, `不在清单：${value}`)] : []
 
+// A picker offers only the models the user enabled in settings; an unset set
+// reads as every model enabled. A saved model outside the set still resolves
+// from the full catalog, so the current choice keeps its name and levels.
+export const offeredModels = (engine, models) => {
+  const ids = engine?.enabledModels
+  return Array.isArray(ids) ? models.filter(item => ids.includes(item.id)) : models
+}
+
 /**
  * @param {ModelChoice[]} models
  * @returns {Map<string, ModelChoice[]>}
@@ -35,8 +43,8 @@ export const groupModelsByProvider = models => {
 }
 
 /** @param {ModelChoice[]} models */
-export function modelChoices(models, value = '', fallback = '') {
-  const selected = models.find(item => item.id === (value || fallback))
+export function modelChoices(models, value = '', fallback = '', allModels = models) {
+  const selected = allModels.find(item => item.id === (value || fallback))
   const providers = groupModelsByProvider(models)
   const options = [...providers].flatMap(([group, items]) => {
     const rows = items.map(item => h('option', { key: item.id, value: item.id, title: item.id }, modelLabel(item)))

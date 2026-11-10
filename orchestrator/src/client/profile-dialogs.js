@@ -1,7 +1,7 @@
 import { h, Fragment, useState, useEffect, useRef, call, Menu, Modal, Button, ROLE_FORM, IconChevronRightOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular } from './ui-shared.js'
 import { avatarTemplateOf, RoleAvatar } from './avatar.tsx'
 import { engineDisplayName, EngineMark } from './engine-logos.js'
-import { modelChoices, modelLabel, modelName, thinkingAfterModelChange } from './model-options.js'
+import { modelChoices, modelLabel, modelName, offeredModels, thinkingAfterModelChange } from './model-options.js'
 import { PermissionSelect, Segmented, permissionForEngine, usePermissionChange } from './composer.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 import ROLE_PRESETS from '../../core/shared/role-presets.json'
@@ -114,14 +114,18 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
   }
   // The model list is the engine's catalog; an unset pair reads the model's own
   // defaults, and an empty thinking choice means "follow the model default".
-  const models = engine?.catalog?.models ?? []
-  const { selected: selectedModel, value: model, levels: modelLevels, options: modelOptions } = modelChoices(models, draft.model, engine?.catalog?.defaultModel)
+  // The select offers the models enabled in settings; a saved pair outside the
+  // set stays resolvable from the full catalog and keeps its 不在清单 row.
+  const catalogModels = engine?.catalog?.models ?? []
+  const models = offeredModels(engine, catalogModels)
+  const { selected: selectedModel, value: model, levels: modelLevels, options: modelOptions } =
+    modelChoices(models, draft.model, engine?.catalog?.defaultModel, catalogModels)
   // A level belongs to its model: an explicit level survives a model switch only
   // while the next model lists it; otherwise the model's own default applies.
   const chooseModel = event => {
     const id = event.target.value
     update(current => ({ ...current, model: id,
-      thinking: thinkingAfterModelChange(models, id, current.thinking) }))
+      thinking: thinkingAfterModelChange(catalogModels, id, current.thinking) }))
   }
   const submit = async (event) => {
     event.preventDefault()
@@ -228,7 +232,7 @@ export function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = nu
             title: profile ? '创建后不能更换 Agent' : undefined, value: draft.engine, onChange: chooseEngine },
           !engine && h('option', { value: draft.engine }, loading ? '正在加载 Agent…' : `不可用：${draft.engine}`),
           ...engines.map(item => h('option', { key: item.id, value: item.id }, engineDisplayName(item))))),
-          row('模型', models.length
+          row('模型', catalogModels.length
             ? h('select', { className: 'nodo-dialog-input nodo-dialog-select nodo-role-select', 'aria-label': '模型', disabled, value: model, onChange: chooseModel },
               !model && h('option', { value: '' }, '选择模型'),
               ...modelOptions)

@@ -149,6 +149,8 @@ export function install(rt) {
         return rt.saveEngineConfig(body)
       case 'engine-enable-set':
         return rt.saveEngineEnables(body)
+      case 'engine-model-enable-set':
+        return rt.saveEngineModelEnables(body)
       case 'diag':
         return rt.diagView()
       case 'transcript': {

@@ -1,3 +1,4 @@
+import { invalid } from './errors.js'
 import { cleanModel, cleanThinking } from './profiles.js'
 
 export function install(rt) {
@@ -37,16 +38,20 @@ export function install(rt) {
   // What the settings page sees: field metadata plus the cached catalog. Only
   // engines usable on this machine are listed — the CLI was detected, the user
   // pinned an absolute path in bin, or the engine runs on the host itself.
+  // enabledModels is the user's per-engine pick from the model settings; unset
+  // reads as every scanned model enabled.
+  const enabledModelsOf = engine => rt.state.prefs.enabledModels?.[engine]
   const usable = info => !!(info.executable || info.nativeRuntime || engineConfig(info.id).engineOptions?.bin)
   const engineCatalogView = () => rt.engineCatalog()
     .filter(usable)
-    .map(info => ({ ...info, catalog: engineCatalogOf(info.id) }))
+    .map(info => ({ ...info, catalog: engineCatalogOf(info.id), enabledModels: enabledModelsOf(info.id) }))
 
   // The full registry with local detection, for the settings page's detected /
   // undetected groups; usable mirrors engineCatalogView's filter.
   const engineDetectView = () => rt.engineCatalog().map(info => ({
     ...info,
     catalog: engineCatalogOf(info.id),
+    enabledModels: enabledModelsOf(info.id),
     usable: usable(info),
   }))
 
@@ -63,5 +68,22 @@ export function install(rt) {
     return { enabledEngines: rt.state.prefs.enabledEngines ?? null, onboardedAt: rt.state.prefs.onboardedAt }
   }
 
-  Object.assign(rt, { engineConfig, saveEngineConfig, scanEngineCatalog, engineCatalogView, engineDetectView, saveEngineEnables })
+  // One engine's enabled model ids. The set only covers a scanned catalog — ids
+  // outside it are dropped, so an engine the user never scanned keeps no entry —
+  // and an empty array disables that engine's every model.
+  const saveEngineModelEnables = async ({ engine, models } = {}) => {
+    await rt.load()
+    await rt.driversReady()
+    const id = String(engine ?? '')
+    const catalog = engineCatalogOf(id)
+    if (!catalog) throw invalid(`No scanned catalog for engine "${id}"`)
+    const known = new Set(catalog.models.map(item => item.id))
+    const chosen = [...new Set((Array.isArray(models) ? models : []).map(String))].filter(model => known.has(model))
+    rt.state.prefs.enabledModels ??= {}
+    rt.state.prefs.enabledModels[id] = chosen
+    await rt.save()
+    return { engine: id, enabledModels: chosen }
+  }
+
+  Object.assign(rt, { engineConfig, saveEngineConfig, scanEngineCatalog, engineCatalogView, engineDetectView, saveEngineEnables, saveEngineModelEnables })
 }

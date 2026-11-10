@@ -1,13 +1,47 @@
 import {
   h, Fragment, useState, useEffect, call, nativePickDirectory, nativeSpace, ENGINE_FORM, Modal, Button, StateDot,
-  IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconRefreshOutlineRegular,
+  IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular,
 } from './ui-shared.js'
 import { Field } from './profile-dialogs.js'
 import { WorkspaceFields } from './workspace-dialogs.js'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
+import { groupModelsByProvider, modelLabel } from './model-options.js'
 import { setNavigation } from './navigation.js'
 import AVATAR_TEMPLATES from '../../core/shared/avatar-templates.json'
 import { RemoteAccessSettings } from './remote-access.js'
+
+// One scanned model row per switch: the enabled set rides prefs per engine and
+// unset reads as every model on, so a fresh scan waits inside 未显示 only after
+// the user has picked any.
+const enabledIdsOf = engine => {
+  const models = engine.catalog?.models ?? []
+  return Array.isArray(engine.enabledModels) ? engine.enabledModels : models.map(item => item.id)
+}
+
+function ModelCatalogList({ engine, disabled, onToggle }) {
+  const [query, setQuery] = useState('')
+  const models = engine.catalog?.models ?? []
+  const enabled = new Set(enabledIdsOf(engine))
+  const text = query.trim().toLowerCase()
+  const match = item => !text || modelLabel(item).toLowerCase().includes(text) || item.id.toLowerCase().includes(text)
+  const section = (items, scope) => [...groupModelsByProvider(items.filter(match))].flatMap(([group, rows]) => [
+    ...(group === '' ? [] : [h('p', { key: `${scope}group:${group}`, className: 'nodo-engine-model-group' }, group)]),
+    ...rows.map(item => h('div', { key: item.id, className: 'nodo-engine-model', title: item.id },
+      h('span', null, modelLabel(item)),
+      h('button', { type: 'button', className: 'nodo-engine-switch', 'aria-pressed': enabled.has(item.id),
+        'aria-label': `${enabled.has(item.id) ? '停用' : '启用'} ${modelLabel(item)}`, disabled,
+        onClick: () => onToggle(item.id) }))),
+  ])
+  const off = models.filter(item => !enabled.has(item.id))
+  if (models.length === 0) return null
+  return h('div', { className: 'nodo-engine-models' },
+    h('label', { className: 'nodo-engine-models-search' }, h(IconSearchOutlineRegular, { size: 14 }),
+      h('input', { type: 'text', 'aria-label': '搜索模型', placeholder: '搜索模型', value: query,
+        onChange: event => setQuery(event.target.value) })),
+    ...section(models.filter(item => enabled.has(item.id)), 'on:'),
+    off.length > 0 && h('p', { className: 'nodo-engine-model-group' }, '未显示', h('span', null, off.length)),
+    ...section(off, 'off:'))
+}
 
 // Settings is the host's modal too: the same card and field metrics as the role
 // dialog, with the primary action submitting the form inside it
@@ -67,6 +101,20 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
       setEnabled(saved2.enabledEngines ?? next)
       await refresh(true)
     } catch (failure) { setError(failure.message); setEnabled(enabled) }
+  }
+  const toggleModel = async (item, id) => {
+    if (locked || readOnly) return
+    const ids = enabledIdsOf(item)
+    const next = ids.includes(id) ? ids.filter(model => model !== id) : [...ids, id]
+    setEngines(current => current.map(entry => entry.id === item.id ? { ...entry, enabledModels: next } : entry))
+    setError('')
+    try {
+      const saved = await call('engine-model-enable-set', { engine: item.id, models: next })
+      setEngines(current => current.map(entry => entry.id === item.id ? { ...entry, enabledModels: saved.enabledModels } : entry))
+    } catch (failure) {
+      setError(failure.message)
+      setEngines(current => current.map(entry => entry.id === item.id ? { ...entry, enabledModels: item.enabledModels } : entry))
+    }
   }
   const checkKey = id => JSON.stringify([id, workspace?.id])
   const check = checks[checkKey(selected)]
@@ -148,8 +196,11 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
               h('dt', null, h(StateDot, { state: entry.ok === null ? 'idle' : entry.ok ? 'done' : 'error', size: 6 }), entry.label),
               h('dd', { className: entry.ok === false ? 'nodo-bad' : undefined }, entry.message)))),
           h('div', { className: 'nodo-engine-section nodo-engine-scan' },
-            h('strong', null, '模型清单', h('span', null, engine.catalog ? `${engine.catalog.models?.length ?? 0} 个` : '未扫描')),
+            h('strong', null, '模型清单', h('span', null, engine.catalog
+              ? `已选 ${(engine.catalog.models ?? []).filter(item => enabledIdsOf(engine).includes(item.id)).length} 个`
+              : '未扫描')),
             h(Button, { variant: 'outline', size: 'sm', disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? '扫描中…' : '扫描')),
+          engine.catalog && h(ModelCatalogList, { key: engine.id, engine, disabled: locked || readOnly, onToggle: id => void toggleModel(engine, id) }),
           saved && h('p', { className: 'nodo-ok', role: 'status' }, 'Agent 配置已保存'))))
   }
   const heading = (title, items) => h('h3', { key: title, className: 'nodo-engine-group' }, title, h('span', null, items.length))
