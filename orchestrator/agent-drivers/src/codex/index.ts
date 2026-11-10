@@ -494,11 +494,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     if (disposed) throw new Error('Codex driver disposed')
     // Fail closed: a leader without its mount has no working channel and must
     // not degrade into an unprivileged plain session.
-    if (lead && !leadMcpServers?.length) {
-      const error: NodeJS.ErrnoException = new Error('The lead channel is unavailable; the leader session cannot start without its nodo_lead mount.')
-      error.code = 'orch/lead-unavailable'
-      throw error
-    }
+    if (lead && !leadMcpServers?.length) throw leadUnavailable('The lead channel is unavailable; the leader session cannot start without its nodo_lead mount.')
     validateWorkspace(cwd, true)
     const executable = findCodexExecutable(bin)
     if (!executable) throw new Error('Codex executable not found. Edit the profile CLI path or install the CLI separately.')
