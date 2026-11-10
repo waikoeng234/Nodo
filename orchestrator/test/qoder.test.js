@@ -17,6 +17,59 @@ const withFixture = async (run) => {
 
 const texts = events => events.filter(event => event.type === 'text').map(event => event.text)
 
+test('Qoder mounts nodo_worker through inline config without isolating user MCP', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('qoder', { bin, cwd, leadMcpServers: [{ name: 'nodo_worker', url: 'http://127.0.0.1:1234/mcp', token: 'fixture-only' }], onEvent: event => events.push(event) })
+    try {
+      assert.equal(driver.workerMcpMounted, false)
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, true)
+      await driver.sendTurn('Hello')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const spawn = readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).find(entry => entry.spawn)
+      assert.deepEqual(JSON.parse(spawn.mcpConfig), { mcpServers: { nodo_worker: { type: 'http', url: 'http://127.0.0.1:1234/mcp', headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } } } })
+      assert.equal(spawn.spawn.includes('--strict-mcp-config'), false)
+      assert.equal(spawn.mcpConfig.includes('fixture-only'), false, 'credentials stay out of argv')
+      assert.equal(await driver.steer('supplement'), 'refused')
+    } finally { driver.dispose() }
+    assert.equal(driver.workerMcpMounted, false)
+  })
+})
+
+test('Qoder retries without the worker mount only when the CLI rejects --mcp-config', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('qoder', { bin, cwd, env: { QODER_FIXTURE_NO_MCP: '1' }, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: ['fixture.js'], env: [] }], onEvent: event => events.push(event) })
+    try {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      assert.equal(driver.instructionFallback, 'mcp-field-unsupported')
+      await driver.sendTurn('Hello')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const requests = readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+      assert.equal(requests.filter(entry => entry.rejectedMcp).length, 1)
+      assert.equal(requests.find(entry => entry.spawn).mcpConfig, undefined)
+      assert.deepEqual(requests.filter(entry => entry.user).map(entry => entry.user), ['Hello'])
+    } finally { driver.dispose() }
+    const failed = createDriver('qoder', { bin, cwd, env: { QODER_FIXTURE_INIT_ERROR: '1' }, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: [], env: [] }] })
+    try { await assert.rejects(failed.openSession(), /Unsupported initialize/) } finally { failed.dispose() }
+  })
+})
+
+test('Qoder never attaches a worker mount to a leader session', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('qoder', { bin, cwd, lead: true, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: [], env: [] }] })
+    try {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      await until(() => existsSync(join(cwd, 'qoder-requests.jsonl')))
+      const spawn = JSON.parse(readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').trim().split('\n')[0])
+      assert.equal(spawn.spawn.includes('--mcp-config'), false)
+    } finally { driver.dispose() }
+  })
+})
+
 test('Qoder adapter streams whole messages natively and resumes the same CLI session', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

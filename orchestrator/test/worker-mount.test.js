@@ -8,7 +8,7 @@ import { withHost, until } from './helpers/host.js'
 import { routeUserTask } from './helpers/route.js'
 
 for (const { engine, project, unsupported } of [
-  ...['claude', 'codex', 'zcode'].map(engine => ({ engine })),
+  ...['claude', 'codex', 'zcode', 'qoder'].map(engine => ({ engine })),
   { engine: 'zcode', project: 'zcode.json' }, { engine: 'zcode', project: '.zcode/config.json' }, { engine: 'zcode', unsupported: true },
 ]) test(`${engine} fake CLI mounts worker tools and delivers the latest persisted report card${project ? ` with project ${project}` : unsupported ? ' with unsupported MCP fallback' : ''}`, () => withHost(async host => {
   const rt = await host.runtime
@@ -101,6 +101,11 @@ for (const { engine, project, unsupported } of [
     const config = thread.params.config['mcp_servers.nodo_worker']
     assert.deepEqual(config.enabled_tools, ['nodo_report', 'nodo_context'])
     assert.deepEqual(Object.keys(config.tools), ['nodo_report', 'nodo_context'])
+  } else if (engine === 'qoder') {
+    const requests = readFileSync(join(host.home, 'qoder-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+    const spawn = requests.find(item => item.spawn)
+    assert.ok(JSON.parse(spawn.mcpConfig).mcpServers.nodo_worker)
+    assert.equal(spawn.spawn.includes('--strict-mcp-config'), false)
   } else {
     const requests = readFileSync(join(host.home, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
     assert.ok(requests.find(item => item.params.mcpServers.some(server => server.name === 'nodo_worker' && server.type === 'http' && server.isolation === 'session')))

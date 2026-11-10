@@ -46,7 +46,7 @@ export function install(rt) {
     await driversReady()
     if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`, 'orch/no-drivers')
     const leadMode = leadModeOf(profile, profile)
-    const workerMode = !leadMode && ['claude', 'codex', 'zcode'].includes(profile.engine)
+    const workerMode = !leadMode && ['claude', 'codex', 'zcode', 'qoder'].includes(profile.engine)
       && Object.values(rt.state.executions ?? {}).some(item => item.sessionId === profile.id && ['queued', 'running'].includes(item.status))
     const signature = JSON.stringify([signatureOf(profile), leadMode, workerMode])
     const existing = instances.get(profile.id)
@@ -55,7 +55,7 @@ export function install(rt) {
     // lead channel is down the drivers refuse to start rather than degrade into
     // an unprivileged plain session.
     const leadMcp = leadMode ? await rt.issueLeadMcp?.(profile.id)
-      : ['claude', 'codex', 'zcode'].includes(profile.engine) ? await rt.issueWorkerMcp?.(profile.id) : undefined
+      : ['claude', 'codex', 'zcode', 'qoder'].includes(profile.engine) ? await rt.issueWorkerMcp?.(profile.id) : undefined
     if (existing !== undefined && existing.signature === signature && !leadMcp) return armIdle(profile.id, existing).driver
     if (existing !== undefined) releaseDriver(profile.id)
     let driver
