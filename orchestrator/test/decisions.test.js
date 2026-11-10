@@ -528,6 +528,33 @@ test('answers queue behind the old turn without steering, then enter a new confi
   leader.finish()
 }))
 
+test('sending a queued message after the leader goes idle writes at and id back, so trigger handles stay resolvable', () => withDecisions(async ({ rt, owner, lead, api }) => {
+  await api('send', { text: 'Plan' })
+  const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
+  const placed = await rt.send(lead.id, 'Queued original', owner.id, [], [], { queue: true, userInput: true, origin: { kind: 'user' } })
+  assert.equal(placed.mode, 'queued')
+  const compacting = rt.isCompacting
+  let liveNotifications = 0
+  const notifyLive = rt.notifyLive
+  rt.notifyLive = (...args) => { liveNotifications++; return notifyLive?.(...args) }
+  rt.isCompacting = () => true
+  leader.finish()
+  // The end handler runs its final stretch (drain included) after an async
+  // save; notifyLive fires right after that drain, so an extra notification
+  // proves the patched-off drain already ran and kept the item queued.
+  const baseline = liveNotifications
+  await until(() => liveNotifications > baseline)
+  rt.isCompacting = compacting
+  rt.notifyLive = notifyLive
+  assert.equal(rt.workView()[owner.id]?.queued, 1, 'drain skipped while compacting, so the item stays queued while idle')
+  await rt.queuedMessage(lead.id, owner.id, placed.seq, 'send')
+  await until(() => rt.driverOf(owner.id)?.active)
+  const pending = rt.pendingTriggerOf(owner.id)
+  assert.match(pending.handle, new RegExp(`^message:${owner.id}:\\d+:[0-9a-f]{8}$`))
+  leader.finish()
+  await until(() => !rt.workView()[owner.id]?.active)
+}))
+
 for (const mode of ['open', 'send', 'after-start', 'before-start']) test(`answer handoff requires accepted send and actual turn start (${mode})`, () => withDecisions(async ({ rt, owner, api, delegate }) => {
   await api('send', { text: 'Initial plan' })
   const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))

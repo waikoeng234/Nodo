@@ -273,7 +273,7 @@ export function install(rt) {
     const leadFlight = userInput ? await rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
     const leadMode = leadModeOf(profile, session)
-    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, files?.paths, line) : undefined
+    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, line) : undefined
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
@@ -310,7 +310,7 @@ export function install(rt) {
     if (action !== 'send') throw invalid('Unknown queue action')
     if (!occupied(sessionId, st)) {
       st.queued.splice(st.queued.indexOf(item), 1)
-      say(sessionId, item.pendingLine)
+      Object.assign(item.pendingLine, say(sessionId, item.pendingLine))
       startTurn(sessionId, st, item.text, item.seq, item.images, item.task, item.onInput, item.origin)
       return { mode: 'turn' }
     }

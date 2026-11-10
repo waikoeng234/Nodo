@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto'
-import { realpathSync } from 'node:fs'
-import { relative } from 'node:path'
-import { INSTRUCTIONS_MAX, TRANSCRIPT_TEXT_MAX, CONTEXT_LIST_MAX, CONTEXT_PAGE_DEFAULT, CONTEXT_PAGE_MAX, INPUT_CONTEXT_MAX, RESULT_PREVIEW_MAX } from './constants.js'
+import { INSTRUCTIONS_MAX, TRANSCRIPT_TEXT_MAX, CONTEXT_LIST_MAX, CONTEXT_PAGE_DEFAULT, CONTEXT_PAGE_MAX, RESULT_PREVIEW_MAX } from './constants.js'
 import { clip, toolText } from './text.js'
 import { transcriptReplies } from './session-references.js'
 import { failure, invalid } from './errors.js'
@@ -251,9 +249,7 @@ export function install(rt) {
 
   // Dispatch context: selections are fixed once at acceptance, with their text
   // held in memory, so later source transcript cleanup cannot alter a queued
-  // dispatch's input. Defaults follow explicit relations only; an explicit
-  // context parameter replaces them entirely so the lead can always escape an
-  // oversized default.
+  // dispatch's input. Defaults follow explicit relations only.
   const toSelection = (found, role) => ({ sourceId: found.sourceId, kind: found.kind, role, description: found.description,
     completeness: found.completeness, ...(found.reason ? { reason: found.reason } : {}), text: found.text ?? '', length: (found.text ?? '').length })
   const dedupe = entries => {
@@ -284,44 +280,7 @@ export function install(rt) {
     }
     return { required: dedupe(required), background: dedupe(background) }
   }
-  const explicitDispatchContext = async (id, context) => {
-    const required = [], background = []
-    for (const sourceId of context.required) {
-      const found = await resolveContextSource(id, sourceId)
-      if (found.completeness === 'unavailable') throw invalid(`必需来源不可用或已清理：${sourceId}（${found.reason ?? 'unavailable'}）`)
-      required.push(toSelection(found, 'required'))
-    }
-    for (const sourceId of context.background) {
-      if (context.required.includes(sourceId)) continue
-      background.push(toSelection(await resolveContextSource(id, sourceId), 'background'))
-    }
-    return { required: dedupe(required), background: dedupe(background) }
-  }
-  const selectDispatchContext = async ({ leadSessionId, taskId, parentId, dependsOn, context }) => context
-    ? explicitDispatchContext(leadSessionId, context)
-    : defaultDispatchContext(leadSessionId, { taskId, parentId, dependsOn })
+  const selectDispatchContext = ({ leadSessionId, taskId, parentId, dependsOn }) => defaultDispatchContext(leadSessionId, { taskId, parentId, dependsOn })
 
-  const BACKGROUND_NOTE = 'Background material for this task is archived as files under .nodo/workflow-inputs/; paths are listed after the task. Read them with your file tools as needed.\n\n'
-  const backgroundFileName = entry => `${entry.kind}-${entry.sourceId.replaceAll(/[^a-zA-Z0-9]/g, '').slice(-24)}.md`
-  const composeDispatchInput = async ({ workspaceCwd, header, instruction, task, required, background }) => {
-    const writable = background.filter(entry => entry.text.trim())
-    const bodies = writable.map(entry => rt.redactDeepSecrets(entry.text))
-    const paths = writable.length ? await rt.place(writable.map((entry, index) => ({ name: backgroundFileName(entry), bytes: Buffer.from(bodies[index], 'utf8') })), workspaceCwd) : []
-    // Materialized paths are realpath-based, so the relative form is computed
-    // from the resolved cwd; a same-directory relative path resolves the same
-    // through a symlinked cwd spelling.
-    const catalog = writable.map((entry, index) => ({ sourceId: entry.sourceId, kind: entry.kind, description: entry.description,
-      completeness: entry.completeness, ...(entry.reason ? { reason: entry.reason } : {}), path: relative(realpathSync(workspaceCwd), paths[index]),
-      bytes: Buffer.byteLength(bodies[index], 'utf8') }))
-    const omitted = background.filter(entry => !entry.text.trim()).map(entry => ({ sourceId: entry.sourceId, kind: entry.kind,
-      description: entry.description, reason: entry.reason ?? 'unavailable' }))
-    const body = header + (catalog.length ? BACKGROUND_NOTE : '') + instruction + task + rt.renderRequired(required)
-      + rt.renderBackground([...catalog, ...omitted.map(entry => ({ ...entry, completeness: 'unavailable', path: null }))])
-    if (body.length > INPUT_CONTEXT_MAX) throw invalid(`派活最终输入 ${body.length} 字符超过预算 ${INPUT_CONTEXT_MAX}，请缩小任务或减少必需内容；本轮未发送`)
-    const inputContext = { at: Date.now(), length: body.length, preview: shorten(body, RESULT_PREVIEW_MAX),
-      required: required.map(({ text, ...descriptor }) => descriptor), background: catalog, ...(omitted.length ? { omitted } : {}) }
-    return { text: body, inputContext }
-  }
-
-  Object.assign(rt, { cleanTaskState, sessionReference, recordTaskOutcome, executionContext, resolveContextSource, selectDispatchContext, composeDispatchInput, decisionText, messageSourceId })
+  Object.assign(rt, { cleanTaskState, sessionReference, recordTaskOutcome, executionContext, resolveContextSource, selectDispatchContext, decisionText, messageSourceId })
 }

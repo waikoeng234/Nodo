@@ -208,11 +208,6 @@ export function install(rt) {
     })().finally(() => { state.delivering = undefined })
     return state.delivering
   }
-  const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name}. Start your report with a one-line outcome summary, actual verification results and unresolved issues.
-Carry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.
-Write the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.
-
-`)
   const ownerOf = value => {
     const found = rt.conversationOf(typeof value === 'string' ? value : value?.id)
     if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
@@ -332,7 +327,7 @@ Write the body as conclusions, marking file:line only after claims that need che
     return { session, ...(flight.executionId ? { taskId: flight.taskId, executionId: flight.executionId } : {}), ended: result.reason, ...(result.unconfirmed ? { unconfirmed: true } : {}),
       lastOutput: clip(rt.redactDeepSecrets(String(result.final ?? result.text ?? rt.workView()[session]?.buffer ?? '')), 4000, 'last output') }
   }
-  const track = async (lead, leadSession, session, flight, sent, header, manual = false) => {
+  const track = async (lead, leadSession, session, flight, sent, manual = false) => {
     const state = stateOf(leadSession.id), target = rt.conversationOf(session.id).profile
     let result
     try {
@@ -410,7 +405,7 @@ Write the body as conclusions, marking file:line only after claims that need che
   }
   const dispatchTask = async (leadValue, command, taskRecord, details) => {
     const { profile: lead, session: leadSession } = ownerOf(leadValue)
-    const state = stateOf(leadSession.id), header = headerOf(lead)
+    const state = stateOf(leadSession.id)
     const { trigger, stage = 'implement', sourceExecutionId, sourceReportId, questions, supplements = [] } = details
     const continuesRecord = command.continues ? await ownedTask({ profile: lead, session: leadSession }, command.continues) : undefined
     const sourceRecord = taskRecord ?? continuesRecord
@@ -500,7 +495,7 @@ Write the body as conclusions, marking file:line only after claims that need che
           if (flight.stopping || rt.sessionBlockReason?.(leadSession.id)) return await cancelDispatch(state, flight)
           await rt.startExecution(execution.id, input.inputContext)
           const sent = await rt.send(target.id, input.text, session.id, input.images, [], { exclusive: true, files: { paths: input.files }, limit: INPUT_CONTEXT_MAX, origin: { kind: 'delegation', ...executionIds(execution) } })
-          following = track(lead, leadSession, session, flight, sent, header)
+          following = track(lead, leadSession, session, flight, sent)
         } catch (error) {
           try { session = await end(state, session, flight, { reason: causeOf(error) }) }
           finally { await removeUnsentWorktree(createdWorkspace?.id) }
@@ -591,6 +586,8 @@ Write the body as conclusions, marking file:line only after claims that need che
     if (scope.quote !== undefined && (typeof scope.quote !== 'string' || !scope.quote || !trigger.text.includes(scope.quote))) throw failure('quote 必须是本轮用户原话的精确子串', 'orch/scope-not-quote')
     if (!rt.state.triggers[trigger.id] && rt.triggerUsageOf(id) + trigger.text.length > TRIGGER_TEXT_TOTAL_MAX) throw failure('触发消息存储已满。请清理停滞或已结束的任务，再派新活。', 'orch/trigger-full')
     if (command.action === 'new') {
+      // The lead channel awaits this for tool calls; direct leadRoute callers
+      // still need to park while an answered decision is mid-delivery.
       await rt.decisionDeliveryReady?.(id)
       rt.assertDecisionDispatch?.(id)
       const unreviewed = rt.reportReviewBlockReason?.(id)
@@ -604,7 +601,6 @@ Write the body as conclusions, marking file:line only after claims that need che
         const dependency = await ownedTask(owner, value)
         if (dependency.status !== 'done') throw invalid(`依赖任务 ${dependency.title} 尚未验收，先完成它再派活`)
       }
-      assertFlightCapacity(state, `此主控会话最多同时派活 ${MAX_ACTIVE_FLIGHTS} 个任务，请等一个结束后再派`)
       const storedScope = rt.redactDeepSecrets(scope)
       if (storedScope.note?.length > SCOPE_NOTE_MAX) throw failure('范围说明脱敏后超过 100 字', 'orch/scope-note-too-long')
       return dispatchTask(id, { ...command, scope: storedScope }, undefined, { trigger })
@@ -637,12 +633,18 @@ Write the body as conclusions, marking file:line only after claims that need che
       await note(id, '已受理补充', { delegation: { ...receipt, session: execution.sessionId } })
       return receipt
     }
+    // A rework follows the task's implementation: review executions only carry
+    // verdicts and findings, so the routing type and holder come from the last
+    // implement/rework execution.
+    const implementLatest = task.executions.findLast(item => ['implement', 'rework'].includes(item.stage ?? 'implement'))
+    if (!implementLatest) throw invalid('任务没有可返工的实现执行记录')
+    rt.assertDecisionDispatch?.(id)
     const previousFlow = structuredClone(flow)
     Object.assign(rt.state.tasks[task.id].flow, { status: 'running', stage: 'rework', round: (flow.round ?? 1) + 1, supplementReworks: (flow.supplementReworks ?? 0) + 1 })
     let receipt
     try {
-      receipt = await dispatchTask(id, { type: latest.type, hard: latest.hard }, task, { trigger, stage: 'rework',
-        supplements: (execution.supplements ?? []).filter(value => value !== trigger.id), sourceExecutionId: latest.id })
+      receipt = await dispatchTask(id, { type: implementLatest.type, hard: implementLatest.hard }, task, { trigger, stage: 'rework',
+        supplements: (execution.supplements ?? []).filter(value => value !== trigger.id), sourceExecutionId: implementLatest.id })
     } catch (error) { rt.state.tasks[task.id].flow = previousFlow; throw error }
     const mode = flow.status === 'accepting' ? 'withdrew-card' : 'rework'
     if (flow.status === 'accepting') for (const card of Object.values(rt.state.cards)) if (card.taskId === task.id && card.status === 'open') Object.assign(card, { status: 'resolved', answer: 'supplement', answeredAt: Date.now() })
@@ -662,6 +664,7 @@ Write the body as conclusions, marking file:line only after claims that need che
       if (flow.status === 'stalled') throw failure('任务已停滞', 'orch/task-stalled')
       if (!['running', 'reviewing'].includes(flow.status) || ['done', 'stopped'].includes(task.status)) throw failure('已结束、停止或旧任务只读，不能新增补答执行', 'orch/frozen')
       if (task.executions.some(item => ['queued', 'running', 'unconfirmed'].includes(item.status))) throw failure('任务已有未结束执行', 'orch/busy')
+      rt.assertDecisionDispatch?.(owner.session.id)
       assertFlightCapacity(stateOf(owner.session.id), `此主控会话最多同时派活 ${MAX_ACTIVE_FLIGHTS} 个任务`)
       rt.deliveredReports(task.id, execution.id)
       if (!execution.reports.some(report => !report.review || report.review.awaitingAnswer)) throw invalid('回报已复核')
@@ -670,7 +673,7 @@ Write the body as conclusions, marking file:line only after claims that need che
       const previous = structuredClone(execution.reports)
       await rt.reviewReports(task.id, command)
       try {
-        return await dispatchTask(id, { type: execution.type, hard: execution.hard }, task, { trigger, stage: 'answer', questions,
+        return await dispatchTask(id, { type: execution.type, hard: execution.hard }, task, { trigger, stage: 'answer', questions: rt.redactDeepSecrets(questions),
           sourceExecutionId: execution.id, sourceReportId: execution.reports.at(-1).id })
       } catch (error) { execution.reports = previous; await rt.saveStrict(); throw error }
     }
@@ -728,7 +731,7 @@ Write the body as conclusions, marking file:line only after claims that need che
       await note(sessionId, UNREPORTED_GONE)
       return
     }
-    const next = await track(owner.profile, owner.session, session, flight, placed, headerOf(owner.profile), true)
+    const next = await track(owner.profile, owner.session, session, flight, placed, true)
     if (next) await rt.followLead(owner.session.id, next)
     void flushLeadReports(sessionId)
   }
@@ -804,7 +807,7 @@ Write the body as conclusions, marking file:line only after claims that need che
     leadDispatch: { interrupt: interruptDelegation },
     prepareLeadInput,
     resetLeadBudget: id => { stateOf(id).count = 0 },
-    leadInputStarted: (id, attached, line) => {
+    leadInputStarted: (id, line) => {
       rt.clearPendingTrigger(id)
       if (rt.isUserTriggerLine(line)) rt.setPendingTrigger(rt.triggerFromLine({ coordinatorSessionId: id, line }))
       rt.resetLeadBudget(id)

@@ -279,7 +279,7 @@ for (const removal of ['automatic', 'user']) for (const worktree of [undefined, 
   await rt.followLead(owner.id, turn('interrupted'))
 }, true))
 
-test('a shared execution that never started does not lock the task directory', () => withTasks(async ({ rt, owner }) => {
+test('an ended task refuses attach and new work picks its own directory', () => withTasks(async ({ rt, owner }) => {
   const first = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('interrupted'))
   await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId }), { code: 'orch/frozen' })

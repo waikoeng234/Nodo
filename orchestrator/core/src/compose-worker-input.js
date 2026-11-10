@@ -75,7 +75,8 @@ export function install(rt) {
       evidenceHandle: source.evidence ? `evidence:${source.id}` : 'evidence:unavailable' })
   }
   // A review-fail rework takes its findings from the review execution named by
-  // sourceExecutionId; any other rework summarizes the previous execution.
+  // sourceExecutionId; any other rework summarizes the previous implementation,
+  // never a review execution.
   const priorLinesOf = execution => {
     const task = rt.state.tasks[execution.taskId]
     if (task.triggerId !== undefined && execution.triggerId === task.triggerId) {
@@ -85,7 +86,8 @@ export function install(rt) {
       if (lines.length) return lines
     }
     const previous = Object.values(rt.state.executions)
-      .filter(item => item.taskId === execution.taskId && item.id !== execution.id && item.endedAt != null)
+      .filter(item => item.taskId === execution.taskId && item.id !== execution.id && item.endedAt != null
+        && ['implement', 'rework'].includes(item.stage ?? 'implement'))
       .sort((a, b) => a.endedAt - b.endedAt).at(-1)
     const summary = previous?.reportData?.summary ?? previous?.result?.preview ?? ''
     return [summary ? `上一执行：${summary}` : '上一执行没有可用摘要。']
@@ -95,8 +97,35 @@ export function install(rt) {
     const [previous] = Object.values(rt.state.executions)
       .filter(item => item.taskId === sourceTask?.id && item.endedAt != null)
       .sort((a, b) => b.endedAt - a.endedAt)
-    return sourceTask && previous ? { title: scopeTextOf(sourceTask.scope) || sourceTask.id, summary: previous.reportData?.summary ?? previous.result?.preview ?? '',
+    return sourceTask && previous ? { title: clip(scopeTextOf(sourceTask.scope) || sourceTask.id, 80, '来源任务') || sourceTask.id,
+      summary: previous.reportData?.summary ?? previous.result?.preview ?? '',
       sourceId: `execution:${previous.id}:result` } : undefined
+  }
+
+  // A session that ran this coordinator's tasks before learns which later tasks
+  // touched the files it changed, so it rereads before overwriting their work.
+  const changesOf = execution => {
+    const own = Object.values(rt.state.executions).filter(item => item.sessionId === execution.sessionId)
+    const paths = new Set(own.flatMap(item => item.files?.items.map(file => file.path) ?? []))
+    const lastEnded = Math.max(0, ...own.filter(item => item.endedAt != null).map(item => item.endedAt))
+    if (!paths.size || !lastEnded) return undefined
+    const owner = rt.state.tasks[execution.taskId]?.coordinatorSessionId
+    const workspaceRef = execution.workspaceRef ?? rt.state.tasks[execution.taskId]?.workspaceRef
+    const hits = Object.values(rt.state.executions)
+      .filter(item => item.endedAt != null && item.endedAt > lastEnded && item.sessionId !== execution.sessionId && item.files
+        && rt.state.tasks[item.taskId]?.coordinatorSessionId === owner
+        && (item.workspaceRef ?? rt.state.tasks[item.taskId]?.workspaceRef) === workspaceRef)
+      .sort((a, b) => a.endedAt - b.endedAt)
+      .map(item => {
+        const inter = item.files.items.filter(file => paths.has(file.path)).map(file => file.path)
+        return inter.length ? { title: rt.state.tasks[item.taskId]?.title ?? item.taskId, status: item.status,
+          snapshot: item.files.source === 'workspace-snapshot', inter } : null
+      })
+      .filter(Boolean)
+    if (!hits.length) return undefined
+    const rest = hits.length - 5
+    return `自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n${hits.slice(0, 5)
+      .map(item => `- ${item.title} · ${item.status} · ${item.inter.slice(0, 10).join('、')}${item.snapshot ? '（工作区快照，可能含其他改动）' : ''}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}`
   }
 
   // Attachment bytes live outside state; a lost byte is marked unavailable in
@@ -145,6 +174,8 @@ export function install(rt) {
     const taskTrigger = task.triggerId !== execution.triggerId ? rt.state.triggers[task.triggerId] : undefined
     if (taskTrigger) parts.original = rt.workerOriginal({ text: taskTrigger.text, scope: scopeTextOf(task.scope) })
     parts.scope = rt.workerScope(scopeTextOf(execution.scope ?? task.scope))
+    const changes = changesOf(execution)
+    if (changes) parts.changes = rt.workerChanges(changes)
     const reviewFail = task.triggerId !== undefined && execution.triggerId === task.triggerId
     parts.stage = rt.workerStage({ stage, round: stage === 'rework' ? reworkRoundOf(execution, task) : roundOf(execution),
       maxRework: maxReworkOf(execution), reviewFail })
@@ -184,7 +215,7 @@ export function install(rt) {
     }
     parts.report = rt.workerReportMethod({ degraded: rt.conversationOf(execution.sessionId)?.profile.engine === 'dsh', answers: stage === 'answer' })
 
-    const order = ['requirement', 'workspace', 'supplements', 'attachments', 'original', 'scope', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
+    const order = ['requirement', 'workspace', 'supplements', 'attachments', 'original', 'scope', 'changes', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
     const join = () => order.map(key => parts[key]).filter(Boolean).join('\n\n')
     let text = join()
     if (text.length > INPUT_CONTEXT_MAX && parts.history !== undefined) {

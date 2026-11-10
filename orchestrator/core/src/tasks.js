@@ -162,7 +162,8 @@ export function install(rt) {
     const execution = { id: randomUUID(), taskId, profileId, sessionId, type, hard, model: model ?? null, thinking: thinking ?? null,
       status: 'queued', stage, createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
       ...(triggerId ? { triggerId, scope: structuredClone(scope), supplements: [...supplements], workspaceRef,
-        ...(sourceExecutionId ? { sourceExecutionId } : {}), ...(sourceReportId ? { sourceReportId } : {}), ...(questions ? { questions: [...questions] } : {}) } : {}),
+        ...(sourceExecutionId ? { sourceExecutionId } : {}), ...(sourceReportId ? { sourceReportId } : {}),
+        ...(questions ? { questions: rt.redactDeepSecrets([...questions]) } : {}) } : {}),
       ...(workspaceRef === task.workspaceRef ? {} : { workspaceRef }) }
     state.executions[execution.id] = execution
     Object.assign(task, { status: 'open', updatedAt: now })
@@ -285,9 +286,10 @@ export function install(rt) {
       ...(disposition === 'investigate' ? { questions: [...questions], awaitingAnswer: true } : {}) })
     const execution = executionOf(executionId)
     if (disposition === 'continue' && execution.sourceReportId) {
+      // Investigate marks every unreviewed report of the source execution as
+      // awaiting, so the answer clears them all — not just the newest one.
       const source = executionOf(execution.sourceExecutionId)
-      const report = source.reports.find(item => item.id === execution.sourceReportId)
-      if (report?.review?.awaitingAnswer) Object.assign(report.review, { disposition: 'continue', awaitingAnswer: false, answeredBy: executionId })
+      for (const report of source.reports) if (report.review?.awaitingAnswer) Object.assign(report.review, { disposition: 'continue', awaitingAnswer: false, answeredBy: executionId })
     }
     return saveExecution(executionOf(executionId))
   }

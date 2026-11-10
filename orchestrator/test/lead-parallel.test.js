@@ -117,7 +117,7 @@ test('M1 parallel flights stay independent across a taskId supplement and a stop
   assert.equal(deliveredSupplement.executionId, a.executionId)
   assert.equal(deliveredSupplement.delivery.mode, 'steered')
   assert.deepEqual(Object.values(rt.state.executions).map(item => item.status), ['running', 'running'])
-  assert.equal(reports(owner.id).length, 0, 'the refused supplement leaves no report or corrupted state')
+  assert.equal(reports(owner.id).length, 0, 'the steered supplement leaves no report or corrupted state')
   const stopped = await rt.leadDispatch.interrupt(owner.id, { executionId: b.executionId })
   assert.equal(stopped.ended, 'interrupted')
   await until(() => rt.state.executions[b.executionId].status === 'interrupted')

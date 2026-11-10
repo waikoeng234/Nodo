@@ -16,9 +16,6 @@ export const CONTEXT_LIST_MAX = 50
 // Delegation input budget counts UTF-16 code units of the composed dispatch body
 // (running notes + task + required excerpts + background catalog), not tokens.
 export const INPUT_CONTEXT_MAX = 96_000
-// Context selection and background archive bounds for one delegation.
-export const CONTEXT_SELECT_MAX = 20
-export const BACKGROUND_TEXT_MAX = 4_000_000
 // Lead-routed task flow bounds and the trigger-message storage quota.
 export const FLOW_EXECUTIONS_MAX = 8
 export const STAGE_ROUNDS_MAX = 3

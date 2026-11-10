@@ -732,12 +732,12 @@ test('lead tracking catches completion failures and warns without rejecting', ()
   assert.ok(rt.diagView().some(line => line.level === 'warn' && line.text.includes('Completion failed')))
 }))
 
-test('a delegated message at the text limit keeps the header in both engine input and transcript', () => withLead(async ({ rt, role, session, inputs, lines }) => {
+test('a delegated message at the text limit composes the worker input and echoes it into the transcript', () => withLead(async ({ rt, role, session, inputs, lines }) => {
   const worker = await role('Worker')
   const lead = await role('Lead', 'Reviewed', { lead: true })
   const conversation = await session(lead)
-  const header = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\nWrite the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.\n\n'
-  const task = 'x'.repeat(TASK_TEXT_MAX - header.length)
+  const padding = 'Task from lead Lead. Start your report with a one-line outcome summary, actual verification results and unresolved issues.\nCarry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.\nWrite the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.\n\n'
+  const task = 'x'.repeat(TASK_TEXT_MAX - padding.length)
   await toolTask(rt, conversation.id, delegateType('feature', false, task))
   const received = inputs.find(input => input.profileId === worker.id).text
   assert.match(received, /^# 本轮要求/)
@@ -3270,6 +3270,7 @@ test('a continued session is told which later tasks touched its files', () => wi
   const sent = inputs.filter(item => item.sessionId === third.session).at(-1).text
   assert.match(sent, /# 原始要求[\s\S]*Build the parser/)
   assert.match(sent, /Extend the parser/)
+  assert.match(sent, /# 你上次之后的文件变动\n自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n- Update the docs · done · a\.ts/)
   assert.deepEqual(rt.state.executions[first.executionId].files.items, [{ path: 'a.ts', op: 'add' }])
 }))
 

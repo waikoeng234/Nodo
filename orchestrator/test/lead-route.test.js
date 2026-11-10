@@ -203,6 +203,68 @@ test('investigate sends bounded questions to the current executor and continue c
   assert.equal(rt.state.executions[receipt.executionId].reports[0].review.answeredBy, answer.executionId)
 }))
 
+test('attach after a review execution reworks with the implementation type and holder', () => withRoute(async ({ host, rt, worker, owner, workspace, trigger, create, attach, start, finish }) => {
+  trigger('Original task'); const receipt = await create(); await start(); await finish(receipt)
+  const reviewer = await host.api('profile-create', { name: 'Reviewer', engine: 'route-fixture' })
+  const reviewSession = await host.api('session-create', { profile: reviewer.id, workspace: workspace.id, lazy: true })
+  const team = rt.teams()[0]
+  await rt.updateTeams([{ ...team, members: [worker.id, reviewer.id], types: [...team.types, { id: 'review', name: 'Review', when: '' }],
+    assign: { ...team.assign, review: { normal: { profile: reviewer.id } } } }])
+  const review = await rt.acceptExecution(rt.state.tasks[receipt.taskId].id, { profileId: reviewer.id, sessionId: reviewSession.id,
+    type: 'review', hard: false, stage: 'review', triggerId: rt.state.tasks[receipt.taskId].triggerId, scope: { quote: 'Original task' }, sourceExecutionId: receipt.executionId })
+  await rt.startExecution(review.id)
+  await rt.finishExecution(review.id, { final: '审查报告文本', report: '审查' })
+  trigger('Supplement rework')
+  const next = await attach(receipt.taskId)
+  assert.equal(next.delivery.mode, 'rework')
+  assert.equal(next.type, 'feature', 'the rework rides the last implementation, not the review execution')
+  assert.equal(rt.state.executions[next.executionId].profileId, worker.id)
+  assert.equal(rt.state.executions[next.executionId].stage, 'rework')
+  const input = await rt.composeWorkerInput({ executionId: next.executionId })
+  assert.doesNotMatch(input.text, /审查报告文本/, 'the review execution only feeds verdict and findings')
+  assert.match(input.text, /上一执行：Verified result/)
+  await rt.leadDispatch.interrupt(owner.id, { executionId: next.executionId })
+}))
+
+test('a pending decision blocks rework attach and investigate but leaves running supplements open', () => withRoute(async ({ rt, owner, trigger, create, attach, start, finish }) => {
+  trigger('Original task'); const receipt = await create(); await start(); await finish(receipt)
+  await rt.leadRoute(owner.id, { action: 'ask', stopExecutionIds: [], questions: [{ id: 'q', question: 'Which?', whyUser: 'Preference' }] })
+  trigger('Supplement rework')
+  await assert.rejects(attach(receipt.taskId), { code: 'orch/decision-pending' })
+  await assert.rejects(rt.leadReview(owner.id, { executionId: receipt.executionId, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] }), { code: 'orch/decision-pending' })
+}))
+
+test('investigate questions are redacted before storage and worker input', () => withRoute(async ({ host, rt, lead, owner, trigger, create, start, finish }) => {
+  const value = 'investigate-question-secret-value-'.repeat(3)
+  await host.api('secret-set', { name: 'INVESTIGATE_Q', value, purpose: 'test', scope: [lead.id] })
+  trigger('Original'); const receipt = await create(); await start(); await finish(receipt)
+  const answer = await rt.leadReview(owner.id, { executionId: receipt.executionId, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: [`Did you verify ${value}?`] })
+  const execution = rt.state.executions[answer.executionId]
+  assert.equal(execution.questions.includes(value), false)
+  assert.match(execution.questions[0], /\[secret:INVESTIGATE_Q\]/)
+  assert.equal(JSON.stringify(rt.state.executions[receipt.executionId].reports.at(-1).review).includes(value), false)
+  await start()
+  const input = rt.driverOf(answer.session).calls.at(-1)
+  assert.match(input, /\[secret:INVESTIGATE_Q\]/); assert.equal(input.includes(value), false)
+  await finish(answer)
+}))
+
+test('an answer continue clears every awaiting report of the source execution', () => withRoute(async ({ rt, owner, trigger, create, start, finish }) => {
+  trigger('Original'); const receipt = await create(); await start(); await finish(receipt)
+  const execution = rt.state.executions[receipt.executionId]
+  await rt.registerDeliveredReport({ executionId: receipt.executionId, id: 'extra-report', session: receipt.session, summary: 'Second report', status: 'done' }, Date.now())
+  assert.equal(execution.reports.length, 2)
+  const answer = await rt.leadReview(owner.id, { executionId: receipt.executionId, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] })
+  for (const report of execution.reports) assert.equal(report.review.awaitingAnswer, true)
+  await start(); await finish(answer)
+  await rt.leadReview(owner.id, { executionId: answer.executionId, disposition: 'continue', reason: 'Checked', basis: ['Answers'] })
+  for (const report of execution.reports) {
+    assert.equal(report.review.awaitingAnswer, false)
+    assert.equal(report.review.answeredBy, answer.executionId)
+  }
+  assert.equal(rt.reportReviewBlockReason(owner.id), undefined)
+}))
+
 test('cards-only snapshots stay visible and report/evidence handles enforce coordinator ownership', () => withRoute(async ({ rt, owner, other, trigger, create }) => {
   rt.state.cards.card = { id: 'card', coordinatorSessionId: owner.id, taskId: 'task', kind: 'stall', status: 'open', question: { question: 'Retry?' } }
   assert.match(rt.leadSnapshot(owner.id), /card/)
@@ -218,11 +280,14 @@ test('cards-only snapshots stay visible and report/evidence handles enforce coor
   assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId: `evidence:${execution.id}` })).completeness, 'unavailable')
 }))
 
-test('stop is owned and remains available while decisions, report gates and route budget block new work', () => withRoute(async ({ rt, owner, other, trigger, create }) => {
-  trigger('Original'); const receipt = await create()
+test('stop is owned and remains available while decisions, report gates and route budget block new work', () => withRoute(async ({ rt, owner, other, trigger, create, attach, start }) => {
+  trigger('Original'); const receipt = await create(); await start()
   await assert.rejects(rt.leadRoute(other.id, { action: 'stop', executionIds: [receipt.executionId] }), /不属于/)
   await rt.leadRoute(owner.id, { action: 'ask', stopExecutionIds: [], questions: [{ id: 'q', question: 'Which?', whyUser: 'Preference' }] })
   trigger('Original'); await assert.rejects(create(), { code: 'orch/decision-pending' })
+  trigger('Supplement during wait')
+  const steered = await attach(receipt.taskId)
+  assert.equal(steered.delivery.mode, 'steered', 'a supplement into a running execution stays available while a decision waits')
   const stopped = await rt.leadRoute(owner.id, { action: 'stop', taskIds: [receipt.taskId] })
   assert.equal(stopped.ok, true); assert.equal(rt.state.tasks[receipt.taskId].flow.status, 'stopped')
   assert.equal(Object.keys(rt.state.triggers).length, 0)

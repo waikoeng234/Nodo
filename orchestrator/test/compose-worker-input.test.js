@@ -189,6 +189,25 @@ test('handover gathers dependency acceptances and decisions as handles, archives
   })
 })
 
+test('a continues source label clips to 80 characters so a long source scope never breaks the budget', async () => {
+  await withHost(async ({ runtime, home }) => {
+    const rt = await runtime
+    const { task, execution } = await setup(rt, home)
+    const big = rt.persistTrigger(rt.triggerFromLine({ coordinatorSessionId: 'lead',
+      line: rt.appendLine('lead', { who: 'user', kind: 'text', text: 'R'.repeat(32_000) }) }))
+    Object.assign(rt.state.executions[execution.id], { triggerId: big.id, scope: { quote: 'Q'.repeat(32_000) } })
+    const source = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: '来源', brief: '来源任务', source: { kind: 'lead', sessionId: 'lead' } })
+    rt.state.tasks[source.id].scope = { quote: 'S'.repeat(32_000) }
+    const sourceExecution = await rt.acceptExecution(source.id, { profileId: 'worker', sessionId: 'ws2', type: 'feature', hard: false })
+    await complete(rt, sourceExecution.id, '来源任务的上一执行结果')
+    rt.state.tasks[task.id].source = { kind: 'lead', sessionId: 'lead', continuesTaskId: source.id }
+    const { text } = await rt.composeWorkerInput({ executionId: execution.id })
+    assert.ok(text.length <= INPUT_CONTEXT_MAX, `composed input ${text.length} fits the budget`)
+    assert.match(text, /来源任务「S{80}… \(来源任务 truncated\)」/)
+    assert.doesNotMatch(text, /S{200}/)
+  })
+})
+
 test('budget pressure drops the history first, then handover summaries keep handles, then prior details clip', async () => {
   await withHost(async ({ runtime, home }) => {
     const rt = await runtime
