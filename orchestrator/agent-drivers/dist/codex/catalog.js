@@ -9,8 +9,8 @@ export const leadUnavailable = (message) => Object.assign(new Error(message), { 
 // The app-server loads the model catalog once at process start and only from
 // process-level config. Its per-model `tool_mode`/`multi_agent_version` decide
 // whether `exec` and the collaboration tools reach the model, so a leader gets
-// a catalog of its own: the same live catalog, one entry switched to direct
-// tool calling, written next to the profile's other files.
+// a catalog of its own: the same live catalog, its entry switched to code mode
+// with the agent tools off, written next to the profile's other files.
 export async function writeLeaderCatalog({ executable, model, dir, env }) {
     const launch = launchCommand(executable, ['debug', 'models']);
     let raw;
@@ -41,7 +41,10 @@ export async function writeLeaderCatalog({ executable, model, dir, env }) {
     if (!Object.hasOwn(target, 'tool_mode') || !Object.hasOwn(target, 'multi_agent_version')) {
         throw leadUnavailable(`The Codex model catalog entry "${model}" lost tool_mode or multi_agent_version. Leaders cannot remove the built-in execution tools without them.`);
     }
-    target.tool_mode = 'direct';
+    // `direct` looks closer to routing-only, but on 0.167.0 its MCP tool
+    // declarations answer every call with `unsupported call`; code mode keeps
+    // the exec sandbox, the only path on which MCP tools actually dispatch.
+    target.tool_mode = 'code_mode';
     target.multi_agent_version = 'disabled';
     const path = join(dir, CATALOG_FILE);
     mkdirSync(dir, { recursive: true, mode: 0o700 });

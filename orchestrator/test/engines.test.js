@@ -171,14 +171,38 @@ test('Codex leaders switch only their own catalog entry and run a separate app-s
     const catalogPath = join(instructionDir, 'codex-leader-catalog.json')
     const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
     assert.deepEqual(catalog.models.find(model => model.slug === 'fixture-model'),
-      { ...fixtureCatalog.models[0], tool_mode: 'direct', multi_agent_version: 'disabled' })
+      { ...fixtureCatalog.models[0], tool_mode: 'code_mode', multi_agent_version: 'disabled' })
     assert.deepEqual(catalog.models.find(model => model.slug === 'other-model'), fixtureCatalog.models[1], 'every other entry stays untouched')
     const spawns = readFileSync(spawnLog, 'utf8').trim().split('\n').map(JSON.parse)
     assert.deepEqual(spawns.map(spawn => spawn.argv.slice(0, 2)), [['debug', 'models'], ['app-server', '-c']])
-    assert.equal(spawns[1].argv[2], `model_catalog_json=${JSON.stringify(catalogPath)}`, 'the private process starts with the generated catalog')
+    assert.deepEqual(spawns[1].argv.slice(2), [`model_catalog_json=${JSON.stringify(catalogPath)}`, '-c', 'features.apps=false', '-c', 'features.plugins=false'],
+      'the private process starts with the generated catalog and the connector sources off')
     const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
-    assert.match(thread.params.developerInstructions, /Lead rules[\s\S]*deferred MCP tools[\s\S]*mcp__nodo_lead/, 'direct mode tells the leader about the tool search step')
+    assert.match(thread.params.developerInstructions, /Lead rules[\s\S]*tools\.mcp__nodo_lead__nodo_route[\s\S]*ALL_TOOLS/, 'code mode tells the leader the exec JS call form')
     assert.doesNotMatch(thread.params.developerInstructions, /request_user_input/, 'a leader asks through nodo_route, not a native question tool')
+  })
+})
+
+test('Codex leader tool surface freezes to code mode with only the Nodo MCP tools callable', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LEAD_TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    // The fixture derives this surface from the catalog entry the driver wrote,
+    // with the CLI's own fail-open rules (unknown tool_mode → direct, unknown
+    // multi_agent_version → agent tools), so a silent regression shows up here.
+    assert.deepEqual(thread.surface.tools,
+      ['apply_patch', 'clock__curr_time', 'exec', 'list_mcp_resource_templates', 'list_mcp_resources', 'read_mcp_resource', 'request_user_input', 'request_user_input_async', 'tool_search', 'wait'],
+      'code mode: no exec_command, no collaboration, no direct MCP declarations')
+    assert.deepEqual(thread.surface.allTools, [
+      'apply_patch', 'clock__curr_time', 'list_mcp_resource_templates', 'list_mcp_resources',
+      'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_review', 'mcp__nodo_lead__nodo_route',
+      'read_mcp_resource'], 'the exec sandbox may call nothing beyond apply_patch, the resource readers and the four Nodo tools')
   })
 })
 
@@ -260,23 +284,35 @@ test('Codex leaders fail closed when the MCP servers cannot be enumerated', asyn
   })
 })
 
-test('Codex leaders disable every other MCP server by name, plugin sources included', async () => {
+test('Codex leaders disable config MCP servers in place and placeholder the injected ones', async () => {
   await withFixture(async ({ bin, cwd }) => {
+    const home = join(cwd, 'codex-home')
+    mkdirSync(home)
+    writeFileSync(join(home, 'config.toml'), '[mcp_servers.user_echo]\ncommand = "echo"\n')
     const servers = [
       { name: 'user_echo', pluginId: null },
       { name: 'alpha_tools', pluginId: 'alpha@official' },
+      { name: 'codex_apps', pluginId: null },
       { name: 'nodo_lead', pluginId: null },
     ]
     const events = []
+    const previous = process.env.CODEX_HOME
+    process.env.CODEX_HOME = home
     const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
       leadMcpServers: leadMount(), env: { CODEX_FIXTURE_MCP_SERVERS: JSON.stringify(servers) }, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('LEAD_TASK')
       await until(() => events.some(event => event.type === 'turn/end'))
-    } finally { driver.dispose() }
+    } finally {
+      driver.dispose()
+      if (previous === undefined) delete process.env.CODEX_HOME
+      else process.env.CODEX_HOME = previous
+    }
     const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
-    assert.equal(thread.params.config['mcp_servers.user_echo.enabled'], false)
-    assert.equal(thread.params.config['mcp_servers.alpha_tools.enabled'], false, 'a plugin-provided server is disabled too')
+    assert.equal(thread.params.config['mcp_servers.user_echo.enabled'], false, 'a config-defined server takes the bare key, which deep-merges onto its transport')
+    assert.deepEqual(thread.params.config['mcp_servers.alpha_tools'], { enabled: false, url: 'http://127.0.0.1:1/mcp' },
+      'an injected server has no transport, so it takes a dead placeholder instead')
+    assert.equal(thread.params.config['mcp_servers.codex_apps'], undefined, 'the apps connector stays out of the enumeration once its feature is off')
     assert.equal(thread.params.config['mcp_servers.nodo_lead.enabled'], undefined, 'the mounted server keeps its own entry')
     assert.equal(thread.params.config['mcp_servers.nodo_lead'].url, 'http://127.0.0.1:4100/mcp')
   })

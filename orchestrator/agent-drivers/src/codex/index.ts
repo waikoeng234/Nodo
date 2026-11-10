@@ -194,6 +194,20 @@ function codexConfigModels(path: string) {
     ...(entry.defaultThinking ? { defaultThinking: entry.defaultThinking } : {}) }))
 }
 
+// Targeted key scan of config.toml (not a TOML parser): the names of the
+// [mcp_servers.*] tables, the entries that carry a transport.
+function codexConfigMcpServers(path: string) {
+  let lines
+  try { lines = readFileSync(path, 'utf8').split('\n') } catch { return [] }
+  const names: string[] = []
+  for (const raw of lines) {
+    const line = raw.replace(/#.*$/, '').trim()
+    const section = /^\[mcp_servers\.([^.\]]+)\]$/.exec(line)
+    if (section) names.push(/^"([A-Za-z0-9_-]+)"$/.exec(section[1])?.[1] ?? section[1])
+  }
+  return names
+}
+
 export async function scanCodex({ engineOptions = {} }: CodexOptions = {}) {
   const options = validateCodexOptions(engineOptions)
   const configModels = () => {
@@ -234,11 +248,12 @@ export async function scanCodex({ engineOptions = {} }: CodexOptions = {}) {
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.'
 
 // A leader only routes: the sandbox is read-only and the built-in capabilities
-// that a config key can turn off are turned off here. `exec` and the
-// collaboration tools are not among them — they follow the model catalog entry
-// of the leader's own process (catalog.ts) — and `unified_exec` cannot be turned
-// off in any config layer. Unknown keys are accepted silently and feature names
-// move between versions, so the config-freeze test is the drift guard.
+// that a config key can turn off are turned off here. The collaboration tools
+// and code-mode `exec` are not among them — they follow the model catalog entry
+// of the leader's own process (catalog.ts), and no config key turns code-mode
+// `exec` off: `features.unified_exec` gates only the shell tool. Unknown keys
+// are accepted silently and feature names move between versions, so the
+// config-freeze test is the drift guard.
 const LEAD_CONFIG = {
   'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
   'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
@@ -248,9 +263,10 @@ const LEAD_CONFIG = {
   'tools.web_search': false, 'tools.update_plan': { enabled: false },
 }
 
-// The catalog override switches the leader to direct tool calling, where MCP
-// tools stay behind a tool search until the model asks for them.
-const LEAD_TOOL_SEARCH = 'Your Nodo tools are deferred MCP tools: search for mcp__nodo_lead with the tool search before calling one.'
+// The catalog override keeps the leader in code mode, where the exec sandbox is
+// the only dispatcher for MCP tools: a Nodo call is a JS property of `tools`
+// keyed by its ALL_TOOLS name, not a bare function call the engine would route.
+const LEAD_TOOL_SEARCH = 'Your Nodo tools run through the exec tool, not as plain function calls: execute `await tools.mcp__nodo_lead__nodo_route({ action: "board" })` inside exec — the identifier is always tools.mcp__<server>__<tool> from ALL_TOOLS. If a call fails, run `text(JSON.stringify(ALL_TOOLS.map(t => t.name)))` first and retry with the exact name.'
 
 // Every MCP server the leader's process would expose, plugin-provided ones
 // included; the thread config deep-merges, so each name has to be disabled on
@@ -482,7 +498,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
   const leaderModel = () => model || codexConfigModels(join(codexHome(), 'config.toml')).find(entry => entry.label === undefined)?.id
   const leaderCatalog = async (executable: string) => {
     const target = leaderModel()
-    if (!target) throw leadUnavailable('Codex leaders need a model: set one in the profile so its catalog entry can be switched to direct tool calling.')
+    if (!target) throw leadUnavailable('Codex leaders need a model: set one in the profile so its catalog entry can be switched to the routing-only tool mode.')
     if (!instructionDir) throw leadUnavailable('Codex leaders need the Nodo data directory to store their model catalog.')
     return writeLeaderCatalog({ executable, model: target, dir: instructionDir, env })
   }
@@ -520,7 +536,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     coverage.setIdentity({ transport: catalog ? 'app-server stdio' : 'app-server proxy', ...(version ? { cliVersion: version } : {}) })
     // Fail closed: a leader that cannot see the user's servers would start with
     // all of them exposed, and the thread config cannot be revisited later.
-    let disabledMcp: Record<string, boolean> = {}
+    let disabledMcp: Record<string, unknown> = {}
     if (lead) {
       let servers: string[]
       try { servers = await listMcpServers(peer) }
@@ -529,7 +545,15 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
       // would disable another server or nothing at all.
       const unsupported = servers.find(name => !/^[A-Za-z0-9_-]+$/.test(name))
       if (unsupported !== undefined) throw leadUnavailable(`The MCP server ${JSON.stringify(unsupported.slice(0, 80))} cannot be disabled by configuration key. Rename it to letters, digits, "-" and "_" only, or remove it, to use a Codex leader.`)
-      disabledMcp = Object.fromEntries(servers.map(name => [`mcp_servers.${name}.enabled`, false]))
+      // A config.toml entry has a transport, so the bare `enabled=false` merges
+      // onto it; an injected source (an app or plugin server) has none, and
+      // `enabled=false` alone fails thread/start with `invalid transport` — it
+      // gets a dead placeholder transport instead. The placeholder must never
+      // land on a config-defined server: the deep merge would keep both.
+      const configured = codexConfigMcpServers(join(codexHome(), 'config.toml'))
+      disabledMcp = Object.fromEntries(servers.map(name => configured.includes(name)
+        ? [`mcp_servers.${name}.enabled`, false]
+        : [`mcp_servers.${name}`, { enabled: false, url: 'http://127.0.0.1:1/mcp' }]))
     }
     workspaceId = await ensureCodexWorkspace(peer, { cwd: cwd!, name, workspaceId })
     const method = threadId ? 'thread/resume' : 'thread/start'
@@ -564,14 +588,21 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     let result: ThreadResult
     resuming = !!threadId
     try {
-      result = await peer.request<ThreadResult>(method, { ...params, ...extras })
-      instructionMode = developerInstructions ? 'native' : 'none'
+      try {
+        result = await peer.request<ThreadResult>(method, { ...params, ...extras })
+        instructionMode = developerInstructions ? 'native' : 'none'
+      } catch (error) {
+        if (!developerInstructions || (error as { code?: unknown }).code !== -32602 || !/unknown field\s+[`'"]?developerInstructions\b/i.test((error as Error).message)) throw error
+        const fallback = { ...extras }
+        delete fallback.developerInstructions
+        result = await peer.request<ThreadResult>(method, { ...params, ...fallback })
+        instructionMode = 'none'
+      }
     } catch (error) {
-      if (!developerInstructions || (error as { code?: unknown }).code !== -32602 || !/unknown field\s+[`'"]?developerInstructions\b/i.test((error as Error).message)) throw error
-      const fallback = { ...extras }
-      delete fallback.developerInstructions
-      result = await peer.request<ThreadResult>(method, { ...params, ...fallback })
-      instructionMode = 'none'
+      // A rejected thread start is the engine refusing the lockdown, a failure
+      // the leader cannot recover from; report it in the lead-unavailable class.
+      if (lead) throw leadUnavailable(`Codex ${method} failed (${(error as Error).message})`)
+      throw error
     }
     resuming = false
     threadId = result.thread.id
