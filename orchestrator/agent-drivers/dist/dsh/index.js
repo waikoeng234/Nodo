@@ -6,21 +6,21 @@ import { createNativeDshDriver } from './native.js';
 export { dshInfo, validateDshOptions, checkDsh, findDshExecutable, describeDsh } from './config.js';
 export { scanDsh } from './catalog.js';
 export { scanDshCommands } from './skills.js';
-export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, leadMcpServers, serveMcp, ...options } = {}) {
+export function createDshDriver({ nativeHost, name, sessionName, workspaceId, workspaceName, workspaceKey, allowEmptyResume, identityFiles, identityOwner, lead, leadMcpServers, serveMcp, ...options } = {}) {
     if (nativeHost?.workspaceRegistry && nativeHost?.sessionController)
         return createNativeDshDriver({ ...options, nativeHost: nativeHost, name, sessionName, workspaceId, workspaceName });
     if (nativeHost && !options.bin)
         throw new Error('DSH native workspace/session services are unavailable on this host');
-    return createAcpDshDriver(options);
+    return createAcpDshDriver({ ...options, mcpServers: leadMcpServers ?? options.mcpServers });
 }
-function createAcpDshDriver({ cwd, env = {}, model, thinking, permission, driverSessionId, storageDir, instructions, instructionDir, ...raw } = {}) {
+function createAcpDshDriver({ cwd, env = {}, model, thinking, permission, driverSessionId, storageDir, instructions, instructionDir, mcpServers, ...raw } = {}) {
     if (permission !== undefined)
         throw new Error('DSH ACP cannot set a session permission tier. Clear the override to use the DSH profile permissions, or use the native host.');
     const { onEvent, ...config } = raw;
     const options = validateDshOptions(config);
     const storage = dshStorage(storageDir, driverSessionId);
     const identity = dshInstructionsPatch(instructionDir, storage.patch, instructions);
-    return createAcpDriver({ cwd, onEvent, driverSessionId: storage.sessionId }, {
+    return createAcpDriver({ cwd, onEvent, driverSessionId: storage.sessionId, mcpServers }, {
         id: 'dsh', label: 'DSH', fileChanges: true,
         initialize: initializeDsh, savedId: storage.savedId,
         instructionMode: identity.instructionMode, error: dshError,
