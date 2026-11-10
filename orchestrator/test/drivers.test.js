@@ -77,6 +77,20 @@ test('driver bindings are issued once and revoked on replacement and release', a
   } finally { h.dispose() }
 })
 
+test('a leader never falls back to the worker channel and refuses to start without its mount', async () => {
+  const h = harness(), workerCalls = []
+  h.rt.issueLeadMcp = async () => undefined
+  h.rt.issueWorkerMcp = async () => { workerCalls.push(1); return { servers: [], revoke: () => {} } }
+  try {
+    const driver = await h.rt.ensureDriver(conversation({ lead: true, engine: 'claude' }))
+    assert.deepEqual(workerCalls, [], 'a lead session must not reach the worker channel')
+    await assert.rejects(driver.openSession(), error => {
+      assert.equal(error.code, 'orch/lead-unavailable')
+      return true
+    })
+  } finally { h.dispose() }
+})
+
 test('an idle engine driver is released after two minutes, a busy one is kept', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const h = harness(), work = {}

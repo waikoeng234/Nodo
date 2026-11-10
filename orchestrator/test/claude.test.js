@@ -350,13 +350,13 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
       env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }, { name: 'NODO_LEAD_SOCKET', value: socket },
         { name: useFile ? 'NODO_LEAD_TOKEN_FILE' : 'NODO_LEAD_TOKEN', value: useFile ? tokenFile : 'lead-token-secret' }] }]
     let events = []
-    let driver = createDriver('claude', { bin, cwd, leadMcpServers, onEvent: event => events.push(event) })
+    let driver = createDriver('claude', { bin, cwd, lead: true, leadMcpServers, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('FIRST')
       await until(() => events.find(event => event.type === 'turn/end'))
     } finally { driver.dispose() }
     events = []
-    driver = createDriver('claude', { bin, cwd, driverSessionId: 'fixture-claude-session', leadMcpServers, onEvent: event => events.push(event) })
+    driver = createDriver('claude', { bin, cwd, driverSessionId: 'fixture-claude-session', lead: true, leadMcpServers, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('SECOND')
       await until(() => events.find(event => event.type === 'turn/end'))
@@ -409,6 +409,39 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
     assert.equal(executor.spawn.includes('--mcp-config'), false)
     assert.equal(executor.spawn.includes('--tools'), false, 'non-leader sessions keep their execution tools')
     assert.equal(executor.spawn.includes('--strict-mcp-config'), false)
+  })
+})
+
+test('Claude treats any non-worker mount as the lead role and refuses a leader with no mount', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const leadMcpServers = [{ name: 'custom_lead', command: process.execPath, args: [join(cwd, 'lead-server.js')], env: [{ name: 'NODO_LEAD_TOKEN', value: 'lead-token-secret' }] }]
+    const events = []
+    const driver = createDriver('claude', { bin, cwd, lead: true, leadMcpServers, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('FIRST')
+      await until(() => events.find(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    // The role rides the explicit lead option; the mount naming maps every
+    // non-worker name to the lead tool list. Narrowing that recognition to the
+    // literal nodo_lead name must turn this red.
+    const [spawn] = readFileSync(join(cwd, 'claude-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(entry => entry.spawn)
+    assert.deepEqual(spawn.spawn.slice(1).map(item => item === spawn.mcpConfig ? '<custom-lead-config>' : item),
+      ['--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
+        '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',
+        '--tools', '', '--strict-mcp-config',
+        '--allowedTools', 'mcp__custom_lead__nodo_board', 'mcp__custom_lead__nodo_context', 'mcp__custom_lead__nodo_route', 'mcp__custom_lead__nodo_review',
+        '--mcp-config', '<custom-lead-config>'])
+    assert.deepEqual(Object.keys(JSON.parse(spawn.mcpConfig).mcpServers), ['custom_lead'])
+    assert.equal(JSON.stringify(spawn.spawn).includes('lead-token-secret'), false)
+    const refused = createDriver('claude', { bin, cwd, lead: true, onEvent: event => events.push(event) })
+    try {
+      await assert.rejects(refused.sendTurn('Hello'), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        return true
+      })
+      assert.equal(readFileSync(join(cwd, 'claude-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(entry => entry.spawn).length, 1,
+        'the refusal happens before any spawn')
+    } finally { refused.dispose() }
   })
 })
 

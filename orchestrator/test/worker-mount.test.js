@@ -95,7 +95,10 @@ for (const { engine, project, unsupported } of [
     } finally { await configured.close() }
   } else if (engine === 'codex') {
     const requests = readFileSync(join(host.home, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
-    const config = requests.find(item => item.method === 'thread/start').params.config['mcp_servers.nodo_worker']
+    const thread = requests.find(item => item.method === 'thread/start')
+    assert.deepEqual(Object.keys(thread.params.config), ['mcp_servers.nodo_worker'], 'a worker must never receive the leader lockdown keys')
+    assert.equal(thread.params.sandbox, 'workspace-write', 'a worker keeps its tier sandbox')
+    const config = thread.params.config['mcp_servers.nodo_worker']
     assert.deepEqual(config.enabled_tools, ['nodo_report', 'nodo_context'])
     assert.deepEqual(Object.keys(config.tools), ['nodo_report', 'nodo_context'])
   } else {

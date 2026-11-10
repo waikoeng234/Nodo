@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
@@ -74,7 +74,7 @@ test('Codex lead mounts are thread scoped and frozen to the routing-only config 
     'features.image_generation': false, 'tools.web_search': false, 'tools.update_plan': { enabled: false } }
     for (const driverSessionId of [undefined, 'fixture-thread']) {
       const events = []
-      const driver = createDriver('codex', { bin, cwd, permission, driverSessionId, leadMcpServers,
+      const driver = createDriver('codex', { bin, cwd, permission, driverSessionId, lead: true, leadMcpServers,
         instructions: 'Lead rules', env: { CODEX_FIXTURE_REJECT_INSTRUCTIONS: 'unsupported' }, onEvent: event => events.push(event) })
       try {
         await driver.sendTurn('LEAD_TASK')
@@ -97,7 +97,7 @@ test('Codex mounts an HTTP lead with the token in this thread\'s config headers'
   await withFixture(async ({ bin, cwd }) => {
     const leadMcpServers = [{ name: 'nodo_lead', url: 'http://127.0.0.1:4100/mcp', token: 'http-token' }]
     const events = []
-    const driver = createDriver('codex', { bin, cwd, leadMcpServers, onEvent: event => events.push(event) })
+    const driver = createDriver('codex', { bin, cwd, lead: true, leadMcpServers, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('LEAD_TASK')
       await until(() => events.some(event => event.type === 'turn/end'))
@@ -114,9 +114,38 @@ test('Codex mounts an HTTP lead with the token in this thread\'s config headers'
   })
 })
 
+test('a codex worker mount carries no leader lockdown in any tier', async () => {
+  for (const permission of ['workspace', 'full']) await withFixture(async ({ bin, cwd }) => {
+    const leadMcpServers = [{ name: 'nodo_worker', command: process.execPath, args: [join(cwd, 'worker-server.js')], env: [{ name: 'NODO_WORKER_SOCKET', value: join(cwd, 'worker.sock') }] }]
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, permission, leadMcpServers, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.deepEqual(Object.keys(thread.params.config), ['mcp_servers.nodo_worker'], 'a worker must never receive the leader lockdown keys')
+    assert.equal(thread.params.sandbox, permission === 'full' ? 'danger-full-access' : 'workspace-write', 'a worker keeps its tier sandbox')
+    assert.equal(thread.params.approvalPolicy, permission === 'full' ? 'never' : undefined)
+  })
+})
+
+test('a codex leader without its lead mount refuses to start', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, lead: true })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        return true
+      })
+    } finally { driver.dispose() }
+    assert.equal(existsSync(join(cwd, 'codex-requests.jsonl')), false, 'the refusal happens before any thread request')
+  })
+})
+
 test('Codex refuses unsupported thread config without dropping the lead mount', async () => {
   for (const driverSessionId of [undefined, 'fixture-thread']) await withFixture(async ({ bin, cwd }) => {
-    const driver = createDriver('codex', { bin, cwd, driverSessionId, instructions: 'Lead rules',
+    const driver = createDriver('codex', { bin, cwd, driverSessionId, instructions: 'Lead rules', lead: true,
       leadMcpServers: leadMcp('/fixture/socket', '', '/fixture/token'), env: { CODEX_FIXTURE_REJECT_CONFIG: '1' } })
     try {
       await assert.rejects(driver.openSession(), /unknown field `config`/)
@@ -127,7 +156,7 @@ test('Codex refuses unsupported thread config without dropping the lead mount', 
   })
 })
 
-test('Nodo Codex leads mount the host MCP endpoint and workers receive no thread config', async () => {
+test('Nodo Codex leads mount the host MCP endpoint and mountless workers receive no thread config', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const host = boot(join(cwd, 'plugin'))
     try {
