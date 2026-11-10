@@ -31,6 +31,20 @@ test('user originals are picked by the line origin, and the verbatim text rides 
   })
 })
 
+test('a user original spoken in a worker session points its handle at that transcript while the quota stays with the lead', async () => {
+  await withHost(async ({ runtime }) => {
+    const rt = await runtime
+    const line = rt.appendLine('ws', { who: 'user', kind: 'text', text: '补充一句：滚动条在暗色模式才卡' })
+    const record = rt.triggerFromLine({ coordinatorSessionId: 'lead', lineSessionId: 'ws', line })
+    assert.equal(record.coordinatorSessionId, 'lead')
+    assert.equal(record.text, '补充一句：滚动条在暗色模式才卡')
+    assert.equal(record.handle, `message:ws:${line.at}:${createHash('sha256').update(line.text).digest('hex').slice(0, 8)}`)
+    rt.persistTrigger(record)
+    assert.equal(rt.triggerUsageOf('lead'), record.text.length)
+    assert.equal(rt.triggerUsageOf('ws'), 0)
+  })
+})
+
 test('decision answers rebuild the text from answer.values and keep the handle on the echoed line', async () => {
   await withHost(async ({ runtime }) => {
     const rt = await runtime
@@ -108,6 +122,8 @@ test('releasing an accepted or stopped task recycles only its unreferenced trigg
     rt.state.executions[execution.id].triggerId = own.id
     rt.state.executions[execution.id].supplements = [supplement.id]
     await rt.saveStrict()
+    rt.releaseTaskTriggers(task.id)
+    for (const id of [shared.id, own.id, supplement.id]) assert.ok(rt.state.triggers[id], 'a task that has not settled releases nothing')
     rt.state.tasks[task.id].status = 'done'
     rt.releaseTaskTriggers(task.id)
     assert.ok(rt.state.triggers[shared.id], 'another live task still references the shared record')

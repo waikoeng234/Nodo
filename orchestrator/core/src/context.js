@@ -312,5 +312,5 @@ export function install(rt) {
     return { text: body, inputContext }
   }
 
-  Object.assign(rt, { cleanTaskState, sessionReference, recordTaskOutcome, executionContext, resolveContextSource, selectDispatchContext, composeDispatchInput })
+  Object.assign(rt, { cleanTaskState, sessionReference, recordTaskOutcome, executionContext, resolveContextSource, selectDispatchContext, composeDispatchInput, decisionText, messageSourceId })
 }

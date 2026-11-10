@@ -1,27 +1,19 @@
 // Trigger messages: the verbatim user originals a lead round routes with. A
 // round's trigger lives in memory until a route binds it to a task, only then
-// it lands in state.triggers and counts against the per-session quota. The
-// user original is told by the line's origin alone — the userInput send flag
-// is runtime-only and must not become a criterion.
-import { createHash, randomUUID } from 'node:crypto'
+// it lands in state.triggers and counts against the per-coordinator-session
+// quota. The handle session can differ from the quota session: a user speaking
+// in a worker session gets a handle into that transcript, the quota stays with
+// the coordinator.
+import { randomUUID } from 'node:crypto'
 import { TASK_TEXT_MAX, TRIGGER_TEXT_TOTAL_MAX } from './constants.js'
 import { failure, invalid } from './errors.js'
 
-export const TRIGGER_FULL_MESSAGE = '触发消息存储已满。请清理停滞或已结束的任务，再派新活。'
-// Answered decision cards rebuild their text from decision.answer.values; the
-// handle still points at the transcript line that echoed the raw values.
-export const decisionAnswerText = decision => decision.questions.map(question => {
-  const answer = decision.answer?.values?.[question.id]
-  const text = !answer ? '（未回答）'
-    : answer.text ?? question.options?.find(option => option.id === answer.optionId)?.label ?? '（答案指向的选项不存在）'
-  return `问题：${question.question}\n回答：${text}`
-}).join('\n\n')
+const TRIGGER_FULL_MESSAGE = '触发消息存储已满。请清理停滞或已结束的任务，再派新活。'
 
 export function install(rt) {
   // Coordinator session id → pending trigger record. Never saved: after a
   // restart no round is open, so every route reads orch/no-trigger.
   const pending = new Map()
-  const messageHash = text => createHash('sha256').update(String(text ?? '')).digest('hex').slice(0, 8)
 
   const isUserTriggerLine = line => line?.who === 'user' && line.kind === 'text'
     && (line.origin === undefined || ['user', 'task', 'decision-answer'].includes(line.origin.kind))
@@ -33,20 +25,18 @@ export function install(rt) {
     createdAt: Date.now(), ...(eventId !== undefined ? { eventId } : {}), ...(handle ? { handle } : {}),
     ...(decisionId !== undefined ? { decisionId } : {}), ...(cardId !== undefined ? { cardId } : {}),
   })
-  const handleOf = (sessionId, line) => `message:${sessionId}:${line.at}:${messageHash(line.text)}`
 
-  // A trigger from the transcript line that opened the round. The text rides
-  // the line verbatim (it is stored redacted); decision answers rebuild it.
-  const triggerFromLine = ({ coordinatorSessionId, line }) => {
+  const triggerFromLine = ({ coordinatorSessionId, lineSessionId, line }) => {
     if (!isUserTriggerLine(line)) throw invalid('只有用户原话的会话行可以作为触发消息')
+    const handle = rt.messageSourceId(lineSessionId ?? coordinatorSessionId, line)
     if (line.origin?.kind === 'decision-answer') {
       const decision = rt.state.decisions[line.origin.decisionId]
       if (!decision?.answer) throw invalid('决策回答不存在，无法重建触发消息')
       return recordOf({ coordinatorSessionId, origin: { kind: 'decision-answer', decisionId: line.origin.decisionId },
-        text: decisionAnswerText(decision), at: line.at, eventId: line.id, handle: handleOf(coordinatorSessionId, line), decisionId: line.origin.decisionId })
+        text: rt.decisionText(decision), at: line.at, eventId: line.id, handle, decisionId: line.origin.decisionId })
     }
     return recordOf({ coordinatorSessionId, origin: line.origin ?? { kind: 'user' }, text: line.text, at: line.at,
-      eventId: line.id, handle: handleOf(coordinatorSessionId, line), images: line.images ?? [], files: line.files ?? [] })
+      eventId: line.id, handle, images: line.images ?? [], files: line.files ?? [] })
   }
   // An acceptance card returned by the user: the reason is the trigger text;
   // it never had a transcript line, so it generates no message handle.
@@ -74,15 +64,14 @@ export function install(rt) {
     rt.state.triggers[record.id] = stored
     return stored
   }
-  const triggerOf = id => rt.state.triggers[id]
 
-  // A task reaching accepted/stopped releases the trigger records it bound;
-  // records still referenced by a live task or its executions stay, so running
-  // or stalled tasks never lose their originals.
+  // Only a settled task releases the trigger records it bound, and records
+  // still referenced by a live task or its executions stay, so running or
+  // stalled tasks never lose their originals.
   const releaseTaskTriggers = taskId => {
     const task = rt.state.tasks[taskId]
-    if (!task) return
-    const settled = record => record && ['done', 'stopped'].includes(record.status)
+    if (!task || !['done', 'stopped'].includes(task.status)) return
+    const settled = record => record != null && ['done', 'stopped'].includes(record.status)
     const kept = new Set()
     for (const other of Object.values(rt.state.tasks)) {
       if (other.id !== taskId && !settled(other) && other.triggerId) kept.add(other.triggerId)
@@ -99,5 +88,5 @@ export function install(rt) {
   }
 
   Object.assign(rt, { isUserTriggerLine, triggerFromLine, triggerFromReturn, pendingTriggerOf, setPendingTrigger, clearPendingTrigger,
-    requirePendingTrigger, triggerUsageOf, persistTrigger, triggerOf, releaseTaskTriggers })
+    requirePendingTrigger, triggerUsageOf, persistTrigger, releaseTaskTriggers })
 }
