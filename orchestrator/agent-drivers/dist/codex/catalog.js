@@ -33,6 +33,11 @@ export async function writeLeaderCatalog({ executable, model, dir, env }) {
     const target = models.find(entry => entry?.slug === model);
     if (target === undefined)
         throw leadUnavailable(`Codex model catalog has no entry for "${model}". Leaders need it to remove the built-in execution tools.`);
+    // Both fields decide the leader's tool surface. A renamed field would only
+    // add a key the CLI ignores, silently keeping `exec` and collaboration.
+    if (!Object.hasOwn(target, 'tool_mode') || !Object.hasOwn(target, 'multi_agent_version')) {
+        throw leadUnavailable(`The Codex model catalog entry "${model}" lost tool_mode or multi_agent_version. Leaders cannot remove the built-in execution tools without them.`);
+    }
     target.tool_mode = 'direct';
     target.multi_agent_version = 'disabled';
     const path = join(dir, CATALOG_FILE);

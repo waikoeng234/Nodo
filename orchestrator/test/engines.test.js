@@ -210,6 +210,24 @@ test('Codex leaders fail closed when the catalog cannot be built', async () => {
   })
 })
 
+test('Codex leaders fail closed when the catalog entry lost its tool-surface fields', async () => {
+  for (const entry of [
+    { slug: 'fixture-model', display_name: 'Fixture Model', multi_agent_version: 'v2' },
+    { slug: 'fixture-model', display_name: 'Fixture Model', tool_mode: 'code_mode_only' },
+  ]) await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true, leadMcpServers: leadMount(),
+      env: { CODEX_FIXTURE_MODELS_JSON: JSON.stringify({ models: [entry] }) } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /tool_mode or multi_agent_version/)
+        return true
+      })
+    } finally { driver.dispose() }
+    assert.equal(existsSync(join(cwd, 'codex-requests.jsonl')), false, 'no thread starts with a catalog the override would not change')
+  })
+})
+
 test('Codex leaders fail closed when the MCP servers cannot be enumerated', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
