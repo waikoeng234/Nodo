@@ -144,7 +144,12 @@ test('missedFlags ignores other and true implementation flags', () => withReport
 }))
 
 for (const [first, expected] of [['结论:通过', 'pass'], ['# 结论：通过', 'pass'], ['* - ** 结论:不通过', 'fail'], ['  **结论：不通过', 'fail'],
-  ['说明\n结论：通过', undefined], ['结论：通过，还有其他内容', undefined], ['', undefined]]) {
+  // markdown decoration and colon spacing peel off; everything else stays strict
+  ['**结论：通过**', 'pass'], ['> **结论：不通过**', 'fail'], ['- 结论：通过', 'pass'], ['• 结论：不通过', 'fail'],
+  ['`结论：通过`', 'pass'], ['「结论：通过」', 'pass'], ['“结论：通过”', 'pass'], ['（结论：不通过）', 'fail'],
+  ['结论 : 通过', 'pass'], ['结论：  通过', 'pass'], ['\n\n结论：通过', 'pass'],
+  ['说明\n结论：通过', undefined], ['文件 `hello.txt` 不存在\n结论：不通过', undefined], ['结论：通过。', undefined],
+  ['结论：通过，还有其他内容', undefined], ['结论：同意', undefined], ['', undefined]]) {
   test(`fallback parses only review first line ${JSON.stringify(first)}`, () => withReports(async ({ rt, create }) => {
     const execution = await create({ stage: 'review' })
     await rt.finishExecution(execution.id, { final: first, report: '结论：通过' })

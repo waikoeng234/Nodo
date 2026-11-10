@@ -2,7 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { validateWorkerReport } from '../../agent-drivers/dist/worker-mcp.js'
 import { invalid } from './errors.js'
 
-const firstConclusion = text => /^结论[:：](通过|不通过|done|blocked|failed)$/.exec((text ?? '').split(/\r?\n/, 1)[0].replace(/^[#*\-\s]+/, '').trim())?.[1]
+// The degraded verdict must be the first non-empty line. Real CLIs wrap it in
+// markdown decoration — emphasis, code ticks, list/quote/heading markers,
+// quotes or brackets — and vary the colon, so that decoration is peeled off
+// the line's edges. That is the whole relaxation: synonyms, trailing prose,
+// or the verdict on any later line stay unread.
+const firstConclusion = text => {
+  const line = (text ?? '').split(/\r?\n/).find(candidate => candidate.trim() !== '')
+  if (line === undefined) return undefined
+  const candidate = line.trim().replace(/^["'“”‘’`*_~>#•>()（）\[\]【】「」『』《》\s-]+/, '').replace(/["'“”‘’`*_~>#•>()（）\[\]【】「」『』《》\s-]+$/, '').trim()
+  return /^结论\s*[:：]\s*(通过|不通过|done|blocked|failed)$/.exec(candidate)?.[1]
+}
 
 export function install(rt) {
   rt.workerReport = async (execution, input) => {
