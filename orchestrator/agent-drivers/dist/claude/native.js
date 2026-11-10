@@ -19,8 +19,7 @@ const leadMcpConfig = (servers) => JSON.stringify({ mcpServers: Object.fromEntri
             ? { type: 'http', url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
             : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !/^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])) },
     ])) });
-export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers } = {}) {
-    const lead = !!leadMcpServers?.some(({ name }) => name !== 'nodo_worker');
+export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, lead, leadMcpServers } = {}) {
     const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => (name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => `mcp__${name}__${tool}`)) : [];
     return [
         '--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',

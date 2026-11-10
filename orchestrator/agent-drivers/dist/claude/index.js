@@ -209,7 +209,7 @@ const claudeModelTotals = (raw) => raw && usageOf(Object.values(raw).reduce((sum
             sum[key] = (sum[key] ?? 0) + model[field];
     return sum;
 }, {}));
-export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers } = {}) {
+export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, lead, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -576,6 +576,13 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
         const pending = (async () => {
             if (disposed)
                 throw new Error('Claude driver disposed');
+            // Fail closed: a leader without its mount has no working channel and must
+            // not degrade into an unprivileged plain session.
+            if (lead && !leadMcpServers?.length) {
+                const error = new Error('The lead channel is unavailable; the leader session cannot start without its nodo_lead mount.');
+                error.code = 'orch/lead-unavailable';
+                throw error;
+            }
             validateWorkspace(cwd, true);
             const executable = findExecutable(bin);
             if (!executable)
@@ -583,7 +590,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
             emit({ type: 'session', state: 'starting' });
             resuming = !!sessionId;
             modelTotals = sessionId ? undefined : {};
-            connection = connectClaude({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
+            connection = connectClaude({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, lead, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
                 onFrame: receive, onRequest: ask,
                 onClose(error) {
                     if (peer !== connection)

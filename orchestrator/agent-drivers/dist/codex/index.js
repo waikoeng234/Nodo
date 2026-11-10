@@ -146,9 +146,10 @@ export async function scanCodex({ engineOptions = {} } = {}) {
 // text, and older sessions carry failed attempts that teach the wrong habit.
 // Only the blocking request_user_input reaches this client as a card.
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.';
-// A leader only routes, so every built-in execution surface is switched off and
-// the sandbox is read-only. Unknown keys are accepted silently, and feature
-// names move between versions, so the config-freeze test is the drift guard.
+// A leader only routes: the sandbox is read-only and the built-in capabilities
+// that a config key can turn off are turned off here. Unknown keys are accepted
+// silently and feature names move between versions, so the config-freeze test
+// is the drift guard.
 const LEAD_CONFIG = {
     'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
     'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
@@ -156,7 +157,7 @@ const LEAD_CONFIG = {
     'features.skill_search': false, 'features.collab': false, 'features.multi_agent_v2': false,
     'features.image_generation': false, 'tools.web_search': false, 'tools.update_plan': { enabled: false },
 };
-export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, leadMcpServers } = {}) {
+export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, lead, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -423,6 +424,13 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         const pending = (async () => {
             if (disposed)
                 throw new Error('Codex driver disposed');
+            // Fail closed: a leader without its mount has no working channel and must
+            // not degrade into an unprivileged plain session.
+            if (lead && !leadMcpServers?.length) {
+                const error = new Error('The lead channel is unavailable; the leader session cannot start without its nodo_lead mount.');
+                error.code = 'orch/lead-unavailable';
+                throw error;
+            }
             validateWorkspace(cwd, true);
             const executable = findCodexExecutable(bin);
             if (!executable)
@@ -456,7 +464,6 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             workspaceId = await ensureCodexWorkspace(peer, { cwd: cwd, name, workspaceId });
             const method = threadId ? 'thread/resume' : 'thread/start';
             const params = { ...(threadId ? { threadId } : { projectId: workspaceId, historyMode: 'paginated' }), cwd, ...(model ? { model } : {}) };
-            const lead = !!leadMcpServers?.some(({ name }) => name !== 'nodo_worker');
             // The autonomy tier rides the thread params: the sandbox bounds what the
             // engine may touch at all, `never` approval is what makes the top tier full.
             const extras = {

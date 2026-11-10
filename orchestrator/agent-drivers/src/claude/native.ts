@@ -7,7 +7,7 @@ import type { McpMount } from '../role-mcp.js'
 import { LEAD_TOOLS } from '../lead-mcp.js'
 import { WORKER_TOOLS } from '../worker-mcp.js'
 
-export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; leadMcpServers?: McpMount[] }
+export type ClaudeArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; lead?: boolean; leadMcpServers?: McpMount[] }
 export type ClaudeConnectOptions<Frame = unknown, Request = unknown> = Omit<import('../stream-json.js').StreamJsonOptions<Frame, Request>, 'name'>
 export type ClaudeConnection = import('../stream-json.js').StreamJsonConnection
 
@@ -29,8 +29,7 @@ const leadMcpConfig = (servers: McpMount[]) => JSON.stringify({ mcpServers: Obje
   : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !/^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])) },
 ])) })
 
-export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers }: ClaudeArgsOptions = {}) {
-  const lead = !!leadMcpServers?.some(({ name }) => name !== 'nodo_worker')
+export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, lead, leadMcpServers }: ClaudeArgsOptions = {}) {
   const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => (name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => `mcp__${name}__${tool}`)) : []
   return [
     '--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
