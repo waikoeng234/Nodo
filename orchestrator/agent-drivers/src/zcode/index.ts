@@ -506,7 +506,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         : permission === 'workspace' ? 'guarded' : 'build'
       let resumed = Boolean(sessionId)
       const createParams = { workspace: { workspacePath: cwd, workspaceKey: cwd }, mode }
-      const inherited = instructions || leadMcpServers?.length ? zcodeMcpServers({ cwd: cwd!, env }) : []
+      const inherited = instructions || leadMcpServers?.length ? zcodeMcpServers({ cwd: cwd!, env,
+        includeProject: leadMcpServers?.some(server => server.name === 'nodo_worker') }) : []
       if (!inherited) identity.reason = 'mcp-config-not-representable'
       roleMount?.close()
       roleMount = undefined

@@ -287,10 +287,11 @@ export function install(rt) {
       ...(disposition === 'investigate' ? { questions: [...questions], awaitingAnswer: true } : {}) })
     const execution = executionOf(executionId)
     if (disposition === 'continue' && execution.sourceReportId) {
-      // Investigate marks every unreviewed report of the source execution as
-      // awaiting, so the answer clears them all — not just the newest one.
-      const source = executionOf(execution.sourceExecutionId)
-      for (const report of source.reports) if (report.review?.awaitingAnswer) Object.assign(report.review, { disposition: 'continue', awaitingAnswer: false, answeredBy: executionId })
+      let source = execution
+      while (source.sourceReportId) {
+        source = executionOf(source.sourceExecutionId)
+        for (const report of source.reports) if (report.review?.awaitingAnswer) Object.assign(report.review, { disposition: 'continue', awaitingAnswer: false, answeredBy: executionId })
+      }
     }
     return saveExecution(executionOf(executionId))
   }

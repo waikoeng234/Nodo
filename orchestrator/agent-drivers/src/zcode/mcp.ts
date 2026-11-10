@@ -20,16 +20,22 @@ const entries = (object: unknown): NamedValue[] => Object.entries(object ?? {}).
 
 // session mcpServers replaces configured servers; never discard an option the
 // protocol cannot carry, or bypass project-specific cwd and trust handling.
-export function zcodeMcpServers({ cwd, env = {} }: { cwd: string; env?: NodeJS.ProcessEnv }): ZcodeMcpServer[] | undefined {
+export function zcodeMcpServers({ cwd, env = {}, includeProject = false }: { cwd: string; env?: NodeJS.ProcessEnv; includeProject?: boolean }): ZcodeMcpServer[] | undefined {
   try {
+    const projects: Record<string, ConfigServer>[] = []
     for (let path = resolve(cwd); ; path = dirname(path)) {
-      for (const file of ['zcode.json', '.zcode/config.json']) if (Object.keys(read(join(path, file)).mcp?.servers ?? {}).length) return
+      const servers = Object.assign({}, ...['zcode.json', '.zcode/config.json'].map(file => read(join(path, file)).mcp?.servers))
+      if (Object.keys(servers).length) {
+        if (!includeProject) return
+        projects.unshift(servers)
+      }
       if (path === dirname(path)) break
     }
     const config = read(join(env.HOME ?? process.env.HOME ?? homedir(), '.zcode/cli/config.json'))
-    if (config.features?.mcp === false || Object.hasOwn(config.mcp?.servers ?? {}, 'nodo_role')) return
+    const configured = Object.assign({}, config.mcp?.servers, ...projects)
+    if (config.features?.mcp === false || Object.hasOwn(configured, 'nodo_role')) return
     const servers: ZcodeMcpServer[] = []
-    for (const [name, server] of Object.entries(config.mcp?.servers ?? {})) {
+    for (const [name, server] of Object.entries(configured) as [string, ConfigServer][]) {
       if (server.enabled === false) continue
       const stdio = server.type === 'stdio' || (!server.type && server.command)
       const fields = stdio ? ['type', 'command', 'args', 'env', 'enabled', 'timeoutMs', 'protocolVersion'] : ['type', 'url', 'headers', 'oauth', 'enabled', 'timeoutMs', 'protocolVersion']

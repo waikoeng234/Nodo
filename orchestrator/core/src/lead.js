@@ -105,7 +105,7 @@ export function install(rt) {
       ].join('\n'))
       if (execution.reportData) {
         item.summary = execution.reportData.summary ?? item.summary
-        item.text = rt.workerReportCard(execution)
+        item.text = rt.workerReportCard(execution, { resumed: item.resumed, completeness })
       }
       await rt.recordExecutionResult(execution.id, { report: item.summary })
     } else {

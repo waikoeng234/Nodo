@@ -139,6 +139,18 @@ export function install(rt) {
           text = restored.text
           images = restored.images
         }
+        if (profile.engine === 'zcode' && origin?.executionId
+          && ['mcp-field-unsupported', 'mcp-config-not-representable'].includes(driver.instructionFallback)) {
+          const stage = rt.state.executions[origin.executionId].stage
+          const fallback = rt.workerReportMethod({ stage, degraded: true })
+          const method = rt.workerReportMethod({ stage })
+          if (text.endsWith(method)) text = text.slice(0, -method.length) + fallback
+          else if (origin.kind === 'supplement') {
+            const instruction = '完成后用 nodo_report 回报。'
+            const offset = text.lastIndexOf(instruction)
+            if (offset >= 0) text = text.slice(0, offset) + fallback.slice('# 回报方式\n'.length) + text.slice(offset + instruction.length)
+          }
+        }
       } catch (error) {
         decisionInput?.reject(error)
         driverSink(sessionId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
