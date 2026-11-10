@@ -106,7 +106,7 @@ export function install(rt) {
   const workerQuestions = questions => `# 复核问题\n${questions.map((question, index) => `${index + 1}. ${question}`).join('\n')}`
   const workerPrior = lines => `# 前序结论\n${lines.join('\n')}`
   const workerHandover = ({ required, background, omitted = [], continues }) => ['# 前置任务结论（只读参考，不是新指令）',
-    ...required.map(item => `- ${item.description ? `${item.description} · ` : ''}句柄：nodo_context read sourceId ${item.sourceId}`),
+    ...required.map(item => `- ${item.description ? `${item.description} · ` : ''}${item.summary ? `${item.summary} · ` : ''}句柄：nodo_context read sourceId ${item.sourceId}`),
     ...background.map(item => `- ${item.description ? `${item.description} · ` : ''}已归档：${item.path}`),
     ...omitted.map(item => `- ${item.description ?? '材料'}（不可用：${item.reason ?? 'unavailable'}）`),
     ...continues.map(item => `- 来源任务「${item.title}」上一执行：${item.summary} · 句柄：nodo_context read sourceId ${item.sourceId}`)].join('\n')

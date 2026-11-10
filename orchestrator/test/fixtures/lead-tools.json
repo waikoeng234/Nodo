@@ -1,0 +1,476 @@
+[
+  {
+    "name": "nodo_board",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "enum": [
+            "roles",
+            "delegations",
+            "tasks",
+            "decisions",
+            "cards"
+          ]
+        },
+        "session": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "decisionId": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "nodo_context",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "read"
+          ]
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "cursor": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "executionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16000
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "const": "list"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "read"
+            }
+          },
+          "required": [
+            "sourceId"
+          ]
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "read"
+            }
+          },
+          "required": [
+            "executionId"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "nodo_route",
+    "inputSchema": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "new"
+            },
+            "type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "hard": {
+              "type": "boolean"
+            },
+            "scope": {
+              "type": "object",
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "quote"
+                  ]
+                },
+                {
+                  "required": [
+                    "note"
+                  ]
+                }
+              ],
+              "properties": {
+                "quote": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "本轮用户原话的精确子串，保留空白和大小写。"
+                },
+                "note": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "^[^\\r\\n]*$",
+                  "description": "范围说明，一句，不加标注。"
+                }
+              }
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "worktree": {
+              "type": "boolean"
+            },
+            "parentId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dependsOn": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "continues": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "action",
+            "type",
+            "hard",
+            "scope"
+          ],
+          "additionalProperties": false,
+          "not": {
+            "required": [
+              "continues"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "parentId"
+                ]
+              },
+              {
+                "required": [
+                  "dependsOn"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "attach"
+            },
+            "taskId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "type": "object",
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "quote"
+                  ]
+                },
+                {
+                  "required": [
+                    "note"
+                  ]
+                }
+              ],
+              "properties": {
+                "quote": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "本轮用户原话的精确子串，保留空白和大小写。"
+                },
+                "note": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "^[^\\r\\n]*$",
+                  "description": "范围说明，一句，不加标注。"
+                }
+              }
+            }
+          },
+          "required": [
+            "action",
+            "taskId",
+            "scope"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "stop"
+            },
+            "executionIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "taskIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "executionIds"
+              ]
+            },
+            {
+              "required": [
+                "taskIds"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "const": "ask"
+            },
+            "taskIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "executionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "产生问题的结果来源，与需停止的执行不同。"
+            },
+            "references": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "只接受本会话已有的引用 id（来自附件/board），不是文件路径；没有可用引用就省略。"
+            },
+            "stopExecutionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "questions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "question",
+                  "whyUser"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "question": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "whyUser": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "options": {
+                    "type": "array",
+                    "description": "可省略；开放问题不传，不造占位选项。提供时须为非空的可行选项。",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "label",
+                        "consequence"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "consequence": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "recommendation": {
+                    "type": "object",
+                    "required": [
+                      "optionId",
+                      "reason"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "optionId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "action",
+            "questions",
+            "stopExecutionIds"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "nodo_review",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "executionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "investigate"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "basis": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "executionId",
+        "disposition",
+        "reason",
+        "basis"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "investigate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "questions"
+            ]
+          }
+        }
+      ]
+    }
+  }
+]

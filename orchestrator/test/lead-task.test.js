@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -42,6 +43,7 @@ const withTasks = (run, repository = false, workerEngine = 'echo') => withHost(a
   await rt.updateTeams([{ id: 'team', name: 'Team', lead: lead.id, members: [worker.id], types: [{ id: 'feature', name: 'Feature', when: '' }], assign: { feature: { normal: { profile: worker.id } } } }])
   const owner = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
   const other = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
+  await rt.ensureDriver(await rt.prepareConversation(owner.id))
   const clients = [], bindings = []
   const client = async session => {
     const binding = await rt.issueLeadMcp(session.id), spec = binding.servers[0]
@@ -70,7 +72,7 @@ test('lead task delegation persists an actual final and exposes it through the r
   await host.api('send', { profile: lead.id, session: owner.id, text: 'Implement and verify' })
   await until(() => !rt.workView()[owner.id]?.active)
   const primary = await client(owner)
-  const receipt = await call(primary, 'nodo_delegate', command)
+  const receipt = await call(primary, 'nodo_route', userRoute(rt, owner.id, command))
   await finish(receipt)
   const task = await call(primary, 'nodo_board', { taskId: receipt.taskId })
   const result = task.executions[0].result
@@ -101,98 +103,55 @@ test('driver final reaches late confirmation and fills a missing archived result
   await until(() => !rt.workView()[session.id]?.active)
 }))
 
-test('relationship ownership, revise and reuse preserve the task graph', () => withTasks(async ({ host, rt, workspace, lead, owner, other, client, call, finish }) => {
-  await host.api('send', { profile: lead.id, session: owner.id, text: 'Build the goal' })
-  await until(() => !rt.workView()[owner.id]?.active)
+test('new relations enforce coordinator ownership; attach never revises relations or unfreezes old tasks', () => withTasks(async ({ rt, workspace, owner, other, client, call, finish }) => {
   const primary = await client(owner)
-  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, title: 'Goal', brief: 'Integrate', source: { kind: 'lead' } }
-  const parent = await rt.createTask(scope)
-  const dependency = await call(primary, 'nodo_delegate', { ...command, task: 'Investigate' })
-  await finish(dependency)
-  const child = await rt.createTask({ ...scope, title: 'Child', parentId: parent.id, dependsOn: [dependency.taskId] })
-  const foreign = await rt.createTask({ ...scope, coordinatorSessionId: other.id })
-  const before = [Object.keys(rt.state.executions).length, rt.conversationOf(dependency.session).profile.sessions.length]
+  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, title: 'Goal', brief: 'Goal', source: { kind: 'lead' } }
+  const parent = await rt.createTask(scope), foreign = await rt.createTask({ ...scope, coordinatorSessionId: other.id })
   for (const related of ['missing', foreign.id]) for (const relation of [{ parentId: related }, { dependsOn: [related] }]) {
-    assert.equal((await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, ...relation } })).isError, true)
-    assert.equal((await primary.callTool({ name: 'nodo_task', arguments: { taskId: child.id, action: 'revise', ...relation } })).isError, true)
-  }
-  for (const relation of [{ parentId: parent.id }, { dependsOn: [dependency.taskId] }]) {
-    const rejected = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, taskId: child.id, ...relation } })
-    assert.equal(rejected.isError, true)
-    assert.equal(rejected.content[0].text, '续用 taskId 时不能传 parentId 或 dependsOn，请用 nodo_task revise 修改关系')
-  }
-  const blocked = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, taskId: child.id } })
-  assert.equal(blocked.isError, true)
-  assert.equal(blocked.content[0].text, '依赖任务 Investigate 尚未验收，先完成它再派活')
-  assert.deepEqual([Object.keys(rt.state.executions).length, rt.conversationOf(dependency.session).profile.sessions.length], before)
-  await call(primary, 'nodo_task', { taskId: dependency.taskId, action: 'complete', reason: 'Checked', executionIds: [dependency.executionId], basis: ['Verified dependency'] })
-  const allowed = await call(primary, 'nodo_delegate', { ...command, taskId: child.id })
-  assert.equal(allowed.status, 'queued', 'completing A and dispatching B in the same turn is allowed')
-  const linked = await call(primary, 'nodo_delegate', { ...command, parentId: parent.id, dependsOn: [dependency.taskId] })
-  const summary = (await call(primary, 'nodo_board', { table: 'tasks' })).find(item => item.id === linked.taskId)
-  assert.equal(summary.parentId, parent.id)
-  assert.deepEqual(summary.dependsOn, [dependency.taskId])
-  const reparent = { taskId: child.id, action: 'revise', parentId: dependency.taskId, dependsOn: [parent.id] }
-  const rejected = await primary.callTool({ name: 'nodo_task', arguments: reparent })
-  assert.equal(rejected.isError, true)
-  assert.equal(rejected.content[0].text, '父任务已验收，请先 reopen 父任务')
-  await call(primary, 'nodo_task', { taskId: dependency.taskId, action: 'reopen' })
-  const revised = await call(primary, 'nodo_task', reparent)
-  assert.equal(revised.parentId, dependency.taskId)
-  assert.deepEqual(revised.dependsOn, [parent.id])
-  const cleared = await call(primary, 'nodo_task', { taskId: child.id, action: 'revise', parentId: '', dependsOn: [] })
-  assert.equal(Object.hasOwn(cleared, 'parentId'), false)
-  assert.equal(Object.hasOwn(cleared, 'dependsOn'), false)
-  await rt.followLead(owner.id, turn('interrupted'))
-}))
-
-test('lead acceptance requires children done and reopening a child leaves the accepted parent done', () => withTasks(async ({ host, rt, lead, owner, client, call, finish }) => {
-  await host.api('send', { profile: lead.id, session: owner.id, text: 'Build the goal' })
-  await until(() => !rt.workView()[owner.id]?.active)
-  const primary = await client(owner)
-  const parent = await call(primary, 'nodo_delegate', { ...command, task: 'Goal integration' })
-  await finish(parent)
-  const child = await call(primary, 'nodo_delegate', { ...command, parentId: parent.taskId })
-  await finish(child)
-  const accept = receipt => ({ taskId: receipt.taskId, action: 'complete', reason: 'Verified', executionIds: [receipt.executionId], basis: ['Verified result'] })
-  const rejected = await primary.callTool({ name: 'nodo_task', arguments: accept(parent) })
-  assert.equal(rejected.isError, true)
-  assert.equal(rejected.content[0].text, '还有 1 个子任务未验收，先完成它们再验收本任务')
-  await call(primary, 'nodo_task', accept(child))
-  await call(primary, 'nodo_task', accept(parent))
-  await call(primary, 'nodo_task', { taskId: child.taskId, action: 'reopen' })
-  assert.equal(rt.state.tasks[parent.taskId].status, 'done')
-  assert.equal(rt.state.tasks[child.taskId].status, 'open')
-  const before = [Object.keys(rt.state.executions).length, rt.conversationOf(child.session).profile.sessions.length]
-  const refused = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, parentId: parent.taskId } })
-  assert.equal(refused.isError, true)
-  assert.equal(refused.content[0].text, '父任务已验收，请先 reopen 父任务')
-  assert.deepEqual([Object.keys(rt.state.executions).length, rt.conversationOf(child.session).profile.sessions.length], before)
-  await call(primary, 'nodo_task', { taskId: parent.taskId, action: 'reopen' })
-  assert.equal((await call(primary, 'nodo_delegate', { ...command, parentId: parent.taskId })).status, 'queued')
-  await rt.followLead(owner.id, turn('interrupted'))
-}))
-
-test('delegate rejects an existing cyclic parent chain and revise rejects self references without creating resources', () => withTasks(async ({ rt, workspace, worker, owner, client, call }) => {
-  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, title: 'Goal', brief: 'Integrate', source: { kind: 'lead' } }
-  const parent = await rt.createTask(scope)
-  const child = await rt.createTask({ ...scope, parentId: parent.id })
-  const primary = await client(owner)
-  for (const changes of [{ parentId: parent.id }, { dependsOn: [parent.id] }]) {
-    const response = await primary.callTool({ name: 'nodo_task', arguments: { taskId: parent.id, action: 'revise', ...changes } })
+    const response = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { ...command, ...relation }) })
     assert.equal(response.isError, true)
-    assert.equal(response.content[0].text, '任务不能以自己为父任务或依赖任务')
   }
+  const frozen = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { ...command, taskId: parent.id }) })
+  assert.equal(JSON.parse(frozen.content[0].text).code, 'orch/frozen')
+  const dependency = await call(primary, 'nodo_route', userRoute(rt, owner.id, command)); await finish(dependency)
+  await rt.completeTask(dependency.taskId, { reason: 'Checked', executionIds: [dependency.executionId], basis: ['Verified'] })
+  const child = await call(primary, 'nodo_route', userRoute(rt, owner.id, { ...command, parentId: parent.id, dependsOn: [dependency.taskId] }))
+  const record = rt.state.tasks[child.taskId]
+  assert.equal(record.parentId, parent.id); assert.deepEqual(record.dependsOn, [dependency.taskId])
+  for (const relation of [{ parentId: parent.id }, { dependsOn: [] }]) {
+    const result = await primary.callTool({ name: 'nodo_route', arguments: { action: 'attach', taskId: child.taskId, scope: { note: 'Supplement' }, ...relation } })
+    assert.equal(result.isError, true)
+  }
+  await rt.followLead(owner.id, turn('interrupted'))
+}))
+
+test('leader cannot accept or reopen tasks; backend acceptance still requires children done', () => withTasks(async ({ rt, owner, client, call, finish }) => {
+  const primary = await client(owner)
+  const parent = await call(primary, 'nodo_route', userRoute(rt, owner.id, command)); await finish(parent)
+  const child = await call(primary, 'nodo_route', userRoute(rt, owner.id, { ...command, parentId: parent.taskId })); await finish(child)
+  const acceptance = item => ({ reason: 'Verified', executionIds: [item.executionId], basis: ['Verified result'] })
+  await assert.rejects(rt.completeTask(parent.taskId, acceptance(parent)), /子任务未验收/)
+  for (const action of ['complete', 'reopen', 'revise']) {
+    const response = await primary.callTool({ name: 'nodo_route', arguments: { action, taskId: child.taskId, reason: 'Checked', basis: ['Evidence'] } })
+    assert.equal(response.isError, true)
+  }
+  await rt.completeTask(child.taskId, acceptance(child)); await rt.completeTask(parent.taskId, acceptance(parent))
+  const before = Object.keys(rt.state.executions).length
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, parentId: parent.taskId }), /父任务已验收/)
+  assert.equal(Object.keys(rt.state.executions).length, before)
+}))
+
+test('new refuses cyclic relations and backend relation checks retain self-reference protection', () => withTasks(async ({ rt, workspace, worker, owner }) => {
+  const scope = { workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id, title: 'Goal', brief: 'Integrate', source: { kind: 'lead' } }
+  const parent = await rt.createTask(scope), child = await rt.createTask({ ...scope, parentId: parent.id })
+  for (const changes of [{ parentId: parent.id }, { dependsOn: [parent.id] }]) await assert.rejects(rt.reviseTask(parent.id, changes), /自己/)
   rt.state.tasks[parent.id].parentId = child.id
   const before = structuredClone(rt.state.tasks)
-  const response = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, parentId: parent.id } })
-  assert.equal(response.isError, true)
-  assert.equal(response.content[0].text, '父子关系成环')
-  assert.deepEqual(rt.state.tasks, before)
-  assert.deepEqual(rt.state.executions, {})
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, parentId: parent.id }), /成环/)
+  assert.deepEqual(rt.state.tasks, before); assert.deepEqual(rt.state.executions, {})
   assert.equal(rt.state.profiles[worker.id].sessions.length, 0)
-  await call(primary, 'nodo_task', { taskId: parent.id, action: 'revise', parentId: '' })
-  assert.equal((await call(primary, 'nodo_delegate', { ...command, parentId: parent.id })).status, 'queued')
+  await rt.reviseTask(parent.id, { parentId: '' })
+  assert.equal((await routeUserTask(rt, owner.id, { ...command, parentId: parent.id })).ok, true)
   await rt.followLead(owner.id, turn('interrupted'))
 }))
 
@@ -204,9 +163,10 @@ test('isolated delegation locks its directory, copies attachments and reports it
   writeFileSync(join(workspace.cwd, 'base.txt'), 'uncommitted\n')
   const refs = await rt.saveFiles(rt.admitFiles([{ name: 'context.txt', data: Buffer.from('task context').toString('base64') }]))
   const attached = await rt.materializeFiles(refs, workspace.cwd)
-  rt.leadInputStarted(owner.id, attached)
   const primary = await client(owner)
-  const first = await call(primary, 'nodo_delegate', { ...command, worktree: true })
+  const args = userRoute(rt, owner.id, { ...command, worktree: true })
+  rt.pendingTriggerOf(owner.id).files = refs
+  const first = await call(primary, 'nodo_route', args)
   const execution = rt.state.executions[first.executionId]
   const isolated = rt.findWorkspace(execution.workspaceRef)
   const session = rt.conversationOf(first.session).session
@@ -230,24 +190,25 @@ test('isolated delegation locks its directory, copies attachments and reports it
   }
   await finish(first)
   assert.equal(rt.driverOf(first.session).cwd, isolated.cwd)
-  const [copied] = sent[5].files.paths
+  const [relativeCopy] = sent[5].files.paths
+  const copied = join(isolated.cwd, relativeCopy)
   assert.ok(realpathSync(copied).startsWith(`${realpathSync(isolated.cwd)}${sep}`), 'the attachment stays inside the isolated checkout despite the cwd alias')
   assert.equal(basename(copied), basename(attached[0]))
   assert.equal(readFileSync(copied, 'utf8'), 'task context')
-  assert.deepEqual(sent[5].files.paths, [copied])
-  assert.ok(rt.driverOf(first.session).calls[0].includes(copied))
+  assert.deepEqual(sent[5].files.paths, [relativeCopy])
+  assert.ok(rt.driverOf(first.session).calls[0].includes(relativeCopy))
   assert.equal(readFileSync(join(isolated.cwd, '.nodo', '.gitignore'), 'utf8'), '*\n', 'the task worktree carries the ignored input folder')
   assert.equal(git(isolated.cwd, 'status', '--porcelain'), '', 'the copied attachment stays invisible to git status')
   const directoryNotes = `执行目录：${isolated.cwd}\n分支：${isolated.worktree.branch}\n基准 commit：${isolated.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`
   assert.ok(sent[1].includes(directoryNotes), 'the running notes with the actual directory stay verbatim in the input')
-  assert.ok(sent[1].indexOf('执行目录：') < sent[1].indexOf('Implement and verify'), 'running notes come before the current task')
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: false }), /执行目录不一致/)
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: true })
+  assert.ok(sent[1].includes('# 本轮要求'), 'directory facts accompany the verbatim user requirement')
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId, worktree: false }), /字段无效/)
+  const next = await routeUserTask(rt, owner.id, { ...command, taskId: first.taskId })
   assert.equal(rt.state.executions[next.executionId].workspaceRef, isolated.id)
   assert.equal(rt.conversationOf(next.session).session.workspaceRef, isolated.id)
   await rt.followLead(owner.id, turn('interrupted'))
   assert.ok(existsSync(isolated.cwd), 'a previously sent task keeps its worktree when rework is cancelled')
-  const reused = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId })
+  const reused = await routeUserTask(rt, owner.id, { ...command, taskId: first.taskId })
   assert.equal(reused.session, first.session)
   assert.equal(rt.state.executions[reused.executionId].workspaceRef, isolated.id)
   await rt.followLead(owner.id, turn('interrupted'))
@@ -257,10 +218,11 @@ test('isolated delegation locks its directory, copies attachments and reports it
 test('a worktree dispatch archives background files inside its own checkout and points the body at them', () => withTasks(async ({ rt, workspace, worker, owner, client, call, finish }) => {
   rt.state.profiles[worker.id].engine = 'final-fixture'
   const bootstrap = await client(owner)
-  const dependency = await call(bootstrap, 'nodo_delegate', { ...command, task: 'Investigate storage' })
+  const dependency = await call(bootstrap, 'nodo_route', userRoute(rt, owner.id, { ...command, task: 'Investigate storage' }))
   await finish(dependency)
   // The first lead-driver start rotates the MCP credential, so re-issue before the worktree dispatch.
   const primary = await client(owner)
+  await rt.completeTask(dependency.taskId, { reason: 'Checked', executionIds: [dependency.executionId], basis: ['Verified result'] })
   const text = rt.state.executions[dependency.executionId].result.text
   const send = rt.send
   let body
@@ -268,8 +230,8 @@ test('a worktree dispatch archives background files inside its own checkout and 
     if (args[5]?.origin?.kind === 'delegation') body = args[1]
     return send(...args)
   }
-  const receipt = await call(primary, 'nodo_delegate', { ...command, task: 'Rework in isolation', worktree: true,
-    context: { required: [], background: [`execution:${dependency.executionId}:result`] } })
+  const receipt = await call(primary, 'nodo_route', userRoute(rt, owner.id, { ...command, task: 'Rework in isolation', worktree: true,
+    dependsOn: [dependency.taskId] }))
   const isolated = rt.findWorkspace(rt.state.executions[receipt.executionId].workspaceRef)
   await finish(receipt)
   const background = rt.state.executions[receipt.executionId].inputContext.background[0]
@@ -286,19 +248,19 @@ test('a worktree dispatch archives background files inside its own checkout and 
 test('worktree validation rejects non-booleans and switching a started shared task to isolation', () => withTasks(async ({ rt, owner, client, call, finish }) => {
   const primary = await client(owner)
   for (const worktree of ['true', 1, null]) {
-    const response = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, worktree } })
+    const response = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { ...command, worktree } )})
     assert.equal(response.isError, true)
     assert.match(response.content[0].text, /worktree 必须是 true 或 false/)
   }
-  const first = await call(primary, 'nodo_delegate', { ...command, worktree: false })
-  assert.equal(rt.state.executions[first.executionId].workspaceRef, undefined)
+  const first = await call(primary, 'nodo_route', userRoute(rt, owner.id, { ...command, worktree: false }))
+  assert.equal(rt.state.executions[first.executionId].workspaceRef, rt.state.tasks[first.taskId].workspaceRef)
   assert.match(rt.leadDelegations(owner.id), /\| 共享 \|/)
   await finish(first)
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: true }), /执行目录不一致/)
+  await assert.rejects(rt.leadRoute(owner.id, { action: 'attach', taskId: first.taskId, scope: { note: 'Supplement' }, worktree: true }), /字段无效/)
 }))
 
-for (const removal of ['automatic', 'user']) for (const worktree of [undefined, true, false]) test(`taskId can be dispatched again after ${removal} workspace deletion (worktree=${worktree})`, () => withTasks(async ({ rt, workspace, owner, finish }) => {
-  const first = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+for (const removal of ['automatic', 'user']) for (const worktree of [undefined, true, false]) test(`deleted task directory requires a new task after ${removal} workspace deletion (worktree=${worktree})`, () => withTasks(async ({ rt, workspace, owner, finish }) => {
+  const first = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const isolated = rt.findWorkspace(rt.state.executions[first.executionId].workspaceRef)
   if (removal === 'automatic') await rt.followLead(owner.id, turn('interrupted'))
   else {
@@ -308,24 +270,20 @@ for (const removal of ['automatic', 'user']) for (const worktree of [undefined, 
   assert.equal(rt.findWorkspace(isolated.id), undefined)
   assert.ok(rt.conversationOf(first.session).session.archivedAt)
   assert.match(rt.leadDelegations(owner.id), /\| 已删除 \|/)
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, ...(worktree === undefined ? {} : { worktree }) })
-  assert.equal(next.taskId, first.taskId)
-  assert.match(next.message, /原隔离目录已删除.*重新选择执行目录/)
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId }), /执行目录已不可用|旧任务只读|已结束、停止/)
+  const next = await routeUserTask(rt, owner.id, { ...command, ...(worktree === undefined ? {} : { worktree }) })
+  assert.notEqual(next.taskId, first.taskId)
   const execution = rt.state.executions[next.executionId]
-  if (worktree) {
-    assert.notEqual(execution.workspaceRef, isolated.id)
-    assert.ok(rt.findWorkspace(execution.workspaceRef).worktree)
-  } else {
-    assert.equal(execution.workspaceRef, undefined)
-    assert.equal(rt.conversationOf(next.session).session.workspaceRef, workspace.id)
-  }
+  if (worktree) assert.ok(rt.findWorkspace(execution.workspaceRef).worktree)
+  else assert.equal(execution.workspaceRef, workspace.id)
   await rt.followLead(owner.id, turn('interrupted'))
 }, true))
 
 test('a shared execution that never started does not lock the task directory', () => withTasks(async ({ rt, owner }) => {
-  const first = await rt.leadDispatch.delegate(owner.id, command)
+  const first = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('interrupted'))
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId, worktree: true })
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId }), { code: 'orch/frozen' })
+  const next = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   assert.ok(rt.findWorkspace(rt.state.executions[next.executionId].workspaceRef).worktree)
   await rt.followLead(owner.id, turn('interrupted'))
 }, true))
@@ -341,7 +299,7 @@ for (const phase of ['session', 'acceptance', 'receipt']) test(`isolated ${phase
   }
   for (let index = 0; index < 25; index++) {
     isolated = undefined
-    await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, worktree: true }), new RegExp(`${phase} failed`))
+    await assert.rejects(routeUserTask(rt, owner.id, { ...command, worktree: true }), new RegExp(`${phase} failed`))
     assert.ok(isolated)
     assert.equal(existsSync(isolated.cwd), false)
     assert.equal(rt.findWorkspace(isolated.id), undefined)
@@ -350,7 +308,7 @@ for (const phase of ['session', 'acceptance', 'receipt']) test(`isolated ${phase
   }
   rt[method] = original
   const flights = []
-  for (let index = 0; index < 5; index++) flights.push(await rt.leadDispatch.delegate(owner.id, command))
+  for (let index = 0; index < 5; index++) flights.push(await routeUserTask(rt, owner.id, command))
   await rt.followLead(owner.id, turn('interrupted'))
   assert.ok(flights.every(item => rt.state.executions[item.executionId].status === 'cancelled'))
 }, true))
@@ -358,7 +316,7 @@ for (const phase of ['session', 'acceptance', 'receipt']) test(`isolated ${phase
 for (const reason of ['interrupted', 'error']) test(`a lead turn ending with ${reason} removes all unsent isolated worktrees`, () => withTasks(async ({ rt, workspace, owner }) => {
   const queued = []
   for (let index = 0; index < 2; index++) {
-    const receipt = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+    const receipt = await routeUserTask(rt, owner.id, { ...command, worktree: true })
     queued.push({ receipt, workspace: rt.findWorkspace(rt.state.executions[receipt.executionId].workspaceRef) })
   }
   await rt.followLead(owner.id, turn(reason))
@@ -370,7 +328,7 @@ for (const reason of ['interrupted', 'error']) test(`a lead turn ending with ${r
 }, true))
 
 test('interrupting an unsent isolated execution removes its worktree', () => withTasks(async ({ rt, owner }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+  const receipt = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const isolated = rt.findWorkspace(rt.state.executions[receipt.executionId].workspaceRef)
   await rt.leadDispatch.interrupt(owner.id, { executionId: receipt.executionId })
   assert.equal(existsSync(isolated.cwd), false)
@@ -379,11 +337,11 @@ test('interrupting an unsent isolated execution removes its worktree', () => wit
 
 test('a lead error removes queued isolation and preserves the already sent worktree', () => withTasks(async ({ rt, owner, worker }) => {
   rt.state.profiles[worker.id].engineOptions.script = [{ kind: 'wait', ms: 10_000 }]
-  const sent = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+  const sent = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const kept = rt.findWorkspace(rt.state.executions[sent.executionId].workspaceRef)
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.workView()[sent.session]?.active)
-  const queued = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+  const queued = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const removed = rt.findWorkspace(rt.state.executions[queued.executionId].workspaceRef)
   await rt.followLead(owner.id, turn('error'))
   assert.equal(existsSync(removed.cwd), false)
@@ -394,15 +352,15 @@ test('a lead error removes queued isolation and preserves the already sent workt
 }, true))
 
 test('restart removes never-sent isolation but keeps a rework directory that ran before', () => withTasks(async ({ host, rt, owner, finish }) => {
-  const sent = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+  const sent = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const kept = rt.findWorkspace(rt.state.executions[sent.executionId].workspaceRef)
   await finish(sent)
   // finish's inactivity check can pass in the window before the report turn starts,
   // so wait until that turn has run; its end would otherwise dispatch the rework
   // before the state copy and recover it as unconfirmed instead of cancelled.
   await until(() => rt.conversationOf(owner.id).session.lastTurn && !rt.workView()[owner.id]?.active)
-  const rework = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: sent.taskId })
-  const queued = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+  const rework = await routeUserTask(rt, owner.id, { ...command, taskId: sent.taskId })
+  const queued = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const removed = rt.findWorkspace(rt.state.executions[queued.executionId].workspaceRef)
   assert.equal(rt.state.executions[rework.executionId].status, 'queued')
   assert.equal(rt.state.executions[queued.executionId].status, 'queued')
@@ -425,12 +383,12 @@ test('restart removes never-sent isolation but keeps a rework directory that ran
 }, true))
 
 for (const phase of ['copy', 'start', 'start-save', 'send']) test(`isolated ${phase} failure retains the worktree only if execution started`, () => withTasks(async ({ rt, owner }) => {
-  if (phase === 'copy') rt.leadInputStarted(owner.id, ['/missing/workflow-input'])
-  const receipt = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+
+  const receipt = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   const isolated = rt.findWorkspace(rt.state.executions[receipt.executionId].workspaceRef)
-  const method = phase === 'start-save' ? 'saveStrict' : phase === 'start' ? 'startExecution' : 'send'
+  const method = phase === 'copy' ? 'composeWorkerInput' : phase === 'start-save' ? 'saveStrict' : phase === 'start' ? 'startExecution' : 'send'
   const original = rt[method]
-  if (phase !== 'copy') rt[method] = async () => { throw new Error(`${phase} failed`) }
+  rt[method] = async () => { throw new Error(`${phase} failed`) }
   await rt.followLead(owner.id, turn('done'))
   rt[method] = original
   const started = rt.state.executions[receipt.executionId].startedAt !== null
@@ -448,12 +406,12 @@ for (const phase of ['acceptance', 'cancellation']) test(`worktree cleanup failu
   const method = phase === 'acceptance' ? 'createSession' : 'cancelExecution'
   const original = rt[method]
   let receipt
-  if (phase === 'cancellation') receipt = await rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+  if (phase === 'cancellation') receipt = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   rt[method] = async () => { throw originalError }
   rt.removeWorktree = async () => { throw new Error('Cleanup failed') }
   try {
     await assert.rejects(phase === 'acceptance'
-      ? rt.leadDispatch.delegate(owner.id, { ...command, worktree: true })
+      ? routeUserTask(rt, owner.id, { ...command, worktree: true })
       : rt.leadDispatch.interrupt(owner.id, { executionId: receipt.executionId }), error => error === originalError)
     assert.ok(warnings.some(message => message.includes('worktree cleanup failed') && message.includes('Cleanup failed')))
   } finally {
@@ -466,15 +424,15 @@ for (const phase of ['acceptance', 'cancellation']) test(`worktree cleanup failu
 
 test('non-git and unavailable-git errors return isError and refund the reservation', () => withTasks(async ({ rt, owner, client }) => {
   const primary = await client(owner)
-  const response = await primary.callTool({ name: 'nodo_delegate', arguments: { ...command, worktree: true } })
+  const response = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { ...command, worktree: true } )})
   assert.equal(response.isError, true)
   assert.match(response.content[0].text, /当前项目不是 Git 工作区/)
   const path = process.env.PATH
   try {
     process.env.PATH = '/nodo-test-no-git'
-    await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, worktree: true }), /本机没有可用的 git/)
+    await assert.rejects(routeUserTask(rt, owner.id, { ...command, worktree: true }), /本机没有可用的 git/)
   } finally { process.env.PATH = path }
-  for (let index = 0; index < 5; index++) await rt.leadDispatch.delegate(owner.id, command)
+  for (let index = 0; index < 5; index++) await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('interrupted'))
 }))
 
@@ -494,22 +452,22 @@ test('task tools close the loop, preserve three results on one session and enfor
     }
     return send(...args)
   }
-  const first = await call(primary, 'nodo_delegate', command)
+  const first = await call(primary, 'nodo_route', userRoute(rt, owner.id, command))
   assert.equal(first.status, 'queued')
   assert.equal(rt.driverOf(first.session), undefined)
   assert.equal(rt.conversationOf(first.session).session.source.dispatch, undefined)
   assert.deepEqual(rt.state.tasks[first.taskId].source, { kind: 'lead', sessionId: owner.id })
   assert.equal(rt.state.tasks[first.taskId].title, 'Implement and verify')
   for (const [name, args] of [
-    ['nodo_delegate', { ...command, taskId: first.taskId }],
+    ['nodo_route', { action: 'attach', taskId: first.taskId, scope: { note: 'Supplement' } }],
     ['nodo_board', { taskId: first.taskId }],
-    ['nodo_task', { taskId: first.taskId, action: 'reopen' }],
-    ['nodo_interrupt', { executionId: first.executionId }],
+    ['nodo_review', { executionId: first.executionId, disposition: 'continue', reason: 'Checked', basis: ['result'] }],
+    ['nodo_route', { action: 'stop', executionIds: [first.executionId] }],
   ]) assert.equal((await foreign.callTool({ name, arguments: args })).isError, true)
   await finish(first)
   const original = structuredClone(rt.state.executions[first.executionId])
   for (let index = 0; index < 2; index++) {
-    const next = await call(primary, 'nodo_delegate', { ...command, taskId: first.taskId, task: `Follow-up ${index}` })
+    const next = await call(primary, 'nodo_route', userRoute(rt, owner.id, { ...command, taskId: first.taskId, task: `Follow-up ${index}` }))
     assert.notEqual(next.executionId, first.executionId)
     await finish(next)
   }
@@ -524,52 +482,30 @@ test('task tools close the loop, preserve three results on one session and enfor
     latestResult: { sourceId: `execution:${task.executions.at(-1).id}:result`, completeness: 'unavailable', reason: 'missing-final', preview: '', length: 0, originalLength: 0 } }])
   assert.deepEqual(await call(foreign, 'nodo_board', { table: 'tasks' }), [])
   assert.ok(rt.transcriptOf(first.session).filter(line => line.origin?.kind === 'delegation').every(line => line.origin.taskId === first.taskId && line.origin.executionId))
-  const done = await call(primary, 'nodo_task', { taskId: first.taskId, action: 'complete', reason: 'Checked all results', executionIds: task.executions.map(item => item.id), basis: ['Verified all three results'] })
+  const done = await rt.completeTask(first.taskId, { reason: 'Checked all results', executionIds: task.executions.map(item => item.id), basis: ['Verified all three results'] })
   assert.equal(done.status, 'done')
-  assert.equal((await call(primary, 'nodo_task', { taskId: first.taskId, action: 'reopen' })).status, 'open')
+  assert.equal((await rt.reopenTask(first.taskId)).status, 'open')
 }))
 
-test('task revise updates title or brief and refuses foreign, finished, oversized and empty edits', () => withTasks(async ({ host, rt, lead, owner, other, client, call, finish }) => {
-  // The secret must exist before the lead driver mounts, or the stamp change
-  // would rebuild the driver and rotate the MCP credential mid-test.
-  const secret = 'revise-brief-registered-value-'.repeat(4)
-  await host.api('secret-set', { name: 'REVISE_BRIEF_SECRET', value: secret, purpose: 'test', scope: [lead.id] })
-  await host.api('send', { profile: lead.id, session: owner.id, text: 'Original user request' })
-  await until(() => !rt.workView()[owner.id]?.active)
+test('leader fields cannot rewrite task title, original brief or frozen task state', () => withTasks(async ({ rt, owner, other, client, call, finish }) => {
   const primary = await client(owner), foreign = await client(other)
-  const first = await call(primary, 'nodo_delegate', command)
-  const renamed = await call(primary, 'nodo_task', { taskId: first.taskId, action: 'revise', title: `  Renamed goal\nsecond line ${'x'.repeat(100)}` })
-  assert.equal(renamed.title, 'Renamed goal', 'title keeps the first line only, clipped at 80 characters')
-  assert.equal(renamed.brief, command.task)
-  assert.equal((await call(primary, 'nodo_task', { taskId: first.taskId, action: 'revise', brief: 'Revised scope' })).brief, 'Revised scope')
-  const masked = await call(primary, 'nodo_task', { taskId: first.taskId, action: 'revise', brief: `Scope covers ${secret} end to end` })
-  assert.equal(masked.brief.includes(secret), false)
-  assert.ok(masked.brief.includes('[secret:REVISE_BRIEF_SECRET]'))
-  assert.equal(rt.state.tasks[first.taskId].brief.includes(secret), false, 'stored brief is redacted')
-  assert.equal((await foreign.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise', title: 'Hijack' } })).isError, true)
-  assert.equal(rt.state.tasks[first.taskId].title, 'Renamed goal')
-  const empty = await primary.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise' } })
-  assert.equal(empty.isError, true)
-  assert.equal(empty.content[0].text, 'revise 必须提供 title、brief、parentId 或 dependsOn 中的至少一个')
-  const oversized = await primary.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise', brief: 'x'.repeat(TASK_TEXT_MAX + 1) } })
-  assert.equal(oversized.isError, true)
-  assert.match(oversized.content[0].text, /不能超过/)
-  assert.equal(rt.state.tasks[first.taskId].brief.length, masked.brief.length, 'an oversized brief leaves the stored brief unchanged')
-  const { profile: leadProfile, session: leadSession } = rt.conversationOf(owner.id)
-  assert.match(rt.leadBrief(leadProfile, leadSession), /reopened before revising/)
+  const first = await call(primary, 'nodo_route', userRoute(rt, owner.id, command))
+  const task = structuredClone(rt.state.tasks[first.taskId])
+  for (const fields of [{ title: 'Hijack' }, { brief: 'Replacement body' }, { parentId: 'new' }, { dependsOn: [] }, { action: 'revise' }]) {
+    const result = await primary.callTool({ name: 'nodo_route', arguments: { action: 'attach', taskId: task.id, scope: { note: 'Supplement' }, ...fields } })
+    assert.equal(result.isError, true)
+  }
+  const denied = await foreign.callTool({ name: 'nodo_route', arguments: { action: 'attach', taskId: task.id, scope: { note: 'Hijack' } } })
+  assert.equal(denied.isError, true)
+  assert.deepEqual(rt.state.tasks[task.id], task)
   await finish(first)
-  await call(primary, 'nodo_task', { taskId: first.taskId, action: 'complete', reason: 'Checked all results', executionIds: [first.executionId], basis: ['Verified result'] })
-  const finished = await primary.callTool({ name: 'nodo_task', arguments: { taskId: first.taskId, action: 'revise', title: 'After done' } })
-  assert.equal(finished.isError, true)
-  assert.match(finished.content[0].text, /Task cannot transition from done/)
-  assert.equal(rt.state.tasks[first.taskId].title, 'Renamed goal')
-  assert.equal((await call(primary, 'nodo_task', { taskId: first.taskId, action: 'reopen' })).status, 'open')
-  assert.equal((await call(primary, 'nodo_task', { taskId: first.taskId, action: 'revise', brief: 'Reopened scope' })).status, 'open')
+  rt.state.tasks[task.id].flow.status = 'accepted'
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: task.id }), { code: 'orch/frozen' })
 }))
 
 test('archiving a coordinator waits for undelivered reports and live executions; unconfirmed work does not block', () => withTasks(async ({ rt, workspace, worker, lead, owner }) => {
   const session = () => rt.conversationOf(owner.id).session
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await assert.rejects(rt.archiveSession(lead.id, owner.id, true), { code: 'orch/busy', message: /排队或执行中/ })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[receipt.executionId].status, 'cancelled')
@@ -594,7 +530,7 @@ test('failed acceptance saves cancel unsent executions even when the cancellatio
     if (failing) throw new Error('Acceptance save failed')
     return save()
   }
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /Acceptance save failed/)
+  await assert.rejects(routeUserTask(rt, owner.id, command), /Acceptance save failed/)
   const execution = Object.values(rt.state.executions)[0]
   assert.equal(execution.status, 'cancelled')
   assert.match(execution.reason, /保存失败.*Acceptance save failed/)
@@ -602,17 +538,19 @@ test('failed acceptance saves cancel unsent executions even when the cancellatio
   assert.equal(rt.transcriptOf(owner.id).some(line => line.delegation), false)
   rt.saveStrict = save
   assert.equal(rt.conversationOf(execution.sessionId), undefined)
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: execution.taskId })
+  const next = await routeUserTask(rt, owner.id, { ...command, continues: execution.taskId })
   assert.notEqual(next.session, execution.sessionId)
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
 
 test('a busy taskId re-delegation removes the session it created and keeps the pending execution', () => withTasks(async ({ rt, worker, owner }) => {
-  const first = await rt.leadDispatch.delegate(owner.id, command)
+  const first = await routeUserTask(rt, owner.id, command)
   const count = () => rt.state.profiles[worker.id].sessions.length
   const before = count()
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, { ...command, taskId: first.taskId }), { code: 'orch/busy' })
+  const supplement = await routeUserTask(rt, owner.id, { ...command, taskId: first.taskId })
+  assert.equal(supplement.executionId, first.executionId)
+  assert.equal(supplement.delivery.mode, 'merged')
   assert.equal(count(), before)
   assert.equal(rt.state.executions[first.executionId].status, 'queued')
   assert.ok(rt.conversationOf(first.session))
@@ -620,27 +558,27 @@ test('a busy taskId re-delegation removes the session it created and keeps the p
 }))
 
 test('send failures and round cancellation preserve true execution status and release reservations', () => withTasks(async ({ rt, worker, lead, owner }) => {
-  const cancelled = await rt.leadDispatch.delegate(owner.id, command)
+  const cancelled = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[cancelled.executionId].status, 'cancelled')
   assert.equal(rt.driverOf(cancelled.session), undefined)
   const send = rt.send
   rt.send = (...args) => args[0] === worker.id ? Promise.reject(new Error('Send failed')) : send(...args)
-  const failed = await rt.leadDispatch.delegate(owner.id, command)
+  const failed = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.state.executions[failed.executionId].report)
   assert.equal(rt.state.executions[failed.executionId].status, 'failed')
   assert.equal(rt.state.tasks[failed.taskId].status, 'blocked')
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
   await reviewDeliveredReports(rt, owner.id)
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: failed.taskId })
+  const next = await routeUserTask(rt, owner.id, { ...command, taskId: failed.taskId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
 
 for (const reason of ['error', 'interrupted', 'unconfirmed', 'rejected']) test(`a failed lead round cancels both accepted flights exactly once (${reason})`, () => withTasks(async ({ rt, lead, owner }) => {
   const flights = []
-  for (let index = 0; index < 2; index++) flights.push(await rt.leadDispatch.delegate(owner.id, command))
+  for (let index = 0; index < 2; index++) flights.push(await routeUserTask(rt, owner.id, command))
   await rt.followLead(owner.id, { mode: 'turn', completion: reason === 'rejected' ? Promise.reject(new Error('Lead failed'))
     : Promise.resolve(reason === 'unconfirmed' ? { reason: 'done', unconfirmed: true } : { reason }) })
   await rt.followLead(owner.id, turn('error'))
@@ -653,8 +591,8 @@ for (const reason of ['error', 'interrupted', 'unconfirmed', 'rejected']) test(`
 }))
 
 test('a failed first send does not prevent the second flight from starting and reporting', () => withTasks(async ({ rt, worker, lead, owner }) => {
-  const first = await rt.leadDispatch.delegate(owner.id, { ...command, task: 'A' })
-  const second = await rt.leadDispatch.delegate(owner.id, { ...command, task: 'B' })
+  const first = await routeUserTask(rt, owner.id, { ...command, task: 'A' })
+  const second = await routeUserTask(rt, owner.id, { ...command, task: 'B' })
   const send = rt.send, sent = []
   rt.send = (...args) => {
     if (args[0] === worker.id) sent.push(args[2])
@@ -680,21 +618,21 @@ test('five active flights include reservations and failed creation releases its 
     if (index === 0) throw new Error('Creation failed')
     return create(...args)
   }
-  const pending = Array.from({ length: 5 }, () => rt.leadDispatch.delegate(owner.id, command))
+  const pending = Array.from({ length: 5 }, () => routeUserTask(rt, owner.id, command))
   const settled = Promise.allSettled(pending)
   try {
     await until(() => entered === 5)
-    await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /最多同时派活 5 个任务，请等一个结束后再派/)
+    await assert.rejects(routeUserTask(rt, owner.id, command), /最多同时派活 5 个任务，请等一个结束后再派/)
     rt.createSession = create
-    const foreign = await rt.leadDispatch.delegate(other.id, command)
+    const foreign = await routeUserTask(rt, other.id, command)
     assert.equal(foreign.status, 'queued')
     release()
     const results = await settled
     assert.equal(results.filter(item => item.status === 'rejected').length, 1)
     assert.match(results[0].reason.message, /Creation failed/)
-    const fifth = await rt.leadDispatch.delegate(owner.id, command)
+    const fifth = await routeUserTask(rt, owner.id, command)
     assert.equal(fifth.status, 'queued')
-    await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /最多同时派活 5 个任务/)
+    await assert.rejects(routeUserTask(rt, owner.id, command), /最多同时派活 5 个任务/)
     const active = Object.values(rt.state.executions).filter(item => rt.state.tasks[item.taskId].coordinatorSessionId === owner.id)
     assert.equal(active.length, 5)
     assert.ok(active.every(item => item.status === 'queued'))
@@ -714,11 +652,11 @@ for (const phase of ['acceptance', 'receipt']) test(`failed ${phase} rolls back 
     if (Object.values(rt.state.executions).some(item => item.status === 'queued')) throw new Error(`${phase} failed`)
     return save(...args)
   }
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, command), new RegExp(`${phase} failed`))
+  await assert.rejects(routeUserTask(rt, owner.id, command), new RegExp(`${phase} failed`))
   rt[method] = save
   const flights = []
-  for (let index = 0; index < 5; index++) flights.push(await rt.leadDispatch.delegate(owner.id, command))
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /最多同时派活 5 个任务/)
+  for (let index = 0; index < 5; index++) flights.push(await routeUserTask(rt, owner.id, command))
+  await assert.rejects(routeUserTask(rt, owner.id, command), /最多同时派活 5 个任务/)
   assert.equal(Object.values(rt.state.executions).filter(item => item.status === 'queued').length, 5)
   await rt.followLead(owner.id, turn('interrupted'))
   assert.ok(flights.every(item => rt.state.executions[item.executionId].status === 'cancelled'))
@@ -733,7 +671,7 @@ test('acceptance losing write access still cancels its unsent in-memory reservat
     }
     return save()
   }
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /Write lock lost/)
+  await assert.rejects(routeUserTask(rt, owner.id, command), /Write lock lost/)
   assert.equal(Object.values(rt.state.executions)[0].status, 'cancelled')
   assert.equal(rt.transcriptOf(owner.id).some(line => line.delegation), false)
   rt.readOnly = readOnly
@@ -742,14 +680,14 @@ test('acceptance losing write access still cancels its unsent in-memory reservat
 }))
 
 test('failed startup saves release the runtime slot without sending a worker command', () => withTasks(async ({ rt, owner, lead }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   const save = rt.saveStrict
   rt.saveStrict = async () => { throw new Error('Startup save failed') }
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.state.executions[receipt.executionId].status === 'failed')
   assert.equal(rt.driverOf(receipt.session), undefined)
   rt.saveStrict = save
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: receipt.taskId })
+  const next = await routeUserTask(rt, owner.id, { ...command, taskId: receipt.taskId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
@@ -767,13 +705,13 @@ test('receipt failure after deferred dispatch starts leaves completion tracking 
     }
     return save(...args)
   }
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, command), /Receipt save failed after dispatch started/)
+  await assert.rejects(routeUserTask(rt, owner.id, command), /Receipt save failed after dispatch started/)
   await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.executionId === execution.id))
   assert.equal(execution.status, 'done')
   assert.ok(execution.result)
   await until(() => !rt.workView()[owner.id]?.active)
   await reviewDeliveredReports(rt, owner.id)
-  const next = await rt.leadDispatch.delegate(owner.id, { ...command, taskId: execution.taskId })
+  const next = await routeUserTask(rt, owner.id, { ...command, continues: execution.taskId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
@@ -782,7 +720,7 @@ for (const fallback of [false, true]) test(`execution records retain full result
   const text = 'Completed work. '.repeat(60) + 'UNIQUE_FULL_REPORT_TAIL'
   rt.state.profiles[worker.id].engineOptions.script = [{ kind: 'text', text }]
   if (fallback) rt.createReference = async () => { throw new Error('Reference unavailable') }
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('done'))
   const report = await until(() => rt.transcriptOf(owner.id).find(line => line.origin?.executionId === receipt.executionId))
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
@@ -800,7 +738,7 @@ for (const fallback of [false, true]) test(`execution records retain full result
 }, false, 'final-fixture'))
 
 test('report delivery waits for execution evidence to save and retries without replacing results', () => withTasks(async ({ host, rt, lead, owner }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   const save = rt.saveStrict
   rt.saveStrict = async () => {
     if (rt.state.executions[receipt.executionId].result) throw new Error('Evidence save failed')
@@ -847,7 +785,7 @@ test('delivery retries the same archived result and report id without rerunning 
     }
     return send(...args)
   }
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('done'))
   await until(() => attempts.length > 0)
   const original = structuredClone(rt.state.executions[receipt.executionId].result)
@@ -878,7 +816,7 @@ test('pre-task legacy queues retain inline report bodies without creating refere
 }))
 
 for (const format of ['body', 'reference', 'summary']) test(`restart converts a legacy ${format} queue before delivery and preserves acceptance history`, () => withTasks(async ({ host, rt, owner, finish }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await finish(receipt)
   const execution = rt.state.executions[receipt.executionId], session = rt.conversationOf(receipt.session).session
   const legacyBody = 'Legacy final '.repeat(800)
@@ -934,23 +872,21 @@ for (const format of ['body', 'reference', 'summary']) test(`restart converts a 
   } finally { await restarted.dispose() }
 }))
 
-test('interrupt validates exclusive arguments and resolves a reused session to its active execution', () => withTasks(async ({ rt, owner, client, call }) => {
+test('stop validates exclusive arrays and targets the exact execution or task', () => withTasks(async ({ rt, owner, client, call }) => {
   const primary = await client(owner)
-  const first = await call(primary, 'nodo_delegate', command)
-  assert.equal((await primary.callTool({ name: 'nodo_interrupt', arguments: { session: first.session, executionId: first.executionId } })).isError, true)
-  assert.equal((await call(primary, 'nodo_interrupt', { session: first.session })).ended, 'cancelled')
-  assert.equal(rt.state.executions[first.executionId].status, 'cancelled')
-  const next = await call(primary, 'nodo_delegate', { ...command, taskId: first.taskId })
-  assert.equal(next.session, first.session)
-  assert.equal((await primary.callTool({ name: 'nodo_interrupt', arguments: { executionId: first.executionId } })).isError, true)
-  assert.equal((await call(primary, 'nodo_interrupt', { session: next.session })).executionId, next.executionId)
-  const exact = await call(primary, 'nodo_delegate', { ...command, taskId: first.taskId })
-  assert.equal((await call(primary, 'nodo_interrupt', { executionId: exact.executionId })).executionId, exact.executionId)
-  assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
+  const first = await call(primary, 'nodo_route', userRoute(rt, owner.id, command))
+  const invalid = await primary.callTool({ name: 'nodo_route', arguments: { action: 'stop', taskIds: [first.taskId], executionIds: [first.executionId] } })
+  assert.equal(invalid.isError, true)
+  const stopped = await call(primary, 'nodo_route', { action: 'stop', executionIds: [first.executionId] })
+  assert.equal(stopped.stopped[0].ended, 'cancelled')
+  assert.equal(rt.state.tasks[first.taskId].flow.status, 'stopped')
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId }), { code: 'orch/frozen' })
+  const next = await call(primary, 'nodo_route', userRoute(rt, owner.id, { ...command, continues: first.taskId }))
+  assert.equal((await call(primary, 'nodo_route', { action: 'stop', taskIds: [next.taskId] })).stopped[0].executionId, next.executionId)
 }))
 
 test('restart cancels queued executions without reports and permits session reuse', () => withTasks(async ({ host, rt, owner }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   const directory = join(host.home, 'restart')
   mkdirSync(directory)
   copyFileSync(join(host.home, 'state.json'), join(directory, 'state.json'))
@@ -965,7 +901,8 @@ test('restart cancels queued executions without reports and permits session reus
     assert.equal(recovered.state.tasks[receipt.taskId].status, 'stopped')
     assert.equal(recovered.conversationOf(owner.id).session.reportQueue, undefined)
     assert.equal(recovered.driverOf(owner.id), undefined)
-    const next = await recovered.leadDispatch.delegate(owner.id, { ...command, taskId: receipt.taskId })
+    await assert.rejects(recovered.leadRoute(owner.id, { action: 'attach', taskId: receipt.taskId, scope: { note: 'Resume' } }), { code: 'orch/no-trigger' })
+    const next = await routeUserTask(recovered, owner.id, { ...command, continues: receipt.taskId })
     assert.equal(next.session, receipt.session)
     await recovered.followLead(owner.id, turn('interrupted'))
   } finally {
@@ -976,7 +913,7 @@ test('restart cancels queued executions without reports and permits session reus
 
 test('restart recovers multiple queued and running executions without duplicate delivery', () => withTasks(async ({ host, rt, owner }) => {
   const flights = []
-  for (let index = 0; index < 4; index++) flights.push(await rt.leadDispatch.delegate(owner.id, { ...command, task: `Task ${index}` }))
+  for (let index = 0; index < 4; index++) flights.push(await routeUserTask(rt, owner.id, { ...command, task: `Task ${index}` }))
   for (const item of flights.slice(2)) await rt.startExecution(item.executionId)
   const directory = join(host.home, 'parallel-restart')
   mkdirSync(directory)
@@ -1005,7 +942,7 @@ test('restart recovers multiple queued and running executions without duplicate 
 }))
 
 test('restart leaves persisted running executions unconfirmed without resending', () => withTasks(async ({ host, rt, owner }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await rt.startExecution(receipt.executionId)
   const directory = join(host.home, 'running-restart')
   mkdirSync(directory)
@@ -1020,7 +957,7 @@ test('restart leaves persisted running executions unconfirmed without resending'
     assert.equal(recovered.driverOf(receipt.session), undefined)
     await until(() => recovered.state.executions[receipt.executionId].report && !recovered.workView()[owner.id]?.active && !recovered.conversationOf(owner.id).session.reportQueue)
     await reviewDeliveredReports(recovered, owner.id)
-    await assert.rejects(recovered.leadDispatch.delegate(owner.id, { ...command, taskId: receipt.taskId }), /pending execution/)
+    await assert.rejects(routeUserTask(recovered, owner.id, { ...command, taskId: receipt.taskId }), { code: 'orch/busy' })
   } finally {
     await restarted.dispose()
     await rt.failExecution(receipt.executionId, { reason: 'fixture-cleanup' })
@@ -1029,7 +966,7 @@ test('restart leaves persisted running executions unconfirmed without resending'
 }))
 
 test('interrupt closes a restarted unconfirmed execution so the task can be re-dispatched', () => withTasks(async ({ host, rt, owner }) => {
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await rt.startExecution(receipt.executionId)
   const directory = join(host.home, 'unconfirmed-restart')
   mkdirSync(directory)
@@ -1052,8 +989,9 @@ test('interrupt closes a restarted unconfirmed execution so the task can be re-d
     assert.ok(recovered.transcriptOf(owner.id).some(line => line.delegation?.executionId === receipt.executionId
       && line.delegation.ended === 'interrupted' && line.delegation.stoppedBy === 'lead'))
     await reviewDeliveredReports(recovered, owner.id)
-    const next = await recovered.leadDispatch.delegate(owner.id, { ...command, taskId: receipt.taskId })
-    assert.equal(next.taskId, receipt.taskId)
+    await assert.rejects(recovered.leadRoute(owner.id, { action: 'attach', taskId: receipt.taskId, scope: { note: 'Resume' } }), { code: 'orch/no-trigger' })
+    const next = await routeUserTask(recovered, owner.id, { ...command, continues: receipt.taskId })
+    assert.notEqual(next.taskId, receipt.taskId)
     assert.equal(next.status, 'queued')
     await recovered.followLead(owner.id, turn('interrupted'))
   } finally {
@@ -1075,7 +1013,7 @@ test("a foreign coordinator's unconfirmed execution still refuses interruption",
 
 test('a running execution with a flight still interrupts through the live stop path', () => withTasks(async ({ rt, worker, owner }) => {
   rt.state.profiles[worker.id].engineOptions.script = [{ kind: 'wait', ms: 10_000 }]
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.workView()[receipt.session]?.active)
   const stopped = await rt.leadDispatch.interrupt(owner.id, { executionId: receipt.executionId })
@@ -1123,7 +1061,7 @@ test('task reads include initial state, scoped lists, polling updates and live s
     }
   }
   await frame('live')
-  const receipt = await rt.leadDispatch.delegate(owner.id, command)
+  const receipt = await routeUserTask(rt, owner.id, command)
   await frame('structure')
   const fresh = await host.api('state')
   assert.equal(fresh.tasks[0].id, receipt.taskId)

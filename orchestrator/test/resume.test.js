@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { chmodSync, copyFileSync, readFileSync } from 'node:fs'
@@ -30,7 +31,7 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     assert.equal(rt.state.profiles[lead.id].driverSessionId, freshId)
     assert.equal(leadSession.restoreContext, false)
 
-    const receipt = await rt.leadDispatch.delegate(leadSession.id, { type: 'feature', hard: false, task: 'Implement the task' })
+    const receipt = await routeUserTask(rt, leadSession.id, { type: 'feature', hard: false, task: 'Implement the task' })
     const work = rt.conversationOf(receipt.session).session
     work.driverSessionId = 'missing-worker'
     work.lastTurn = { task: 'Prior work', report: 'Worker evidence', reason: 'done' }

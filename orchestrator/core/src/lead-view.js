@@ -1,4 +1,3 @@
-import { TASK_TEXT_MAX } from './constants.js'
 import { leadModeOf } from '../shared/lead.js'
 import { invalid } from './errors.js'
 import { executionResultView } from './tasks.js'
@@ -23,6 +22,7 @@ export function createLeadView(rt, { rosterOf, flightOf, delegationSummary, owne
           : live?.suspect ? '疑似卡住' : live?.retry ? '引擎重试中' : waiting ? '等待用户' : ''
       status += `${activity ? ` · ${activity}` : ''} · 已执行 ${Math.max(0, Math.floor((Date.now() - dispatch.acceptedAt) / 1000))} 秒`
     } else if (dispatch.status !== 'done' && dispatch.reason && dispatch.reason !== dispatch.status) status += ` · ${dispatch.reason}`
+    if (dispatch.supplementUnconfirmed) status += ' · 补充未确认送达'
     return [session.id, profile.name, dispatch.task, `${dispatch.type} / ${dispatch.hard ? '难题' : '常规'}`, status, session.source.continued ?? 0, dispatch.directory ?? dispatch.branch ?? '共享']
   }
   const delegationsOf = (id, latest = latestExecutions()) => Object.values(rt.state.profiles).flatMap(profile => (profile.sessions ?? [])
@@ -40,9 +40,10 @@ export function createLeadView(rt, { rosterOf, flightOf, delegationSummary, owne
     const decisions = all.filter(item => ['pending', 'answered'].includes(item.status) || recent.has(item))
       .map(({ id, status, taskIds, sourceExecutionIds }) => ({ decisionId: id, status,
         taskIds: [...new Set([...taskIds, ...sourceExecutionIds.map(id => rt.state.executions[id].taskId)])], sourceExecutionIds }))
+    const cards = leadCards(id)
     const waiting = rt.sessionBlockReason?.(id) ?? rt.reportReviewBlockReason?.(id)
-    if (!shown.length && !pending && !decisions.length && !waiting) return ''
-    return `<nodo-status>\n${shown.length ? table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用', '目录'], shown.map(item => delegationState(item.profile, item.session, item.dispatch))) + '\n' : ''}待送结果：${pending}\n${waiting ? `等待原因：${JSON.stringify(waiting)}\n` : ''}${decisions.length ? `决策：${JSON.stringify(decisions)}\n` : ''}执行中的改动可能还没写进文件，不要据此判断任务没有执行。\n</nodo-status>`
+    if (!shown.length && !pending && !decisions.length && !cards.length && !waiting) return ''
+    return `<nodo-status>\n${shown.length ? table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用', '目录'], shown.map(item => delegationState(item.profile, item.session, item.dispatch))) + '\n' : ''}待送结果：${pending}\n${waiting ? `等待原因：${JSON.stringify(waiting)}\n` : ''}${decisions.length ? `决策：${JSON.stringify(decisions)}\n` : ''}${cards.length ? `卡片：${JSON.stringify(cards)}\n` : ''}执行中的改动可能还没写进文件，不要据此判断任务没有执行。\n</nodo-status>`
   }
   const leadDelegations = (id, sessionId) => {
     const records = delegationsOf(id).sort((a, b) => (b.dispatch.endedAt ?? b.dispatch.acceptedAt) - (a.dispatch.endedAt ?? a.dispatch.acceptedAt))
@@ -67,7 +68,7 @@ export function createLeadView(rt, { rosterOf, flightOf, delegationSummary, owne
         return [item.id, item.name, item.when, [nameOf(entry?.normal), settings(entry?.normal)].filter(Boolean).join(' · ') || '无人承接',
           split ? [nameOf(entry.hard), settings(entry.hard)].filter(Boolean).join(' · ') || '无人承接' : '同常规任务', item.independent ? '是' : '']
       })),
-      '路由规则：每个任务类型在团队里有固定的承接角色；没有单独指定难题角色的类型，常规和难题都派给常规角色。没有承接角色就停止派活并说明缺口。后续任务按团队分配重新路由，角色或难度变化时由 Nodo 新开会话并自动交接上一执行结果；task 只写本轮目标和增量。分配变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
+      '路由规则：每个任务类型在团队里有固定的承接角色；没有单独指定难题角色的类型，常规和难题都派给常规角色。没有承接角色就停止派活并说明缺口。后续任务按团队分配重新路由，角色或难度变化时由 Nodo 新开会话并自动交接上一执行结果。分配变更只影响之后的派活，不切换正在执行的会话。'].join('\n\n')
   }
   const leadTasks = async (id, taskId) => {
     await rt.load()
@@ -93,21 +94,10 @@ export function createLeadView(rt, { rosterOf, flightOf, delegationSummary, owne
     return Promise.all(records.filter(item => pending.has(item.id) || recent.has(item.id)).map(async item => ({ ...item, references: [...new Set(item.references)],
       ...(latest.has(item.id) ? { latestResult: await executionResultView(latest.get(item.id), rt) } : {}) })))
   }
-  const leadTask = async (id, command) => {
-    const owner = ownerOf(id)
-    await ownedTask(owner, command.taskId)
-    if (command.action === 'complete') return rt.completeTask(command.taskId, command)
-    if (command.action === 'reopen') return rt.reopenTask(command.taskId)
-    if (command.action === 'review') return rt.reviewReports(command.taskId, command)
-    if (command.action === 'revise') {
-      const changes = Object.fromEntries(['title', 'brief', 'parentId', 'dependsOn'].filter(key => command[key] !== undefined).map(key => [key, command[key]]))
-      if (!Object.keys(changes).length) throw invalid('revise 必须提供 title、brief、parentId 或 dependsOn 中的至少一个')
-      if (typeof changes.brief === 'string' && changes.brief.length > TASK_TEXT_MAX) throw invalid(`brief 不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务说明`)
-      for (const key of ['title', 'brief']) if (changes[key] !== undefined) changes[key] = rt.redactDeepSecrets(changes[key])
-      if (typeof changes.title === 'string') changes.title = changes.title.trim().split(/\r?\n/, 1)[0].slice(0, 80)
-      return rt.reviseTask(command.taskId, changes)
-    }
-    throw invalid('action 必须是 complete、reopen、revise 或 review')
+  const leadCards = id => {
+    ownerOf(id)
+    return rt.redactDeepSecrets(Object.values(rt.state.cards ?? {}).filter(card => card.coordinatorSessionId === id && card.status === 'open')
+      .map(({ id, taskId, kind, status, question, createdAt }) => structuredClone({ id, taskId, kind, status, question, createdAt })))
   }
-  return { delegationState, leadSnapshot, leadDelegations, leadRoles, leadTasks, leadTask }
+  return { delegationState, leadSnapshot, leadDelegations, leadRoles, leadTasks, leadCards }
 }

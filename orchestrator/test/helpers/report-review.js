@@ -9,9 +9,9 @@ export async function reviewDeliveredReports(rt, sessionId) {
     .every(({ origin }) => rt.state.executions[origin.executionId]?.reports?.some(report => report.id === origin.reportId)
       && !owner.session.reportQueue?.some(report => report.id === origin.reportId)))
   for (const execution of Object.values(rt.state.executions)) {
-    const reports = execution.reports?.filter(report => !report.review)
+    const reports = execution.reports?.filter(report => !report.review || report.review.awaitingAnswer)
     if (rt.state.tasks[execution.taskId]?.coordinatorSessionId !== sessionId || !reports?.length) continue
-    await rt.leadTask(sessionId, { action: 'review', taskId: execution.taskId, executionId: execution.id, disposition: 'continue',
+    await rt.leadReview(sessionId, { executionId: execution.id, disposition: 'continue',
       reason: 'Fixture leader checked the result before continuing the authorized test task', basis: reports.map(report => report.id) })
   }
 }

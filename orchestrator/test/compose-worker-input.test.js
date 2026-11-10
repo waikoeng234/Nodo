@@ -168,15 +168,17 @@ test('handover gathers dependency acceptances and decisions as handles, archives
     rt.state.tasks[task.id].dependsOn = [dependency.id]
     rt.state.decisions.d1 = { id: 'd1', coordinatorSessionId: 'lead', taskIds: [task.id], status: 'answered', createdAt: 1,
       questions: [{ id: 'q', question: '用哪个滚动方案？', whyUser: '', options: [] }], answer: { values: { q: { text: '用原生滚动' } } } }
-    const source = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: '来源', brief: '来源任务', source: { kind: 'lead', sessionId: 'lead' } })
+    const source = await rt.createTask({ workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'PRIVATE_SOURCE_TITLE', brief: '来源任务', source: { kind: 'lead', sessionId: 'lead' } })
+    rt.state.tasks[source.id].scope = { note: '来源范围' }
     const sourceExecution = await rt.acceptExecution(source.id, { profileId: 'worker', sessionId: 'ws2', type: 'feature', hard: false })
     await complete(rt, sourceExecution.id, '来源任务的上一执行结果')
     rt.state.tasks[task.id].source = { kind: 'lead', sessionId: 'lead', continuesTaskId: source.id }
     const { text, inputContext } = await rt.composeWorkerInput({ executionId: execution.id })
-    assert.match(text, /- 依赖已验收 · 句柄：nodo_context read sourceId task:(\w|-){36}:acceptance/)
-    assert.match(text, /- 用哪个滚动方案？ · 句柄：nodo_context read sourceId decision:d1/)
+    assert.match(text, /- 依赖已验收 · 验收结论：依赖已验收[\s\S]*句柄：nodo_context read sourceId task:(\w|-){36}:acceptance/)
+    assert.match(text, /- 用哪个滚动方案？ · 问题：用哪个滚动方案？\n回答：用原生滚动 · 句柄：nodo_context read sourceId decision:d1/)
     assert.match(text, /- .+ · 已归档：\.nodo\/workflow-inputs\/.+\.md/)
-    assert.match(text, /- 来源任务「来源」上一执行：来源任务的上一执行结果 · 句柄：nodo_context read sourceId execution:(\w|-){36}:result/)
+    assert.match(text, /- 来源任务「来源范围」上一执行：来源任务的上一执行结果 · 句柄：nodo_context read sourceId execution:(\w|-){36}:result/)
+    assert.doesNotMatch(text, /PRIVATE_SOURCE_TITLE/)
     assert.deepEqual(rt.state.executions[execution.id].contextHandles, ['decision:d1', `task:${dependency.id}:acceptance`, `execution:${sourceExecution.id}:result`])
     await rt.startExecution(execution.id, inputContext)
     await rt.saveStrict()
@@ -315,7 +317,7 @@ test('an omitted dependency result is named in the handover body, not only in in
     await rt.completeTask(dependency.id, { reason: '依赖已验收', executionIds: [dependencyExecution.id], basis: ['验收依据'] })
     rt.state.tasks[task.id].dependsOn = [dependency.id]
     const { text, inputContext } = await rt.composeWorkerInput({ executionId: execution.id })
-    assert.match(text, /- 依赖（不可用：missing-final）/)
+    assert.match(text, /- 依赖任务结果（不可用：missing-final）/)
     assert.deepEqual(inputContext.omitted.map(item => item.reason), ['missing-final'])
   })
 })

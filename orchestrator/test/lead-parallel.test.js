@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
@@ -59,7 +60,7 @@ const withFlights = (run, repository = false) => withHost(async host => {
   const reports = id => rt.transcriptOf(id).filter(line => line.origin?.kind === 'report')
   const lines = id => rt.transcriptOf(id)
   const turn = (reason = 'done') => ({ mode: 'turn', completion: Promise.resolve({ reason }) })
-  const delegate = (overrides = {}, ownerId = owner.id) => rt.leadDispatch.delegate(ownerId,
+  const delegate = (overrides = {}, ownerId = owner.id) => routeUserTask(rt, ownerId,
     { type: 'feature', hard: false, task: 'Implement and verify\nPreserve existing changes.', ...overrides })
   const finishLead = async id => {
     const driver = await until(() => rt.driverOf(id)?.active && rt.driverOf(id))
@@ -86,12 +87,12 @@ test('dependency and done-parent rejections leave all five slots and all 24 disp
   for (let index = 0; index < 28; index++) {
     rt.state.tasks[dependency.id].status = statuses[index % statuses.length]
     await assert.rejects(delegate({ dependsOn: [dependency.id] }), { code: 'orch/invalid', message: '依赖任务 Prerequisite 尚未验收，先完成它再派活' })
-    await assert.rejects(delegate({ parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收，请先 reopen 父任务' })
+    await assert.rejects(delegate({ parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收' })
     assert.deepEqual(rt.state.executions, {})
     assert.equal(rt.state.profiles[worker.id].sessions.length, 0)
     assert.equal(Object.keys(rt.state.tasks).length, 2)
   }
-  await rt.leadTask(owner.id, { taskId: parent.id, action: 'reopen' })
+  await rt.reopenTask(parent.id)
   for (let index = 0; index < 5; index++) await delegate({ task: `Slot ${index}`, parentId: parent.id })
   await assert.rejects(delegate(), /最多同时派活 5 个任务/)
   await rt.followLead(owner.id, turn('interrupted'))
@@ -112,9 +113,9 @@ test('M1 parallel flights stay independent across a taskId supplement and a stop
   const da = rt.driverOf(a.session), db = rt.driverOf(b.session)
   assert.equal(rt.state.executions[a.executionId].status, 'running')
   assert.equal(rt.state.executions[b.executionId].status, 'running')
-  // A task keeps one pending execution: while A runs, its taskId cannot take a supplement
-  await assert.rejects(delegate({ taskId: a.taskId, task: '补充 A\nExtra requirement for flight A' }),
-    { code: 'orch/busy', message: 'Task or session already has a pending execution' })
+  const deliveredSupplement = await delegate({ taskId: a.taskId, task: '补充 A\nExtra requirement for flight A' })
+  assert.equal(deliveredSupplement.executionId, a.executionId)
+  assert.equal(deliveredSupplement.delivery.mode, 'steered')
   assert.deepEqual(Object.values(rt.state.executions).map(item => item.status), ['running', 'running'])
   assert.equal(reports(owner.id).length, 0, 'the refused supplement leaves no report or corrupted state')
   const stopped = await rt.leadDispatch.interrupt(owner.id, { executionId: b.executionId })
@@ -270,7 +271,7 @@ test('M5 the sixth active dispatch is refused in Chinese and accepted after one 
   const flights = []
   for (let index = 0; index < 5; index++) flights.push(await delegate({ task: `Flight ${index}` }))
   await assert.rejects(delegate({ task: 'One too many' }),
-    { code: 'orch/invalid', message: '此主控会话最多同时派活 5 个任务，请等一个结束后再派' })
+    { code: 'orch/busy', message: '此主控会话最多同时派活 5 个任务，请等一个结束后再派' })
   await rt.followLead(owner.id, turn('done'))
   await until(() => flights.every(flight => rt.driverOf(flight.session)?.active))
   rt.driverOf(flights[0].session).finish('done', 'First finished')
@@ -298,7 +299,7 @@ test('M7 parallel shared and isolated tasks keep their directories and continue 
   const isolated = rt.findWorkspace(rt.state.executions[iso.executionId].workspaceRef)
   assert.ok(isolated?.worktree, 'the isolated execution runs in a task worktree')
   assert.match(isolated.worktree.branch, /^nodo\/task-/)
-  assert.equal(rt.state.executions[shared.executionId].workspaceRef, undefined)
+  assert.equal(rt.state.executions[shared.executionId].workspaceRef, workspace.id)
   assert.equal(rt.conversationOf(shared.session).session.workspaceRef, workspace.id)
   assert.equal(rt.conversationOf(iso.session).session.workspaceRef, isolated.id)
   assert.equal(rt.driverOf(shared.session).cwd, realpathSync(workspace.cwd))
@@ -316,9 +317,9 @@ test('M7 parallel shared and isolated tasks keep their directories and continue 
   await finishLead(owner.id)
   assert.equal(reports(owner.id).length, 2)
   // once the isolated task has no pending execution, its taskId supplement reuses the locked directory
-  const again = await delegate({ taskId: iso.taskId, task: '继续隔离任务', worktree: true })
-  await assert.rejects(delegate({ taskId: iso.taskId, task: 'Mismatched isolation', worktree: false }), /执行目录不一致/)
-  await assert.rejects(delegate({ taskId: shared.taskId, task: 'Mismatched sharing', worktree: true }), /执行目录不一致/)
+  const again = await delegate({ taskId: iso.taskId, task: '继续隔离任务' })
+  await assert.rejects(delegate({ taskId: iso.taskId, task: 'Mismatched isolation', worktree: false }), /字段无效/)
+  await assert.rejects(delegate({ taskId: shared.taskId, task: 'Mismatched sharing', worktree: true }), /字段无效/)
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.driverOf(again.session)?.active)
   assert.equal(rt.state.executions[again.executionId].workspaceRef, isolated.id, 'the taskId supplement reuses the locked directory')

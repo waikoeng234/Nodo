@@ -67,6 +67,7 @@ export function install(rt) {
   const parseSourceId = raw => {
     if (typeof raw !== 'string') return null
     const parts = raw.split(':')
+    if (['report', 'evidence'].includes(parts[0]) && parts.length === 2) return { kind: parts[0], id: parts[1] }
     if (parts[0] === 'execution' && parts.length === 3 && parts[2] === 'result') return { kind: 'execution', id: parts[1] }
     if (parts[0] === 'decision' && parts.length === 2) return { kind: 'decision', id: parts[1] }
     if (parts[0] === 'message' && parts.length === 4 && /^\d+$/.test(parts[2]) && /^[0-9a-f]{8}$/.test(parts[3])) return { kind: 'message', sessionId: parts[1], at: Number(parts[2]), hash: parts[3] }
@@ -120,6 +121,16 @@ export function install(rt) {
   const resolveContextSource = async (id, sourceId) => {
     const parsed = parseSourceId(sourceId)
     if (!parsed) throw invalid('无效的 sourceId')
+    if (parsed.kind === 'report' || parsed.kind === 'evidence') {
+      const execution = parsed.kind === 'evidence' ? rt.state.executions[parsed.id]
+        : Object.values(rt.state.executions).find(item => item.reportData?.id === parsed.id || item.id === parsed.id)
+      if (!execution) throw failure('No such execution report or evidence', 'orch/not-found')
+      ownedTaskOf(id, execution.taskId)
+      const data = parsed.kind === 'report' ? execution.reportData : execution.evidence
+      return { sourceId, kind: parsed.kind, source: parsed.kind, executionId: execution.id, taskId: execution.taskId,
+        status: execution.status, description: `${parsed.kind} ${execution.id}`, completeness: data ? 'complete' : 'unavailable',
+        ...(data ? {} : { reason: 'unavailable' }), text: data ? JSON.stringify(data) : '' }
+    }
     if (parsed.kind === 'execution') {
       const execution = rt.state.executions[parsed.id]
       if (!execution) throw failure('No such execution', 'orch/not-found')

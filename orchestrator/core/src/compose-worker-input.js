@@ -95,7 +95,7 @@ export function install(rt) {
     const [previous] = Object.values(rt.state.executions)
       .filter(item => item.taskId === sourceTask?.id && item.endedAt != null)
       .sort((a, b) => b.endedAt - a.endedAt)
-    return sourceTask && previous ? { title: sourceTask.title, summary: previous.reportData?.summary ?? previous.result?.preview ?? '',
+    return sourceTask && previous ? { title: scopeTextOf(sourceTask.scope) || sourceTask.id, summary: previous.reportData?.summary ?? previous.result?.preview ?? '',
       sourceId: `execution:${previous.id}:result` } : undefined
   }
 
@@ -116,7 +116,7 @@ export function install(rt) {
       try { available.push({ name: ref.name, bytes: await rt.fileOf(ref) }) } catch { missingFiles.push(ref.name) }
     }
     const placed = available.length ? await rt.place(available, cwd) : []
-    const root = realpathSync(cwd)
+    const root = placed.length ? realpathSync(cwd) : cwd
     return { images, missingImages, files: placed.map(path => relative(root, path)), missingFiles,
       total: images.length + missingImages + available.length + missingFiles.length }
   }
@@ -139,6 +139,7 @@ export function install(rt) {
 
     const attachments = await attachmentsOf([trigger, ...supplements], workspace.cwd)
     const parts = { requirement: rt.workerRequirement(trigger.text) }
+    if (workspace.worktree) parts.workspace = `执行目录：${workspace.cwd}\n分支：${workspace.worktree.branch}\n基准 commit：${workspace.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`
     if (supplements.length) parts.supplements = rt.workerSupplements(supplements.map(record => record.text))
     if (attachments.total) parts.attachments = rt.workerAttachments(attachments)
     const taskTrigger = task.triggerId !== execution.triggerId ? rt.state.triggers[task.triggerId] : undefined
@@ -168,9 +169,9 @@ export function install(rt) {
       omitted = defaults.background.filter(entry => !entry.text.trim()).map(entry => ({ sourceId: entry.sourceId, kind: entry.kind,
         description: entry.description, reason: entry.reason ?? 'unavailable' }))
       if (defaults.required.length || catalog.length || omitted.length || continues) parts.handover = rt.workerHandover({
-        required: defaults.required.map(({ sourceId, description }) => ({ sourceId, description })),
-        background: catalog.map(({ description, path }) => ({ description, path })),
-        omitted: omitted.map(({ description, reason }) => ({ description, reason })),
+        required: defaults.required.map(({ sourceId, description, text }) => ({ sourceId, description, summary: clip(text, 2000, '前置结论') })),
+        background: catalog.map(({ path }) => ({ description: '依赖任务结果', path })),
+        omitted: omitted.map(({ reason }) => ({ description: '依赖任务结果', reason })),
         continues: continues ? [continues] : [] })
       contextHandles = [...defaults.required.map(item => item.sourceId), ...(continues ? [continues.sourceId] : [])]
     }
@@ -183,7 +184,7 @@ export function install(rt) {
     }
     parts.report = rt.workerReportMethod({ degraded: rt.conversationOf(execution.sessionId)?.profile.engine === 'dsh', answers: stage === 'answer' })
 
-    const order = ['requirement', 'supplements', 'attachments', 'original', 'scope', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
+    const order = ['requirement', 'workspace', 'supplements', 'attachments', 'original', 'scope', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
     const join = () => order.map(key => parts[key]).filter(Boolean).join('\n\n')
     let text = join()
     if (text.length > INPUT_CONTEXT_MAX && parts.history !== undefined) {
@@ -194,7 +195,7 @@ export function install(rt) {
     }
     if (text.length > INPUT_CONTEXT_MAX && parts.handover !== undefined) {
       parts.handover = rt.workerHandover({ required: required.map(({ sourceId }) => ({ sourceId })),
-        background: catalog.map(({ path }) => ({ path })), omitted: omitted.map(({ description, reason }) => ({ description, reason })),
+        background: catalog.map(({ path }) => ({ path })), omitted: omitted.map(({ reason }) => ({ description: '依赖任务结果', reason })),
         continues: continues ? [{ ...continues, summary: '' }] : [] })
       text = join()
     }

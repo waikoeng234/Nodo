@@ -94,13 +94,14 @@ export function install(rt) {
   const drain = (sessionId, st) => {
     if (st.active || st.starting || st.finishing || rt.isCompacting(sessionId) || st.queued.length === 0 || st.queued[0].sending) return
     const next = st.queued.shift()
-    if (next.pendingLine) say(sessionId, next.pendingLine)
+    if (next.pendingLine) Object.assign(next.pendingLine, say(sessionId, next.pendingLine))
     startTurn(sessionId, st, next.text, next.seq, next.images, next.task, next.onInput, next.origin)
   }
 
   const { driverSink } = createDispatchSinks(rt, { stateOf, say, messagesOf, closeMessages, bindTurn, settle, armIdle, disarmIdle, drain })
 
   const startTurn = (sessionId, st, text, seq, images, task = text, onInput, origin) => {
+    if (leadModeOf(rt.conversationOf(sessionId)?.profile, rt.conversationOf(sessionId)?.session)) rt.clearPendingTrigger?.(sessionId)
     onInput?.()
     const decisionInput = origin?.kind === 'decision' ? { origin } : undefined
     if (decisionInput) {
@@ -272,15 +273,14 @@ export function install(rt) {
     const leadFlight = userInput ? await rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
     const leadMode = leadModeOf(profile, session)
-    if (userInput && leadMode) rt.resetLeadBudget?.(session.id)
-    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, files?.paths) : undefined
+    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, files?.paths, line) : undefined
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
     const line = { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
       ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
     const pendingLine = queue && occupied(sessionId, st) ? line : undefined
-    if (!pendingLine) say(sessionId, line)
+    if (!pendingLine) Object.assign(line, say(sessionId, line))
     if (structureChanged) await rt.save()
     if (occupied(sessionId, st)) {
       const item = { text: input, task: text, images, seq, pendingLine, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
