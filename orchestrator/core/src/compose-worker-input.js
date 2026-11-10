@@ -48,13 +48,15 @@ export function install(rt) {
     const originalText = line => line.origin?.kind === 'decision-answer'
       ? rt.decisionText(rt.state.decisions[line.origin.decisionId] ?? { questions: [] }) : line.text
     const users = lines.filter(line => rt.isUserTriggerLine(line)).slice(-HISTORY_USER_MAX)
-      .map(line => ({ at: line.at, who: '用户', handle: rt.messageSourceId(leadSessionId, line), text: clip(originalText(line), HISTORY_ITEM_MAX, '历史消息') }))
     const replies = lines.filter(line => line.who === 'agent' && line.kind === 'text').slice(-HISTORY_REPLY_MAX)
-      .map(line => ({ at: line.at, who: '主控', handle: rt.messageSourceId(leadSessionId, line), text: clip(line.text, HISTORY_ITEM_MAX, '历史消息') }))
-    const merged = [...users, ...replies].sort((a, b) => a.at - b.at)
-    let total = merged.reduce((sum, item) => sum + item.text.length, 0)
-    while (total > HISTORY_TEXT_MAX && merged.length) total -= merged.shift().text.length
-    return { items: merged.map(item => `[${item.who}] ${item.text}`), handles: merged.map(item => item.handle),
+    const selected = new Set([...users, ...replies])
+    const merged = lines.filter(line => selected.has(line)).map(line => {
+      const handle = rt.messageSourceId(leadSessionId, line)
+      return { handle, text: `[${line.who === 'user' ? '用户' : '主控'}] ${originalText(line).slice(0, HISTORY_ITEM_MAX)}\n句柄：nodo_context read sourceId ${handle}` }
+    })
+    let total = merged.map(item => item.text).join('\n\n').length
+    while (total > HISTORY_TEXT_MAX && merged.length) total -= merged.shift().text.length + 2
+    return { items: merged.map(item => item.text), handles: merged.map(item => item.handle),
       trimmed: lines.length >= TRANSCRIPT_MAX }
   }
 
@@ -97,7 +99,7 @@ export function install(rt) {
     const [previous] = Object.values(rt.state.executions)
       .filter(item => item.taskId === sourceTask?.id && item.endedAt != null)
       .sort((a, b) => b.endedAt - a.endedAt)
-    return sourceTask && previous ? { title: clip(scopeTextOf(sourceTask.scope) || sourceTask.id, 80, '来源任务') || sourceTask.id,
+    return sourceTask && previous ? { label: sourceTask.id,
       summary: previous.reportData?.summary ?? previous.result?.preview ?? '',
       sourceId: `execution:${previous.id}:result` } : undefined
   }
@@ -118,14 +120,14 @@ export function install(rt) {
       .sort((a, b) => a.endedAt - b.endedAt)
       .map(item => {
         const inter = item.files.items.filter(file => paths.has(file.path)).map(file => file.path)
-        return inter.length ? { title: rt.state.tasks[item.taskId]?.title ?? item.taskId, status: item.status,
+        return inter.length ? { id: item.id, status: item.status,
           snapshot: item.files.source === 'workspace-snapshot', inter } : null
       })
       .filter(Boolean)
     if (!hits.length) return undefined
     const rest = hits.length - 5
     return `自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n${hits.slice(0, 5)
-      .map(item => `- ${item.title} · ${item.status} · ${item.inter.slice(0, 10).join('、')}${item.snapshot ? '（工作区快照，可能含其他改动）' : ''}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}`
+      .map(item => `- ${item.id} · ${item.status} · ${item.inter.slice(0, 10).join('、')}${item.snapshot ? '（工作区快照，可能含其他改动）' : ''}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}`
   }
 
   // Attachment bytes live outside state; a lost byte is marked unavailable in
@@ -150,7 +152,10 @@ export function install(rt) {
       total: images.length + missingImages + available.length + missingFiles.length }
   }
 
-  const composeWorkerInput = async ({ executionId }) => {
+  // upToTriggerId cuts the supplements at a queued message's own trigger, so a
+  // restore recomposition does not swallow later supplements that still travel
+  // as their own messages.
+  const composeWorkerInput = async ({ executionId, upToTriggerId }) => {
     const execution = rt.state.executions[executionId]
     if (!execution) throw failure('No such execution', 'orch/not-found')
     const task = rt.state.tasks[execution.taskId]
@@ -160,18 +165,23 @@ export function install(rt) {
     const workspace = rt.state.workspaces[execution.workspaceRef ?? task.workspaceRef]
     if (!workspace?.cwd) throw invalid('执行目录已不可用，无法拼装 worker 输入')
     const stage = execution.stage ?? 'implement'
-    const supplements = (execution.supplements ?? []).map(id => {
+    let supplements = (execution.supplements ?? []).map(id => {
       const record = rt.state.triggers[id]
       if (!record) throw invalid(`补充原话不存在或已回收：${id}`)
       return record
-    })
+    }).sort((a, b) => a.at - b.at)
+    if (upToTriggerId !== undefined) {
+      const at = supplements.findIndex(record => record.id === upToTriggerId)
+      if (at >= 0) supplements = supplements.slice(0, at + 1)
+    }
 
-    const attachments = await attachmentsOf([trigger, ...supplements], workspace.cwd)
+    const taskTrigger = task.triggerId !== execution.triggerId ? rt.state.triggers[task.triggerId] : undefined
+    if (task.triggerId !== execution.triggerId && !taskTrigger) throw invalid('任务原始触发消息不存在或已回收')
+    const attachments = await attachmentsOf([...(taskTrigger ? [taskTrigger] : []), trigger, ...supplements], workspace.cwd)
     const parts = { requirement: rt.workerRequirement(trigger.text) }
-    if (workspace.worktree) parts.workspace = `执行目录：${workspace.cwd}\n分支：${workspace.worktree.branch}\n基准 commit：${workspace.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`
+    if (workspace.worktree) parts.workspace = `# 执行目录\n执行目录：${workspace.cwd}\n分支：${workspace.worktree.branch}\n基准 commit：${workspace.worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。`
     if (supplements.length) parts.supplements = rt.workerSupplements(supplements.map(record => record.text))
     if (attachments.total) parts.attachments = rt.workerAttachments(attachments)
-    const taskTrigger = task.triggerId !== execution.triggerId ? rt.state.triggers[task.triggerId] : undefined
     if (taskTrigger) parts.original = rt.workerOriginal({ text: taskTrigger.text, scope: scopeTextOf(task.scope) })
     parts.scope = rt.workerScope(scopeTextOf(execution.scope ?? task.scope))
     const changes = changesOf(execution)
@@ -215,7 +225,7 @@ export function install(rt) {
     }
     parts.report = rt.workerReportMethod({ degraded: rt.conversationOf(execution.sessionId)?.profile.engine === 'dsh', answers: stage === 'answer' })
 
-    const order = ['requirement', 'workspace', 'supplements', 'attachments', 'original', 'scope', 'changes', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
+    const order = ['requirement', 'supplements', 'attachments', 'original', 'scope', 'workspace', 'changes', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
     const join = () => order.map(key => parts[key]).filter(Boolean).join('\n\n')
     let text = join()
     if (text.length > INPUT_CONTEXT_MAX && parts.history !== undefined) {

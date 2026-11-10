@@ -3264,13 +3264,13 @@ test('a continued session is told which later tasks touched its files', () => wi
   const conversation = await session(lead)
   const first = await toolTask(rt, conversation.id, delegateType('feature', false, 'Build the parser'))
   assert.equal(rt.sessionsOf(rt.findProfile(editor.id)).length, 1)
-  await toolTask(rt, conversation.id, delegateType('docs', false, 'Update the docs'))
+  const docs = await toolTask(rt, conversation.id, delegateType('docs', false, 'Update the docs'))
   const third = await toolTask(rt, conversation.id, delegateType('feature', false, 'Extend the parser', { taskId: first.taskId }))
   assert.equal(third.session, first.session)
   const sent = inputs.filter(item => item.sessionId === third.session).at(-1).text
   assert.match(sent, /# 原始要求[\s\S]*Build the parser/)
   assert.match(sent, /Extend the parser/)
-  assert.match(sent, /# 你上次之后的文件变动\n自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n- Update the docs · done · a\.ts/)
+  assert.ok(sent.includes(`# 你上次之后的文件变动\n自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n- ${docs.executionId} · done · a.ts`))
   assert.deepEqual(rt.state.executions[first.executionId].files.items, [{ path: 'a.ts', op: 'add' }])
 }))
 

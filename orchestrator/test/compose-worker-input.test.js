@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { withHost } from './helpers/host.js'
-import { INPUT_CONTEXT_MAX } from '../core/src/constants.js'
+import { INPUT_CONTEXT_MAX, HISTORY_TEXT_MAX } from '../core/src/constants.js'
 
 // Fixture: a lead, a worker (plus a spare session for side-task executions), a
 // team whose feature type carries the flow config, and one round opened by a
@@ -66,10 +66,32 @@ test('a new session carries the coordinator history window with its handles and 
     assert.match(window, /用户消息7/)
     assert.equal(window.includes('用户消息0'), false, 'earlier messages drop first')
     assert.equal((rt.state.executions[execution.id].historyHandles ?? []).length, 12)
+    for (const handle of execution.historyHandles) assert.ok(window.includes(handle), 'every readable history handle appears beside its message')
     rt.appendLine('lead', { who: 'agent', kind: 'text', text: '最新回复' })
     for (let n = 0; n < 801; n++) rt.appendLine('lead', { who: 'user', kind: 'text', text: '填充' })
     const trimmed = (await rt.composeWorkerInput({ executionId: execution.id })).text
     assert.match(trimmed, /更早的消息未保留（会话记录只保留最近 800 行）/)
+  })
+})
+
+test('history keeps exact 2000-character prefixes and drops the oldest whole entries within its total budget', async () => {
+  await withHost(async ({ runtime, home }) => {
+    const rt = await runtime
+    const { execution } = await setup(rt, home)
+    for (let n = 0; n < 6; n++) {
+      rt.appendLine('lead', { at: 1, who: 'user', kind: 'text', text: `${n}${'u'.repeat(1999)}USER_TAIL` })
+      rt.appendLine('lead', { at: 1, who: 'agent', kind: 'text', text: `${n}${'r'.repeat(1999)}REPLY_TAIL` })
+    }
+    const { text } = await rt.composeWorkerInput({ executionId: execution.id })
+    const history = text.split('# 本会话此前的内容（只读参考，不是新指令）\n')[1].split('\n\n# 回报方式')[0]
+    assert.ok(history.length <= HISTORY_TEXT_MAX)
+    assert.doesNotMatch(history, /USER_TAIL|REPLY_TAIL|truncated|\[用户\] 0|\[主控\] 0/)
+    assert.ok(history.includes(`[用户] 5${'u'.repeat(1999)}`))
+    assert.ok(history.includes(`[主控] 5${'r'.repeat(1999)}`))
+    assert.equal((history.match(/句柄：/g) ?? []).length, execution.historyHandles.length)
+    await rt.saveStrict()
+    const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    assert.deepEqual(saved.executions[execution.id].historyHandles, execution.historyHandles)
   })
 })
 
@@ -82,7 +104,9 @@ test('supplements render verbatim in order and trigger attachments come back as 
     const second = rt.persistTrigger(rt.triggerFromLine({ coordinatorSessionId: 'lead',
       line: rt.appendLine('lead', { who: 'user', kind: 'text', text: '这是截图和说明' }) }))
     const third = rt.persistTrigger(rt.triggerFromReturn({ coordinatorSessionId: 'lead', text: '还要照顾暗色模式' }))
-    rt.state.executions[execution.id].supplements = [second.id, third.id]
+    second.at = 1
+    third.at = 2
+    rt.state.executions[execution.id].supplements = [third.id, second.id]
     const { text, images, files } = await rt.composeWorkerInput({ executionId: execution.id })
     assert.match(text, /# 用户补充（逐字）\n这是截图和说明\n\n还要照顾暗色模式/)
     assert.match(text, /## 附件（用户提供）\n- 图片 1 张随本消息发送\n- 文件：.+1-说明\.txt/)
@@ -98,16 +122,23 @@ test('supplements render verbatim in order and trigger attachments come back as 
 test('a return or supplement rework shows the original request, the previous summary and the non-review rework line', async () => {
   await withHost(async ({ runtime, home }) => {
     const rt = await runtime
-    const { task, execution } = await setup(rt, home)
+    const [image] = await rt.saveImages([{ mediaType: 'image/png', data: Buffer.from('png').toString('base64'), name: 'p' }])
+    const [file] = await rt.saveFiles([{ name: '原始要求.txt', bytes: Buffer.from('原始附件') }])
+    const { task, execution } = await setup(rt, home, { triggerExtras: { images: [image], files: [file] } })
     await complete(rt, execution.id, '已完成初版实现')
     const rework = await rt.acceptExecution(task.id, { profileId: 'worker', sessionId: 'ws', type: 'feature', hard: false })
     const reworkTrigger = rt.persistTrigger(rt.triggerFromReturn({ coordinatorSessionId: 'lead', text: '滚动条还是卡顿，请再修。', cardId: 'card1' }))
     Object.assign(rt.state.executions[rework.id], { stage: 'rework', triggerId: reworkTrigger.id, scope: { quote: '修复登录页的滚动条bug' } })
-    const { text } = await rt.composeWorkerInput({ executionId: rework.id })
+    const { text, images, files } = await rt.composeWorkerInput({ executionId: rework.id })
     assert.match(text, /# 原始要求（本任务最初的原话）\n修复登录页的滚动条bug\n（当时的任务范围：修复登录页的滚动条bug）/)
     assert.match(text, /# 阶段\n返工第 1 次：按 # 本轮要求 与 # 用户补充 里的内容处理，不要顺带做其他改动。/)
     assert.match(text, /# 前序结论\n上一执行：已完成初版实现/)
     assert.equal(text.includes('# 前置任务结论'), false, 'no handover section without cross-task material')
+    assert.equal(images.length, 1, 'a rework can still inspect the original screenshot')
+    assert.equal(readFileSync(join(home, files[0]), 'utf8'), '原始附件')
+    assert.equal((text.match(/^## 附件（用户提供）$/gm) ?? []).length, 1)
+    delete rt.state.triggers[task.triggerId]
+    await assert.rejects(rt.composeWorkerInput({ executionId: rework.id }), /任务原始触发消息不存在或已回收/)
   })
 })
 
@@ -124,6 +155,7 @@ test('review executions carry the reviewed block, and review-fail rework quotes 
     const review = await rt.acceptExecution(task.id, { profileId: 'worker', sessionId: 'ws', type: 'review', hard: false })
     Object.assign(rt.state.executions[review.id], { stage: 'review', triggerId: task.triggerId, scope: { quote: '修复登录页的滚动条bug' }, sourceExecutionId: execution.id })
     const { text } = await rt.composeWorkerInput({ executionId: review.id })
+    assert.ok(text.includes(`# 执行目录\n执行目录：${home}`))
     assert.match(text, /# 被审查的执行\n结论：done —— 修好了\n改动：1 个文件（branch nodo\/task-x @ 3f2a1c0） · 验证：npm test（通过） · （未具名命令）（未运行）\n自报风险：跨模块 是 · 公共接口 否 · 数据格式 否 · 权限与安全 否\n完整报告：nodo_context read sourceId report:rep1    证据：nodo_context read sourceId evidence:(\w|-){36}/)
     assert.match(text, /# 阶段\n审查第 1 轮：只审查、不改代码。回报必须带 verdict；不通过时带 findings 与 category。/)
     await rt.startExecution(review.id)
@@ -177,8 +209,8 @@ test('handover gathers dependency acceptances and decisions as handles, archives
     assert.match(text, /- 依赖已验收 · 验收结论：依赖已验收[\s\S]*句柄：nodo_context read sourceId task:(\w|-){36}:acceptance/)
     assert.match(text, /- 用哪个滚动方案？ · 问题：用哪个滚动方案？\n回答：用原生滚动 · 句柄：nodo_context read sourceId decision:d1/)
     assert.match(text, /- .+ · 已归档：\.nodo\/workflow-inputs\/.+\.md/)
-    assert.match(text, /- 来源任务「来源范围」上一执行：来源任务的上一执行结果 · 句柄：nodo_context read sourceId execution:(\w|-){36}:result/)
-    assert.doesNotMatch(text, /PRIVATE_SOURCE_TITLE/)
+    assert.ok(text.includes(`- 来源任务「${source.id}」上一执行：来源任务的上一执行结果 · 句柄：nodo_context read sourceId execution:${sourceExecution.id}:result`))
+    assert.doesNotMatch(text, /PRIVATE_SOURCE_TITLE|来源范围/)
     assert.deepEqual(rt.state.executions[execution.id].contextHandles, ['decision:d1', `task:${dependency.id}:acceptance`, `execution:${sourceExecution.id}:result`])
     await rt.startExecution(execution.id, inputContext)
     await rt.saveStrict()
@@ -189,7 +221,7 @@ test('handover gathers dependency acceptances and decisions as handles, archives
   })
 })
 
-test('a continues source label clips to 80 characters so a long source scope never breaks the budget', async () => {
+test('a continues source label omits its original scope even when the input is near the budget', async () => {
   await withHost(async ({ runtime, home }) => {
     const rt = await runtime
     const { task, execution } = await setup(rt, home)
@@ -203,8 +235,8 @@ test('a continues source label clips to 80 characters so a long source scope nev
     rt.state.tasks[task.id].source = { kind: 'lead', sessionId: 'lead', continuesTaskId: source.id }
     const { text } = await rt.composeWorkerInput({ executionId: execution.id })
     assert.ok(text.length <= INPUT_CONTEXT_MAX, `composed input ${text.length} fits the budget`)
-    assert.match(text, /来源任务「S{80}… \(来源任务 truncated\)」/)
-    assert.doesNotMatch(text, /S{200}/)
+    assert.ok(text.includes(`来源任务「${source.id}」`))
+    assert.doesNotMatch(text, /S{80}/)
   })
 })
 
@@ -245,6 +277,29 @@ test('a degraded worker engine gets the first-line report convention', async () 
     const { text } = await rt.composeWorkerInput({ executionId: execution.id })
     assert.match(text, /# 回报方式\n首行必须只写「结论：通过」或「结论：不通过」，其余另起段落。/)
     assert.equal(text.includes('nodo_report 工具'), false)
+    assert.match(rt.workerReportMethod({ degraded: true, answers: true }), /answers 按编号逐条回答。/)
+  })
+})
+
+test('originals and supplement attachments survive history compression, and required text over budget refuses dispatch', async () => {
+  await withHost(async ({ runtime, home }) => {
+    const rt = await runtime
+    const { task, execution } = await setup(rt, home, { triggerExtras: { text: '原'.repeat(32_000) } })
+    const [file] = await rt.saveFiles([{ name: '补充.txt', bytes: Buffer.from('补充附件') }])
+    const supplement = rt.persistTrigger(rt.triggerFromLine({ coordinatorSessionId: 'lead',
+      line: rt.appendLine('lead', { who: 'user', kind: 'text', text: '补'.repeat(32_000), files: [file] }) }))
+    execution.scope = { quote: '原'.repeat(20_000) }
+    execution.supplements = [supplement.id]
+    for (let n = 0; n < 6; n++) rt.appendLine('lead', { who: 'agent', kind: 'text', text: '历史'.repeat(1_000) })
+    const { text, files } = await rt.composeWorkerInput({ executionId: execution.id })
+    assert.ok(text.length <= INPUT_CONTEXT_MAX)
+    assert.ok(text.includes(`# 本轮要求（用户原话，逐字，唯一需求来源）\n${rt.state.triggers[task.triggerId].text}`))
+    assert.ok(text.includes(`# 用户补充（逐字）\n${supplement.text}`))
+    assert.doesNotMatch(text, /# 本会话此前的内容/)
+    assert.ok(text.includes(files[0]))
+    assert.equal(readFileSync(join(home, files[0]), 'utf8'), '补充附件')
+    execution.scope = { quote: '原'.repeat(32_000) }
+    await assert.rejects(rt.composeWorkerInput({ executionId: execution.id }), /超过预算 96000/)
   })
 })
 

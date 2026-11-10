@@ -133,6 +133,26 @@ for (const outcome of ['steered', 'refused', 'indeterminate']) test(`attach A2 u
   await finish(receipt)
 }))
 
+test('a restored queued supplement recomposes only up to itself; later ones still deliver once', () => withRoute(async ({ rt, trigger, create, attach, start, finish }) => {
+  trigger('Original task'); const receipt = await create(); await start()
+  const driver = rt.driverOf(receipt.session); driver.outcome = 'refused'
+  trigger('Supplement A verbatim')
+  assert.equal((await attach(receipt.taskId)).delivery.mode, 'queued')
+  trigger('Supplement B verbatim')
+  assert.equal((await attach(receipt.taskId)).delivery.mode, 'queued')
+  driver.hasSession = () => false
+  driver.finish()
+  await until(() => driver.calls.length === 2)
+  assert.match(driver.calls[1], /Supplement A verbatim/)
+  assert.doesNotMatch(driver.calls[1], /Supplement B verbatim/, 'the restore recomposition stops at its own trigger')
+  driver.finish()
+  await until(() => driver.calls.length === 3)
+  const received = driver.calls.join('\n---\n')
+  assert.equal(received.split('Supplement B verbatim').length - 1, 1, 'B arrives exactly once, in its own input')
+  assert.match(driver.calls[2], /Supplement B verbatim/)
+  await finish(receipt)
+}))
+
 test('attach A3 only queues during review and A4 opens rework when no execution is active', () => withRoute(async ({ rt, trigger, create, attach, start, finish }) => {
   trigger('Original task'); const receipt = await create(); await start()
   rt.state.tasks[receipt.taskId].flow.status = 'reviewing'

@@ -134,6 +134,11 @@ export function install(rt) {
         if (!st.watched) disarmIdle(st)
         restoreContext = !driver.hasSession()
         await driver.openSession()
+        if (origin?.kind === 'supplement' && (restoreContext || rt.conversationOf(sessionId)?.session.restoreContext)) {
+          const restored = await rt.composeWorkerInput({ executionId: origin.executionId, upToTriggerId: origin.triggerId })
+          text = restored.text
+          images = restored.images
+        }
       } catch (error) {
         decisionInput?.reject(error)
         driverSink(sessionId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
@@ -156,7 +161,8 @@ export function install(rt) {
         const snapshot = rt.leadSnapshot?.(sessionId)
         const input = snapshot ? `${text}\n\n${snapshot}` : text
         const goalCommand = session.engine !== 'codex' && typeof driver.goals === 'function' && /^\/goal\s/.test(text)
-        const message = goalCommand ? text : restoreContext || session.restoreContext ? rt.renderRecovery(session, input) : input
+        const workerInput = ['delegation', 'supplement', 'retry'].includes(origin?.kind)
+        const message = goalCommand ? text : !workerInput && (restoreContext || session.restoreContext) ? rt.renderRecovery(session, input) : input
         const instructionMode = driver.instructionMode === 'native' ? 'native' : 'none'
         if (instructionMode === 'none' && session.instructionMode !== 'none') {
           const reason = IDENTITY_FALLBACK[driver.instructionFallback]
@@ -254,7 +260,8 @@ export function install(rt) {
     for (const ref of references) sources.push(ref?.id
       ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
-    const input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
+    const workerInput = ['delegation', 'supplement', 'retry'].includes(origin?.kind)
+    const input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(!workerInput && files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
     if (!session.briefSent && !(session.engine === 'claude' && /^\/goal\s/.test(text))) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {

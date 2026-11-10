@@ -25,6 +25,43 @@ test('an event whose type names an Object.prototype member is dropped instead of
   assert.deepEqual(h.lines, [])
 })
 
+for (const kind of ['delegation', 'retry', 'supplement', 'user']) test(`dispatch preserves composed worker sections and ordinary chat recovery (${kind})`, () => withHost(async ({ api, runtime, home }) => {
+  const workspace = await api('workspace-create', { name: 'Fixture', cwd: home })
+  const role = await api('profile-create', { name: 'Fixture', engine: 'echo', workspace: workspace.id })
+  const rt = await runtime
+  const { session } = rt.conversation(role.id, role.id)
+  session.lastTurn = { task: '# 本轮要求\nOLD_REQUIREMENT', report: 'OLD_REPORT', reason: 'done' }
+  session.restoreContext = true
+  const composed = '# 本轮要求\nNEW_REQUIREMENT\n\n## 附件（用户提供）\n- 文件：input.txt\n\n# 阶段\n实现'
+  const restoredImages = [{ mediaType: 'image/png', data: 'original-image' }]
+  let received, receivedImages, restoredId
+  rt.composeWorkerInput = async ({ executionId }) => {
+    restoredId = executionId
+    return { text: composed, images: restoredImages }
+  }
+  rt.ensureDriver = async () => ({
+    hasSession: () => false,
+    async openSession() {},
+    async sendTurn(text, images) {
+      received = text
+      receivedImages = images
+      rt.driverSink(session.id, { type: 'turn/start', turnId: 'fixture' })
+      rt.driverSink(session.id, { type: 'turn/end', turnId: 'fixture', reason: 'done', text: 'Done' })
+    },
+  })
+  const sent = await rt.send(role.id, kind === 'supplement' ? '# 用户补充（逐字）\n补充' : composed, session.id, [], [],
+    { files: { paths: ['input.txt'] }, origin: { kind, executionId: 'current-execution' } })
+  assert.equal((await sent.completion).reason, 'done')
+  if (kind === 'user') {
+    assert.match(received, /OLD_REQUIREMENT/)
+    assert.match(received, /## Attached files \(user provided\)/)
+  } else {
+    assert.equal(received, composed, 'the transport adds neither old task text nor another attachment list')
+    assert.equal(restoredId, kind === 'supplement' ? 'current-execution' : undefined)
+    if (kind === 'supplement') assert.equal(receivedImages, restoredImages, 'a fresh engine receives the full original attachments')
+  }
+}))
+
 for (const mode of ['open', 'event', 'twice', 'other', 'no-note']) test(`resume handoff keeps the dispatch completion and input (${mode})`, () => withHost(async ({ api, runtime, home }) => {
   const workspace = await api('workspace-create', { name: 'Fixture', cwd: home })
   const role = await api('profile-create', { name: 'Fixture', engine: 'echo', workspace: workspace.id })
