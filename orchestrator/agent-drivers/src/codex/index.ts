@@ -522,8 +522,14 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     // all of them exposed, and the thread config cannot be revisited later.
     let disabledMcp: Record<string, boolean> = {}
     if (lead) {
-      try { disabledMcp = Object.fromEntries((await listMcpServers(peer)).map(name => [`mcp_servers.${name}.enabled`, false])) }
+      let servers: string[]
+      try { servers = await listMcpServers(peer) }
       catch (error) { throw leadUnavailable(`Codex MCP servers could not be enumerated (${(error as Error).message}). Leaders need this list to keep the user's servers out.`) }
+      // Config keys are dotted paths, so a name with a dot, quote or space
+      // would disable another server or nothing at all.
+      const unsupported = servers.find(name => !/^[A-Za-z0-9_-]+$/.test(name))
+      if (unsupported !== undefined) throw leadUnavailable(`The MCP server ${JSON.stringify(unsupported.slice(0, 80))} cannot be disabled by configuration key. Rename it to letters, digits, "-" and "_" only, or remove it, to use a Codex leader.`)
+      disabledMcp = Object.fromEntries(servers.map(name => [`mcp_servers.${name}.enabled`, false]))
     }
     workspaceId = await ensureCodexWorkspace(peer, { cwd: cwd!, name, workspaceId })
     const method = threadId ? 'thread/resume' : 'thread/start'

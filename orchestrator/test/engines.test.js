@@ -243,6 +243,23 @@ test('Codex leaders disable every other MCP server by name, plugin sources inclu
   })
 })
 
+test('Codex leaders refuse to start when a user MCP server name cannot be disabled', async () => {
+  for (const name of ['user.echo', 'user echo', 'user"echo']) await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), env: { CODEX_FIXTURE_MCP_SERVERS: JSON.stringify([{ name, pluginId: null }]) } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /cannot be disabled by configuration key/)
+        assert.ok(error.message.includes(JSON.stringify(name)), 'the refusal names the server')
+        return true
+      })
+    } finally { driver.dispose() }
+    const threads = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method.startsWith('thread/'))
+    assert.deepEqual(threads, [], 'no thread starts with a server that would stay enabled')
+  })
+})
+
 test('Codex workers keep the shared proxy process and never load the leader catalog', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const instructionDir = join(cwd, 'data')
