@@ -184,7 +184,7 @@ const LEAD_CONFIG = {
 // The catalog override keeps the leader in code mode, where the exec sandbox is
 // the only dispatcher for MCP tools: a Nodo call is a JS property of `tools`
 // keyed by its ALL_TOOLS name, not a bare function call the engine would route.
-const LEAD_TOOL_SEARCH = 'Your Nodo tools run through the exec tool, not as plain function calls: execute `await tools.mcp__nodo_lead__nodo_route({ action: "board" })` inside exec — the identifier is always tools.mcp__<server>__<tool> from ALL_TOOLS. If a call fails, run `text(JSON.stringify(ALL_TOOLS.map(t => t.name)))` first and retry with the exact name.';
+const LEAD_TOOL_SEARCH = 'Your Nodo tools run through the exec tool, not as plain function calls: execute `await tools.mcp__nodo_lead__nodo_board({ "table": "tasks" })` inside exec — the identifier is always tools.mcp__<server>__<tool> from ALL_TOOLS. If a call fails, run `text(JSON.stringify(ALL_TOOLS.map(t => t.name)))` first and retry with the exact name.';
 // Every MCP server the leader's process would expose, plugin-provided ones
 // included; the thread config deep-merges, so each name has to be disabled on
 // its own rather than by replacing the table.

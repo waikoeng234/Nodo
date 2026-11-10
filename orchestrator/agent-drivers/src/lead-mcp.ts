@@ -69,6 +69,8 @@ const tools: Tool[] = [
       allOf: [{ if: { properties: { disposition: { const: 'investigate' } } }, then: { required: ['questions'] } }] } },
 ]
 
+export const leadToolSchemas = Object.fromEntries(tools.map(({ name, inputSchema }) => [name, inputSchema]))
+
 export async function leadServer(call: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>): Promise<Server> {
   const { Server, CallToolRequestSchema, ListToolsRequestSchema } = await loadMcpSdk()
   const server = new Server({ name: 'nodo-lead', version: '1.0.0' }, { capabilities: { tools: {} } })

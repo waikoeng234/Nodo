@@ -53,8 +53,12 @@ const catalogArg = process.argv.find(arg => arg.startsWith('model_catalog_json='
 // The -c value is the path as a quoted string, which the real CLI parses as TOML.
 const surfaceOf = params => {
   if (!catalogArg) return undefined
+  // The surface belongs to the model the thread actually runs; a thread/start
+  // without one gets a clearly different surface instead of a default guess.
+  if (!params.model) return { tools: ['no-model-in-thread-start'], allTools: [] }
   let entry
-  try { entry = JSON.parse(readFileSync(JSON.parse(catalogArg.slice('model_catalog_json='.length)), 'utf8')).models?.find(model => model.slug === (params.model ?? 'fixture-model')) } catch { }
+  try { entry = JSON.parse(readFileSync(JSON.parse(catalogArg.slice('model_catalog_json='.length)), 'utf8')).models?.find(model => model.slug === params.model) } catch { }
+  if (!entry) return { tools: [`catalog-missing-${params.model}`], allTools: [] }
   const codeMode = entry?.tool_mode === 'code_mode' || entry?.tool_mode === 'code_mode_only'
   const agentTools = entry?.multi_agent_version === 'disabled' ? [] : entry?.multi_agent_version === 'v2'
     ? ['collaboration.spawn_agent', 'collaboration.send_message'] : ['multi_agent_v1.spawn_agent', 'multi_agent_v1.send_input']

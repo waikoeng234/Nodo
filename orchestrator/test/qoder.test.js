@@ -43,19 +43,22 @@ test('Qoder waits past the control-request deadline for a slow boot initialize a
     // The fixture answers the boot initialize on a real 50ms delay; the mocked
     // clock proves the answer survives crossing the old 5s deadline inside the boot one.
     t.mock.timers.enable({ apis: ['setTimeout'] })
-    let clock = 0
-    // setTimeout is mocked, so the real-time waits ride the unmocked setInterval.
+    // setTimeout is mocked, so the real-time wait for the request to hit the
+    // wire rides the unmocked setInterval; the fake clock only starts advancing
+    // once the boot deadline is on the wall.
     const pause = () => new Promise(resolve => { const id = setInterval(() => { clearInterval(id); resolve() }, 10) })
     const requests = () => existsSync(join(cwd, 'qoder-requests.jsonl')) ? readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8') : ''
     let opening
     try {
       opening = driver.openSession()
-      while (!requests().includes('"control":"initialize"') && clock < 4000) { t.mock.timers.tick(50); clock += 50; await pause() }
+      const wired = Date.now() + 10_000
+      while (!requests().includes('"control":"initialize"') && Date.now() < wired) await pause()
       assert.ok(requests().includes('"control":"initialize"'), 'the boot initialize control request is on the wire')
-      t.mock.timers.tick(6000); clock += 6000
+      // No real I/O runs between the wire check and this synchronous crossing
+      // of the old 5s deadline, so the answer is provably still pending here.
+      t.mock.timers.tick(6000)
       await opening
-      assert.equal(driver.workerMcpMounted, true)
-      assert.ok(clock < 20_000, 'the slow answer still lands inside the boot deadline')
+      assert.equal(driver.workerMcpMounted, true, 'the slow answer lands inside the boot deadline')
     } finally { t.mock.timers.reset(); driver.dispose(); await opening?.catch(() => {}) }
   })
 })

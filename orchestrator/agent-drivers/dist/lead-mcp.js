@@ -62,6 +62,7 @@ const tools = [
                 questions: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string', minLength: 1, maxLength: 200 } } },
             allOf: [{ if: { properties: { disposition: { const: 'investigate' } } }, then: { required: ['questions'] } }] } },
 ];
+export const leadToolSchemas = Object.fromEntries(tools.map(({ name, inputSchema }) => [name, inputSchema]));
 export async function leadServer(call) {
     const { Server, CallToolRequestSchema, ListToolsRequestSchema } = await loadMcpSdk();
     const server = new Server({ name: 'nodo-lead', version: '1.0.0' }, { capabilities: { tools: {} } });
