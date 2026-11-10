@@ -61,10 +61,7 @@ export function install(rt) {
     const round = Object.values(rt.state.executions).filter(item => item.taskId === execution.taskId && (item.stage ?? 'implement') === stage
       && item.createdAt <= execution.createdAt).length
     const role = rt.conversationOf(execution.sessionId)?.profile.name ?? 'worker'
-    const prior = rt.state.executions[execution.sourceExecutionId]
-    const needsReview = ['implement', 'rework'].includes(stage) && (stage === 'rework' && prior?.stage === 'review' && prior.reportData?.verdict === 'fail'
-      || !report.reviewFlags || Object.values(report.reviewFlags).some(Boolean)
-      || !report.verified?.length || report.verified.some(item => item.result !== 'pass'))
+    const needsReview = rt.needsFlowReview(execution)
     const conclusion = firstConclusion(execution.result?.text)
     const conflict = report.structured && (['done', 'blocked', 'failed'].includes(conclusion) && conclusion !== report.outcome
       || stage === 'review' && ['通过', '不通过'].includes(conclusion) && (conclusion === '通过') !== (report.verdict === 'pass'))

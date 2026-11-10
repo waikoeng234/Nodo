@@ -230,6 +230,7 @@ export function install(rt) {
     }
     rt.recoverLeadDelegations?.()
     rt.recoverDecisions?.()
+    rt.recoverFlowCards?.()
   }
 
   // A failed load is tried again by the next caller.

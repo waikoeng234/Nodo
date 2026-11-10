@@ -7,7 +7,7 @@
 // then prior-round details.
 import { realpathSync } from 'node:fs'
 import { relative } from 'node:path'
-import { INPUT_CONTEXT_MAX, TRANSCRIPT_MAX, RESULT_PREVIEW_MAX, REWORK_MAX_DEFAULT, HISTORY_USER_MAX, HISTORY_REPLY_MAX, HISTORY_TEXT_MAX } from './constants.js'
+import { INPUT_CONTEXT_MAX, TRANSCRIPT_MAX, RESULT_PREVIEW_MAX, HISTORY_USER_MAX, HISTORY_REPLY_MAX, HISTORY_TEXT_MAX } from './constants.js'
 import { clip } from './text.js'
 import { failure, invalid } from './errors.js'
 
@@ -36,7 +36,7 @@ export function install(rt) {
   const maxReworkOf = execution => {
     const task = rt.state.tasks[execution.taskId]
     const team = rt.teams().find(team => team.id === task.teamId)
-    return team?.types?.find(type => type.id === execution.type)?.flow?.maxRework ?? REWORK_MAX_DEFAULT
+    return rt.flowOf(team?.types?.find(type => type.id === execution.type)).maxRework
   }
   // A session no delegation has ever touched reads as new and needs the
   // coordinator's recent content; a reused one already carries it in-engine.

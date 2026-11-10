@@ -273,7 +273,7 @@ export function install(rt) {
       ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
     const workerInput = ['delegation', 'supplement', 'retry'].includes(origin?.kind)
-    const input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(!workerInput && files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
+    let input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(!workerInput && files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
     if (!session.briefSent && !(session.engine === 'claude' && /^\/goal\s/.test(text))) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {
@@ -289,6 +289,18 @@ export function install(rt) {
     if (cancelled?.()) throw failure('Send cancelled', 'orch/cancelled')
     refuseBusy()
     const st = stateOf(sessionId)
+    const line = { at: Date.now(), who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
+      ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
+    if (userInput && session.source?.kind === 'lead') {
+      const flowInput = await rt.flowWorkerInput?.(session, line)
+      if (flowInput?.placed) return flowInput.placed
+      if (flowInput?.input) {
+        input = flowInput.input.text
+        origin = { kind: 'supplement', triggerId: flowInput.triggerId }
+        line.origin = origin
+        queue ||= flowInput.queue
+      }
+    }
     const leadFlight = userInput ? await rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
     const leadMode = leadModeOf(profile, session)
@@ -296,8 +308,6 @@ export function install(rt) {
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
-    const line = { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
-      ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
     const pendingLine = queue && occupied(sessionId, st) ? line : undefined
     if (!pendingLine) Object.assign(line, say(sessionId, line))
     if (structureChanged) await rt.save()

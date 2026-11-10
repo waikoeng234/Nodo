@@ -71,8 +71,8 @@ export function install(rt) {
     const reason = rt.readOnly()
     if (reason !== undefined) throw failure(reason, 'orch/read-only')
   }
-  const saveTask = async task => { await rt.saveStrict(); return view(task) }
-  const saveExecution = async execution => { await rt.saveStrict(); return executionView(execution) }
+  const saveTask = async task => { rt.syncTaskFlow?.(task); await rt.saveStrict(); return view(task) }
+  const saveExecution = async execution => { rt.syncTaskFlow?.(taskOf(execution.taskId)); await rt.saveStrict(); return executionView(execution) }
   const archiveResult = (execution, input, status) => {
     if (execution.result && !(execution.status === 'unconfirmed' && execution.result.completeness === 'unavailable'
       && execution.result.reason === 'missing-final' && input.final?.trim())) return
@@ -252,6 +252,7 @@ export function install(rt) {
     stopping.delete(id)
     const task = taskOf(execution.taskId)
     if (!late && (status !== 'cancelled' || executionsOf(task.id).length === 1)) Object.assign(task, { status: taskState, updatedAt: now })
+    rt.flowExecutionEnded?.(execution)
     return saveExecution(execution)
   }
   const requestExecutionStop = async id => {
@@ -305,7 +306,7 @@ export function install(rt) {
     for (const report of reports) report.review = { ...report.review, ...(report.review?.awaitingAnswer ? { awaitingAnswer: false } : {}), disposition: 'ask', decisionId: decision.id, reviewedAt: decision.createdAt }
     return () => reports.forEach((report, index) => { if (previous[index]) report.review = previous[index]; else delete report.review })
   }
-  const completeTask = async (id, { reason, references, executionIds, basis }) => {
+  const completeTask = async (id, { reason, references, executionIds, basis, cardId, answer }) => {
     await writable()
     const task = taskOf(id)
     await rt.decisionDeliveryReady?.(task.coordinatorSessionId)
@@ -333,8 +334,9 @@ export function install(rt) {
       evidence = { executionIds: [...new Set(executionIds)], basis: [...basis] }
     }
     const now = Date.now()
-    task.acceptances.push(rt.redactDeepSecrets({ reason, ...evidence, createdAt: now }))
+    task.acceptances.push(rt.redactDeepSecrets({ reason, ...evidence, ...(cardId ? { cardId, answer } : {}), createdAt: now }))
     Object.assign(task, { status: 'done', updatedAt: now })
+    if (task.flow) task.flow.status = 'accepted'
     return saveTask(task)
   }
   const reopenTask = async id => {
