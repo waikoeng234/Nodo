@@ -9,13 +9,13 @@ import { launchCommand } from '../cli.js';
 // AGENTS.md/CLAUDE.md context files load regardless of this flag.
 //
 // pi has no native tier channel, so plan is enforced at launch: a read-only
-// tool allowlist. The allowlist alone keeps MCP tools registered (pi only
-// filters them when an entry starts with mcp__), so MCP support is cut
-// outright — no servers connect. Absent or unknown permission reads as plan.
-export function piArgs({ model, thinking, instructions, driverSessionId, permission } = {}) {
+// tool allowlist. An explicit mcp__ pattern also filters MCP tools; user servers
+// still connect, but only Nodo tools are callable. Absent permission is plan.
+export function piArgs({ model, thinking, instructions, driverSessionId, permission, extension } = {}) {
     return [
         '--mode', 'rpc', '--no-approve',
-        ...(permission === 'full' ? [] : ['--no-mcp', '--tools', 'read,grep,find,ls']),
+        ...(permission === 'full' ? [] : ['--tools', 'read,grep,find,ls,mcp__nodo_*']),
+        ...(extension ? ['--extension', extension] : []),
         ...(model ? ['--model', model] : []),
         ...(thinking ? ['--thinking', thinking] : []),
         ...(instructions ? ['--append-system-prompt', instructions] : []),

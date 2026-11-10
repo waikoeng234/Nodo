@@ -1,10 +1,13 @@
-import { statSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { STEER, addUsage, promptTokensOf, steerFailed, usageOf } from '../spi.js'
 import { checkCliBase, cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js'
 import { createCoverage, DECLARED } from '../coverage.js'
 import { createFileChanges, replacementEdit } from '../file-changes.js'
 import { piArgs, connectPi } from './native.js'
+import { leadMcpEnv } from '../claude/native.js'
+import type { McpMount } from '../role-mcp.js'
 import type { PiConnection } from './native.js'
 import type { Driver, DriverEvent, DriverImage, DriverResponse, EngineCheckResult, EngineCommandInventory, EngineInfo, PermissionMode, Usage } from '../spi.js'
 import type { Coverage } from '../coverage.js'
@@ -15,6 +18,7 @@ export type PiOptions = { bin?: string }
 export type PiDriverOptions = {
   onEvent?: (event: DriverEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
   model?: string; thinking?: string; permission?: PermissionMode; driverSessionId?: string; instructions?: string
+  lead?: boolean; leadMcpServers?: McpMount[]
 }
 type PiHandshakeOptions = { executable: string; cwd?: string; env?: NodeJS.ProcessEnv }
 type PiModel = { id?: unknown; provider?: unknown; name?: unknown; contextWindow?: unknown; reasoning?: unknown; thinkingLevelMap?: unknown }
@@ -210,12 +214,15 @@ const textOf = (message: PiMessage | undefined) => (Array.isArray(message?.conte
   .filter(block => block?.type === 'text' && typeof block.text === 'string')
   .map(block => block.text).join('')
 
-export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions }: PiDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage; steer(text: string, images?: DriverImage[]): ReturnType<Driver['steer']> } {
+export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions, lead, leadMcpServers }: PiDriverOptions = {}): Driver & { readonly instructionMode: string; readonly workerMcpMounted: boolean; readonly instructionFallback: string | undefined; readonly coverage: Coverage; steer(text: string, images?: DriverImage[]): ReturnType<Driver['steer']> } {
   const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   let peer: PiConnection | null = null
   let ready: Promise<void> | null = null
   let sessionId = driverSessionId
   let connected = false
+  const workerServers = lead ? [] : leadMcpServers?.filter(server => server.name === 'nodo_worker')
+  let extensionDir: string | undefined
+  let mcpUnsupported = false
   let disposed = false
   let sequence = 0
   let rpcSeq = 0
@@ -414,29 +421,52 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
       const executable = findExecutable(bin ?? 'pi')
       if (!executable) throw new Error('pi CLI executable not found. Install pi or edit the profile CLI path.')
       emit({ type: 'session', state: 'starting' })
-      connection = connectPi<PiFrame>({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId, permission }), cwd, env,
-        onFrame: receive,
-        onClose(error) {
-          if (peer !== connection) return
-          peer = null; ready = null; connected = false
-          dropCommands(error.message)
-          closeRequests()
-          if (running?.started) end('error', error.message)
-          emit({ type: 'session', state: 'closed' })
-        } })
-      if (disposed) { connection.dispose(); throw new Error('pi driver disposed') }
-      peer = connection
-      await connection.running
+      let state: PiData
+      for (;;) {
+        const servers = mcpUnsupported ? undefined : workerServers
+        let extension: string | undefined
+        if (servers?.length) {
+          extensionDir ??= mkdtempSync(join(tmpdir(), 'nodo-pi-worker-'))
+          extension = join(extensionDir, 'worker.mjs')
+          rmSync(join(extensionDir, 'ready'), { force: true })
+          const configs = servers.map(server => [server.name, { exposure: 'direct', ...('url' in server
+            ? { url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
+            : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !/^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])) }) }])
+          writeFileSync(extension, `import { writeFileSync } from 'node:fs'\nexport default pi => {\n  if (typeof pi.registerMcpServer !== 'function') return\n  for (const [name, config] of ${JSON.stringify(configs)}) pi.registerMcpServer(name, config)\n  writeFileSync(${JSON.stringify(join(extensionDir, 'ready'))}, '', { mode: 0o600 })\n}\n`, { mode: 0o600 })
+        }
+        connection = connectPi<PiFrame>({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId, permission, extension }), cwd, env: { ...env, ...leadMcpEnv(servers) },
+          onFrame: receive,
+          onClose(error) {
+            if (peer !== connection) return
+            peer = null; ready = null; connected = false
+            dropCommands(error.message)
+            closeRequests()
+            if (running?.started) end('error', error.message)
+            emit({ type: 'session', state: 'closed' })
+          } })
+        if (disposed) { connection.dispose(); throw new Error('pi driver disposed') }
+        peer = connection
+        try {
+          await connection.running
+          state = await command('get_state', {}, 20_000)
+          if (extension && !existsSync(join(extensionDir!, 'ready'))) throw new Error('pi worker MCP registration unavailable')
+          break
+        } catch (error) {
+          if (!extension || !/(?:unknown|unrecognized|unsupported) (?:option|argument)[^\n]*--extension|^pi worker MCP registration unavailable$/i.test((error as Error).message)) throw error
+          mcpUnsupported = true
+          peer?.dispose(); peer = null
+        }
+      }
       if (disposed) throw new Error('pi driver disposed')
       // get_state carries no CLI version, so the identity probe is its own
       // --version call; unverified versions still stream, the label just says so.
       const version = await cliVersion(executable).catch(() => undefined)
       if (disposed) throw new Error('pi driver disposed')
       coverage.setIdentity({ transport: 'rpc', ...(version ? { cliVersion: version } : {}) })
-      const state = await command('get_state', {}, 20_000)
       if (typeof state.sessionId === 'string' && state.sessionId !== '') sessionId = state.sessionId
       if (typeof state.model?.contextWindow === 'number') contextSize = state.model.contextWindow
       connected = true
+      ready ??= Promise.resolve()
       emit({ type: 'session', state: 'ready', sessionId })
     })().catch(error => {
       if (peer === connection) { peer = null; connected = false; connection?.dispose() }
@@ -449,6 +479,8 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
 
   return {
     get instructionMode() { return connected && instructions ? 'native' : 'none' },
+    get workerMcpMounted() { return connected && Boolean(workerServers?.length) && !mcpUnsupported },
+    get instructionFallback() { return mcpUnsupported ? 'mcp-field-unsupported' : undefined },
     get coverage() { return coverage },
     openSession: boot,
     async sendTurn(text, images = []) {
@@ -523,6 +555,6 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     },
     onEvent() { throw new Error('Pass onEvent to createPiDriver') },
     hasSession() { return connected },
-    dispose() { disposed = true; dropCommands('pi driver disposed'); end('interrupted'); peer?.dispose() },
+    dispose() { disposed = true; connected = false; dropCommands('pi driver disposed'); end('interrupted'); peer?.dispose(); if (extensionDir) rmSync(extensionDir, { recursive: true, force: true }) },
   }
 }
