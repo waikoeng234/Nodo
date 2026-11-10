@@ -15,7 +15,7 @@ const entry = {
   create({ onEvent }) {
     let turn = 0
     const driver = {
-      calls: [], steers: [], active: false, interrupted: 0,
+      calls: [], steers: [], active: false, interrupted: 0, workerMcpMounted: true,
       hasSession: () => true, dispose() {}, onEvent() {},
       async respondToRequest() { return false },
       async openSession() { if (driver.failOpen) throw new Error('Fixture open failure') },
