@@ -11,7 +11,8 @@ const fitText = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height 
 export interface TeamPick { profile?: string; model?: string; thinking?: string }
 export interface Team { id: string; name: string; lead: string | null; members: string[]; types: TeamType[]; assign: Record<string, { normal?: TeamPick; hard?: TeamPick }> }
 export interface TeamRole { id: string; name: string; engine?: string; model?: string }
-export interface TeamType { id?: string; name: string; when?: string; independent?: boolean }
+export interface TeamFlow { reviewType: string; maxRework: number }
+export interface TeamType { id?: string; name: string; when?: string; independent?: boolean; flow?: TeamFlow }
 export interface TeamEngine { id: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
 
 type DropEvent = { preventDefault: () => void; stopPropagation?: () => void }
@@ -279,6 +280,45 @@ export function PickCell({ label, caption, pick, team, roles, engines, optional,
   )
 }
 
+// 审查类型 / 返工上限 for one task type. An absent flow reads as the program's
+// defaults and only becomes explicit when the user edits a control — both values
+// always travel together, the core refuses a half-specified flow.
+export function FlowFields({ type, team, disabled, onChange }: {
+  type: TeamType; team: Team; disabled: boolean; onChange: (flow: TeamFlow) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const review = type.flow?.reviewType ?? 'review'
+  const rework = type.flow?.maxRework ?? 2
+  const reviewers = team.types.filter(item => item.independent === true && item.id !== undefined && !('miss' in route(team.assign, item.id, false)))
+  // A saved review type that no longer qualifies stays listed, disabled, so the
+  // select never silently displays a neighbour instead.
+  const stale = reviewers.some(item => item.id === review) ? null : { id: review, name: review }
+  const parsed = draft !== null && /^\d+$/.test(draft) ? Number(draft) : null
+  const invalid = draft !== null && draft !== '' && parsed === null
+  return (
+    <div className="nodo-assign-flow" role="group" aria-label={`审查类型与返工上限 ${type.name}`}>
+      <span className="nodo-assign-flow-cap">审查类型 / 返工上限</span>
+      <select className="nodo-type-flow-select" value={review} disabled={disabled} aria-label={`审查类型 ${type.name}`}
+        onChange={(event: { target: { value: string } }) => onChange({ reviewType: event.target.value, maxRework: rework })}>
+        {[...(stale ? [stale] : []), ...reviewers].map(item =>
+          <option key={item.id} value={item.id} disabled={item === stale}>{item.name}</option>)}
+      </select>
+      <label className="nodo-type-flow-rework">
+        <span>返工上限</span>
+        <input type="number" min={0} step={1} className="nodo-type-flow-input" value={draft ?? String(rework)} disabled={disabled}
+          aria-label={`返工上限 ${type.name}`}
+          onChange={(event: { target: { value: string } }) => {
+            const value = event.target.value
+            const number = /^\d+$/.test(value) ? Number(value) : null
+            setDraft(value === String(rework) ? null : value)
+            if (number !== null) onChange({ reviewType: review, maxRework: number })
+          }} />
+      </label>
+      {invalid && <span className="nodo-type-flow-warn" role="alert">需为不小于 0 的整数</span>}
+    </div>
+  )
+}
+
 export function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBack, save }: {
   roles: TeamRole[]; teams: Team[]; engines: TeamEngine[]; activeId: string | null; disabled: boolean
   onActive: (id: string) => void; onBack: () => void; save: (next: Team[]) => void
@@ -325,7 +365,7 @@ export function AssignPage({ roles, teams, engines, activeId, disabled, onActive
       </div>
       {!team ? <p className="nodo-dialog-hint">先在角色页建立团队</p> : (
         <div className="nodo-assign-panel">
-          <div className="nodo-assign-row nodo-assign-head"><span /><span>负责角色</span><span>困难任务另派（可选）</span></div>
+          <div className="nodo-assign-row nodo-assign-head"><span /><span>负责角色</span><span>困难任务另派（可选）</span><span>审查类型 / 返工上限</span></div>
           {types.map((type, index) => {
             const entry = team.assign[type.id ?? ''] ?? {}
             const removeKey = type.id ?? `new:${index}`
@@ -355,6 +395,7 @@ export function AssignPage({ roles, teams, engines, activeId, disabled, onActive
                     remove={<button type="button" className="nodo-assign-remove" aria-label={`${type.name} 不再单独指定困难任务`} disabled={disabled} onClick={() => edit(type.id ?? '', 'hard', undefined)}>×</button>} />
                   : <button type="button" className="nodo-assign-split" disabled={disabled} onClick={() => edit(type.id ?? '', 'hard', {})}>
                     <IconPlusOutlineRegular size={14} />困难任务单独指定</button>}
+                <FlowFields type={type} team={team} disabled={disabled} onChange={flow => patchType(index, { flow })} />
               </div>
             )
           })}
@@ -419,7 +460,7 @@ export const TEAMS_CSS = `
 .nodo-assign-meta{display:flex;align-items:center;gap:8px}
 .nodo-assign-gap{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:8px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:12px;font-weight:500}
 .nodo-assign-lead{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
-.nodo-assign-row{display:grid;grid-template-columns:168px 1fr 1fr;align-items:center;column-gap:12px;min-height:60px;padding:6px 8px}
+.nodo-assign-row{display:grid;grid-template-columns:168px 1fr 1fr 200px;align-items:center;column-gap:12px;min-height:60px;padding:6px 8px}
 .nodo-assign-row+.nodo-assign-row,.nodo-assign-foot{box-shadow:inset 0 .5px 0 var(--dsw-alias-border-l2)}
 .nodo-assign-head{min-height:44px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500}
 .nodo-assign-type{display:flex;flex-direction:column;min-width:0}
@@ -456,6 +497,18 @@ export const TEAMS_CSS = `
 .nodo-pick-option[aria-pressed=true]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);box-shadow:none;color:var(--dsw-alias-state-business-primary)}
 .nodo-assign-split{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;font-weight:500;cursor:pointer;width:100%}
 .nodo-assign-split:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-assign-flow{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0}
+.nodo-assign-flow-cap{display:none}
+.nodo-type-flow-select{height:32px;max-width:100%;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:8px;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;outline:none}
+.nodo-type-flow-select:focus{border-color:var(--dsw-alias-state-business-primary)}
+.nodo-type-flow-select:disabled{color:var(--dsw-alias-label-tertiary)}
+.nodo-type-flow-select option{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-type-flow-select option:disabled{color:var(--dsw-alias-label-dimmed)}
+.nodo-type-flow-rework{display:flex;align-items:center;gap:8px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-type-flow-input{width:64px;height:26px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:8px;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;outline:none}
+.nodo-type-flow-input:focus{border-color:var(--dsw-alias-state-business-primary)}
+.nodo-type-flow-input:disabled{color:var(--dsw-alias-label-tertiary)}
+.nodo-type-flow-warn{color:${WARN_INK};font-size:12px;line-height:16px}
 .nodo-assign-foot{display:flex;align-items:center;min-height:56px;padding:8px}
 .nodo-assign-add{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
 .nodo-assign-field{display:flex;align-items:center;box-sizing:border-box;height:40px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1)}
@@ -464,5 +517,5 @@ export const TEAMS_CSS = `
 .nodo-assign-field-name{width:180px;flex:none;border:0}
 .nodo-assign-add>span.nodo-assign-field{flex:1;padding-right:8px;gap:4px}
 .nodo-assign-add>span.nodo-assign-field>input{flex:1}
-@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
+@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-assign-flow-cap{display:block;margin-bottom:-2px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
 `

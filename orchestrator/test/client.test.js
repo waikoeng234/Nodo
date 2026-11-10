@@ -3513,3 +3513,50 @@ test('the assignment page picks roles with model and thinking, splits hard tasks
   assert.equal(render().find(node => node.props?.['aria-label'] === '任务类型名称 文档组').props.disabled, true)
   assert.equal(checkbox('文档组').props.disabled, true)
 })
+
+test('the assignment page filters review types to qualified independents and always submits flow as a pair', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending) })
+  let teams = [{ id: 't1', name: '研发', lead: 'L', members: ['A', 'B'], types: [
+    { id: 'docs', name: '文档', when: '' },
+    { id: 'test', name: '测试', when: '', independent: true, flow: { reviewType: 'test', maxRework: 1 } },
+    { id: 'review', name: '审查', when: '', independent: true },
+  ], assign: { docs: { normal: { profile: 'A' } }, test: { normal: { profile: 'B' } } } }]
+  const savedTeams = []
+  const render = () => { cursor = 0; return rolesTree(loaded.AssignPage({ roles: teamRoles, teams, engines: [], activeId: 't1', disabled: false,
+    onActive() {}, onBack() {}, save: next => { savedTeams.push(JSON.parse(JSON.stringify(next))); teams = next } })) }
+  // FlowFields mounts as its own component; the tree needs the one-level expansion,
+  // parked at an offset so its hook cells never collide with the page's own.
+  const cell = name => { const element = render().find(node => node.type === loaded.FlowFields && node.props.type.name === name); cursor = 100
+    return rolesTree(loaded.FlowFields(element.props)) }
+  const select = name => cell(name).find(node => node.type === 'select')
+  const rework = name => cell(name).find(node => node.type === 'input' && node.props['aria-label'] === `返工上限 ${name}`)
+  const options = name => rolesTree(select(name)).filter(node => node.type === 'option')
+    .map(node => [node.props.value, node.props.disabled === true, rolesText(node)])
+  const flowOf = name => teams[0].types.find(item => item.name === name)?.flow
+
+  assert.ok(render().map(rolesText).join('').includes('审查类型 / 返工上限'), 'the head names the new column')
+  assert.equal(select('文档').props.value, 'review', 'an absent flow reads as the default review type')
+  assert.equal(rework('文档').props.value, '2', 'an absent flow reads as the default rework limit')
+  assert.deepEqual(options('文档'), [['review', true, 'review'], ['test', false, '测试']],
+    'only qualified independents are selectable; the unqualified default stays visible, disabled')
+  assert.equal(select('审查').props.value, 'review', 'an independent type without a holder cannot review either')
+  assert.deepEqual(options('测试'), [['test', false, '测试']], 'a qualified type lists itself')
+  assert.equal(rework('测试').props.value, '1', 'a saved flow shows its own values')
+
+  render().find(node => node.props?.['aria-label'] === '任务类型名称 文档').props.onBlur({ target: { value: '文档组' } })
+  assert.equal(flowOf('文档组'), undefined, 'an untouched flow is never written back, not even with the defaults')
+
+  rework('文档组').props.onChange({ target: { value: '3' } })
+  assert.deepEqual(JSON.parse(JSON.stringify(flowOf('文档组'))), { reviewType: 'review', maxRework: 3 }, 'both values travel together')
+  select('文档组').props.onChange({ target: { value: 'test' } })
+  assert.deepEqual(JSON.parse(JSON.stringify(flowOf('文档组'))), { reviewType: 'test', maxRework: 3 }, 'a review type change keeps the current limit')
+
+  rework('文档组').props.onChange({ target: { value: '-1' } })
+  assert.deepEqual(JSON.parse(JSON.stringify(flowOf('文档组'))), { reviewType: 'test', maxRework: 3 }, 'an illegal value saves nothing')
+  assert.equal(cell('文档组').find(node => node.props.className === 'nodo-type-flow-warn').children[0], '需为不小于 0 的整数')
+  rework('文档组').props.onChange({ target: { value: '0' } })
+  assert.deepEqual(JSON.parse(JSON.stringify(flowOf('文档组'))), { reviewType: 'test', maxRework: 0 }, 'zero is a legal limit')
+  assert.equal(cell('文档组').find(node => node.props.className === 'nodo-type-flow-warn'), undefined)
+})

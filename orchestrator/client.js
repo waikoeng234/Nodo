@@ -11131,7 +11131,7 @@ function PanelDiff({ filename, diff, patch }) {
   const patches = (0, import_react.useMemo)(() => diff ? [structuredPatch(filename, filename, diff.oldText ?? "", diff.newText, "", "", { context: Infinity, timeout: 40, maxEditLength: 1e4 })].filter((patch2) => !!patch2) : parsedPatch(patch ?? "") ?? [], [filename, diff, patch]);
   const sections = (0, import_react.useMemo)(() => numberedSections(patches), [patches]);
   if (!patches.length) return diff ? /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.DiffBlock, { diffs: [diff], labels: LABELS }) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff" }, /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u65E0\u6CD5\u89E3\u6790\u5DEE\u5F02\uFF0C\u4EE5\u4E0B\u4E3A\u539F\u59CB\u5185\u5BB9"), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { code: patch ?? "", lang: "diff", wrap: true, lineNumbers: true, showHeader: false }));
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff" }, patches.some((patch2) => patch2.oldHeader === "Nodo replacement fragment") && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u66FF\u6362\u7247\u6BB5 \xB7 \u884C\u53F7\u76F8\u5BF9\u7247\u6BB5"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff-patch", tabIndex: 0, role: "region", "aria-label": `${filename} \u5DEE\u5F02` }, sections.map((section, index) => section.filename ? /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-panel-diff-filename" }, section.filename) : section.hidden && !expanded[index] ? section.lines.length ? /* @__PURE__ */ (0, import_react.createElement)(
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff" }, patches.some((patch2) => patch2.oldHeader === "Nodo replacement fragment") && /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-note" }, "\u66FF\u6362\u7247\u6BB5 \xB7 \u884C\u53F7\u76F8\u5BF9\u7247\u6BB5"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff-patch", tabIndex: 0, role: "region", "aria-label": `${filename} \u5DEE\u5F02` }, sections.map((section2, index) => section2.filename ? /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-panel-diff-filename" }, section2.filename) : section2.hidden && !expanded[index] ? section2.lines.length ? /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
       type: "button",
@@ -11140,9 +11140,9 @@ function PanelDiff({ filename, diff, patch }) {
       "aria-expanded": false,
       onClick: () => setExpanded((value) => ({ ...value, [index]: true }))
     },
-    section.hidden,
+    section2.hidden,
     " \u884C\u672A\u4FEE\u6539"
-  ) : /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-panel-diff-gap" }, section.hidden, " \u884C\u672A\u4FEE\u6539") : section.lines.map((line, at2) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: `${index}:${at2}`, className: "nodo-panel-diff-line", "data-kind": line.kind }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-panel-diff-number", "aria-hidden": true }, line.kind === "removed" ? line.old : line.next), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff-text" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { className: "nodo-panel-diff-code", code: line.text, lang: line.kind === "meta" ? "text" : (line.filename ?? filename).split(".").at(-1)?.toLowerCase(), wrap: true, showHeader: false }), line.parts && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-panel-diff-words", "aria-hidden": true }, line.parts.map((part, index2) => part.added || part.removed ? /* @__PURE__ */ (0, import_react.createElement)("mark", { key: index2 }, part.value) : part.value))))))));
+  ) : /* @__PURE__ */ (0, import_react.createElement)("span", { key: index, className: "nodo-panel-diff-gap" }, section2.hidden, " \u884C\u672A\u4FEE\u6539") : section2.lines.map((line, at2) => /* @__PURE__ */ (0, import_react.createElement)("div", { key: `${index}:${at2}`, className: "nodo-panel-diff-line", "data-kind": line.kind }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-panel-diff-number", "aria-hidden": true }, line.kind === "removed" ? line.old : line.next), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-panel-diff-text" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.CodeBlock, { className: "nodo-panel-diff-code", code: line.text, lang: line.kind === "meta" ? "text" : (line.filename ?? filename).split(".").at(-1)?.toLowerCase(), wrap: true, showHeader: false }), line.parts && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-panel-diff-words", "aria-hidden": true }, line.parts.map((part, index2) => part.added || part.removed ? /* @__PURE__ */ (0, import_react.createElement)("mark", { key: index2 }, part.value) : part.value))))))));
 }
 var CODE_DIFF_CSS = `
 .nodo-code-diff{position:relative;min-width:0;max-width:100%;margin:6px 0;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);overflow:hidden;background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-primary)}
@@ -11703,7 +11703,7 @@ function ChangesView({ source, initialPath = "", openFile }) {
       spent += size;
     }
   }
-  const section = ({ rel, entry }) => {
+  const section2 = ({ rel, entry }) => {
     const name = rel.slice(rel.lastIndexOf("/") + 1);
     const shown = within.has(entry.file.path) || expanded[entry.file.path] || entry.file.path === selected;
     return /* @__PURE__ */ (0, import_react.createElement)("section", { key: entry.file.path, className: "nodo-changes-file-section", ref: (element) => {
@@ -11711,7 +11711,7 @@ function ChangesView({ source, initialPath = "", openFile }) {
     } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-changes-row-title" }, /* @__PURE__ */ (0, import_react.createElement)(FileIcon, { name, size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-changes-path", title: rel }, /* @__PURE__ */ (0, import_react.createElement)("strong", null, name)), /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: entry.counts }), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "ghost", "aria-label": `\u6253\u5F00\u6587\u4EF6 ${rel}`, onClick: () => openFile(entry.file.path), icon: /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconRightUpOutlineRegular, { size: 16 }) })), shown ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-diff" }, source.renderFile(entry.file, entry.patch, true)) : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-collapsed" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setExpanded((current) => ({ ...current, [entry.file.path]: true })) }, "\u5C55\u5F00 diff")));
   };
   const message = (text) => /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-right-status", role: "status" }, text);
-  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-viewer" }, busy ? message("\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, message(error2), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, rows.map(section), files.length < body.fileCount && message(`\u4EC5\u4FDD\u5B58 ${files.length} / ${body.fileCount} \u4E2A\u6587\u4EF6`), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : message("\u65E0\u6587\u4EF6\u53D8\u66F4")))), files.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5DF2\u66F4\u6539\u7684\u6587\u4EF6"), totals && /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-nodes" }, branch(tree, "", 0))));
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-changes", "aria-busy": busy }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-viewer" }, busy ? message("\u52A0\u8F7D\u4E2D\u2026") : error2 ? /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-load-error" }, message(error2), /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", onClick: () => setAttempt((value) => value + 1) }, "\u91CD\u8BD5")) : /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, null, rows.map(section2), files.length < body.fileCount && message(`\u4EC5\u4FDD\u5B58 ${files.length} / ${body.fileCount} \u4E2A\u6587\u4EF6`), files.length === 0 && (body.turnDiff ? /* @__PURE__ */ (0, import_react.createElement)(CodeDiff, { filename: "\u8F6E\u6B21\u5DEE\u5F02", previewable: false, patch: body.turnDiff, cycle: source.revision, panel: true }) : message("\u65E0\u6587\u4EF6\u53D8\u66F4")))), files.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree" }, /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-right-filter" }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }), /* @__PURE__ */ (0, import_react.createElement)("input", { type: "text", "aria-label": "\u7B5B\u9009\u6587\u4EF6", placeholder: "\u7B5B\u9009\u6587\u4EF6", value: query, onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-tree-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5DF2\u66F4\u6539\u7684\u6587\u4EF6"), totals && /* @__PURE__ */ (0, import_react.createElement)(Counts, { value: totals })), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-changes-nodes" }, branch(tree, "", 0))));
 }
 var CHANGES_PANEL_CSS = `
 .nodo-right-changes{display:flex;flex:1;flex-direction:row;min-width:0;min-height:0;overflow:hidden}
@@ -18788,6 +18788,22 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-decision-why{margin:2px 0 0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;text-wrap:pretty}
 .nodo-decision-consequence,.nodo-decision-reason{display:block;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
 .nodo-decision-reason{margin-top:4px;padding-left:8px;border-left:2px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-secondary);font-weight:500}
+.nodo-flow-cards{display:flex;flex-direction:column}
+.nodo-flow-body{gap:14px;padding-top:16px}
+.nodo-flow-section{display:flex;flex-direction:column;padding:0 16px 0 24px}
+.nodo-flow-cap{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
+.nodo-flow-scope{margin:4px 0 0;padding:2px 0 2px 10px;border-left:2px solid var(--dsw-alias-border-l2);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-flow-trigger{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-flow-stage{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;margin-top:6px;font-size:13px;line-height:20px}
+.nodo-flow-stage-name{font-weight:500}
+.nodo-flow-stage-state{color:var(--dsw-alias-label-tertiary)}
+.nodo-flow-stage-summary{flex-basis:100%;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
+.nodo-flow-evidence{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:6px;font-size:12px;line-height:18px}
+.nodo-flow-handle{font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-secondary)}
+.nodo-flow-check{color:var(--dsw-alias-label-tertiary)}
+.nodo-flow-check[data-result=pass]{color:var(--dsw-alias-state-success-primary)}
+.nodo-flow-check[data-result=fail]{color:var(--dsw-alias-state-error-primary)}
+.nodo-flow-gap{margin:4px 0 0;color:${WARN_INK};font-size:12px;line-height:18px;overflow-wrap:anywhere}
 .nodo-composer{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;flex:none;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 4px;padding-top:8px;border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-composer-scroll{max-height:var(--dsh-composer-text-max-height,336px);margin-right:4px;overflow-y:auto}
 .nodo-pending{display:flex;flex-direction:column;gap:4px;max-height:160px;margin:0 8px;padding-bottom:8px;overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l2)}
@@ -20325,6 +20341,207 @@ function DecisionCard({ decision, profileId, readOnly, refresh, profiles = [], t
   );
 }
 
+// src/client/flow-cards.js
+var STALL_REASONS = {
+  "execution-failed": "\u6267\u884C\u5931\u8D25",
+  "verdict-unreadable": "\u5BA1\u67E5\u7ED3\u8BBA\u65E0\u6CD5\u8BFB\u53D6",
+  "review-unavailable": "\u5BA1\u67E5\u7C7B\u578B\u4E0D\u53EF\u7528",
+  "delivery-failed": "\u56DE\u62A5\u6295\u9012\u5931\u8D25",
+  "lead-error": "\u4E3B\u63A7\u8FD0\u884C\u51FA\u9519",
+  "accept-blocked": "\u9A8C\u6536\u68C0\u67E5\u672A\u901A\u8FC7",
+  "rework-limit": "\u8FD4\u5DE5\u6B21\u6570\u5DF2\u8FBE\u4E0A\u9650",
+  "hard-cap": "\u6267\u884C\u6570\u5DF2\u8FBE\u4E0A\u9650",
+  "stage-rounds": "\u540C\u4E00\u9636\u6BB5\u5F80\u8FD4\u5DF2\u8FBE\u4E0A\u9650"
+};
+var STAGES = { implement: "\u5B9E\u73B0", rework: "\u8FD4\u5DE5", review: "\u5BA1\u67E5", answer: "\u8865\u7B54" };
+var OUTCOMES = { done: "\u5B8C\u6210", blocked: "\u53D7\u963B", failed: "\u5931\u8D25" };
+var RESULTS = { pass: "\u901A\u8FC7", fail: "\u672A\u901A\u8FC7", "not-run": "\u672A\u8FD0\u884C" };
+var section = (label, ...children) => children.some((child) => child ?? false) && (0, import_react.createElement)(
+  "div",
+  { className: "nodo-flow-section" },
+  (0, import_react.createElement)("span", { className: "nodo-flow-cap" }, label),
+  ...children
+);
+var stageRow = (stage) => (0, import_react.createElement)(
+  "div",
+  { key: stage.executionId, className: "nodo-flow-stage" },
+  (0, import_react.createElement)("span", { className: "nodo-flow-stage-name" }, STAGES[stage.stage] ?? stage.stage),
+  (0, import_react.createElement)("span", { className: "nodo-flow-stage-state" }, OUTCOMES[stage.outcome] ?? stage.outcome ?? ""),
+  stage.verdict && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": stage.verdict === "pass" ? "accent" : "caution" }, `\u5BA1\u67E5${RESULTS[stage.verdict] ?? stage.verdict}`),
+  stage.structured === false && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "caution" }, "\u672A\u7ED3\u6784\u5316"),
+  stage.supplementUnconfirmed === true && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "caution" }, "\u8865\u5145\u672A\u786E\u8BA4\u9001\u8FBE"),
+  stage.summary && (0, import_react.createElement)("span", { className: "nodo-flow-stage-summary" }, stage.summary)
+);
+var evidenceRow = (entry) => (0, import_react.createElement)(
+  "div",
+  { key: entry.executionId, className: "nodo-flow-evidence" },
+  (0, import_react.createElement)("code", { className: "nodo-flow-handle" }, entry.sourceId),
+  ...(entry.evidence?.verification ?? []).map((item, index) => (0, import_react.createElement)(
+    "span",
+    { key: index, className: "nodo-flow-check", "data-result": item.result },
+    `${item.command ?? "\u9A8C\u8BC1"} \xB7 ${RESULTS[item.result] ?? item.result}`
+  ))
+);
+function FlowCard({ card, task, profileId, sessionId, readOnly, onAnswered }) {
+  const [open, setOpen] = (0, import_react.useState)(true);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [returning, setReturning] = (0, import_react.useState)(false);
+  const [reason, setReason] = (0, import_react.useState)("");
+  const [feedback, setFeedback] = (0, import_react.useState)("");
+  const blocked = busy || readOnly;
+  const stall = card.kind === "stall";
+  const payload = card.payload;
+  const answer = async (action, text) => {
+    if (blocked) return;
+    if (action === "return" && text.trim() === "") return setFeedback("\u8BF7\u586B\u5199\u9000\u56DE\u7406\u7531");
+    setBusy(true);
+    setFeedback("");
+    try {
+      await call("card-answer", { profile: profileId, session: sessionId, cardId: card.id, action, ...action === "return" ? { reason: text } : {} });
+      await onAnswered();
+    } catch (failure) {
+      setFeedback(failure.message);
+      setBusy(false);
+    }
+  };
+  const actions = stall ? [
+    ...card.question.options.includes("retry") ? [(0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "retry", variant: "primary", disabled: blocked, onClick: () => void answer("retry") }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u91CD\u8BD5")] : [],
+    card.question.options.includes("stop") && (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "stop", variant: "outline", className: "nodo-approval-reject", disabled: blocked, onClick: () => void answer("stop") }, "\u7EC8\u6B62")
+  ] : returning ? [
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "cancel", variant: "outline", disabled: busy, onClick: () => {
+      setReturning(false);
+      setReason("");
+      setFeedback("");
+    } }, "\u53D6\u6D88"),
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "confirm", variant: "primary", className: "nodo-approval-reject", disabled: blocked, onClick: () => void answer("return", reason) }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u786E\u8BA4\u9000\u56DE")
+  ] : [
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "return", variant: "outline", className: "nodo-approval-reject", disabled: blocked, onClick: () => {
+      setFeedback("");
+      setReturning(true);
+    } }, "\u9000\u56DE"),
+    (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { key: "accept", variant: "primary", disabled: blocked, onClick: () => void answer("accept") }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u63A5\u53D7")
+  ];
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-question-frame" },
+    (0, import_react.createElement)(
+      "section",
+      { className: "nodo-question-card", "aria-label": stall ? "\u4EFB\u52A1\u505C\u6EDE" : "\u4EFB\u52A1\u9A8C\u6536", "aria-busy": busy ? "true" : void 0 },
+      (0, import_react.createElement)(
+        "header",
+        { className: "nodo-question-head" },
+        (0, import_react.createElement)(
+          "div",
+          { className: "nodo-decision-heading" },
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-decision-status", role: "status" },
+            (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: busy ? "ongoing" : "warning", size: 7 }),
+            stall ? "\u4EFB\u52A1\u505C\u6EDE" : "\u5F85\u9A8C\u6536"
+          ),
+          (0, import_react.createElement)(
+            "div",
+            { className: "nodo-decision-meta" },
+            task && (0, import_react.createElement)("span", { className: "nodo-tag", title: task.title }, task.title),
+            !stall && (0, import_react.createElement)(
+              "span",
+              { className: "nodo-tag", "data-tone": payload.recommendAccept ? "accent" : "caution" },
+              payload.recommendAccept ? "\u63A8\u8350\u63A5\u53D7" : "\u63A8\u8350\u9000\u56DE"
+            ),
+            payload.missedFlagsCount > 0 && (0, import_react.createElement)("span", { className: "nodo-tag", "data-tone": "caution" }, `\u6F0F\u62A5\u98CE\u9669 ${payload.missedFlagsCount} \u9879`)
+          )
+        ),
+        (0, import_react.createElement)("button", {
+          type: "button",
+          className: "nodo-question-icon nodo-decision-toggle",
+          "aria-expanded": open,
+          "aria-label": open ? "\u6536\u8D77" : "\u5C55\u5F00",
+          onClick: () => setOpen(!open)
+        }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronDownOutlineRegular, { size: 16 }))
+      ),
+      open && (0, import_react.createElement)(
+        "div",
+        { className: "nodo-question-body nodo-flow-body" },
+        stall ? [
+          (0, import_react.createElement)("h2", { className: "nodo-question-title" }, STALL_REASONS[payload.reason] ?? payload.reason ?? ""),
+          ...(payload.gaps ?? []).map((gap, index) => (0, import_react.createElement)("p", { key: index, className: "nodo-flow-gap" }, gap))
+        ] : [
+          section("\u8303\u56F4", payload.scope && (0, import_react.createElement)("blockquote", { className: "nodo-flow-scope" }, payload.scope.quote ?? payload.scope.note ?? "")),
+          section("\u539F\u59CB\u8BF7\u6C42", payload.trigger?.summary && (0, import_react.createElement)("p", { className: "nodo-flow-trigger" }, payload.trigger.summary)),
+          section("\u9636\u6BB5", ...payload.stages.map(stageRow)),
+          section("\u8BC1\u636E", ...payload.evidence.map(evidenceRow))
+        ],
+        !stall && returning && (0, import_react.createElement)("textarea", {
+          className: "nodo-question-answer",
+          rows: 2,
+          autoFocus: !readOnly,
+          disabled: blocked,
+          value: reason,
+          "aria-label": "\u9000\u56DE\u7406\u7531",
+          placeholder: "\u9000\u56DE\u7406\u7531\u5C06\u6210\u4E3A\u8FD4\u5DE5\u8981\u6C42",
+          onChange: (event) => {
+            setFeedback("");
+            setReason(event.target.value);
+          }
+        })
+      ),
+      (0, import_react.createElement)(
+        "footer",
+        { className: "nodo-question-foot" },
+        (0, import_react.createElement)("p", { className: "nodo-question-feedback", role: "alert" }, feedback),
+        (0, import_react.createElement)("div", { className: "nodo-question-actions" }, ...actions)
+      )
+    )
+  );
+}
+function FlowCards({ profile, session, struct, readOnly, tasks, refresh }) {
+  const [cards, setCards] = (0, import_react.useState)(null);
+  const [failed, setFailed] = (0, import_react.useState)("");
+  const lead = leadModeOf(profile, session) && session != null;
+  const list = () => call("card-list", { profile: profile.id, session: session.id });
+  (0, import_react.useEffect)(() => {
+    if (!lead) {
+      setCards(null);
+      setFailed("");
+      return;
+    }
+    let live = true;
+    list().then((value) => {
+      if (live) {
+        setCards(value);
+        setFailed("");
+      }
+    }, (failure) => {
+      if (live) setFailed(failure.message);
+    });
+    return () => {
+      live = false;
+    };
+  }, [lead, profile?.id, session?.id, struct]);
+  if (!lead) return null;
+  const open = (cards ?? []).filter((card) => card.status === "open").sort((a, b2) => a.createdAt - b2.createdAt);
+  if (open.length === 0 && failed === "") return null;
+  const reload = async () => {
+    setCards(await list());
+    setFailed("");
+    await refresh(true);
+  };
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-flow-cards" },
+    open.map((card) => (0, import_react.createElement)(FlowCard, {
+      key: card.id,
+      card,
+      task: tasks?.find((item) => item.id === card.taskId),
+      profileId: profile.id,
+      sessionId: session.id,
+      readOnly,
+      onAnswered: reload
+    })),
+    open.length === 0 && failed !== "" && (0, import_react.createElement)("p", { className: "nodo-error-line", role: "alert" }, failed)
+  );
+}
+
 // src/client/remote-access.js
 function RemoteAccessSettings({ readOnly = false }) {
   const [view2, setView] = (0, import_react.useState)(null);
@@ -20446,7 +20663,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
   const [loading, setLoading] = (0, import_react.useState)(true);
   const [saved, setSaved] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
-  const [section, setSection] = (0, import_react.useState)("engines");
+  const [section2, setSection] = (0, import_react.useState)("engines");
   const pick = (engineId) => {
     setSelected(engineId);
     setDraft(seed(engineId));
@@ -20653,7 +20870,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
       title: "Nodo \u8BBE\u7F6E",
       className: "nodo-dialog nodo-engine-dialog",
       contentClassName: "nodo-engine-shell",
-      footer: section === "engines" && engine ? [
+      footer: section2 === "engines" && engine ? [
         (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, {
           key: "run",
           type: "submit",
@@ -20672,8 +20889,8 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
         type: "button",
         role: "tab",
         id: `nodo-settings-${id}`,
-        "aria-selected": section === id,
-        tabIndex: section === id ? 0 : -1,
+        "aria-selected": section2 === id,
+        tabIndex: section2 === id ? 0 : -1,
         "aria-controls": `nodo-settings-panel-${id}`,
         disabled: locked,
         onClick: () => setSection(id),
@@ -20686,7 +20903,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
         }
       }, title))
     ),
-    section === "remote" ? (0, import_react.createElement)(
+    section2 === "remote" ? (0, import_react.createElement)(
       "div",
       { role: "tabpanel", id: "nodo-settings-panel-remote", "aria-labelledby": "nodo-settings-remote", className: "nodo-engine-content" },
       (0, import_react.createElement)(RemoteAccessSettings, { readOnly })
@@ -21201,6 +21418,43 @@ function PickCell({ label, caption, pick, team, roles, engines, optional, disabl
     )))
   ));
 }
+function FlowFields({ type, team, disabled, onChange }) {
+  const [draft, setDraft] = (0, import_react.useState)(null);
+  const review = type.flow?.reviewType ?? "review";
+  const rework = type.flow?.maxRework ?? 2;
+  const reviewers = team.types.filter((item) => item.independent === true && item.id !== void 0 && !("miss" in route(team.assign, item.id, false)));
+  const stale = reviewers.some((item) => item.id === review) ? null : { id: review, name: review };
+  const parsed = draft !== null && /^\d+$/.test(draft) ? Number(draft) : null;
+  const invalid = draft !== null && draft !== "" && parsed === null;
+  return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-flow", role: "group", "aria-label": `\u5BA1\u67E5\u7C7B\u578B\u4E0E\u8FD4\u5DE5\u4E0A\u9650 ${type.name}` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-flow-cap" }, "\u5BA1\u67E5\u7C7B\u578B / \u8FD4\u5DE5\u4E0A\u9650"), /* @__PURE__ */ (0, import_react.createElement)(
+    "select",
+    {
+      className: "nodo-type-flow-select",
+      value: review,
+      disabled,
+      "aria-label": `\u5BA1\u67E5\u7C7B\u578B ${type.name}`,
+      onChange: (event) => onChange({ reviewType: event.target.value, maxRework: rework })
+    },
+    [...stale ? [stale] : [], ...reviewers].map((item) => /* @__PURE__ */ (0, import_react.createElement)("option", { key: item.id, value: item.id, disabled: item === stale }, item.name))
+  ), /* @__PURE__ */ (0, import_react.createElement)("label", { className: "nodo-type-flow-rework" }, /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8FD4\u5DE5\u4E0A\u9650"), /* @__PURE__ */ (0, import_react.createElement)(
+    "input",
+    {
+      type: "number",
+      min: 0,
+      step: 1,
+      className: "nodo-type-flow-input",
+      value: draft ?? String(rework),
+      disabled,
+      "aria-label": `\u8FD4\u5DE5\u4E0A\u9650 ${type.name}`,
+      onChange: (event) => {
+        const value = event.target.value;
+        const number = /^\d+$/.test(value) ? Number(value) : null;
+        setDraft(value === String(rework) ? null : value);
+        if (number !== null) onChange({ reviewType: review, maxRework: number });
+      }
+    }
+  )), invalid && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-type-flow-warn", role: "alert" }, "\u9700\u4E3A\u4E0D\u5C0F\u4E8E 0 \u7684\u6574\u6570"));
+}
 function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBack, save }) {
   const [adding, setAdding] = (0, import_react.useState)(false);
   const [name, setName] = (0, import_react.useState)("");
@@ -21230,7 +21484,7 @@ function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBac
     setName("");
     setWhen("");
   };
-  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-assign", "aria-label": "\u4EFB\u52A1\u5206\u914D" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-back", onClick: onBack }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }), "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tabs", role: "tablist", "aria-label": "\u56E2\u961F" }, /* @__PURE__ */ (0, import_react.createElement)("h2", null, "\u4EFB\u52A1\u5206\u914D"), teams.map((item, index) => /* @__PURE__ */ (0, import_react.createElement)("button", { key: item.id, type: "button", role: "tab", className: "nodo-team-tab", "aria-selected": item === team, onClick: () => onActive(item.id) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-no" }, index + 1), item.name || "\u672A\u547D\u540D\u56E2\u961F"))), team && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-meta" }, gaps > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-gap", role: "status" }, `${gaps} \u5904\u65E0\u4EBA\u627F\u63A5`), leadRole && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-lead" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: leadRole, size: 22 }), leadRole.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u4E3B\u63A7")))), !team ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5148\u5728\u89D2\u8272\u9875\u5EFA\u7ACB\u56E2\u961F") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-panel" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-row nodo-assign-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8D1F\u8D23\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E\uFF08\u53EF\u9009\uFF09")), types.map((type, index) => {
+  return /* @__PURE__ */ (0, import_react.createElement)("section", { className: "nodo-assign", "aria-label": "\u4EFB\u52A1\u5206\u914D" }, /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-back", onClick: onBack }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 14 }), "\u5168\u90E8\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-roles-section-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-team-tabs", role: "tablist", "aria-label": "\u56E2\u961F" }, /* @__PURE__ */ (0, import_react.createElement)("h2", null, "\u4EFB\u52A1\u5206\u914D"), teams.map((item, index) => /* @__PURE__ */ (0, import_react.createElement)("button", { key: item.id, type: "button", role: "tab", className: "nodo-team-tab", "aria-selected": item === team, onClick: () => onActive(item.id) }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-team-no" }, index + 1), item.name || "\u672A\u547D\u540D\u56E2\u961F"))), team && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-meta" }, gaps > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-gap", role: "status" }, `${gaps} \u5904\u65E0\u4EBA\u627F\u63A5`), leadRole && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-lead" }, /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: leadRole, size: 22 }), leadRole.name, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-tag" }, "\u4E3B\u63A7")))), !team ? /* @__PURE__ */ (0, import_react.createElement)("p", { className: "nodo-dialog-hint" }, "\u5148\u5728\u89D2\u8272\u9875\u5EFA\u7ACB\u56E2\u961F") : /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-panel" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-row nodo-assign-head" }, /* @__PURE__ */ (0, import_react.createElement)("span", null), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u8D1F\u8D23\u89D2\u8272"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u56F0\u96BE\u4EFB\u52A1\u53E6\u6D3E\uFF08\u53EF\u9009\uFF09"), /* @__PURE__ */ (0, import_react.createElement)("span", null, "\u5BA1\u67E5\u7C7B\u578B / \u8FD4\u5DE5\u4E0A\u9650")), types.map((type, index) => {
     const entry = team.assign[type.id ?? ""] ?? {};
     const removeKey = type.id ?? `new:${index}`;
     return /* @__PURE__ */ (0, import_react.createElement)("div", { key: type.id, className: "nodo-assign-row", role: "group", "aria-label": type.name }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-type" }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-type-top" }, /* @__PURE__ */ (0, import_react.createElement)(
@@ -21309,7 +21563,7 @@ function AssignPage({ roles, teams, engines, activeId, disabled, onActive, onBac
         onChange: (pick) => edit(type.id ?? "", "hard", pick ?? void 0),
         remove: /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-remove", "aria-label": `${type.name} \u4E0D\u518D\u5355\u72EC\u6307\u5B9A\u56F0\u96BE\u4EFB\u52A1`, disabled, onClick: () => edit(type.id ?? "", "hard", void 0) }, "\xD7")
       }
-    ) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-split", disabled, onClick: () => edit(type.id ?? "", "hard", {}) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u56F0\u96BE\u4EFB\u52A1\u5355\u72EC\u6307\u5B9A"));
+    ) : /* @__PURE__ */ (0, import_react.createElement)("button", { type: "button", className: "nodo-assign-split", disabled, onClick: () => edit(type.id ?? "", "hard", {}) }, /* @__PURE__ */ (0, import_react.createElement)(import_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 14 }), "\u56F0\u96BE\u4EFB\u52A1\u5355\u72EC\u6307\u5B9A"), /* @__PURE__ */ (0, import_react.createElement)(FlowFields, { type, team, disabled, onChange: (flow) => patchType(index, { flow }) }));
   }), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-foot" }, adding ? /* @__PURE__ */ (0, import_react.createElement)(
     "form",
     {
@@ -21371,7 +21625,7 @@ var TEAMS_CSS = `
 .nodo-assign-meta{display:flex;align-items:center;gap:8px}
 .nodo-assign-gap{display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:8px;background:var(--dsw-alias-state-warn-tertiary);color:${WARN_INK};font-size:12px;font-weight:500}
 .nodo-assign-lead{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
-.nodo-assign-row{display:grid;grid-template-columns:168px 1fr 1fr;align-items:center;column-gap:12px;min-height:60px;padding:6px 8px}
+.nodo-assign-row{display:grid;grid-template-columns:168px 1fr 1fr 200px;align-items:center;column-gap:12px;min-height:60px;padding:6px 8px}
 .nodo-assign-row+.nodo-assign-row,.nodo-assign-foot{box-shadow:inset 0 .5px 0 var(--dsw-alias-border-l2)}
 .nodo-assign-head{min-height:44px;color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:500}
 .nodo-assign-type{display:flex;flex-direction:column;min-width:0}
@@ -21408,6 +21662,18 @@ var TEAMS_CSS = `
 .nodo-pick-option[aria-pressed=true]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);box-shadow:none;color:var(--dsw-alias-state-business-primary)}
 .nodo-assign-split{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px 0 8px;border:0;border-radius:10px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;font-weight:500;cursor:pointer;width:100%}
 .nodo-assign-split:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nodo-assign-flow{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0}
+.nodo-assign-flow-cap{display:none}
+.nodo-type-flow-select{height:32px;max-width:100%;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:8px;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;outline:none}
+.nodo-type-flow-select:focus{border-color:var(--dsw-alias-state-business-primary)}
+.nodo-type-flow-select:disabled{color:var(--dsw-alias-label-tertiary)}
+.nodo-type-flow-select option{background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.nodo-type-flow-select option:disabled{color:var(--dsw-alias-label-dimmed)}
+.nodo-type-flow-rework{display:flex;align-items:center;gap:8px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nodo-type-flow-input{width:64px;height:26px;padding:0 8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:8px;background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;outline:none}
+.nodo-type-flow-input:focus{border-color:var(--dsw-alias-state-business-primary)}
+.nodo-type-flow-input:disabled{color:var(--dsw-alias-label-tertiary)}
+.nodo-type-flow-warn{color:${WARN_INK};font-size:12px;line-height:16px}
 .nodo-assign-foot{display:flex;align-items:center;min-height:56px;padding:8px}
 .nodo-assign-add{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
 .nodo-assign-field{display:flex;align-items:center;box-sizing:border-box;height:40px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1)}
@@ -21416,7 +21682,7 @@ var TEAMS_CSS = `
 .nodo-assign-field-name{width:180px;flex:none;border:0}
 .nodo-assign-add>span.nodo-assign-field{flex:1;padding-right:8px;gap:4px}
 .nodo-assign-add>span.nodo-assign-field>input{flex:1}
-@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
+@media(max-width:720px){.nodo-assign-row{grid-template-columns:1fr;row-gap:8px}.nodo-assign-head{display:none}.nodo-team-tree{flex-direction:column;align-items:stretch;gap:8px}.nodo-team-lines{display:none}.nodo-team-col{width:auto}.nodo-tree-cap{display:block;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-cap{display:block;margin-bottom:4px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-assign-flow-cap{display:block;margin-bottom:-2px;font-size:12px;font-weight:500;line-height:18px;color:var(--dsw-alias-label-tertiary)}.nodo-pick-pop{max-width:calc(100vw - 48px)}.nodo-assign-add{flex-direction:column;align-items:stretch;gap:8px}.nodo-assign-field-name{width:100%}}
 `;
 
 // src/client/roles.tsx
@@ -22172,6 +22438,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
           tasks: view2.tasks,
           work: view2.work
         })),
+        !archivedConversation && (0, import_react.createElement)(FlowCards, { profile, session, struct: view2?.struct, readOnly, tasks: view2.tasks, refresh }),
         ...(!archivedConversation ? view2.approvals ?? [] : []).filter((card) => card.sessionId == null || card.sessionId === sessionId || members.some((item) => item.session.id === card.sessionId)).map((card) => (0, import_react.createElement)(ApprovalCard, {
           key: card.id,
           card: card.taskId ? { ...card, taskTitle: view2.tasks?.find((task) => task.id === card.taskId)?.title } : card,
