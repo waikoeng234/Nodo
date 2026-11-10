@@ -137,15 +137,20 @@ test('a codex worker mount carries no leader lockdown in any tier', async () => 
   })
 })
 
-test('a codex leader without its lead mount refuses to start', async () => {
+test('a codex leader without its lead mount refuses to start before it reads a catalog', async () => {
   await withFixture(async ({ bin, cwd }) => {
-    const driver = createDriver('codex', { bin, cwd, lead: true })
+    const spawnLog = join(cwd, 'spawns.jsonl')
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      env: { CODEX_FIXTURE_SPAWN_LOG: spawnLog } })
     try {
       await assert.rejects(driver.openSession(), error => {
         assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /lead channel/i)
+        assert.match(error.message, /nodo_lead mount/)
         return true
       })
     } finally { driver.dispose() }
+    assert.equal(existsSync(spawnLog), false, 'the refusal happens before the catalog command')
     assert.equal(existsSync(join(cwd, 'codex-requests.jsonl')), false, 'the refusal happens before any thread request')
   })
 })
