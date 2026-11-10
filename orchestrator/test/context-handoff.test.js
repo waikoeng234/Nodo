@@ -10,6 +10,7 @@ import { echoEntry, registerClaudeFixtureEngine } from './helpers/echo-driver.js
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { INPUT_CONTEXT_MAX, TASK_TEXT_MAX } from '../core/src/constants.js'
 import { reviewDeliveredReports } from './helpers/report-review.js'
+import { reportFixtureCompletions } from './helpers/flow.js'
 
 registerClaudeFixtureEngine()
 const FINAL = 'Dependency final report with evidence'
@@ -34,6 +35,7 @@ registerEngine('large-fixture', { ...echoEntry, info: { ...echoEntry.info, id: '
 
 const withHandoff = (run, workerEngine = 'capture-fixture') => withHost(async host => {
   const rt = await host.runtime
+  reportFixtureCompletions(rt)
   const workspace = await host.api('workspace-create', { name: 'Handoff', cwd: host.home })
   const worker = await host.api('profile-create', { name: 'Worker', engine: workerEngine,
     engineOptions: { script: [{ kind: 'tool', name: 'bash', brief: 'echo hello', ms: 20 }, { kind: 'text', text: FINAL }] } })

@@ -110,11 +110,12 @@ test('reference failure leaves report, context read, review, Decision and comple
   assert.deepEqual((await call(outsider, 'nodo_context', { action: 'list' })).items, [])
   assert.equal(JSON.stringify(rt.state.executions), before, 'reads do not review, accept or rewrite results')
   assert.equal(execution.reports[0].review, undefined)
-  assert.equal(rt.state.tasks[receipt.taskId].status, 'review')
+  assert.equal(rt.state.tasks[receipt.taskId].status, 'open')
   await call(client, 'nodo_review', { executionId: execution.id,
     disposition: 'continue', reason: 'Checked archived final', basis: [sourceId, 'Actual verification in final'] })
   assert.equal(execution.reports[0].review.disposition, 'continue')
-  assert.equal(rt.state.tasks[receipt.taskId].status, 'review', 'review does not complete')
+  assert.equal(rt.state.tasks[receipt.taskId].status, 'blocked', 'unstructured work requires an available independent reviewer')
+  assert.equal(rt.state.tasks[receipt.taskId].flow.stalled.reason, 'review-unavailable')
   const acceptance = { action: 'complete', taskId: receipt.taskId, executionIds: [execution.id], reason: 'Verified result', basis: [sourceId] }
   for (const changes of [{ executionIds: [] }, { basis: [] }, { reason: ' ' }, { references: ['old'] }]) {
     await assert.rejects(rt.completeTask(receipt.taskId, { ...acceptance, ...changes }))

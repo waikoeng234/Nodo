@@ -12,6 +12,7 @@ import { registerEngine } from '../agent-drivers/dist/index.js'
 import { TASK_TEXT_MAX } from '../core/src/constants.js'
 import { reviewDeliveredReports } from './helpers/report-review.js'
 import { loadClient } from './helpers/client-module.js'
+import { reportFixtureCompletions } from './helpers/flow.js'
 
 registerClaudeFixtureEngine()
 registerEngine('final-fixture', { ...echoEntry, info: { ...echoEntry.info, id: 'final-fixture', name: 'Final fixture' }, create(options) {
@@ -27,6 +28,7 @@ const turn = reason => ({ mode: 'turn', completion: Promise.resolve({ reason }) 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const withTasks = (run, repository = false, workerEngine = 'echo') => withHost(async host => {
   const rt = await host.runtime
+  reportFixtureCompletions(rt)
   const cwd = repository ? join(host.home, 'repo') : host.home
   if (repository) {
     mkdirSync(cwd)
@@ -208,7 +210,8 @@ test('isolated delegation locks its directory, copies attachments and reports it
   assert.equal(rt.conversationOf(next.session).session.workspaceRef, isolated.id)
   await rt.followLead(owner.id, turn('interrupted'))
   assert.ok(existsSync(isolated.cwd), 'a previously sent task keeps its worktree when rework is cancelled')
-  const reused = await routeUserTask(rt, owner.id, { ...command, taskId: first.taskId })
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId }), { code: 'orch/task-stalled' })
+  const reused = await routeUserTask(rt, owner.id, { ...command, continues: first.taskId })
   assert.equal(reused.session, first.session)
   assert.equal(rt.state.executions[reused.executionId].workspaceRef, isolated.id)
   await rt.followLead(owner.id, turn('interrupted'))
@@ -281,7 +284,7 @@ for (const removal of ['automatic', 'user']) for (const worktree of [undefined, 
 
 test('an ended task refuses attach and new work picks its own directory', () => withTasks(async ({ rt, owner }) => {
   const first = await routeUserTask(rt, owner.id, command)
-  await rt.followLead(owner.id, turn('interrupted'))
+  await rt.leadRoute(owner.id, { action: 'stop', taskIds: [first.taskId] })
   await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: first.taskId }), { code: 'orch/frozen' })
   const next = await routeUserTask(rt, owner.id, { ...command, worktree: true })
   assert.ok(rt.findWorkspace(rt.state.executions[next.executionId].workspaceRef).worktree)
@@ -478,13 +481,13 @@ test('task tools close the loop, preserve three results on one session and enfor
   assert.equal(new Set(task.executions.map(item => item.result.sourceId)).size, 3)
   assert.deepEqual(task.executions.flatMap(item => item.references), [])
   assert.deepEqual(await call(primary, 'nodo_board', { table: 'tasks' }), [{ id: first.taskId, title: task.title,
-    status: 'review', teamId: 'team', executionCount: 3, latestExecutionStatus: 'done', references: task.executions.flatMap(item => item.references),
+    status: 'blocked', teamId: 'team', executionCount: 3, latestExecutionStatus: 'done', references: task.executions.flatMap(item => item.references),
     latestResult: { sourceId: `execution:${task.executions.at(-1).id}:result`, completeness: 'unavailable', reason: 'missing-final', preview: '', length: 0, originalLength: 0 } }])
   assert.deepEqual(await call(foreign, 'nodo_board', { table: 'tasks' }), [])
   assert.ok(rt.transcriptOf(first.session).filter(line => line.origin?.kind === 'delegation').every(line => line.origin.taskId === first.taskId && line.origin.executionId))
   const done = await rt.completeTask(first.taskId, { reason: 'Checked all results', executionIds: task.executions.map(item => item.id), basis: ['Verified all three results'] })
   assert.equal(done.status, 'done')
-  assert.equal((await rt.reopenTask(first.taskId)).status, 'open')
+  await assert.rejects(rt.reopenTask(first.taskId), { code: 'orch/frozen' })
 }))
 
 test('leader fields cannot rewrite task title, original brief or frozen task state', () => withTasks(async ({ rt, owner, other, client, call, finish }) => {
@@ -571,7 +574,8 @@ test('send failures and round cancellation preserve true execution status and re
   assert.equal(rt.state.tasks[failed.taskId].status, 'blocked')
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
   await reviewDeliveredReports(rt, owner.id)
-  const next = await routeUserTask(rt, owner.id, { ...command, taskId: failed.taskId })
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: failed.taskId }), { code: 'orch/task-stalled' })
+  const next = await routeUserTask(rt, owner.id, { ...command, continues: failed.taskId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
@@ -687,7 +691,8 @@ test('failed startup saves release the runtime slot without sending a worker com
   await until(() => rt.state.executions[receipt.executionId].status === 'failed')
   assert.equal(rt.driverOf(receipt.session), undefined)
   rt.saveStrict = save
-  const next = await routeUserTask(rt, owner.id, { ...command, taskId: receipt.taskId })
+  await assert.rejects(routeUserTask(rt, owner.id, { ...command, taskId: receipt.taskId }), { code: 'orch/task-stalled' })
+  const next = await routeUserTask(rt, owner.id, { ...command, continues: receipt.taskId })
   await rt.followLead(owner.id, turn('interrupted'))
   assert.equal(rt.state.executions[next.executionId].status, 'cancelled')
 }))
@@ -898,7 +903,8 @@ test('restart cancels queued executions without reports and permits session reus
     recovered.recoverLeadDelegations()
     assert.equal(recovered.state.executions[receipt.executionId].reason, 'restart-unsent')
     assert.equal(recovered.driverOf(receipt.session), undefined)
-    assert.equal(recovered.state.tasks[receipt.taskId].status, 'stopped')
+    assert.equal(recovered.state.tasks[receipt.taskId].status, 'blocked')
+    assert.equal(recovered.state.tasks[receipt.taskId].flow.stalled.reason, 'execution-failed')
     assert.equal(recovered.conversationOf(owner.id).session.reportQueue, undefined)
     assert.equal(recovered.driverOf(owner.id), undefined)
     await assert.rejects(recovered.leadRoute(owner.id, { action: 'attach', taskId: receipt.taskId, scope: { note: 'Resume' } }), { code: 'orch/no-trigger' })
@@ -957,7 +963,7 @@ test('restart leaves persisted running executions unconfirmed without resending'
     assert.equal(recovered.driverOf(receipt.session), undefined)
     await until(() => recovered.state.executions[receipt.executionId].report && !recovered.workView()[owner.id]?.active && !recovered.conversationOf(owner.id).session.reportQueue)
     await reviewDeliveredReports(recovered, owner.id)
-    await assert.rejects(routeUserTask(recovered, owner.id, { ...command, taskId: receipt.taskId }), { code: 'orch/busy' })
+    await assert.rejects(routeUserTask(recovered, owner.id, { ...command, taskId: receipt.taskId }), { code: 'orch/task-stalled' })
   } finally {
     await restarted.dispose()
     await rt.failExecution(receipt.executionId, { reason: 'fixture-cleanup' })
@@ -1073,7 +1079,7 @@ test('task reads include initial state, scoped lists, polling updates and live s
   await assert.rejects(host.api('task-get', { taskId: receipt.taskId, teamId: 'other-team' }), /outside/)
   await rt.followLead(owner.id, turn('interrupted'))
   const updated = await host.api('state', { since: { struct: fresh.struct } })
-  assert.equal(updated.tasks[0].status, 'stopped')
+  assert.equal(updated.tasks[0].status, 'blocked')
   assert.equal((await host.api('task-get', { taskId: receipt.taskId })).executions[0].status, 'cancelled')
   const readOnly = rt.readOnly
   rt.readOnly = () => 'Read-only fixture'

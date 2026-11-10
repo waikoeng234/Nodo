@@ -15,6 +15,7 @@ export function install(rt) {
   const executionsOf = task => Object.values(state.executions).filter(item => item.taskId === task.id)
   const implementationOf = task => executionsOf(task).findLast(item => ['implement', 'rework'].includes(item.stage))
   const stageOf = execution => execution.stage === 'answer' ? stageOf(state.executions[execution.sourceExecutionId]) : execution.stage
+  const phaseOf = execution => execution.stage === 'answer' ? phaseOf(state.executions[execution.sourceExecutionId]) : execution.id
   const ownerOf = id => {
     const owner = rt.conversationOf(id)
     if (!owner || !leadModeOf(owner.profile, owner.session)) throw invalid('请选择有效的主控会话')
@@ -81,15 +82,16 @@ export function install(rt) {
   const checkFlowCapacity = (task, stage, source) => {
     const executions = executionsOf(task)
     const reason = executions.length >= FLOW_EXECUTIONS_MAX ? 'hard-cap'
-      : executions.filter(item => stageOf(item) === (stage === 'answer' ? stageOf(source) : stage)).length >= STAGE_ROUNDS_MAX ? 'stage-rounds' : undefined
+      : stage === 'answer' && executions.filter(item => phaseOf(item) === phaseOf(source)).length >= STAGE_ROUNDS_MAX ? 'stage-rounds' : undefined
     if (reason) { stallFlow(task, reason, source); return false }
     return true
   }
-  const dispatch = async (task, { stage, source, trigger = state.triggers[task.triggerId], supplements = [], immediate = false }) => {
+  const dispatch = async (task, { stage, source, trigger = state.triggers[task.triggerId], supplements = [], immediate = false, resumed = false, supplement = false }) => {
     if (!checkFlowCapacity(task, stage, source)) { await rt.saveStrict(); return }
     const implement = implementationOf(task), reviewType = stage === 'review' ? reviewTypeOf(task) : undefined
     if (stage === 'review' && !reviewType) { stallFlow(task, 'review-unavailable', source); await rt.saveStrict(); return }
     const previous = structuredClone(task.flow)
+    if (supplement) task.flow.supplementReworks = (task.flow.supplementReworks ?? 0) + 1
     const reviewed = stage === 'review' && source.stage === 'review' ? state.executions[source.sourceExecutionId] : source
     const flowStage = stage === 'answer' ? stageOf(source) : stage
     Object.assign(task.flow, { status: flowStage === 'review' ? 'reviewing' : 'running', stage: flowStage, round: (task.flow.round ?? 1) + 1 })
@@ -100,9 +102,11 @@ export function install(rt) {
       receipt = await rt.dispatchFlowExecution(task, { type: stage === 'answer' ? source.type : reviewType?.id ?? implement.type, hard: stage === 'answer' ? source.hard : implement.hard,
         profileId: stage === 'answer' ? source.profileId : stage === 'review' ? undefined : implement.profileId, stage,
         sourceExecutionId: stage === 'answer' ? source.sourceExecutionId : reviewed.id, trigger, supplements,
-        ...(stage === 'answer' ? { sourceReportId: source.sourceReportId, questions: source.questions } : {}) })
+        resumed, ...(stage === 'answer' ? { sourceReportId: source.sourceReportId, questions: source.questions } : {}) })
     } catch (error) {
       task.flow = previous
+      syncTaskFlow(task)
+      if (['orch/busy', 'orch/decision-pending'].includes(error.code)) throw error
       stallFlow(task, 'execution-failed', source, [error.message])
       await rt.saveStrict()
       return
@@ -118,10 +122,8 @@ export function install(rt) {
     syncTaskFlow(task)
     putCard(task, 'acceptance')
   }
-  const reworkFlow = async (task, { trigger, supplements = [], source = implementationOf(task), immediate = false, supplement = false } = {}) => {
-    if (supplement) task.flow.supplementReworks = (task.flow.supplementReworks ?? 0) + 1
-    return dispatch(task, { stage: 'rework', source, trigger, supplements, immediate })
-  }
+  const reworkFlow = (task, { trigger, supplements = [], source = implementationOf(task), immediate = false, supplement = false } = {}) =>
+    dispatch(task, { stage: 'rework', source, trigger, supplements, immediate, supplement })
   const advanceFlow = async execution => {
     const task = state.tasks[execution.taskId]
     if (!task.flow || !['running', 'reviewing'].includes(task.flow.status) || execution.flowContinued) return
@@ -173,11 +175,6 @@ export function install(rt) {
       await rt.saveStrict()
       return
     }
-    task.flow.status = 'accepted'
-    Object.assign(card, { status: 'accepted', answer, answeredAt: Date.now() })
-    syncTaskFlow(task)
-    rt.releaseTaskTriggers(task.id)
-    await rt.saveStrict()
   }
   const answerFlowCard = async (id, { cardId, action, reason }) => {
     await rt.load()
@@ -214,7 +211,11 @@ export function install(rt) {
       } else {
         if (source.status === 'unconfirmed') await rt.interruptExecution(source.id, { reason: 'retry' })
         await dispatch(task, { stage: stalledReason === 'review-unavailable' || stalledReason === 'verdict-unreadable' ? 'review' : source.stage,
-          source, trigger: state.triggers[source.triggerId], immediate: true })
+          source, trigger: state.triggers[source.triggerId], immediate: true, resumed: true })
+        if (card.status === 'resolved') {
+          Object.assign(card, { answer, answeredAt: Date.now() })
+          await rt.saveStrict()
+        }
       }
     }
     return structuredClone(card)

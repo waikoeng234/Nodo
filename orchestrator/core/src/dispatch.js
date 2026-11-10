@@ -296,7 +296,7 @@ export function install(rt) {
       if (flowInput?.placed) return flowInput.placed
       if (flowInput?.input) {
         input = flowInput.input.text
-        origin = { kind: 'supplement', triggerId: flowInput.triggerId }
+        origin = { kind: 'supplement', taskId: flowInput.taskId, executionId: flowInput.executionId, triggerId: flowInput.triggerId }
         line.origin = origin
         queue ||= flowInput.queue
       }
@@ -314,6 +314,10 @@ export function install(rt) {
     if (occupied(sessionId, st)) {
       const item = { text: input, task: text, images, seq, pendingLine, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
       const outcome = queue ? null : await steer(sessionId, st, item)
+      if (outcome === 'indeterminate' && origin?.kind === 'supplement' && origin.executionId) {
+        rt.state.executions[origin.executionId].supplementUnconfirmed = true
+        await rt.saveStrict()
+      }
       if (outcome) return { mode: outcome, seq, completion, turn, leadFlight }
       st.queued.push(item)
       // The turn may have ended while the engine answered; nothing else would start this one.

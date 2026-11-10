@@ -336,12 +336,17 @@ export function install(rt) {
     const now = Date.now()
     task.acceptances.push(rt.redactDeepSecrets({ reason, ...evidence, ...(cardId ? { cardId, answer } : {}), createdAt: now }))
     Object.assign(task, { status: 'done', updatedAt: now })
-    if (task.flow) task.flow.status = 'accepted'
+    if (task.flow) {
+      task.flow.status = 'accepted'
+      if (cardId) Object.assign(state.cards[cardId], { status: 'accepted', answer, answeredAt: now })
+      rt.releaseTaskTriggers(task.id)
+    }
     return saveTask(task)
   }
   const reopenTask = async id => {
     await writable()
     const task = taskOf(id)
+    if (task.flow) throw failure('流程任务不能重开，请另建任务', 'orch/frozen')
     liveScope(task)
     taskStatus(task, ['done', 'stopped'])
     Object.assign(task, { status: 'open', updatedAt: Date.now() })

@@ -271,3 +271,99 @@ test('two tasks keep independent cards across restart and recovery recreates a m
     await restored.saveStrict()
   } finally { await reopened.dispose() }
 }))
+
+test('custom review type permits exactly two review-driven reworks before rework-limit', () => withFlow(async ({ rt, team, create, finish, review, card }) => {
+  await rt.updateTeams([{ ...team, types: [
+    { ...team.types[0], flow: { reviewType: 'audit', maxRework: 2 } }, { ...team.types[1], id: 'audit' }],
+    assign: { feature: team.assign.feature, audit: team.assign.review } }])
+  let execution = await create()
+  for (let round = 0; round < 3; round++) {
+    await finish(execution, reportOf({ verified: round === 0 ? [] : [{ result: 'pass' }] }))
+    const audit = await review(execution)
+    assert.equal(audit.type, 'audit')
+    await finish(audit, reportOf({ verdict: 'fail', findings: [{ category: 'other', severity: 'low', text: 'Fix only this' }] }))
+    execution = await review(audit)
+  }
+  assert.equal(card(execution.taskId).payload.reason, 'rework-limit')
+  assert.equal(rt.state.tasks[execution.taskId].flow.rework, 2)
+  assert.equal(Object.values(rt.state.executions).length, 6)
+}))
+
+for (const stage of ['implement', 'review', 'answer']) test(`execution-failed retry restarts ${stage} with its source and directory`, () => withFlow(async ({ rt, owner, create, finish, review, card, answer, assertState }) => {
+  let execution = await create()
+  if (stage === 'review') { await finish(execution, reportOf({ verified: [] })); execution = await review(execution) }
+  else if (stage === 'answer') {
+    await finish(execution)
+    const receipt = await rt.leadReview(owner.id, { executionId: execution.id, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] })
+    execution = rt.state.executions[receipt.executionId]
+  }
+  await rt.unconfirmExecution(execution.id, { reason: 'restart' })
+  const stall = card(execution.taskId)
+  await answer(stall, 'retry')
+  const retry = Object.values(rt.state.executions).at(-1)
+  assert.equal(stall.answer.action, 'retry')
+  assert.equal(execution.status, 'interrupted'); assert.equal(retry.stage, stage)
+  assert.equal(retry.profileId, execution.profileId); assert.equal(retry.workspaceRef, execution.workspaceRef)
+  assert.equal(retry.triggerId, execution.triggerId); assert.deepEqual(retry.scope, execution.scope)
+  if (stage === 'review' || stage === 'answer') assert.equal(retry.sourceExecutionId, execution.sourceExecutionId)
+  if (stage === 'answer') assert.deepEqual(retry.questions, execution.questions)
+  assertState(retry, stage === 'review' ? 'reviewing' : 'running', stage === 'review' ? 'review' : 'open')
+}))
+
+test('verdict-unreadable retry reviews the implementation again and can pass acceptance', () => withFlow(async ({ rt, create, finish, review, card, answer, assertState }) => {
+  const execution = await create(); await finish(execution, reportOf({ verified: [] }))
+  const audit = await review(execution); await finish(audit, null, 'Cannot parse verdict'); await review(audit)
+  await answer(card(execution.taskId), 'retry')
+  const retry = Object.values(rt.state.executions).at(-1)
+  assert.equal(retry.sourceExecutionId, execution.id)
+  await finish(retry, reportOf({ verdict: 'pass' })); await review(retry)
+  assertState(retry, 'accepting', 'blocked'); assert.equal(card(retry.taskId).question.recommendation, 'accept')
+}))
+
+test('four supplement reworks bypass maxRework and stage-rounds without resetting total executions', () => withFlow(async ({ rt, owner, trigger, team, create, finish, review, card }) => {
+  await rt.updateTeams([{ ...team, types: team.types.map(type => type.id === 'feature' ? { ...type, flow: { reviewType: 'review', maxRework: 0 } } : type) }])
+  let execution = await create(); await finish(execution); await review(execution)
+  for (let count = 1; count <= 4; count++) {
+    trigger(`Supplement ${count}`)
+    const receipt = await rt.leadRoute(owner.id, { action: 'attach', taskId: execution.taskId, scope: { quote: 'Supplement' } })
+    execution = rt.state.executions[receipt.executionId]
+    await finish(execution); await review(execution)
+    assert.equal(card(execution.taskId).kind, 'acceptance')
+    assert.equal(rt.state.tasks[execution.taskId].flow.supplementReworks, count)
+  }
+  assert.equal(Object.values(rt.state.executions).length, 5)
+  assert.equal(rt.state.tasks[execution.taskId].flow.rework, undefined)
+}))
+
+test('direct worker supplements merge while queued and wait for continue while reviewing', () => withFlow(async ({ host, rt, worker, reviewer, create, start, finish, review }) => {
+  const execution = await create()
+  await host.api('send', { profile: worker.id, session: execution.sessionId, text: 'Queued direct supplement' })
+  assert.equal(rt.driverOf(execution.sessionId), undefined)
+  assert.equal(execution.supplements.length, 1)
+  await finish(execution, reportOf({ verified: [] }))
+  assert.match(rt.driverOf(execution.sessionId).calls[0], /Queued direct supplement/)
+  const audit = await review(execution); await start(audit)
+  await host.api('send', { profile: reviewer.id, session: audit.sessionId, text: 'Review supplement' })
+  assert.equal(rt.driverOf(audit.sessionId).guides.length, 0)
+  assert.equal(rt.workView()[audit.sessionId].queued, 0)
+  await finish(audit, reportOf({ verdict: 'pass' })); const rework = await review(audit)
+  assert.equal(rework.stage, 'rework'); assert.equal(rt.state.triggers[rework.triggerId].text, 'Review supplement')
+}))
+
+test('stalled and stopped worker direct input is rejected without writing or starting new work', () => withFlow(async ({ host, rt, worker, owner, create, card, answer }) => {
+  const execution = await create(); await rt.cancelUnsentExecution(execution.id, { reason: 'restart' })
+  const count = Object.keys(rt.state.executions).length, before = rt.transcriptOf(execution.sessionId).length
+  await assert.rejects(host.api('send', { profile: worker.id, session: execution.sessionId, text: 'Bypass retry card' }), { code: 'orch/task-stalled' })
+  await answer(card(execution.taskId), 'stop')
+  await assert.rejects(host.api('send', { profile: worker.id, session: execution.sessionId, text: 'Bypass stop' }), { code: 'orch/frozen' })
+  assert.equal(rt.transcriptOf(execution.sessionId).length, before)
+  assert.equal(Object.keys(rt.state.executions).length, count)
+  assert.equal(rt.sessionBlockReason(owner.id), undefined)
+}))
+
+test('change-scope stays an unimplemented contract and leaves the card and task intact', () => withFlow(async ({ rt, create, card, answer }) => {
+  const execution = await create(); await rt.cancelUnsentExecution(execution.id, { reason: 'restart' })
+  const item = card(execution.taskId), before = structuredClone(item)
+  await assert.rejects(answer(item, 'change-scope', 'Different scope'), { code: 'orch/not-supported' })
+  assert.deepEqual(item, before); assert.equal(rt.state.tasks[execution.taskId].flow.status, 'stalled')
+}))

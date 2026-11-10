@@ -24,6 +24,20 @@ export const flags = { crossModule: false, publicInterface: false, dataFormat: f
 export const reportOf = (extra = {}) => ({ outcome: 'done', summary: 'Implemented and verified', changed: [],
   verified: [{ command: 'fixture check', result: 'pass' }], issues: [], reviewFlags: { ...flags }, ...extra })
 
+export const reportFixtureCompletions = rt => {
+  const sink = rt.driverSink
+  rt.driverSink = (id, event) => {
+    const execution = Object.values(rt.state.executions).findLast(item => item.sessionId === id)
+    if (event.type === 'turn/end' && event.reason === 'done' && !event.unconfirmed && execution?.triggerId
+      && ['implement', 'rework'].includes(execution.stage)) {
+      void rt.workerReport(execution, reportOf({ summary: (event.text || 'Fixture turn completed').trim().replace(/\s+/g, ' ').slice(0, 200) }))
+        .then(() => sink(id, event))
+      return
+    }
+    sink(id, event)
+  }
+}
+
 export const withFlow = (run, repository = false) => withHost(async host => {
   const rt = await host.runtime
   let cwd = host.home
