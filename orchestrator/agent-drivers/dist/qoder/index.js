@@ -231,10 +231,10 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
             emit(turn.changes.snapshot(turn.id));
         emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) });
     };
-    const control = (request) => new Promise((resolve, reject) => {
+    const control = (request, timeout = 5000) => new Promise((resolve, reject) => {
         const request_id = `orch-${++controlSeq}`;
         const timer = setTimeout(() => { if (controls.delete(request_id))
-            reject(new Error('Qoder control request timed out')); }, 5000);
+            reject(new Error('Qoder control request timed out')); }, timeout);
         controls.set(request_id, { turn: running, resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
         try {
             peer.write({ type: 'control_request', request_id, request });
@@ -439,8 +439,10 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
                 // Initialization verifies the extra launch flag before worker input is composed.
                 try {
                     await connection.running;
+                    // The CLI answers only after its own startup work, which can take seconds
+                    // under load; the boot deadline is the handshake's, not the 5s request one.
                     if (servers?.length)
-                        await control({ subtype: 'initialize' });
+                        await control({ subtype: 'initialize' }, 20_000);
                     break;
                 }
                 catch (error) {

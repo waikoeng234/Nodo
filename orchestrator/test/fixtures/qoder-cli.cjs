@@ -76,6 +76,7 @@ const receive = line => {
     }
     else if (process.env.QODER_FIXTURE_INIT_ERROR) send({ type: 'control_response', response: { subtype: 'error', request_id: frame.request_id, error: 'Unsupported initialize' } })
     else if (process.env.QODER_FIXTURE_INIT_MALFORMED) control(frame.request_id, null)
+    else if (process.env.QODER_FIXTURE_INIT_DELAY_MS) setTimeout(() => control(frame.request_id, { commands: fixtureCommands, models: fixtureModels }), Number(process.env.QODER_FIXTURE_INIT_DELAY_MS))
     else control(frame.request_id, process.env.QODER_FIXTURE_NO_MODELS ? { commands: [] } : { commands: fixtureCommands, models: fixtureModels })
     return
   }
