@@ -156,7 +156,7 @@ test('Codex leaders switch only their own catalog entry and run a separate app-s
     const instructionDir = join(cwd, 'data')
     const spawnLog = join(cwd, 'spawns.jsonl')
     const events = []
-    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir, lead: true,
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir, instructions: 'Lead rules', lead: true,
       leadMcpServers: leadMount(), env: { CODEX_FIXTURE_SPAWN_LOG: spawnLog }, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('LEAD_TASK')
@@ -170,6 +170,8 @@ test('Codex leaders switch only their own catalog entry and run a separate app-s
     const spawns = readFileSync(spawnLog, 'utf8').trim().split('\n').map(JSON.parse)
     assert.deepEqual(spawns.map(spawn => spawn.argv.slice(0, 2)), [['debug', 'models'], ['app-server', '-c']])
     assert.equal(spawns[1].argv[2], `model_catalog_json=${JSON.stringify(catalogPath)}`, 'the private process starts with the generated catalog')
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.match(thread.params.developerInstructions, /Lead rules[\s\S]*deferred MCP tools[\s\S]*mcp__nodo_lead/, 'direct mode tells the leader about the tool search step')
   })
 })
 
