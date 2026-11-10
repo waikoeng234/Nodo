@@ -529,7 +529,9 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                             }])),
                         ...(lead ? LEAD_CONFIG : {}),
                     } } : {}),
-                ...(permission === 'full' ? { approvalPolicy: 'never' } : {}),
+                // A leader never shows an approval card: its only route is the read-only
+                // sandbox, and a card the user accepts would grant execution.
+                ...(lead || permission === 'full' ? { approvalPolicy: 'never' } : {}),
                 // A leader keeps the read-only sandbox in every tier — routing only.
                 ...(lead || permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access' }
                     : permission === 'workspace' ? { sandbox: 'workspace-write' } : {}),

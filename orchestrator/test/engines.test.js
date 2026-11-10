@@ -98,7 +98,7 @@ test('Codex lead mounts are thread scoped and frozen to the routing-only config 
     for (const { params } of threads) {
       assert.deepEqual(params.config, expected)
       assert.equal(params.sandbox, 'read-only', 'the leader never writes, whatever its permission tier')
-      assert.equal(params.approvalPolicy, permission === 'full' ? 'never' : undefined)
+      assert.equal(params.approvalPolicy, 'never', 'the leader never shows an approval card in any tier')
     }
   })
 })
@@ -117,6 +117,7 @@ test('Codex mounts an HTTP lead with the token in this thread\'s config headers'
       enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])) },
     ...codexLeadConfig })
     assert.equal(thread.params.sandbox, 'read-only')
+    assert.equal(thread.params.approvalPolicy, 'never')
   })
 })
 
