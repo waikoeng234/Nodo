@@ -759,7 +759,7 @@ export function install(rt) {
       rt.warn('nodo: lead follow failed (%s): %s', sessionId, error.message ?? error)
     }
     const state = stateOf(sessionId)
-    if (result?.reason !== 'done' || result.unconfirmed) await rt.flowLeadFailed(sessionId)
+    if (result?.reason === 'error' || result?.unconfirmed) await rt.flowLeadFailed(sessionId)
     for (const flight of [...state.flights.values()]) {
       if (!flight.dispatch) continue
       try {
@@ -831,7 +831,7 @@ export function install(rt) {
       if (execution.status === 'unconfirmed') throw failure('Task or session already has a pending execution', 'orch/busy')
       rt.assertDecisionDispatch?.(task.coordinatorSessionId)
       rt.persistTrigger(trigger)
-      const saved = rt.appendLine(session.id, line)
+      const saved = rt.appendLine(session.id, { ...line, origin: { kind: 'supplement', triggerId: trigger.id } })
       const receipt = await rt.reworkFlow(task, { trigger, supplement: true })
       if (!receipt) throw failure('任务已停滞，请处理停滞卡', 'orch/task-stalled')
       return { placed: await rt.startFlowExecution(receipt.executionId), line: saved }

@@ -26,10 +26,13 @@ export function install(rt) {
   }
   // Review-driven reworks count toward the type's rework limit; a supplement
   // or acceptance return starts its own counter (§3.4).
-  const reworkRoundOf = (execution, task) => {
-    const reviewDriven = item => task.triggerId !== undefined && item.triggerId === task.triggerId
+  const reviewFailOf = execution => {
+    const source = rt.state.executions[execution.sourceExecutionId]
+    return source?.stage === 'review' && source.reportData?.verdict === 'fail'
+  }
+  const reworkRoundOf = execution => {
     const same = Object.values(rt.state.executions)
-      .filter(item => item.taskId === execution.taskId && (item.stage ?? 'implement') === 'rework' && reviewDriven(item) === reviewDriven(execution))
+      .filter(item => item.taskId === execution.taskId && (item.stage ?? 'implement') === 'rework' && reviewFailOf(item) === reviewFailOf(execution))
       .sort((a, b) => a.createdAt - b.createdAt)
     return Math.max(1, same.indexOf(execution) + 1)
   }
@@ -80,10 +83,9 @@ export function install(rt) {
   // sourceExecutionId; any other rework summarizes the previous implementation,
   // never a review execution.
   const priorLinesOf = execution => {
-    const task = rt.state.tasks[execution.taskId]
-    if (task.triggerId !== undefined && execution.triggerId === task.triggerId) {
-      const source = rt.state.executions[execution.sourceExecutionId]
-      if (!source) throw invalid('返工执行的 sourceExecutionId 不存在，无法拼装前序结论')
+    const source = rt.state.executions[execution.sourceExecutionId]
+    if (execution.sourceExecutionId && !source) throw invalid('返工执行的 sourceExecutionId 不存在，无法拼装前序结论')
+    if (reviewFailOf(execution)) {
       const lines = (source.reportData?.findings ?? []).map(item => `- [${item.severity ?? 'medium'}] ${item.category ?? 'other'}：${item.text}`)
       if (lines.length) return lines
     }
@@ -186,9 +188,8 @@ export function install(rt) {
     parts.scope = rt.workerScope(scopeTextOf(execution.scope ?? task.scope))
     const changes = changesOf(execution)
     if (changes) parts.changes = rt.workerChanges(changes)
-    const reviewFail = task.triggerId !== undefined && execution.triggerId === task.triggerId
-    parts.stage = rt.workerStage({ stage, round: stage === 'rework' ? reworkRoundOf(execution, task) : roundOf(execution),
-      maxRework: maxReworkOf(execution), reviewFail })
+    parts.stage = rt.workerStage({ stage, round: stage === 'rework' ? reworkRoundOf(execution) : roundOf(execution),
+      maxRework: maxReworkOf(execution), reviewFail: reviewFailOf(execution) })
     if (stage === 'review') parts.reviewed = rt.workerReviewed(reviewedOf(execution))
     if (stage === 'answer' && Array.isArray(execution.questions) && execution.questions.length) parts.questions = rt.workerQuestions(execution.questions)
     if (stage === 'rework') parts.prior = rt.workerPrior(priorLinesOf(execution))

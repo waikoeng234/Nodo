@@ -252,9 +252,12 @@ test('budget pressure drops the history first, then handover summaries keep hand
     await complete(rt, dependencyExecution.id, '依赖结果')
     await rt.completeTask(dependency.id, { reason: '依赖已验收', executionIds: [dependencyExecution.id], basis: ['依赖结果'] })
     rt.state.tasks[task.id].dependsOn = [dependency.id]
+    const audit = await rt.acceptExecution(task.id, { profileId: 'worker', sessionId: 'ws', type: 'review', hard: false,
+      stage: 'review', triggerId: task.triggerId, scope: task.scope, sourceExecutionId: execution.id })
+    await complete(rt, audit.id, '审查不通过')
+    rt.state.executions[audit.id].reportData = { verdict: 'fail', findings: [{ category: 'other', severity: 'high', text: 'f'.repeat(120_000) }] }
     const rework = await rt.acceptExecution(task.id, { profileId: 'worker', sessionId: 'ws', type: 'feature', hard: false })
-    Object.assign(rt.state.executions[rework.id], { stage: 'rework', triggerId: task.triggerId, scope: { quote: '修复登录页的滚动条bug' }, sourceExecutionId: execution.id })
-    rt.state.executions[execution.id].reportData = { verdict: 'fail', findings: [{ category: 'other', severity: 'high', text: 'f'.repeat(120_000) }] }
+    Object.assign(rt.state.executions[rework.id], { stage: 'rework', triggerId: task.triggerId, scope: { quote: '修复登录页的滚动条bug' }, sourceExecutionId: audit.id })
     const { text } = await rt.composeWorkerInput({ executionId: rework.id })
     assert.ok(text.length <= INPUT_CONTEXT_MAX, `composed input ${text.length} fits the budget`)
     assert.equal(text.includes('# 本会话此前的内容'), false, 'the history window drops first')
