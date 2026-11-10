@@ -17,7 +17,7 @@ are added.
 | Continuity | `--session-id <id>` reuses or creates that exact project session (get_state echoes it; an empty session writes no file until the first append). Cross-process cold resume is maintainer acceptance |
 | Native session store | `~/.pi/agent/sessions/--<escaped-cwd>--/<timestamp>_<id>.jsonl`, format v3 tree; CLI-only tool — no desktop app shares it |
 | Models / thinking | `get_available_models` returns full catalog rows (cost, context window, `thinkingLevelMap`); the scan keys entries as `provider/id`, the one spelling both `--model` and `set_model` accept; thinking levels follow pi's own support rule over `thinkingLevelMap` (`null` marks an unsupported level) |
-| Permissions | No native per-call approvals: the Agent never asks per tool call (its security model is isolation plus `--tools`/`--exclude-tools`), so `capabilities.permissions` stays false. Two autonomy tiers are declared and enforced at launch: `plan` = `--tools read,grep,find,ls,mcp__nodo_*` (read-only built-ins and Nodo MCP tools), `full` = no extra tier flags. User MCP servers connect in both tiers; their tools are excluded in plan. A tier change re-arms the driver and keeps the conversation: the next turn respawns the process, which `--session-id` reopens |
+| Permissions | No native per-call approvals: the Agent never asks per tool call (its security model is isolation plus `--tools`/`--exclude-tools`), so `capabilities.permissions` stays false. Two autonomy tiers are declared and enforced at launch: `plan` = `--tools read,grep,find,ls,mcp__nodo_worker__nodo_report,mcp__nodo_worker__nodo_context` (read-only built-ins and the two Nodo worker tools), `full` = no extra tier flags. User MCP servers connect in both tiers; their tools are excluded in plan. A tier change re-arms the driver and keeps the conversation: the next turn respawns the process, which `--session-id` reopens |
 | Questions | No native ask tool. Extension dialogs (`extension_ui_request` select/confirm/input/editor) are the only server→client question channel and must be answered or the Agent stalls — each surfaces as a question card and answers ride `extension_ui_response` |
 | Project trust | RPC mode cannot show the trust prompt, so the driver always passes `--no-approve`: project `.pi/` settings and extensions never load silently. `AGENTS.md`/`CLAUDE.md` context files load regardless |
 | Steer / cancel | `steer` is a first-class command (queued between tool calls, answered with a disposition) → `steered`; `abort` replies at idle and `agent_settled{aborted:true}` settles the turn as `interrupted` |
@@ -40,7 +40,7 @@ real runs prove live behavior. Developer probes against the real 1.4.0 CLI
 | Two consecutive turns, two sessions, cold resume | `--session-id <id>` on respawn | fixture resume test passed | Not run (cross-process cold resume) |
 | Nodo UI integration; Agent app discovery/live observation | Direct driver conversations display in the Nodo Feed | `test/drivers.test.js`, `test/client.test.js` | Not run |
 | Identity injection level, persistence, unsupported behavior | `--append-system-prompt` on every spawn/resume (instructionMode `native`) | spawn-frame assertions in `test/pi.test.js` | Not run (real-model confirmation) |
-| Model/thinking & permission sources, switching, refusal | `get_available_models` (`scanPi`), `--model`/`--thinking` flags; tiers as launch flags (`plan` = `--tools read,grep,find,ls,mcp__nodo_*`, `full` = none) | catalog/scan tests passed | Not run (real catalog breadth) |
+| Model/thinking & permission sources, switching, refusal | `get_available_models` (`scanPi`), `--model`/`--thinking` flags; tiers as launch flags (`plan` = `--tools read,grep,find,ls,mcp__nodo_worker__nodo_report,mcp__nodo_worker__nodo_context`, `full` = none) | catalog/scan tests passed | Not run (real catalog breadth) |
 | Text/tools, snapshot vs incremental, pairing, cancel confirmation | Native deltas; settle on `agent_settled`; `abort` → confirmed `interrupted` | turn/delta/interrupt tests passed | Not run |
 | Approvals, single/multi/free-form questions; denial & anomalies | No native approval channel; extension dialogs surface as question cards (select/confirm/input/editor), denial cancels the dialog | dialog tests + host pipeline test passed (fixture level) | Not run (real extension dialogs) |
 | Images, plain attachments, commands/skills; missing-capability notices | `prompt` accepts base64 images; `@file` is CLI-only and RPC rejects it (no plain attachments); commands from `get_commands` (`scanPiCommands`) | image + commands scan tests passed | Not run |
@@ -67,8 +67,9 @@ variable. Optional settings:
 - `thinking` (common profile field): a level the selected model supports in its
   `thinkingLevelMap` (`off`…`max`; a `null` entry marks an unsupported level).
 - `permission` (common profile field): `plan` (the default) launches with
-  `--tools read,grep,find,ls,mcp__nodo_*` — read-only built-ins and Nodo MCP
-  tools. User MCP servers still connect, with their tools excluded in plan;
+  `--tools read,grep,find,ls,mcp__nodo_worker__nodo_report,mcp__nodo_worker__nodo_context`
+  — read-only built-ins and the two Nodo worker tools. User MCP servers still
+  connect, with their tools excluded in plan;
   `full` adds no flags. A tier change takes effect on the next process start,
   which `--session-id` reopens. The plan boundary: no file writes, no command
   execution through built-ins — but reads are not scoped to the workspace (read, grep,
@@ -91,7 +92,7 @@ variable. Optional settings:
   (`tool_call` interception plus the dialog channel, cf. pi's own
   permission-gate example) is a possible follow-up but is not built here.
 - No native tier channel: the declared `plan`/`full` tiers are enforced with
-  launch flags only (`--tools read,grep,find,ls,mcp__nodo_*` vs none), so a tier
+  launch flags only (`--tools read,grep,find,ls,mcp__nodo_worker__nodo_report,mcp__nodo_worker__nodo_context` vs none), so a tier
   change applies from the next process start rather than mid-session. The plan
   flags bound built-in writes, commands and non-Nodo MCP tools, not reads: read/grep/find/ls reach any
   absolute path, and user-level extension `/commands` still run.
