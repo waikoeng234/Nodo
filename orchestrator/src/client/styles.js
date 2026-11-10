@@ -623,6 +623,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-decision-reason{margin-top:4px;padding-left:8px;border-left:2px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-secondary);font-weight:500}
 .nodo-flow-cards{display:flex;flex-direction:column}
 .nodo-flow-body{gap:14px;padding-top:16px}
+.nodo-flow-body>.nodo-question-title,.nodo-flow-gap{padding:0 16px 0 24px}
 .nodo-flow-section{display:flex;flex-direction:column;padding:0 16px 0 24px}
 .nodo-flow-cap{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
 .nodo-flow-scope{margin:4px 0 0;padding:2px 0 2px 10px;border-left:2px solid var(--dsw-alias-border-l2);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}

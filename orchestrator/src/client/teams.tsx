@@ -287,12 +287,15 @@ export function FlowFields({ type, team, disabled, onChange }: {
   type: TeamType; team: Team; disabled: boolean; onChange: (flow: TeamFlow) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
+  // Repeating type ids across teams reuse this instance, so a switch must drop the draft.
+  useEffect(() => { setDraft(null) }, [team.id, type.id])
   const review = type.flow?.reviewType ?? 'review'
   const rework = type.flow?.maxRework ?? 2
   const reviewers = team.types.filter(item => item.independent === true && item.id !== undefined && !('miss' in route(team.assign, item.id, false)))
   // A saved review type that no longer qualifies stays listed, disabled, so the
   // select never silently displays a neighbour instead.
-  const stale = reviewers.some(item => item.id === review) ? null : { id: review, name: review }
+  const stale = reviewers.some(item => item.id === review) ? null
+    : { id: review, name: team.types.find(item => item.id === review)?.name ?? review }
   const parsed = draft !== null && /^\d+$/.test(draft) ? Number(draft) : null
   const invalid = draft !== null && draft !== '' && parsed === null
   return (

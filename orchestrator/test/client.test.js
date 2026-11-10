@@ -3539,8 +3539,8 @@ test('the assignment page filters review types to qualified independents and alw
   assert.ok(render().map(rolesText).join('').includes('审查类型 / 返工上限'), 'the head names the new column')
   assert.equal(select('文档').props.value, 'review', 'an absent flow reads as the default review type')
   assert.equal(rework('文档').props.value, '2', 'an absent flow reads as the default rework limit')
-  assert.deepEqual(options('文档'), [['review', true, 'review'], ['test', false, '测试']],
-    'only qualified independents are selectable; the unqualified default stays visible, disabled')
+  assert.deepEqual(options('文档'), [['review', true, '审查'], ['test', false, '测试']],
+    'only qualified independents are selectable; the stale default shows the type name, disabled')
   assert.equal(select('审查').props.value, 'review', 'an independent type without a holder cannot review either')
   assert.deepEqual(options('测试'), [['test', false, '测试']], 'a qualified type lists itself')
   assert.equal(rework('测试').props.value, '1', 'a saved flow shows its own values')
@@ -3559,4 +3559,27 @@ test('the assignment page filters review types to qualified independents and alw
   rework('文档组').props.onChange({ target: { value: '0' } })
   assert.deepEqual(JSON.parse(JSON.stringify(flowOf('文档组'))), { reviewType: 'test', maxRework: 0 }, 'zero is a legal limit')
   assert.equal(cell('文档组').find(node => node.props.className === 'nodo-type-flow-warn'), undefined)
+})
+
+test('the rework draft drops when the team switches', async () => {
+  const states = [], pending = []
+  cursor = 0
+  const loaded = await loadRolesPage({ react: rolesReact(states, pending) })
+  const team = (id, rework) => ({ id, name: id === 't1' ? '研发' : '评审', lead: 'L', members: ['A'], types: [
+    { id: 'docs', name: '文档', when: '', flow: { reviewType: 'review', maxRework: rework } },
+  ], assign: { docs: { normal: { profile: 'A' } } } })
+  let teams = [team('t1', 1), team('t2', 5)], active = 't1'
+  const render = () => { cursor = 0; return rolesTree(loaded.AssignPage({ roles: teamRoles, teams, engines: [], activeId: active, disabled: false,
+    onActive(id) { active = id }, onBack() {}, save: next => { teams = next } })) }
+  // Same one-level expansion and parked cursor as the test above: the shared
+  // states array is what makes the FlowFields instance persist across renders.
+  const cell = () => { const element = render().find(node => node.type === loaded.FlowFields); cursor = 100
+    return rolesTree(loaded.FlowFields(element.props)) }
+  const rework = () => cell().find(node => node.type === 'input')
+
+  rework().props.onChange({ target: { value: '3' } })
+  assert.equal(rework().props.value, '3', 'the draft shows while this team is edited')
+  render().find(node => node.props?.role === 'tab' && node.props['aria-selected'] === false).props.onClick()
+  pending.splice(0).forEach(effect => effect())
+  assert.equal(rework().props.value, '5', 'the other team never inherits the previous team\'s draft')
 })

@@ -18790,6 +18790,7 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-decision-reason{margin-top:4px;padding-left:8px;border-left:2px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-secondary);font-weight:500}
 .nodo-flow-cards{display:flex;flex-direction:column}
 .nodo-flow-body{gap:14px;padding-top:16px}
+.nodo-flow-body>.nodo-question-title,.nodo-flow-gap{padding:0 16px 0 24px}
 .nodo-flow-section{display:flex;flex-direction:column;padding:0 16px 0 24px}
 .nodo-flow-cap{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
 .nodo-flow-scope{margin:4px 0 0;padding:2px 0 2px 10px;border-left:2px solid var(--dsw-alias-border-l2);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -21420,10 +21421,13 @@ function PickCell({ label, caption, pick, team, roles, engines, optional, disabl
 }
 function FlowFields({ type, team, disabled, onChange }) {
   const [draft, setDraft] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    setDraft(null);
+  }, [team.id, type.id]);
   const review = type.flow?.reviewType ?? "review";
   const rework = type.flow?.maxRework ?? 2;
   const reviewers = team.types.filter((item) => item.independent === true && item.id !== void 0 && !("miss" in route(team.assign, item.id, false)));
-  const stale = reviewers.some((item) => item.id === review) ? null : { id: review, name: review };
+  const stale = reviewers.some((item) => item.id === review) ? null : { id: review, name: team.types.find((item) => item.id === review)?.name ?? review };
   const parsed = draft !== null && /^\d+$/.test(draft) ? Number(draft) : null;
   const invalid = draft !== null && draft !== "" && parsed === null;
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-assign-flow", role: "group", "aria-label": `\u5BA1\u67E5\u7C7B\u578B\u4E0E\u8FD4\u5DE5\u4E0A\u9650 ${type.name}` }, /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-assign-flow-cap" }, "\u5BA1\u67E5\u7C7B\u578B / \u8FD4\u5DE5\u4E0A\u9650"), /* @__PURE__ */ (0, import_react.createElement)(

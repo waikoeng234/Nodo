@@ -191,3 +191,12 @@ test('a worker conversation never asks for cards', async () => {
   await tick()
   assert.deepEqual(calls, [], 'only coordinator sessions carry cards')
 })
+
+// A stall card puts the title and the gap list straight into the body, so the
+// padding rule is what keeps them off the card edge like every other section.
+test('the stalled card title and gaps take the horizontal card padding', async () => {
+  const { CSS } = await loadClient('styles.js')
+  const rule = selector => CSS.split('\n').find(line => line.startsWith(`${selector}{`))?.slice(selector.length + 1, -1) ?? ''
+  assert.match(rule('.nodo-flow-body>.nodo-question-title,.nodo-flow-gap'), /padding:0 16px 0 24px/,
+    'the stall title and gaps align with the flow sections instead of the card edge')
+})
