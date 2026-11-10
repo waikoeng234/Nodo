@@ -30,6 +30,7 @@ const leadMcpConfig = (servers: McpMount[]) => JSON.stringify({ mcpServers: Obje
 ])) })
 
 export function claudeArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers }: ClaudeArgsOptions = {}) {
+  const lead = !!leadMcpServers?.some(({ name }) => name !== 'nodo_worker')
   const tools = leadMcpServers?.length ? leadMcpServers.flatMap(({ name }) => (name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => `mcp__${name}__${tool}`)) : []
   return [
     '--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
@@ -40,8 +41,11 @@ export function claudeArgs({ model, thinking, instructions, driverSessionId, per
     // recognized-dangerous ones ask — matching the workspace tier zcode calls
     // guarded; acceptEdits would still ask for every ordinary command.
     ...(permission === 'plan' ? ['--permission-mode', 'plan'] : permission === 'full' ? ['--permission-mode', 'bypassPermissions'] : permission === 'workspace' ? ['--permission-mode', 'auto'] : []),
-    // The lead mount is per-process and per-resume; without --strict-mcp-config
-    // the user's own MCP servers stay loaded.
+    // A leader runs on empty built-ins and only the per-process mount
+    // (--strict-mcp-config drops the user's own MCP servers); personal
+    // CLAUDE.md, skills, hooks and plugins stay. The CLI does not validate
+    // --tools names, so the arg-snapshot test is the drift guard.
+    ...(lead ? ['--tools', '', '--strict-mcp-config'] : []),
     ...(tools.length ? ['--allowedTools', ...tools] : []),
     ...(leadMcpServers?.length ? ['--mcp-config', leadMcpConfig(leadMcpServers)] : []),
     ...(instructions ? ['--append-system-prompt', instructions] : []),

@@ -230,6 +230,17 @@ export async function scanCodex({ engineOptions = {} }: CodexOptions = {}) {
 // Only the blocking request_user_input reaches this client as a card.
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.'
 
+// A leader only routes, so every built-in execution surface is switched off and
+// the sandbox is read-only. Unknown keys are accepted silently, and feature
+// names move between versions, so the config-freeze test is the drift guard.
+const LEAD_CONFIG = {
+  'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
+  'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
+  'features.goals': false, 'features.apps': false, 'features.plugins': false,
+  'features.skill_search': false, 'features.collab': false, 'features.multi_agent_v2': false,
+  'features.image_generation': false, 'tools.web_search': false, 'tools.update_plan': { enabled: false },
+}
+
 export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, leadMcpServers }: DriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const emit = (event: CodexEvent) => { try { onEvent?.(event) } catch {} }
   let peer: CodexPeer | null = null
@@ -467,18 +478,24 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     workspaceId = await ensureCodexWorkspace(peer, { cwd: cwd!, name, workspaceId })
     const method = threadId ? 'thread/resume' : 'thread/start'
     const params = { ...(threadId ? { threadId } : { projectId: workspaceId, historyMode: 'paginated' }), cwd, ...(model ? { model } : {}) }
+    const lead = !!leadMcpServers?.some(({ name }) => name !== 'nodo_worker')
     // The autonomy tier rides the thread params: the sandbox bounds what the
     // engine may touch at all, `never` approval is what makes the top tier full.
     const extras = {
       // The shared daemon keeps the environment it started with, so the HTTP
       // token rides this thread's config instead of an env var.
-      ...(leadMcpServers?.length ? { config: Object.fromEntries(leadMcpServers.map(server => [`mcp_servers.${server.name}`, {
-        ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
-          : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
-        enabled_tools: server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS,
-        tools: Object.fromEntries((server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => [tool, { approval_mode: 'approve' }])),
-      }])) } : {}),
-      ...(permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access', approvalPolicy: 'never' }
+      ...(leadMcpServers?.length ? { config: {
+        ...Object.fromEntries(leadMcpServers.map(server => [`mcp_servers.${server.name}`, {
+          ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
+            : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
+          enabled_tools: server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS,
+          tools: Object.fromEntries((server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => [tool, { approval_mode: 'approve' }])),
+        }])),
+        ...(lead ? LEAD_CONFIG : {}),
+      } } : {}),
+      ...(permission === 'full' ? { approvalPolicy: 'never' } : {}),
+      // A leader keeps the read-only sandbox in every tier — routing only.
+      ...(lead || permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access' }
         : permission === 'workspace' ? { sandbox: 'workspace-write' } : {}),
       ...(instructions ? { developerInstructions: `${instructions}\n\n${QUESTION_ROUTING}` } : {}),
     }
