@@ -10,10 +10,10 @@ import { jsonRpcProcess } from '../agent-drivers/dist/json-rpc-process.js'
 import { until } from './helpers/host.js'
 
 const fixture = fileURLToPath(new URL('./fixtures/acp-cli.cjs', import.meta.url))
-const withDriver = async (run, { env = {}, driverSessionId } = {}) => {
+const withDriver = async (run, { env = {}, driverSessionId, mcpServers } = {}) => {
   const cwd = mkdtempSync(join(tmpdir(), 'orch-acp-core-'))
   const events = []
-  const driver = createAcpDriver({ cwd, driverSessionId, onEvent: event => events.push(event) }, {
+  const driver = createAcpDriver({ cwd, driverSessionId, mcpServers, onEvent: event => events.push(event) }, {
     id: 'fixture', label: 'Fixture', question: formElicitation,
     connect: callbacks => jsonRpcProcess({ bin: process.execPath, args: [fixture], cwd, env, jsonrpc: '2.0', ...callbacks }),
   })
@@ -22,6 +22,44 @@ const withDriver = async (run, { env = {}, driverSessionId } = {}) => {
   finally { driver.dispose(); rmSync(cwd, { recursive: true, force: true }) }
 }
 const ended = events => events.find(event => event.type === 'turn/end')
+
+for (const method of ['session/new', 'session/load', 'session/resume']) {
+  test(`ACP ${method} carries stdio and negotiated HTTP MCP mounts`, async () => {
+    const stdio = { name: 'project', command: 'node', args: ['tool.js'], env: [{ name: 'MODE', value: 'fixture' }] }
+    const worker = { name: 'nodo_worker', url: 'http://localhost/worker', token: 'fixture-token' }
+    await withDriver(async ({ driver, wire }) => {
+      assert.equal(driver.workerMcpMounted, false)
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, true)
+      assert.deepEqual(wire().find(item => item.method === method).params.mcpServers, [stdio,
+        { name: worker.name, type: 'http', url: worker.url, headers: [{ name: 'Authorization', value: 'Bearer fixture-token' }] }])
+      driver.dispose()
+      assert.equal(driver.workerMcpMounted, false)
+    }, { mcpServers: [stdio, worker], driverSessionId: method === 'session/new' ? undefined : 'saved',
+      env: { ACP_HTTP_MCP: '1', ...(method === 'session/resume' ? { ACP_RESUME: '1' } : {}) } })
+  })
+}
+
+test('ACP omits unsupported HTTP mounts without losing stdio or claiming a worker mount', async () => {
+  const stdio = { name: 'project', command: 'node', args: [], env: [] }
+  await withDriver(async ({ driver, wire }) => {
+    await driver.openSession()
+    assert.equal(driver.workerMcpMounted, false)
+    assert.deepEqual(wire().find(item => item.method === 'session/new').params.mcpServers, [stdio])
+  }, { mcpServers: [stdio, { name: 'nodo_worker', url: 'http://localhost/worker', token: 'fixture-token' }] })
+})
+
+test('ACP stdio worker mounts require a successful session attachment', async () => {
+  const mcpServers = [{ name: 'nodo_worker', command: 'node', args: [], env: [] }]
+  await withDriver(async ({ driver }) => {
+    await driver.openSession()
+    assert.equal(driver.workerMcpMounted, true)
+  }, { mcpServers })
+  await withDriver(async ({ driver }) => {
+    await assert.rejects(driver.openSession(), /restored a different session/)
+    assert.equal(driver.workerMcpMounted, false)
+  }, { mcpServers, driverSessionId: 'saved', env: { ACP_WRONG_SESSION: '1' } })
+})
 
 test('other ACP engines do not classify OpenCode-shaped provider failures', async () => {
   const events = []

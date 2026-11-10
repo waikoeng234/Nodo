@@ -13,7 +13,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   const { id, method, params = {} } = message
   if (method === 'initialize') {
     const result = { protocolVersion: process.env.ACP_BAD_VERSION ? 2 : 1,
-      agentCapabilities: { ...(process.env.ACP_NO_RESUME ? {} : process.env.ACP_RESUME ? { sessionCapabilities: { resume: {} } } : { loadSession: true }), promptCapabilities: { image: process.env.ACP_IMAGES === '1' } } }
+      agentCapabilities: { mcpCapabilities: { http: process.env.ACP_HTTP_MCP === '1' }, ...(process.env.ACP_NO_RESUME ? {} : process.env.ACP_RESUME ? { sessionCapabilities: { resume: {} } } : { loadSession: true }), promptCapabilities: { image: process.env.ACP_IMAGES === '1' } } }
     if (process.env.ACP_SLOW_BOOT) setTimeout(() => reply(id, result), 300)
     else reply(id, result)
   } else if (['session/new', 'session/load', 'session/resume'].includes(method)) {

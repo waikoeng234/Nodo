@@ -8,9 +8,10 @@ import type { FileChanges } from '../file-changes.js'
 import type { Coverage } from '../coverage.js'
 import type { AcpConfigOption } from './catalog.js'
 import type { ElicitationParams } from './elicitation.js'
+import type { McpMount } from '../role-mcp.js'
 
-export type AcpDriverOptions = { onEvent?: (event: DriverEvent) => void; cwd?: string; driverSessionId?: string; permission?: PermissionMode }
-export type AcpCapabilities = { promptCapabilities?: { image?: boolean }; sessionCapabilities?: { resume?: boolean }; loadSession?: boolean; [key: string]: unknown }
+export type AcpDriverOptions = { onEvent?: (event: DriverEvent) => void; cwd?: string; driverSessionId?: string; permission?: PermissionMode; mcpServers?: McpMount[] }
+export type AcpCapabilities = { promptCapabilities?: { image?: boolean }; sessionCapabilities?: { resume?: boolean }; loadSession?: boolean; mcpCapabilities?: { http?: boolean }; [key: string]: unknown }
 export type AcpAttached = { sessionId?: string; configOptions?: AcpConfigOption[]; [key: string]: unknown }
 export type AcpCallbacks = Required<Pick<JsonRpcProcessOptions<AcpParams>, 'onNotification' | 'onRequest' | 'onClose'>>
 export type AcpQuestionContext = { method: string; params: AcpParams; tool?: string }
@@ -132,7 +133,7 @@ export async function initializeAcp(peer: JsonRpcPeer, clientCapabilities: Recor
   return result.agentCapabilities ?? {}
 }
 
-export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: AcpDriverOptions = {}, support: AcpSupport): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
+export function createAcpDriver({ onEvent, cwd, driverSessionId, permission, mcpServers = [] }: AcpDriverOptions = {}, support: AcpSupport): Driver & { readonly instructionMode: string; readonly workerMcpMounted: boolean; readonly coverage: Coverage } {
   const { id, label } = support
   const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   // ACP plan entries carry status pending/in_progress/completed and a content
@@ -145,6 +146,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
   let ready: Promise<void> | null = null
   let sessionId = driverSessionId
   let connected = false
+  let workerMcpMounted = false
   let promptImages = false
   let disposed = false
   let sequence = 0
@@ -389,6 +391,8 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       } })
       peer = connection
       const capabilities = await (support.initialize ?? initializeAcp)(connection)
+      const servers = mcpServers.filter(server => !('url' in server) || capabilities.mcpCapabilities?.http)
+        .map(server => 'url' in server ? { name: server.name, type: 'http', url: server.url, headers: [{ name: 'Authorization', value: `Bearer ${server.token}` }] } : server)
       coverage.setIdentity({ transport: 'acp', ...(support.initialize ? {} : { protocolVersion: 1 }) })
       promptImages = capabilities.promptCapabilities?.image === true
       let method = 'session/new'
@@ -397,7 +401,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
         else if (capabilities.loadSession) method = 'session/load'
         else throw new Error(`${label} ACP cannot restore the saved session`)
       }
-      const attached = await connection.request<AcpAttached>(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: [] }, 30_000)
+      const attached = await connection.request<AcpAttached>(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: servers }, 30_000)
       if (!sessionId) sessionId = attached?.sessionId
       else if (attached?.sessionId && attached.sessionId !== sessionId) throw new Error(`${label} restored a different session`)
       if (typeof sessionId !== 'string' || !sessionId) throw new Error(`${label} returned no session id`)
@@ -407,6 +411,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
       await support.configure?.({ peer: connection, sessionId, attached, permission })
       if (disposed || peer !== connection) throw new Error(`${label} startup was cancelled`)
       connected = true
+      workerMcpMounted = servers.some(server => server.name === 'nodo_worker')
     })()
     const pending = startup.catch(error => {
       if (peer === connection) disconnect()
@@ -419,6 +424,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission }: A
 
   return {
     get instructionMode() { return connected ? support.instructionMode ?? 'none' : 'none' },
+    get workerMcpMounted() { return connected && workerMcpMounted },
     get coverage() { return coverage },
     openSession: boot,
     async sendTurn(text, images = []) {
