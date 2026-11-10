@@ -7,7 +7,17 @@ const { createRequire } = require('node:module')
 const { join } = require('node:path')
 const { homedir } = require('node:os')
 const { appendFileSync } = require('node:fs')
+const FIXTURE_CATALOG = { models: [
+  { slug: 'fixture-model', display_name: 'Fixture Model', description: 'fixture', tool_mode: 'code_mode_only', multi_agent_version: 'v2', shell_type: 'unified_exec', priority: 1 },
+  { slug: 'other-model', display_name: 'Other Model', description: 'fixture', tool_mode: 'code_only', multi_agent_version: 'v1', shell_type: 'unified_exec', priority: 2 },
+] }
 if (process.argv.includes('--version')) { console.log('codex-cli fixture'); process.exit(0) }
+if (process.env.CODEX_FIXTURE_SPAWN_LOG) appendFileSync(process.env.CODEX_FIXTURE_SPAWN_LOG, JSON.stringify({ pid: process.pid, argv: process.argv.slice(2) }) + '\n')
+if (process.argv.includes('debug') && process.argv.includes('models')) {
+  if (process.env.CODEX_FIXTURE_MODELS_ERROR) process.exit(1)
+  process.stdout.write(process.env.CODEX_FIXTURE_MODELS_JSON ?? JSON.stringify(FIXTURE_CATALOG))
+  process.exit(0)
+}
 if (process.argv.includes('daemon')) process.exit(0)
 let connection
 const send = message => connection ? connection.send(JSON.stringify(message)) : process.stdout.write(JSON.stringify(message) + '\n')
@@ -67,6 +77,11 @@ const receive = line => {
     return
   }
   if (method === 'account/read') { send({ id, result: { account: { type: 'chatgpt', email: 'private@example.test' }, requiresOpenaiAuth: true } }); return }
+  if (method === 'mcpServerStatus/list') {
+    appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
+    if (process.env.CODEX_FIXTURE_MCP_ERROR) { send({ id, error: { message: process.env.CODEX_FIXTURE_MCP_ERROR } }); return }
+    send({ id, result: { data: JSON.parse(process.env.CODEX_FIXTURE_MCP_SERVERS ?? '[]'), nextCursor: null } }); return
+  }
   if (method === 'model/list') {
     send({ id, result: { data: [
       { id: 'fixture-model', model: 'fixture-model', displayName: 'Fixture Model', description: 'fixture', hidden: false, isDefault: true,
