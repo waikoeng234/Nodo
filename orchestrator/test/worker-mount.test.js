@@ -82,6 +82,7 @@ for (const { engine, project, unsupported } of [
     const spawn = requests.find(item => item.spawn && JSON.parse(item.mcpConfig ?? '{}').mcpServers?.nodo_worker)
     assert.deepEqual(spawn.allowedTools, ['mcp__nodo_worker__nodo_report', 'mcp__nodo_worker__nodo_context'])
     assert.equal(spawn.spawn.includes('--tools'), false, 'worker keeps its execution tools')
+    assert.equal(spawn.spawn.includes('--strict-mcp-config'), false, 'worker stays outside the leader lockdown')
     const config = JSON.parse(spawn.mcpConfig).mcpServers.nodo_worker
     assert.equal(config.headers.Authorization, 'Bearer ${NODO_LEAD_TOKEN}')
     assert.ok(spawn.leadTokenEnv === mounted.token, 'Claude must receive the mounted HTTP credential in its environment')

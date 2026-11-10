@@ -368,8 +368,21 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
     assert.equal(spawns[1].resume, 'fixture-claude-session')
     for (const spawn of spawns) {
       assert.equal(JSON.stringify(spawn.spawn).includes('lead-token-secret'), false, 'the token never rides argv')
-      assert.equal(spawn.spawn.includes('--strict-mcp-config'), false, 'user MCP servers stay loaded')
+      // The CLI validates neither --tools names nor unknown flags, so this
+      // snapshot is the only guard: a leader keeps empty built-ins, only the
+      // Nodo mount, exactly the four routing tools — and its personal
+      // CLAUDE.md, skills, hooks and plugins (no --setting-sources, no
+      // --disable-slash-commands).
+      assert.deepEqual(spawn.spawn.slice(1).map(item => item === spawn.mcpConfig ? '<nodo-lead-config>' : item),
+        ['--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
+          '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',
+          '--tools', '', '--strict-mcp-config',
+          '--allowedTools', 'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_route', 'mcp__nodo_lead__nodo_review',
+          '--mcp-config', '<nodo-lead-config>', ...(spawn.resume ? ['--resume', 'fixture-claude-session'] : [])])
+      assert.equal(spawn.spawn.includes('--setting-sources'), false)
+      assert.equal(spawn.spawn.includes('--disable-slash-commands'), false)
       const config = JSON.parse(spawn.mcpConfig)
+      assert.deepEqual(Object.keys(config.mcpServers), ['nodo_lead'], 'only the Nodo mount survives --strict-mcp-config')
       assert.deepEqual(config.mcpServers.nodo_lead, { command: process.execPath, args: [join(cwd, 'lead-server.js')], env: { ELECTRON_RUN_AS_NODE: '1' } },
         'only env without channel secrets enters the config')
       assert.equal(JSON.stringify(config).includes('lead-token-secret'), false)
@@ -394,6 +407,8 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
     assert.equal(executor.leadTokenFileEnv, undefined)
     assert.equal(executor.leadSocketEnv, undefined)
     assert.equal(executor.spawn.includes('--mcp-config'), false)
+    assert.equal(executor.spawn.includes('--tools'), false, 'non-leader sessions keep their execution tools')
+    assert.equal(executor.spawn.includes('--strict-mcp-config'), false)
   })
 })
 

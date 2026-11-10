@@ -53,7 +53,7 @@ test('Claude and Codex spawn failures do not become missing resume errors', asyn
   })
 })
 
-test('Codex lead mounts are thread scoped on start and resume in every permission tier', async () => {
+test('Codex lead mounts are thread scoped and frozen to the routing-only config on start and resume in every permission tier', async () => {
   for (const permission of ['plan', 'workspace', 'full']) await withFixture(async ({ bin, cwd }) => {
     const token = 'fixture-file-only-credential'
     const tokenFile = join(cwd, 'lead.token')
@@ -64,7 +64,14 @@ test('Codex lead mounts are thread scoped on start and resume in every permissio
       command: leadMcpServers[0].command, args: leadMcpServers[0].args,
       env: Object.fromEntries(leadMcpServers[0].env.map(({ name, value }) => [name, value])),
       enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])),
-    } }
+    },
+    // Codex accepts unknown config keys silently, so this literal is the only
+    // guard against a renamed feature key silently re-arming an execution tool.
+    'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
+    'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
+    'features.goals': false, 'features.apps': false, 'features.plugins': false,
+    'features.skill_search': false, 'features.collab': false, 'features.multi_agent_v2': false,
+    'features.image_generation': false, 'tools.web_search': false, 'tools.update_plan': { enabled: false } }
     for (const driverSessionId of [undefined, 'fixture-thread']) {
       const events = []
       const driver = createDriver('codex', { bin, cwd, permission, driverSessionId, leadMcpServers,
@@ -80,7 +87,7 @@ test('Codex lead mounts are thread scoped on start and resume in every permissio
     assert.deepEqual(threads.map(item => item.method), ['thread/start', 'thread/start', 'thread/resume', 'thread/resume'])
     for (const { params } of threads) {
       assert.deepEqual(params.config, expected)
-      assert.equal(params.sandbox, { plan: 'read-only', workspace: 'workspace-write', full: 'danger-full-access' }[permission])
+      assert.equal(params.sandbox, 'read-only', 'the leader never writes, whatever its permission tier')
       assert.equal(params.approvalPolicy, permission === 'full' ? 'never' : undefined)
     }
   })
@@ -97,7 +104,13 @@ test('Codex mounts an HTTP lead with the token in this thread\'s config headers'
     } finally { driver.dispose() }
     const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
     assert.deepEqual(thread.params.config, { 'mcp_servers.nodo_lead': { url: 'http://127.0.0.1:4100/mcp', http_headers: { Authorization: 'Bearer http-token' },
-      enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])) } })
+      enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])) },
+    'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
+    'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
+    'features.goals': false, 'features.apps': false, 'features.plugins': false,
+    'features.skill_search': false, 'features.collab': false, 'features.multi_agent_v2': false,
+    'features.image_generation': false, 'tools.web_search': false, 'tools.update_plan': { enabled: false } })
+    assert.equal(thread.params.sandbox, 'read-only')
   })
 })
 
