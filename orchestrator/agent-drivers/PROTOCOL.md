@@ -25,6 +25,8 @@ The optional method currently registered is `compact()`. Its implementation must
 
 Permissions use host tiers `plan`, `workspace` and `full`, translated by each Agent. They do not bypass approval cards. `instructionMode: 'native'` means role instructions were installed through an Agent-supported mechanism; an optional `instructionTarget` identifies the layer. Missing or `none` means no installed identity.
 
+After `await driver.openSession()`, `driver.workerMcpMounted === true` means the current connection accepted a `nodo_worker` mount through its supported configuration channel. Drivers report false before attachment, after disconnect, or when that mount is unsupported. Missing also means unavailable. The host uses this fact alone to select tool reporting or stage-specific text reporting, including supplements; engine names and role identity status do not determine worker availability. This does not attest to a model calling the tools.
+
 ## Event overview
 
 Events use the factory callback. Optional fields remain absent when the source cannot supply them.

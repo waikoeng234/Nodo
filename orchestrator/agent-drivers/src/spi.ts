@@ -102,6 +102,7 @@ export type DriverResponse = { decision?: typeof DECISION[keyof typeof DECISION]
 export type SteerOutcome = typeof STEER[keyof typeof STEER]
 
 export interface Driver {
+  readonly workerMcpMounted?: boolean
   openSession(): Promise<unknown>
   sendTurn(text: string, images?: DriverImage[]): Promise<string>
   steer(text: string): Promise<SteerOutcome>

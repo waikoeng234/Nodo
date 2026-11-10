@@ -273,7 +273,7 @@ test('budget pressure drops the history first, then handover summaries keep hand
   })
 })
 
-test('a degraded worker uses a report convention for its stage', async () => {
+test('worker composition defers mount availability to dispatch and retains stage-specific fallback conventions', async () => {
   await withHost(async ({ runtime, home }) => {
     const rt = await runtime
     const { execution } = await setup(rt, home, { engine: 'dsh' })
@@ -284,9 +284,8 @@ test('a degraded worker uses a report convention for its stage', async () => {
       execution.stage = stage
       if (stage === 'answer') execution.questions = ['Why?']
       const { text } = await rt.composeWorkerInput({ executionId: execution.id })
-      assert.ok(text.endsWith(`# 回报方式\n${expected}`))
-      assert.equal(text.includes('nodo_report 工具'), false)
-      if (stage !== 'review') assert.doesNotMatch(text, /首行必须只写/)
+      assert.ok(text.endsWith(rt.workerReportMethod({ stage })), 'engine name alone cannot determine a mount')
+      assert.equal(rt.workerReportMethod({ stage, degraded: true }), `# 回报方式\n${expected}`)
     }
   })
 })

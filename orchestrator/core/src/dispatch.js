@@ -24,6 +24,19 @@ const IDENTITY_FALLBACK = {
 export function install(rt) {
   const { ctx } = rt
   const settingsOf = (profile, session = profile) => JSON.stringify([session.model, session.thinking, session.permission ?? profile.permission])
+  const workerInputFor = (driver, text, origin) => {
+    if (!origin?.executionId || driver?.workerMcpMounted === true) return text
+    const stage = rt.state.executions[origin.executionId].stage
+    const fallback = rt.workerReportMethod({ stage, degraded: true })
+    const method = rt.workerReportMethod({ stage })
+    if (text.endsWith(method)) return text.slice(0, -method.length) + fallback
+    if (origin.kind === 'supplement') {
+      const instruction = '完成后用 nodo_report 回报。'
+      const offset = text.lastIndexOf(instruction)
+      if (offset >= 0) return text.slice(0, offset) + fallback.slice('# 回报方式\n'.length) + text.slice(offset + instruction.length)
+    }
+    return text
+  }
   /** @type {Map<string, {starting:boolean, active:boolean, finishing:boolean, suspect:boolean, cancelledStart:boolean, turnId:?string, seq:number, toolOpen:string|null, queued:{text:string, images:object[], seq:number, resolve:Function}[], waiters:{seq:number, resolve:Function}[], binds:{seq:number, resolve:Function}[], idleTimer:?Object, cancelTimer:?Object}>} */
   const turns = new Map()
   const stateOf = (sessionId) => {
@@ -139,18 +152,7 @@ export function install(rt) {
           text = restored.text
           images = restored.images
         }
-        if (profile.engine === 'zcode' && origin?.executionId
-          && ['mcp-field-unsupported', 'mcp-config-not-representable'].includes(driver.instructionFallback)) {
-          const stage = rt.state.executions[origin.executionId].stage
-          const fallback = rt.workerReportMethod({ stage, degraded: true })
-          const method = rt.workerReportMethod({ stage })
-          if (text.endsWith(method)) text = text.slice(0, -method.length) + fallback
-          else if (origin.kind === 'supplement') {
-            const instruction = '完成后用 nodo_report 回报。'
-            const offset = text.lastIndexOf(instruction)
-            if (offset >= 0) text = text.slice(0, offset) + fallback.slice('# 回报方式\n'.length) + text.slice(offset + instruction.length)
-          }
-        }
+        text = workerInputFor(driver, text, origin)
       } catch (error) {
         decisionInput?.reject(error)
         driverSink(sessionId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
@@ -233,7 +235,9 @@ export function install(rt) {
     const outcome = item.images.length === 0 && !rt.isCompacting(sessionId) && st.settings === settingsOf(profile, session)
       ? await Promise.resolve().then(() => {
         const snapshot = rt.leadSnapshot?.(sessionId)
-        return rt.driverOf(sessionId)?.steer(snapshot ? `${item.text}\n\n${snapshot}` : item.text)
+        const driver = rt.driverOf(sessionId)
+        const text = workerInputFor(driver, item.text, item.origin)
+        return driver?.steer(snapshot ? `${text}\n\n${snapshot}` : text)
       }).catch(() => undefined) : undefined
     if (outcome !== 'steered' && outcome !== 'indeterminate') return null
     if (item.cancelled) return outcome

@@ -616,6 +616,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
 
   return {
     get instructionMode() { return connected && instructions ? 'native' : 'none' },
+    get workerMcpMounted() { return connected && !disposed && Boolean(leadMcpServers?.some(server => server.name === 'nodo_worker')) },
     get coverage() { return coverage },
     openSession: boot,
     async sendTurn(text, images = []) {

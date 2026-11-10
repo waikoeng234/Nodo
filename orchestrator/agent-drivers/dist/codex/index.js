@@ -525,6 +525,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     };
     return {
         get instructionMode() { return connected ? instructionMode : 'none'; },
+        get workerMcpMounted() { return connected && !disposed && Boolean(leadMcpServers?.some(server => server.name === 'nodo_worker')); },
         get coverage() { return coverage; },
         openSession: boot,
         async goals(objective) {

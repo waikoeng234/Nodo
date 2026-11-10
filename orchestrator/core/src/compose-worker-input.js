@@ -224,7 +224,7 @@ export function install(rt) {
       historyHandles = history.handles
       parts.history = rt.workerHistory(history)
     }
-    parts.report = rt.workerReportMethod({ degraded: rt.conversationOf(execution.sessionId)?.profile.engine === 'dsh', stage })
+    parts.report = rt.workerReportMethod({ stage })
 
     const order = ['requirement', 'supplements', 'attachments', 'original', 'scope', 'workspace', 'changes', 'stage', 'reviewed', 'questions', 'prior', 'handover', 'history', 'report']
     const join = () => order.map(key => parts[key]).filter(Boolean).join('\n\n')
