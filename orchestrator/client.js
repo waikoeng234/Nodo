@@ -9222,6 +9222,7 @@ var retry = null;
 var failures = 0;
 var connected = false;
 var restarting = false;
+var stream = null;
 var transcripts = /* @__PURE__ */ new Map();
 var emit = () => {
   for (const listener of listeners) listener();
@@ -9230,25 +9231,41 @@ var mergeSessions = (current, updates) => !updates ? current : {
   ...current,
   profiles: current.profiles.map((profile) => ({ ...profile, sessions: profile.sessions.map((session) => updates[session.id] ? { ...session, ...updates[session.id] } : session) }))
 };
+var flight = null;
 var poll = async (force = false) => {
-  const order = ++requested;
-  try {
-    const answer = await call("state", force || view === null ? void 0 : { since: { struct: view.struct } });
-    if (!polling || order < applied) return;
-    applied = order;
-    const moved = view !== null && answer.activity !== view.activity;
-    view = answer.unchanged && view !== null ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
-    view = mergeSessions(view, answer.sessions);
-    error = "";
-    if (moved && !connected) for (const [key, { profileId, sessionId }] of watched) void pullTranscript(profileId, sessionId, key);
-  } catch (failure) {
-    if (polling && order >= applied) {
-      error = failure.message;
-      emit();
-    }
-    return;
+  if (flight) {
+    flight.upgraded ||= force;
+    return flight.done;
   }
-  emit();
+  const order = ++requested;
+  const running = { upgraded: false, done: null };
+  flight = running;
+  running.done = (async () => {
+    try {
+      const answer = await call("state", force || view === null ? void 0 : { since: { struct: view.struct } });
+      if (!polling || order < applied) return;
+      applied = order;
+      const moved = view !== null && answer.activity !== view.activity;
+      view = answer.unchanged && view !== null ? { ...view, activity: answer.activity, work: answer.work, approvals: answer.approvals, stats: answer.stats } : answer;
+      view = mergeSessions(view, answer.sessions);
+      error = "";
+      if (moved) for (const [key, { profileId, sessionId }] of watched) {
+        const held = transcripts.get(key);
+        if (!connected || held?.error && !held.positions) void pullTranscript(profileId, sessionId, key).then(pushWatch);
+      }
+    } catch (failure) {
+      if (polling && order >= applied) {
+        error = failure.message;
+        emit();
+      }
+      return;
+    } finally {
+      if (flight === running) flight = null;
+    }
+    emit();
+    if (running.upgraded && polling) return poll(true);
+  })();
+  return running.done;
 };
 var schedule = () => {
   if (!polling || connected || timer !== null) return;
@@ -9265,12 +9282,19 @@ var connect = async () => {
   connection?.abort();
   const abort = connection = new AbortController();
   const watch = [...watched.values()].map(({ profileId: profile, sessionId: session }) => ({ profile, session, since: transcripts.get(keyOf(profile, session))?.positions }));
+  const streamId = crypto.randomUUID();
   try {
-    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch) });
+    const query = new URLSearchParams({ struct: String(view.struct), watch: JSON.stringify(watch), id: streamId });
     const response = await fetch(`${ROUTE}/live?${query}`, { signal: abort.signal });
     if (!response.ok || !response.body) throw new Error("Stream unavailable");
     if (abort.signal.aborted) return;
     connected = true;
+    const active = stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])), pending: false, retry: null };
+    abort.signal.addEventListener("abort", () => {
+      clearTimeout(active.retry);
+      active.retry = null;
+    }, { once: true });
+    void pushWatch();
     clearTimeout(timer);
     timer = null;
     const reader = response.body.getReader(), decoder = new TextDecoder();
@@ -9315,6 +9339,7 @@ var connect = async () => {
   } finally {
     if (connection === abort && !abort.signal.aborted) {
       connected = false;
+      clearTimeout(stream?.retry);
       schedule();
       retry = setTimeout(() => {
         retry = null;
@@ -9332,6 +9357,27 @@ var restart = () => {
     retry = null;
     void connect();
   });
+};
+var pushWatch = async () => {
+  const active = stream;
+  if (!connected || active === null || active.pending || active.retry !== null) return;
+  const synced = new Map([...watched.keys()].map((key) => [key, transcripts.get(key)?.positions ?? null]));
+  if (active.synced && synced.size === active.synced.size && [...synced].every(([key, since]) => active.synced.has(key) && active.synced.get(key) === since)) return;
+  const watch = [...watched].map(([key, { profileId: profile, sessionId: session }]) => ({ profile, session, ...synced.get(key) ? { since: synced.get(key) } : {} }));
+  active.pending = true;
+  try {
+    await call("live-watch", { id: active.id, watch });
+    active.synced = synced;
+  } catch {
+    active.synced = null;
+    if (connected && stream === active) active.retry = setTimeout(() => {
+      active.retry = null;
+      void pushWatch();
+    }, 1e3);
+  } finally {
+    active.pending = false;
+  }
+  if (stream === active) void pushWatch();
 };
 var stopUpdatePause = null;
 var pauseStreams = () => {
@@ -9440,12 +9486,15 @@ var watchTranscript = (profileId, sessionId) => {
   const current = watched.get(key) ?? { profileId, sessionId, count: 0 };
   current.count += 1;
   watched.set(key, current);
-  if (current.count === 1) void pullTranscript(profileId, sessionId, key).then(restart);
+  if (current.count === 1) {
+    pushWatch();
+    void pullTranscript(profileId, sessionId, key).then(pushWatch);
+  }
   return () => {
     current.count -= 1;
     if (current.count === 0) {
       watched.delete(key);
-      restart();
+      pushWatch();
     }
   };
 };
@@ -12403,7 +12452,7 @@ function RightPanel({ panel, width }) {
     counts.set(base, nth);
     return nth > 1 ? `${base} ${nth}` : base;
   });
-  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-right-panel", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", hidden: !state.expanded, style: { width } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-right-head" }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tabs", role: "tablist", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", onKeyDown: (event) => {
+  return /* @__PURE__ */ (0, import_react.createElement)("aside", { className: "nodo-right-panel", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", hidden: !state.expanded, style: { width } }, /* @__PURE__ */ (0, import_react.createElement)("header", { className: "nodo-right-head", "data-window-drag": true }, /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-right-tabs", role: "tablist", "aria-label": "\u4F1A\u8BDD\u5DE5\u5177", onKeyDown: (event) => {
     const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
     const at2 = state.tabs.findIndex((tab) => tabId(tab) === state.active);
     if (!step || at2 < 0 || !event.target.matches("[role=tab]")) return;
@@ -14438,7 +14487,7 @@ function roundIndex(view2) {
   const lead = /* @__PURE__ */ new Map(), members = /* @__PURE__ */ new Map();
   for (const entry of all) {
     const source = entry.session.source;
-    const owner = source?.kind === "lead" && entry.session.engine !== "dsh" ? byId.get(source.leadSessionId) : void 0;
+    const owner = source?.kind === "lead" ? byId.get(source.leadSessionId) : void 0;
     if (!owner || owner.session.engine === "dsh") continue;
     lead.set(entry.session.id, owner);
     members.set(owner.session.id, [...members.get(owner.session.id) ?? [], entry]);
@@ -14520,6 +14569,11 @@ var taskWord = (task, work, unconfirmed = false) => {
 };
 var typeName = (round, id) => (round.teams?.find((team) => team.lead === round.leadId)?.types ?? []).find((item) => item.id === id)?.name ?? (round.teams ?? []).flatMap((team) => team.types ?? []).find((item) => item.id === id)?.name ?? id;
 var delegationLines = (lines, step) => {
+  if (step.executionId) {
+    const start2 = lines.findIndex((line) => line.origin?.kind === "delegation" && line.origin.executionId === step.executionId) + 1;
+    const end2 = lines.findIndex((line, index) => index >= start2 && line.origin?.kind === "delegation");
+    return start2 === 0 ? [] : lines.slice(start2, end2 < 0 ? void 0 : end2);
+  }
   const boundary = (line) => line.who === "user" && line.origin?.kind !== "retry";
   const start = step.deferred ? lines.findIndex((line) => boundary(line) && line.at >= step.at) + 1 : lines.findLastIndex((line) => boundary(line) && (step.at === void 0 || line.at <= step.at)) + 1;
   const end = lines.findIndex((line, index) => index >= start && boundary(line));
@@ -14930,7 +14984,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
       "data-kind": row.kind,
       "data-tone": row.tone,
       "data-pending": row.kind === "queued" ? "" : void 0,
-      title: "\u67E5\u770B\u4F1A\u8BDD",
+      title: (row.session.engine ?? row.role.engine) === "dsh" ? "\u5728 dsh \u4E2D\u6253\u5F00" : "\u67E5\u770B\u4F1A\u8BDD",
       onClick: () => onOpen(row.id)
     },
     (0, import_react.createElement)(RoleAvatar, { profile: row.role, size: 20, running: row.kind === "running" }),
@@ -15361,6 +15415,13 @@ function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
     )
   );
 }
+var catalogFlight = null;
+var engineCatalog = () => {
+  catalogFlight ??= call("engine-catalog").finally(() => {
+    catalogFlight = null;
+  });
+  return catalogFlight;
+};
 function ModelPicker({ profile, disabled, onChange }) {
   const [open, setOpen] = (0, import_react.useState)(false);
   const [pane, setPane] = (0, import_react.useState)("root");
@@ -15370,7 +15431,7 @@ function ModelPicker({ profile, disabled, onChange }) {
   const loaded = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   (0, import_react.useEffect)(() => {
     let live = true;
-    void call("engine-catalog").then((items2) => {
+    void engineCatalog().then((items2) => {
       if (live) setEngines(items2);
     }).catch(() => {
     });
@@ -15395,7 +15456,7 @@ function ModelPicker({ profile, disabled, onChange }) {
     setOpen(true);
     if (loaded.current.has(profile.engine)) return;
     loaded.current.add(profile.engine);
-    void call("engine-catalog").then((items2) => {
+    void engineCatalog().then((items2) => {
       setEngines(items2);
       if (!items2.some((item) => item.id === profile.engine && !item.catalog)) return;
       setScanning(true);
@@ -16147,7 +16208,7 @@ function AddMenu({ profile, workspace, disabled, trigger, onInsert, onToken, onG
     }
     setScanning(true);
     void call("engine-commands", { engine: profile.engine, workspace: workspace?.id }).then((value) => setScan(value)).catch(() => setScan({ source: "unavailable", commands: [] })).finally(() => setScanning(false));
-    void call("engine-catalog", {}).then((value) => setCatalog(value)).catch(() => setCatalog([]));
+    void engineCatalog().then((value) => setCatalog(value)).catch(() => setCatalog([]));
   };
   const open = manual || trigger !== null && trigger.start !== dismissed;
   (0, import_react.useEffect)(() => {
@@ -16349,7 +16410,7 @@ function PermissionMenu({ profile, disabled, onChange }) {
     if (loaded.current === profile.engine) return;
     loaded.current = profile.engine;
     setModes(null);
-    void call("engine-catalog").then((items2) => {
+    void engineCatalog().then((items2) => {
       const offered2 = items2.find((item) => item.id === profile.engine)?.capabilities?.permissionModes;
       setModes(Array.isArray(offered2) ? offered2 : []);
     }).catch(() => {
@@ -17568,8 +17629,9 @@ var selectSession = async (role, id, project, page) => {
       else if (sidebarOnly) nativeSpace.showLegacy();
       origin = nativeSpace.getSnapshot();
       if (!readOnly) {
-        await call("session-select", { profile: role.id, session: id });
+        const selecting = call("session-select", { profile: role.id, session: id });
         if (current()) await refresh(true);
+        await selecting;
       }
       return;
     }
@@ -17583,9 +17645,10 @@ var selectSession = async (role, id, project, page) => {
       return;
     }
     if (!readOnly) {
-      await call("session-select", { profile: role.id, session: id });
-      if (!current()) return;
-      await refresh(true);
+      void pullTranscript(role.id, id);
+      const selecting = call("session-select", { profile: role.id, session: id });
+      if (current()) await refresh(true);
+      await selecting;
     }
     if (!current()) return;
     remember(role.id, project.id, id);
@@ -18914,7 +18977,7 @@ button.nodo-round-summary{cursor:pointer}
    Host CSS module class names differ between Web and Desktop builds. */
 .nodo-welcome{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;min-height:0;padding:24px 16px;box-sizing:border-box}
 .nodo-welcome [data-conversation-content][data-content-phase=hero]>[data-conversation-scroll]{overflow:visible}
-.nodo-welcome-body{display:flex;flex-direction:column;gap:20px;width:min(calc(clamp(680px,(100% + 32px) * .64,920px) + 64px),100%)}
+.nodo-welcome-body{container-type:inline-size;display:flex;flex-direction:column;gap:20px;width:min(calc(clamp(680px,(100% + 32px) * .64,920px) + 64px),100%)}
 .nodo-welcome-hero{margin:0;display:flex;flex-direction:column;align-items:center}
 .nodo-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .nodo-field>span{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
@@ -22054,7 +22117,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
   const members = team && sessionId && rounds?.members.get(sessionId) || [];
   const leadEntry = sessionId ? rounds?.lead.get(sessionId) : void 0;
   const lead = leadEntry ?? (members.length > 0 ? { role: profile, session } : void 0);
-  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => item.session.id === sessionId || opened.includes(item.session.id))] : [];
+  const tabs = lead ? [lead, ...rounds.members.get(lead.session.id).filter((item) => !nativeRole(item.role) && (item.session.id === sessionId || opened.includes(item.session.id)))] : [];
   const tabRoles = lead ? [lead.role, ...rounds.members.get(lead.session.id).map((item) => item.role)] : [];
   const activeTasks = members.filter((item) => view2.work[item.session.id]?.active === true).length;
   const panelCwd = sessionId ? session?.cwd ?? workspaces.find((item) => item.id === (session?.workspaceRef ?? profile?.workspaceId))?.cwd : workspace?.cwd;
@@ -22347,7 +22410,7 @@ function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigation = n
     // row and one hairline closing the block.
     (0, import_react.createElement)(
       "header",
-      { className: "nodo-head", "data-rightbar-open": rightbarOpen || void 0 },
+      { className: "nodo-head", "data-window-drag": true, "data-rightbar-open": rightbarOpen || void 0 },
       (0, import_react.createElement)(
         "div",
         { className: "nodo-title-row" },

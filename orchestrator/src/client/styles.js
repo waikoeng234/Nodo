@@ -747,7 +747,7 @@ button.nodo-round-summary{cursor:pointer}
    Host CSS module class names differ between Web and Desktop builds. */
 .nodo-welcome{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;min-height:0;padding:24px 16px;box-sizing:border-box}
 .nodo-welcome [data-conversation-content][data-content-phase=hero]>[data-conversation-scroll]{overflow:visible}
-.nodo-welcome-body{display:flex;flex-direction:column;gap:20px;width:min(calc(clamp(680px,(100% + 32px) * .64,920px) + 64px),100%)}
+.nodo-welcome-body{container-type:inline-size;display:flex;flex-direction:column;gap:20px;width:min(calc(clamp(680px,(100% + 32px) * .64,920px) + 64px),100%)}
 .nodo-welcome-hero{margin:0;display:flex;flex-direction:column;align-items:center}
 .nodo-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .nodo-field>span{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}

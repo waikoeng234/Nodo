@@ -1,7 +1,12 @@
+import { invalid } from '../../core/src/errors.js'
+
 const WINDOW_MS = 100
 
 export function install(rt) {
   const subscribers = new Set()
+  // 观察中的流：id → subscriber。客户端经 /api/nodo 的 live-watch 端点对这条
+  // 连接同步观察会话，不再靠断开重连改变观察集合。
+  const streams = new Map()
   let timer, disposed = false
   const encode = value => new TextEncoder().encode(JSON.stringify(value) + '\n')
   const deliver = (subscriber, snapshot) => {
@@ -16,6 +21,18 @@ export function install(rt) {
   rt.ctx.effect(() => rt.subscribeLive(() => {
     if (subscribers.size && timer === undefined) timer = setTimeout(publish, WINDOW_MS)
   }), 'nodo: live changes')
+  // since 未知的会话保持沉默：首份数据由客户端的 transcript 拉取负责。
+  rt.liveWatchUpdate = body => {
+    const subscriber = streams.get(String(body?.id ?? ''))
+    if (subscriber === undefined) throw invalid(`No live stream ${body?.id}`)
+    subscriber.targets = (Array.isArray(body.watch) ? body.watch : []).flatMap(({ profile, session, since }) => {
+      // A removed conversation must not discard the other entries' cursors.
+      try { return [{ profile, session: rt.conversation(profile, session).session, since: since ?? undefined }] }
+      catch { return [] }
+    })
+    deliver(subscriber)
+    return true
+  }
   rt.ctx.effect(() => rt.ctx.connection.fetch.register({
     path: '/api/nodo/live', methods: ['GET'], requestBody: 'buffered',
     async fetch(request) {
@@ -26,6 +43,7 @@ export function install(rt) {
         const query = new URL(request.url).searchParams
         const watching = JSON.parse(query.get('watch') ?? '[]')
         if (!Array.isArray(watching)) throw new Error('Invalid subscriptions')
+        const streamId = String(query.get('id') ?? '')
         const targets = watching.map(({ profile, session, since }) => ({
           profile, session: rt.conversation(profile, session).session, since,
         }))
@@ -34,10 +52,12 @@ export function install(rt) {
           if (closed) return
           closed = true
           subscribers.delete(subscriber)
+          if (streams.get(streamId) === subscriber) streams.delete(streamId)
           request.signal.removeEventListener('abort', close)
           controller?.close()
         }
         const subscriber = {
+          targets,
           close,
           send(snapshot) {
             if (closed) return
@@ -57,8 +77,10 @@ export function install(rt) {
             }
             previous = live
             if (Object.keys(update).length > 1) controller.enqueue(encode(update))
-            for (const target of targets) {
-              if (target.session.archivedAt) continue
+            for (const target of subscriber.targets) {
+              // since 未知的会话不下发：整份会话属于客户端自己的 transcript 拉取，
+              // 流里再推一遍就是双份下载。
+              if (target.session.archivedAt || target.since === undefined) continue
               const value = rt.transcriptDelta(target.session.id, target.since)
               const changed = value.full || value.appended.length || value.changed.length || value.base !== target.since?.base
               target.since = { token: value.token, base: value.base, dirty: value.dirty,
@@ -71,6 +93,7 @@ export function install(rt) {
           start(output) {
             controller = output
             subscribers.add(subscriber)
+            if (streamId) streams.set(streamId, subscriber)
             request.signal.addEventListener('abort', close, { once: true })
             if (request.signal.aborted) close()
             else deliver(subscriber)

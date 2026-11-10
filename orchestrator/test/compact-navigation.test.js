@@ -280,6 +280,37 @@ test('opening a bound running native conversation uses its existing window immed
   assert.deepEqual(h.opened, ['native-b'])
 })
 
+test('a session switch fires session-select, the state refresh and the transcript pull together', async () => {
+  const events = []
+  let releaseSelect, releaseRefresh
+  const space = { active: true, legacy: true }
+  const { selectSession } = await loadClient('page-sessions.js', {
+    stubs: { 'live.js': { pullTranscript: (profile, session) => { events.push(`pull:${session}`); return Promise.resolve() } } },
+    uiShared: {
+      call: async (endpoint, payload) => {
+        events.push(endpoint)
+        if (endpoint === 'session-select') await new Promise(resolve => { releaseSelect = resolve })
+        return { id: payload?.session ?? 'b' }
+      },
+      nativeSpace: { subscribe: () => () => {}, getSnapshot: () => space },
+      openNativeSession: null,
+    },
+  })
+  const role = { id: 'role', engine: 'zcode', sessions: [{ id: 'b', workspaceRef: 'w' }] }
+  const page = {
+    workspace: { id: 'w' }, workspaces: [{ id: 'w' }], work: {}, navigation: {}, sidebarOnly: true, readOnly: false,
+    remember: () => {}, refresh: async () => { events.push('refresh'); await new Promise(resolve => { releaseRefresh = resolve }) },
+    selection: { current: 0 }, setActionError: () => {}, setEditing: () => {},
+  }
+  const pending = selectSession(role, 'b', page.workspace, page)
+  await tick()
+  assert.deepEqual([...events], ['pull:b', 'session-select', 'refresh'],
+    'the transcript pull starts beside the selection write instead of behind the state refresh')
+  releaseSelect(); releaseRefresh()
+  await pending
+  assert.deepEqual(events.at(-1), 'refresh', 'the refresh resolves before the selection settles')
+})
+
 test('an archived worktree session anchors the rail at its project', async () => {
   const h = await mount()
   h.view.workspaces.push({ id: 'wt', name: 'branch', worktree: { branch: 'feat', project: 'workspace' } })

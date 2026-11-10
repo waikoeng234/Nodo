@@ -11,6 +11,7 @@ const fakeTimers = () => {
   let serial = 0
   return {
     AbortController, URLSearchParams, TextDecoder,
+    crypto: { randomUUID: () => `stream-${++serial}` },
     setTimeout: (callback, ms) => { const id = ++serial; timers.push({ callback, ms, id, run() { const at = timers.findIndex(timer => timer.id === id); if (at >= 0) timers.splice(at, 1); callback() } }); return id },
     clearTimeout: id => { const at = timers.findIndex(timer => timer.id === id); if (at >= 0) timers.splice(at, 1) },
   }
@@ -84,7 +85,7 @@ test('a dsh update install drops the stream, holds reconnects and keeps the fall
   timers.length = 0
   let installing = null, streams = 0
   const { subscribeLive, getLive, liveError } = await loadClient('live.js', {
-    globals: { ...fakeTimers(), dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
     call: endpoint => {
       if (!endpoint) { streams++; throw new Error('stream disconnected') }
       return { struct: 1, activity: 0, work: {}, profiles: [], tasks: [{ id: 'task', status: 'open' }] }
@@ -127,7 +128,7 @@ test('an open live stream is aborted the moment dsh enters installing and reopen
     return { json: async () => ({ ok: true, value: { struct: 1, activity: 0, work: {}, profiles: [] } }) }
   }
   const { subscribeLive, liveError } = await loadClient('live.js', {
-    globals: { ...fakeTimers(), fetch, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, fetch, dshDesktop: { updates: { subscribe: listener => { installing = listener; return () => { installing = null } } } } },
   })
   const stop = subscribeLive(() => {})
   await flush()
@@ -226,6 +227,157 @@ test('a pull asked for while one is in flight runs once after it lands', async (
   await first
   await flush()
   assert.equal(pulls.length, 2)
+})
+
+test('a forced refresh during an in-flight state poll follows up once instead of racing a second', async () => {
+  timers.length = 0
+  let release
+  const states = []
+  const { subscribeLive, refreshLive } = await loadClient('live.js', {
+    globals: fakeTimers(),
+    call: async (endpoint, payload) => {
+      if (!endpoint) throw new Error('stream disconnected')
+      states.push(payload ?? null)
+      if (states.length === 1) await new Promise(resolve => { release = resolve })
+      return { struct: 1, activity: 0, work: {}, profiles: [] }
+    },
+  })
+  const stop = subscribeLive(() => {})
+  await flush()
+  assert.equal(states.length, 1, 'the initial poll is in flight')
+  const refresh = refreshLive(true)
+  await flush()
+  assert.equal(states.length, 1, 'no second request starts while one is in flight')
+  release({ struct: 1, activity: 0, work: {}, profiles: [] })
+  await refresh
+  assert.equal(states.length, 2, 'the forced refresh runs once, after the flight lands')
+  await flush()
+  assert.equal(states.length, 2, 'no further polls follow')
+  stop()
+})
+
+test('watch set changes ride the open stream: adds and removes never reconnect it', async () => {
+  timers.length = 0
+  const connections = [], posts = []
+  const fetch = async (url, options) => {
+    if (String(url).includes('/live')) {
+      let rejectRead
+      const pending = new Promise((resolve, reject) => { rejectRead = reject })
+      options.signal.addEventListener('abort', () => rejectRead(new Error('aborted')), { once: true })
+      const reader = { read: () => pending, cancel: async () => {}, releaseLock: () => {} }
+      connections.push(new URL(url, 'http://test').searchParams)
+      return { ok: true, body: { getReader: () => reader } }
+    }
+    const { endpoint, payload } = JSON.parse(options.body)
+    posts.push({ endpoint, payload })
+    const value = endpoint === 'transcript' ? { full: true, token: 't', base: 1, dirty: 1, lines: [] } : true
+    return { json: async () => ({ ok: true, value }) }
+  }
+  const { subscribeLive, watchTranscript } = await loadClient('live.js', {
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, fetch },
+  })
+  const stopLive = subscribeLive(() => {})
+  await flush()
+  assert.equal(connections.length, 1)
+  const stopWatch = watchTranscript('p', 's')
+  await flush()
+  assert.equal(connections.length, 1, 'watching a session keeps the stream open')
+  assert.deepEqual(posts.map(post => post.endpoint), ['state', 'live-watch', 'transcript', 'live-watch'],
+    'the watch set goes out at once, and the landed pull supplies the positions in a second sync')
+  assert.deepEqual(posts[1].payload, { id: 'stream', watch: [{ profile: 'p', session: 's' }] },
+    'the first sync carries no since: the pull owns the first full copy')
+  assert.deepEqual(posts[3].payload.watch, [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 0, dirty: 1 } }])
+  stopWatch()
+  await flush()
+  assert.equal(connections.length, 1, 'unwatching keeps the stream open too')
+  assert.deepEqual(posts.at(-1).payload, { id: 'stream', watch: [] })
+  stopLive()
+})
+
+test('a failed first pull is retried on the next activity move even while the stream stays up', async () => {
+  timers.length = 0
+  const pulls = [], connections = [], posts = []
+  let controller, states = 0
+  const encode = frame => new TextEncoder().encode(JSON.stringify(frame) + '\n')
+  const fetch = async (url, options) => {
+    if (String(url).includes('/live')) {
+      const stream = new Response(new ReadableStream({ start(value) { controller = value }, cancel() {} }))
+      options.signal.addEventListener('abort', () => controller.close(), { once: true })
+      connections.push(url)
+      return stream
+    }
+    const { endpoint, payload } = JSON.parse(options.body)
+    posts.push({ endpoint, payload })
+    if (endpoint === 'transcript') {
+      pulls.push(payload)
+      // The first pull dies on the relay; the retry succeeds.
+      return pulls.length === 1
+        ? { json: async () => ({ ok: false, error: { message: 'relay dropped' } }) }
+        : { json: async () => ({ ok: true, value: { full: true, token: 't', base: 1, dirty: 1,
+            lines: [{ n: 1, line: { who: 'agent', kind: 'text', text: 'late' } }] } }) }
+    }
+    if (endpoint === 'state') { states++; return { json: async () => ({ ok: true, value: { struct: states, activity: states, work: {}, profiles: [] } }) } }
+    return { json: async () => ({ ok: true, value: true }) }
+  }
+  const { subscribeLive, watchTranscript, transcriptOf, transcriptError } = await loadClient('live.js', {
+    globals: { ...fakeTimers(), crypto: { randomUUID: () => 'stream' }, fetch },
+  })
+  const stopLive = subscribeLive(() => {})
+  const stopWatch = watchTranscript('p', 's')
+  await flush()
+  assert.equal(connections.length, 1, 'the stream is connected')
+  assert.equal(pulls.length, 1)
+  assert.equal(transcriptError('p:s'), 'relay dropped', 'the failed first pull surfaces its error')
+  // An activity move reaches the client as a structure change; its poll must re-pull.
+  controller.enqueue(encode({ type: 'structure', struct: 2 }))
+  await flush()
+  assert.equal(pulls.length, 2, 'the activity move re-pulls the session whose first pull never landed')
+  assert.deepEqual(transcriptOf('p:s').map(line => line.text), ['late'])
+  assert.equal(transcriptError('p:s'), '')
+  // The retry's positions must reach the host, or the stream stays silent forever.
+  assert.deepEqual(posts.filter(post => post.endpoint === 'live-watch').at(-1).payload.watch,
+    [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 1, dirty: 1 } }])
+  assert.equal(connections.length, 1, 'the retry keeps the stream open')
+  // The next activity move pulls nothing: the session holds positions now.
+  controller.enqueue(encode({ type: 'structure', struct: 3 }))
+  await flush()
+  assert.equal(pulls.length, 2, 'a session with positions is not re-pulled again')
+  stopWatch(); stopLive()
+})
+
+test('a failed watch acknowledgement stays dirty even when the desired set returns to its previous value', async () => {
+  timers.length = 0
+  const watches = []
+  let rejectRead
+  const pending = new Promise((resolve, reject) => { rejectRead = reject })
+  const { subscribeLive, watchTranscript } = await loadClient('live.js', { globals: {
+    ...fakeTimers(),
+    fetch: async (url, options) => {
+      if (String(url).includes('/live')) {
+        options.signal.addEventListener('abort', () => rejectRead(new Error('aborted')), { once: true })
+        return { ok: true, body: { getReader: () => ({ read: () => pending, cancel: async () => {}, releaseLock() {} }) } }
+      }
+      const { endpoint, payload } = JSON.parse(options.body)
+      if (endpoint === 'live-watch') {
+        watches.push(payload.watch)
+        throw new Error('response lost after applying the set')
+      }
+      const value = endpoint === 'transcript' ? { full: true, token: 't', base: 1, dirty: 1, lines: [] } : { struct: 1, activity: 0, work: {}, profiles: [] }
+      return Response.json({ ok: true, value })
+    },
+  } })
+  const stop = subscribeLive(() => {})
+  await flush()
+  const stopWatch = watchTranscript('p', 's')
+  await flush()
+  stopWatch()
+  await flush()
+  assert.equal(watches.length, 1, 'changes wait for the retry after a failure')
+  timers.find(timer => timer.ms === 1000).run()
+  await flush()
+  assert.deepEqual(watches, [[{ profile: 'p', session: 's' }], []], 'the empty set must be resent even though it matches the GET watch set')
+  stop()
+  assert.equal(timers.length, 0, 'unmount cancels the next watch retry')
 })
 
 test('the page drops the head the host trimmed, so rows stay aligned past the line cap', async () => {
