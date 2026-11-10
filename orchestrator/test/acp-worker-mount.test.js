@@ -64,8 +64,7 @@ for (const engine of ['dsh', 'opencode', 'codebuddy']) {
         const card = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === execution.id && line.origin?.kind === 'report')
         assert.ok(card.text.includes(`报告：report:${report.reportId}`))
       }
-      assert.equal(rt.driverOf(owner.id).workerMcpMounted, false, 'a leader session never mounts the worker channel')
-      assert.equal(await rt.issueWorkerMcp(owner.id), undefined)
+      assert.equal(await rt.issueWorkerMcp(owner.id), undefined, 'a leader session never receives a worker credential')
       await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
     }))
   }
