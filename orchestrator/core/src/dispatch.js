@@ -37,6 +37,14 @@ export function install(rt) {
     }
     return text
   }
+  // The transcript user line reproduces the engine input; when the fallback
+  // rewrites the report method the line must follow, or the prompt on screen
+  // would claim a tool the session does not have.
+  const recordWorkerInput = (sessionId, line, before, after) => {
+    if (line === undefined || before === after || line.text !== before) return
+    line.text = after
+    rt.touchLine?.(sessionId, line)
+  }
   /** @type {Map<string, {starting:boolean, active:boolean, finishing:boolean, suspect:boolean, cancelledStart:boolean, turnId:?string, seq:number, toolOpen:string|null, queued:{text:string, images:object[], seq:number, resolve:Function}[], waiters:{seq:number, resolve:Function}[], binds:{seq:number, resolve:Function}[], idleTimer:?Object, cancelTimer:?Object}>} */
   const turns = new Map()
   const stateOf = (sessionId) => {
@@ -107,13 +115,13 @@ export function install(rt) {
   const drain = (sessionId, st) => {
     if (st.active || st.starting || st.finishing || rt.isCompacting(sessionId) || st.queued.length === 0 || st.queued[0].sending) return
     const next = st.queued.shift()
-    if (next.pendingLine) Object.assign(next.pendingLine, say(sessionId, next.pendingLine))
-    startTurn(sessionId, st, next.text, next.seq, next.images, next.task, next.onInput, next.origin)
+    const line = next.pendingLine ? Object.assign(next.pendingLine, say(sessionId, next.pendingLine)) : next.line
+    startTurn(sessionId, st, next.text, next.seq, next.images, next.task, next.onInput, next.origin, line)
   }
 
   const { driverSink } = createDispatchSinks(rt, { stateOf, say, messagesOf, closeMessages, bindTurn, settle, armIdle, disarmIdle, drain })
 
-  const startTurn = (sessionId, st, text, seq, images, task = text, onInput, origin) => {
+  const startTurn = (sessionId, st, text, seq, images, task = text, onInput, origin, line) => {
     if (leadModeOf(rt.conversationOf(sessionId)?.profile, rt.conversationOf(sessionId)?.session)) rt.clearPendingTrigger?.(sessionId)
     onInput?.()
     const decisionInput = origin?.kind === 'decision' ? { origin } : undefined
@@ -152,7 +160,9 @@ export function install(rt) {
           text = restored.text
           images = restored.images
         }
-        text = workerInputFor(driver, text, origin)
+        const actual = workerInputFor(driver, text, origin)
+        recordWorkerInput(sessionId, line, text, actual)
+        text = actual
       } catch (error) {
         decisionInput?.reject(error)
         driverSink(sessionId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
@@ -232,17 +242,19 @@ export function install(rt) {
   const steer = async (sessionId, st, item) => {
     const { profile, session } = rt.conversationOf(sessionId)
     const host = st.seq
+    let actual
     const outcome = item.images.length === 0 && !rt.isCompacting(sessionId) && st.settings === settingsOf(profile, session)
       ? await Promise.resolve().then(() => {
         const snapshot = rt.leadSnapshot?.(sessionId)
         const driver = rt.driverOf(sessionId)
-        const text = workerInputFor(driver, item.text, item.origin)
-        return driver?.steer(snapshot ? `${text}\n\n${snapshot}` : text)
+        actual = workerInputFor(driver, item.text, item.origin)
+        return driver?.steer(snapshot ? `${actual}\n\n${snapshot}` : actual)
       }).catch(() => undefined) : undefined
     if (outcome !== 'steered' && outcome !== 'indeterminate') return null
     if (item.cancelled) return outcome
     item.onInput?.()
-    if (item.pendingLine) say(sessionId, item.pendingLine)
+    const line = item.pendingLine ? Object.assign(item.pendingLine, say(sessionId, item.pendingLine)) : item.line
+    recordWorkerInput(sessionId, line, item.text, actual)
     say(sessionId, { who: 'system', kind: 'note', text: outcome === 'steered' ? 'steered into the running turn' : UNCONFIRMED_STEER })
     if (st.seq === host && occupied(sessionId, st)) {
       st.task = [st.task, item.task].filter(Boolean).join('\n')
@@ -313,10 +325,11 @@ export function install(rt) {
     if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
     const pendingLine = queue && occupied(sessionId, st) ? line : undefined
-    if (!pendingLine) Object.assign(line, say(sessionId, line))
+    const stored = pendingLine ? undefined : say(sessionId, line)
+    if (stored) Object.assign(line, stored)
     if (structureChanged) await rt.save()
     if (occupied(sessionId, st)) {
-      const item = { text: input, task: text, images, seq, pendingLine, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
+      const item = { text: input, task: text, images, seq, pendingLine, line: stored ?? line, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
       const outcome = queue ? null : await steer(sessionId, st, item)
       if (outcome === 'indeterminate' && origin?.kind === 'supplement' && origin.executionId) {
         rt.state.executions[origin.executionId].supplementUnconfirmed = true
@@ -328,7 +341,7 @@ export function install(rt) {
       drain(sessionId, st)
       return { mode: 'queued', seq, completion, turn, leadFlight }
     }
-    startTurn(sessionId, st, input, seq, images, text, onInput, origin)
+    startTurn(sessionId, st, input, seq, images, text, onInput, origin, stored)
     return { mode: 'turn', seq, completion, turn, leadFlight }
   }
 
@@ -347,8 +360,8 @@ export function install(rt) {
     if (action !== 'send') throw invalid('Unknown queue action')
     if (!occupied(sessionId, st)) {
       st.queued.splice(st.queued.indexOf(item), 1)
-      Object.assign(item.pendingLine, say(sessionId, item.pendingLine))
-      startTurn(sessionId, st, item.text, item.seq, item.images, item.task, item.onInput, item.origin)
+      const line = Object.assign(item.pendingLine, say(sessionId, item.pendingLine))
+      startTurn(sessionId, st, item.text, item.seq, item.images, item.task, item.onInput, item.origin, line)
       return { mode: 'turn' }
     }
     if (item.origin?.kind === 'decision') return { mode: 'queued' }
