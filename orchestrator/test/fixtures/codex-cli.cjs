@@ -14,6 +14,7 @@ const FIXTURE_CATALOG = { models: [
 if (process.argv.includes('--version')) { console.log('codex-cli fixture'); process.exit(0) }
 if (process.env.CODEX_FIXTURE_SPAWN_LOG) appendFileSync(process.env.CODEX_FIXTURE_SPAWN_LOG, JSON.stringify({ pid: process.pid, argv: process.argv.slice(2) }) + '\n')
 if (process.argv.includes('debug') && process.argv.includes('models')) {
+  if (process.env.CODEX_FIXTURE_MODELS_STDERR) process.stderr.write(process.env.CODEX_FIXTURE_MODELS_STDERR + '\n')
   if (process.env.CODEX_FIXTURE_MODELS_ERROR) process.exit(1)
   process.stdout.write(process.env.CODEX_FIXTURE_MODELS_JSON ?? JSON.stringify(FIXTURE_CATALOG))
   process.exit(0)

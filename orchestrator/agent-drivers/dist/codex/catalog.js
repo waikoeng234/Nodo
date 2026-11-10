@@ -18,7 +18,10 @@ export async function writeLeaderCatalog({ executable, model, dir, env }) {
         raw = (await execute(launch.bin, launch.args, { env: { ...process.env, ...env }, timeout: 30_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true, ...(launch.verbatim ? { windowsVerbatimArguments: true } : {}) })).stdout;
     }
     catch (error) {
-        throw leadUnavailable(`Codex model catalog could not be read (${error.message}). Leaders need it to remove the built-in execution tools.`);
+        // execFile puts the CLI's stderr in the message; only its exit code is safe
+        // to show, the same reason json-rpc-process keeps stderr out of errors.
+        const code = error.code;
+        throw leadUnavailable(`Codex model catalog could not be read (${typeof code === 'string' ? code : typeof code === 'number' ? `exit ${code}` : 'unavailable'}). Leaders need it to remove the built-in execution tools.`);
     }
     let catalog;
     try {

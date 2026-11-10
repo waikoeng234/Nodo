@@ -228,6 +228,21 @@ test('Codex leaders fail closed when the catalog entry lost its tool-surface fie
   })
 })
 
+test('Codex catalog failures never echo the CLI stderr', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true, leadMcpServers: leadMount(),
+      env: { CODEX_FIXTURE_MODELS_ERROR: '1', CODEX_FIXTURE_MODELS_STDERR: 'token=do-not-print-this' } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.equal(error.message.includes('do-not-print-this'), false, 'the CLI stderr stays out of the refusal')
+        assert.match(error.message, /could not be read \(exit 1\)/, 'only the exit code names the failure')
+        return true
+      })
+    } finally { driver.dispose() }
+  })
+})
+
 test('Codex leaders fail closed when the MCP servers cannot be enumerated', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
