@@ -6,6 +6,7 @@ import { checkCliBase, invalidConfig, validateBin, validateWorkspace } from '../
 import { collector, listDirs, newestPluginVersions } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { connectCodex, ensureCodexWorkspace, findCodexExecutable } from './native.js';
+import { leadUnavailable, writeLeaderCatalog } from './catalog.js';
 import { createFileChanges } from '../file-changes.js';
 import { LEAD_TOOLS } from '../lead-mcp.js';
 import { WORKER_TOOLS } from '../worker-mcp.js';
@@ -147,17 +148,38 @@ export async function scanCodex({ engineOptions = {} } = {}) {
 // Only the blocking request_user_input reaches this client as a card.
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.';
 // A leader only routes: the sandbox is read-only and the built-in capabilities
-// that a config key can turn off are turned off here. Unknown keys are accepted
-// silently and feature names move between versions, so the config-freeze test
-// is the drift guard.
+// that a config key can turn off are turned off here. `exec` and the
+// collaboration tools are not among them — they follow the model catalog entry
+// of the leader's own process (catalog.ts) — and `unified_exec` cannot be turned
+// off in any config layer. Unknown keys are accepted silently and feature names
+// move between versions, so the config-freeze test is the drift guard.
 const LEAD_CONFIG = {
     'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
     'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
     'features.goals': false, 'features.apps': false, 'features.plugins': false,
-    'features.skill_search': false, 'features.collab': false, 'features.multi_agent_v2': false,
-    'features.image_generation': false, 'tools.web_search': false, 'tools.update_plan': { enabled: false },
+    'features.skill_search': false, 'features.multi_agent_v2': false, 'features.image_generation': false,
+    'features.hooks': false, 'features.memories': false,
+    'tools.web_search': false, 'tools.update_plan': { enabled: false },
 };
-export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, lead, leadMcpServers } = {}) {
+// The catalog override switches the leader to direct tool calling, where MCP
+// tools stay behind a tool search until the model asks for them.
+const LEAD_TOOL_SEARCH = 'Your Nodo tools are deferred MCP tools: search for mcp__nodo_lead with the tool search before calling one.';
+// Every MCP server the leader's process would expose, plugin-provided ones
+// included; the thread config deep-merges, so each name has to be disabled on
+// its own rather than by replacing the table.
+async function listMcpServers(peer) {
+    const names = [];
+    let cursor;
+    do {
+        const page = await peer.request('mcpServerStatus/list', { limit: 100, detail: 'toolsAndAuthOnly', ...(cursor ? { cursor } : {}) }, 60_000);
+        for (const item of page.data ?? [])
+            if (typeof item?.name === 'string' && item.name !== '' && item.name !== 'nodo_lead')
+                names.push(item.name);
+        cursor = page.nextCursor ?? undefined;
+    } while (cursor && names.length < 500);
+    return names;
+}
+export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, instructionDir, lead, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -416,6 +438,19 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             detail: isQuestion ? { questions: params.questions } : { command: params.command, cwd: params.cwd },
         });
     };
+    // The catalog entry must be the model the thread itself runs: the profile's
+    // model, or else the top-level model of the user's config.toml. A model set
+    // only in a `[profiles.*]` table never reaches the thread, and switching a
+    // different entry would leave the running model's tools intact.
+    const leaderModel = () => model || codexConfigModels(join(codexHome(), 'config.toml')).find(entry => entry.label === undefined)?.id;
+    const leaderCatalog = async (executable) => {
+        const target = leaderModel();
+        if (!target)
+            throw leadUnavailable('Codex leaders need a model: set one in the profile so its catalog entry can be switched to direct tool calling.');
+        if (!instructionDir)
+            throw leadUnavailable('Codex leaders need the Nodo data directory to store their model catalog.');
+        return writeLeaderCatalog({ executable, model: target, dir: instructionDir, env });
+    };
     const boot = () => {
         if (ready)
             return ready;
@@ -436,7 +471,10 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             if (!executable)
                 throw new Error('Codex executable not found. Edit the profile CLI path or install the CLI separately.');
             emit({ type: 'session', state: 'starting' });
-            connection = await connectCodex({ executable, cwd, env, socket,
+            // A leader gets its own app-server: the catalog that drops the built-in
+            // execution tools is read only by a process this driver starts.
+            const catalog = lead ? await leaderCatalog(executable) : undefined;
+            connection = await connectCodex({ executable, cwd, env, socket, ...(catalog ? { catalog } : {}),
                 onNotification: receive, onRequest: ask,
                 onClose(error) {
                     if (peer !== connection)
@@ -460,17 +498,31 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             // The daemon is shared, so the handshake's own agent string is the only
             // version the driver sees without a second process.
             const version = /(\d[\w.-]*)/.exec(typeof hello?.userAgent === 'string' ? hello.userAgent : '')?.[1];
-            coverage.setIdentity({ transport: 'app-server proxy', ...(version ? { cliVersion: version } : {}) });
+            coverage.setIdentity({ transport: catalog ? 'app-server stdio' : 'app-server proxy', ...(version ? { cliVersion: version } : {}) });
+            // Fail closed: a leader that cannot see the user's servers would start with
+            // all of them exposed, and the thread config cannot be revisited later.
+            let disabledMcp = {};
+            if (lead) {
+                try {
+                    disabledMcp = Object.fromEntries((await listMcpServers(peer)).map(name => [`mcp_servers.${name}.enabled`, false]));
+                }
+                catch (error) {
+                    throw leadUnavailable(`Codex MCP servers could not be enumerated (${error.message}). Leaders need this list to keep the user's servers out.`);
+                }
+            }
             workspaceId = await ensureCodexWorkspace(peer, { cwd: cwd, name, workspaceId });
             const method = threadId ? 'thread/resume' : 'thread/start';
             const params = { ...(threadId ? { threadId } : { projectId: workspaceId, historyMode: 'paginated' }), cwd, ...(model ? { model } : {}) };
             // The autonomy tier rides the thread params: the sandbox bounds what the
             // engine may touch at all, `never` approval is what makes the top tier full.
+            const developerInstructions = [instructions, lead ? LEAD_TOOL_SEARCH : '', instructions ? QUESTION_ROUTING : ''].filter(Boolean).join('\n\n');
             const extras = {
                 // The shared daemon keeps the environment it started with, so the HTTP
-                // token rides this thread's config instead of an env var.
-                ...(leadMcpServers?.length ? { config: {
-                        ...Object.fromEntries(leadMcpServers.map(server => [`mcp_servers.${server.name}`, {
+                // token rides this thread's config instead of an env var. The user's own
+                // servers are disabled by name: the thread config deep-merges.
+                ...(leadMcpServers?.length || Object.keys(disabledMcp).length ? { config: {
+                        ...disabledMcp,
+                        ...Object.fromEntries((leadMcpServers ?? []).map(server => [`mcp_servers.${server.name}`, {
                                 ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
                                     : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
                                 enabled_tools: server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS,
@@ -482,16 +534,16 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
                 // A leader keeps the read-only sandbox in every tier — routing only.
                 ...(lead || permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access' }
                     : permission === 'workspace' ? { sandbox: 'workspace-write' } : {}),
-                ...(instructions ? { developerInstructions: `${instructions}\n\n${QUESTION_ROUTING}` } : {}),
+                ...(developerInstructions ? { developerInstructions } : {}),
             };
             let result;
             resuming = !!threadId;
             try {
                 result = await peer.request(method, { ...params, ...extras });
-                instructionMode = instructions ? 'native' : 'none';
+                instructionMode = developerInstructions ? 'native' : 'none';
             }
             catch (error) {
-                if (!instructions || error.code !== -32602 || !/unknown field\s+[`'"]?developerInstructions\b/i.test(error.message))
+                if (!developerInstructions || error.code !== -32602 || !/unknown field\s+[`'"]?developerInstructions\b/i.test(error.message))
                     throw error;
                 const fallback = { ...extras };
                 delete fallback.developerInstructions;
