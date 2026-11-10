@@ -14,7 +14,7 @@ let retry = null
 let failures = 0
 let connected = false
 let restarting = false
-// 已连上的流：{ id, synced }，id 供 live-watch 定位这条连接，
+// 已连上的流：id 供 live-watch 定位这条连接，
 // synced 记录宿主已知的观察集合及其 since。
 let stream = null
 // 会话记录：`${profile}:${session}` → { positions, lines, error }。
@@ -85,8 +85,9 @@ const connect = async () => {
     if (!response.ok || !response.body) throw new Error('Stream unavailable')
     if (abort.signal.aborted) return
     connected = true
-    stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])) }
-    pushWatch()
+    const active = stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])), pending: false, retry: null }
+    abort.signal.addEventListener('abort', () => { clearTimeout(active.retry); active.retry = null }, { once: true })
+    void pushWatch()
     clearTimeout(timer); timer = null
     const reader = response.body.getReader(), decoder = new TextDecoder()
     let pending = ''
@@ -120,6 +121,7 @@ const connect = async () => {
   } finally {
     if (connection === abort && !abort.signal.aborted) {
       connected = false
+      clearTimeout(stream?.retry)
       schedule()
       retry = setTimeout(() => { retry = null; void connect() }, Math.min(30000, 1000 * 2 ** Math.min(failures++, 5)))
     }
@@ -135,22 +137,27 @@ const restart = () => {
   })
 }
 
-// The open stream carries the watch set: adds and removes ride the /api/nodo
-// channel keyed by the stream id, so a session switch never aborts the stream.
+// Full watch sets ride the /api/nodo channel one at a time, so a session switch
+// never aborts the stream and an older request cannot overwrite a newer set.
 // The host is told a session's positions once they are known; until then it
 // stays silent about that session (the pull covers it).
-const pushWatch = () => {
-  if (!connected || stream === null) return
-  const add = [], remove = []
-  for (const [key, { profileId, sessionId }] of watched) {
-    const since = transcripts.get(key)?.positions ?? null
-    if (stream.synced.get(key) === since) continue
-    add.push({ profile: profileId, session: sessionId, ...(since ? { since } : {}) })
-    stream.synced.set(key, since)
+const pushWatch = async () => {
+  const active = stream
+  if (!connected || active === null || active.pending || active.retry !== null) return
+  const synced = new Map([...watched.keys()].map(key => [key, transcripts.get(key)?.positions ?? null]))
+  if (active.synced && synced.size === active.synced.size && [...synced].every(([key, since]) => active.synced.has(key) && active.synced.get(key) === since)) return
+  const watch = [...watched].map(([key, { profileId: profile, sessionId: session }]) => ({ profile, session, ...(synced.get(key) ? { since: synced.get(key) } : {}) }))
+  active.pending = true
+  try {
+    await call('live-watch', { id: active.id, watch })
+    active.synced = synced
+  } catch {
+    active.synced = null
+    if (connected && stream === active) active.retry = setTimeout(() => { active.retry = null; void pushWatch() }, 1000)
+  } finally {
+    active.pending = false
   }
-  for (const key of [...stream.synced.keys()]) if (!watched.has(key)) remove.push(key)
-  for (const key of remove) stream.synced.delete(key)
-  if (add.length || remove.length) void call('live-watch', { id: stream.id, add, remove }).catch(() => {})
+  if (stream === active) void pushWatch()
 }
 
 // dsh 更新加锁前断开流并停掉重连，轮询兜底继续；离开 installing 由 restart 重连。

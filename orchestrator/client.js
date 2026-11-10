@@ -9289,8 +9289,12 @@ var connect = async () => {
     if (!response.ok || !response.body) throw new Error("Stream unavailable");
     if (abort.signal.aborted) return;
     connected = true;
-    stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])) };
-    pushWatch();
+    const active = stream = { id: streamId, synced: new Map(watch.map(({ profile, session, since }) => [keyOf(profile, session), since ?? null])), pending: false, retry: null };
+    abort.signal.addEventListener("abort", () => {
+      clearTimeout(active.retry);
+      active.retry = null;
+    }, { once: true });
+    void pushWatch();
     clearTimeout(timer);
     timer = null;
     const reader = response.body.getReader(), decoder = new TextDecoder();
@@ -9335,6 +9339,7 @@ var connect = async () => {
   } finally {
     if (connection === abort && !abort.signal.aborted) {
       connected = false;
+      clearTimeout(stream?.retry);
       schedule();
       retry = setTimeout(() => {
         retry = null;
@@ -9353,19 +9358,26 @@ var restart = () => {
     void connect();
   });
 };
-var pushWatch = () => {
-  if (!connected || stream === null) return;
-  const add = [], remove = [];
-  for (const [key, { profileId, sessionId }] of watched) {
-    const since = transcripts.get(key)?.positions ?? null;
-    if (stream.synced.get(key) === since) continue;
-    add.push({ profile: profileId, session: sessionId, ...since ? { since } : {} });
-    stream.synced.set(key, since);
+var pushWatch = async () => {
+  const active = stream;
+  if (!connected || active === null || active.pending || active.retry !== null) return;
+  const synced = new Map([...watched.keys()].map((key) => [key, transcripts.get(key)?.positions ?? null]));
+  if (active.synced && synced.size === active.synced.size && [...synced].every(([key, since]) => active.synced.has(key) && active.synced.get(key) === since)) return;
+  const watch = [...watched].map(([key, { profileId: profile, sessionId: session }]) => ({ profile, session, ...synced.get(key) ? { since: synced.get(key) } : {} }));
+  active.pending = true;
+  try {
+    await call("live-watch", { id: active.id, watch });
+    active.synced = synced;
+  } catch {
+    active.synced = null;
+    if (connected && stream === active) active.retry = setTimeout(() => {
+      active.retry = null;
+      void pushWatch();
+    }, 1e3);
+  } finally {
+    active.pending = false;
   }
-  for (const key of [...stream.synced.keys()]) if (!watched.has(key)) remove.push(key);
-  for (const key of remove) stream.synced.delete(key);
-  if (add.length || remove.length) void call("live-watch", { id: stream.id, add, remove }).catch(() => {
-  });
+  if (stream === active) void pushWatch();
 };
 var stopUpdatePause = null;
 var pauseStreams = () => {

@@ -10,6 +10,71 @@ const positions = value => ({ token: value.token, base: value.base, dirty: value
 const frames = async reader => JSON.parse(new TextDecoder().decode((await reader.read()).value))
 const nextFrame = async (reader, type) => { let frame; do { frame = await frames(reader) } while (frame.type !== type); return frame }
 
+for (const mode of ['lost', 'reordered', 'before-registration']) test(`live-watch recovers ${mode} delivery without switching or reconnecting`, async () => {
+  await withHost(async host => {
+    const rt = await host.runtime
+    const workspace = await host.api('workspace-create', { name: 'Recovery', cwd: host.home })
+    const profile = await host.api('profile-create', { name: 'Recovery', engine: 'echo', workspace: workspace.id })
+    const session = (await host.api('session-create', { profile: profile.id, lazy: true })).id
+    const key = `${profile.id}:${session}`
+    const route = host.routes.find(route => route.path === '/api/nodo/live')
+    const timers = new Map(), posts = [], failures = []
+    let serial = 0, connections = 0, release, register, reader
+    const loaded = await loadClient('live.js', { globals: {
+      AbortController, URLSearchParams, TextDecoder, crypto: { randomUUID: () => 'recovery' },
+      setTimeout(callback, ms) { const id = ++serial; timers.set(id, { callback, ms }); return id },
+      clearTimeout: id => timers.delete(id),
+      fetch: async (url, options) => {
+        if (options.body) {
+          const { endpoint, payload } = JSON.parse(options.body)
+          if (endpoint === 'live-watch') {
+            posts.push(payload)
+            if (mode === 'lost' && posts.length === 2) throw new Error('POST lost')
+            if (mode === 'reordered' && posts.length === 1) await new Promise(resolve => { release = resolve })
+          }
+          const answer = await rt.handle(endpoint, payload)
+          if (!answer.ok) failures.push(answer.error.message)
+          return Response.json(answer)
+        }
+        connections++
+        const request = new Request(new URL(url, 'http://test'), { signal: options.signal })
+        if (mode !== 'before-registration') return route.fetch(request)
+        const ready = new Promise(resolve => { register = async () => { reader = (await route.fetch(request)).body.getReader(); resolve() } })
+        return { ok: true, body: { getReader: () => ({
+          read: async () => { await ready; return reader.read() },
+          cancel: async () => { await ready; return reader.cancel() }, releaseLock: () => reader.releaseLock(),
+        }) } }
+      },
+    } })
+    const stop = loaded.subscribeLive(() => {})
+    await flush()
+    const stopWatch = loaded.watchTranscript(profile.id, session)
+    try {
+      await flush()
+      if (mode === 'before-registration') {
+        assert.ok(failures.some(message => message.includes('No live stream')), 'the POST really reaches the host before stream registration')
+        await register()
+      }
+      // This row arrives while the host still has no usable cursor. Recovery must
+      // catch it up even if no further state or transcript event follows.
+      rt.appendLine(session, { who: 'user', kind: 'text', text: 'sent while unsynced' })
+      await until(() => loaded.getLive().activity === rt.versions().activity)
+      if (mode === 'reordered') { release(); await flush() }
+      else {
+        const retry = [...timers].find(([, timer]) => timer.ms === 1000)
+        assert.ok(retry, 'a failed watch has its own retry while connected polling is stopped')
+        timers.delete(retry[0]); retry[1].callback()
+      }
+      await until(() => loaded.transcriptOf(key).some(line => line.text === 'sent while unsynced'), 1500)
+      rt.appendLine(session, { who: 'agent', kind: 'text', text: 'delegated result' })
+      await until(() => loaded.transcriptOf(key).some(line => line.text === 'delegated result'), 1500)
+      assert.equal(connections, 1, 'recovery keeps the same stream')
+      assert.equal(timers.size, 0, 'successful sync leaves no retry or polling timer')
+    } finally { release?.(); stopWatch(); stop(); await flush() }
+    assert.equal(timers.size, 0, 'unmount clears pending retries')
+  })
+})
+
 test('a shared stream resumes changed and appended rows, stays idle, and cancels on unmount', async () => {
   await withHost(async host => {
     const rt = await host.runtime
@@ -28,7 +93,7 @@ test('a shared stream resumes changed and appended rows, stays idle, and cancels
           if (options.body) {
             const { endpoint, payload } = JSON.parse(options.body)
             requests.push(endpoint)
-            if (endpoint === 'live-watch') watchUpdate = payload
+            if (endpoint === 'live-watch') { watchUpdate = payload; return Response.json({ ok: true, value: true }) }
             return Response.json(await rt.handle(endpoint, payload))
           }
           const query = new URL(url, 'http://test').searchParams
@@ -56,7 +121,7 @@ test('a shared stream resumes changed and appended rows, stays idle, and cancels
     assert.equal(loaded.getLive().work[session].active, true)
     assert.equal(loaded.getLive().profiles[0].sessions.find(row => row.id === session).updatedAt, 123)
     // The watch update carries the positions the transcript pull landed with.
-    const initial = watchUpdate.add[0].since
+    const initial = watchUpdate.watch[0].since
     // Only a running turn's rows change; a background save settles the rows of an idle session.
     const workView = rt.workView
     rt.workView = () => ({ ...workView(), [session]: { active: true } })
@@ -82,7 +147,7 @@ test('a shared stream resumes changed and appended rows, stays idle, and cancels
     assert.deepEqual(loaded.transcriptOf(key).map(row => row.text), ['one!', 'two'])
     assert.equal(loaded.getLive().work[session], undefined)
     assert.deepEqual(requests, ['state', 'live-watch', 'transcript', 'live-watch'],
-      'connected updates issue no polling requests: one watch add at mount, one with the positions the pull landed')
+      'connected updates issue no polling requests: one watch set at mount, one with the positions the pull landed')
     assert.equal(timers.size, 0)
     resumed.controller.enqueue(encode({ type: 'structure', struct: loaded.getLive().struct + 1 }))
     await flush()
@@ -195,29 +260,32 @@ test('live-watch rewrites a stream watch set in place, and a cold entry stays si
     const query = new URLSearchParams({ struct: String(rt.versions().struct), watch: JSON.stringify([{ profile: profile.id, session: one, since }]), id: 'watch-test' })
     const reader = (await route.fetch(new Request(`http://test/api/nodo/live?${query}`, { signal: abort.signal }))).body.getReader()
     assert.equal((await frames(reader)).type, 'live', 'the initial deliver carries no transcript for an unchanged position')
-    assert.equal(await host.api('live-watch', { id: 'watch-test', add: [{ profile: profile.id, session: two }], remove: [] }), true)
+    assert.equal(await host.api('live-watch', { id: 'watch-test', watch: [{ profile: profile.id, session: one, since }, { profile: profile.id, session: two }] }), true)
     rt.appendLine(one, { who: 'agent', kind: 'text', text: 'a2' })
     rt.appendLine(two, { who: 'agent', kind: 'text', text: 'b1' })
     const cold = await nextFrame(reader, 'transcript')
     assert.equal(cold.key, `${profile.id}:${one}`, 'the cold entry is not pushed: its first copy belongs to the transcript pull')
     assert.equal(await Promise.race([frames(reader).then(() => 'frame'), new Promise(resolve => setTimeout(() => resolve('idle'), 250))]), 'idle',
       'no second transcript frame follows for the since-less entry')
-    // Positions land: the follow-up add switches the entry on.
+    // Positions land: the follow-up watch set switches the entry on.
     const landed = positions(rt.transcriptDelta(two, {}))
-    assert.equal(await host.api('live-watch', { id: 'watch-test', add: [{ profile: profile.id, session: two, since: landed }], remove: [] }), true)
+    assert.equal(await host.api('live-watch', { id: 'watch-test', watch: [
+      { profile: profile.id, session: one, since: positions(rt.transcriptDelta(one, {})) },
+      { profile: profile.id, session: two, since: landed },
+    ] }), true)
     rt.appendLine(two, { who: 'agent', kind: 'text', text: 'b2' })
     const warm = await nextFrame(reader, 'transcript')
     assert.equal(warm.key, `${profile.id}:${two}`)
     assert.deepEqual(warm.value.appended.map(row => row.line.text), ['b2'])
     // Removing drops the target without touching the connection.
-    assert.equal(await host.api('live-watch', { id: 'watch-test', add: [], remove: [`${profile.id}:${one}`] }), true)
+    assert.equal(await host.api('live-watch', { id: 'watch-test', watch: [{ profile: profile.id, session: two, since: positions(rt.transcriptDelta(two, {})) }] }), true)
     rt.appendLine(one, { who: 'agent', kind: 'text', text: 'a3' })
     rt.appendLine(two, { who: 'agent', kind: 'text', text: 'b3' })
     const kept = await nextFrame(reader, 'transcript')
     assert.equal(kept.key, `${profile.id}:${two}`, 'only the kept session still streams')
     assert.equal(await Promise.race([frames(reader).then(() => 'frame'), new Promise(resolve => setTimeout(() => resolve('idle'), 250))]), 'idle',
       'the removed session no longer produces frames')
-    await assert.rejects(host.api('live-watch', { id: 'missing', add: [], remove: [] }), /No live stream/, 'an unknown stream id is refused')
+    await assert.rejects(host.api('live-watch', { id: 'missing', watch: [] }), /No live stream/, 'an unknown stream id is refused')
     abort.abort()
   })
 })
@@ -272,5 +340,30 @@ test('a cold switch downloads the transcript once: the stream never pushes a ful
     assert.equal(pulls.length, 1, 'the cold switch pulls the transcript exactly once')
     assert.equal(connections.length, 1, 'the switch opens no second stream')
     stopWatch(); stop()
+  })
+})
+
+test('an obsolete watch entry does not discard valid cursors or delay missed rows until another event', async () => {
+  await withHost(async host => {
+    const rt = await host.runtime
+    const workspace = await host.api('workspace-create', { name: 'Watch', cwd: host.home })
+    const profile = await host.api('profile-create', { name: 'Watch', engine: 'echo', workspace: workspace.id })
+    const session = (await host.api('session-create', { profile: profile.id, lazy: true })).id
+    const since = positions(rt.transcriptDelta(session, {}))
+    const route = host.routes.find(route => route.path === '/api/nodo/live')
+    const reader = (await route.fetch(new Request(`http://test/api/nodo/live?struct=${rt.versions().struct}&id=obsolete`))).body.getReader()
+    try {
+      assert.equal((await frames(reader)).type, 'live')
+      rt.appendLine(session, { who: 'agent', kind: 'text', text: 'missed while unsynced' })
+      const answer = await host.api('live-watch', { id: 'obsolete', watch: [
+        { profile: 'removed-profile', session: 'removed-session' },
+        { profile: profile.id, session: 'removed-session' },
+        { profile: profile.id, session, since },
+      ] })
+      assert.equal(answer, true)
+      const delta = await nextFrame(reader, 'transcript')
+      assert.equal(delta.key, `${profile.id}:${session}`)
+      assert.deepEqual(delta.value.appended.map(row => row.line.text), ['missed while unsynced'])
+    } finally { await reader.cancel() }
   })
 })

@@ -283,14 +283,14 @@ test('watch set changes ride the open stream: adds and removes never reconnect i
   await flush()
   assert.equal(connections.length, 1, 'watching a session keeps the stream open')
   assert.deepEqual(posts.map(post => post.endpoint), ['state', 'live-watch', 'transcript', 'live-watch'],
-    'the watch add goes out at once, and the landed pull supplies the positions in a second add')
-  assert.deepEqual(posts[1].payload, { id: 'stream', add: [{ profile: 'p', session: 's' }], remove: [] },
-    'the first add carries no since: the pull owns the first full copy')
-  assert.deepEqual(posts[3].payload.add, [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 0, dirty: 1 } }])
+    'the watch set goes out at once, and the landed pull supplies the positions in a second sync')
+  assert.deepEqual(posts[1].payload, { id: 'stream', watch: [{ profile: 'p', session: 's' }] },
+    'the first sync carries no since: the pull owns the first full copy')
+  assert.deepEqual(posts[3].payload.watch, [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 0, dirty: 1 } }])
   stopWatch()
   await flush()
   assert.equal(connections.length, 1, 'unwatching keeps the stream open too')
-  assert.deepEqual(posts.at(-1).payload, { id: 'stream', add: [], remove: ['p:s'] })
+  assert.deepEqual(posts.at(-1).payload, { id: 'stream', watch: [] })
   stopLive()
 })
 
@@ -335,7 +335,7 @@ test('a failed first pull is retried on the next activity move even while the st
   assert.deepEqual(transcriptOf('p:s').map(line => line.text), ['late'])
   assert.equal(transcriptError('p:s'), '')
   // The retry's positions must reach the host, or the stream stays silent forever.
-  assert.deepEqual(posts.filter(post => post.endpoint === 'live-watch').at(-1).payload.add,
+  assert.deepEqual(posts.filter(post => post.endpoint === 'live-watch').at(-1).payload.watch,
     [{ profile: 'p', session: 's', since: { token: 't', base: 1, n: 1, dirty: 1 } }])
   assert.equal(connections.length, 1, 'the retry keeps the stream open')
   // The next activity move pulls nothing: the session holds positions now.
@@ -343,6 +343,41 @@ test('a failed first pull is retried on the next activity move even while the st
   await flush()
   assert.equal(pulls.length, 2, 'a session with positions is not re-pulled again')
   stopWatch(); stopLive()
+})
+
+test('a failed watch acknowledgement stays dirty even when the desired set returns to its previous value', async () => {
+  timers.length = 0
+  const watches = []
+  let rejectRead
+  const pending = new Promise((resolve, reject) => { rejectRead = reject })
+  const { subscribeLive, watchTranscript } = await loadClient('live.js', { globals: {
+    ...fakeTimers(),
+    fetch: async (url, options) => {
+      if (String(url).includes('/live')) {
+        options.signal.addEventListener('abort', () => rejectRead(new Error('aborted')), { once: true })
+        return { ok: true, body: { getReader: () => ({ read: () => pending, cancel: async () => {}, releaseLock() {} }) } }
+      }
+      const { endpoint, payload } = JSON.parse(options.body)
+      if (endpoint === 'live-watch') {
+        watches.push(payload.watch)
+        throw new Error('response lost after applying the set')
+      }
+      const value = endpoint === 'transcript' ? { full: true, token: 't', base: 1, dirty: 1, lines: [] } : { struct: 1, activity: 0, work: {}, profiles: [] }
+      return Response.json({ ok: true, value })
+    },
+  } })
+  const stop = subscribeLive(() => {})
+  await flush()
+  const stopWatch = watchTranscript('p', 's')
+  await flush()
+  stopWatch()
+  await flush()
+  assert.equal(watches.length, 1, 'changes wait for the retry after a failure')
+  timers.find(timer => timer.ms === 1000).run()
+  await flush()
+  assert.deepEqual(watches, [[{ profile: 'p', session: 's' }], []], 'the empty set must be resent even though it matches the GET watch set')
+  stop()
+  assert.equal(timers.length, 0, 'unmount cancels the next watch retry')
 })
 
 test('the page drops the head the host trimmed, so rows stay aligned past the line cap', async () => {
