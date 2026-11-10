@@ -91,6 +91,30 @@ test('a leader never falls back to the worker channel and refuses to start witho
   } finally { h.dispose() }
 })
 
+test('qoder and pi worker bindings stay session-scoped and never reach leaders', async () => {
+  const h = harness(), issued = [], revoked = []
+  h.rt.issueWorkerMcp = async id => { issued.push(id); return { servers: [], revoke: () => revoked.push(id) } }
+  h.rt.issueLeadMcp = async () => undefined
+  try {
+    for (const engine of ['qoder', 'pi']) {
+      const profile = conversation({ id: engine, engine, lead: true })
+      h.rt.state.executions[engine] = { sessionId: engine, status: 'queued' }
+      await h.rt.ensureDriver(profile)
+      assert.deepEqual(issued, [], 'even a stale execution must not grant a leader a worker credential')
+      h.rt.releaseDriver(engine)
+    }
+    for (const engine of ['qoder', 'pi']) {
+      const profile = conversation({ id: engine, engine })
+      const driver = await h.rt.ensureDriver(profile)
+      assert.equal(await h.rt.ensureDriver(profile), driver)
+      assert.equal(issued.filter(id => id === engine).length, 1)
+      h.rt.releaseDriver(engine)
+    }
+    assert.deepEqual(issued, ['qoder', 'pi'])
+    assert.deepEqual(revoked, issued)
+  } finally { h.dispose() }
+})
+
 test('an idle engine driver is released after two minutes, a busy one is kept', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const h = harness(), work = {}

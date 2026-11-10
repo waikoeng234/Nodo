@@ -8,15 +8,22 @@ import { withHost, until } from './helpers/host.js'
 import { routeUserTask } from './helpers/route.js'
 
 for (const { engine, project, unsupported } of [
-  ...['claude', 'codex', 'zcode', 'qoder'].map(engine => ({ engine })),
+  ...['claude', 'codex', 'zcode', 'qoder', 'pi'].map(engine => ({ engine })),
   { engine: 'zcode', project: 'zcode.json' }, { engine: 'zcode', project: '.zcode/config.json' }, { engine: 'zcode', unsupported: true },
+  { engine: 'qoder', unsupported: 'QODER_FIXTURE_NO_MCP' },
+  { engine: 'pi', unsupported: 'PI_FIXTURE_NO_EXTENSION' }, { engine: 'pi', unsupported: 'PI_FIXTURE_NO_REGISTER' },
 ]) test(`${engine} fake CLI mounts worker tools and delivers the latest persisted report card${project ? ` with project ${project}` : unsupported ? ' with unsupported MCP fallback' : ''}`, () => withHost(async host => {
   const rt = await host.runtime
   const bin = join(host.home, engine), leadBin = join(host.home, 'lead-claude')
   copyFileSync(new URL(`./fixtures/${engine}-cli.cjs`, import.meta.url), bin)
   copyFileSync(new URL('./fixtures/claude-cli.cjs', import.meta.url), leadBin)
   chmodSync(bin, 0o755); chmodSync(leadBin, 0o755)
-  rt.secretEnv = () => ({ HOME: host.home, ...(unsupported ? { FIXTURE_NO_ROLE_MCP: '1' } : {}) })
+  rt.secretEnv = () => ({ HOME: host.home, ...(engine === 'pi' ? { PI_FIXTURE_LOAD_USER_MCP: '1' } : {}),
+    ...(unsupported ? { [unsupported === true ? 'FIXTURE_NO_ROLE_MCP' : unsupported]: '1' } : {}) })
+  if (engine === 'pi') {
+    mkdirSync(join(host.home, '.pi/agent'), { recursive: true })
+    writeFileSync(join(host.home, '.pi/agent/mcp.json'), JSON.stringify({ mcpServers: { personal: { command: 'fixture-user-server' } } }))
+  }
   if (project) {
     mkdirSync(join(host.home, '.zcode/cli'), { recursive: true })
     writeFileSync(join(host.home, '.zcode/cli/config.json'), JSON.stringify({ mcp: { servers: { global: { type: 'stdio', command: process.execPath, args: ['global-tool.js'] } } } }))
@@ -55,12 +62,22 @@ for (const { engine, project, unsupported } of [
   if (unsupported) {
     assert.equal(execution.reportData.source, 'final-text')
     assert.equal(execution.reportData.structured, false)
-    const turns = readFileSync(join(host.home, 'zcode-turns.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
-    assert.ok(turns[0].content.includes(`# 本轮要求（用户原话，逐字，唯一需求来源）\n${requirement}\n\n`), 'fallback must preserve the user original verbatim')
-    assert.match(turns[0].content, /# 回报方式\n简短总结结果、改动、验证和未决项。/)
-    assert.doesNotMatch(turns[0].content, /nodo_report 工具/)
-    const requests = readFileSync(join(host.home, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
-    assert.ok(requests.some(item => item.params.mcpServers.some(server => server.name === 'nodo_worker')))
+    const requests = readFileSync(join(host.home, engine === 'zcode' ? 'zcode-turns.jsonl' : `${engine}-requests.jsonl`), 'utf8').trim().split('\n').map(JSON.parse)
+    const input = engine === 'zcode' ? requests[0].content : engine === 'qoder' ? requests.find(item => item.user).user : requests.find(item => item.command === 'prompt').message
+    assert.ok(input.includes(`# 本轮要求（用户原话，逐字，唯一需求来源）\n${requirement}\n\n`), 'fallback must preserve the user original verbatim')
+    assert.match(input, /# 回报方式\n简短总结结果、改动、验证和未决项。/)
+    assert.doesNotMatch(input, /nodo_report 工具/)
+    if (engine === 'zcode') {
+      const mounts = readFileSync(join(host.home, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+      assert.ok(mounts.some(item => item.params.mcpServers.some(server => server.name === 'nodo_worker')))
+    } else if (engine === 'qoder') {
+      assert.ok(requests.some(item => item.rejectedMcp))
+      assert.equal(requests.find(item => item.spawn).mcpConfig, undefined)
+    } else {
+      assert.equal(requests.filter(item => item.spawn).at(-1).spawn.includes('--extension'), false)
+      assert.deepEqual(requests.filter(item => item.loadedServers).at(-1).loadedServers, ['personal'])
+      assert.deepEqual(requests.filter(item => item.loadedServers).at(-1).activeMcpTools, [])
+    }
     await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
     return
   }
@@ -106,6 +123,12 @@ for (const { engine, project, unsupported } of [
     const spawn = requests.find(item => item.spawn)
     assert.ok(JSON.parse(spawn.mcpConfig).mcpServers.nodo_worker)
     assert.equal(spawn.spawn.includes('--strict-mcp-config'), false)
+    assert.match(requests.find(item => item.user).user, /nodo_report 工具/)
+  } else if (engine === 'pi') {
+    const requests = readFileSync(join(host.home, 'pi-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+    assert.deepEqual(requests.find(item => item.loadedServers).loadedServers, ['nodo_worker', 'personal'])
+    assert.deepEqual(requests.find(item => item.loadedServers).activeMcpTools, ['mcp__nodo_worker__nodo_report', 'mcp__nodo_worker__nodo_context'])
+    assert.match(requests.find(item => item.command === 'prompt').message, /nodo_report 工具/)
   } else {
     const requests = readFileSync(join(host.home, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
     assert.ok(requests.find(item => item.params.mcpServers.some(server => server.name === 'nodo_worker' && server.type === 'http' && server.isolation === 'session')))

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createDriver, checkEngine, scanEngine, scanEngineCommands, validateEngineOptions } from '../agent-drivers/dist/index.js'
@@ -17,6 +17,70 @@ const withFixture = async (run) => {
 
 const texts = events => events.filter(event => event.type === 'text').map(event => event.text)
 const spawns = cwd => readFileSync(join(cwd, 'pi-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(entry => entry.spawn)
+
+test('pi extension registers nodo_worker alongside user MCP and plan excludes user tools', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    mkdirSync(join(cwd, '.pi/agent'), { recursive: true })
+    writeFileSync(join(cwd, '.pi/agent/mcp.json'), JSON.stringify({ mcpServers: { personal: { command: 'fixture-user-server' } } }))
+    for (const permission of ['plan', 'full']) {
+      const events = []
+      const mount = permission === 'plan' ? { name: 'nodo_worker', url: 'http://127.0.0.1:1234/mcp', token: 'fixture-only' }
+        : { name: 'nodo_worker', command: 'node', args: ['worker.js'], env: [{ name: 'NODO_WORKER_TOKEN_FILE', value: '/tmp/fixture-only' }, { name: 'ELECTRON_RUN_AS_NODE', value: '1' }] }
+      const driver = createDriver('pi', { bin, cwd, permission, env: { HOME: cwd, PI_FIXTURE_LOAD_USER_MCP: '1' }, leadMcpServers: [mount], onEvent: event => events.push(event) })
+      let extension
+      try {
+        assert.equal(driver.workerMcpMounted, false)
+        await driver.openSession()
+        assert.equal(driver.workerMcpMounted, true)
+        assert.equal(driver.instructionFallback, undefined)
+        const spawn = spawns(cwd).at(-1).spawn
+        extension = spawn[spawn.indexOf('--extension') + 1]
+        assert.equal(statSync(extension).mode & 0o777, 0o600)
+        assert.equal(readFileSync(extension, 'utf8').includes('fixture-only'), false, 'credentials stay out of the generated extension')
+        await driver.sendTurn('Hello')
+        await until(() => events.some(event => event.type === 'turn/end'))
+        const loaded = readFileSync(join(cwd, 'pi-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(entry => entry.loadedServers).at(-1)
+        assert.deepEqual(loaded.loadedServers, ['nodo_worker', 'personal'], 'both configured and extension servers load in either tier')
+        assert.equal(loaded.mcpServers.nodo_worker.exposure, 'direct', 'plan can call Nodo without codemode')
+        assert.deepEqual(loaded.activeMcpTools, ['mcp__nodo_worker__nodo_report', 'mcp__nodo_worker__nodo_context', ...(permission === 'full' ? ['mcp__personal__write'] : [])])
+        if (permission === 'plan') assert.deepEqual(loaded.mcpServers.nodo_worker.headers, { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' })
+        else assert.deepEqual(loaded.mcpServers.nodo_worker.env, { ELECTRON_RUN_AS_NODE: '1' })
+      } finally { driver.dispose() }
+      assert.equal(driver.workerMcpMounted, false)
+      assert.equal(existsSync(extension), false, 'dispose removes the temporary extension')
+    }
+  })
+})
+
+for (const unsupported of ['PI_FIXTURE_NO_EXTENSION', 'PI_FIXTURE_NO_REGISTER']) test(`pi falls back without a worker mount for ${unsupported}`, async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('pi', { bin, cwd, env: { [unsupported]: '1' }, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: [], env: [] }], onEvent: event => events.push(event) })
+    try {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      assert.equal(driver.instructionFallback, 'mcp-field-unsupported')
+      await driver.sendTurn('Hello')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      assert.equal(spawns(cwd).at(-1).spawn.includes('--extension'), false)
+      assert.equal(spawns(cwd).length, unsupported === 'PI_FIXTURE_NO_EXTENSION' ? 1 : 2, 'sending a turn reuses the fallback process')
+    } finally { driver.dispose() }
+  })
+})
+
+test('pi never mounts worker tools on leaders and does not hide ordinary startup errors', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const leadMcpServers = [{ name: 'nodo_worker', command: 'node', args: [], env: [] }]
+    const driver = createDriver('pi', { bin, cwd, lead: true, leadMcpServers })
+    try {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      assert.equal(spawns(cwd)[0].spawn.includes('--extension'), false)
+    } finally { driver.dispose() }
+    const failed = createDriver('pi', { bin, cwd, leadMcpServers, env: { PI_FIXTURE_FAIL_STATE: '1' } })
+    try { await assert.rejects(failed.openSession(), /fixture state refused/) } finally { failed.dispose() }
+  })
+})
 
 test('pi adapter streams real deltas and resumes the exact RPC session id', async () => {
   await withFixture(async ({ bin, cwd }) => {
@@ -57,7 +121,7 @@ test('pi adapter streams real deltas and resumes the exact RPC session id', asyn
   })
 })
 
-test('pi plan tier launches a read-only allowlist with MCP cut; full keeps the plain args', async () => {
+test('pi plan tier permits only read-only built-ins and Nodo MCP tools; full keeps the plain args', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const run = async permission => {
       const events = []
@@ -72,14 +136,14 @@ test('pi plan tier launches a read-only allowlist with MCP cut; full keeps the p
     await run(undefined)
     const [plan, full, blank] = spawns(cwd)
     const flag = (spawn, name) => { const at = spawn.indexOf(name); return at === -1 ? undefined : spawn[at + 1] }
-    assert.equal(flag(plan.spawn, '--tools'), 'read,grep,find,ls', 'the allowlist is exactly the read-only built-ins: no bash, powershell, write or edit')
-    assert.equal(plan.spawn.includes('--no-mcp'), true, 'the allowlist alone keeps MCP tools, so MCP support is cut outright')
+    assert.equal(flag(plan.spawn, '--tools'), 'read,grep,find,ls,mcp__nodo_*', 'the allowlist excludes built-in writes and commands and filters user MCP tools')
+    assert.equal(plan.spawn.includes('--no-mcp'), false, 'user MCP servers still load')
     assert.equal(plan.spawn.includes('--exclude-tools'), false)
     assert.equal(full.spawn.includes('--tools'), false)
     assert.equal(full.spawn.includes('--no-mcp'), false)
     assert.deepEqual([full.mode, full.approve], ['rpc', 'no-approve'])
-    assert.equal(flag(blank.spawn, '--tools'), 'read,grep,find,ls', 'a missing tier launches plan')
-    assert.equal(blank.spawn.includes('--no-mcp'), true)
+    assert.equal(flag(blank.spawn, '--tools'), 'read,grep,find,ls,mcp__nodo_*', 'a missing tier launches plan')
+    assert.equal(blank.spawn.includes('--no-mcp'), false)
   })
 })
 
@@ -238,11 +302,11 @@ test('pi session tier changes re-arm the launch flags and keep the session', asy
     await turn()
     const flag = (spawn, name) => { const at = spawn.indexOf(name); return at === -1 ? undefined : spawn[at + 1] }
     const entries = spawns(cwd)
-    assert.ok(entries.some(entry => entry.sessionId === undefined && flag(entry.spawn, '--tools') === 'read,grep,find,ls'),
+    assert.ok(entries.some(entry => entry.sessionId === undefined && flag(entry.spawn, '--tools') === 'read,grep,find,ls,mcp__nodo_*'),
       'the first turn launches plan')
     assert.ok(entries.some(entry => entry.sessionId === 'fixture-pi-session' && entry.spawn.includes('--tools') === false),
       'the full tier re-arms without the allowlist, the session id carries over')
-    assert.ok(entries.some(entry => entry.sessionId === 'fixture-pi-session' && flag(entry.spawn, '--tools') === 'read,grep,find,ls'),
+    assert.ok(entries.some(entry => entry.sessionId === 'fixture-pi-session' && flag(entry.spawn, '--tools') === 'read,grep,find,ls,mcp__nodo_*'),
       'back to plan, the allowlist returns on the same session')
   }))
 })
@@ -250,8 +314,8 @@ test('pi session tier changes re-arm the launch flags and keep the session', asy
 test('pi treats a workspace tier or a missing tier as plan', () => {
   for (const permission of ['workspace', undefined]) {
     const args = piArgs({ permission })
-    assert.equal(args.includes('--no-mcp'), true)
-    assert.equal(args[args.indexOf('--tools') + 1], 'read,grep,find,ls')
+    assert.equal(args.includes('--no-mcp'), false)
+    assert.equal(args[args.indexOf('--tools') + 1], 'read,grep,find,ls,mcp__nodo_*')
   }
   assert.deepEqual(piArgs({ permission: 'full' }), ['--mode', 'rpc', '--no-approve'])
 })
