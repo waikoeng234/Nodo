@@ -46,7 +46,7 @@ export function install(rt) {
     let card = Object.values(state.cards).find(item => item.taskId === task.id && item.status === 'open')
     if (card && card.kind !== kind) { resolveCards(task, kind); card = undefined }
     const stalled = task.flow.stalled
-    const options = kind === 'acceptance' ? ['accept', 'return'] : [...(counted.has(stalled.reason) ? [] : ['retry']), 'stop', 'change-scope']
+    const options = kind === 'acceptance' ? ['accept', 'return'] : [...(counted.has(stalled.reason) ? [] : ['retry']), 'stop']
     const question = { id: kind, question: kind === 'acceptance' ? '接受此任务的结果？' : `任务停滞：${stalled.reason}`,
       whyUser: kind === 'acceptance' ? '请验收任务结果' : '请选择下一步', options }
     const payload = payloadOf(task)
@@ -185,8 +185,7 @@ export function install(rt) {
     if (card.status !== 'open') throw invalid('卡片已作答')
     if (!card.question.options.includes(action)) throw invalid('卡片不支持此选项')
     if (reason !== undefined && (typeof reason !== 'string' || reason.length > ANSWER_TEXT_MAX)) throw invalid('reason 必须是上限内的文本')
-    if (['return', 'change-scope'].includes(action) && !reason?.trim()) throw invalid('请填写退回理由或新的范围')
-    if (action === 'change-scope') throw failure('改变范围待后续实现，请先终止或另建任务', 'orch/not-supported')
+    if (action === 'return' && !reason?.trim()) throw invalid('请填写退回理由')
     const answer = rt.redactDeepSecrets({ action, ...(reason !== undefined ? { reason } : {}) })
     if (action === 'accept') await accept(task, card, answer)
     else if (action === 'return') {

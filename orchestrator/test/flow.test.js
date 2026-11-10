@@ -142,7 +142,7 @@ test('review rework limit is a count stall without retry', () => withFlow(async 
   const audit = await review(execution); await finish(audit, reportOf({ verdict: 'fail', findings: [{ category: 'other', severity: 'low', text: 'Fix' }] })); await review(audit)
   assertState(audit, 'stalled', 'blocked'); const item = card(audit.taskId)
   assert.equal(item.payload.reason, 'rework-limit'); assert.equal(item.payload.retryAction, null)
-  assert.deepEqual(item.question.options, ['stop', 'change-scope']); await assert.rejects(answer(item, 'retry'), /不支持/)
+  assert.deepEqual(item.question.options, ['stop']); await assert.rejects(answer(item, 'retry'), /不支持/)
 }))
 
 test('hard execution cap and same-stage round cap stall before creating another execution', () => withFlow(async ({ rt, owner, create, finish, review, card, answer }) => {
@@ -361,9 +361,10 @@ test('stalled and stopped worker direct input is rejected without writing or sta
   assert.equal(rt.sessionBlockReason(owner.id), undefined)
 }))
 
-test('change-scope stays an unimplemented contract and leaves the card and task intact', () => withFlow(async ({ rt, create, card, answer }) => {
+test('stall cards offer only retry and stop and reject removed actions without requiring a reason', () => withFlow(async ({ rt, create, card, answer }) => {
   const execution = await create(); await rt.cancelUnsentExecution(execution.id, { reason: 'restart' })
   const item = card(execution.taskId), before = structuredClone(item)
-  await assert.rejects(answer(item, 'change-scope', 'Different scope'), { code: 'orch/not-supported' })
+  assert.deepEqual(item.question.options, ['retry', 'stop'])
+  for (const reason of [undefined, 'Different scope']) await assert.rejects(answer(item, 'change-scope', reason), /卡片不支持此选项/)
   assert.deepEqual(item, before); assert.equal(rt.state.tasks[execution.taskId].flow.status, 'stalled')
 }))
