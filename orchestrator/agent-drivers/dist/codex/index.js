@@ -512,7 +512,9 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             const params = { ...(threadId ? { threadId } : { projectId: workspaceId, historyMode: 'paginated' }), cwd, ...(model ? { model } : {}) };
             // The autonomy tier rides the thread params: the sandbox bounds what the
             // engine may touch at all, `never` approval is what makes the top tier full.
-            const developerInstructions = [instructions, lead ? LEAD_TOOL_SEARCH : '', instructions ? QUESTION_ROUTING : ''].filter(Boolean).join('\n\n');
+            // A leader asks through nodo_route, not through a native tool, so it does
+            // not get the question routing that points at request_user_input.
+            const developerInstructions = [instructions, lead ? LEAD_TOOL_SEARCH : '', instructions && !lead ? QUESTION_ROUTING : ''].filter(Boolean).join('\n\n');
             const extras = {
                 // The shared daemon keeps the environment it started with, so the HTTP
                 // token rides this thread's config instead of an env var. The user's own
