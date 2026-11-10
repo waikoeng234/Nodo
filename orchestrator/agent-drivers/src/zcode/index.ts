@@ -35,7 +35,7 @@ export type ZcodeDriverOptions = {
 }
 type ZcodeDriver = Driver & {
   readonly instructionMode: ZcodeIdentity['mode']; readonly instructionTarget: ZcodeIdentity['target']
-  readonly instructionFallback: ZcodeIdentity['reason']; readonly coverage: Coverage
+  readonly instructionFallback: ZcodeIdentity['reason']; readonly workerMcpMounted: boolean; readonly coverage: Coverage
 }
 type ContextUsage = { used?: number; size?: number }
 type SessionSnapshot = {
@@ -177,6 +177,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
   let context: ContextUsage | undefined
   let canRecreateEmpty = allowEmptyResume === true
   let identity: ZcodeIdentity | undefined
+  let attached = false
+  let workerMount = false
   let roleMount: Awaited<ReturnType<ServeMcp>> | undefined
   let compaction: Compaction | null | undefined
   const requests = new Map<string, ZcodeRequest>()
@@ -521,8 +523,9 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
       const workerServers = inherited ? (leadMcpServers ?? []).map(server => 'url' in server
         ? { name: server.name, type: 'http', url: server.url, headers: [{ name: 'Authorization', value: `Bearer ${server.token}` }], isolation: 'session' }
         : { ...server, isolation: 'session', protocolVersion: 'legacy' }) : []
+      workerMount = workerServers.length > 0
       const mcpServers = [...(inherited ?? []).filter(server => !workerServers.some(worker => worker.name === server.name)), ...roleServers, ...workerServers]
-      let attached = Boolean(roleServers.length)
+      attached = Boolean(roleServers.length)
       const attach = async (method: string, params: { sessionId?: string } | typeof createParams) => {
         try { return await peer!.request<SessionSnapshot>(method, { ...params, ...(mcpServers.length ? { mcpServers } : {}) }) }
         catch (error) {
@@ -575,6 +578,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     get instructionMode() { return connected ? identity?.mode ?? 'none' : 'none' },
     get instructionTarget() { return identity?.target },
     get instructionFallback() { return identity?.reason },
+    get workerMcpMounted() { return connected && workerMount && attached },
     get coverage() { return coverage },
     openSession: boot,
     async sendTurn(text, images: (DriverImage & { name?: string })[] = []) {

@@ -107,6 +107,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     let context;
     let canRecreateEmpty = allowEmptyResume === true;
     let identity;
+    let attached = false;
+    let workerMount = false;
     let roleMount;
     let compaction;
     const requests = new Map();
@@ -526,8 +528,9 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
             const workerServers = inherited ? (leadMcpServers ?? []).map(server => 'url' in server
                 ? { name: server.name, type: 'http', url: server.url, headers: [{ name: 'Authorization', value: `Bearer ${server.token}` }], isolation: 'session' }
                 : { ...server, isolation: 'session', protocolVersion: 'legacy' }) : [];
+            workerMount = workerServers.length > 0;
             const mcpServers = [...(inherited ?? []).filter(server => !workerServers.some(worker => worker.name === server.name)), ...roleServers, ...workerServers];
-            let attached = Boolean(roleServers.length);
+            attached = Boolean(roleServers.length);
             const attach = async (method, params) => {
                 try {
                     return await peer.request(method, { ...params, ...(mcpServers.length ? { mcpServers } : {}) });
@@ -597,6 +600,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         get instructionMode() { return connected ? identity?.mode ?? 'none' : 'none'; },
         get instructionTarget() { return identity?.target; },
         get instructionFallback() { return identity?.reason; },
+        get workerMcpMounted() { return connected && workerMount && attached; },
         get coverage() { return coverage; },
         openSession: boot,
         async sendTurn(text, images = []) {

@@ -67,6 +67,7 @@ for (const { engine, project, unsupported } of [
     assert.ok(input.includes(`# 本轮要求（用户原话，逐字，唯一需求来源）\n${requirement}\n\n`), 'fallback must preserve the user original verbatim')
     assert.match(input, /# 回报方式\n简短总结结果、改动、验证和未决项。/)
     assert.doesNotMatch(input, /nodo_report 工具/)
+    assert.ok(input.endsWith(rt.workerReportMethod({ stage: 'implement', degraded: true })), 'the fallback prompt ends with the degraded report method')
     if (engine === 'zcode') {
       const mounts = readFileSync(join(host.home, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
       assert.ok(mounts.some(item => item.params.mcpServers.some(server => server.name === 'nodo_worker')))
@@ -133,6 +134,9 @@ for (const { engine, project, unsupported } of [
     const requests = readFileSync(join(host.home, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
     assert.ok(requests.find(item => item.params.mcpServers.some(server => server.name === 'nodo_worker' && server.type === 'http' && server.isolation === 'session')))
     if (project) assert.deepEqual(requests[0].params.mcpServers.filter(server => server.name !== 'nodo_role').map(server => server.name).sort(), ['global', 'nodo_worker', 'project'])
+    const turns = readFileSync(join(host.home, 'zcode-turns.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+    assert.ok(turns[0].content.endsWith(rt.workerReportMethod({ stage: 'implement' })), 'a mounted zcode worker keeps the tool report method')
+    assert.doesNotMatch(turns[0].content, /简短总结结果/)
   }
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
 }))
