@@ -1,7 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { Tool, CallToolResult } from '@modelcontextprotocol/sdk/types.js'
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv'
 import { loadMcpSdk } from './role-mcp.js'
 import type { RoleMcpServer } from './role-mcp.js'
 
@@ -35,7 +34,15 @@ const reportSchema: Tool['inputSchema'] = {
     next: { ...text, maxLength: 200 },
   },
 }
-export const validateWorkerReport = new AjvJsonSchemaValidator().getValidator(reportSchema)
+// The package entry loads without the MCP SDK installed; only a report needs
+// the validator, so the SDK and its Ajv binding load on first use.
+type ReportValidation = { valid: boolean; errorMessage?: string }
+let workerReportValidator: Promise<(input: unknown) => ReportValidation> | undefined
+export function validateWorkerReport(input: unknown): Promise<ReportValidation> {
+  workerReportValidator ??= import('@modelcontextprotocol/sdk/validation/ajv')
+    .then(({ AjvJsonSchemaValidator }) => new AjvJsonSchemaValidator().getValidator(reportSchema) as (input: unknown) => ReportValidation)
+  return workerReportValidator.then(validate => validate(input))
+}
 const tools: Tool[] = [
   { name: 'nodo_report', description: '回报当前执行。summary 最多 300 字；最后一份生效，旧摘要保留三份。reviewFlags 可选。审查必填 verdict，fail 必填 findings；其他阶段禁止 verdict/findings。补答必填 answers，按问题编号逐条回答。', inputSchema: reportSchema },
   { name: 'nodo_context', description: '只读本工作项材料及输入中给出的白名单句柄。read 传 sourceId 或 executionId；list 列出可读材料。offset/limit 按 UTF-16 分页，最多 16000。',

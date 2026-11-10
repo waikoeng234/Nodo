@@ -1,5 +1,4 @@
 import { fileURLToPath } from 'node:url';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 import { loadMcpSdk } from './role-mcp.js';
 export const WORKER_TOOLS = ['nodo_report', 'nodo_context'];
 export function workerMcp(socket, tokenFile) {
@@ -30,7 +29,12 @@ const reportSchema = {
         next: { ...text, maxLength: 200 },
     },
 };
-export const validateWorkerReport = new AjvJsonSchemaValidator().getValidator(reportSchema);
+let workerReportValidator;
+export function validateWorkerReport(input) {
+    workerReportValidator ??= import('@modelcontextprotocol/sdk/validation/ajv')
+        .then(({ AjvJsonSchemaValidator }) => new AjvJsonSchemaValidator().getValidator(reportSchema));
+    return workerReportValidator.then(validate => validate(input));
+}
 const tools = [
     { name: 'nodo_report', description: '回报当前执行。summary 最多 300 字；最后一份生效，旧摘要保留三份。reviewFlags 可选。审查必填 verdict，fail 必填 findings；其他阶段禁止 verdict/findings。补答必填 answers，按问题编号逐条回答。', inputSchema: reportSchema },
     { name: 'nodo_context', description: '只读本工作项材料及输入中给出的白名单句柄。read 传 sourceId 或 executionId；list 列出可读材料。offset/limit 按 UTF-16 分页，最多 16000。',

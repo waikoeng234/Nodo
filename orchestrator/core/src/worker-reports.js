@@ -6,7 +6,7 @@ const firstConclusion = text => /^结论[:：](通过|不通过|done|blocked|fai
 
 export function install(rt) {
   rt.workerReport = async (execution, input) => {
-    const validation = validateWorkerReport(input)
+    const validation = await validateWorkerReport(input)
     if (!validation.valid) throw invalid(validation.errorMessage)
     const stage = execution.stage ?? 'implement'
     if (stage === 'review') {
