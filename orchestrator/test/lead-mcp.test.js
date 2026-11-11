@@ -40,7 +40,6 @@ const harness = (extra = {}) => {
     leadDelegations: (id, session) => { calls.push(['delegations', id, session]); return '| 派活 | secret-value |' },
     leadRoles: id => { calls.push(['roles', id]); return '| 角色 |' },
     leadRoute: async (id, args) => { calls.push(['route', id, args]); return { ok: true, taskId: 'task', executionId: 'execution', role: 'Worker', type: args.type, hard: args.hard } },
-    leadReview: (id, args) => { calls.push(['review', id, args]); return args },
     leadCards: id => { calls.push(['cards', id]); return [] },
     leadTasks: (id, taskId) => { calls.push(['tasks', id, taskId]); return { taskId } }, ...extra }
   install(rt)
@@ -112,7 +111,7 @@ test('lead token files rotate at a fixed private path and running MCP reads each
   } finally { await client.close(); h.dispose() }
 })
 
-test('lead MCP authenticates, exposes exactly four schemas and forwards route/review', async () => {
+test('lead MCP authenticates, exposes exactly three schemas and forwards route', async () => {
   const h = harness(), client = new Client({ name: 'test', version: '1' })
   try {
     assert.equal(await h.rt.issueLeadMcp('worker'), undefined)
@@ -124,7 +123,7 @@ test('lead MCP authenticates, exposes exactly four schemas and forwards route/re
     assert.equal(JSON.stringify(spec).includes(token), false)
     await client.connect(new StdioClientTransport({ command: spec.command, args: spec.args, env, stderr: 'pipe' }))
     const { tools } = await client.listTools()
-    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_context', 'nodo_route', 'nodo_review'])
+    assert.deepEqual(tools.map(t => t.name), ['nodo_board', 'nodo_context', 'nodo_route'])
     assert.deepEqual(tools.map(({ name, inputSchema }) => ({ name, inputSchema })), JSON.parse(readFileSync(new URL('./fixtures/lead-tools.json', import.meta.url))))
     assert.equal(tools[0].annotations.readOnlyHint, true)
     assert.equal(tools[1].annotations.readOnlyHint, true)
@@ -140,10 +139,6 @@ test('lead MCP authenticates, exposes exactly four schemas and forwards route/re
     ]) assert.equal(validate(invalid).valid, false)
     for (const valid of [{ action: 'attach', taskId: 'task', scope: { note: 'x' } }, { action: 'stop', executionIds: ['e'] },
       { action: 'ask', questions: [{ id: 'q', question: 'Which?', whyUser: 'Preference' }], stopExecutionIds: [] }]) assert.equal(validate(valid).valid, true)
-    const review = new AjvJsonSchemaValidator().getValidator(tools[3].inputSchema)
-    const decision = { executionId: 'e', disposition: 'investigate', reason: 'missing facts', basis: ['report:e'], questions: ['Which test ran?'] }
-    assert.equal(review(decision).valid, true)
-    for (const questions of [undefined, [], Array(6).fill('x'), ['x'.repeat(201)]]) assert.equal(review({ ...decision, questions }).valid, false)
     const board = await client.callTool({ name: 'nodo_board', arguments: {} })
     assert.match(board.content[0].text, /派活/)
     assert.doesNotMatch(board.content[0].text, /secret-value/)
@@ -151,23 +146,20 @@ test('lead MCP authenticates, exposes exactly four schemas and forwards route/re
     assert.deepEqual(h.calls.at(-1), ['cards', 'lead'])
     await client.callTool({ name: 'nodo_route', arguments: args })
     assert.deepEqual(h.calls.at(-1), ['route', 'lead', args])
-    await client.callTool({ name: 'nodo_review', arguments: decision })
-    assert.deepEqual(h.calls.at(-1), ['review', 'lead', decision])
     for (const request of [
-      { name: 'unknown' }, ...['delegate', 'task', 'interrupt', 'decision'].map(name => ({ name: `nodo_${name}` })),
+      { name: 'unknown' }, ...['delegate', 'task', 'interrupt', 'decision', 'review'].map(name => ({ name: `nodo_${name}` })),
       { name: 'nodo_board', arguments: { table: 'bad' } }, { name: 'nodo_board', arguments: { leadSession: 'forged' } },
       { name: 'nodo_board', arguments: { session: 3 } }, { name: 'nodo_board', token: 'forged' },
       { name: 'nodo_board', arguments: { table: 'roles', session: 'work' } },
       { name: 'nodo_board', arguments: { table: 'roles', taskId: 'task' } },
       { name: 'nodo_board', arguments: { table: 'cards', decisionId: 'd' } },
-      { name: 'nodo_review', arguments: { ...decision, task: 'body' } },
     ]) assert.equal((await rpc(spec, request)).isError, true)
     h.rt.leadRoute = async () => { throw Object.assign(new Error('预算已用尽'), { code: 'orch/busy' }) }
     const error = await client.callTool({ name: 'nodo_route', arguments: args })
     assert.deepEqual(JSON.parse(error.content[0].text), { ok: false, code: 'orch/busy', message: '预算已用尽', retry: 'wait' })
     for (const [code, retry] of Object.entries({ 'orch/no-trigger': 'ask-user', 'orch/scope-missing': 'quote-or-note',
       'orch/scope-not-quote': 'quote-or-note', 'orch/title-empty': 'quote-or-note', 'orch/scope-note-too-long': 'shorten',
-      'orch/unknown-type': 'pick-type', 'orch/no-holder': undefined, 'orch/report-unreviewed': 'review',
+      'orch/unknown-type': 'pick-type', 'orch/no-holder': undefined,
       'orch/decision-pending': 'wait', 'orch/source-busy': 'wait', 'orch/trigger-full': 'close-tasks',
       'orch/task-stalled': 'new-task', 'orch/frozen': 'new-task', 'orch/worktree-mismatch': 'drop-worktree' })) {
       h.rt.leadRoute = async () => { throw Object.assign(new Error('Refused'), { code }) }

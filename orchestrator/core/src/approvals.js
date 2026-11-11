@@ -70,7 +70,6 @@ export function install(rt) {
         }
       }
       if (!entry.cancelled) await entry.onAnswered?.(reply)
-      if (entry.sessionId) void rt.flushLeadReports?.(entry.sessionId)
     } finally { answering.delete(entry.id) }
   }
 

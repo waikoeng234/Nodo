@@ -34,23 +34,21 @@ export function createLeadView(rt, { rosterOf, flightOf, delegationSummary, owne
     const records = delegationsOf(id).sort((a, b) => b.dispatch.acceptedAt - a.dispatch.acceptedAt)
     const active = records.filter(item => ['queued', 'running'].includes(item.dispatch.status))
     const shown = active.length ? active : records.slice(0, 1)
-    const pending = owner.session.reportQueue?.length ?? 0
     const all = rt.listDecisions?.(id) ?? []
     const recent = new Set(all.filter(item => !['pending', 'answered'].includes(item.status)).slice(-3))
     const decisions = all.filter(item => ['pending', 'answered'].includes(item.status) || recent.has(item))
       .map(({ id, status, taskIds, sourceExecutionIds }) => ({ decisionId: id, status,
         taskIds: [...new Set([...taskIds, ...sourceExecutionIds.map(id => rt.state.executions[id].taskId)])], sourceExecutionIds }))
     const cards = leadCards(id)
-    const waiting = rt.sessionBlockReason?.(id) ?? rt.reportReviewBlockReason?.(id)
-    if (!shown.length && !pending && !decisions.length && !cards.length && !waiting) return ''
-    return `<nodo-status>\n${shown.length ? table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用', '目录'], shown.map(item => delegationState(item.profile, item.session, item.dispatch))) + '\n' : ''}待送结果：${pending}\n${waiting ? `等待原因：${JSON.stringify(waiting)}\n` : ''}${decisions.length ? `决策：${JSON.stringify(decisions)}\n` : ''}${cards.length ? `卡片：${JSON.stringify(cards)}\n` : ''}执行中的改动可能还没写进文件，不要据此判断任务没有执行。\n</nodo-status>`
+    const waiting = rt.sessionBlockReason?.(id)
+    if (!shown.length && !decisions.length && !cards.length && !waiting) return ''
+    return `<nodo-status>\n${shown.length ? table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用', '目录'], shown.map(item => delegationState(item.profile, item.session, item.dispatch))) + '\n' : ''}${waiting ? `等待原因：${JSON.stringify(waiting)}\n` : ''}${decisions.length ? `决策：${JSON.stringify(decisions)}\n` : ''}${cards.length ? `卡片：${JSON.stringify(cards)}\n` : ''}执行中的改动可能还没写进文件，不要据此判断任务没有执行。\n</nodo-status>`
   }
   const leadDelegations = (id, sessionId) => {
     const records = delegationsOf(id).sort((a, b) => (b.dispatch.endedAt ?? b.dispatch.acceptedAt) - (a.dispatch.endedAt ?? a.dispatch.acceptedAt))
-    const pending = new Set((rt.conversationOf(id)?.session.reportQueue ?? []).map(item => item.session))
     const recent = new Set(records.filter(item => item.dispatch.status !== 'running').slice(0, 10).map(item => item.session.id))
     const selected = records.filter(({ session, dispatch }) => sessionId ? session.id === sessionId
-      : dispatch.status === 'running' || pending.has(session.id) || recent.has(session.id))
+      : dispatch.status === 'running' || recent.has(session.id))
     if (sessionId && !selected.length) return '没有该执行会话的派活记录'
     return table(['会话', '角色', '任务', '类型 / 难度', '状态', '已续用', '目录'], selected.map(({ profile, session, dispatch }) => delegationState(profile, session, dispatch)))
   }
@@ -78,7 +76,7 @@ export function createLeadView(rt, { rosterOf, flightOf, delegationSummary, owne
       .sort((a, b) => b.updatedAt - a.updatedAt).map(task => [task.id, { id: task.id, title: task.title, status: task.status,
         teamId: task.teamId, ...(task.parentId !== undefined ? { parentId: task.parentId } : {}),
         ...(task.dependsOn !== undefined ? { dependsOn: [...task.dependsOn] } : {}), executionCount: 0, latestExecutionStatus: null, references: [] }]))
-    const pending = new Set((owner.session.reportQueue ?? []).map(item => item.taskId))
+    const pending = new Set()
     const latest = new Map()
     for (const execution of Object.values(rt.state.executions)) {
       const summary = summaries.get(execution.taskId)

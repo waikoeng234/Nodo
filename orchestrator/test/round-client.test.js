@@ -243,8 +243,10 @@ test('an executor message shows its role, tags and state, expands the rest of it
   assert.equal(live.find(node => node.props.step?.session === 'e2' && node.type !== RoundMember).props.work, round.work.e2)
   const ended = view({ session: 'e3', profile: 'tester', type: 'test', hard: false, reused: false, ended: 'interrupted' })
   assert.equal(head(ended), 'Tester|测试|已中断|查看会话')
-  assert.equal(text(ended.find(node => node.props.className === 'nodo-round-quiet')), '没有回报主控，可查看会话了解进度。')
-  assert.equal(head(view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done' })), 'Tester|测试|已结束|查看会话')
+  assert.equal(ended.find(node => node.props.className === 'nodo-round-quiet'), undefined)
+  const finished = view({ session: 'e5', profile: 'tester', type: 'test', ended: 'done', at: 11 })
+  assert.equal(head(finished), 'Tester|测试|查看会话')
+  assert.equal(finished.find(node => node.type === MessageTime).props.at, 11)
   assert.equal(head(view({ session: 'e6', profile: 'tester', type: 'test', ended: 'cancelled' })), 'Tester|测试|已取消|查看会话')
   assert.equal(head(view({ session: 'e7', profile: 'tester', type: 'test', ended: 'interrupted', stoppedBy: 'user' })), 'Tester|测试|已停止|查看会话')
   assert.equal(head(view({ session: 'e8', profile: 'tester', type: 'test', ended: 'cancelled', stoppedBy: 'lead' })), 'Tester|测试|已停止|查看会话')
@@ -284,7 +286,7 @@ test('an executor message shows its role, tags and state, expands the rest of it
   delete round.work.e2.stopping
   assert.equal(view({ ...done }).find(node => node.props['aria-label'] === '停止 Coder'), undefined, 'a reported member has nothing to stop')
   delete round.onStop
-  assert.equal(head(view({ session: 'e4', profile: 'tester', type: 'test', hard: false, reused: false })), 'Tester|测试|未回报|查看会话')
+  assert.equal(head(view({ session: 'e4', profile: 'tester', type: 'test', hard: false, reused: false })), 'Tester|测试|查看会话')
 })
 
 test('delegation marks carry the task identity into member steps, old marks stay bare', async () => {

@@ -45,36 +45,20 @@ const withResults = run => withHost(async host => {
   finally { for (const client of clients) await client.close(); for (const binding of bindings) binding.revoke() }
 })
 
-test('reference failure leaves report, context read, review, Decision and complete working across restart', () => withResults(async ({ host, rt, owner, other, final, connect, call, clients, bindings }) => {
+test('reference failure leaves the result, context read, Decision and complete working across restart', () => withResults(async ({ host, rt, owner, other, final, connect, call, clients, bindings }) => {
   const client = await connect(rt, owner), outsider = await connect(rt, other)
   let referenceCalls = 0
   rt.createReference = async () => { referenceCalls++; throw new Error('Automatic references must not be needed') }
-  const send = rt.send
-  let reported = false
-  rt.send = async (...args) => {
-    if (args[5]?.origin?.kind === 'report') {
-      const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8'))
-      assert.equal(saved.executions[args[5].origin.executionId].result.text, final, 'result is persisted before report delivery')
-      reported = true
-    }
-    return send(...args)
-  }
   const { tools } = await client.listTools()
   assert.equal(tools.find(tool => tool.name === 'nodo_context').annotations.readOnlyHint, true)
   const receipt = await call(client, 'nodo_route', userRoute(rt, owner.id, { type: 'code', hard: false, task: 'Implement result archive' }))
   assert.equal(receipt.status, 'queued')
   await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'done' }) })
-  await until(() => rt.state.executions[receipt.executionId].status === 'done')
-  await until(() => reported)
-  await until(() => !rt.workView()[owner.id]?.active)
+  await until(() => rt.state.tasks[receipt.taskId].flow.status === 'stalled')
   const execution = rt.state.executions[receipt.executionId]
-  await until(() => execution.reports?.length === 1)
-  const report = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === execution.id)
-  assert.match(report.text, /Result preview:/)
-  assert.ok(report.text.includes(execution.result.preview))
-  assert.equal(report.text.includes(final), false)
-  assert.ok(report.text.includes(`nodo_context read executionId ${execution.id}`))
-  assert.equal(report.references, undefined)
+  assert.equal(execution.status, 'done')
+  assert.equal(JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[execution.id].result.text, final)
+  assert.equal(rt.transcriptOf(owner.id).some(line => line.origin?.kind === 'report'), false)
   assert.deepEqual(execution.references, [])
   assert.equal(execution.result.text, final)
   assert.equal(execution.result.completeness, 'complete')
@@ -108,12 +92,7 @@ test('reference failure leaves report, context read, review, Decision and comple
     assert.match(denied.content[0].text, /不属于本主控会话/)
   }
   assert.deepEqual((await call(outsider, 'nodo_context', { action: 'list' })).items, [])
-  assert.equal(JSON.stringify(rt.state.executions), before, 'reads do not review, accept or rewrite results')
-  assert.equal(execution.reports[0].review, undefined)
-  assert.equal(rt.state.tasks[receipt.taskId].status, 'open')
-  await call(client, 'nodo_review', { executionId: execution.id,
-    disposition: 'continue', reason: 'Checked archived final', basis: [sourceId, 'Actual verification in final'] })
-  assert.equal(execution.reports[0].review.disposition, 'continue')
+  assert.equal(JSON.stringify(rt.state.executions), before, 'reads do not accept or rewrite results')
   assert.equal(rt.state.tasks[receipt.taskId].status, 'blocked', 'unstructured work requires an available independent reviewer')
   assert.equal(rt.state.tasks[receipt.taskId].flow.stalled.reason, 'review-unavailable')
   const acceptance = { action: 'complete', taskId: receipt.taskId, executionIds: [execution.id], reason: 'Verified result', basis: [sourceId] }
@@ -123,7 +102,6 @@ test('reference failure leaves report, context read, review, Decision and comple
   const decision = await call(client, 'nodo_route', { action: 'ask', ...{ taskIds: [receipt.taskId], executionIds: [execution.id], stopExecutionIds: [],
     questions: [{ id: 'accept', question: 'Accept this result?', whyUser: 'Fixture user choice' }] } })
   assert.deepEqual(decision.decision.sourceExecutionIds, [execution.id])
-  assert.equal(execution.reports[0].review.disposition, 'ask')
   await assert.rejects(rt.completeTask(receipt.taskId, acceptance), { code: 'orch/decision-pending' })
   await host.api('decision-answer', { profile: rt.conversationOf(owner.id).profile.id, session: owner.id,
     decisionId: decision.decisionId, answers: { accept: { text: 'Accept the verified result' } } })
@@ -136,7 +114,7 @@ test('reference failure leaves report, context read, review, Decision and comple
   assert.equal(execution.result.text, final)
   await rt.saveStrict()
   const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8'))
-  assert.equal(saved.version, 6)
+  assert.equal(saved.version, 7)
   assert.equal(saved.executions[execution.id].result.text, final)
   for (const value of clients.splice(0)) await value.close()
   for (const binding of bindings.splice(0)) binding.revoke()

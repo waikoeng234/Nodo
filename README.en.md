@@ -88,7 +88,7 @@ For more detail, see the [architecture guide](docs/architecture.md).
 
 - Agents differ in models, thinking levels, images, attachments, and more. Nodo only integrates what an Agent actually provides.
 - Only Claude Code and Codex can currently lead.
-- The lead keeps at most 5 tasks running in parallel and accepts at most 24 dispatches per turn; child tasks use `parentId` to link to their goal (reopen an accepted parent first), and ordered tasks use `dependsOn` (all dependencies must be accepted as done before dispatch), and tasks editing the same files take `worktree:true` for isolation — Nodo never merges automatically.
+- The lead keeps at most 5 tasks running in parallel and accepts at most 24 dispatches per turn; child tasks use `parentId` to link to their goal (reopen an accepted parent first), and ordered tasks use `dependsOn` (a task waits until its dependencies are done, then Nodo dispatches it), and tasks editing the same files take `worktree:true` for isolation — Nodo never merges automatically.
 - The decision gate only blocks a lead on questions it actually raises: it can still miss a trade-off that is yours to make, or read existing authorization too generously. Confirm important trade-offs yourself.
 - Nodo acts only after you send a message. It does not watch chats, pull requests, or CI for external events, and it does not start work on its own.
 - If a task type has no assigned role, the lead cannot dispatch it; it states the gap and stops.

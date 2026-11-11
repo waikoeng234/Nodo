@@ -74,7 +74,9 @@ export function install(rt) {
     const settled = record => record != null && ['done', 'stopped'].includes(record.status)
     const kept = new Set()
     for (const other of Object.values(rt.state.tasks)) {
-      if (other.id !== taskId && !settled(other) && other.triggerId) kept.add(other.triggerId)
+      if (other.id === taskId || settled(other)) continue
+      if (other.triggerId) kept.add(other.triggerId)
+      for (const id of other.flow?.supplements ?? []) kept.add(id)
     }
     for (const execution of Object.values(rt.state.executions)) {
       if (execution.taskId !== taskId && !settled(rt.state.tasks[execution.taskId])) {
@@ -84,7 +86,7 @@ export function install(rt) {
     }
     const owned = Object.values(rt.state.executions).filter(execution => execution.taskId === taskId)
       .flatMap(execution => [execution.triggerId, ...(execution.supplements ?? [])])
-    for (const id of [task.triggerId, ...owned]) if (id && !kept.has(id)) delete rt.state.triggers[id]
+    for (const id of [task.triggerId, ...(task.flow?.supplements ?? []), ...owned]) if (id && !kept.has(id)) delete rt.state.triggers[id]
   }
 
   Object.assign(rt, { isUserTriggerLine, triggerFromLine, triggerFromReturn, pendingTriggerOf, setPendingTrigger, clearPendingTrigger,

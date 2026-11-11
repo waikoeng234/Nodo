@@ -166,7 +166,6 @@ export function install(rt) {
     } finally {
       compactions.delete(sessionId)
       rt.drainQueue(sessionId)
-      void rt.flushLeadReports?.(sessionId)
     }
     return true
   }

@@ -54,7 +54,6 @@ export function createDispatchSinks(rt, { stateOf, say, messagesOf, closeMessage
   // forwards. Handlers drop events that cannot belong to the active turn.
   const sinkSession = (sessionId, st, event) => {
     if (event.state === 'closed') { say(sessionId, { who: 'system', kind: 'note', text: 'engine session closed' }) }
-    else if (event.state === 'ready') void rt.flushLeadReports?.(sessionId)
   }
 
   const sinkTurnStart = (sessionId, st, event) => {
@@ -258,7 +257,6 @@ export function createDispatchSinks(rt, { stateOf, say, messagesOf, closeMessage
       st.requests.delete(event.id)
     }
     rt.closeApproval(event.id)
-    void rt.flushLeadReports?.(sessionId)
     if (!foreign(st, event)) armIdle(sessionId, st)
   }
 
@@ -351,7 +349,6 @@ export function createDispatchSinks(rt, { stateOf, say, messagesOf, closeMessage
       st.ended = { seq, outcome: { reason, text: flushed, ...final, ...unconfirmed, ...reply, ...retryable, ...refusal } }
       for (const joined of st.joined.splice(0)) settle(st, joined, st.ended.outcome)
       drain(sessionId, st)
-      void rt.flushLeadReports?.(sessionId)
       rt.notifyLive?.()
     }
     void Promise.resolve(st.recordWrites).then(() => rt.saveRuntime(sessionId)).then(() => finish(event.reason), () => {

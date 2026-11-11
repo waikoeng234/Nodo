@@ -3,46 +3,32 @@ import assert from 'node:assert/strict'
 import { withFlow, reportOf } from './helpers/flow.js'
 import { until } from './helpers/host.js'
 
-test('M5a regression 1: continue retries dispatch after orch/busy', () => withFlow(async ({ rt, create, finish, review, assertState }) => {
-  const execution = await create(); await finish(execution, reportOf({ verified: [] }))
+test('M5a regression 1: a busy dispatch leaves the execution for the next schedule pass', () => withFlow(async ({ rt, owner, create, start, review, assertState }) => {
+  const execution = await create(); await start(execution)
   const dispatch = rt.dispatchFlowExecution
   let first = true
   rt.dispatchFlowExecution = async (...args) => {
     if (first) { first = false; throw Object.assign(new Error('Busy fixture'), { code: 'orch/busy' }) }
     return dispatch(...args)
   }
-  await assert.rejects(review(execution), { code: 'orch/busy' })
-  assert.notEqual(execution.flowContinued, true)
+  await rt.workerReport(execution, reportOf({ verified: [] }))
+  rt.driverOf(execution.sessionId).finish()
+  await until(() => !first && execution.endedAt != null)
+  await rt.scheduleFlow(owner.id)
   const audit = await review(execution)
   assert.equal(audit.stage, 'review'); assertState(audit, 'reviewing', 'review')
   assert.equal(execution.flowContinued, true)
 }))
 
-for (const active of ['queued', 'running']) test(`M5a regression 2: old continue cannot advance newer ${active} rework`, () => withFlow(async ({ rt, owner, create, finish, review, start, trigger, card, assertState }) => {
+for (const active of ['queued', 'running']) test(`M5a regression 2: a schedule pass cannot advance an old execution past a newer ${active} rework`, () => withFlow(async ({ rt, owner, create, finish, start, trigger, card, assertState }) => {
   const execution = await create(); await finish(execution)
   trigger('Supplement after completion')
   const receipt = await rt.leadRoute(owner.id, { action: 'attach', taskId: execution.taskId, scope: { quote: 'Supplement' } })
   const rework = rt.state.executions[receipt.executionId]
   if (active === 'running') await start(rework)
-  await review(execution)
-  assert.equal(execution.reports[0].review.disposition, 'continue')
+  await rt.scheduleFlow(owner.id)
   assert.equal(card(execution.taskId), undefined)
   assertState(rework, 'running', 'open'); assert.equal(rework.status, active)
-}))
-
-test('M5a regression 3: answer-chain supplements become the next rework trigger and supplements', () => withFlow(async ({ host, rt, reviewer, owner, create, finish, review, start }) => {
-  const execution = await create(); await finish(execution, reportOf({ verified: [] }))
-  const audit = await review(execution); await finish(audit, reportOf({ verdict: 'pass' }))
-  const receipt = await rt.leadReview(owner.id, { executionId: audit.id, disposition: 'investigate', reason: 'Need evidence', basis: ['Report'], questions: ['Why?'] })
-  const answer = rt.state.executions[receipt.executionId]; await start(answer)
-  for (const text of ['Supplement first', 'Supplement last']) await host.api('send', { profile: reviewer.id, session: answer.sessionId, text })
-  const supplements = [...answer.supplements]
-  await finish(answer, reportOf({ answers: [{ n: 1, text: 'Evidence' }] }))
-  const rework = await review(answer)
-  assert.equal(rework.stage, 'rework')
-  assert.equal(rework.triggerId, supplements.at(-1)); assert.deepEqual(rework.supplements, supplements.slice(0, -1))
-  const input = await rt.composeWorkerInput({ executionId: rework.id })
-  assert.match(input.text, /Supplement first/); assert.match(input.text, /Supplement last/)
 }))
 
 test('M5a regression 4: a failed rework retry retains R4 independent review', () => withFlow(async ({ rt, create, finish, review, card, answer }) => {
@@ -65,7 +51,7 @@ for (const code of ['orch/busy', 'orch/no-holder']) test(`M5a regression 5: acce
   rt.dispatchFlowExecution = async () => { throw Object.assign(new Error('Return dispatch failed'), { code }) }
   await assert.rejects(answer(item, 'return', 'Return verbatim'), { code })
   assert.deepEqual(item, before); assert.deepEqual(rt.state.triggers, triggers)
-  assertState(execution, 'accepting', 'blocked')
+  assertState(execution, 'done', 'review')
   rt.dispatchFlowExecution = dispatch
   await answer(item, 'return', 'Return verbatim')
   assert.equal(item.status, 'rejected')
@@ -113,31 +99,13 @@ test('M5a coverage 8: the real eighth completed execution transitions to hard-ca
   assert.deepEqual(card(execution.taskId).question.options, ['stop'])
 }))
 
-test('M5a coverage 8: three real report delivery failures create a stall card', () => withFlow(async ({ rt, owner, create, start, card }) => {
-  const execution = await create(); await start(execution); await rt.workerReport(execution, reportOf())
-  const send = rt.send
-  let attempts = 0
-  rt.send = async (...args) => {
-    if (args[5]?.origin?.kind === 'report') { attempts++; throw new Error('Fixture delivery failed') }
-    return send(...args)
-  }
-  rt.driverOf(execution.sessionId).finish()
-  await until(() => rt.conversationOf(owner.id).session.reportQueue?.[0]?.text)
-  await rt.flushLeadReports(owner.id)
-  while (attempts < 3) await rt.flushLeadReports(owner.id)
-  const item = card(execution.taskId)
-  assert.equal(item?.payload.reason, 'delivery-failed')
-  assert.ok(rt.conversationOf(owner.id).session.reportQueue[0].deliveryFailures >= 3)
-}))
-
-test('M5a minor 1: user interrupted coordinator leaves pending reports available for continue', () => withFlow(async ({ rt, owner, create, finish, card, assertState }) => {
+for (const reason of ['interrupted', 'error']) test(`M5a minor 1: a leader turn ending ${reason} leaves flow tasks as they are`, () => withFlow(async ({ rt, owner, create, finish, card, assertState }) => {
   const execution = await create(); await finish(execution)
-  await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'interrupted' }) })
-  assertState(execution, 'running', 'open'); assert.equal(card(execution.taskId), undefined)
-  assert.equal(execution.reports[0].flowStalled, undefined)
+  await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason }) })
+  assertState(execution, 'done', 'review'); assert.equal(card(execution.taskId).kind, 'acceptance')
 }))
 
-test('M5a minor 2: direct worker input while accepting is stored as supplement origin', () => withFlow(async ({ host, rt, worker, create, finish, review }) => {
+test('M5a minor 2: direct worker input while awaiting acceptance is stored as supplement origin', () => withFlow(async ({ host, rt, worker, create, finish, review }) => {
   const execution = await create(); await finish(execution); await review(execution)
   await host.api('send', { profile: worker.id, session: execution.sessionId, text: 'Direct accepting supplement' })
   const line = rt.transcriptOf(execution.sessionId).find(item => item.text === 'Direct accepting supplement')

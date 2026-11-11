@@ -14,7 +14,7 @@ const harness = () => {
   return { rt, owner, worker }
 }
 
-test('task board returns bounded summaries, retaining active executions and pending reports', async () => {
+test('task board returns bounded summaries, retaining active executions', async () => {
   const { rt, owner } = harness()
   for (let index = 0; index < 20; index++) {
     const id = `task-${index}`
@@ -22,15 +22,14 @@ test('task board returns bounded summaries, retaining active executions and pend
     rt.state.executions[id] = { id, taskId: id, sessionId: id, status: 'done', references: [`ref-${index}`], report: 'Private report' }
   }
   for (const [index, status] of [[0, 'running'], [1, 'queued'], [2, 'unconfirmed']]) rt.state.executions[`task-${index}`].status = status
-  owner.reportQueue = [{ taskId: 'task-3' }]
   rt.state.tasks['task-19'].parentId = 'task-18'
   rt.state.tasks['task-19'].dependsOn = ['task-17']
   rt.state.executions.followup = { id: 'followup', taskId: 'task-19', sessionId: 'another', status: 'done', references: ['ref-19', 'new-ref'] }
   rt.state.tasks.foreign = { id: 'foreign', coordinatorSessionId: 'another-lead', updatedAt: 100 }
   rt.taskView = async () => { throw new Error('List must not load full task views') }
   const rows = await rt.leadTasks(owner.id)
-  assert.equal(rows.length, 14)
-  assert.deepEqual(new Set(rows.map(row => row.id)), new Set([0, 1, 2, 3, ...Array.from({ length: 10 }, (_, index) => index + 10)].map(index => `task-${index}`)))
+  assert.equal(rows.length, 13)
+  assert.deepEqual(new Set(rows.map(row => row.id)), new Set([0, 1, 2, ...Array.from({ length: 10 }, (_, index) => index + 10)].map(index => `task-${index}`)))
   assert.deepEqual(rows[0], { id: 'task-19', title: 'Task 19', status: 'review', teamId: 'team', parentId: 'task-18', dependsOn: ['task-17'], executionCount: 2, latestExecutionStatus: 'done', references: ['ref-19', 'new-ref'],
     latestResult: { sourceId: 'execution:followup:result', completeness: 'unavailable', reason: 'legacy-unavailable', preview: '', length: 0 } })
   rows[0].dependsOn.push('changed')
@@ -96,9 +95,11 @@ test('snapshots and delegation boards enumerate executions once for 2000 session
 
 test('interruption status does not repeat its reason label', () => {
   const { rt, owner, worker } = harness()
+  rt.state.tasks.task = { workspaceRef: 'w', brief: 'Task' }
+  const session = { id: 'executor', source: { kind: 'lead', leadSessionId: owner.id } }
   for (const stoppedBy of ['user', 'lead']) {
-    const status = `interrupted-${stoppedBy}`
-    const session = { id: 'legacy', source: { kind: 'lead', leadSessionId: owner.id, dispatch: { status, reason: status } } }
+    const reason = `interrupted-${stoppedBy}`
+    rt.state.executions.execution = { id: 'execution', taskId: 'task', sessionId: session.id, type: 'feature', hard: false, status: 'interrupted', reason, endedAt: 2 }
     const shown = rt.delegationState(worker, session)[4]
     assert.equal(shown, stoppedBy === 'user' ? '已中断（用户）' : '已中断（主控）')
   }
@@ -124,13 +125,14 @@ test('directory labels distinguish execution isolation from a shared worktree wo
   for (const table of [rt.leadSnapshot(owner.id), rt.leadDelegations(owner.id)]) assert.match(table, /\| 已删除 \|/)
 })
 
-test('legacy queued recovery logs cancellation save failures', async () => {
-  const { rt, owner, worker } = harness()
-  worker.sessions.push({ id: 'legacy', source: { kind: 'lead', leadSessionId: owner.id, dispatch: { status: 'queued' } } })
-  const warnings = []
-  Object.assign(rt, { readOnly: () => undefined, conversationOf: id => id === 'legacy' ? { profile: worker, session: worker.sessions[0] } : undefined,
-    appendLine() {}, save: async () => { throw new Error('Legacy cancellation save failed') }, warn: (...args) => warnings.push(args) })
-  rt.recoverLeadDelegations()
-  for (let count = 0; count < 10; count++) await new Promise(resolve => setImmediate(resolve))
-  assert.ok(warnings.some(args => args.join(' ').includes('Legacy cancellation save failed')))
+test('restart recovery interrupts executions left running and logs save failures', async () => {
+  const { rt, owner } = harness()
+  rt.state.tasks.task = { id: 'task', coordinatorSessionId: owner.id }
+  rt.state.executions.execution = { id: 'execution', taskId: 'task', sessionId: 'executor', status: 'running' }
+  const warnings = [], calls = []
+  Object.assign(rt, { readOnly: () => undefined, warn: (...args) => warnings.push(args),
+    interruptExecution: async (...args) => { calls.push(args); throw new Error('Recovery save failed') } })
+  await rt.recoverLeadDelegations()
+  assert.deepEqual(calls, [['execution', { reason: 'restart' }]])
+  assert.ok(warnings.some(args => args.join(' ').includes('Recovery save failed')))
 })

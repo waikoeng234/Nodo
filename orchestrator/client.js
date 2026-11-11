@@ -14525,7 +14525,7 @@ function roundLines(lines, leadRunning = false) {
     }
     const step = steps.get(mark?.session ?? line.origin?.session);
     if (mark?.ended && step) {
-      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {}, mark.stoppedBy ? { stoppedBy: mark.stoppedBy } : {});
+      Object.assign(step, { ended: mark.ended }, mark.ended === "done" ? { at: line.at } : {}, mark.unconfirmed ? { unconfirmed: true } : {}, mark.stoppedBy ? { stoppedBy: mark.stoppedBy } : {});
       flush();
       continue;
     }
@@ -14678,6 +14678,7 @@ function RoundMember({ step, round }) {
   const role = roleOf(round, step.profile);
   const work = round.work?.[step.session];
   const live = !step.report && !step.ended && work?.active === true;
+  const failed = step.ended && step.ended !== "done";
   const task = round.tasks?.find((item) => item.id === step.taskId);
   const parent = task?.parentId && round.tasks?.find((item) => item.id === task.parentId);
   const waiting = round.decisions?.some((decision) => (decision.status === "pending" || decision.status === "answered") && decision.taskIds.includes(step.taskId));
@@ -14712,13 +14713,13 @@ function RoundMember({ step, round }) {
         step.reused && tag("\u7EED\u7528", "accent"),
         step.branch && tag("\u9694\u79BB"),
         // An ended card says it once: the ending text replaces the task-level word.
-        !step.ended && word ? tag(word, TASK_TONES[word]) : null,
-        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : step.ended ? (0, import_react.createElement)(
+        !failed && word ? tag(word, TASK_TONES[word]) : null,
+        live ? (0, import_react.createElement)("span", { className: "nodo-round-status", "data-state": "live" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: workDot(work), size: 7 }), label ? `${label} \xB7 ` : null, runDuration(now - (work.since ?? now))) : failed ? (0, import_react.createElement)(
           "span",
           { className: "nodo-round-status", "data-state": "ended" },
           (0, import_react.createElement)(import_dsh_client_ui_primitives.StateDot, { state: "warning", size: 7 }),
           step.unconfirmed ? "\u7ED3\u679C\u672A\u786E\u8BA4" : step.stoppedBy && (step.ended === "cancelled" || step.ended === "interrupted") ? "\u5DF2\u505C\u6B62" : step.ended === "cancelled" ? "\u5DF2\u53D6\u6D88" : step.ended === "interrupted" ? "\u5DF2\u4E2D\u65AD" : "\u5DF2\u7ED3\u675F"
-        ) : step.report ? (0, import_react.createElement)(MessageTime, { at: step.at }) : (0, import_react.createElement)("span", { className: "nodo-round-status" }, "\u672A\u56DE\u62A5"),
+        ) : step.report || step.ended ? (0, import_react.createElement)(MessageTime, { at: step.at }) : null,
         (0, import_react.createElement)(
           "span",
           { className: "nodo-round-actions" },
@@ -14774,7 +14775,6 @@ function RoundMember({ step, round }) {
         }),
         (0, import_react.createElement)(RoundTools, { step, work })
       ),
-      !step.report && step.ended && (0, import_react.createElement)("p", { className: "nodo-round-quiet" }, "\u6CA1\u6709\u56DE\u62A5\u4E3B\u63A7\uFF0C\u53EF\u67E5\u770B\u4F1A\u8BDD\u4E86\u89E3\u8FDB\u5EA6\u3002"),
       open && rest && (0, import_react.createElement)("div", { className: "nodo-round-report" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
       open && step.taskId && (0, import_react.createElement)(RoundTask, { step })
     )
@@ -14920,7 +14920,7 @@ function RoundTeam({ lead, members, work, tasks, decisions, stats, workspace, on
   const done = rows.filter((row) => row.finished);
   const active = rows.filter((row) => !row.finished);
   const leadWork = leadId ? work?.[leadId] : void 0;
-  const leadState = leadWork?.active ? memberState(void 0, void 0, leadWork) : active.length + pending.length > 0 ? { kind: "idle", word: "\u7B49\u5F85\u56DE\u62A5", dot: "stop" } : rows.length ? { kind: "done", word: "\u5DF2\u5B8C\u6210", dot: "done" } : { kind: "idle" };
+  const leadState = leadWork?.active ? memberState(void 0, void 0, leadWork) : active.length + pending.length > 0 ? { kind: "idle" } : rows.length ? { kind: "done", word: "\u5DF2\u5B8C\u6210", dot: "done" } : { kind: "idle" };
   const count = (kind) => rows.filter((row) => row.kind === kind).length;
   const live = leadWork?.active === true || members.some(({ session }) => work?.[session.id]?.active === true);
   const stale = [(tasks ?? []).map((task) => `${task.id}:${task.status}:${task.latestExecutionStatus}`).join(), members.map(({ session }) => work?.[session.id]?.active === true).join()].join("|");
@@ -20420,8 +20420,6 @@ var STALL_REASONS = {
   "execution-failed": "\u6267\u884C\u5931\u8D25",
   "verdict-unreadable": "\u5BA1\u67E5\u7ED3\u8BBA\u65E0\u6CD5\u8BFB\u53D6",
   "review-unavailable": "\u5BA1\u67E5\u7C7B\u578B\u4E0D\u53EF\u7528",
-  "delivery-failed": "\u56DE\u62A5\u6295\u9012\u5931\u8D25",
-  "lead-error": "\u4E3B\u63A7\u8FD0\u884C\u51FA\u9519",
   "accept-blocked": "\u9A8C\u6536\u68C0\u67E5\u672A\u901A\u8FC7",
   "rework-limit": "\u8FD4\u5DE5\u6B21\u6570\u5DF2\u8FBE\u4E0A\u9650",
   "hard-cap": "\u6267\u884C\u6570\u5DF2\u8FBE\u4E0A\u9650",

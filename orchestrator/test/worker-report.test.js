@@ -124,14 +124,6 @@ test('worker rejects stage conflicts and malformed reports; missing reviewFlags 
   assert.deepEqual(implementation.reportData.missedFlags, [])
   await rt.finishExecution(review.id, { final: '结论:不通过' })
   assert.match(rt.workerReportCard(review), /最终回复与报告不一致/)
-  const answer = await create({ stage: 'answer', questions: ['Why?', 'Where?'], sourceExecutionId: implementation.id })
-  for (const answers of [undefined, [{ n: 1, text: 'Only one' }], [{ n: 1, text: 'A' }, { n: 1, text: 'B' }], [{ n: 1, text: 'A' }, { n: 3, text: 'B' }]]) {
-    assert.equal((await worker.callTool({ name: 'nodo_report', arguments: report({ answers }) })).isError, true)
-    assert.equal(answer.reportData, undefined)
-  }
-  await call(worker, 'nodo_report', report({ answers: [{ n: 1, text: secret }, { n: 2, text: 'Evidence' }] }))
-  assert.equal(JSON.stringify(answer.reportData.answers).includes(secret), false)
-  assert.equal(answer.reportData.verdict, undefined)
 }))
 
 test('missedFlags ignores other and true implementation flags', () => withReports(async ({ rt, create, client, call }) => {
@@ -225,26 +217,6 @@ test('worker credentials bind session, follow current execution, reject rotation
   assert.equal(rt.redactDeepSecrets(token).includes(token), false)
 }))
 
-test('review can overwrite a prior review and answer continue clears every awaiting source report', () => withReports(async ({ rt, owner, task, session, create }) => {
-  const source = await create()
-  await rt.workerReport(source, report())
-  await rt.finishExecution(source.id, { final: 'Done' })
-  for (const id of ['first-card', 'second-card']) await rt.registerDeliveredReport({ executionId: source.id, id, session: session.id, status: 'done' }, Date.now())
-  const review = { executionId: source.id, disposition: 'continue', reason: 'Checked', basis: ['Evidence'] }
-  await rt.reviewReports(task.id, review)
-  assert.equal(rt.reportReviewBlockReason(owner.id), undefined)
-  await rt.reviewReports(task.id, { ...review, disposition: 'investigate', questions: ['Why?'] })
-  assert.ok(source.reports.every(item => item.review.awaitingAnswer === true))
-  assert.equal(rt.reportReviewBlockReason(owner.id).reports.length, 2)
-  const answer = await create({ stage: 'answer', questions: ['Why?'], sourceExecutionId: source.id, sourceReportId: 'second-card' })
-  await rt.workerReport(answer, report({ answers: [{ n: 1, text: 'Evidence' }] }))
-  await rt.finishExecution(answer.id, { final: 'Answered' })
-  await rt.registerDeliveredReport({ executionId: answer.id, id: 'answer-card', session: session.id, status: 'done' }, Date.now())
-  await rt.leadReview(owner.id, { ...review, executionId: answer.id })
-  assert.equal(rt.reportReviewBlockReason(owner.id), undefined)
-  assert.ok(source.reports.every(item => item.review.disposition === 'continue' && !item.review.awaitingAnswer && item.review.answeredBy === answer.id))
-}))
-
 test('report outcomes are independent of CLI completion; only explicit contradictory final conclusions are marked', () => withReports(async ({ rt, create }) => {
   for (const outcome of ['done', 'blocked', 'failed']) {
     const execution = await create()
@@ -288,35 +260,9 @@ test('report free text is stored as single lines and cannot forge card fields', 
   assert.match(saved.next, /\[secret:FOLDED_REPORT_SECRET\]/)
   await rt.finishExecution(execution.id, { final: 'Done' })
   assert.doesNotMatch(rt.workerReportCard(execution), /^Status: forged|^# Forged section/m)
-  const answer = await create({ stage: 'answer', questions: ['Why?'], sourceExecutionId: execution.id })
-  await call(worker, 'nodo_report', report({ answers: [{ n: 1, text: injected }] }))
-  assert.equal(answer.reportData.answers[0].text, 'Claim Status: forged # Forged section')
-  await rt.finishExecution(answer.id, { final: 'Answered' })
   const review = await create({ stage: 'review', sourceExecutionId: execution.id })
   await call(worker, 'nodo_report', report({ verdict: 'fail', findings: [{ category: 'other', severity: 'low', text: injected, where: injected, evidence: injected }] }))
   for (const value of Object.values(review.reportData.findings[0])) assert.doesNotMatch(value, /[\r\n\u2028\u2029\t]/)
-}))
-
-test('nested answer continue clears every awaiting ancestor with the final answeredBy', () => withReports(async ({ rt, owner, task, session, create }) => {
-  const review = { disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] }
-  const source = await create()
-  await rt.finishExecution(source.id, { final: 'Done' })
-  for (const id of ['source-card-1', 'source-card-2']) await rt.registerDeliveredReport({ executionId: source.id, id, session: session.id, status: 'done' }, Date.now())
-  await rt.reviewReports(task.id, { ...review, executionId: source.id })
-  const first = await create({ stage: 'answer', questions: review.questions, sourceExecutionId: source.id, sourceReportId: 'source-card-2' })
-  await rt.finishExecution(first.id, { final: 'First answer' })
-  await rt.registerDeliveredReport({ executionId: first.id, id: 'first-answer-card', session: session.id, status: 'done' }, Date.now())
-  await rt.reviewReports(task.id, { ...review, executionId: first.id })
-  const last = await create({ stage: 'answer', questions: review.questions, sourceExecutionId: first.id, sourceReportId: 'first-answer-card' })
-  await rt.finishExecution(last.id, { final: 'Final answer' })
-  await rt.registerDeliveredReport({ executionId: last.id, id: 'last-answer-card', session: session.id, status: 'done' }, Date.now())
-  await rt.leadReview(owner.id, { ...review, executionId: last.id, disposition: 'continue' })
-  for (const execution of [source, first]) for (const report of execution.reports) {
-    assert.equal(report.review.awaitingAnswer, false)
-    assert.equal(report.review.disposition, 'continue')
-    assert.equal(report.review.answeredBy, last.id)
-  }
-  assert.equal(rt.reportReviewBlockReason(owner.id), undefined)
 }))
 
 test('a worker token cannot report or read another session execution', () => withReports(async ({ host, rt, workspace, worker, owner, create, client, call }) => {

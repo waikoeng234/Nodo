@@ -50,7 +50,7 @@ export function roundLines(lines, leadRunning = false) {
     }
     const step = steps.get(mark?.session ?? line.origin?.session)
     if (mark?.ended && step) {
-      Object.assign(step, { ended: mark.ended }, mark.unconfirmed ? { unconfirmed: true } : {}, mark.stoppedBy ? { stoppedBy: mark.stoppedBy } : {})
+      Object.assign(step, { ended: mark.ended }, mark.ended === 'done' ? { at: line.at } : {}, mark.unconfirmed ? { unconfirmed: true } : {}, mark.stoppedBy ? { stoppedBy: mark.stoppedBy } : {})
       flush()
       continue
     }
@@ -195,6 +195,7 @@ export function RoundMember({ step, round }) {
   const role = roleOf(round, step.profile)
   const work = round.work?.[step.session]
   const live = !step.report && !step.ended && work?.active === true
+  const failed = step.ended && step.ended !== 'done'
   const task = round.tasks?.find(item => item.id === step.taskId)
   const parent = task?.parentId && round.tasks?.find(item => item.id === task.parentId)
   const waiting = round.decisions?.some(decision => (decision.status === 'pending' || decision.status === 'answered') && decision.taskIds.includes(step.taskId))
@@ -222,13 +223,13 @@ export function RoundMember({ step, round }) {
         step.hard && tag('难题', 'caution'), step.reused && tag('续用', 'accent'),
         step.branch && tag('隔离'),
         // An ended card says it once: the ending text replaces the task-level word.
-        !step.ended && word ? tag(word, TASK_TONES[word]) : null,
+        !failed && word ? tag(word, TASK_TONES[word]) : null,
         live ? h('span', { className: 'nodo-round-status', 'data-state': 'live' }, h(StateDot, { state: workDot(work), size: 7 }), label ? `${label} · ` : null, runDuration(now - (work.since ?? now)))
-          : step.ended ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }),
+          : failed ? h('span', { className: 'nodo-round-status', 'data-state': 'ended' }, h(StateDot, { state: 'warning', size: 7 }),
               step.unconfirmed ? '结果未确认'
                 : step.stoppedBy && (step.ended === 'cancelled' || step.ended === 'interrupted') ? '已停止'
                 : step.ended === 'cancelled' ? '已取消' : step.ended === 'interrupted' ? '已中断' : '已结束')
-            : step.report ? h(MessageTime, { at: step.at }) : h('span', { className: 'nodo-round-status' }, '未回报'),
+            : step.report || step.ended ? h(MessageTime, { at: step.at }) : null,
         h('span', { className: 'nodo-round-actions' },
           live && round.onStop && h('button', { type: 'button', className: 'nodo-round-open', disabled: stopping, 'aria-label': `停止 ${role.name}`,
             onClick: () => { setConfirming(true); void round.onStop(step).finally(() => setConfirming(false)) } },
@@ -248,7 +249,6 @@ export function RoundMember({ step, round }) {
         : h(Fragment, null, h(PlanDock, { profileId: step.profile, sessionId: step.session, compact: true,
           selectLines: lines => delegationLines(lines, step) }),
           h(RoundTools, { step, work })),
-      !step.report && step.ended && h('p', { className: 'nodo-round-quiet' }, '没有回报主控，可查看会话了解进度。'),
       open && rest && h('div', { className: 'nodo-round-report' }, h(MarkdownText, { text: rest, labels: MARKDOWN_LABELS })),
       open && step.taskId && h(RoundTask, { step })))
 }
@@ -369,7 +369,7 @@ export function RoundTeam({ lead, members, work, tasks, decisions, stats, worksp
   const active = rows.filter(row => !row.finished)
   const leadWork = leadId ? work?.[leadId] : undefined
   const leadState = leadWork?.active ? memberState(undefined, undefined, leadWork)
-    : active.length + pending.length > 0 ? { kind: 'idle', word: '等待回报', dot: 'stop' } : rows.length ? { kind: 'done', word: '已完成', dot: 'done' } : { kind: 'idle' }
+    : active.length + pending.length > 0 ? { kind: 'idle' } : rows.length ? { kind: 'done', word: '已完成', dot: 'done' } : { kind: 'idle' }
   const count = kind => rows.filter(row => row.kind === kind).length
   const live = leadWork?.active === true || members.some(({ session }) => work?.[session.id]?.active === true)
   // Task statuses and which members run decide whether the list is stale;

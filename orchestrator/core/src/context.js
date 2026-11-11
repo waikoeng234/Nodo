@@ -270,13 +270,19 @@ export function install(rt) {
     for (const decision of linkedDecisions(id, taskIds)) required.push(toSelection(await resolveContextSource(id, `decision:${decision.id}`), 'required'))
     for (const taskId of relations.dependsOn ?? []) {
       const task = rt.state.tasks[taskId]
-      const acceptance = task?.acceptances?.at(-1)
-      if (!task || !acceptance) continue
-      required.push(toSelection(await resolveContextSource(id, `task:${taskId}:acceptance`), 'required'))
-      const ended = Object.values(rt.state.executions).filter(execution => execution.taskId === taskId && !['queued', 'running'].includes(execution.status))
-      const [executionId] = acceptance.executionIds?.length ? acceptance.executionIds.slice(-1) : ended.slice(-1).map(execution => execution.id)
-      const execution = rt.state.executions[executionId]
-      if (execution?.taskId === taskId) background.push(toSelection(await resolveContextSource(id, `execution:${executionId}:result`), 'background'))
+      if (!task) continue
+      // A dependency releases its dependents at flow done, before the user accepts it:
+      // without an acceptance its implementation result is the whole handover.
+      const acceptance = task.acceptances?.at(-1)
+      const ended = Object.values(rt.state.executions).filter(execution => execution.taskId === taskId && execution.endedAt != null)
+      const source = acceptance ? rt.state.executions[acceptance.executionIds?.at(-1)] ?? ended.at(-1)
+        : ended.findLast(execution => ['implement', 'rework'].includes(execution.stage)) ?? ended.at(-1)
+      if (!source) continue
+      const result = toSelection(await resolveContextSource(id, `execution:${source.id}:result`), acceptance ? 'background' : 'required')
+      if (acceptance) {
+        required.push(toSelection(await resolveContextSource(id, `task:${taskId}:acceptance`), 'required'))
+        background.push(result)
+      } else required.push(result)
     }
     return { required: dedupe(required), background: dedupe(background) }
   }

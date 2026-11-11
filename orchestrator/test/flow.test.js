@@ -33,10 +33,10 @@ test('R1-R5 review predicates cover positive and negative conditions', () => wit
   delete rt.state.executions.review
 }))
 
-test('done waits for continue; acceptance uses completeTask and records user evidence atomically', () => withFlow(async ({ host, rt, owner, lead, create, finish, review, card, answer, assertState }) => {
+test('a finished execution reaches acceptance without a leader turn; acceptance uses completeTask and records user evidence atomically', () => withFlow(async ({ host, rt, owner, lead, create, finish, card, answer, assertState }) => {
   const execution = await create(); await finish(execution)
-  assertState(execution, 'running', 'open'); assert.equal(card(execution.taskId), undefined)
-  await review(execution); assertState(execution, 'accepting', 'blocked')
+  assertState(execution, 'done', 'review')
+  assert.equal(rt.driverOf(owner.id), undefined, 'the leader never ran a turn')
   const item = card(execution.taskId)
   assert.deepEqual(item.payload.scope, { quote: 'Original' })
   assert.equal(item.payload.trigger.summary, 'Original exact requirement')
@@ -57,16 +57,15 @@ test('done waits for continue; acceptance uses completeTask and records user evi
   assert.equal((await host.api('card-list', { profile: lead.id, session: owner.id }))[0].status, 'accepted')
 }))
 
-test('review fail requires continue, reworks with the original holder and directory, then R4 forces review', () => withFlow(async ({ rt, worker, reviewer, team, create, finish, review, card, assertState }) => {
+test('review fail reworks with the original holder and directory, then R4 forces review', () => withFlow(async ({ rt, owner, worker, reviewer, team, create, finish, review, card, assertState }) => {
   const implement = await create({ worktree: true })
   await finish(implement, reportOf({ reviewFlags: undefined }))
   const audit = await review(implement)
   assertState(implement, 'reviewing', 'review'); assert.equal(audit.stage, 'review'); assert.equal(audit.profileId, reviewer.id)
   assert.equal(audit.workspaceRef, implement.workspaceRef); assert.equal(audit.triggerId, implement.triggerId)
   assert.deepEqual(audit.scope, implement.scope)
-  await finish(audit, reportOf({ verdict: 'fail', findings: [{ category: 'security', severity: 'high', text: 'Missing ownership check' }] }))
-  assertState(audit, 'reviewing', 'review'); assert.equal(card(audit.taskId), undefined)
   await rt.updateTeams([{ ...team, assign: { ...team.assign, feature: { normal: { profile: reviewer.id } } } }])
+  await finish(audit, reportOf({ verdict: 'fail', findings: [{ category: 'security', severity: 'high', text: 'Missing ownership check' }] }))
   const rework = await review(audit)
   assertState(rework, 'running', 'open'); assert.equal(rework.stage, 'rework'); assert.equal(rework.profileId, worker.id)
   assert.equal(rework.type, implement.type); assert.equal(rework.workspaceRef, implement.workspaceRef)
@@ -75,7 +74,8 @@ test('review fail requires continue, reworks with the original holder and direct
   const secondAudit = await review(rework)
   assert.equal(secondAudit.stage, 'review'); assert.equal(secondAudit.workspaceRef, implement.workspaceRef)
   await finish(secondAudit, reportOf({ verdict: 'pass' })); await review(secondAudit)
-  assertState(implement, 'accepting', 'blocked')
+  assertState(implement, 'done', 'review')
+  assert.equal(rt.driverOf(owner.id), undefined, 'the leader never ran a turn')
   assert.deepEqual(card(implement.taskId).payload.missedFlags, ['security'])
   assert.equal(card(implement.taskId).payload.missedFlagsCount, 1)
   assert.equal(card(implement.taskId).question.recommendation, 'accept')
@@ -91,7 +91,7 @@ for (const missing of ['type', 'independent', 'holder']) test(`unavailable revie
   const next = Object.values(rt.state.executions).at(-1)
   assert.equal(next.stage, 'review'); assertState(next, 'reviewing', 'review')
   await finish(next, reportOf({ verdict: 'pass' })); await review(next)
-  assertState(next, 'accepting', 'blocked')
+  assertState(next, 'done', 'review')
 }))
 
 for (const final of ['结论:通过', '# 结论：通过', '* - ** 结论:不通过', '  **结论：不通过', '正文\n结论：通过']) test(`fallback review first line drives flow: ${JSON.stringify(final)}`, () => withFlow(async ({ rt, create, finish, review, card, assertState }) => {
@@ -101,19 +101,7 @@ for (const final of ['结论:通过', '# 结论：通过', '* - ** 结论:不通
     assertState(audit, 'stalled', 'blocked'); assert.equal(card(audit.taskId).payload.reason, 'verdict-unreadable')
   } else if (final.includes('不通过')) {
     assertState(audit, 'running', 'open'); assert.equal(Object.values(rt.state.executions).at(-1).stage, 'rework')
-  } else assertState(audit, 'accepting', 'blocked')
-}))
-
-test('investigate and answer completion preserve the phase; only answer continue advances it', () => withFlow(async ({ rt, owner, create, finish, review, card, assertState }) => {
-  const execution = await create(); await finish(execution)
-  const receipt = await rt.leadReview(owner.id, { executionId: execution.id, disposition: 'investigate', reason: 'Need evidence', basis: ['Report'], questions: ['Which check ran?'] })
-  const answer = rt.state.executions[receipt.executionId]
-  assert.equal(answer.triggerId, execution.triggerId); assert.equal(answer.workspaceRef, execution.workspaceRef)
-  assertState(execution, 'running', 'open'); assert.equal(card(execution.taskId), undefined)
-  await finish(answer, reportOf({ answers: [{ n: 1, text: 'fixture check' }] }))
-  assertState(execution, 'running', 'open'); assert.equal(card(execution.taskId), undefined)
-  await review(answer); assertState(answer, 'accepting', 'blocked')
-  assert.equal(execution.reports[0].review.answeredBy, answer.id)
+  } else assertState(audit, 'done', 'review')
 }))
 
 for (const stage of ['implement', 'review']) for (const failure of ['blocked', 'failed', 'unconfirmed']) test(`${stage} ${failure} stalls only its task`, () => withFlow(async ({ rt, create, finish, review, card, assertState }) => {
@@ -145,39 +133,13 @@ test('review rework limit is a count stall without retry', () => withFlow(async 
   assert.deepEqual(item.question.options, ['stop']); await assert.rejects(answer(item, 'retry'), /不支持/)
 }))
 
-test('hard execution cap and same-stage round cap stall before creating another execution', () => withFlow(async ({ rt, owner, create, finish, review, card, answer }) => {
+test('hard execution cap stalls before creating another execution', () => withFlow(async ({ rt, create, finish, review, card, answer }) => {
   const execution = await create(); await finish(execution); await review(execution)
   for (let index = 1; index < 8; index++) rt.state.executions[`old-${index}`] = { ...execution, id: `old-${index}`, stage: index % 2 ? 'rework' : 'review' }
-  assert.equal(rt.checkFlowCapacity(rt.state.tasks[execution.taskId], 'answer', execution), false)
+  assert.equal(rt.checkFlowCapacity(rt.state.tasks[execution.taskId], execution), false)
   assert.equal(card(execution.taskId).payload.reason, 'hard-cap'); assert.equal(card(execution.taskId).payload.retryAction, null)
   for (let index = 1; index < 8; index++) delete rt.state.executions[`old-${index}`]
   await answer(card(execution.taskId), 'stop')
-  const second = await create(); await finish(second)
-  let latest = second
-  for (let index = 0; index < 2; index++) {
-    const receipt = await rt.leadReview(owner.id, { executionId: latest.id, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] })
-    latest = rt.state.executions[receipt.executionId]; await finish(latest, reportOf({ answers: [{ n: 1, text: 'Evidence' }] }))
-  }
-  await rt.leadReview(owner.id, { executionId: latest.id, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] })
-  assert.equal(card(second.taskId).payload.reason, 'stage-rounds'); assert.equal(card(second.taskId).payload.retryAction, null)
-  assert.equal(Object.values(rt.state.executions).filter(item => item.taskId === second.taskId).length, 3)
-}))
-
-test('delivery failure three and lead error each stall a report only once; retry preserves counts', () => withFlow(async ({ rt, owner, create, finish, card, answer, assertState }) => {
-  const execution = await create(); await finish(execution)
-  const report = execution.reports[0]
-  for (let index = 0; index < 2; index++) { await rt.flowReportDeliveryFailed(execution, report); assert.equal(card(execution.taskId), undefined) }
-  await rt.flowReportDeliveryFailed(execution, report)
-  const item = card(execution.taskId); assert.equal(item.payload.reason, 'delivery-failed')
-  await rt.flowReportDeliveryFailed(execution, report); assert.equal(card(execution.taskId).id, item.id)
-  await answer(item, 'retry'); assert.equal(report.deliveryFailures, 4)
-  assertState(execution, 'running', 'open')
-  await until(() => !rt.workView()[owner.id]?.active)
-  const fresh = execution.reports.at(-1)
-  await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'error' }) })
-  assert.equal(card(execution.taskId).payload.reason, 'lead-error')
-  const leadCard = card(execution.taskId)
-  await rt.flowLeadFailed(owner.id); assert.equal(card(execution.taskId).id, leadCard.id); assert.equal(fresh.flowStalled, true)
 }))
 
 test('accept-blocked lists invariant gaps, remains blocked, and retries completeTask after child acceptance', () => withFlow(async ({ rt, create, finish, review, card, answer, assertState }) => {
@@ -204,7 +166,7 @@ test('return bypasses leader, uses verbatim trigger and original implementation 
   const trigger = rt.state.triggers[rework.triggerId]
   assert.equal(trigger.text, 'Return verbatim: preserve  spacing'); assert.equal(trigger.cardId, item.id); assert.equal(trigger.handle, undefined)
   await until(() => rt.driverOf(rework.sessionId).calls.at(-1)?.includes('Return verbatim: preserve  spacing'))
-  await finish(rework); await review(rework); assertState(rework, 'accepting', 'blocked')
+  await finish(rework); await review(rework); assertState(rework, 'done', 'review')
 }))
 
 test('A3 supplements override pass on continue; A4/A5 reworks do not consume the review rework counter', () => withFlow(async ({ rt, owner, trigger, create, finish, review, start, card, assertState }) => {
@@ -220,7 +182,7 @@ test('A3 supplements override pass on continue; A4/A5 reworks do not consume the
   await finish(audit, reportOf({ verdict: 'pass' })); const rework = await review(audit)
   assert.equal(rework.stage, 'rework'); assert.equal(rework.triggerId, last.id); assert.deepEqual(rework.supplements, [first.id])
   assert.equal(rt.state.tasks[rework.taskId].flow.supplementReworks, 1); assert.equal(rt.state.tasks[rework.taskId].flow.rework, undefined)
-  await finish(rework); await review(rework); assertState(rework, 'accepting', 'blocked')
+  await finish(rework); await review(rework); assertState(rework, 'done', 'review')
   const acceptance = card(rework.taskId)
   trigger('Supplement after acceptance')
   const receipt = await rt.leadRoute(owner.id, { action: 'attach', taskId: rework.taskId, scope: { quote: 'Supplement' } })
@@ -289,14 +251,9 @@ test('custom review type permits exactly two review-driven reworks before rework
   assert.equal(Object.values(rt.state.executions).length, 6)
 }))
 
-for (const stage of ['implement', 'review', 'answer']) test(`execution-failed retry restarts ${stage} with its source and directory`, () => withFlow(async ({ rt, owner, create, finish, review, card, answer, assertState }) => {
+for (const stage of ['implement', 'review']) test(`execution-failed retry restarts ${stage} with its source and directory`, () => withFlow(async ({ rt, create, finish, review, card, answer, assertState }) => {
   let execution = await create()
   if (stage === 'review') { await finish(execution, reportOf({ verified: [] })); execution = await review(execution) }
-  else if (stage === 'answer') {
-    await finish(execution)
-    const receipt = await rt.leadReview(owner.id, { executionId: execution.id, disposition: 'investigate', reason: 'Check', basis: ['Report'], questions: ['Why?'] })
-    execution = rt.state.executions[receipt.executionId]
-  }
   await rt.unconfirmExecution(execution.id, { reason: 'restart' })
   const stall = card(execution.taskId)
   await answer(stall, 'retry')
@@ -305,8 +262,7 @@ for (const stage of ['implement', 'review', 'answer']) test(`execution-failed re
   assert.equal(execution.status, 'interrupted'); assert.equal(retry.stage, stage)
   assert.equal(retry.profileId, execution.profileId); assert.equal(retry.workspaceRef, execution.workspaceRef)
   assert.equal(retry.triggerId, execution.triggerId); assert.deepEqual(retry.scope, execution.scope)
-  if (stage === 'review' || stage === 'answer') assert.equal(retry.sourceExecutionId, execution.sourceExecutionId)
-  if (stage === 'answer') assert.deepEqual(retry.questions, execution.questions)
+  if (stage === 'review') assert.equal(retry.sourceExecutionId, execution.sourceExecutionId)
   assertState(retry, stage === 'review' ? 'reviewing' : 'running', stage === 'review' ? 'review' : 'open')
 }))
 
@@ -317,7 +273,7 @@ test('verdict-unreadable retry reviews the implementation again and can pass acc
   const retry = Object.values(rt.state.executions).at(-1)
   assert.equal(retry.sourceExecutionId, execution.id)
   await finish(retry, reportOf({ verdict: 'pass' })); await review(retry)
-  assertState(retry, 'accepting', 'blocked'); assert.equal(card(retry.taskId).question.recommendation, 'accept')
+  assertState(retry, 'done', 'review'); assert.equal(card(retry.taskId).question.recommendation, 'accept')
 }))
 
 test('four supplement reworks bypass maxRework and stage-rounds without resetting total executions', () => withFlow(async ({ rt, owner, trigger, team, create, finish, review, card }) => {
@@ -367,4 +323,96 @@ test('stall cards offer only retry and stop and reject removed actions without r
   assert.deepEqual(item.question.options, ['retry', 'stop'])
   for (const reason of [undefined, 'Different scope']) await assert.rejects(answer(item, 'change-scope', reason), /卡片不支持此选项/)
   assert.deepEqual(item, before); assert.equal(rt.state.tasks[execution.taskId].flow.status, 'stalled')
+}))
+
+test('a dependent task starts with the dependency result in its worker input before acceptance', () => withFlow(async ({ rt, owner, trigger, create, finish }) => {
+  const first = await create()
+  trigger('Second step requirement')
+  const second = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Second' }, dependsOn: [first.taskId] })
+  assert.equal(second.status, 'pending')
+  assert.deepEqual(Object.values(rt.state.executions).map(item => item.taskId), [first.taskId], 'a waiting task has no execution yet')
+  await finish(first, reportOf(), 'Upstream result marker')
+  const running = await until(() => Object.values(rt.state.executions).find(item => item.taskId === second.taskId && item.status === 'running'))
+  await until(() => rt.driverOf(running.sessionId)?.calls.length)
+  assert.deepEqual(rt.state.tasks[first.taskId].acceptances, [], 'the dependency released the task before the user accepted it')
+  const input = rt.driverOf(running.sessionId).calls.at(-1)
+  assert.match(input, /# 前置任务结论[\s\S]*Upstream result marker/)
+  assert.match(input, /句柄：nodo_context read sourceId execution:[\w-]+:result/)
+}))
+
+test('an execution ending while a decision is pending waits for the answer instead of stalling its task', () => withFlow(async ({ rt, owner, trigger, create, start, card, assertState }) => {
+  const execution = await create()
+  await start(execution)
+  trigger('Which storage should we use?')
+  const decision = await rt.leadRoute(owner.id, { action: 'ask', stopExecutionIds: [], questions: [{ id: 'q', question: 'Which storage?', whyUser: 'It changes the data format' }] })
+  assert.equal(decision.status, 'pending')
+  await rt.workerReport(execution, reportOf({ reviewFlags: undefined }))
+  rt.driverOf(execution.sessionId).finish('Completed', 'done')
+  await until(() => execution.endedAt != null)
+  await rt.scheduleFlow(owner.id)
+  assertState(execution, 'running', 'open')
+  assert.equal(card(execution.taskId), undefined)
+  assert.deepEqual(Object.values(rt.state.executions).map(item => item.stage), ['implement'], 'no review is dispatched while the decision is pending')
+  await rt.cancelDecision(owner.id, { decisionId: decision.decisionId })
+  const review = await until(() => Object.values(rt.state.executions).find(item => item.taskId === execution.taskId && item.stage === 'review'))
+  await until(() => review.status === 'running')
+  assertState(execution, 'reviewing', 'review')
+}))
+
+test('a task waiting on its dependencies takes a supplement and can be stopped', () => withFlow(async ({ rt, owner, trigger, create, finish }) => {
+  const first = await create()
+  trigger('Second step requirement')
+  const second = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Second' }, dependsOn: [first.taskId] })
+  trigger('Also update the docs')
+  const supplement = await rt.leadRoute(owner.id, { action: 'attach', taskId: second.taskId, scope: { quote: 'docs' } })
+  assert.equal(supplement.status, 'pending'); assert.equal(supplement.delivery.mode, 'pending')
+  assert.deepEqual(Object.values(rt.state.executions).map(item => item.taskId), [first.taskId], 'a supplement creates no execution')
+  await finish(first, reportOf(), 'Step one done')
+  const running = await until(() => Object.values(rt.state.executions).find(item => item.taskId === second.taskId && item.status === 'running'))
+  await until(() => rt.driverOf(running.sessionId)?.calls.length)
+  const input = rt.driverOf(running.sessionId).calls.at(-1)
+  assert.match(input, /Second step requirement/)
+  assert.match(input, /# 用户补充（逐字）\nAlso update the docs/)
+  assert.equal(rt.state.tasks[second.taskId].flow.supplements, undefined)
+  trigger('Third step requirement')
+  const third = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Third' }, dependsOn: [second.taskId] })
+  assert.equal(third.status, 'pending')
+  const triggerId = rt.state.tasks[third.taskId].triggerId
+  assert.deepEqual((await rt.leadRoute(owner.id, { action: 'stop', taskIds: [third.taskId] })).stopped, [])
+  assert.equal(rt.state.tasks[third.taskId].flow.status, 'stopped'); assert.equal(rt.state.tasks[third.taskId].status, 'stopped')
+  assert.deepEqual(Object.values(rt.state.executions).filter(item => item.taskId === third.taskId), [])
+  assert.equal(rt.state.triggers[triggerId], undefined, 'a stopped waiting task releases its trigger')
+}))
+
+test('stopping a task stops the tasks still waiting on it', () => withFlow(async ({ rt, owner, trigger, create }) => {
+  const first = await create()
+  trigger('Second step requirement')
+  const second = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Second' }, dependsOn: [first.taskId] })
+  trigger('Third step requirement')
+  const third = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Third' }, dependsOn: [second.taskId] })
+  assert.equal(second.status, 'pending'); assert.equal(third.status, 'pending')
+  const triggerId = rt.state.tasks[third.taskId].triggerId
+  const stopped = await rt.leadRoute(owner.id, { action: 'stop', taskIds: [first.taskId] })
+  assert.deepEqual([...stopped.stoppedTaskIds].sort(), [second.taskId, third.taskId].sort())
+  for (const taskId of [first.taskId, second.taskId, third.taskId]) {
+    assert.equal(rt.state.tasks[taskId].flow.status, 'stopped'); assert.equal(rt.state.tasks[taskId].status, 'stopped')
+  }
+  assert.equal(rt.state.triggers[triggerId], undefined, 'a cascaded stop releases the trigger it held')
+  assert.deepEqual(Object.values(rt.state.cards).filter(card => card.status === 'open'), [])
+}))
+
+test('a late confirmation of an unconfirmed execution returns its stalled task to the flow', () => withFlow(async ({ rt, create, start, card }) => {
+  const execution = await create()
+  await start(execution)
+  rt.driverSink(execution.sessionId, { type: 'turn/end', turnId: 't1', reason: 'error', text: 'lost', unconfirmed: true })
+  await until(() => rt.state.tasks[execution.taskId].flow.status === 'stalled')
+  const stall = card(execution.taskId)
+  assert.equal(stall.payload.reason, 'execution-failed')
+  rt.driverSink(execution.sessionId, { type: 'turn/start', turnId: 't9' })
+  rt.driverSink(execution.sessionId, { type: 'text', turnId: 't9', messageId: 'r9', text: 'Late result' })
+  rt.driverSink(execution.sessionId, { type: 'turn/end', turnId: 't9', reason: 'done', text: 'Late result' })
+  await until(() => rt.state.tasks[execution.taskId].flow.status === 'reviewing')
+  assert.equal(rt.state.executions[execution.id].status, 'done')
+  assert.equal(rt.state.cards[stall.id].status, 'resolved', 'the false stall card is resolved, not left to a manual retry')
+  assert.equal(Object.values(rt.state.executions).at(-1).stage, 'review', 'the flow advances instead of re-running the stage')
 }))

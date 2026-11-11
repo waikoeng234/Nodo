@@ -15,7 +15,7 @@ test('v4 upgrade preserves old result evidence and v5 archived results across sa
   try {
     const rt = await host.runtime
     assert.deepEqual(JSON.parse(readFileSync(join(directory, 'state.v4.json'), 'utf8')), legacy)
-    assert.equal(rt.state.version, 6)
+    assert.equal(rt.state.version, 7)
     assert.deepEqual(rt.state.executions.old, { ...legacy.executions.old, stage: 'implement' })
     assert.deepEqual(rt.state.tasks.task.acceptances, legacy.tasks.task.acceptances)
     const result = { text: 'archived final\n🙂', preview: 'archived final 🙂', completeness: 'complete', reason: null, length: 17, originalLength: 17 }
@@ -33,7 +33,7 @@ test('v4 upgrade preserves old result evidence and v5 archived results across sa
 test('unknown storage versions block writes rather than silently dropping result fields', () => withHost(async ({ home }) => {
   const directory = join(home, 'future-results')
   mkdirSync(directory)
-  const original = JSON.stringify({ version: 7, executions: { result: { result: { text: 'future data' } } } })
+  const original = JSON.stringify({ version: 8, executions: { result: { result: { text: 'future data' } } } })
   writeFileSync(join(directory, 'state.json'), original)
   const host = boot(directory)
   try {
@@ -93,7 +93,7 @@ for (const version of [1, 2]) test(`startup removes retired data from v${version
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
     assert.equal(Object.hasOwn(rt.state, 'workflows'), false)
     assert.equal(Object.hasOwn(saved, 'workflows'), false)
-    assert.equal(saved.version, 6)
+    assert.equal(saved.version, 7)
     assert.equal(Object.hasOwn(saved, 'transcripts'), false)
     assert.equal(Object.hasOwn(saved, 'transcriptIndex'), false)
     assert.deepEqual(JSON.parse(readFileSync(join(home, 'activity.json'), 'utf8')).transcriptIndex, { session: { lines: 1, at: 0 } })

@@ -9,7 +9,7 @@ import { boot, until, withHost } from './helpers/host.js'
 import { echoEntry, registerClaudeFixtureEngine } from './helpers/echo-driver.js'
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { INPUT_CONTEXT_MAX, TASK_TEXT_MAX } from '../core/src/constants.js'
-import { reviewDeliveredReports } from './helpers/report-review.js'
+import { flowSettled } from './helpers/route.js'
 import { reportFixtureCompletions } from './helpers/flow.js'
 
 registerClaudeFixtureEngine()
@@ -61,9 +61,9 @@ const withHandoff = (run, workerEngine = 'capture-fixture') => withHost(async ho
   }
   const finish = async receipt => {
     await rt.followLead(owner.id, turn('done'))
-    await until(() => rt.state.executions[receipt.executionId].result && rt.transcriptOf(owner.id).some(line => line.origin?.executionId === receipt.executionId))
+    await until(() => rt.state.executions[receipt.executionId].result && rt.transcriptOf(owner.id).some(line => line.delegation?.executionId === receipt.executionId && line.delegation.ended))
     await until(() => !rt.workView()[owner.id]?.active)
-    await reviewDeliveredReports(rt, owner.id)
+    await flowSettled(rt, owner.id)
   }
   try { await run({ host, rt, workspace, worker, lead, owner, other, client, call, finish }) }
   finally { for (const value of clients) await value.close(); for (const binding of bindings) binding.revoke() }
@@ -143,7 +143,7 @@ test('a stop during materialization cancels the dispatch without sending', () =>
   rt.place = place
   rt.send = send
   await until(() => !rt.workView()[owner.id]?.active)
-  await reviewDeliveredReports(rt, owner.id)
+  await flowSettled(rt, owner.id)
 }))
 
 test('default collection inlines applicable decisions and dependency acceptance, and archives the last accepted dependency report', () => withHandoff(async ({ host, rt, workspace, owner, client, call, finish }) => {

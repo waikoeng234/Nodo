@@ -25,8 +25,6 @@ export const executionResultView = async (execution, rt) => {
 }
 
 const pending = execution => ['queued', 'running', 'unconfirmed'].includes(execution.status)
-// A task without flow predates lead routing: it reads as frozen and takes no new work.
-const taskFlowOf = task => task.flow ?? { legacy: true, status: 'frozen' }
 const text = (value, name) => {
   if (typeof value !== 'string' || !value.trim()) throw invalid(`${name} must be a non-empty string`)
   return value
@@ -143,7 +141,7 @@ export function install(rt) {
     return saveTask(task)
   }
   const acceptExecution = async (taskId, { profileId, sessionId, type, hard, model, thinking, workspaceRef: executionRef,
-    stage = 'implement', triggerId, scope, supplements = [], sourceExecutionId, sourceReportId, questions }) => {
+    stage = 'implement', triggerId, scope, supplements = [], sourceExecutionId }) => {
     await writable()
     const task = taskOf(taskId)
     taskStatus(task, ['open', 'review', 'blocked'])
@@ -162,8 +160,7 @@ export function install(rt) {
     const execution = { id: randomUUID(), taskId, profileId, sessionId, type, hard, model: model ?? null, thinking: thinking ?? null,
       status: 'queued', stage, createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
       ...(triggerId ? { triggerId, scope: structuredClone(scope), supplements: [...supplements], workspaceRef,
-        ...(sourceExecutionId ? { sourceExecutionId } : {}), ...(sourceReportId ? { sourceReportId } : {}),
-        ...(questions ? { questions: rt.redactDeepSecrets([...questions]) } : {}) } : {}),
+        ...(sourceExecutionId ? { sourceExecutionId } : {}) } : {}),
       ...(workspaceRef === task.workspaceRef ? {} : { workspaceRef }) }
     state.executions[execution.id] = execution
     Object.assign(task, { status: 'open', updatedAt: now })
@@ -272,40 +269,6 @@ export function install(rt) {
     Object.assign(execution, result, { updatedAt: Date.now() })
     return saveExecution(execution)
   }
-  const deliveredReports = (taskId, executionId) => {
-    const execution = executionOf(executionId)
-    if (execution.taskId !== taskId || !execution.reports?.length) throw invalid('只能审阅该任务已投递的执行回报')
-    return execution.reports
-  }
-  const reviewReports = async (taskId, { executionId, disposition, reason, basis, questions }) => {
-    await writable()
-    if (!['continue', 'investigate'].includes(disposition)) throw invalid('disposition 必须是 continue 或 investigate')
-    text(reason, 'reason')
-    if (reason.length > TASK_TEXT_MAX || !Array.isArray(basis) || !basis.length
-      || basis.some(value => typeof value !== 'string' || !value.trim() || value.length > TASK_TEXT_MAX)) throw invalid('reason 不得超长，basis 必须是非空文本数组且每项不超过文本上限')
-    const reports = deliveredReports(taskId, executionId)
-    for (const report of reports) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now(),
-      ...(disposition === 'investigate' ? { questions: [...questions], awaitingAnswer: true } : {}) })
-    const execution = executionOf(executionId)
-    if (disposition === 'continue' && execution.sourceReportId) {
-      let source = execution
-      while (source.sourceReportId) {
-        source = executionOf(source.sourceExecutionId)
-        for (const report of source.reports) if (report.review?.awaitingAnswer) Object.assign(report.review, { disposition: 'continue', awaitingAnswer: false, answeredBy: executionId })
-      }
-    }
-    return saveExecution(executionOf(executionId))
-  }
-  // The returned restore must run when the caller's save fails, so ask marks never land without their decision.
-  const askReports = (executionIds, decision) => {
-    const reports = executionIds.flatMap(executionId => {
-      const reports = executionOf(executionId).reports, pending = reports.filter(report => !report.review)
-      return pending.length ? pending : reports.slice(-1)
-    })
-    const previous = reports.map(report => report.review)
-    for (const report of reports) report.review = { ...report.review, ...(report.review?.awaitingAnswer ? { awaitingAnswer: false } : {}), disposition: 'ask', decisionId: decision.id, reviewedAt: decision.createdAt }
-    return () => reports.forEach((report, index) => { if (previous[index]) report.review = previous[index]; else delete report.review })
-  }
   const completeTask = async (id, { reason, references, executionIds, basis, cardId, answer }) => {
     await writable()
     const task = taskOf(id)
@@ -353,21 +316,7 @@ export function install(rt) {
     return saveTask(task)
   }
 
-  Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask, reviewReports, askReports,
-    deliveredReports, taskFlowOf,
-    registerDeliveredReport: async (item, deliveredAt) => {
-      const execution = executionOf(item.executionId)
-      execution.reports ??= []
-      if (execution.reports.some(report => report.id === item.id)) return
-      execution.reports.push({ id: item.id, deliveredAt, sessionId: item.session, summary: item.summary, status: item.status,
-        references: item.referenceId ? [item.referenceId] : [] })
-      await rt.saveStrict()
-    },
-    reportReviewBlockReason: id => {
-      const reports = Object.values(state.executions).filter(execution => state.tasks[execution.taskId]?.coordinatorSessionId === id)
-        .flatMap(execution => (execution.reports ?? []).filter(report => !report.review || report.review.awaitingAnswer).map(report => ({ reportId: report.id, executionId: execution.id, taskId: execution.taskId })))
-      if (reports.length) return { code: 'orch/report-unreviewed', message: '有已投递的回报尚未审阅，请先用 nodo_review 或 nodo_route ask 处置。', reports }
-    },
+  Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask,
     executionStopping: id => { for (const session of stopping.values()) if (session === id) return true; return false },
     finishExecution: (id, result) => endExecution(id, 'done', ['running', 'unconfirmed'], 'review', result),
     failExecution: (id, result) => endExecution(id, 'failed', ['queued', 'running', 'unconfirmed'], 'blocked', result),

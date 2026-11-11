@@ -168,7 +168,7 @@ test('v1 state migrates: shared cwds become one workspace, cwd-less profiles kee
     assert.equal(soloWorkspace.name, 'Solo')
     await host.api('workspace-create', { name: 'Extra', cwd: join(home, 'extra') }) // forces a save
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-    assert.equal(saved.version, 6)
+    assert.equal(saved.version, 7)
     assert.ok(saved.workspaces[solo.workspaceId] !== undefined)
     for (const profile of Object.values(saved.profiles)) assert.equal('cwd' in profile, false)
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
