@@ -207,6 +207,30 @@ test('the phone roles and assign pages stack into one column with named groups',
   assert.deepEqual(flat(section).filter(node => node.props?.className === 'nodo-tree-cap').map(node => node.children?.[0]), ['主控', '成员'])
 })
 
+// A scanned engine with every model disabled keeps the model section openable
+// and names its state, like the composer picker — never an empty heading alone.
+test('the assignment cell names the all-disabled model state', async () => {
+  const { PickCell } = await loadClient('teams.tsx', {
+    react: { useState: () => [true, () => {}], useEffect: () => {} },
+    createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
+  })
+  const flat = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(flat)] : []
+  const pick = PickCell({ label: '改 bug 无人承接', caption: '负责角色', pick: { profile: 'r1' }, team: { members: ['r1'], lead: null },
+    roles: [{ id: 'r1', name: '小算', engine: 'echo' }],
+    engines: [{ id: 'echo', catalog: { models: [{ id: 'm1', label: 'M1' }, { id: 'm2', label: 'M2' }] }, enabledModels: [] }],
+    optional: false, disabled: false, onChange: () => {} })
+  const nodes = flat(pick)
+  assert.equal(nodes.some(node => node.props?.className === 'nodo-pick-label' && node.children?.[0] === '模型'), true,
+    'the scanned engine keeps its model section')
+  assert.equal(nodes.some(node => node.children?.[0] === '没有启用的模型'), true, 'the all-disabled state names itself')
+  assert.equal(nodes.some(node => node.children?.[0] === 'M1'), false, 'no disabled model is offered as a choice')
+  const full = PickCell({ label: '改 bug 无人承接', caption: '负责角色', pick: { profile: 'r1' }, team: { members: ['r1'], lead: null },
+    roles: [{ id: 'r1', name: '小算', engine: 'echo' }],
+    engines: [{ id: 'echo', catalog: { models: [{ id: 'm1', label: 'M1' }] }, enabledModels: ['m1'] }],
+    optional: false, disabled: false, onChange: () => {} })
+  assert.equal(flat(full).some(node => node.children?.[0] === 'M1'), true, 'an enabled model is still offered')
+})
+
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
   const { transcriptRows, ProcessRow, ToolCall } = await loadClient(['feed.js', 'tool-call.tsx'], {
     uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' } } },
@@ -791,6 +815,118 @@ test('settings cards group by detection and toggle the enabled set', async () =>
   assert.deepEqual(view.prefs.enabledEngines, ['codex', 'dsh'])
   await switches().find(node => node.props['aria-label'] === '停用 Codex CLI').props.onClick(); await tick()
   assert.deepEqual(requests.at(-1).payload.engines, ['dsh'])
+})
+
+// The scanned model list per card: enabled rows lead, the rest wait under
+// 未显示 with its count, search narrows both, and a switch writes the engine's
+// whole enabled set — from unset it materializes as every scanned id minus the
+// one just turned off.
+test('the settings model list searches the scanned models and toggles the enabled set', async () => {
+  const states = [], effects = [], requests = []
+  let cursor = 0, mounted = false
+  const view = { profiles: [], prefs: { enabledEngines: ['codex'] }, workspaces: [], work: {} }
+  const { EngineSettingsDialog } = await loadClient('engine-settings.js', {
+    stubs: { 'engine-logos.js': { EngineMark: 'EngineMark', engineDisplayName: item => item.label } },
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useEffect(effect) { if (!mounted) effects.push(effect) },
+    },
+    primitives: {
+      Modal: 'Modal', Button: 'Button', StateDot: 'StateDot', IconChevronDownOutlineRegular: 'Icon',
+      IconRefreshOutlineRegular: 'Icon', IconCheckOutlineRegular: 'Icon', IconSearchOutlineRegular: 'Icon',
+    },
+    async call(endpoint, payload) {
+      requests.push({ endpoint, payload: payload && JSON.parse(JSON.stringify(payload)) })
+      if (endpoint === 'engine-detect') return [{ id: 'codex', label: 'Codex CLI', usable: true,
+        catalog: { models: [
+          { id: 'glm-x', label: 'GLM X', group: 'Mock' },
+          { id: 'glm-y', label: 'GLM Y', group: 'Mock' },
+          { id: 'ds-a', label: 'DS A', group: 'DeepSeek' },
+        ] } }]
+      if (endpoint === 'engine-model-enable-set') {
+        // The first save stays in flight until the test releases it, so the
+        // in-flight switch lock is observable; the third save fails so the
+        // rollback is observable.
+        if (requests.filter(item => item.endpoint === 'engine-model-enable-set').length === 1) {
+          await new Promise(resolve => { releaseSave = resolve })
+        }
+        if (requests.filter(item => item.endpoint === 'engine-model-enable-set').length === 3) {
+          throw new Error('主机拒绝了这次保存')
+        }
+        view.prefs.enabledModels ??= {}
+        view.prefs.enabledModels[payload.engine] = [...payload.models]
+        return { engine: payload.engine, enabledModels: [...payload.models] }
+      }
+    },
+  })
+  const nodes = node => {
+    if (!node || typeof node !== 'object') return []
+    // The fake createElement leaves function components unexpanded; the model
+    // list is the one real component in this tree.
+    if (typeof node.type === 'function') return nodes(node.type(node.props))
+    return [node, ...(node.children ?? []).flatMap(nodes)]
+  }
+  const render = () => { cursor = 0; return nodes(EngineSettingsDialog({ view, workspace: null, refresh: async () => {}, readOnly: false, onClose() {} })) }
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const rows = () => render().filter(node => node.props.className === 'nodo-engine-model')
+  const rowNames = () => rows().map(row => row.children[0].children.join(''))
+  const switches = () => render().filter(node => node.type === 'button' && node.props.className === 'nodo-engine-switch' && /模型|GLM|DS/.test(node.props['aria-label'] ?? ''))
+  const heading = () => render().find(node => node.type === 'strong' && node.children[0] === '模型清单').children[1].children[0]
+  const groups = () => render().filter(node => node.props.className === 'nodo-engine-model-group')
+    .map(node => node.children.map(child => typeof child === 'string' ? child : child.children[0]).join(' '))
+  const search = () => render().find(node => node.props.className === 'nodo-engine-models-search').children[1]
+  let releaseSave = null
+  render(); mounted = true; effects.forEach(effect => effect()); await tick()
+  render().find(node => node.props.className === 'nodo-engine-toggle').props.onClick()
+  assert.deepEqual(rowNames(), ['GLM X', 'GLM Y', 'DS A'], 'an engine the user never picked lists every model as enabled')
+  assert.deepEqual(groups(), ['Mock', 'DeepSeek'], 'rows group by the scanned provider')
+  assert.equal(groups().some(text => text.startsWith('未显示')), false)
+  let prevented = false
+  const press = event => search().props.onKeyDown({ preventDefault: () => { prevented = true }, ...event })
+  press({ key: 'Enter' })
+  assert.equal(prevented, true, 'Enter in the search box never submits the engine form')
+  prevented = false
+  press({ key: 'Enter', nativeEvent: { isComposing: true } })
+  assert.equal(prevented, false, 'a composing Enter belongs to the IME and stays untouched')
+  prevented = false
+  press({ key: 'Enter', keyCode: 229 })
+  assert.equal(prevented, false, 'the IME composing keycode stays untouched too')
+  prevented = false
+  press({ key: 'g' })
+  assert.equal(prevented, false, 'ordinary typing stays untouched')
+  void switches().find(node => node.props['aria-label'] === '停用 GLM X').props.onClick()
+  assert.ok(switches().every(node => node.props.disabled === true), 'every switch locks while a save is in flight')
+  releaseSave(); await tick(); await tick()
+  assert.deepEqual(requests.at(-1), { endpoint: 'engine-model-enable-set', payload: { engine: 'codex', models: ['glm-y', 'ds-a'] } },
+    'turning one off from an unset set materializes every scanned id minus that one')
+  assert.ok(switches().every(node => node.props.disabled === false), 'the switches unlock once the save lands')
+  assert.equal(heading(), '已选 2 个')
+  assert.deepEqual(rowNames(), ['GLM Y', 'DS A', 'GLM X'], 'enabled rows lead, the turned-off one waits below')
+  assert.deepEqual(groups(), ['Mock', 'DeepSeek', '未显示 1', 'Mock'], '未显示 names the disabled group between the two sections')
+  search().props.onChange({ target: { value: 'glm y' } })
+  assert.deepEqual(rowNames(), ['GLM Y'], 'search narrows the rows')
+  assert.deepEqual(groups().at(-1), '未显示 1', 'the count keeps the whole disabled set')
+  search().props.onChange({ target: { value: 'zzz' } })
+  assert.deepEqual(rowNames(), [], 'nothing matches')
+  assert.deepEqual(groups(), ['没有匹配的模型'], 'the empty search names itself instead of the sections')
+  search().props.onChange({ target: { value: '' } })
+  assert.equal(rowNames().length, 3)
+  await switches().find(node => node.props['aria-label'] === '启用 GLM X').props.onClick(); await tick()
+  assert.deepEqual(requests.at(-1).payload.models, ['glm-y', 'ds-a', 'glm-x'])
+  assert.equal(heading(), '已选 3 个')
+  assert.equal(groups().some(text => text.startsWith('未显示')), false)
+  assert.equal(requests.some(item => item.endpoint === 'engine-config-set'), false, 'searching never writes the engine config')
+  await switches().find(node => node.props['aria-label'] === '停用 GLM Y').props.onClick(); await tick(); await tick()
+  assert.deepEqual(requests.at(-1).payload.models, ['ds-a', 'glm-x'], 'the failed save still sent the toggled set')
+  assert.equal(heading(), '已选 3 个', 'a failed save rolls back to the previous selection')
+  assert.deepEqual(rowNames(), ['GLM X', 'GLM Y', 'DS A'], 'the rolled-back set re-renders as it was')
+  assert.ok(switches().every(node => node.props.disabled === false), 'a failed save unlocks the switches')
+  assert.ok(render().some(node => node.props.className === 'nodo-dialog-error' && String(node.children[0]).includes('主机拒绝')),
+    'the failed save names itself in the dialog')
 })
 
 test('first-run onboarding lists detected engines and stores the choice', async () => {
@@ -1785,6 +1921,80 @@ test('the composer model trigger names a saved route before any catalog exists',
   assert.equal(modelName(''), '', 'an unset model stays empty')
 })
 
+// A settings-page scan or switch must reach the composer without a restart:
+// every open re-reads the catalog, and the menu lists only the enabled set
+// while a saved model outside it keeps its name.
+test('the composer picker re-reads the catalog on every open and lists only the enabled models', async () => {
+  const states = [], requests = [], picked = [], effects = []
+  let cursor = 0, mounted = false
+  const catalog = enabled => [{ id: 'zcode', label: 'ZCode', ...(enabled === undefined ? {} : { enabledModels: enabled }),
+    catalog: { defaultModel: 'glm-x', models: [
+      { id: 'glm-x', label: 'GLM X', group: 'Mock' },
+      { id: 'glm-y', label: 'GLM Y', group: 'Other' },
+    ] } }]
+  let items = catalog(undefined)
+  const profile = { id: 'coder', engine: 'zcode', model: '', thinking: '' }
+  const { ModelPicker } = await loadClient('feed.js', {
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }),
+      useEffect(effect) { if (!mounted) effects.push(effect) },
+    },
+    async call(endpoint) {
+      requests.push(endpoint)
+      if (endpoint === 'engine-catalog') return items
+      return { models: [] }
+    },
+  })
+  const render = () => { cursor = 0; return ModelPicker({ profile, disabled: false, onChange: changes => picked.push(changes) }) }
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const openPane = async () => {
+    render().props.anchor.props.onClick()
+    await tick(); await tick()
+    render().props.onSelect('model')
+    return render()
+  }
+  render(); mounted = true; effects.forEach(effect => effect()); await tick(); await tick()
+  let list = await openPane()
+  assert.equal(requests.at(-1), 'engine-catalog', 'the first open reads the catalog')
+  assert.deepEqual([...list.props.items].map(item => item.id), ['group:Mock', 'model:glm-x', 'group:Other', 'model:glm-y'])
+  render().props.anchor.props.onClick()
+  items = catalog(['glm-y'])
+  list = await openPane()
+  assert.equal(requests.filter(endpoint => endpoint === 'engine-catalog').length, 3, 'every open re-reads, so an enablement change is visible')
+  assert.deepEqual([...list.props.items].map(item => item.id), ['group:Other', 'model:glm-y'], 'the menu lists the enabled models alone')
+  profile.model = 'glm-x'
+  assert.equal(render().props.anchor.props['aria-label'], '选择模型，当前 GLM X', 'a saved model outside the enabled set keeps its name')
+  items = catalog([])
+  render().props.anchor.props.onClick()
+  render().props.anchor.props.onClick()
+  await tick(); await tick()
+  const root = [...render().props.items]
+  assert.equal(root.find(item => item.id === 'model').disabled, false, 'every model disabled is not an empty catalog: the row stays openable')
+  render().props.onSelect('model')
+  assert.equal(render().props.items[0].text, '没有启用的模型', 'the pane names the state instead of claiming no scan')
+  assert.equal(requests.filter(endpoint => endpoint === 'engine-catalog').length, 4)
+})
+
+test('pickers offer only the enabled models but keep a saved pair resolvable', async () => {
+  const { offeredModels, modelChoices } = await loadClient('model-options.js')
+  const models = [
+    { id: 'glm-x', label: 'GLM X', group: 'Mock', thinking: [{ id: 'high' }] },
+    { id: 'glm-y', label: 'GLM Y', group: 'Mock' },
+  ]
+  assert.deepEqual(offeredModels(undefined, models), models, 'an unset set reads as every model enabled')
+  assert.deepEqual(offeredModels({ enabledModels: ['glm-x', 'gone'] }, models).map(item => item.id), ['glm-x'],
+    'ids outside the catalog list change nothing')
+  const choices = modelChoices(offeredModels({ enabledModels: ['glm-y'] }, models), 'glm-x', '', models)
+  assert.equal(choices.selected.id, 'glm-x', 'a saved model outside the enabled set still resolves from the full catalog')
+  assert.deepEqual(choices.levels.map(level => level.id), ['high'], 'its levels stay')
+  assert.equal(choices.options[0].children[0], '不在清单：glm-x', 'the saved pair keeps its 不在清单 row')
+})
+
 // Each composer menu card carries the geometry of the native menu of its kind:
 // the model list takes ui-model-selection `.menu` (240–420px wide, 360px tall, its
 // own scroll) instead of the host Menu's window-high cap, and the add menu hangs
@@ -1871,6 +2081,46 @@ test('the role dialog offers the model and thinking defaults and saves them', as
   assert.equal(requests.at(-1).endpoint, 'profile-create')
   assert.deepEqual({ model: requests.at(-1).payload.model, thinking: requests.at(-1).payload.thinking }, { model: 'mock-a', thinking: '' },
     'a new role records the held pair; an empty level means the model default')
+})
+
+// Disabling is a picker filter, not a data migration: a saved pair outside the
+// enabled set still shows, still selects, and still saves — and a fully
+// disabled catalog keeps the select instead of degrading to a text box.
+test('the role dialog keeps a saved model outside the enabled set', async () => {
+  const states = [], effects = [], requests = []
+  let cursor = 0, mounted = false
+  const { RoleEditor } = await loadRoleEditor({
+    react: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial
+        return [states[index], next => { states[index] = typeof next === 'function' ? next(states[index]) : next }]
+      },
+      useRef: initial => ({ current: initial }), useEffect(effect) { if (!mounted) effects.push(effect) },
+    },
+    async call(endpoint, payload) {
+      requests.push({ endpoint, payload })
+      if (endpoint === 'engine-catalog') return [{ id: 'zcode', label: 'ZCode', enabledModels: [],
+        catalog: { defaultModel: 'glm-x', models: [
+          { id: 'glm-x', label: 'GLM X', group: 'Mock', defaultThinking: 'high', thinking: [{ id: 'high', label: 'High' }, { id: 'low', label: 'Low' }] },
+          { id: 'glm-y', label: 'GLM Y', group: 'Mock' } ] } }]
+      return { id: 'saved' }
+    },
+  })
+  const nodes = node => !node || typeof node !== 'object' ? [] : [node, ...(node.children ?? []).flatMap(nodes)]
+  const profile = { id: 'coder', name: 'Coder', engine: 'zcode', model: 'glm-x', thinking: 'high', sessions: [] }
+  const render = () => { cursor = 0; return nodes(RoleEditor({ profile, onSaved: () => {} })) }
+  const select = label => render().find(node => node.type === 'select' && node.props['aria-label'] === label)
+  render(); mounted = true; effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve))
+  assert.equal(select('模型').props.value, 'glm-x', 'the saved model shows even though it is disabled')
+  assert.deepEqual(select('模型').children.filter(Boolean).map(option => option.children?.[0] ?? option.props.label), ['不在清单：glm-x'],
+    'the disabled catalog offers only the saved pair\'s own row')
+  const level = render().find(node => node.props?.label === '思考强度')
+  assert.deepEqual([...level.props.options].map(option => option.label), ['High', 'Low'], 'the saved model\'s levels stay')
+  await render().find(node => node.type === 'form').props.onSubmit({ preventDefault() {} })
+  const sent = requests.at(-1)
+  assert.deepEqual({ model: sent.payload.changes.model, thinking: sent.payload.changes.thinking }, { model: 'glm-x', thinking: 'high' },
+    'the disabled pair survives a save')
 })
 
 // A template fills 职责概述 and 身份信息 in one click and can be taken back;

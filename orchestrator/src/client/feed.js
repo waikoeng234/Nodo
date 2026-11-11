@@ -20,7 +20,7 @@ import { StreamingText } from './streaming-text.tsx'
 import { referenceHistory } from './session-references.js'
 import { roundLines, stripNodo, RoundSpeaker, RoundChip, RoundMember } from './round.js'
 import { leadModeOf } from '../../core/shared/lead.js'
-import { groupModelsByProvider, modelName, modelLabel, thinkingAfterModelChange } from './model-options.js'
+import { groupModelsByProvider, modelName, modelLabel, offeredModels, thinkingAfterModelChange } from './model-options.js'
 import { ProcessRow, PlanRow, toolRow, transcriptRows, ProcessGroup, MessageTime, processBlocks, decisionAnswerText } from './transcript-rows.js'
 import { TranscriptImage } from './transcript-image.js'
 export { modelName }
@@ -310,7 +310,8 @@ function TurnRail({ turns, activeTurn, busyTurn, onNavigate }) {
 // thinking only; the provider itself is chosen on the role card, so no engine
 // row exists here. Catalog values come from the engine's cached scan, fetched
 // on mount so the trigger can resolve labels without a first open; an engine
-// never scanned is scanned on first open.
+// never scanned is scanned on first open, and every open re-reads the catalog
+// so a settings-page scan or switch is visible without restarting.
 // 挂载时会同时读目录的组件（模型选择、权限档位、指令菜单）共享一次在途请求，
 // 落地后不再缓存，各处照旧拿到新数据。
 let catalogFlight = null
@@ -323,17 +324,21 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
   const [engines, setEngines] = useState([])
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
-  const loaded = useRef(new Set())
   useEffect(() => {
     let live = true
     void engineCatalog().then(items => { if (live) setEngines(items) }).catch(() => {})
     return () => { live = false }
   }, [])
   const engine = engines.find(item => item.id === profile.engine)
-  const models = engine?.catalog?.models ?? []
+  // The menu lists the models the user enabled in settings; the saved pair and
+  // its levels still resolve from the full catalog, so a choice outside the
+  // enabled set keeps its name instead of degrading.
+  const catalogModels = engine?.catalog?.models ?? []
+  const models = offeredModels(engine, catalogModels)
+  const hasCatalog = catalogModels.length > 0
   // An unset model reads the catalog's default, an unset level reads the model's,
   // so the trigger never lies.
-  const selectedModel = models.find(item => item.id === (profile.model || engine?.catalog?.defaultModel))
+  const selectedModel = catalogModels.find(item => item.id === (profile.model || engine?.catalog?.defaultModel))
   const model = selectedModel?.id ?? profile.model ?? ''
   const levels = selectedModel?.thinking ?? []
   const thinking = profile.thinking || (levels.some(level => level.id === selectedModel?.defaultThinking) ? selectedModel.defaultThinking : '')
@@ -343,15 +348,14 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
   const openMenu = () => {
     if (open) return close()
     setOpen(true)
-    if (loaded.current.has(profile.engine)) return
-    loaded.current.add(profile.engine)
+    if (scanning) return
     void engineCatalog().then(items => {
       setEngines(items)
       if (!items.some(item => item.id === profile.engine && !item.catalog)) return
       setScanning(true)
       return call('engine-scan', { engine: profile.engine })
         .then(catalog => setEngines(current => current.map(item => item.id === profile.engine ? { ...item, catalog } : item)))
-    }).catch(failure => { loaded.current.delete(profile.engine); setError(failure.message) })
+    }).catch(failure => setError(failure.message))
       .finally(() => setScanning(false))
   }
   // The model list is sectioned by provider like the host's own picker: a label
@@ -378,13 +382,14 @@ export function ModelPicker({ profile, disabled, onChange }) {  const [open, set
     filled && h('span', { className: 'nodo-model-cell-chev' }, h(IconChevronRightOutlineRegular, { size: 12 })))
   const items = pane === 'model'
     ? models.length ? modelItems
+      : hasCatalog ? [{ type: 'label', id: 'hint', text: '没有启用的模型' }]
       : [{ type: 'label', id: 'hint', text: scanning ? '正在扫描本地配置…' : error || '未扫描到模型，可在设置中重新扫描' }]
     : pane === 'thinking'
       ? [{ id: 'thinking:', label: '默认（跟随 Agent 设置）' },
         ...levels.map(level => ({ id: `thinking:${level.id}`,
           label: level.id === selectedModel?.defaultThinking ? `${level.label ?? level.id}（模型默认）` : level.label ?? level.id }))]
       : [
-        { id: 'model', label: cell('模型', modelText, models.length > 0), disabled: !models.length },
+        { id: 'model', label: cell('模型', modelText, hasCatalog), disabled: !hasCatalog },
         { id: 'thinking', label: cell('推理等级', levelText || '默认', levels.length > 0), disabled: !levels.length },
       ]
   // `listClassName` is the only hook that reaches a portaled card: the model

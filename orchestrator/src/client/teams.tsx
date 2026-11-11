@@ -3,7 +3,7 @@ import { RoleAvatar, avatarTemplateOf } from './avatar.tsx'
 import { EngineMark, engineDisplayName } from './engine-logos.js'
 import { route } from '../../core/shared/route.js'
 import type { ReactNode } from './ui-shared.js'
-import { groupModelsByProvider, modelName, modelLabel, thinkingAfterModelChange } from './model-options.js'
+import { groupModelsByProvider, modelName, modelLabel, offeredModels, thinkingAfterModelChange } from './model-options.js'
 import type { ModelChoice } from './model-options.js'
 
 const fitText = (el: HTMLTextAreaElement | null) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }
@@ -12,7 +12,7 @@ export interface TeamPick { profile?: string; model?: string; thinking?: string 
 export interface Team { id: string; name: string; lead: string | null; members: string[]; types: TeamType[]; assign: Record<string, { normal?: TeamPick; hard?: TeamPick }> }
 export interface TeamRole { id: string; name: string; engine?: string; model?: string }
 export interface TeamType { id?: string; name: string; when?: string; independent?: boolean }
-export interface TeamEngine { id: string; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
+export interface TeamEngine { id: string; catalog?: { models?: ModelChoice[]; defaultModel?: string }; enabledModels?: string[] }
 
 type DropEvent = { preventDefault: () => void; stopPropagation?: () => void }
 // Confirmations for drops that would break the one-role-one-place rules: a lead
@@ -227,13 +227,17 @@ export function PickCell({ label, caption, pick, team, roles, engines, optional,
     return () => document.removeEventListener('mousedown', close)
   }, [open])
   const holder = roles.find(role => role.id === pick?.profile)
-  const catalog = engines.find(engine => engine.id === holder?.engine)?.catalog
-  const models = catalog?.models ?? []
-  const model = models.find(item => item.id === (pick?.model || holder?.model || catalog?.defaultModel))
+  const engine = engines.find(item => item.id === holder?.engine)
+  const catalog = engine?.catalog
+  // The cell lists the models enabled in settings; the saved pick still resolves
+  // from the full catalog, so a choice outside the set keeps its name and levels.
+  const catalogModels = catalog?.models ?? []
+  const models = offeredModels(engine, catalogModels)
+  const model = catalogModels.find(item => item.id === (pick?.model || holder?.model || catalog?.defaultModel))
   const levels = model?.thinking ?? []
   const providers = groupModelsByProvider(models)
   const set = (changes: TeamPick) => onChange({ ...pick, ...changes })
-  const tags = [pick?.model ? modelLabel(models.find(item => item.id === pick.model) ?? { id: pick.model }) : '', pick?.thinking ? levels.find(level => level.id === pick.thinking)?.label ?? pick.thinking : ''].filter(Boolean)
+  const tags = [pick?.model ? modelLabel(catalogModels.find(item => item.id === pick.model) ?? { id: pick.model }) : '', pick?.thinking ? levels.find(level => level.id === pick.thinking)?.label ?? pick.thinking : ''].filter(Boolean)
   return (
     <div className="nodo-pick" data-warn={holder ? undefined : ''} data-removable={remove ? '' : undefined} data-pick-open={open ? '' : undefined}>
       {caption && <span className="nodo-pick-cap">{caption}</span>}
@@ -256,9 +260,9 @@ export function PickCell({ label, caption, pick, team, roles, engines, optional,
                 onClick={() => onChange({ profile: role.id })}><RoleAvatar profile={role} size={20} />{role.name}</button>
             ))}
           </div>
-          {holder && models.length > 0 && <span className="nodo-pick-label">模型</span>}
-          {holder && models.length > 0 && <div className="nodo-pick-models" role="group" aria-label="模型">
-            {[...providers].map(([group, items]) => (
+          {holder && catalogModels.length > 0 && <span className="nodo-pick-label">模型</span>}
+          {holder && catalogModels.length > 0 && <div className="nodo-pick-models" role="group" aria-label="模型">
+            {models.length === 0 ? <span className="nodo-pick-empty">没有启用的模型</span> : [...providers].map(([group, items]) => (
               <Fragment key={group}>
                 {group && <span className="nodo-pick-provider">{group}</span>}
                 <div className="nodo-pick-group">
@@ -449,6 +453,7 @@ export const TEAMS_CSS = `
 .nodo-pick-label{margin-bottom:-4px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
 :is(.nodo-pick-group,.nodo-pick-models)+.nodo-pick-label{padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-pick-models{display:flex;flex-direction:column;gap:6px}
+.nodo-pick-empty{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-pick-provider{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}
 .nodo-pick-group+.nodo-pick-provider{padding-top:4px}
 .nodo-pick-option{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:8px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}
