@@ -1256,6 +1256,39 @@ for (const format of [undefined, 3]) test(`a catalog cached with format ${format
   })
 })
 
+test('the enabled model set saves against the scanned catalog and rides the engine views', async () => {
+  await withFixture(async ({ bin }) => {
+    const home = mkdtempSync(join(tmpdir(), 'orch-model-enable-'))
+    let host = boot(home)
+    try {
+      await host.api('engine-config-set', { engine: 'codex', engineOptions: { bin } })
+      await host.api('engine-scan', { engine: 'codex' })
+      const listed = (await host.api('engine-catalog')).find(item => item.id === 'codex')
+      assert.equal(listed.enabledModels, undefined, 'an engine the user never picked keeps every model enabled')
+      assert.equal((await host.api('engine-detect')).find(item => item.id === 'codex').enabledModels, undefined)
+      await assert.rejects(host.api('engine-model-enable-set', { engine: 'echo', models: ['x'] }),
+        error => error.code === 'orch/invalid', 'an engine with no scanned catalog saves no set')
+      await assert.rejects(host.api('engine-model-enable-set', { engine: 'codex' }),
+        error => error.code === 'orch/invalid', 'a missing models value is not a whole-disable request')
+      await assert.rejects(host.api('engine-model-enable-set', { engine: 'codex', models: 'fixture-model' }),
+        error => error.code === 'orch/invalid', 'a non-array models value is not a whole-disable request')
+      assert.equal((await host.api('engine-catalog')).find(item => item.id === 'codex').enabledModels, undefined,
+        'the rejected calls leave no entry behind')
+      const saved = await host.api('engine-model-enable-set', { engine: 'codex', models: ['fixture-model', 'gone', 'fixture-model'] })
+      assert.deepEqual(saved, { engine: 'codex', enabledModels: ['fixture-model'] }, 'ids outside the scanned list are dropped')
+      assert.deepEqual((await host.api('engine-catalog')).find(item => item.id === 'codex').enabledModels, ['fixture-model'])
+      assert.deepEqual((await host.api('state')).prefs.enabledModels.codex, ['fixture-model'])
+      assert.deepEqual((await host.api('engine-model-enable-set', { engine: 'codex', models: [] })).enabledModels, [],
+        'an empty array disables the engine\'s every model')
+      await host.api('engine-model-enable-set', { engine: 'codex', models: ['other-model'] })
+      await host.dispose()
+      host = boot(home)
+      assert.deepEqual((await host.api('engine-catalog')).find(item => item.id === 'codex').enabledModels, ['other-model'],
+        'the set survives a restart')
+    } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+  })
+})
+
 test('legacy default thinking choices follow the engine after loading and saving', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const home = join(cwd, 'plugin')

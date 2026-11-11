@@ -12,7 +12,7 @@ interface RoleCard {
   id: string; name: string; identity?: string; instructions?: string; deletedAt?: number; engine?: string; role?: string; model?: string; thinking?: string; lead?: boolean
   avatarTemplate?: string; permission?: string; sessions?: { id: string; draftedAt?: number; briefSent?: boolean }[]
 }
-interface EngineChoice { id: string; label?: string; capabilities?: { permissionModes?: string[] }; catalog?: { models?: ModelChoice[]; defaultModel?: string } }
+interface EngineChoice { id: string; label?: string; capabilities?: { permissionModes?: string[] }; catalog?: { models?: ModelChoice[]; defaultModel?: string }; enabledModels?: string[] }
 interface RolePreset { name: string; role: string; instructions: string }
 interface RolesView {
   profiles: RoleCard[]

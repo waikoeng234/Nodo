@@ -13861,13 +13861,17 @@ function modelName(raw) {
 }
 var modelLabel = (item) => item.label && /\s/.test(item.label) ? item.label : modelName(item.label ?? item.id);
 var unlistedOption = (value, choices) => value && !choices.some((item) => item.id === value) ? [(0, import_react.createElement)("option", { key: value, value }, `\u4E0D\u5728\u6E05\u5355\uFF1A${value}`)] : [];
+var offeredModels = (engine, models) => {
+  const ids = engine?.enabledModels;
+  return Array.isArray(ids) ? models.filter((item) => ids.includes(item.id)) : models;
+};
 var groupModelsByProvider = (models) => {
   const providers = /* @__PURE__ */ new Map();
   for (const item of models) providers.set(item.group ?? "", [...providers.get(item.group ?? "") ?? [], item]);
   return providers;
 };
-function modelChoices(models, value = "", fallback = "") {
-  const selected = models.find((item) => item.id === (value || fallback));
+function modelChoices(models, value = "", fallback = "", allModels = models) {
+  const selected = allModels.find((item) => item.id === (value || fallback));
   const providers = groupModelsByProvider(models);
   const options = [...providers].flatMap(([group, items]) => {
     const rows = items.map((item) => (0, import_react.createElement)("option", { key: item.id, value: item.id, title: item.id }, modelLabel(item)));
@@ -15428,7 +15432,6 @@ function ModelPicker({ profile, disabled, onChange }) {
   const [engines, setEngines] = (0, import_react.useState)([]);
   const [scanning, setScanning] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
-  const loaded = (0, import_react.useRef)(/* @__PURE__ */ new Set());
   (0, import_react.useEffect)(() => {
     let live = true;
     void engineCatalog().then((items2) => {
@@ -15440,8 +15443,10 @@ function ModelPicker({ profile, disabled, onChange }) {
     };
   }, []);
   const engine = engines.find((item) => item.id === profile.engine);
-  const models = engine?.catalog?.models ?? [];
-  const selectedModel = models.find((item) => item.id === (profile.model || engine?.catalog?.defaultModel));
+  const catalogModels = engine?.catalog?.models ?? [];
+  const models = offeredModels(engine, catalogModels);
+  const hasCatalog = catalogModels.length > 0;
+  const selectedModel = catalogModels.find((item) => item.id === (profile.model || engine?.catalog?.defaultModel));
   const model = selectedModel?.id ?? profile.model ?? "";
   const levels = selectedModel?.thinking ?? [];
   const thinking = profile.thinking || (levels.some((level) => level.id === selectedModel?.defaultThinking) ? selectedModel.defaultThinking : "");
@@ -15454,17 +15459,13 @@ function ModelPicker({ profile, disabled, onChange }) {
   const openMenu = () => {
     if (open) return close();
     setOpen(true);
-    if (loaded.current.has(profile.engine)) return;
-    loaded.current.add(profile.engine);
+    if (scanning) return;
     void engineCatalog().then((items2) => {
       setEngines(items2);
       if (!items2.some((item) => item.id === profile.engine && !item.catalog)) return;
       setScanning(true);
       return call("engine-scan", { engine: profile.engine }).then((catalog) => setEngines((current) => current.map((item) => item.id === profile.engine ? { ...item, catalog } : item)));
-    }).catch((failure) => {
-      loaded.current.delete(profile.engine);
-      setError(failure.message);
-    }).finally(() => setScanning(false));
+    }).catch((failure) => setError(failure.message)).finally(() => setScanning(false));
   };
   const providers = groupModelsByProvider(models);
   const modelItems = [...providers].flatMap(([group, items2]) => [
@@ -15488,14 +15489,14 @@ function ModelPicker({ profile, disabled, onChange }) {
     (0, import_react.createElement)("span", { className: "nodo-model-cell-value" }, value),
     filled && (0, import_react.createElement)("span", { className: "nodo-model-cell-chev" }, (0, import_react.createElement)(import_dsh_client_ui_primitives.IconChevronRightOutlineRegular, { size: 12 }))
   );
-  const items = pane === "model" ? models.length ? modelItems : [{ type: "label", id: "hint", text: scanning ? "\u6B63\u5728\u626B\u63CF\u672C\u5730\u914D\u7F6E\u2026" : error2 || "\u672A\u626B\u63CF\u5230\u6A21\u578B\uFF0C\u53EF\u5728\u8BBE\u7F6E\u4E2D\u91CD\u65B0\u626B\u63CF" }] : pane === "thinking" ? [
+  const items = pane === "model" ? models.length ? modelItems : hasCatalog ? [{ type: "label", id: "hint", text: "\u6CA1\u6709\u542F\u7528\u7684\u6A21\u578B" }] : [{ type: "label", id: "hint", text: scanning ? "\u6B63\u5728\u626B\u63CF\u672C\u5730\u914D\u7F6E\u2026" : error2 || "\u672A\u626B\u63CF\u5230\u6A21\u578B\uFF0C\u53EF\u5728\u8BBE\u7F6E\u4E2D\u91CD\u65B0\u626B\u63CF" }] : pane === "thinking" ? [
     { id: "thinking:", label: "\u9ED8\u8BA4\uFF08\u8DDF\u968F Agent \u8BBE\u7F6E\uFF09" },
     ...levels.map((level) => ({
       id: `thinking:${level.id}`,
       label: level.id === selectedModel?.defaultThinking ? `${level.label ?? level.id}\uFF08\u6A21\u578B\u9ED8\u8BA4\uFF09` : level.label ?? level.id
     }))
   ] : [
-    { id: "model", label: cell("\u6A21\u578B", modelText, models.length > 0), disabled: !models.length },
+    { id: "model", label: cell("\u6A21\u578B", modelText, hasCatalog), disabled: !hasCatalog },
     { id: "thinking", label: cell("\u63A8\u7406\u7B49\u7EA7", levelText || "\u9ED8\u8BA4", levels.length > 0), disabled: !levels.length }
   ];
   return (0, import_react.createElement)(import_dsh_client_ui_primitives.Menu, {
@@ -16658,14 +16659,15 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
     setFilled({ name: item.name, before: { identity: draft.identity, role: draft.role, instructions: draft.instructions } });
     update({ identity: item.name, role: item.role, instructions: item.instructions });
   };
-  const models = engine?.catalog?.models ?? [];
-  const { selected: selectedModel, value: model, levels: modelLevels, options: modelOptions } = modelChoices(models, draft.model, engine?.catalog?.defaultModel);
+  const catalogModels = engine?.catalog?.models ?? [];
+  const models = offeredModels(engine, catalogModels);
+  const { selected: selectedModel, value: model, levels: modelLevels, options: modelOptions } = modelChoices(models, draft.model, engine?.catalog?.defaultModel, catalogModels);
   const chooseModel = (event) => {
     const id = event.target.value;
     update((current2) => ({
       ...current2,
       model: id,
-      thinking: thinkingAfterModelChange(models, id, current2.thinking)
+      thinking: thinkingAfterModelChange(catalogModels, id, current2.thinking)
     }));
   };
   const submit = async (event) => {
@@ -16915,7 +16917,7 @@ function RoleEditor({ profile = null, avatarSeed = 0, enabledEngines = null, sav
           )),
           row(
             "\u6A21\u578B",
-            models.length ? (0, import_react.createElement)(
+            catalogModels.length ? (0, import_react.createElement)(
               "select",
               { className: "nodo-dialog-input nodo-dialog-select nodo-role-select", "aria-label": "\u6A21\u578B", disabled, value: model, onChange: chooseModel },
               !model && (0, import_react.createElement)("option", { value: "" }, "\u9009\u62E9\u6A21\u578B"),
@@ -19181,6 +19183,14 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-engine-section>.nodo-dialog-path{margin-top:6px;font-size:12px}
 .nodo-engine-scan{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .nodo-engine-scan strong>span{font-size:12px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-engine-models{display:flex;flex-direction:column;margin-top:12px}
+.nodo-engine-models-search{display:flex;align-items:center;gap:8px;height:32px;margin-bottom:4px;padding:0 10px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--nodo-engine-radius);color:var(--dsw-alias-label-tertiary)}
+.nodo-engine-models-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}
+.nodo-engine-model-group{margin:8px 0 0;font-size:12px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-secondary)}
+.nodo-engine-model-group>span{margin-left:6px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-engine-model{display:flex;align-items:center;gap:12px;min-height:38px;font-size:13px;line-height:20px}
+.nodo-engine-model>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-engine-model .nodo-engine-switch{margin:0}
 .nodo-engine-check{display:flex;flex-direction:column;gap:8px;font-size:12px;line-height:18px}
 .nodo-engine-check-row{display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px}
 .nodo-engine-check dt{display:flex;align-items:baseline;gap:8px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
@@ -20711,6 +20721,63 @@ function RemoteAccessSettings({ readOnly = false }) {
 }
 
 // src/client/engine-settings.js
+var enabledIdsOf = (engine) => {
+  const models = engine.catalog?.models ?? [];
+  return Array.isArray(engine.enabledModels) ? engine.enabledModels : models.map((item) => item.id);
+};
+function ModelCatalogList({ engine, disabled, onToggle }) {
+  const [query, setQuery] = (0, import_react.useState)("");
+  const models = engine.catalog?.models ?? [];
+  const enabled = new Set(enabledIdsOf(engine));
+  const text = query.trim().toLowerCase();
+  const match = (item) => !text || modelLabel(item).toLowerCase().includes(text) || item.id.toLowerCase().includes(text);
+  const on2 = models.filter((item) => enabled.has(item.id));
+  const off = models.filter((item) => !enabled.has(item.id));
+  const noMatch = text !== "" && !on2.some(match) && !off.some(match);
+  const section2 = (items, scope) => [...groupModelsByProvider(items.filter(match))].flatMap(([group, rows]) => [
+    ...group === "" ? [] : [(0, import_react.createElement)("p", { key: `${scope}group:${group}`, className: "nodo-engine-model-group" }, group)],
+    ...rows.map((item) => (0, import_react.createElement)(
+      "div",
+      { key: item.id, className: "nodo-engine-model", title: item.id },
+      (0, import_react.createElement)("span", null, modelLabel(item)),
+      (0, import_react.createElement)("button", {
+        type: "button",
+        className: "nodo-engine-switch",
+        "aria-pressed": enabled.has(item.id),
+        "aria-label": `${enabled.has(item.id) ? "\u505C\u7528" : "\u542F\u7528"} ${modelLabel(item)}`,
+        disabled,
+        onClick: () => onToggle(item.id)
+      })
+    ))
+  ]);
+  if (models.length === 0) return null;
+  return (0, import_react.createElement)(
+    "div",
+    { className: "nodo-engine-models" },
+    (0, import_react.createElement)(
+      "label",
+      { className: "nodo-engine-models-search" },
+      (0, import_react.createElement)(import_dsh_client_ui_primitives.IconSearchOutlineRegular, { size: 14 }),
+      (0, import_react.createElement)("input", {
+        type: "text",
+        "aria-label": "\u641C\u7D22\u6A21\u578B",
+        placeholder: "\u641C\u7D22\u6A21\u578B",
+        value: query,
+        // Enter must not reach the engine form's submit; the box only filters,
+        // and a composing Enter belongs to the IME, not the form.
+        onKeyDown: (event) => {
+          if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
+          if (event.key === "Enter") event.preventDefault();
+        },
+        onChange: (event) => setQuery(event.target.value)
+      })
+    ),
+    ...section2(on2, "on:"),
+    off.length > 0 && !noMatch && (0, import_react.createElement)("p", { className: "nodo-engine-model-group" }, "\u672A\u663E\u793A", (0, import_react.createElement)("span", null, off.length)),
+    ...section2(off, "off:"),
+    noMatch && (0, import_react.createElement)("p", { className: "nodo-engine-model-group" }, "\u6CA1\u6709\u5339\u914D\u7684\u6A21\u578B")
+  );
+}
 function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly, onClose }) {
   const seed = (engineId) => {
     const source = view2.prefs?.engineConfigs?.[engineId];
@@ -20726,6 +20793,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
   const [checking, setChecking] = (0, import_react.useState)("");
   const [loading, setLoading] = (0, import_react.useState)(true);
   const [saved, setSaved] = (0, import_react.useState)(false);
+  const [savingModels, setSavingModels] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
   const [section2, setSection] = (0, import_react.useState)("engines");
   const pick = (engineId) => {
@@ -20777,6 +20845,23 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
     } catch (failure) {
       setError(failure.message);
       setEnabled(enabled);
+    }
+  };
+  const toggleModel = async (item, id) => {
+    if (locked || savingModels || readOnly) return;
+    const ids = enabledIdsOf(item);
+    const next = ids.includes(id) ? ids.filter((model) => model !== id) : [...ids, id];
+    setEngines((current) => current.map((entry) => entry.id === item.id ? { ...entry, enabledModels: next } : entry));
+    setError("");
+    setSavingModels(true);
+    try {
+      const saved2 = await call("engine-model-enable-set", { engine: item.id, models: next });
+      setEngines((current) => current.map((entry) => entry.id === item.id ? { ...entry, enabledModels: saved2.enabledModels } : entry));
+    } catch (failure) {
+      setError(failure.message);
+      setEngines((current) => current.map((entry) => entry.id === item.id ? { ...entry, enabledModels: item.enabledModels } : entry));
+    } finally {
+      setSavingModels(false);
     }
   };
   const checkKey = (id) => JSON.stringify([id, workspace?.id]);
@@ -20913,9 +20998,10 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
           (0, import_react.createElement)(
             "div",
             { className: "nodo-engine-section nodo-engine-scan" },
-            (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `${engine.catalog.models?.length ?? 0} \u4E2A` : "\u672A\u626B\u63CF")),
+            (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `\u5DF2\u9009 ${(engine.catalog.models ?? []).filter((item2) => enabledIdsOf(engine).includes(item2.id)).length} \u4E2A` : "\u672A\u626B\u63CF")),
             (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? "\u626B\u63CF\u4E2D\u2026" : "\u626B\u63CF")
           ),
+          engine.catalog && (0, import_react.createElement)(ModelCatalogList, { key: engine.id, engine, disabled: locked || savingModels || readOnly, onToggle: (id) => void toggleModel(engine, id) }),
           saved && (0, import_react.createElement)("p", { className: "nodo-ok", role: "status" }, "Agent \u914D\u7F6E\u5DF2\u4FDD\u5B58")
         )
       )
@@ -21411,13 +21497,15 @@ function PickCell({ label, caption, pick, team, roles, engines, optional, disabl
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
   const holder = roles.find((role) => role.id === pick?.profile);
-  const catalog = engines.find((engine) => engine.id === holder?.engine)?.catalog;
-  const models = catalog?.models ?? [];
-  const model = models.find((item) => item.id === (pick?.model || holder?.model || catalog?.defaultModel));
+  const engine = engines.find((item) => item.id === holder?.engine);
+  const catalog = engine?.catalog;
+  const catalogModels = catalog?.models ?? [];
+  const models = offeredModels(engine, catalogModels);
+  const model = catalogModels.find((item) => item.id === (pick?.model || holder?.model || catalog?.defaultModel));
   const levels = model?.thinking ?? [];
   const providers = groupModelsByProvider(models);
   const set = (changes) => onChange({ ...pick, ...changes });
-  const tags = [pick?.model ? modelLabel(models.find((item) => item.id === pick.model) ?? { id: pick.model }) : "", pick?.thinking ? levels.find((level) => level.id === pick.thinking)?.label ?? pick.thinking : ""].filter(Boolean);
+  const tags = [pick?.model ? modelLabel(catalogModels.find((item) => item.id === pick.model) ?? { id: pick.model }) : "", pick?.thinking ? levels.find((level) => level.id === pick.thinking)?.label ?? pick.thinking : ""].filter(Boolean);
   return /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick", "data-warn": holder ? void 0 : "", "data-removable": remove ? "" : void 0, "data-pick-open": open ? "" : void 0 }, caption && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-cap" }, caption), /* @__PURE__ */ (0, import_react.createElement)(
     "button",
     {
@@ -21456,8 +21544,8 @@ function PickCell({ label, caption, pick, team, roles, engines, optional, disabl
       /* @__PURE__ */ (0, import_react.createElement)(RoleAvatar, { profile: role, size: 20 }),
       role.name
     ))),
-    holder && models.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u6A21\u578B"),
-    holder && models.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-models", role: "group", "aria-label": "\u6A21\u578B" }, [...providers].map(([group, items]) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, { key: group }, group && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-provider" }, group), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, items.map((item) => /* @__PURE__ */ (0, import_react.createElement)(
+    holder && catalogModels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u6A21\u578B"),
+    holder && catalogModels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-models", role: "group", "aria-label": "\u6A21\u578B" }, models.length === 0 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-empty" }, "\u6CA1\u6709\u542F\u7528\u7684\u6A21\u578B") : [...providers].map(([group, items]) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, { key: group }, group && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-provider" }, group), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, items.map((item) => /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
         key: item.id,
@@ -21722,6 +21810,7 @@ var TEAMS_CSS = `
 .nodo-pick-label{margin-bottom:-4px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
 :is(.nodo-pick-group,.nodo-pick-models)+.nodo-pick-label{padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-pick-models{display:flex;flex-direction:column;gap:6px}
+.nodo-pick-empty{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-pick-provider{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}
 .nodo-pick-group+.nodo-pick-provider{padding-top:4px}
 .nodo-pick-option{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:8px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}

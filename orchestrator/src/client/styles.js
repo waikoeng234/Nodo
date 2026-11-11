@@ -951,6 +951,14 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-engine-section>.nodo-dialog-path{margin-top:6px;font-size:12px}
 .nodo-engine-scan{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .nodo-engine-scan strong>span{font-size:12px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-engine-models{display:flex;flex-direction:column;margin-top:12px}
+.nodo-engine-models-search{display:flex;align-items:center;gap:8px;height:32px;margin-bottom:4px;padding:0 10px;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--nodo-engine-radius);color:var(--dsw-alias-label-tertiary)}
+.nodo-engine-models-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}
+.nodo-engine-model-group{margin:8px 0 0;font-size:12px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-secondary)}
+.nodo-engine-model-group>span{margin-left:6px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.nodo-engine-model{display:flex;align-items:center;gap:12px;min-height:38px;font-size:13px;line-height:20px}
+.nodo-engine-model>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-engine-model .nodo-engine-switch{margin:0}
 .nodo-engine-check{display:flex;flex-direction:column;gap:8px;font-size:12px;line-height:18px}
 .nodo-engine-check-row{display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px}
 .nodo-engine-check dt{display:flex;align-items:baseline;gap:8px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
