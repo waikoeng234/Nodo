@@ -48,7 +48,7 @@ const tools = [
                 sourceId: { type: 'string', minLength: 1 }, executionId: { type: 'string', minLength: 1 },
                 offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 16000 },
             }, additionalProperties: false }, annotations: { readOnlyHint: true } },
-    { name: 'nodo_route', description: '只做 new/attach/stop/ask 路由，不写任务正文。scope 优先用本轮用户原文片段，否则单行说明最多 100 字，不加标注。title 省略取范围首行最多 80 字，不进 worker 输入。new 本轮正常结束后发送，停止或出错取消；同任务补充用 attach，已结束或旧任务只读。continues 接续来源最近已结束执行的目录，与 parentId/dependsOn 互斥；worktree 不得冲突。依赖未完成时任务等待，依赖完成后由 Nodo 派发；隔离用 worktree，Nodo 不会自动合并。stop 只停本主控名下执行。缺少用户取舍或授权用 ask；stopExecutionIds 必填可为空，开放问题省略 options 和 recommendation，不造占位选项。成功后结束当前轮次等待用户回答；失败时修正参数后重试，不另发同一问题的原生问答，不按默认或推荐方案继续。',
+    { name: 'nodo_route', description: '只做 new/attach/stop/ask 路由，不写任务正文。scope 优先用本轮用户原文片段，否则单行说明最多 100 字，不加标注。title 省略取范围首行最多 80 字，不进 worker 输入。new 本轮正常结束后发送，停止或出错取消；同任务补充用 attach，等待依赖的任务可先补充、已结束或旧任务只读。continues 接续来源最近已结束执行的目录，与 parentId/dependsOn 互斥；worktree 不得冲突。依赖未完成时任务等待，依赖完成后由 Nodo 派发；隔离用 worktree，Nodo 不会自动合并。stop 只停本主控名下执行。缺少用户取舍或授权用 ask；stopExecutionIds 必填可为空，开放问题省略 options 和 recommendation，不造占位选项。成功后结束当前轮次等待用户回答；失败时修正参数后重试，不另发同一问题的原生问答，不按默认或推荐方案继续。',
         inputSchema: { type: 'object', oneOf: routeBranches.map((properties, index) => ({ type: 'object', properties,
                 required: [['action', 'type', 'hard', 'scope'], ['action', 'taskId', 'scope'], ['action'], ['action', 'questions', 'stopExecutionIds']][index],
                 additionalProperties: false,

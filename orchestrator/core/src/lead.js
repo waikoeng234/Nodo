@@ -461,6 +461,17 @@ export function install(rt) {
     const workspaceRef = task.executions.at(-1)?.workspaceRef ?? task.workspaceRef
     if (!rt.state.workspaces[workspaceRef] || rt.state.workspaces[workspaceRef].deletedAt) throw failure('执行目录已不可用，请另建任务', 'orch/frozen')
     if (flow.status === 'stalled') throw failure('任务已停滞，请另建任务', 'orch/task-stalled')
+    // A task still waiting on its dependencies takes the input as a later
+    // requirement; its first execution carries the supplements.
+    if (flow.status === 'pending') {
+      rt.persistTrigger(trigger)
+      const supplements = [...new Set([...(flow.supplements ?? []), trigger.id])]
+      Object.assign(rt.state.tasks[task.id].flow, { supplements })
+      state.count = (state.count ?? 0) + 1
+      await rt.saveStrict()
+      return { ok: true, taskId: task.id, type: flow.route?.type, hard: flow.route?.hard, flow: structuredClone(rt.state.tasks[task.id].flow),
+        status: 'pending', delivery: { mode: 'pending' }, message: '已记入等待任务的补充要求，任务开始执行时一并交给执行者' }
+    }
     if (!['running', 'reviewing', 'done'].includes(flow.status) || ['done', 'stopped'].includes(task.status)) throw failure('已结束、停止或旧任务只读', 'orch/frozen')
     const latest = task.executions.at(-1)
     if (!latest) throw invalid('任务没有执行记录')

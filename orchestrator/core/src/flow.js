@@ -125,6 +125,9 @@ export function install(rt) {
   }
   const reworkFlow = (task, { trigger, supplements = [], source = implementationOf(task), immediate = false, supplement = false, returning = false } = {}) =>
     dispatch(task, { stage: 'rework', source, trigger, supplements, immediate, supplement, returning })
+  // A pending decision refuses every dispatch, so an advance that needs one waits
+  // for the pass after the answer instead of cancelling a send and stalling.
+  const dispatchHeld = task => rt.sessionBlockReason?.(task.coordinatorSessionId) !== undefined
   const advanceFlow = async execution => {
     const task = state.tasks[execution.taskId]
     if (!task.flow || !['running', 'reviewing'].includes(task.flow.status) || execution.flowContinued
@@ -134,6 +137,7 @@ export function install(rt) {
     if (execution.status !== 'done' || ['blocked', 'failed'].includes(execution.reportData?.outcome)) stallFlow(task, 'execution-failed', execution)
     else if (executionsOf(task).length >= FLOW_EXECUTIONS_MAX) stallFlow(task, 'hard-cap', execution)
     else if (supplements.length) {
+      if (dispatchHeld(task)) return
       const trigger = state.triggers[supplements.at(-1)]
       receipt = await reworkFlow(task, { trigger, supplements: supplements.slice(0, -1), supplement: true, immediate: true,
         source: execution.stage === 'review' && execution.reportData?.verdict === 'fail' ? execution : implementationOf(task) })
@@ -144,13 +148,16 @@ export function install(rt) {
       else {
         const implement = implementationOf(task), team = rt.teams().find(item => item.id === task.teamId)
         if ((task.flow.rework ?? 0) >= flowOf(team?.types.find(item => item.id === implement.type)).maxRework) stallFlow(task, 'rework-limit', execution)
+        else if (dispatchHeld(task)) return
         else {
           receipt = await dispatch(task, { stage: 'rework', source: execution, immediate: true })
           if (receipt) task.flow.rework = (task.flow.rework ?? 0) + 1
         }
       }
-    } else if (needsFlowReview(execution)) receipt = await dispatch(task, { stage: 'review', source: execution, immediate: true })
-    else openAcceptance(task)
+    } else if (needsFlowReview(execution)) {
+      if (dispatchHeld(task)) return
+      receipt = await dispatch(task, { stage: 'review', source: execution, immediate: true })
+    } else openAcceptance(task)
     execution.flowContinued = true
     await rt.saveStrict()
     return receipt
@@ -228,7 +235,8 @@ export function install(rt) {
   }
   const startPending = async task => {
     let receipt
-    try { receipt = await rt.dispatchFlowExecution(task, { ...task.flow.route, stage: 'implement', trigger: state.triggers[task.triggerId] }) }
+    try { receipt = await rt.dispatchFlowExecution(task, { ...task.flow.route, stage: 'implement', trigger: state.triggers[task.triggerId],
+      supplements: [...(task.flow.supplements ?? [])] }) }
     catch (error) {
       if (error.code === 'orch/busy') throw error
       stallFlow(task, 'execution-failed', undefined, [error.message])
@@ -236,6 +244,7 @@ export function install(rt) {
       return
     }
     Object.assign(task.flow, { status: 'running', stage: 'implement', round: 1 })
+    delete task.flow.supplements
     syncTaskFlow(task)
     await rt.saveStrict()
     await rt.startFlowExecution(receipt.executionId)
