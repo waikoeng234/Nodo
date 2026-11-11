@@ -24,6 +24,9 @@ function ModelCatalogList({ engine, disabled, onToggle }) {
   const enabled = new Set(enabledIdsOf(engine))
   const text = query.trim().toLowerCase()
   const match = item => !text || modelLabel(item).toLowerCase().includes(text) || item.id.toLowerCase().includes(text)
+  const on = models.filter(item => enabled.has(item.id))
+  const off = models.filter(item => !enabled.has(item.id))
+  const noMatch = text !== '' && !on.some(match) && !off.some(match)
   const section = (items, scope) => [...groupModelsByProvider(items.filter(match))].flatMap(([group, rows]) => [
     ...(group === '' ? [] : [h('p', { key: `${scope}group:${group}`, className: 'nodo-engine-model-group' }, group)]),
     ...rows.map(item => h('div', { key: item.id, className: 'nodo-engine-model', title: item.id },
@@ -32,15 +35,17 @@ function ModelCatalogList({ engine, disabled, onToggle }) {
         'aria-label': `${enabled.has(item.id) ? '停用' : '启用'} ${modelLabel(item)}`, disabled,
         onClick: () => onToggle(item.id) }))),
   ])
-  const off = models.filter(item => !enabled.has(item.id))
   if (models.length === 0) return null
   return h('div', { className: 'nodo-engine-models' },
     h('label', { className: 'nodo-engine-models-search' }, h(IconSearchOutlineRegular, { size: 14 }),
       h('input', { type: 'text', 'aria-label': '搜索模型', placeholder: '搜索模型', value: query,
+        // Enter must not reach the engine form's submit; the box only filters.
+        onKeyDown: event => { if (event.key === 'Enter') event.preventDefault() },
         onChange: event => setQuery(event.target.value) })),
-    ...section(models.filter(item => enabled.has(item.id)), 'on:'),
-    off.length > 0 && h('p', { className: 'nodo-engine-model-group' }, '未显示', h('span', null, off.length)),
-    ...section(off, 'off:'))
+    ...section(on, 'on:'),
+    off.length > 0 && !noMatch && h('p', { className: 'nodo-engine-model-group' }, '未显示', h('span', null, off.length)),
+    ...section(off, 'off:'),
+    noMatch && h('p', { className: 'nodo-engine-model-group' }, '没有匹配的模型'))
 }
 
 // Settings is the host's modal too: the same card and field metrics as the role
@@ -64,6 +69,7 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
   const [checking, setChecking] = useState('')
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
+  const [savingModels, setSavingModels] = useState(false)
   const [error, setError] = useState('')
   const [section, setSection] = useState('engines')
   const pick = engineId => {
@@ -103,18 +109,19 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
     } catch (failure) { setError(failure.message); setEnabled(enabled) }
   }
   const toggleModel = async (item, id) => {
-    if (locked || readOnly) return
+    if (locked || savingModels || readOnly) return
     const ids = enabledIdsOf(item)
     const next = ids.includes(id) ? ids.filter(model => model !== id) : [...ids, id]
     setEngines(current => current.map(entry => entry.id === item.id ? { ...entry, enabledModels: next } : entry))
     setError('')
+    setSavingModels(true)
     try {
       const saved = await call('engine-model-enable-set', { engine: item.id, models: next })
       setEngines(current => current.map(entry => entry.id === item.id ? { ...entry, enabledModels: saved.enabledModels } : entry))
     } catch (failure) {
       setError(failure.message)
       setEngines(current => current.map(entry => entry.id === item.id ? { ...entry, enabledModels: item.enabledModels } : entry))
-    }
+    } finally { setSavingModels(false) }
   }
   const checkKey = id => JSON.stringify([id, workspace?.id])
   const check = checks[checkKey(selected)]
@@ -200,7 +207,7 @@ export function EngineSettingsDialog({ view, workspace = null, refresh, readOnly
               ? `已选 ${(engine.catalog.models ?? []).filter(item => enabledIdsOf(engine).includes(item.id)).length} 个`
               : '未扫描')),
             h(Button, { variant: 'outline', size: 'sm', disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? '扫描中…' : '扫描')),
-          engine.catalog && h(ModelCatalogList, { key: engine.id, engine, disabled: locked || readOnly, onToggle: id => void toggleModel(engine, id) }),
+          engine.catalog && h(ModelCatalogList, { key: engine.id, engine, disabled: locked || savingModels || readOnly, onToggle: id => void toggleModel(engine, id) }),
           saved && h('p', { className: 'nodo-ok', role: 'status' }, 'Agent 配置已保存'))))
   }
   const heading = (title, items) => h('h3', { key: title, className: 'nodo-engine-group' }, title, h('span', null, items.length))

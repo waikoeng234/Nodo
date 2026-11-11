@@ -946,6 +946,12 @@ test('the enabled model set saves against the scanned catalog and rides the engi
       assert.equal((await host.api('engine-detect')).find(item => item.id === 'codex').enabledModels, undefined)
       await assert.rejects(host.api('engine-model-enable-set', { engine: 'echo', models: ['x'] }),
         error => error.code === 'orch/invalid', 'an engine with no scanned catalog saves no set')
+      await assert.rejects(host.api('engine-model-enable-set', { engine: 'codex' }),
+        error => error.code === 'orch/invalid', 'a missing models value is not a whole-disable request')
+      await assert.rejects(host.api('engine-model-enable-set', { engine: 'codex', models: 'fixture-model' }),
+        error => error.code === 'orch/invalid', 'a non-array models value is not a whole-disable request')
+      assert.equal((await host.api('engine-catalog')).find(item => item.id === 'codex').enabledModels, undefined,
+        'the rejected calls leave no entry behind')
       const saved = await host.api('engine-model-enable-set', { engine: 'codex', models: ['fixture-model', 'gone', 'fixture-model'] })
       assert.deepEqual(saved, { engine: 'codex', enabledModels: ['fixture-model'] }, 'ids outside the scanned list are dropped')
       assert.deepEqual((await host.api('engine-catalog')).find(item => item.id === 'codex').enabledModels, ['fixture-model'])

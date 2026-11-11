@@ -262,7 +262,7 @@ export function PickCell({ label, caption, pick, team, roles, engines, optional,
           </div>
           {holder && catalogModels.length > 0 && <span className="nodo-pick-label">模型</span>}
           {holder && catalogModels.length > 0 && <div className="nodo-pick-models" role="group" aria-label="模型">
-            {[...providers].map(([group, items]) => (
+            {models.length === 0 ? <span className="nodo-pick-empty">没有启用的模型</span> : [...providers].map(([group, items]) => (
               <Fragment key={group}>
                 {group && <span className="nodo-pick-provider">{group}</span>}
                 <div className="nodo-pick-group">
@@ -453,6 +453,7 @@ export const TEAMS_CSS = `
 .nodo-pick-label{margin-bottom:-4px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
 :is(.nodo-pick-group,.nodo-pick-models)+.nodo-pick-label{padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-pick-models{display:flex;flex-direction:column;gap:6px}
+.nodo-pick-empty{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-pick-provider{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}
 .nodo-pick-group+.nodo-pick-provider{padding-top:4px}
 .nodo-pick-option{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:8px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}

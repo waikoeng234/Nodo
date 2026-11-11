@@ -70,15 +70,17 @@ export function install(rt) {
 
   // One engine's enabled model ids. The set only covers a scanned catalog — ids
   // outside it are dropped, so an engine the user never scanned keeps no entry —
-  // and an empty array disables that engine's every model.
+  // and an empty array disables that engine's every model. A missing or
+  // non-array models value is a caller's mistake, not a whole-disable request.
   const saveEngineModelEnables = async ({ engine, models } = {}) => {
     await rt.load()
     await rt.driversReady()
     const id = String(engine ?? '')
     const catalog = engineCatalogOf(id)
     if (!catalog) throw invalid(`No scanned catalog for engine "${id}"`)
+    if (!Array.isArray(models)) throw invalid(`engine-model-enable-set needs a models array for engine "${id}"`)
     const known = new Set(catalog.models.map(item => item.id))
-    const chosen = [...new Set((Array.isArray(models) ? models : []).map(String))].filter(model => known.has(model))
+    const chosen = [...new Set(models.map(String))].filter(model => known.has(model))
     rt.state.prefs.enabledModels ??= {}
     rt.state.prefs.enabledModels[id] = chosen
     await rt.save()

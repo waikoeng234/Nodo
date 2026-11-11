@@ -19171,8 +19171,9 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-engine-models-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}
 .nodo-engine-model-group{margin:8px 0 0;font-size:12px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-secondary)}
 .nodo-engine-model-group>span{margin-left:6px;font-weight:400;color:var(--dsw-alias-label-tertiary)}
-.nodo-engine-model{display:flex;align-items:center;gap:12px;min-height:38px;padding:0 2px;font-size:13px;line-height:20px}
+.nodo-engine-model{display:flex;align-items:center;gap:12px;min-height:38px;font-size:13px;line-height:20px}
 .nodo-engine-model>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nodo-engine-model .nodo-engine-switch{margin:0}
 .nodo-engine-check{display:flex;flex-direction:column;gap:8px;font-size:12px;line-height:18px}
 .nodo-engine-check-row{display:grid;grid-template-columns:132px minmax(0,1fr);gap:12px}
 .nodo-engine-check dt{display:flex;align-items:baseline;gap:8px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
@@ -20512,6 +20513,9 @@ function ModelCatalogList({ engine, disabled, onToggle }) {
   const enabled = new Set(enabledIdsOf(engine));
   const text = query.trim().toLowerCase();
   const match = (item) => !text || modelLabel(item).toLowerCase().includes(text) || item.id.toLowerCase().includes(text);
+  const on2 = models.filter((item) => enabled.has(item.id));
+  const off = models.filter((item) => !enabled.has(item.id));
+  const noMatch = text !== "" && !on2.some(match) && !off.some(match);
   const section = (items, scope) => [...groupModelsByProvider(items.filter(match))].flatMap(([group, rows]) => [
     ...group === "" ? [] : [(0, import_react.createElement)("p", { key: `${scope}group:${group}`, className: "nodo-engine-model-group" }, group)],
     ...rows.map((item) => (0, import_react.createElement)(
@@ -20528,7 +20532,6 @@ function ModelCatalogList({ engine, disabled, onToggle }) {
       })
     ))
   ]);
-  const off = models.filter((item) => !enabled.has(item.id));
   if (models.length === 0) return null;
   return (0, import_react.createElement)(
     "div",
@@ -20542,12 +20545,17 @@ function ModelCatalogList({ engine, disabled, onToggle }) {
         "aria-label": "\u641C\u7D22\u6A21\u578B",
         placeholder: "\u641C\u7D22\u6A21\u578B",
         value: query,
+        // Enter must not reach the engine form's submit; the box only filters.
+        onKeyDown: (event) => {
+          if (event.key === "Enter") event.preventDefault();
+        },
         onChange: (event) => setQuery(event.target.value)
       })
     ),
-    ...section(models.filter((item) => enabled.has(item.id)), "on:"),
-    off.length > 0 && (0, import_react.createElement)("p", { className: "nodo-engine-model-group" }, "\u672A\u663E\u793A", (0, import_react.createElement)("span", null, off.length)),
-    ...section(off, "off:")
+    ...section(on2, "on:"),
+    off.length > 0 && !noMatch && (0, import_react.createElement)("p", { className: "nodo-engine-model-group" }, "\u672A\u663E\u793A", (0, import_react.createElement)("span", null, off.length)),
+    ...section(off, "off:"),
+    noMatch && (0, import_react.createElement)("p", { className: "nodo-engine-model-group" }, "\u6CA1\u6709\u5339\u914D\u7684\u6A21\u578B")
   );
 }
 function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly, onClose }) {
@@ -20565,6 +20573,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
   const [checking, setChecking] = (0, import_react.useState)("");
   const [loading, setLoading] = (0, import_react.useState)(true);
   const [saved, setSaved] = (0, import_react.useState)(false);
+  const [savingModels, setSavingModels] = (0, import_react.useState)(false);
   const [error2, setError] = (0, import_react.useState)("");
   const [section, setSection] = (0, import_react.useState)("engines");
   const pick = (engineId) => {
@@ -20619,17 +20628,20 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
     }
   };
   const toggleModel = async (item, id) => {
-    if (locked || readOnly) return;
+    if (locked || savingModels || readOnly) return;
     const ids = enabledIdsOf(item);
     const next = ids.includes(id) ? ids.filter((model) => model !== id) : [...ids, id];
     setEngines((current) => current.map((entry) => entry.id === item.id ? { ...entry, enabledModels: next } : entry));
     setError("");
+    setSavingModels(true);
     try {
       const saved2 = await call("engine-model-enable-set", { engine: item.id, models: next });
       setEngines((current) => current.map((entry) => entry.id === item.id ? { ...entry, enabledModels: saved2.enabledModels } : entry));
     } catch (failure) {
       setError(failure.message);
       setEngines((current) => current.map((entry) => entry.id === item.id ? { ...entry, enabledModels: item.enabledModels } : entry));
+    } finally {
+      setSavingModels(false);
     }
   };
   const checkKey = (id) => JSON.stringify([id, workspace?.id]);
@@ -20769,7 +20781,7 @@ function EngineSettingsDialog({ view: view2, workspace = null, refresh, readOnly
             (0, import_react.createElement)("strong", null, "\u6A21\u578B\u6E05\u5355", (0, import_react.createElement)("span", null, engine.catalog ? `\u5DF2\u9009 ${(engine.catalog.models ?? []).filter((item2) => enabledIdsOf(engine).includes(item2.id)).length} \u4E2A` : "\u672A\u626B\u63CF")),
             (0, import_react.createElement)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: locked || readOnly, onClick: () => void scan(selected) }, scanning === selected ? "\u626B\u63CF\u4E2D\u2026" : "\u626B\u63CF")
           ),
-          engine.catalog && (0, import_react.createElement)(ModelCatalogList, { key: engine.id, engine, disabled: locked || readOnly, onToggle: (id) => void toggleModel(engine, id) }),
+          engine.catalog && (0, import_react.createElement)(ModelCatalogList, { key: engine.id, engine, disabled: locked || savingModels || readOnly, onToggle: (id) => void toggleModel(engine, id) }),
           saved && (0, import_react.createElement)("p", { className: "nodo-ok", role: "status" }, "Agent \u914D\u7F6E\u5DF2\u4FDD\u5B58")
         )
       )
@@ -21313,7 +21325,7 @@ function PickCell({ label, caption, pick, team, roles, engines, optional, disabl
       role.name
     ))),
     holder && catalogModels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-label" }, "\u6A21\u578B"),
-    holder && catalogModels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-models", role: "group", "aria-label": "\u6A21\u578B" }, [...providers].map(([group, items]) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, { key: group }, group && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-provider" }, group), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, items.map((item) => /* @__PURE__ */ (0, import_react.createElement)(
+    holder && catalogModels.length > 0 && /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-models", role: "group", "aria-label": "\u6A21\u578B" }, models.length === 0 ? /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-empty" }, "\u6CA1\u6709\u542F\u7528\u7684\u6A21\u578B") : [...providers].map(([group, items]) => /* @__PURE__ */ (0, import_react.createElement)(import_react.Fragment, { key: group }, group && /* @__PURE__ */ (0, import_react.createElement)("span", { className: "nodo-pick-provider" }, group), /* @__PURE__ */ (0, import_react.createElement)("div", { className: "nodo-pick-group" }, items.map((item) => /* @__PURE__ */ (0, import_react.createElement)(
       "button",
       {
         key: item.id,
@@ -21538,6 +21550,7 @@ var TEAMS_CSS = `
 .nodo-pick-label{margin-bottom:-4px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
 :is(.nodo-pick-group,.nodo-pick-models)+.nodo-pick-label{padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l2)}
 .nodo-pick-models{display:flex;flex-direction:column;gap:6px}
+.nodo-pick-empty{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
 .nodo-pick-provider{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}
 .nodo-pick-group+.nodo-pick-provider{padding-top:4px}
 .nodo-pick-option{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:0;border-radius:8px;background:0 0;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer}

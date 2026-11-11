@@ -207,6 +207,30 @@ test('the phone roles and assign pages stack into one column with named groups',
   assert.deepEqual(flat(section).filter(node => node.props?.className === 'nodo-tree-cap').map(node => node.children?.[0]), ['主控', '成员'])
 })
 
+// A scanned engine with every model disabled keeps the model section openable
+// and names its state, like the composer picker — never an empty heading alone.
+test('the assignment cell names the all-disabled model state', async () => {
+  const { PickCell } = await loadClient('teams.tsx', {
+    react: { useState: () => [true, () => {}], useEffect: () => {} },
+    createElement: (type, props, ...children) => ({ type, props, children: children.flat(Infinity) }),
+  })
+  const flat = node => node && typeof node === 'object' ? [node, ...(node.children ?? []).flatMap(flat)] : []
+  const pick = PickCell({ label: '改 bug 无人承接', caption: '负责角色', pick: { profile: 'r1' }, team: { members: ['r1'], lead: null },
+    roles: [{ id: 'r1', name: '小算', engine: 'echo' }],
+    engines: [{ id: 'echo', catalog: { models: [{ id: 'm1', label: 'M1' }, { id: 'm2', label: 'M2' }] }, enabledModels: [] }],
+    optional: false, disabled: false, onChange: () => {} })
+  const nodes = flat(pick)
+  assert.equal(nodes.some(node => node.props?.className === 'nodo-pick-label' && node.children?.[0] === '模型'), true,
+    'the scanned engine keeps its model section')
+  assert.equal(nodes.some(node => node.children?.[0] === '没有启用的模型'), true, 'the all-disabled state names itself')
+  assert.equal(nodes.some(node => node.children?.[0] === 'M1'), false, 'no disabled model is offered as a choice')
+  const full = PickCell({ label: '改 bug 无人承接', caption: '负责角色', pick: { profile: 'r1' }, team: { members: ['r1'], lead: null },
+    roles: [{ id: 'r1', name: '小算', engine: 'echo' }],
+    engines: [{ id: 'echo', catalog: { models: [{ id: 'm1', label: 'M1' }] }, enabledModels: ['m1'] }],
+    optional: false, disabled: false, onChange: () => {} })
+  assert.equal(flat(full).some(node => node.children?.[0] === 'M1'), true, 'an enabled model is still offered')
+})
+
 test('tool rows preserve separate input and output for concurrent calls with the same name', async () => {
   const { transcriptRows, ProcessRow, ToolCall } = await loadClient(['feed.js', 'tool-call.tsx'], {
     uiShared: { DisclosureRow: 'DisclosureRow', TOOL_VARIANTS: { generic: { icon: () => 'icon' } } },
@@ -824,6 +848,11 @@ test('the settings model list searches the scanned models and toggles the enable
           { id: 'ds-a', label: 'DS A', group: 'DeepSeek' },
         ] } }]
       if (endpoint === 'engine-model-enable-set') {
+        // The first save stays in flight until the test releases it, so the
+        // in-flight switch lock is observable.
+        if (requests.filter(item => item.endpoint === 'engine-model-enable-set').length === 1) {
+          await new Promise(resolve => { releaseSave = resolve })
+        }
         view.prefs.enabledModels ??= {}
         view.prefs.enabledModels[payload.engine] = [...payload.models]
         return { engine: payload.engine, enabledModels: [...payload.models] }
@@ -845,27 +874,41 @@ test('the settings model list searches the scanned models and toggles the enable
   const heading = () => render().find(node => node.type === 'strong' && node.children[0] === '模型清单').children[1].children[0]
   const groups = () => render().filter(node => node.props.className === 'nodo-engine-model-group')
     .map(node => node.children.map(child => typeof child === 'string' ? child : child.children[0]).join(' '))
+  const search = () => render().find(node => node.props.className === 'nodo-engine-models-search').children[1]
+  let releaseSave = null
   render(); mounted = true; effects.forEach(effect => effect()); await tick()
   render().find(node => node.props.className === 'nodo-engine-toggle').props.onClick()
   assert.deepEqual(rowNames(), ['GLM X', 'GLM Y', 'DS A'], 'an engine the user never picked lists every model as enabled')
   assert.deepEqual(groups(), ['Mock', 'DeepSeek'], 'rows group by the scanned provider')
   assert.equal(groups().some(text => text.startsWith('未显示')), false)
-  await switches().find(node => node.props['aria-label'] === '停用 GLM X').props.onClick(); await tick()
+  let prevented = false
+  search().props.onKeyDown({ key: 'Enter', preventDefault: () => { prevented = true } })
+  assert.equal(prevented, true, 'Enter in the search box never submits the engine form')
+  prevented = false
+  search().props.onKeyDown({ key: 'g', preventDefault: () => { prevented = true } })
+  assert.equal(prevented, false, 'ordinary typing stays untouched')
+  void switches().find(node => node.props['aria-label'] === '停用 GLM X').props.onClick()
+  assert.ok(switches().every(node => node.props.disabled === true), 'every switch locks while a save is in flight')
+  releaseSave(); await tick(); await tick()
   assert.deepEqual(requests.at(-1), { endpoint: 'engine-model-enable-set', payload: { engine: 'codex', models: ['glm-y', 'ds-a'] } },
     'turning one off from an unset set materializes every scanned id minus that one')
+  assert.ok(switches().every(node => node.props.disabled === false), 'the switches unlock once the save lands')
   assert.equal(heading(), '已选 2 个')
   assert.deepEqual(rowNames(), ['GLM Y', 'DS A', 'GLM X'], 'enabled rows lead, the turned-off one waits below')
   assert.deepEqual(groups(), ['Mock', 'DeepSeek', '未显示 1', 'Mock'], '未显示 names the disabled group between the two sections')
-  const search = () => render().find(node => node.props.className === 'nodo-engine-models-search').children[1]
   search().props.onChange({ target: { value: 'glm y' } })
   assert.deepEqual(rowNames(), ['GLM Y'], 'search narrows the rows')
   assert.deepEqual(groups().at(-1), '未显示 1', 'the count keeps the whole disabled set')
+  search().props.onChange({ target: { value: 'zzz' } })
+  assert.deepEqual(rowNames(), [], 'nothing matches')
+  assert.deepEqual(groups(), ['没有匹配的模型'], 'the empty search names itself instead of the sections')
   search().props.onChange({ target: { value: '' } })
   assert.equal(rowNames().length, 3)
   await switches().find(node => node.props['aria-label'] === '启用 GLM X').props.onClick(); await tick()
   assert.deepEqual(requests.at(-1).payload.models, ['glm-y', 'ds-a', 'glm-x'])
   assert.equal(heading(), '已选 3 个')
   assert.equal(groups().some(text => text.startsWith('未显示')), false)
+  assert.equal(requests.some(item => item.endpoint === 'engine-config-set'), false, 'searching never writes the engine config')
 })
 
 test('first-run onboarding lists detected engines and stores the choice', async () => {
