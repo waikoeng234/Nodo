@@ -26,7 +26,7 @@ const codexLeadConfig = {
   'features.goals': false, 'features.apps': false, 'features.plugins': false,
   'features.skill_search': false, 'features.multi_agent_v2': false, 'features.image_generation': false,
   'features.hooks': false, 'features.memories': false,
-  'tools.web_search': false, 'tools.update_plan': { enabled: false },
+  web_search: 'disabled', 'tools.web_search': false, 'tools.update_plan': { enabled: false },
 }
 
 const fixtureCatalog = { models: [
@@ -210,13 +210,14 @@ test('Codex leader tool surface freezes to code mode with only the Nodo MCP tool
     // with the CLI's own fail-open rules (unknown tool_mode → direct, unknown
     // multi_agent_version → agent tools), so a silent regression shows up here.
     assert.equal(thread.params.model, 'fixture-model', 'the thread must run exactly the model whose catalog entry was switched')
+    assert.equal(thread.params.config.web_search, 'disabled', 'the root key, not tools.web_search, is what keeps the web__run exec channel off')
     assert.deepEqual(thread.surface.tools,
       ['apply_patch', 'clock__curr_time', 'exec', 'list_mcp_resource_templates', 'list_mcp_resources', 'read_mcp_resource', 'request_user_input', 'request_user_input_async', 'tool_search', 'wait'],
-      'code mode: no exec_command, no collaboration, no direct MCP declarations')
+      'code mode: no exec_command, no collaboration, no web__run, no direct MCP declarations')
     assert.deepEqual(thread.surface.allTools, [
       'apply_patch', 'clock__curr_time', 'list_mcp_resource_templates', 'list_mcp_resources',
       'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_review', 'mcp__nodo_lead__nodo_route',
-      'read_mcp_resource'], 'the exec sandbox may call nothing beyond apply_patch, the resource readers and the four Nodo tools')
+      'read_mcp_resource'], 'the exec sandbox may call nothing beyond apply_patch, the resource readers and the four Nodo tools — no web__run')
   })
 })
 

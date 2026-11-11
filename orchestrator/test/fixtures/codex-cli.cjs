@@ -68,10 +68,14 @@ const surfaceOf = params => {
       : value.enabled_tools.map(tool => `mcp__${server}__${tool}`)
   })
   const base = ['apply_patch', 'clock__curr_time', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource']
+  // The real CLI ships the standalone web channel web__run (a live network
+  // call) unless the thread config carries the root `web_search` value;
+  // `tools.web_search` does not reach it.
+  const webRun = params.config?.web_search === 'disabled' ? [] : ['web__run']
   const tools = codeMode
-    ? [...base, 'exec', 'wait', 'request_user_input', 'request_user_input_async', ...agentTools, ...(entry?.supports_search_tool === false ? [] : ['tool_search'])]
-    : [...base, ...(entry?.supports_search_tool === false ? [] : ['tool_search'])]
-  return { tools: tools.sort(), allTools: codeMode ? [...base, ...mounted].sort() : [] }
+    ? [...base, 'exec', 'wait', 'request_user_input', 'request_user_input_async', ...agentTools, ...webRun, ...(entry?.supports_search_tool === false ? [] : ['tool_search'])]
+    : [...base, ...webRun, ...(entry?.supports_search_tool === false ? [] : ['tool_search'])]
+  return { tools: tools.sort(), allTools: codeMode ? [...base, ...mounted, ...webRun].sort() : [] }
 }
 const receive = line => {
   const message = JSON.parse(line)

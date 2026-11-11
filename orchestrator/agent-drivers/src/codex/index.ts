@@ -251,7 +251,9 @@ const QUESTION_ROUTING = 'Asking the user questions: always use the request_user
 // that a config key can turn off are turned off here. The collaboration tools
 // and code-mode `exec` are not among them — they follow the model catalog entry
 // of the leader's own process (catalog.ts), and no config key turns code-mode
-// `exec` off: `features.unified_exec` gates only the shell tool. Unknown keys
+// `exec` off: `features.unified_exec` gates only the shell tool. The root
+// `web_search` value is what keeps the standalone `web__run` exec channel off;
+// `tools.web_search` only configures the search tool. Unknown keys
 // are accepted silently and feature names move between versions, so the
 // config-freeze test is the drift guard.
 const LEAD_CONFIG = {
@@ -260,7 +262,7 @@ const LEAD_CONFIG = {
   'features.goals': false, 'features.apps': false, 'features.plugins': false,
   'features.skill_search': false, 'features.multi_agent_v2': false, 'features.image_generation': false,
   'features.hooks': false, 'features.memories': false,
-  'tools.web_search': false, 'tools.update_plan': { enabled: false },
+  web_search: 'disabled', 'tools.web_search': false, 'tools.update_plan': { enabled: false },
 }
 
 // The catalog override keeps the leader in code mode, where the exec sandbox is
