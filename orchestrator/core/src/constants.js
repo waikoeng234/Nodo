@@ -16,9 +16,18 @@ export const CONTEXT_LIST_MAX = 50
 // Delegation input budget counts UTF-16 code units of the composed dispatch body
 // (running notes + task + required excerpts + background catalog), not tokens.
 export const INPUT_CONTEXT_MAX = 96_000
-// Context selection and background archive bounds for one delegation.
-export const CONTEXT_SELECT_MAX = 20
-export const BACKGROUND_TEXT_MAX = 4_000_000
+// Lead-routed task flow bounds and the trigger-message storage quota.
+export const FLOW_EXECUTIONS_MAX = 8
+export const STAGE_ROUNDS_MAX = 3
+export const REWORK_MAX_DEFAULT = 2
+export const REPORT_DELIVERY_FAILURES_MAX = 3
+export const SCOPE_NOTE_MAX = 100
+export const REVIEW_QUESTIONS_MAX = 5
+export const REVIEW_QUESTION_MAX = 200
+export const HISTORY_USER_MAX = 6
+export const HISTORY_REPLY_MAX = 6
+export const HISTORY_TEXT_MAX = 20_000
+export const TRIGGER_TEXT_TOTAL_MAX = 200_000
 // The smallest per-image limit among the engines (Claude's API) bounds what is accepted.
 export const IMAGE_BYTES_MAX = 5 * 1024 * 1024
 export const IMAGES_MAX = 8

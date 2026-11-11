@@ -10,10 +10,12 @@ import type { AcpConfigOption } from '../acp/catalog.js'
 import type { EngineCheckResult, EngineInfo } from '../spi.js'
 import type { EngineScanOptions, ModelCatalog } from '../index.js'
 import type { JsonRpcPeer } from '../json-rpc-process.js'
+import type { McpMount } from '../role-mcp.js'
 
 export type CodebuddyOptions = { bin?: string }
 export type CodebuddyDriverOptions = AcpDriverOptions & {
   bin?: string; env?: NodeJS.ProcessEnv; model?: string; thinking?: string; instructions?: string
+  leadMcpServers?: McpMount[]
 }
 export type CodebuddyCheckResult = EngineCheckResult & { engine: 'codebuddy' }
 type CodebuddyQuestionInput = {
@@ -133,10 +135,10 @@ const askQuestions: AcpSupport['question'] = ({ method, params, tool }) => {
   }
 }
 
-export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model, thinking, instructions, ...options }: CodebuddyDriverOptions = {}) {
+export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model, thinking, instructions, leadMcpServers, ...options }: CodebuddyDriverOptions = {}) {
   let nativeSessionId = options.driverSessionId
   let backgroundError: UnsupportedCapabilityError | undefined
-  return createAcpDriver({ ...options, cwd, onEvent(event) {
+  return createAcpDriver({ ...options, cwd, mcpServers: leadMcpServers ?? options.mcpServers, onEvent(event) {
     options.onEvent?.(backgroundError && event.type === 'turn/end' ? { ...event, unconfirmed: true } : event)
   } }, {
     id: 'codebuddy', label: 'CodeBuddy', resumeMethod: 'load', instructionMode: instructions ? 'native' : 'none',

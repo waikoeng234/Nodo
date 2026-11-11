@@ -25,6 +25,8 @@ export const executionResultView = async (execution, rt) => {
 }
 
 const pending = execution => ['queued', 'running', 'unconfirmed'].includes(execution.status)
+// A task without flow predates lead routing: it reads as frozen and takes no new work.
+const taskFlowOf = task => task.flow ?? { legacy: true, status: 'frozen' }
 const text = (value, name) => {
   if (typeof value !== 'string' || !value.trim()) throw invalid(`${name} must be a non-empty string`)
   return value
@@ -69,8 +71,8 @@ export function install(rt) {
     const reason = rt.readOnly()
     if (reason !== undefined) throw failure(reason, 'orch/read-only')
   }
-  const saveTask = async task => { await rt.saveStrict(); return view(task) }
-  const saveExecution = async execution => { await rt.saveStrict(); return executionView(execution) }
+  const saveTask = async task => { rt.syncTaskFlow?.(task); await rt.saveStrict(); return view(task) }
+  const saveExecution = async execution => { rt.syncTaskFlow?.(taskOf(execution.taskId)); await rt.saveStrict(); return executionView(execution) }
   const archiveResult = (execution, input, status) => {
     if (execution.result && !(execution.status === 'unconfirmed' && execution.result.completeness === 'unavailable'
       && execution.result.reason === 'missing-final' && input.final?.trim())) return
@@ -107,7 +109,7 @@ export function install(rt) {
       }
     }
   }
-  const createTask = async ({ workspaceRef, teamId, coordinatorSessionId, title, brief, source, parentId, dependsOn }) => {
+  const createTask = async ({ workspaceRef, teamId, coordinatorSessionId, title, brief, source, parentId, dependsOn, triggerId, scope, flow }) => {
     await writable()
     if (!source || typeof source !== 'object' || Array.isArray(source)) throw invalid('source must be an object')
     let origin
@@ -115,6 +117,7 @@ export function install(rt) {
     const task = { id: randomUUID(), workspaceRef: text(workspaceRef, 'workspaceRef'), teamId: text(teamId, 'teamId'),
       coordinatorSessionId: text(coordinatorSessionId, 'coordinatorSessionId'), title: text(title, 'title'), brief: text(brief, 'brief'),
       source: origin, status: 'open', createdAt: Date.now(), updatedAt: Date.now(), acceptances: [],
+      ...(triggerId ? { triggerId, scope: structuredClone(scope), flow: structuredClone(flow) } : {}),
       ...(parentId ? { parentId } : {}), ...(dependsOn?.length ? { dependsOn: [...dependsOn] } : {}) }
     const team = liveScope(task)
     const owner = rt.conversationOf(coordinatorSessionId)
@@ -139,7 +142,8 @@ export function install(rt) {
     if (!task.dependsOn?.length) delete task.dependsOn
     return saveTask(task)
   }
-  const acceptExecution = async (taskId, { profileId, sessionId, type, hard, model, thinking, workspaceRef: executionRef }) => {
+  const acceptExecution = async (taskId, { profileId, sessionId, type, hard, model, thinking, workspaceRef: executionRef,
+    stage = 'implement', triggerId, scope, supplements = [], sourceExecutionId, sourceReportId, questions }) => {
     await writable()
     const task = taskOf(taskId)
     taskStatus(task, ['open', 'review', 'blocked'])
@@ -156,8 +160,10 @@ export function install(rt) {
     if (Object.values(state.executions).some(execution => pending(execution) && (execution.taskId === taskId || execution.sessionId === sessionId))) throw failure('Task or session already has a pending execution', 'orch/busy')
     const now = Date.now()
     const execution = { id: randomUUID(), taskId, profileId, sessionId, type, hard, model: model ?? null, thinking: thinking ?? null,
-      status: 'queued', createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
-      // The execution workspace only earns a field when it diverges from the task's own.
+      status: 'queued', stage, createdAt: now, updatedAt: now, startedAt: null, endedAt: null, reason: null, report: null, references: [], result: null,
+      ...(triggerId ? { triggerId, scope: structuredClone(scope), supplements: [...supplements], workspaceRef,
+        ...(sourceExecutionId ? { sourceExecutionId } : {}), ...(sourceReportId ? { sourceReportId } : {}),
+        ...(questions ? { questions: rt.redactDeepSecrets([...questions]) } : {}) } : {}),
       ...(workspaceRef === task.workspaceRef ? {} : { workspaceRef }) }
     state.executions[execution.id] = execution
     Object.assign(task, { status: 'open', updatedAt: now })
@@ -242,9 +248,11 @@ export function install(rt) {
     Object.assign(execution, result, { status, reason, updatedAt: now, endedAt: now })
     if (files) execution.files = files
     if (unsent) execution.startedAt = null
+    rt.archiveWorkerReport?.(execution)
     stopping.delete(id)
     const task = taskOf(execution.taskId)
     if (!late && (status !== 'cancelled' || executionsOf(task.id).length === 1)) Object.assign(task, { status: taskState, updatedAt: now })
+    rt.flowExecutionEnded?.(execution)
     return saveExecution(execution)
   }
   const requestExecutionStop = async id => {
@@ -269,14 +277,23 @@ export function install(rt) {
     if (execution.taskId !== taskId || !execution.reports?.length) throw invalid('只能审阅该任务已投递的执行回报')
     return execution.reports
   }
-  const reviewReports = async (taskId, { executionId, disposition, reason, basis }) => {
+  const reviewReports = async (taskId, { executionId, disposition, reason, basis, questions }) => {
     await writable()
     if (!['continue', 'investigate'].includes(disposition)) throw invalid('disposition 必须是 continue 或 investigate')
     text(reason, 'reason')
     if (reason.length > TASK_TEXT_MAX || !Array.isArray(basis) || !basis.length
       || basis.some(value => typeof value !== 'string' || !value.trim() || value.length > TASK_TEXT_MAX)) throw invalid('reason 不得超长，basis 必须是非空文本数组且每项不超过文本上限')
     const reports = deliveredReports(taskId, executionId)
-    for (const report of reports) if (!report.review) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now() })
+    for (const report of reports) report.review = rt.redactDeepSecrets({ disposition, reason, basis: [...basis], reviewedAt: Date.now(),
+      ...(disposition === 'investigate' ? { questions: [...questions], awaitingAnswer: true } : {}) })
+    const execution = executionOf(executionId)
+    if (disposition === 'continue' && execution.sourceReportId) {
+      let source = execution
+      while (source.sourceReportId) {
+        source = executionOf(source.sourceExecutionId)
+        for (const report of source.reports) if (report.review?.awaitingAnswer) Object.assign(report.review, { disposition: 'continue', awaitingAnswer: false, answeredBy: executionId })
+      }
+    }
     return saveExecution(executionOf(executionId))
   }
   // The returned restore must run when the caller's save fails, so ask marks never land without their decision.
@@ -286,10 +303,10 @@ export function install(rt) {
       return pending.length ? pending : reports.slice(-1)
     })
     const previous = reports.map(report => report.review)
-    for (const report of reports) report.review = { ...report.review, disposition: 'ask', decisionId: decision.id, reviewedAt: decision.createdAt }
+    for (const report of reports) report.review = { ...report.review, ...(report.review?.awaitingAnswer ? { awaitingAnswer: false } : {}), disposition: 'ask', decisionId: decision.id, reviewedAt: decision.createdAt }
     return () => reports.forEach((report, index) => { if (previous[index]) report.review = previous[index]; else delete report.review })
   }
-  const completeTask = async (id, { reason, references, executionIds, basis }) => {
+  const completeTask = async (id, { reason, references, executionIds, basis, cardId, answer }) => {
     await writable()
     const task = taskOf(id)
     await rt.decisionDeliveryReady?.(task.coordinatorSessionId)
@@ -317,13 +334,19 @@ export function install(rt) {
       evidence = { executionIds: [...new Set(executionIds)], basis: [...basis] }
     }
     const now = Date.now()
-    task.acceptances.push(rt.redactDeepSecrets({ reason, ...evidence, createdAt: now }))
+    task.acceptances.push(rt.redactDeepSecrets({ reason, ...evidence, ...(cardId ? { cardId, answer } : {}), createdAt: now }))
     Object.assign(task, { status: 'done', updatedAt: now })
+    if (task.flow) {
+      task.flow.status = 'accepted'
+      if (cardId) Object.assign(state.cards[cardId], { status: 'accepted', answer, answeredAt: now })
+      rt.releaseTaskTriggers(task.id)
+    }
     return saveTask(task)
   }
   const reopenTask = async id => {
     await writable()
     const task = taskOf(id)
+    if (task.flow) throw failure('流程任务不能重开，请另建任务', 'orch/frozen')
     liveScope(task)
     taskStatus(task, ['done', 'stopped'])
     Object.assign(task, { status: 'open', updatedAt: Date.now() })
@@ -331,7 +354,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, { createTask, taskView, reviseTask, acceptExecution, startExecution, requestExecutionStop, recordExecutionResult, completeTask, reopenTask, reviewReports, askReports,
-    deliveredReports,
+    deliveredReports, taskFlowOf,
     registerDeliveredReport: async (item, deliveredAt) => {
       const execution = executionOf(item.executionId)
       execution.reports ??= []
@@ -342,8 +365,8 @@ export function install(rt) {
     },
     reportReviewBlockReason: id => {
       const reports = Object.values(state.executions).filter(execution => state.tasks[execution.taskId]?.coordinatorSessionId === id)
-        .flatMap(execution => (execution.reports ?? []).filter(report => !report.review).map(report => ({ reportId: report.id, executionId: execution.id, taskId: execution.taskId })))
-      if (reports.length) return { code: 'orch/report-unreviewed', message: '有已投递的回报尚未审阅，请先用 nodo_task review 或 nodo_decision 处置。', reports }
+        .flatMap(execution => (execution.reports ?? []).filter(report => !report.review || report.review.awaitingAnswer).map(report => ({ reportId: report.id, executionId: execution.id, taskId: execution.taskId })))
+      if (reports.length) return { code: 'orch/report-unreviewed', message: '有已投递的回报尚未审阅，请先用 nodo_review 或 nodo_route ask 处置。', reports }
     },
     executionStopping: id => { for (const session of stopping.values()) if (session === id) return true; return false },
     finishExecution: (id, result) => endExecution(id, 'done', ['running', 'unconfirmed'], 'review', result),

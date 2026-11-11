@@ -212,9 +212,9 @@ const opencodeCommandBody = (name, cwd) => {
         return undefined;
     return readFileSync(entry.path, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim();
 };
-export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, thinking, instructions, instructionDir, identityFiles, identityOwner, ...options } = {}) {
+export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, thinking, instructions, instructionDir, identityFiles, identityOwner, leadMcpServers, ...options } = {}) {
     const identity = opencodeInstructions(instructions, env, instructionDir, identityFiles, identityOwner);
-    return createAcpDriver({ ...options, cwd }, {
+    return createAcpDriver({ ...options, cwd, mcpServers: leadMcpServers ?? options.mcpServers }, {
         id: 'opencode', label: 'OpenCode', resumeMethod: 'load', fileChanges: true, compact: opencodeCompact,
         get instructionMode() { return identity.mode; },
         dispose: () => identity.dispose(),

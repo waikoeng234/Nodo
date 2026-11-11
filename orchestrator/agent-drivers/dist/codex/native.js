@@ -16,7 +16,15 @@ export function findCodexExecutable(bin = 'codex', { home = homedir(), path, env
     ] : [];
     return findExecutable(bin, { home, ...(path === undefined ? {} : { path }), platform, ...(extra.length ? { extra } : {}) });
 }
-export async function connectCodex({ executable, cwd, env, socket, start = true, ...callbacks }) {
+export async function connectCodex({ executable, cwd, env, socket, start = true, catalog, ...callbacks }) {
+    // A model catalog override only reaches an app-server this client starts
+    // itself, and a shared daemon has none, so a catalog always means a private
+    // stdio process instead of the proxy. The apps/plugins connectors live only
+    // in process-level config; turning them off here keeps their MCP servers out
+    // of the leader's enumeration, where a bare `enabled=false` cannot address
+    // their transport-less entries.
+    if (catalog)
+        return jsonRpcProcess({ bin: executable, args: ['app-server', '-c', `model_catalog_json=${JSON.stringify(catalog)}`, '-c', 'features.apps=false', '-c', 'features.plugins=false'], cwd, env, ...callbacks });
     // The questions capability rides the engine's request_user_input tool, gated
     // behind its default_mode_request_user_input feature; the override only lands
     // when this call actually starts the daemon, and an existing shared daemon

@@ -1,9 +1,31 @@
 #!/usr/bin/env node
 // Local executable fixture: pi --mode rpc wire without model/network/auth.
-const { appendFileSync, writeFileSync } = require('node:fs')
+const { appendFileSync, existsSync, readFileSync, writeFileSync } = require('node:fs')
+const { join } = require('node:path')
+const { pathToFileURL } = require('node:url')
 const log = entry => appendFileSync('pi-requests.jsonl', JSON.stringify(entry) + '\n')
 if (process.argv.includes('--version')) { console.log('pi-cli fixture'); process.exit(0) }
 const arg = name => { const at = process.argv.indexOf(name); return at === -1 ? undefined : process.argv[at + 1] }
+if (arg('--extension') && process.env.PI_FIXTURE_NO_EXTENSION) {
+  log({ rejectedExtension: true })
+  console.error("error: unknown option '--extension'")
+  process.exit(1)
+}
+const startup = (async () => {
+  const servers = {}
+  if (arg('--extension')) {
+    const extension = await import(pathToFileURL(arg('--extension')))
+    extension.default(process.env.PI_FIXTURE_NO_REGISTER ? {} : { registerMcpServer: (name, config) => { servers[name] = config } })
+  }
+  if (!process.argv.includes('--no-mcp')) {
+    const userConfig = join(process.env.HOME, '.pi/agent/mcp.json')
+    if (process.env.PI_FIXTURE_LOAD_USER_MCP && existsSync(userConfig)) Object.assign(servers, JSON.parse(readFileSync(userConfig, 'utf8')).mcpServers)
+  }
+  const tools = Object.keys(servers).flatMap(name => name === 'nodo_worker' ? ['mcp__nodo_worker__nodo_report', 'mcp__nodo_worker__nodo_context'] : [`mcp__${name}__write`])
+  const patterns = arg('--tools')?.split(',')
+  const active = tools.filter(tool => !patterns?.some(pattern => pattern.startsWith('mcp__')) || patterns.some(pattern => new RegExp('^' + pattern.replaceAll('*', '.*') + '$').test(tool)))
+  log({ mcpServers: servers, loadedServers: Object.keys(servers), activeMcpTools: active })
+})()
 const session = arg('--session-id') ?? 'fixture-pi-session'
 log({ spawn: process.argv.slice(1), mode: arg('--mode'), approve: process.argv.includes('--no-approve') ? 'no-approve' : undefined, instructions: arg('--append-system-prompt'), thinking: arg('--thinking'), model: arg('--model'), sessionId: arg('--session-id') })
 // The driver stats these before the write/edit tools run: updated.txt and
@@ -145,6 +167,6 @@ process.stdin.on('data', chunk => {
   while ((at = buffer.indexOf('\n')) >= 0) {
     const line = buffer.slice(0, at)
     buffer = buffer.slice(at + 1)
-    if (line.trim()) receive(line)
+    if (line.trim()) startup.then(() => receive(line))
   }
 })

@@ -4,9 +4,10 @@
 // engine's own docs forbid line readers like readline.
 import { spawn } from 'node:child_process'
 import { launchCommand } from '../cli.js'
+import { WORKER_TOOLS } from '../worker-mcp.js'
 import type { PermissionMode } from '../spi.js'
 
-export type PiArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode }
+export type PiArgsOptions = { model?: string; thinking?: string; instructions?: string; driverSessionId?: string; permission?: PermissionMode; extension?: string }
 export type PiConnectOptions<Frame = unknown> = {
   executable: string; args?: string[]; cwd?: string; env?: NodeJS.ProcessEnv
   onFrame?: (record: Frame) => void; onClose?: (error: Error) => void
@@ -18,13 +19,16 @@ export type PiConnection = { write(record: unknown): void; running: Promise<void
 // AGENTS.md/CLAUDE.md context files load regardless of this flag.
 //
 // pi has no native tier channel, so plan is enforced at launch: a read-only
-// tool allowlist. The allowlist alone keeps MCP tools registered (pi only
-// filters them when an entry starts with mcp__), so MCP support is cut
-// outright — no servers connect. Absent or unknown permission reads as plan.
-export function piArgs({ model, thinking, instructions, driverSessionId, permission }: PiArgsOptions = {}) {
+// tool allowlist. An explicit mcp__ entry also filters MCP tools; user servers
+// still connect, but only the two worker tools are callable. The exact names
+// keep a user server whose name starts with nodo_ out of the plan allowlist.
+// Absent permission is plan.
+const PLAN_TOOLS = ['read', 'grep', 'find', 'ls', ...WORKER_TOOLS.map(tool => `mcp__nodo_worker__${tool}`)].join(',')
+export function piArgs({ model, thinking, instructions, driverSessionId, permission, extension }: PiArgsOptions = {}) {
   return [
     '--mode', 'rpc', '--no-approve',
-    ...(permission === 'full' ? [] : ['--no-mcp', '--tools', 'read,grep,find,ls']),
+    ...(permission === 'full' ? [] : ['--tools', PLAN_TOOLS]),
+    ...(extension ? ['--extension', extension] : []),
     ...(model ? ['--model', model] : []),
     ...(thinking ? ['--thinking', thinking] : []),
     ...(instructions ? ['--append-system-prompt', instructions] : []),

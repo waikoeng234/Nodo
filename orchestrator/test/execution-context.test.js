@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -60,7 +61,7 @@ test('reference failure leaves report, context read, review, Decision and comple
   }
   const { tools } = await client.listTools()
   assert.equal(tools.find(tool => tool.name === 'nodo_context').annotations.readOnlyHint, true)
-  const receipt = await call(client, 'nodo_delegate', { type: 'code', hard: false, task: 'Implement result archive' })
+  const receipt = await call(client, 'nodo_route', userRoute(rt, owner.id, { type: 'code', hard: false, task: 'Implement result archive' }))
   assert.equal(receipt.status, 'queued')
   await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'done' }) })
   await until(() => rt.state.executions[receipt.executionId].status === 'done')
@@ -109,25 +110,25 @@ test('reference failure leaves report, context read, review, Decision and comple
   assert.deepEqual((await call(outsider, 'nodo_context', { action: 'list' })).items, [])
   assert.equal(JSON.stringify(rt.state.executions), before, 'reads do not review, accept or rewrite results')
   assert.equal(execution.reports[0].review, undefined)
-  assert.equal(rt.state.tasks[receipt.taskId].status, 'review')
-  await call(client, 'nodo_task', { action: 'review', taskId: receipt.taskId, executionId: execution.id,
+  assert.equal(rt.state.tasks[receipt.taskId].status, 'open')
+  await call(client, 'nodo_review', { executionId: execution.id,
     disposition: 'continue', reason: 'Checked archived final', basis: [sourceId, 'Actual verification in final'] })
   assert.equal(execution.reports[0].review.disposition, 'continue')
-  assert.equal(rt.state.tasks[receipt.taskId].status, 'review', 'review does not complete')
+  assert.equal(rt.state.tasks[receipt.taskId].status, 'blocked', 'unstructured work requires an available independent reviewer')
+  assert.equal(rt.state.tasks[receipt.taskId].flow.stalled.reason, 'review-unavailable')
   const acceptance = { action: 'complete', taskId: receipt.taskId, executionIds: [execution.id], reason: 'Verified result', basis: [sourceId] }
   for (const changes of [{ executionIds: [] }, { basis: [] }, { reason: ' ' }, { references: ['old'] }]) {
-    assert.equal((await client.callTool({ name: 'nodo_task', arguments: { ...acceptance, ...changes } })).isError, true)
+    await assert.rejects(rt.completeTask(receipt.taskId, { ...acceptance, ...changes }))
   }
-  const decision = await call(client, 'nodo_decision', { taskIds: [receipt.taskId], executionIds: [execution.id], stopExecutionIds: [],
-    questions: [{ id: 'accept', question: 'Accept this result?', whyUser: 'Fixture user choice' }] })
+  const decision = await call(client, 'nodo_route', { action: 'ask', ...{ taskIds: [receipt.taskId], executionIds: [execution.id], stopExecutionIds: [],
+    questions: [{ id: 'accept', question: 'Accept this result?', whyUser: 'Fixture user choice' }] } })
   assert.deepEqual(decision.decision.sourceExecutionIds, [execution.id])
   assert.equal(execution.reports[0].review.disposition, 'ask')
-  const blocked = await client.callTool({ name: 'nodo_task', arguments: acceptance })
-  assert.equal(JSON.parse(blocked.content[0].text).code, 'orch/decision-pending')
+  await assert.rejects(rt.completeTask(receipt.taskId, acceptance), { code: 'orch/decision-pending' })
   await host.api('decision-answer', { profile: rt.conversationOf(owner.id).profile.id, session: owner.id,
     decisionId: decision.decisionId, answers: { accept: { text: 'Accept the verified result' } } })
   await until(() => rt.state.decisions[decision.decisionId].status === 'delivered' && !rt.workView()[owner.id]?.active)
-  const accepted = await call(client, 'nodo_task', acceptance)
+  const accepted = await rt.completeTask(receipt.taskId, acceptance)
   assert.equal(accepted.status, 'done')
   assert.deepEqual(accepted.acceptances[0].executionIds, [execution.id])
   assert.deepEqual(accepted.acceptances[0].basis, [sourceId])
@@ -135,7 +136,7 @@ test('reference failure leaves report, context read, review, Decision and comple
   assert.equal(execution.result.text, final)
   await rt.saveStrict()
   const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8'))
-  assert.equal(saved.version, 5)
+  assert.equal(saved.version, 6)
   assert.equal(saved.executions[execution.id].result.text, final)
   for (const value of clients.splice(0)) await value.close()
   for (const binding of bindings.splice(0)) binding.revoke()

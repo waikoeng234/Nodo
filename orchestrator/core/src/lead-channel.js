@@ -7,11 +7,9 @@ import { leadModeOf } from '../shared/lead.js'
 
 const TOOL_ARGS = {
   nodo_context: ['action', 'taskId', 'query', 'cursor', 'sourceId', 'executionId', 'offset', 'limit'],
-  nodo_decision: ['taskIds', 'executionIds', 'questions', 'references', 'stopExecutionIds'],
   nodo_board: ['table', 'session', 'taskId', 'decisionId'],
-  nodo_delegate: ['type', 'hard', 'task', 'title', 'continues', 'taskId', 'worktree', 'parentId', 'dependsOn', 'context'],
-  nodo_interrupt: ['session', 'executionId'],
-  nodo_task: ['taskId', 'action', 'executionId', 'executionIds', 'disposition', 'reason', 'basis', 'references', 'title', 'brief', 'parentId', 'dependsOn'],
+  nodo_route: ['action', 'type', 'hard', 'scope', 'title', 'continues', 'taskId', 'worktree', 'parentId', 'dependsOn', 'questions', 'references', 'stopExecutionIds', 'taskIds', 'executionIds'],
+  nodo_review: ['executionId', 'disposition', 'reason', 'basis', 'questions'],
 }
 
 export function install(rt) {
@@ -33,12 +31,13 @@ export function install(rt) {
     if (Object.keys(args).some(key => !allowed.includes(key))) throw new Error('包含不支持的参数')
     if (request.name === 'nodo_context') return rt.executionContext(id, args)
     await rt.decisionDeliveryReady?.(id)
-    if (request.name === 'nodo_decision') return rt.createDecision(id, args)
-    for (const key of ['session', 'continues', 'taskId', 'executionId', 'decisionId']) if (args[key] !== undefined && (typeof args[key] !== 'string' || !args[key].trim())) throw new Error(`${key} 必须是非空字符串`)
-    if (args.parentId !== undefined && (typeof args.parentId !== 'string' || (!args.parentId.trim() && !(request.name === 'nodo_task' && args.action === 'revise' && args.parentId === '')))) throw new Error(request.name === 'nodo_delegate' ? 'parentId 必须是非空字符串' : 'parentId 必须是非空字符串；revise 可用空字符串清空')
-    if (args.dependsOn !== undefined && (!Array.isArray(args.dependsOn) || args.dependsOn.some(id => typeof id !== 'string' || !id.trim()))) throw new Error('dependsOn 必须是非空字符串数组')
+    for (const key of ['session', 'taskId', 'executionId', 'decisionId']) if (args[key] !== undefined && (typeof args[key] !== 'string' || !args[key].trim())) throw new Error(`${key} 必须是非空字符串`)
     if (request.name === 'nodo_board') {
-      if (args.table !== undefined && !['roles', 'delegations', 'tasks', 'decisions'].includes(args.table)) throw new Error('table 必须是 roles、delegations、tasks 或 decisions')
+      if (args.table !== undefined && !['roles', 'delegations', 'tasks', 'decisions', 'cards'].includes(args.table)) throw new Error('table 必须是 roles、delegations、tasks、decisions 或 cards')
+      if (args.table === 'cards') {
+        if (args.session !== undefined || args.taskId !== undefined || args.decisionId !== undefined) throw new Error('cards 不能同时指定其他筛选字段')
+        return rt.leadCards(id)
+      }
       if (args.table === 'decisions' || args.decisionId !== undefined) {
         if (args.session !== undefined || args.taskId !== undefined || (args.table !== undefined && args.table !== 'decisions')) throw new Error('decisions 不能同时指定 session、taskId 或其他 table')
         if (args.decisionId !== undefined) return rt.getDecision(id, args.decisionId)
@@ -55,18 +54,22 @@ export function install(rt) {
       if (args.table === 'roles' && args.session !== undefined) throw new Error('roles 表不能同时指定 session')
       return args.table === 'roles' ? rt.leadRoles(id) : rt.leadDelegations(id, args.session)
     }
-    if (request.name === 'nodo_delegate') return rt.leadDispatch.delegate(id, args)
-    if (request.name === 'nodo_task') return rt.leadTask(id, args)
-    if ((args.session !== undefined) === (args.executionId !== undefined)) throw new Error('session 和 executionId 必须且只能指定一个')
-    return rt.leadDispatch.interrupt(id, args)
+    if (request.name === 'nodo_route') return rt.leadRoute(id, args)
+    return rt.leadReview(id, args)
   }
   const answer = async request => {
     let result
     try {
       const value = await handle(request)
       result = { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] }
-    } catch (error) { result = { isError: true, content: [{ type: 'text', text: ['orch/decision-pending', 'orch/report-unreviewed'].includes(error.code)
-      ? JSON.stringify({ code: error.code, decisionId: error.decisionId, reports: error.reports, message: error.message }) : String(error.message) }] } }
+    } catch (error) {
+      const retry = { 'orch/no-trigger': 'ask-user', 'orch/scope-missing': 'quote-or-note', 'orch/scope-not-quote': 'quote-or-note', 'orch/title-empty': 'quote-or-note',
+        'orch/scope-note-too-long': 'shorten', 'orch/unknown-type': 'pick-type', 'orch/report-unreviewed': 'review', 'orch/decision-pending': 'wait',
+        'orch/busy': 'wait', 'orch/source-busy': 'wait', 'orch/trigger-full': 'close-tasks', 'orch/task-stalled': 'new-task', 'orch/frozen': 'new-task', 'orch/worktree-mismatch': 'drop-worktree' }[error.code]
+      result = { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: error.code ?? 'orch/invalid',
+        ...(error.field ? { field: error.field } : {}), message: error.message, ...(retry ? { retry } : {}),
+        ...(error.decisionId ? { decisionId: error.decisionId } : {}), ...(error.reports ? { reports: error.reports } : {}) }) }] }
+    }
     let text = JSON.stringify(result)
     for (const token of new Set([...tokens.keys(), request.token].filter(value => typeof value === 'string' && value))) text = text.replaceAll(token, '[redacted]')
     return rt.redactDeepSecrets(text)

@@ -55,6 +55,8 @@ export function install(rt) {
   // memory, not the file, so a reading window keeps them; live-watch only
   // rewrites a stream's in-memory watch set, the same class as the /live GET.
   const READS = new Set(['state', 'task-list', 'task-get', 'decision-list', 'decision-get', 'engines', 'engine-catalog', 'engine-detect', 'engine-check', 'engine-commands', 'workspace-files', 'workspace-dir', 'workspace-file', 'worktree-refs', 'workspace-git', 'workspace-diff', 'transcript', 'stream-detail', 'session-reference', 'reference-replies', 'reference-read', 'reference-history', 'diag', 'approval-answer', 'probe', 'attachment', 'live-watch'])
+  READS.add('card-list')
+  READS.add('card-get')
 
   const resolveProfileRef = (ref) => {
     const profile = rt.findProfile(ref)
@@ -67,6 +69,14 @@ export function install(rt) {
     const readOnly = rt.readOnly()
     if (readOnly !== undefined && !READS.has(endpoint)) throw failure(readOnly, 'orch/read-only')
     switch (endpoint) {
+      case 'card-list':
+      case 'card-get':
+      case 'card-answer': {
+        const { session } = rt.conversation(resolveProfileRef(body.profile).id, body.session)
+        if (endpoint === 'card-list') return rt.listFlowCards(session.id)
+        if (endpoint === 'card-get') return rt.getFlowCard(session.id, body.cardId)
+        return rt.answerFlowCard(session.id, body)
+      }
       case 'decision-list':
       case 'decision-get':
       case 'decision-answer':

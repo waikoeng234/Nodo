@@ -142,10 +142,10 @@ const askQuestions = ({ method, params, tool }) => {
         },
     };
 };
-export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model, thinking, instructions, ...options } = {}) {
+export function createCodebuddyDriver({ bin = 'codebuddy', cwd, env = {}, model, thinking, instructions, leadMcpServers, ...options } = {}) {
     let nativeSessionId = options.driverSessionId;
     let backgroundError;
-    return createAcpDriver({ ...options, cwd, onEvent(event) {
+    return createAcpDriver({ ...options, cwd, mcpServers: leadMcpServers ?? options.mcpServers, onEvent(event) {
             options.onEvent?.(backgroundError && event.type === 'turn/end' ? { ...event, unconfirmed: true } : event);
         } }, {
         id: 'codebuddy', label: 'CodeBuddy', resumeMethod: 'load', instructionMode: instructions ? 'native' : 'none',

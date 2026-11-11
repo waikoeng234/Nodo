@@ -7,7 +7,7 @@ import { install } from '../core/src/drivers.js'
 
 const harness = () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-drivers-'))
-  const rt = { home, ctx: { effect() {} }, warn() {}, renderIdentity: () => 'Role identity',
+  const rt = { home, state: { executions: {} }, ctx: { effect() {} }, warn() {}, renderIdentity: () => 'Role identity',
     secretEnv: () => ({}), secretStamp: () => '', saveSessionEvent: async () => {} }
   install(rt)
   return { rt, dispose: () => rmSync(home, { recursive: true, force: true }) }
@@ -74,6 +74,44 @@ test('driver bindings are issued once and revoked on replacement and release', a
     assert.deepEqual(revoked, [1, 2, 3])
     await assert.rejects(h.rt.ensureDriver({ ...profile, engine: 'missing-engine' }), /Unknown engine/)
     assert.deepEqual(revoked, [1, 2, 3, 4])
+  } finally { h.dispose() }
+})
+
+test('a leader never falls back to the worker channel and refuses to start without its mount', async () => {
+  const h = harness(), workerCalls = []
+  h.rt.issueLeadMcp = async () => undefined
+  h.rt.issueWorkerMcp = async () => { workerCalls.push(1); return { servers: [], revoke: () => {} } }
+  try {
+    const driver = await h.rt.ensureDriver(conversation({ lead: true, engine: 'claude' }))
+    assert.deepEqual(workerCalls, [], 'a lead session must not reach the worker channel')
+    await assert.rejects(driver.openSession(), error => {
+      assert.equal(error.code, 'orch/lead-unavailable')
+      return true
+    })
+  } finally { h.dispose() }
+})
+
+test('qoder and pi worker bindings stay session-scoped and never reach leaders', async () => {
+  const h = harness(), issued = [], revoked = []
+  h.rt.issueWorkerMcp = async id => { issued.push(id); return { servers: [], revoke: () => revoked.push(id) } }
+  h.rt.issueLeadMcp = async () => undefined
+  try {
+    for (const engine of ['qoder', 'pi']) {
+      const profile = conversation({ id: engine, engine, lead: true })
+      h.rt.state.executions[engine] = { sessionId: engine, status: 'queued' }
+      await h.rt.ensureDriver(profile)
+      assert.deepEqual(issued, [], 'even a stale execution must not grant a leader a worker credential')
+      h.rt.releaseDriver(engine)
+    }
+    for (const engine of ['qoder', 'pi']) {
+      const profile = conversation({ id: engine, engine })
+      const driver = await h.rt.ensureDriver(profile)
+      assert.equal(await h.rt.ensureDriver(profile), driver)
+      assert.equal(issued.filter(id => id === engine).length, 1)
+      h.rt.releaseDriver(engine)
+    }
+    assert.deepEqual(issued, ['qoder', 'pi'])
+    assert.deepEqual(revoked, issued)
   } finally { h.dispose() }
 })
 

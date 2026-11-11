@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { chmodSync, copyFileSync, readFileSync } from 'node:fs'
@@ -15,7 +16,7 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
   try {
     const workspace = await api('workspace-create', { name: 'Project', cwd: home })
     const worker = await api('profile-create', { name: 'Worker', engine, workspace: workspace.id, engineOptions: { bin } })
-    const lead = await api('profile-create', { name: 'Lead', engine, lead: true, workspace: workspace.id, engineOptions: { bin } })
+    const lead = await api('profile-create', { name: 'Lead', engine, lead: true, workspace: workspace.id, engineOptions: { bin }, ...(engine === 'codex' ? { model: 'fixture-model' } : {}) })
     await api('teams-update', { teams: [{ name: 'Team', lead: lead.id, members: [worker.id],
       types: [{ id: 'feature', name: '功能', when: '' }], assign: { feature: { normal: { profile: worker.id } } } }] })
     const rt = await runtime
@@ -30,7 +31,7 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     assert.equal(rt.state.profiles[lead.id].driverSessionId, freshId)
     assert.equal(leadSession.restoreContext, false)
 
-    const receipt = await rt.leadDispatch.delegate(leadSession.id, { type: 'feature', hard: false, task: 'Implement the task' })
+    const receipt = await routeUserTask(rt, leadSession.id, { type: 'feature', hard: false, task: 'Implement the task' })
     const work = rt.conversationOf(receipt.session).session
     work.driverSessionId = 'missing-worker'
     work.lastTurn = { task: 'Prior work', report: 'Worker evidence', reason: 'done' }
@@ -46,7 +47,7 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     assert.deepEqual(work.source, source)
     const finished = rt.state.tasks[receipt.taskId]
     assert.ok(finished.updatedAt >= task.updatedAt)
-    assert.deepEqual(finished, { ...task, status: 'review', updatedAt: finished.updatedAt })
+    assert.deepEqual(finished, { ...task, status: 'open', updatedAt: finished.updatedAt })
     assert.equal(rt.state.executions[receipt.executionId].sessionId, receipt.session)
     const leadLines = rt.transcriptOf(leadSession.id)
     assert.deepEqual(leadLines.filter(line => line.kind === 'note' && line.text.includes('旧引擎历史')).map(line => line.text),
@@ -60,12 +61,13 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     const inputs = engine === 'claude' ? requests.filter(item => item.user).map(item => item.user)
       : requests.filter(item => item.method === 'turn/start').map(item => item.params.input[0].text)
     assert.ok(inputs.some(text => text.includes('Earlier evidence') && text.includes('Check nodo_board / <nodo-status>')))
-    assert.ok(inputs.some(text => text.includes('Worker evidence') && text.includes('Implement the task')))
-    assert.ok(inputs.some(text => text.includes('Report from Worker') && text.includes('Check nodo_board / <nodo-status>')))
+    assert.ok(inputs.some(text => text.startsWith('# 本轮要求（用户原话，逐字，唯一需求来源）\nImplement the task')), 'a resumed worker gets the composed requirement section')
+    assert.ok(inputs.every(text => !text.includes('Worker evidence')), 'a resumed worker session must not receive the previous report again')
+    assert.ok(inputs.some(text => text.includes('[回报] Worker · Implement the task') && text.includes('Check nodo_board / <nodo-status>')), 'the delivered report card reaches the lead')
     const stateText = readFileSync(join(home, 'state.json'), 'utf8')
     for (const oldId of ['missing-lead', 'missing-worker', 'missing-report-recipient']) assert.equal(stateText.includes(oldId), false)
     const saved = JSON.parse(stateText)
-    assert.equal(saved.version, 5)
+    assert.equal(saved.version, 6)
     assert.equal(saved.profiles[lead.id].driverSessionId, freshId)
   } finally {
     delete process.env[errorEnv]

@@ -5,6 +5,11 @@ const { appendFileSync } = require('node:fs')
 const log = entry => appendFileSync('qoder-requests.jsonl', JSON.stringify(entry) + '\n')
 if (process.argv.includes('--version')) { console.log('qoder-cli fixture'); process.exit(0) }
 const arg = name => { const at = process.argv.indexOf(name); return at === -1 ? undefined : process.argv[at + 1] }
+if (arg('--mcp-config') && process.env.QODER_FIXTURE_NO_MCP) {
+  log({ rejectedMcp: true })
+  console.error("error: unknown option '--mcp-config'")
+  process.exit(1)
+}
 const session = arg('--resume') ?? 'fixture-qoder-session'
 // The initialize control response's tables, in the shape the real CLI writes:
 // model value + display name + per-model efforts, and the slash-command list.
@@ -33,7 +38,7 @@ const control = (id, response) => send({ type: 'control_response', response: { s
 const init = () => send({ type: 'system', subtype: 'init', session_id: session, qodercli_version: '1.1.76-fixture', protocol_version: '1.5.0', model: arg('--model') ?? 'qfmodel', permissionMode: arg('--permission-mode') ?? 'default', tools: [], mcp_servers: [], slash_commands: [], capabilities: ['interrupt_receipt_v1', 'interrupt_cancel_queued_v1', 'msg_lifecycle_v1'] })
 let initialized = !process.env.QODER_FIXTURE_DELAY_INIT
 if (initialized) init()
-log({ spawn: process.argv.slice(1), instructions: arg('--append-system-prompt'), reasoningEffort: arg('--reasoning-effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume') })
+log({ spawn: process.argv.slice(1), mcpConfig: arg('--mcp-config'), instructions: arg('--append-system-prompt'), reasoningEffort: arg('--reasoning-effort'), model: arg('--model'), permissionMode: arg('--permission-mode'), resume: arg('--resume') })
 let pending = null // can_use_tool awaiting the host decision
 let lastText
 let lateInterrupt
@@ -71,6 +76,7 @@ const receive = line => {
     }
     else if (process.env.QODER_FIXTURE_INIT_ERROR) send({ type: 'control_response', response: { subtype: 'error', request_id: frame.request_id, error: 'Unsupported initialize' } })
     else if (process.env.QODER_FIXTURE_INIT_MALFORMED) control(frame.request_id, null)
+    else if (process.env.QODER_FIXTURE_INIT_DELAY_MS) setTimeout(() => control(frame.request_id, { commands: fixtureCommands, models: fixtureModels }), Number(process.env.QODER_FIXTURE_INIT_DELAY_MS))
     else control(frame.request_id, process.env.QODER_FIXTURE_NO_MODELS ? { commands: [] } : { commands: fixtureCommands, models: fixtureModels })
     return
   }

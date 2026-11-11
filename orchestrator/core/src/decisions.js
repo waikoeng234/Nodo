@@ -171,6 +171,8 @@ export function install(rt) {
         throw error
       }
       rt.resetLeadBudget(id)
+      const answerLine = rt.transcriptOf(id).find(item => item.id === decision.answer.userMessageId)
+      rt.setPendingTrigger(rt.triggerFromLine({ coordinatorSessionId: id, line: answerLine }))
     })()
     handoffs.set(id, handoff)
     void handoff.catch(error => rt.warn('nodo: decision handoff failed (%s): %s', origin.decisionId, error.message))

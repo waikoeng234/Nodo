@@ -24,6 +24,28 @@ const IDENTITY_FALLBACK = {
 export function install(rt) {
   const { ctx } = rt
   const settingsOf = (profile, session = profile) => JSON.stringify([session.model, session.thinking, session.permission ?? profile.permission])
+  const workerInputFor = (driver, text, origin) => {
+    const execution = origin?.executionId && rt.state.executions[origin.executionId]
+    if (!execution || driver?.workerMcpMounted === true) return text
+    const stage = execution.stage
+    const fallback = rt.workerReportMethod({ stage, degraded: true })
+    const method = rt.workerReportMethod({ stage })
+    if (text.endsWith(method)) return text.slice(0, -method.length) + fallback
+    if (origin.kind === 'supplement') {
+      const instruction = '完成后用 nodo_report 回报。'
+      const offset = text.lastIndexOf(instruction)
+      if (offset >= 0) return text.slice(0, offset) + fallback.slice('# 回报方式\n'.length) + text.slice(offset + instruction.length)
+    }
+    return text
+  }
+  // The transcript user line reproduces the engine input; when the fallback
+  // rewrites the report method the line must follow, or the prompt on screen
+  // would claim a tool the session does not have.
+  const recordWorkerInput = (sessionId, line, before, after) => {
+    if (line === undefined || before === after || line.text !== before) return
+    line.text = after
+    rt.touchLine?.(sessionId, line)
+  }
   /** @type {Map<string, {starting:boolean, active:boolean, finishing:boolean, suspect:boolean, cancelledStart:boolean, turnId:?string, seq:number, toolOpen:string|null, queued:{text:string, images:object[], seq:number, resolve:Function}[], waiters:{seq:number, resolve:Function}[], binds:{seq:number, resolve:Function}[], idleTimer:?Object, cancelTimer:?Object}>} */
   const turns = new Map()
   const stateOf = (sessionId) => {
@@ -94,13 +116,14 @@ export function install(rt) {
   const drain = (sessionId, st) => {
     if (st.active || st.starting || st.finishing || rt.isCompacting(sessionId) || st.queued.length === 0 || st.queued[0].sending) return
     const next = st.queued.shift()
-    if (next.pendingLine) say(sessionId, next.pendingLine)
-    startTurn(sessionId, st, next.text, next.seq, next.images, next.task, next.onInput, next.origin)
+    const line = next.pendingLine ? Object.assign(next.pendingLine, say(sessionId, next.pendingLine)) : next.line
+    startTurn(sessionId, st, next.text, next.seq, next.images, next.task, next.onInput, next.origin, line)
   }
 
   const { driverSink } = createDispatchSinks(rt, { stateOf, say, messagesOf, closeMessages, bindTurn, settle, armIdle, disarmIdle, drain })
 
-  const startTurn = (sessionId, st, text, seq, images, task = text, onInput, origin) => {
+  const startTurn = (sessionId, st, text, seq, images, task = text, onInput, origin, line) => {
+    if (leadModeOf(rt.conversationOf(sessionId)?.profile, rt.conversationOf(sessionId)?.session)) rt.clearPendingTrigger?.(sessionId)
     onInput?.()
     const decisionInput = origin?.kind === 'decision' ? { origin } : undefined
     if (decisionInput) {
@@ -133,6 +156,14 @@ export function install(rt) {
         if (!st.watched) disarmIdle(st)
         restoreContext = !driver.hasSession()
         await driver.openSession()
+        if (origin?.kind === 'supplement' && (restoreContext || rt.conversationOf(sessionId)?.session.restoreContext)) {
+          const restored = await rt.composeWorkerInput({ executionId: origin.executionId, upToTriggerId: origin.triggerId })
+          text = restored.text
+          images = restored.images
+        }
+        const actual = workerInputFor(driver, text, origin)
+        recordWorkerInput(sessionId, line, text, actual)
+        text = actual
       } catch (error) {
         decisionInput?.reject(error)
         driverSink(sessionId, { type: 'turn/end', reason: 'error', error: String(error?.message ?? error), errorKind: error?.errorKind })
@@ -155,7 +186,8 @@ export function install(rt) {
         const snapshot = rt.leadSnapshot?.(sessionId)
         const input = snapshot ? `${text}\n\n${snapshot}` : text
         const goalCommand = session.engine !== 'codex' && typeof driver.goals === 'function' && /^\/goal\s/.test(text)
-        const message = goalCommand ? text : restoreContext || session.restoreContext ? rt.renderRecovery(session, input) : input
+        const workerInput = ['delegation', 'supplement', 'retry'].includes(origin?.kind)
+        const message = goalCommand ? text : !workerInput && (restoreContext || session.restoreContext) ? rt.renderRecovery(session, input) : input
         const instructionMode = driver.instructionMode === 'native' ? 'native' : 'none'
         if (instructionMode === 'none' && session.instructionMode !== 'none') {
           const reason = IDENTITY_FALLBACK[driver.instructionFallback]
@@ -211,15 +243,19 @@ export function install(rt) {
   const steer = async (sessionId, st, item) => {
     const { profile, session } = rt.conversationOf(sessionId)
     const host = st.seq
+    let actual
     const outcome = item.images.length === 0 && !rt.isCompacting(sessionId) && st.settings === settingsOf(profile, session)
       ? await Promise.resolve().then(() => {
         const snapshot = rt.leadSnapshot?.(sessionId)
-        return rt.driverOf(sessionId)?.steer(snapshot ? `${item.text}\n\n${snapshot}` : item.text)
+        const driver = rt.driverOf(sessionId)
+        actual = workerInputFor(driver, item.text, item.origin)
+        return driver?.steer(snapshot ? `${actual}\n\n${snapshot}` : actual)
       }).catch(() => undefined) : undefined
     if (outcome !== 'steered' && outcome !== 'indeterminate') return null
     if (item.cancelled) return outcome
     item.onInput?.()
-    if (item.pendingLine) say(sessionId, item.pendingLine)
+    const line = item.pendingLine ? Object.assign(item.pendingLine, say(sessionId, item.pendingLine)) : item.line
+    recordWorkerInput(sessionId, line, item.text, actual)
     say(sessionId, { who: 'system', kind: 'note', text: outcome === 'steered' ? 'steered into the running turn' : UNCONFIRMED_STEER })
     if (st.seq === host && occupied(sessionId, st)) {
       st.task = [st.task, item.task].filter(Boolean).join('\n')
@@ -253,7 +289,8 @@ export function install(rt) {
     for (const ref of references) sources.push(ref?.id
       ? await rt.readReference({ id: ref.id, target: session.engine === 'dsh' ? session.driverSessionId : session.id })
       : await rt.sessionReference(ref))
-    const input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
+    const workerInput = ['delegation', 'supplement', 'retry'].includes(origin?.kind)
+    let input = (brief ? `${brief}\n\n` : '') + [rt.renderTask(text, sources), ...(!workerInput && files?.paths?.length ? rt.fileLines(files.paths) : [])].join('\n')
     if (!session.briefSent && !(session.engine === 'claude' && /^\/goal\s/.test(text))) {
       const named = rt.turnTitle(session.name, text, images)
       if (named !== session.name) {
@@ -269,29 +306,43 @@ export function install(rt) {
     if (cancelled?.()) throw failure('Send cancelled', 'orch/cancelled')
     refuseBusy()
     const st = stateOf(sessionId)
+    const line = { at: Date.now(), who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
+      ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
+    if (userInput && session.source?.kind === 'lead') {
+      const flowInput = await rt.flowWorkerInput?.(session, line)
+      if (flowInput?.placed) return flowInput.placed
+      if (flowInput?.input) {
+        input = flowInput.input.text
+        origin = { kind: 'supplement', taskId: flowInput.taskId, executionId: flowInput.executionId, triggerId: flowInput.triggerId }
+        line.origin = origin
+        queue ||= flowInput.queue
+      }
+    }
     const leadFlight = userInput ? await rt.prepareLeadInput?.(session) : undefined
     const seq = ++st.nextSeq
     const leadMode = leadModeOf(profile, session)
-    if (userInput && leadMode) rt.resetLeadBudget?.(session.id)
-    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, files?.paths) : undefined
+    const onInput = userInput && leadMode ? () => rt.leadInputStarted?.(session.id, line) : undefined
     const completion = new Promise(resolve => st.waiters.push({ seq, resolve }))
     if (leadFlight) leadFlight.inputs.set(seq, completion)
     const turn = new Promise(resolve => st.binds.push({ seq, resolve }))
-    const line = { who: 'user', kind: 'text', text, ...(sources.length ? { references: sources } : {}), ...(refs.length > 0 ? { images: refs } : {}),
-      ...(files?.refs?.length > 0 ? { files: files.refs } : {}), ...(origin ? { origin } : {}) }
     const pendingLine = queue && occupied(sessionId, st) ? line : undefined
-    if (!pendingLine) say(sessionId, line)
+    const stored = pendingLine ? undefined : say(sessionId, line)
+    if (stored) Object.assign(line, stored)
     if (structureChanged) await rt.save()
     if (occupied(sessionId, st)) {
-      const item = { text: input, task: text, images, seq, pendingLine, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
+      const item = { text: input, task: text, images, seq, pendingLine, line: stored ?? line, onInput, origin, resolve: outcome => settle(st, seq, outcome) }
       const outcome = queue ? null : await steer(sessionId, st, item)
+      if (outcome === 'indeterminate' && origin?.kind === 'supplement' && origin.executionId) {
+        rt.state.executions[origin.executionId].supplementUnconfirmed = true
+        await rt.saveStrict()
+      }
       if (outcome) return { mode: outcome, seq, completion, turn, leadFlight }
       st.queued.push(item)
       // The turn may have ended while the engine answered; nothing else would start this one.
       drain(sessionId, st)
       return { mode: 'queued', seq, completion, turn, leadFlight }
     }
-    startTurn(sessionId, st, input, seq, images, text, onInput, origin)
+    startTurn(sessionId, st, input, seq, images, text, onInput, origin, stored)
     return { mode: 'turn', seq, completion, turn, leadFlight }
   }
 
@@ -310,8 +361,8 @@ export function install(rt) {
     if (action !== 'send') throw invalid('Unknown queue action')
     if (!occupied(sessionId, st)) {
       st.queued.splice(st.queued.indexOf(item), 1)
-      say(sessionId, item.pendingLine)
-      startTurn(sessionId, st, item.text, item.seq, item.images, item.task, item.onInput, item.origin)
+      const line = Object.assign(item.pendingLine, say(sessionId, item.pendingLine))
+      startTurn(sessionId, st, item.text, item.seq, item.images, item.task, item.onInput, item.origin, line)
       return { mode: 'turn' }
     }
     if (item.origin?.kind === 'decision') return { mode: 'queued' }

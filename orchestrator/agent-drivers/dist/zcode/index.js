@@ -88,7 +88,7 @@ const zcodeUsage = (payload, context, sessionCacheRead) => {
     });
 };
 const zcodeContext = (payload) => payload?.contextUsage ?? payload?.runtime?.contextUsage;
-export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000, serveMcp } = {}) {
+export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, instructionDir, identityFiles, identityOwner, allowEmptyResume = false, healthIntervalMs = 30_000, healthTimeoutMs = 10_000, serveMcp, leadMcpServers } = {}) {
     const emit = (event) => {
         if (running && ['delta', 'thinking', 'tool', 'request/opened', 'request/closed'].includes(event.type))
             running.lastEventAt = Date.now();
@@ -107,6 +107,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
     let context;
     let canRecreateEmpty = allowEmptyResume === true;
     let identity;
+    let attached = false;
+    let workerMount = false;
     let roleMount;
     let compaction;
     const requests = new Map();
@@ -507,7 +509,8 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
                 : permission === 'workspace' ? 'guarded' : 'build';
             let resumed = Boolean(sessionId);
             const createParams = { workspace: { workspacePath: cwd, workspaceKey: cwd }, mode };
-            const inherited = instructions ? zcodeMcpServers({ cwd: cwd, env }) : [];
+            const inherited = instructions || leadMcpServers?.length ? zcodeMcpServers({ cwd: cwd, env,
+                includeProject: leadMcpServers?.some(server => server.name === 'nodo_worker') }) : [];
             if (!inherited)
                 identity.reason = 'mcp-config-not-representable';
             roleMount?.close();
@@ -522,8 +525,12 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
             }
             const roleServers = roleMount ? [{ name: 'nodo_role', type: 'http', url: roleMount.url, headers: [{ name: 'Authorization', value: `Bearer ${roleMount.token}` }], isolation: 'session' }]
                 : inherited ? roleMcp(instructions, identity.path, identity).map(server => ({ ...server, isolation: 'session', protocolVersion: 'legacy' })) : [];
-            const mcpServers = [...(inherited ?? []), ...roleServers];
-            let attached = Boolean(roleServers.length);
+            const workerServers = inherited ? (leadMcpServers ?? []).map(server => 'url' in server
+                ? { name: server.name, type: 'http', url: server.url, headers: [{ name: 'Authorization', value: `Bearer ${server.token}` }], isolation: 'session' }
+                : { ...server, isolation: 'session', protocolVersion: 'legacy' }) : [];
+            workerMount = workerServers.length > 0;
+            const mcpServers = [...(inherited ?? []).filter(server => !workerServers.some(worker => worker.name === server.name)), ...roleServers, ...workerServers];
+            attached = Boolean(roleServers.length);
             const attach = async (method, params) => {
                 try {
                     return await peer.request(method, { ...params, ...(mcpServers.length ? { mcpServers } : {}) });
@@ -593,6 +600,7 @@ export function createZcodeDriver({ onEvent, bin = 'zcode', cwd, env = {}, model
         get instructionMode() { return connected ? identity?.mode ?? 'none' : 'none'; },
         get instructionTarget() { return identity?.target; },
         get instructionFallback() { return identity?.reason; },
+        get workerMcpMounted() { return connected && workerMount && attached; },
         get coverage() { return coverage; },
         openSession: boot,
         async sendTurn(text, images = []) {

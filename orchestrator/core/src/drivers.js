@@ -46,10 +46,20 @@ export function install(rt) {
     await driversReady()
     if (api === null) throw failure(`No engines available: ${apiError?.message ?? 'agent-drivers missing'}`, 'orch/no-drivers')
     const leadMode = leadModeOf(profile, profile)
-    const signature = JSON.stringify([signatureOf(profile), leadMode])
+    // The host's native DSH session controller takes no per-session MCP input, so
+    // only the ACP route can mount the worker tools.
+    const workerEngine = !(profile.engine === 'dsh' && ctx.workspaceRegistry && ctx.sessionController)
+      && ['claude', 'codex', 'zcode', 'qoder', 'pi', 'dsh', 'opencode', 'codebuddy'].includes(profile.engine)
+    const workerMode = !leadMode && workerEngine
+      && Object.values(rt.state.executions ?? {}).some(item => item.sessionId === profile.id && ['queued', 'running'].includes(item.status))
+    const signature = JSON.stringify([signatureOf(profile), leadMode, workerMode])
     const existing = instances.get(profile.id)
-    if (existing !== undefined && existing.signature === signature && (!leadMode || existing.revoke)) return armIdle(profile.id, existing).driver
-    const leadMcp = await rt.issueLeadMcp?.(profile.id)
+    if (existing !== undefined && existing.signature === signature && (!(leadMode || workerMode) || existing.revoke)) return armIdle(profile.id, existing).driver
+    // The role decides the channel: a leader only ever gets nodo_lead — when the
+    // lead channel is down the drivers refuse to start rather than degrade into
+    // an unprivileged plain session.
+    const leadMcp = leadMode ? await rt.issueLeadMcp?.(profile.id)
+      : workerEngine ? await rt.issueWorkerMcp?.(profile.id) : undefined
     if (existing !== undefined && existing.signature === signature && !leadMcp) return armIdle(profile.id, existing).driver
     if (existing !== undefined) releaseDriver(profile.id)
     let driver
@@ -61,6 +71,7 @@ export function install(rt) {
       permission: profile.engine === 'dsh' ? profile.permission : profile.permission || 'workspace',
       env: rt.secretEnv(profile.profileId ?? profile.id),
       driverSessionId: profile.driverSessionId,
+      lead: leadMode,
       ...(profile.engine === 'dsh' && profile.driverSessionId?.startsWith('dsh:isolated:')
         ? { storageDir: join(rt.home, 'agents', profile.profileId ?? profile.id) } : {}),
       allowEmptyResume: profile.briefSent === false && !profile.lastTurn,

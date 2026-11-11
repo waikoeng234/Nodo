@@ -21,6 +21,7 @@ const reply = (id, result) => wire({ id, result })
 const update = value => wire({ method: 'session/update', params: { sessionId: 'fixture-dsh-session', update: value } })
 let turn = null
 let permission = null
+let mcpServers = []
 let selectedModel = '["mock","model"]'
 // Both options exist so a scan can read the model list and each model's levels.
 const configOptions = () => [
@@ -38,7 +39,7 @@ const finish = (text, stopReason = 'end_turn') => {
   reply(turn.id, { stopReason })
   turn = null
 }
-createInterface({ input: process.stdin }).on('line', line => {
+createInterface({ input: process.stdin }).on('line', async line => {
   const message = JSON.parse(line)
   if (message.jsonrpc !== '2.0') process.exit(3)
   const { id, method, params = {} } = message
@@ -53,13 +54,15 @@ createInterface({ input: process.stdin }).on('line', line => {
   if (method === 'initialize') {
     if (params.protocolVersion !== 1) process.exit(5)
     const capabilities = process.env.DSH_FIXTURE_NO_RESUME ? {} : process.env.DSH_FIXTURE_LEGACY ? { loadSession: true } : { sessionCapabilities: { resume: {} } }
-    const initialize = () => reply(id, { protocolVersion: 1, agentCapabilities: capabilities, authMethods: [] })
+    const initialize = () => reply(id, { protocolVersion: 1, agentCapabilities: { ...capabilities, mcpCapabilities: { http: !process.env.ACP_FIXTURE_NO_HTTP } }, authMethods: [] })
     if (process.env.DSH_FIXTURE_SLOW_BOOT) setTimeout(initialize, 1000)
     else initialize()
   } else if (['session/new', 'session/resume', 'session/load'].includes(method)) {
-    appendFileSync(join(process.cwd(), 'dsh-requests.jsonl'), JSON.stringify({ method, personaPrefix, patchPath }) + '\n')
+    mcpServers = params.mcpServers ?? []
+    appendFileSync(join(process.cwd(), 'dsh-requests.jsonl'), JSON.stringify({ method, personaPrefix, patchPath, mcpServers: params.mcpServers }) + '\n')
+    if (process.env.ACP_FIXTURE_NO_MCP_FIELD && params.mcpServers !== undefined) return wire({ id, error: { code: -32602, message: 'Invalid params: unknown field `mcpServers`' } })
     if (process.env.DSH_FIXTURE_NEWER_FORMAT && method !== 'session/new') return wire({ id, error: { code: -32603, message: 'Internal error', data: { details: 'session uses log format v4, but this harness reads only v3' } } })
-    if (realpathSync(params.cwd) !== realpathSync(process.cwd()) || params.mcpServers.length || (method !== 'session/new' && params.sessionId !== 'fixture-dsh-session')) process.exit(6)
+    if (realpathSync(params.cwd) !== realpathSync(process.cwd()) || (method !== 'session/new' && params.sessionId !== 'fixture-dsh-session')) process.exit(6)
     if (method !== 'session/new' && !existsSync(join(process.cwd(), 'session-ledger'))) process.exit(7)
     appendFileSync(join(process.cwd(), 'session-ledger'), `${method}\n`)
     reply(id, { sessionId: 'fixture-dsh-session', configOptions: configOptions() })
@@ -77,6 +80,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     appendFileSync(join(process.cwd(), 'session-ledger'), 'session/close\n')
     reply(id, {})
   } else if (method === 'session/prompt') {
+    if (process.env.ACP_WORKER_HELPER && mcpServers.some(server => server.name === 'nodo_worker')) appendFileSync('dsh-requests.jsonl', JSON.stringify(await require(process.env.ACP_WORKER_HELPER)(mcpServers)) + '\n')
     appendFileSync(join(process.cwd(), 'dsh-requests.jsonl'), JSON.stringify({ method, text: params.prompt[0].text }) + '\n')
     if (turn) process.exit(9)
     turn = { id }

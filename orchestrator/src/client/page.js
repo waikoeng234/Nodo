@@ -11,6 +11,7 @@ import { PlanDock } from './todo-dock.js'
 import { roundIndex, RoundFaces } from './round.js'
 import { SessionPanel } from './session-panel.js'
 import { ApprovalCard, DecisionCard, pruneDecisionDrafts } from './run-cards.js'
+import { FlowCards } from './flow-cards.js'
 import { EngineSettingsDialog, OnboardingDialog } from './engine-settings.js'
 import { WorkspaceDialog, WorktreeDialog, WorkspaceRenameDialog, WorkspaceDeleteDialog, SessionRenameDialog } from './workspace-dialogs.js'
 import { openRoles, rolesSidebarSnapshot, rolesSubscribeSidebar, rolesGuard, registerDraftRemover } from './roles.tsx'
@@ -412,6 +413,7 @@ export function NodoPage({ sidebarOnly = false, contentOnly = false, railNavigat
     ...(!archivedConversation ? view.decisions ?? [] : []).filter(decision => decision.coordinatorSessionId === sessionId
       && (decision.status === 'pending' || decision.status === 'answered')).map(decision => h(DecisionCard, { key: decision.id,
       decision, profileId: profile.id, readOnly, refresh, profiles: view.profiles, tasks: view.tasks, work: view.work })),
+    !archivedConversation && h(FlowCards, { profile, session, struct: view?.struct, readOnly, tasks: view.tasks, refresh }),
     ...(!archivedConversation ? view.approvals ?? [] : []).filter(card => card.sessionId == null || card.sessionId === sessionId
       || members.some(item => item.session.id === card.sessionId)).map(card => h(ApprovalCard, { key: card.id,
       card: card.taskId ? { ...card, taskTitle: view.tasks?.find(task => task.id === card.taskId)?.title } : card, refresh, readOnly,

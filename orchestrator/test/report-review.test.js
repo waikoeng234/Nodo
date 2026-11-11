@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { reviewDeliveredReports } from './helpers/report-review.js'
@@ -18,7 +19,7 @@ test('fixture review waits for visible report registration and removal from the 
       if (execution.reports) inspected()
       return [{ origin: { kind: 'report', reviewRequired: true, executionId: execution.id, reportId: report.id } }]
     },
-    leadTask: async (...args) => { calls.push(args); report.review = { disposition: 'continue' } },
+    leadReview: async (...args) => { calls.push(args); report.review = { disposition: 'continue' } },
   }
   let reviewed = false
   const reviewing = reviewDeliveredReports(rt, session.id).then(() => { reviewed = true })
@@ -42,7 +43,7 @@ test('fixture review does not wait for or approve reports still queued behind th
     state: { tasks: { task: { coordinatorSessionId: session.id } }, executions: { execution: { id: 'execution', taskId: 'task' } } },
     conversationOf: () => ({ profile: { lead: true }, session }),
     transcriptOf: () => [],
-    leadTask: async () => { assert.fail('an undelivered report cannot be reviewed') },
+    leadReview: async () => { assert.fail('an undelivered report cannot be reviewed') },
   }
   await reviewDeliveredReports(rt, session.id)
   assert.equal(session.reportQueue.length, 1)
@@ -77,7 +78,7 @@ test('a visible report can precede registration, but the actual leader turn star
     }
     return driver
   }
-  const receipt = await rt.leadDispatch.delegate(owner.id, { type: 'feature', hard: false, task: 'Implement and verify' })
+  const receipt = await routeUserTask(rt, owner.id, { type: 'feature', hard: false, task: 'Implement and verify' })
   const execution = rt.state.executions[receipt.executionId]
   await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'done' }) })
   assert.equal(execution.reports, undefined, 'followLead returns before worker completion and report delivery')
@@ -90,7 +91,7 @@ test('a visible report can precede registration, but the actual leader turn star
   } finally { release(); rt.save = save }
   await until(() => atLeaderStart)
   assert.equal(atLeaderStart.code, 'orch/report-unreviewed')
-  await assert.rejects(rt.leadDispatch.delegate(owner.id, { type: 'feature', hard: false, task: 'Unauthorized continuation' }), { code: 'orch/report-unreviewed' })
+  await assert.rejects(routeUserTask(rt, owner.id, { type: 'feature', hard: false, task: 'Unauthorized continuation' }), { code: 'orch/report-unreviewed' })
   await reviewDeliveredReports(rt, owner.id)
   assert.equal(execution.reports[0].review.disposition, 'continue')
   await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)

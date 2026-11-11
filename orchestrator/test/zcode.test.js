@@ -304,10 +304,13 @@ test('ZCode mounts the role over the host HTTP endpoint and confirms its tool ca
   await withFixture(async ({ bin, cwd }) => {
     const disposers = [], rt = { ctx: { effect(fn) { disposers.push(fn()) } }, warn() {} }
     installMcp(rt)
-    const driver = createDriver('zcode', { bin, cwd, instructions: 'Bound coder identity', serveMcp: rt.serveMcp, env: { FIXTURE_VERSION: '0.16.9' } })
+    const driver = createDriver('zcode', { bin, cwd, instructions: 'Bound coder identity', serveMcp: rt.serveMcp, env: { FIXTURE_VERSION: '0.16.9' },
+      leadMcpServers: [{ name: 'nodo_worker', command: process.execPath, args: ['worker.js'], env: [] }] })
     try {
+      assert.equal(driver.workerMcpMounted, false)
       await driver.openSession()
       assert.equal(driver.instructionMode, 'native')
+      assert.equal(driver.workerMcpMounted, true, 'the accepted session/create field is the worker mount')
       const [entry] = readFileSync(join(cwd, 'zcode-mcp-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
       const [server] = entry.params.mcpServers
       assert.deepEqual(Object.keys(server).sort(), ['headers', 'isolation', 'name', 'type', 'url'])
@@ -321,10 +324,12 @@ test('ZCode mounts the role over the host HTTP endpoint and confirms its tool ca
 test('ZCode downgrades only an explicitly unsupported MCP field, preserving permissions and resume', async () => {
   await withFixture(async ({ bin, cwd }) => {
     for (const driverSessionId of [undefined, 'fixture-zcode-session']) {
-      const driver = createDriver('zcode', { bin, cwd, driverSessionId, instructions: 'Role', permission: 'plan', env: { FIXTURE_VERSION: '0.16.9', FIXTURE_NO_ROLE_MCP: '1' } })
+      const driver = createDriver('zcode', { bin, cwd, driverSessionId, instructions: 'Role', permission: 'plan', env: { FIXTURE_VERSION: '0.16.9', FIXTURE_NO_ROLE_MCP: '1' },
+        leadMcpServers: [{ name: 'nodo_worker', command: process.execPath, args: ['worker.js'], env: [] }] })
       try {
         await driver.openSession()
         assert.equal(driver.instructionMode, 'none')
+        assert.equal(driver.workerMcpMounted, false, 'the -32602 retry without mcpServers leaves no worker mount')
       } finally { driver.dispose() }
     }
     assert.equal(readFileSync(join(cwd, 'session-ledger'), 'utf8'), 'mode plan\ncreate:refused:answered\nsession/resume\nmode plan\n')

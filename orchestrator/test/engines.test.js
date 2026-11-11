@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
 import { engineCatalog, validateEngineOptions, checkEngine, createDriver, scanEngine, scanEngineCommands, enginePermissionModes, OPTIONAL_METHODS, hasOptionalMethod } from '../agent-drivers/dist/index.js'
 import { claudeArgs } from '../agent-drivers/dist/claude/native.js'
-import { leadMcp, LEAD_TOOLS } from '../agent-drivers/dist/lead-mcp.js'
+import { leadMcp, LEAD_TOOLS, leadToolSchemas } from '../agent-drivers/dist/lead-mcp.js'
 import { withHost, boot, until } from './helpers/host.js'
 
 const withFixture = async (run) => {
@@ -16,6 +16,23 @@ const withFixture = async (run) => {
   chmodSync(bin, 0o755)
   try { await run({ bin, cwd: dir }) } finally { rmSync(dir, { recursive: true, force: true }) }
 }
+
+// Every config key a leader thread carries. Codex accepts unknown config keys
+// silently, so this literal is the only guard against a renamed feature key
+// silently re-arming an execution tool.
+const codexLeadConfig = {
+  'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
+  'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
+  'features.goals': false, 'features.apps': false, 'features.plugins': false,
+  'features.skill_search': false, 'features.multi_agent_v2': false, 'features.image_generation': false,
+  'features.hooks': false, 'features.memories': false,
+  web_search: 'disabled', 'tools.web_search': false, 'tools.update_plan': { enabled: false },
+}
+
+const fixtureCatalog = { models: [
+  { slug: 'fixture-model', display_name: 'Fixture Model', description: 'fixture', tool_mode: 'code_mode_only', multi_agent_version: 'v2', shell_type: 'unified_exec', priority: 1 },
+  { slug: 'other-model', display_name: 'Other Model', description: 'fixture', tool_mode: 'code_only', multi_agent_version: 'v1', shell_type: 'unified_exec', priority: 2 },
+] }
 
 test('Codex classifies only missing threads on thread/resume, including the instruction fallback', async () => {
   for (const [message, expected] of [
@@ -53,7 +70,7 @@ test('Claude and Codex spawn failures do not become missing resume errors', asyn
   })
 })
 
-test('Codex lead mounts are thread scoped on start and resume in every permission tier', async () => {
+test('Codex lead mounts are thread scoped and frozen to the routing-only config on start and resume in every permission tier', async () => {
   for (const permission of ['plan', 'workspace', 'full']) await withFixture(async ({ bin, cwd }) => {
     const token = 'fixture-file-only-credential'
     const tokenFile = join(cwd, 'lead.token')
@@ -64,10 +81,10 @@ test('Codex lead mounts are thread scoped on start and resume in every permissio
       command: leadMcpServers[0].command, args: leadMcpServers[0].args,
       env: Object.fromEntries(leadMcpServers[0].env.map(({ name, value }) => [name, value])),
       enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])),
-    } }
+    }, ...codexLeadConfig }
     for (const driverSessionId of [undefined, 'fixture-thread']) {
       const events = []
-      const driver = createDriver('codex', { bin, cwd, permission, driverSessionId, leadMcpServers,
+      const driver = createDriver('codex', { bin, cwd, permission, driverSessionId, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true, leadMcpServers,
         instructions: 'Lead rules', env: { CODEX_FIXTURE_REJECT_INSTRUCTIONS: 'unsupported' }, onEvent: event => events.push(event) })
       try {
         await driver.sendTurn('LEAD_TASK')
@@ -80,8 +97,8 @@ test('Codex lead mounts are thread scoped on start and resume in every permissio
     assert.deepEqual(threads.map(item => item.method), ['thread/start', 'thread/start', 'thread/resume', 'thread/resume'])
     for (const { params } of threads) {
       assert.deepEqual(params.config, expected)
-      assert.equal(params.sandbox, { plan: 'read-only', workspace: 'workspace-write', full: 'danger-full-access' }[permission])
-      assert.equal(params.approvalPolicy, permission === 'full' ? 'never' : undefined)
+      assert.equal(params.sandbox, 'read-only', 'the leader never writes, whatever its permission tier')
+      assert.equal(params.approvalPolicy, 'never', 'the leader never shows an approval card in any tier')
     }
   })
 })
@@ -90,37 +107,342 @@ test('Codex mounts an HTTP lead with the token in this thread\'s config headers'
   await withFixture(async ({ bin, cwd }) => {
     const leadMcpServers = [{ name: 'nodo_lead', url: 'http://127.0.0.1:4100/mcp', token: 'http-token' }]
     const events = []
-    const driver = createDriver('codex', { bin, cwd, leadMcpServers, onEvent: event => events.push(event) })
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true, leadMcpServers, onEvent: event => events.push(event) })
     try {
       await driver.sendTurn('LEAD_TASK')
       await until(() => events.some(event => event.type === 'turn/end'))
     } finally { driver.dispose() }
     const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
     assert.deepEqual(thread.params.config, { 'mcp_servers.nodo_lead': { url: 'http://127.0.0.1:4100/mcp', http_headers: { Authorization: 'Bearer http-token' },
-      enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])) } })
+      enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(name => [name, { approval_mode: 'approve' }])) },
+    ...codexLeadConfig })
+    assert.equal(thread.params.sandbox, 'read-only')
+    assert.equal(thread.params.approvalPolicy, 'never')
+  })
+})
+
+test('a codex worker mount carries no leader lockdown in any tier', async () => {
+  for (const permission of ['workspace', 'full']) await withFixture(async ({ bin, cwd }) => {
+    const leadMcpServers = [{ name: 'nodo_worker', command: process.execPath, args: [join(cwd, 'worker-server.js')], env: [{ name: 'NODO_WORKER_SOCKET', value: join(cwd, 'worker.sock') }] }]
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, permission, leadMcpServers, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.deepEqual(Object.keys(thread.params.config), ['mcp_servers.nodo_worker'], 'a worker must never receive the leader lockdown keys')
+    assert.equal(thread.params.sandbox, permission === 'full' ? 'danger-full-access' : 'workspace-write', 'a worker keeps its tier sandbox')
+    assert.equal(thread.params.approvalPolicy, permission === 'full' ? 'never' : undefined)
+  })
+})
+
+test('a codex leader without its lead mount refuses to start before it reads a catalog', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const spawnLog = join(cwd, 'spawns.jsonl')
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      env: { CODEX_FIXTURE_SPAWN_LOG: spawnLog } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /lead channel/i)
+        assert.match(error.message, /nodo_lead mount/)
+        return true
+      })
+    } finally { driver.dispose() }
+    assert.equal(existsSync(spawnLog), false, 'the refusal happens before the catalog command')
+    assert.equal(existsSync(join(cwd, 'codex-requests.jsonl')), false, 'the refusal happens before any thread request')
+  })
+})
+
+const leadMount = () => [{ name: 'nodo_lead', url: 'http://127.0.0.1:4100/mcp', token: 'lead-token' }]
+
+test('Codex leaders switch only their own catalog entry and run a separate app-server', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const instructionDir = join(cwd, 'data')
+    const spawnLog = join(cwd, 'spawns.jsonl')
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir, instructions: 'Lead rules', lead: true,
+      leadMcpServers: leadMount(), env: { CODEX_FIXTURE_SPAWN_LOG: spawnLog }, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LEAD_TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const catalogPath = join(instructionDir, 'codex-leader-catalog.json')
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
+    assert.deepEqual(catalog.models.find(model => model.slug === 'fixture-model'),
+      { ...fixtureCatalog.models[0], tool_mode: 'code_mode', multi_agent_version: 'disabled' })
+    assert.deepEqual(catalog.models.find(model => model.slug === 'other-model'), fixtureCatalog.models[1], 'every other entry stays untouched')
+    const spawns = readFileSync(spawnLog, 'utf8').trim().split('\n').map(JSON.parse)
+    assert.deepEqual(spawns.map(spawn => spawn.argv.slice(0, 2)), [['debug', 'models'], ['app-server', '-c']])
+    assert.deepEqual(spawns[1].argv.slice(2), [`model_catalog_json=${JSON.stringify(catalogPath)}`, '-c', 'features.apps=false', '-c', 'features.plugins=false'],
+      'the private process starts with the generated catalog and the connector sources off')
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.match(thread.params.developerInstructions, /Lead rules[\s\S]*await tools\.mcp__nodo_lead__[\s\S]*ALL_TOOLS/, 'code mode tells the leader the exec JS call form')
+    // The example call is checked against lead-mcp's own schemas: a real tool
+    // with real arguments, not just any string that happens to look like a call.
+    const example = /await tools\.(mcp__nodo_lead__\w+)\((\{[^`]*\})\)/.exec(thread.params.developerInstructions)
+    assert.ok(example, 'the prompt shows one concrete exec call')
+    const tool = example[1].slice('mcp__nodo_lead__'.length)
+    assert.ok(LEAD_TOOLS.includes(tool), `the example names a real lead tool (${tool})`)
+    const schema = leadToolSchemas[tool]
+    assert.ok(schema?.properties, `the example tool ${tool} has a flat schema to check the arguments against`)
+    for (const [key, value] of Object.entries(JSON.parse(example[2]))) {
+      assert.ok(schema.properties[key], `${key} is a real argument of ${tool}`)
+      const enumValues = schema.properties[key].enum
+      assert.ok(enumValues === undefined || enumValues.includes(value), `${key}=${JSON.stringify(value)} is a legal value for ${tool}`)
+    }
+    assert.doesNotMatch(thread.params.developerInstructions, /request_user_input/, 'a leader asks through nodo_route, not a native question tool')
+  })
+})
+
+test('Codex leader tool surface freezes to code mode with only the Nodo MCP tools callable', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LEAD_TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    // The fixture derives this surface from the catalog entry the driver wrote,
+    // with the CLI's own fail-open rules (unknown tool_mode → direct, unknown
+    // multi_agent_version → agent tools), so a silent regression shows up here.
+    assert.equal(thread.params.model, 'fixture-model', 'the thread must run exactly the model whose catalog entry was switched')
+    assert.equal(thread.params.config.web_search, 'disabled', 'the root key, not tools.web_search, is what keeps the web__run exec channel off')
+    assert.deepEqual(thread.surface.tools,
+      ['apply_patch', 'clock__curr_time', 'exec', 'list_mcp_resource_templates', 'list_mcp_resources', 'read_mcp_resource', 'request_user_input', 'request_user_input_async', 'tool_search', 'wait'],
+      'code mode: no exec_command, no collaboration, no web__run, no direct MCP declarations')
+    assert.deepEqual(thread.surface.allTools, [
+      'apply_patch', 'clock__curr_time', 'list_mcp_resource_templates', 'list_mcp_resources',
+      'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_review', 'mcp__nodo_lead__nodo_route',
+      'read_mcp_resource'], 'the exec sandbox may call nothing beyond apply_patch, the resource readers and the four Nodo tools — no web__run')
+  })
+})
+
+test('a Codex leader without a profile model switches the config.toml top-level entry, not a profile entry', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const home = join(cwd, 'codex-home')
+    mkdirSync(home)
+    writeFileSync(join(home, 'config.toml'), 'model = "config-model"\n\n[profiles.fast]\nmodel = "profile-model"\n')
+    const fixtureModels = { models: [
+      { slug: 'config-model', display_name: 'Config Model', description: 'fixture', tool_mode: 'code_mode_only', multi_agent_version: 'v2' },
+      { slug: 'profile-model', display_name: 'Profile Model', description: 'fixture', tool_mode: 'code_mode_only', multi_agent_version: 'v2' },
+    ] }
+    const events = []
+    const previous = process.env.CODEX_HOME
+    process.env.CODEX_HOME = home
+    const driver = createDriver('codex', { bin, cwd, instructionDir: join(cwd, 'data'), lead: true, leadMcpServers: leadMount(),
+      env: { CODEX_FIXTURE_MODELS_JSON: JSON.stringify(fixtureModels) }, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LEAD_TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally {
+      driver.dispose()
+      if (previous === undefined) delete process.env.CODEX_HOME
+      else process.env.CODEX_HOME = previous
+    }
+    const catalog = JSON.parse(readFileSync(join(cwd, 'data', 'codex-leader-catalog.json'), 'utf8'))
+    assert.deepEqual(catalog.models.find(model => model.slug === 'config-model'),
+      { ...fixtureModels.models[0], tool_mode: 'code_mode', multi_agent_version: 'disabled' }, 'the top-level model is the one the thread runs')
+    assert.equal(catalog.models.find(model => model.slug === 'profile-model').tool_mode, 'code_mode_only', 'a profile-scoped model stays untouched')
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.equal(thread.params.model, undefined, 'without a profile model the thread params carry no override')
+    assert.deepEqual(thread.surface, { tools: ['no-model-in-thread-start'], allTools: [] },
+      'the fixture refuses to guess a catalog entry when the thread names no model')
+  })
+})
+
+test('Codex leaders fail closed when the catalog cannot be built', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const emptyHome = join(cwd, 'codex-home')
+    mkdirSync(emptyHome)
+    const previous = process.env.CODEX_HOME
+    process.env.CODEX_HOME = emptyHome
+    try {
+      for (const [label, options] of [
+        ['catalog command fails', { model: 'fixture-model', env: { CODEX_FIXTURE_MODELS_ERROR: '1' } }],
+        ['model entry missing', { model: 'absent-model' }],
+        ['no model anywhere', {}],
+        ['no data directory', { model: 'fixture-model', instructionDir: undefined }],
+      ]) {
+        const driver = createDriver('codex', { bin, cwd, instructionDir: join(cwd, 'data'), lead: true, leadMcpServers: leadMount(), ...options })
+        try {
+          await assert.rejects(driver.openSession(), error => {
+            assert.equal(error.code, 'orch/lead-unavailable', label)
+            return true
+          }, label)
+        } finally { driver.dispose() }
+      }
+    } finally {
+      if (previous === undefined) delete process.env.CODEX_HOME
+      else process.env.CODEX_HOME = previous
+    }
+    assert.equal(existsSync(join(cwd, 'codex-requests.jsonl')), false, 'no thread starts without the catalog')
+  })
+})
+
+test('Codex leaders fail closed when the catalog entry lost its tool-surface fields', async () => {
+  for (const entry of [
+    { slug: 'fixture-model', display_name: 'Fixture Model', multi_agent_version: 'v2' },
+    { slug: 'fixture-model', display_name: 'Fixture Model', tool_mode: 'code_mode_only' },
+  ]) await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true, leadMcpServers: leadMount(),
+      env: { CODEX_FIXTURE_MODELS_JSON: JSON.stringify({ models: [entry] }) } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /tool_mode or multi_agent_version/)
+        return true
+      })
+    } finally { driver.dispose() }
+    assert.equal(existsSync(join(cwd, 'codex-requests.jsonl')), false, 'no thread starts with a catalog the override would not change')
+  })
+})
+
+test('Codex catalog failures never echo the CLI stderr', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true, leadMcpServers: leadMount(),
+      env: { CODEX_FIXTURE_MODELS_ERROR: '1', CODEX_FIXTURE_MODELS_STDERR: 'token=do-not-print-this' } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.equal(error.message.includes('do-not-print-this'), false, 'the CLI stderr stays out of the refusal')
+        assert.match(error.message, /could not be read \(exit 1\)/, 'only the exit code names the failure')
+        return true
+      })
+    } finally { driver.dispose() }
+  })
+})
+
+test('Codex leaders fail closed when the MCP servers cannot be enumerated', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), env: { CODEX_FIXTURE_MCP_ERROR: 'fixture MCP list failed' } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /enumerated/)
+        return true
+      })
+    } finally { driver.dispose() }
+    const threads = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method.startsWith('thread/'))
+    assert.deepEqual(threads, [], 'no thread starts before the user servers are known')
+  })
+})
+
+test('Codex leaders disable config MCP servers in place and placeholder the injected ones', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const home = join(cwd, 'codex-home')
+    mkdirSync(home)
+    writeFileSync(join(home, 'config.toml'), '[mcp_servers.user_echo]\ncommand = "echo"\n')
+    const servers = [
+      { name: 'user_echo', pluginId: null },
+      { name: 'alpha_tools', pluginId: 'alpha@official' },
+      { name: 'codex_apps', pluginId: null },
+      { name: 'nodo_lead', pluginId: null },
+    ]
+    const events = []
+    const previous = process.env.CODEX_HOME
+    process.env.CODEX_HOME = home
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), env: { CODEX_FIXTURE_MCP_SERVERS: JSON.stringify(servers) }, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('LEAD_TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally {
+      driver.dispose()
+      if (previous === undefined) delete process.env.CODEX_HOME
+      else process.env.CODEX_HOME = previous
+    }
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.equal(thread.params.config['mcp_servers.user_echo.enabled'], false, 'a config-defined server takes the bare key, which deep-merges onto its transport')
+    assert.deepEqual(thread.params.config['mcp_servers.alpha_tools'], { enabled: false, url: 'http://127.0.0.1:1/mcp' },
+      'an injected server has no transport, so it takes a dead placeholder instead')
+    assert.equal(thread.params.config['mcp_servers.codex_apps'], undefined, 'the apps connector stays out of the enumeration once its feature is off')
+    assert.equal(thread.params.config['mcp_servers.nodo_lead.enabled'], undefined, 'the mounted server keeps its own entry')
+    assert.equal(thread.params.config['mcp_servers.nodo_lead'].url, 'http://127.0.0.1:4100/mcp')
+  })
+})
+
+test('Codex leaders refuse to start when a user MCP server name cannot be disabled', async () => {
+  for (const name of ['user.echo', 'user echo', 'user"echo']) await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), env: { CODEX_FIXTURE_MCP_SERVERS: JSON.stringify([{ name, pluginId: null }]) } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.match(error.message, /cannot be disabled by configuration key/)
+        assert.ok(error.message.includes(JSON.stringify(name)), 'the refusal names the server')
+        return true
+      })
+    } finally { driver.dispose() }
+    const threads = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method.startsWith('thread/'))
+    assert.deepEqual(threads, [], 'no thread starts with a server that would stay enabled')
+  })
+})
+
+test('Codex workers keep the shared proxy process and never load the leader catalog', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const instructionDir = join(cwd, 'data')
+    const spawnLog = join(cwd, 'spawns.jsonl')
+    const events = []
+    const driver = createDriver('codex', { bin, cwd, permission: 'full', instructionDir,
+      leadMcpServers: [{ name: 'nodo_worker', command: process.execPath, args: [join(cwd, 'worker-server.js')], env: [{ name: 'NODO_WORKER_SOCKET', value: join(cwd, 'worker.sock') }] }],
+      env: { CODEX_FIXTURE_SPAWN_LOG: spawnLog }, onEvent: event => events.push(event) })
+    try {
+      await driver.sendTurn('TASK')
+      await until(() => events.some(event => event.type === 'turn/end'))
+    } finally { driver.dispose() }
+    const spawns = readFileSync(spawnLog, 'utf8').trim().split('\n').map(JSON.parse)
+    assert.deepEqual(spawns.map(spawn => spawn.argv.slice(0, 2)), [['app-server', 'daemon'], ['app-server', 'proxy']], 'a worker keeps the shared daemon and proxy')
+    assert.equal(spawns.some(spawn => spawn.argv.join(' ').includes('model_catalog_json')), false)
+    assert.equal(existsSync(join(instructionDir, 'codex-leader-catalog.json')), false, 'a worker never writes or uses a leader catalog')
+    const [thread] = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method === 'thread/start')
+    assert.deepEqual(Object.keys(thread.params.config), ['mcp_servers.nodo_worker'])
   })
 })
 
 test('Codex refuses unsupported thread config without dropping the lead mount', async () => {
   for (const driverSessionId of [undefined, 'fixture-thread']) await withFixture(async ({ bin, cwd }) => {
-    const driver = createDriver('codex', { bin, cwd, driverSessionId, instructions: 'Lead rules',
+    const driver = createDriver('codex', { bin, cwd, driverSessionId, instructions: 'Lead rules', lead: true, model: 'fixture-model', instructionDir: join(cwd, 'data'),
       leadMcpServers: leadMcp('/fixture/socket', '', '/fixture/token'), env: { CODEX_FIXTURE_REJECT_CONFIG: '1' } })
     try {
-      await assert.rejects(driver.openSession(), /unknown field `config`/)
-      const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable', 'a refused thread start is lead-unavailable')
+        assert.match(error.message, /unknown field `config`/)
+        return true
+      })
+      const requests = readFileSync(join(cwd, 'codex-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).filter(item => item.method.startsWith('thread/'))
       assert.equal(requests.length, 1)
       assert.ok(requests[0].params.config)
     } finally { driver.dispose() }
   })
 })
 
-test('Nodo Codex leads mount the host MCP endpoint and workers receive no thread config', async () => {
+test('a Codex leader whose saved thread is gone reports resume-failed in the lead-unavailable class', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('codex', { bin, cwd, driverSessionId: 'missing-thread', model: 'fixture-model', instructionDir: join(cwd, 'data'), lead: true,
+      leadMcpServers: leadMount(), env: { CODEX_FIXTURE_RESUME_ERROR: 'no rollout found for thread id missing-thread' } })
+    try {
+      await assert.rejects(driver.openSession(), error => {
+        assert.equal(error.code, 'orch/lead-unavailable')
+        assert.equal(error.errorKind, 'resume-failed', 'the host still recognizes the lost thread')
+        assert.match(error.message, /no rollout found for thread id missing-thread/)
+        return true
+      })
+    } finally { driver.dispose() }
+  })
+})
+
+test('Nodo Codex leads mount the host MCP endpoint and mountless workers receive no thread config', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const host = boot(join(cwd, 'plugin'))
     try {
       const workspace = await host.api('workspace-create', { name: 'Lead', cwd })
       const worker = await host.api('profile-create', { name: 'Worker', engine: 'codex', workspace: workspace.id, engineOptions: { bin } })
-      const lead = await host.api('profile-create', { name: 'Lead', engine: 'codex', lead: true, workspace: workspace.id, engineOptions: { bin } })
+      const lead = await host.api('profile-create', { name: 'Lead', engine: 'codex', model: 'fixture-model', lead: true, workspace: workspace.id, engineOptions: { bin } })
       const tokens = []
       for (const role of [lead, worker]) {
         await host.api('send', { profile: role.id, text: 'TASK' })

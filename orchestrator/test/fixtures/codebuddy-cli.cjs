@@ -7,6 +7,7 @@ const log = entry => appendFileSync('codebuddy-requests.jsonl', JSON.stringify(e
 let next = 0
 const session = 'fixture-cb-session'
 let prompt = null // { id, text, cancel: () => {} }
+let mcpServers = []
 const MODES = ['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions', 'fullAccess', 'delegate']
 const MODELS = [
   { value: 'default-model', name: 'Auto' },
@@ -43,16 +44,18 @@ const finish = (stopReason = 'end_turn') => {
     prompt_tokens_details: { cached_tokens: 24320 }, prompt_cache_hit_tokens: 24320, prompt_cache_miss_tokens: 1222, prompt_cache_write_tokens: 0 } } })
   reply(id, { stopReason, userMessageId: 'u' + next })
 }
-const receive = line => {
+const receive = async line => {
   const message = JSON.parse(line)
   const { id, method, params = {} } = message
   if (method === 'initialize') {
     log({ method, clientCapabilities: params.clientCapabilities, args: process.argv.slice(2) })
-    reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true } }, authMethods: [] })
+    reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true, mcpCapabilities: { http: !process.env.ACP_FIXTURE_NO_HTTP }, promptCapabilities: { image: true } }, authMethods: [] })
     return
   }
   if (method === 'session/new' || method === 'session/load') {
-    log({ method, sessionId: params.sessionId, cwd: params.cwd })
+    mcpServers = params.mcpServers ?? []
+    log({ method, sessionId: params.sessionId, cwd: params.cwd, mcpServers: params.mcpServers })
+    if (process.env.ACP_FIXTURE_NO_MCP_FIELD && params.mcpServers !== undefined) { send({ jsonrpc: '2.0', id, error: { code: -32602, message: 'Invalid params: unknown field `mcpServers`' } }); return }
     reply(id, { sessionId: params.sessionId ?? session, configOptions: configOptions() })
     return
   }
@@ -83,6 +86,7 @@ const receive = line => {
     return
   }
   if (method === 'session/prompt') {
+    if (process.env.ACP_WORKER_HELPER && mcpServers.some(server => server.name === 'nodo_worker')) log(await require(process.env.ACP_WORKER_HELPER)(mcpServers))
     log({ method, text: params.prompt?.[0]?.text })
     prompt = { id, text: params.prompt?.[0]?.text ?? '' }
     const text = prompt.text

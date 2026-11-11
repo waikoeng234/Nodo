@@ -7,6 +7,7 @@ import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { qoderArgs, connectQoder } from './native.js';
 import { askAnswers, askOpened } from '../questions.js';
+import { leadMcpEnv } from '../claude/native.js';
 export const qoderInfo = {
     id: 'qoder', label: 'Qoder CLI', command: 'qodercli', requiresCwd: true,
     description: 'Uses the local Qoder CLI and its existing login; sessions live in the shared Qoder store.',
@@ -179,7 +180,7 @@ const qoderRatioTokens = (raw, contextWindow) => typeof raw?.context_usage_ratio
 const qoderUsage = (raw) => qoderPromptTokens(raw) || raw?.output_tokens
     ? usageOf({ inputTokens: raw?.input_tokens, outputTokens: raw?.output_tokens, cacheReadTokens: raw?.cache_read_input_tokens, cacheWriteTokens: raw?.cache_creation_input_tokens })
     : undefined;
-export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
+export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions, lead, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -188,6 +189,8 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
     let ready = null;
     let sessionId = driverSessionId;
     let connected = false;
+    const workerServers = lead ? [] : leadMcpServers?.filter(server => server.name === 'nodo_worker');
+    let mcpUnsupported = false;
     let disposed = false;
     let sequence = 0;
     let controlSeq = 0;
@@ -201,13 +204,13 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
             emit({ type: 'request/closed', id });
         requests.clear();
     };
-    const disconnect = () => {
+    const disconnect = (error = new Error('Qoder connection closed')) => {
         const connection = peer;
         peer = null;
         ready = null;
         connected = false;
         for (const pending of controls.values())
-            pending.reject(new Error('Qoder connection closed'));
+            pending.reject(error);
         controls.clear();
         connection?.dispose();
     };
@@ -228,10 +231,10 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
             emit(turn.changes.snapshot(turn.id));
         emit({ type: 'turn/end', turnId: turn.id, reason, ...(text ? { text } : {}), ...(error ? { error } : {}), ...(usage ? { usage } : {}), ...(turn.unconfirmed ? { unconfirmed: true } : {}), ...(reason === 'error' && retryable ? { retryable: true } : {}) });
     };
-    const control = (request) => new Promise((resolve, reject) => {
+    const control = (request, timeout = 5000) => new Promise((resolve, reject) => {
         const request_id = `orch-${++controlSeq}`;
         const timer = setTimeout(() => { if (controls.delete(request_id))
-            reject(new Error('Qoder control request timed out')); }, 5000);
+            reject(new Error('Qoder control request timed out')); }, timeout);
         controls.set(request_id, { turn: running, resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
         try {
             peer.write({ type: 'control_request', request_id, request });
@@ -412,34 +415,49 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
             if (!executable)
                 throw new Error('Qoder CLI executable not found. Install Qoder or edit the profile CLI path.');
             emit({ type: 'session', state: 'starting' });
-            connection = connectQoder({ executable, args: qoderArgs({ model, thinking, permission, instructions, driverSessionId: sessionId }), cwd, env,
-                onFrame: frame => { if (peer === connection)
-                    receive(frame); },
-                onRequest: frame => { if (peer === connection)
-                    ask(frame); },
-                onClose(error) {
-                    if (peer !== connection)
-                        return;
+            for (;;) {
+                const servers = mcpUnsupported ? undefined : workerServers;
+                connection = connectQoder({ executable, args: qoderArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers: servers }), cwd, env: { ...env, ...leadMcpEnv(servers) },
+                    onFrame: frame => { if (peer === connection)
+                        receive(frame); },
+                    onRequest: frame => { if (peer === connection)
+                        ask(frame); },
+                    onClose(error) {
+                        if (peer !== connection)
+                            return;
+                        disconnect(error);
+                        closeRequests();
+                        if (running?.started)
+                            end('error', error.message);
+                        emit({ type: 'session', state: 'closed' });
+                    } });
+                if (disposed) {
+                    connection.dispose();
+                    throw new Error('Qoder driver disposed');
+                }
+                peer = connection;
+                // Initialization verifies the extra launch flag before worker input is composed.
+                try {
+                    await connection.running;
+                    // The CLI answers only after its own startup work, which can take seconds
+                    // under load; the boot deadline is the handshake's, not the 5s request one.
+                    if (servers?.length)
+                        await control({ subtype: 'initialize' }, 20_000);
+                    break;
+                }
+                catch (error) {
+                    if (!servers?.length || !/(?:unknown|unrecognized|unsupported) (?:option|argument)[^\n]*--mcp-config/i.test(error.message))
+                        throw error;
+                    mcpUnsupported = true;
                     disconnect();
-                    closeRequests();
-                    if (running?.started)
-                        end('error', error.message);
-                    emit({ type: 'session', state: 'closed' });
-                } });
-            if (disposed) {
-                connection.dispose();
-                throw new Error('Qoder driver disposed');
+                }
             }
-            peer = connection;
-            // The CLI emits its session init only after the first user frame, so a
-            // boot can only confirm the process came up; the session id arrives with
-            // the init frame and is persisted through the session event.
-            await connection.running;
             if (disposed)
                 throw new Error('Qoder driver disposed');
             if (peer !== connection)
                 throw new Error('Qoder connection closed during startup');
             connected = true;
+            ready ??= Promise.resolve();
         })().catch(error => {
             if (peer === connection) {
                 peer = null;
@@ -455,6 +473,8 @@ export function createQoderDriver({ onEvent, bin, cwd, env = {}, model, thinking
     };
     return {
         get instructionMode() { return connected && instructions ? 'native' : 'none'; },
+        get workerMcpMounted() { return connected && Boolean(workerServers?.length) && !mcpUnsupported; },
+        get instructionFallback() { return mcpUnsupported ? 'mcp-field-unsupported' : undefined; },
         get coverage() { return coverage; },
         openSession: boot,
         async sendTurn(text, images = []) {

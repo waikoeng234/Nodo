@@ -6,7 +6,7 @@ import { connectStreamJson } from '../stream-json.js';
 // the host's plan tier falls back to `default`, where every action asks.
 // `auto` is the engine's classifier tier — ordinary actions run and recognized-
 // dangerous ones ask — matching the workspace tier.
-export function qoderArgs({ model, thinking, instructions, driverSessionId, permission } = {}) {
+export function qoderArgs({ model, thinking, instructions, driverSessionId, permission, leadMcpServers } = {}) {
     return [
         '--print', '--input-format', 'stream-json', '--output-format', 'stream-json',
         ...(model ? ['--model', model] : []),
@@ -14,6 +14,10 @@ export function qoderArgs({ model, thinking, instructions, driverSessionId, perm
         ...(permission === 'full' ? ['--permission-mode', 'bypass_permissions'] : permission === 'workspace' ? ['--permission-mode', 'auto'] : permission === 'plan' ? ['--permission-mode', 'default'] : []),
         ...(instructions ? ['--append-system-prompt', instructions] : []),
         ...(driverSessionId ? ['--resume', driverSessionId] : []),
+        ...(leadMcpServers?.length ? ['--mcp-config', JSON.stringify({ mcpServers: Object.fromEntries(leadMcpServers.map(server => [server.name, 'url' in server
+                        ? { type: 'http', url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
+                        : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !/^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])) },
+                ])) })] : []),
     ];
 }
 export function connectQoder(options) {

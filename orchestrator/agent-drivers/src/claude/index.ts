@@ -21,7 +21,7 @@ export type ClaudeOptions = { bin?: string }
 export type ClaudeDriverOptions = {
   onEvent?: (event: DriverEvent) => void; bin?: string; cwd?: string; env?: NodeJS.ProcessEnv
   model?: string; thinking?: string; permission?: PermissionMode; driverSessionId?: string; instructions?: string
-  leadMcpServers?: McpMount[]
+  lead?: boolean; leadMcpServers?: McpMount[]
 }
 type ClaudeHandshakeOptions = { executable: string; cwd?: string; env?: NodeJS.ProcessEnv }
 type ClaudeModel = { value?: unknown; displayName?: unknown; supportedEffortLevels?: unknown[] }
@@ -251,7 +251,7 @@ const claudeModelTotals = (raw: Record<string, ClaudeModelUsage> | undefined) =>
   return sum
 }, {}))
 
-export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, leadMcpServers }: ClaudeDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
+export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, model, thinking, permission, driverSessionId, instructions, lead, leadMcpServers }: ClaudeDriverOptions = {}): Driver & { readonly instructionMode: string; readonly coverage: Coverage } {
   const emit = (event: DriverEvent) => { try { onEvent?.(event) } catch {} }
   let peer: ClaudeConnection | null = null
   let ready: Promise<void> | null = null
@@ -572,13 +572,20 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
     let connection: ClaudeConnection | undefined
     const pending = (async () => {
       if (disposed) throw new Error('Claude driver disposed')
+      // Fail closed: a leader without its mount has no working channel and must
+      // not degrade into an unprivileged plain session.
+      if (lead && !leadMcpServers?.length) {
+        const error: NodeJS.ErrnoException = new Error('The lead channel is unavailable; the leader session cannot start without its nodo_lead mount.')
+        error.code = 'orch/lead-unavailable'
+        throw error
+      }
       validateWorkspace(cwd, true)
       const executable = findExecutable(bin)
       if (!executable) throw new Error('Claude Code executable not found. Install Claude Code or edit the profile CLI path.')
       emit({ type: 'session', state: 'starting' })
       resuming = !!sessionId
       modelTotals = sessionId ? undefined : {}
-      connection = connectClaude<ClaudeFrame, ClaudeRequest>({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
+      connection = connectClaude<ClaudeFrame, ClaudeRequest>({ executable, args: claudeArgs({ model, thinking, permission, instructions, driverSessionId: sessionId, lead, leadMcpServers }), cwd, env: { ...env, ...leadMcpEnv(leadMcpServers) },
         onFrame: receive, onRequest: ask,
         onClose(error) {
           if (peer !== connection) return
@@ -609,6 +616,7 @@ export function createClaudeDriver({ onEvent, bin = 'claude', cwd, env = {}, mod
 
   return {
     get instructionMode() { return connected && instructions ? 'native' : 'none' },
+    get workerMcpMounted() { return connected && !disposed && Boolean(leadMcpServers?.some(server => server.name === 'nodo_worker')) },
     get coverage() { return coverage },
     openSession: boot,
     async sendTurn(text, images = []) {

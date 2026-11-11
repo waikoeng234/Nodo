@@ -6,8 +6,10 @@ import { checkCliBase, invalidConfig, validateBin, validateWorkspace } from '../
 import { collector, listDirs, newestPluginVersions } from '../skills.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { connectCodex, ensureCodexWorkspace, findCodexExecutable } from './native.js';
+import { leadUnavailable, writeLeaderCatalog } from './catalog.js';
 import { createFileChanges } from '../file-changes.js';
 import { LEAD_TOOLS } from '../lead-mcp.js';
+import { WORKER_TOOLS } from '../worker-mcp.js';
 export { findCodexExecutable } from './native.js';
 export const codexInfo = {
     id: 'codex', label: 'Codex CLI', command: 'codex', requiresCwd: true,
@@ -101,6 +103,25 @@ function codexConfigModels(path) {
     return entries.map(entry => ({ id: entry.id, ...(entry.label ? { label: entry.label } : {}),
         ...(entry.defaultThinking ? { defaultThinking: entry.defaultThinking } : {}) }));
 }
+// Targeted key scan of config.toml (not a TOML parser): the names of the
+// [mcp_servers.*] tables, the entries that carry a transport.
+function codexConfigMcpServers(path) {
+    let lines;
+    try {
+        lines = readFileSync(path, 'utf8').split('\n');
+    }
+    catch {
+        return [];
+    }
+    const names = [];
+    for (const raw of lines) {
+        const line = raw.replace(/#.*$/, '').trim();
+        const section = /^\[mcp_servers\.([^.\]]+)\]$/.exec(line);
+        if (section)
+            names.push(/^"([A-Za-z0-9_-]+)"$/.exec(section[1])?.[1] ?? section[1]);
+    }
+    return names;
+}
 export async function scanCodex({ engineOptions = {} } = {}) {
     const options = validateCodexOptions(engineOptions);
     const configModels = () => {
@@ -145,7 +166,43 @@ export async function scanCodex({ engineOptions = {} } = {}) {
 // text, and older sessions carry failed attempts that teach the wrong habit.
 // Only the blocking request_user_input reaches this client as a card.
 const QUESTION_ROUTING = 'Asking the user questions: always use the request_user_input tool. Never use request_user_input_async — its questions never surface here — and never ask a question in plain text while request_user_input is available.';
-export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, leadMcpServers } = {}) {
+// A leader only routes: the sandbox is read-only and the built-in capabilities
+// that a config key can turn off are turned off here. The collaboration tools
+// and code-mode `exec` are not among them — they follow the model catalog entry
+// of the leader's own process (catalog.ts), and no config key turns code-mode
+// `exec` off: `features.unified_exec` gates only the shell tool. The root
+// `web_search` value is what keeps the standalone `web__run` exec channel off;
+// `tools.web_search` only configures the search tool. Unknown keys
+// are accepted silently and feature names move between versions, so the
+// config-freeze test is the drift guard.
+const LEAD_CONFIG = {
+    'features.shell_tool': false, 'features.unified_exec': false, 'features.view_image': false,
+    'features.computer_use': false, 'features.browser_use': false, 'features.sleep_tool': false,
+    'features.goals': false, 'features.apps': false, 'features.plugins': false,
+    'features.skill_search': false, 'features.multi_agent_v2': false, 'features.image_generation': false,
+    'features.hooks': false, 'features.memories': false,
+    web_search: 'disabled', 'tools.web_search': false, 'tools.update_plan': { enabled: false },
+};
+// The catalog override keeps the leader in code mode, where the exec sandbox is
+// the only dispatcher for MCP tools: a Nodo call is a JS property of `tools`
+// keyed by its ALL_TOOLS name, not a bare function call the engine would route.
+const LEAD_TOOL_SEARCH = 'Your Nodo tools run through the exec tool, not as plain function calls: execute `await tools.mcp__nodo_lead__nodo_board({ "table": "tasks" })` inside exec — the identifier is always tools.mcp__<server>__<tool> from ALL_TOOLS. If a call fails, run `text(JSON.stringify(ALL_TOOLS.map(t => t.name)))` first and retry with the exact name.';
+// Every MCP server the leader's process would expose, plugin-provided ones
+// included; the thread config deep-merges, so each name has to be disabled on
+// its own rather than by replacing the table.
+async function listMcpServers(peer) {
+    const names = [];
+    let cursor;
+    do {
+        const page = await peer.request('mcpServerStatus/list', { limit: 100, detail: 'toolsAndAuthOnly', ...(cursor ? { cursor } : {}) }, 60_000);
+        for (const item of page.data ?? [])
+            if (typeof item?.name === 'string' && item.name !== '' && item.name !== 'nodo_lead')
+                names.push(item.name);
+        cursor = page.nextCursor ?? undefined;
+    } while (cursor && names.length < 500);
+    return names;
+}
+export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {}, model, thinking, permission, driverSessionId, name, sessionName, workspaceId, instructions, instructionDir, lead, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -404,6 +461,19 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             detail: isQuestion ? { questions: params.questions } : { command: params.command, cwd: params.cwd },
         });
     };
+    // The catalog entry must be the model the thread itself runs: the profile's
+    // model, or else the top-level model of the user's config.toml. A model set
+    // only in a `[profiles.*]` table never reaches the thread, and switching a
+    // different entry would leave the running model's tools intact.
+    const leaderModel = () => model || codexConfigModels(join(codexHome(), 'config.toml')).find(entry => entry.label === undefined)?.id;
+    const leaderCatalog = async (executable) => {
+        const target = leaderModel();
+        if (!target)
+            throw leadUnavailable('Codex leaders need a model: set one in the profile so its catalog entry can be switched to the routing-only tool mode.');
+        if (!instructionDir)
+            throw leadUnavailable('Codex leaders need the Nodo data directory to store their model catalog.');
+        return writeLeaderCatalog({ executable, model: target, dir: instructionDir, env });
+    };
     const boot = () => {
         if (ready)
             return ready;
@@ -412,12 +482,19 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
         const pending = (async () => {
             if (disposed)
                 throw new Error('Codex driver disposed');
+            // Fail closed: a leader without its mount has no working channel and must
+            // not degrade into an unprivileged plain session.
+            if (lead && !leadMcpServers?.length)
+                throw leadUnavailable('The lead channel is unavailable; the leader session cannot start without its nodo_lead mount.');
             validateWorkspace(cwd, true);
             const executable = findCodexExecutable(bin);
             if (!executable)
                 throw new Error('Codex executable not found. Edit the profile CLI path or install the CLI separately.');
             emit({ type: 'session', state: 'starting' });
-            connection = await connectCodex({ executable, cwd, env, socket,
+            // A leader gets its own app-server: the catalog that drops the built-in
+            // execution tools is read only by a process this driver starts.
+            const catalog = lead ? await leaderCatalog(executable) : undefined;
+            connection = await connectCodex({ executable, cwd, env, socket, ...(catalog ? { catalog } : {}),
                 onNotification: receive, onRequest: ask,
                 onClose(error) {
                     if (peer !== connection)
@@ -441,37 +518,85 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
             // The daemon is shared, so the handshake's own agent string is the only
             // version the driver sees without a second process.
             const version = /(\d[\w.-]*)/.exec(typeof hello?.userAgent === 'string' ? hello.userAgent : '')?.[1];
-            coverage.setIdentity({ transport: 'app-server proxy', ...(version ? { cliVersion: version } : {}) });
+            coverage.setIdentity({ transport: catalog ? 'app-server stdio' : 'app-server proxy', ...(version ? { cliVersion: version } : {}) });
+            // Fail closed: a leader that cannot see the user's servers would start with
+            // all of them exposed, and the thread config cannot be revisited later.
+            let disabledMcp = {};
+            if (lead) {
+                let servers;
+                try {
+                    servers = await listMcpServers(peer);
+                }
+                catch (error) {
+                    throw leadUnavailable(`Codex MCP servers could not be enumerated (${error.message}). Leaders need this list to keep the user's servers out.`);
+                }
+                // Config keys are dotted paths, so a name with a dot, quote or space
+                // would disable another server or nothing at all.
+                const unsupported = servers.find(name => !/^[A-Za-z0-9_-]+$/.test(name));
+                if (unsupported !== undefined)
+                    throw leadUnavailable(`The MCP server ${JSON.stringify(unsupported.slice(0, 80))} cannot be disabled by configuration key. Rename it to letters, digits, "-" and "_" only, or remove it, to use a Codex leader.`);
+                // A config.toml entry has a transport, so the bare `enabled=false` merges
+                // onto it; an injected source (an app or plugin server) has none, and
+                // `enabled=false` alone fails thread/start with `invalid transport` — it
+                // gets a dead placeholder transport instead. The placeholder must never
+                // land on a config-defined server: the deep merge would keep both.
+                const configured = codexConfigMcpServers(join(codexHome(), 'config.toml'));
+                disabledMcp = Object.fromEntries(servers.map(name => configured.includes(name)
+                    ? [`mcp_servers.${name}.enabled`, false]
+                    : [`mcp_servers.${name}`, { enabled: false, url: 'http://127.0.0.1:1/mcp' }]));
+            }
             workspaceId = await ensureCodexWorkspace(peer, { cwd: cwd, name, workspaceId });
             const method = threadId ? 'thread/resume' : 'thread/start';
             const params = { ...(threadId ? { threadId } : { projectId: workspaceId, historyMode: 'paginated' }), cwd, ...(model ? { model } : {}) };
             // The autonomy tier rides the thread params: the sandbox bounds what the
             // engine may touch at all, `never` approval is what makes the top tier full.
+            // A leader asks through nodo_route, not through a native tool, so it does
+            // not get the question routing that points at request_user_input.
+            const developerInstructions = [instructions, lead ? LEAD_TOOL_SEARCH : '', instructions && !lead ? QUESTION_ROUTING : ''].filter(Boolean).join('\n\n');
             const extras = {
                 // The shared daemon keeps the environment it started with, so the HTTP
-                // token rides this thread's config instead of an env var.
-                ...(leadMcpServers?.length ? { config: Object.fromEntries(leadMcpServers.map(server => [`mcp_servers.${server.name}`, {
-                            ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
-                                : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
-                            enabled_tools: LEAD_TOOLS, tools: Object.fromEntries(LEAD_TOOLS.map(tool => [tool, { approval_mode: 'approve' }])),
-                        }])) } : {}),
-                ...(permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access', approvalPolicy: 'never' }
+                // token rides this thread's config instead of an env var. The user's own
+                // servers are disabled by name: the thread config deep-merges.
+                ...(leadMcpServers?.length || Object.keys(disabledMcp).length ? { config: {
+                        ...disabledMcp,
+                        ...Object.fromEntries((leadMcpServers ?? []).map(server => [`mcp_servers.${server.name}`, {
+                                ...('url' in server ? { url: server.url, http_headers: { Authorization: `Bearer ${server.token}` } }
+                                    : { command: server.command, args: server.args, env: Object.fromEntries(server.env.map(({ name, value }) => [name, value])) }),
+                                enabled_tools: server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS,
+                                tools: Object.fromEntries((server.name === 'nodo_worker' ? WORKER_TOOLS : LEAD_TOOLS).map(tool => [tool, { approval_mode: 'approve' }])),
+                            }])),
+                        ...(lead ? LEAD_CONFIG : {}),
+                    } } : {}),
+                // A leader never shows an approval card: its only route is the read-only
+                // sandbox, and a card the user accepts would grant execution.
+                ...(lead || permission === 'full' ? { approvalPolicy: 'never' } : {}),
+                // A leader keeps the read-only sandbox in every tier — routing only.
+                ...(lead || permission === 'plan' ? { sandbox: 'read-only' } : permission === 'full' ? { sandbox: 'danger-full-access' }
                     : permission === 'workspace' ? { sandbox: 'workspace-write' } : {}),
-                ...(instructions ? { developerInstructions: `${instructions}\n\n${QUESTION_ROUTING}` } : {}),
+                ...(developerInstructions ? { developerInstructions } : {}),
             };
             let result;
             resuming = !!threadId;
             try {
-                result = await peer.request(method, { ...params, ...extras });
-                instructionMode = instructions ? 'native' : 'none';
+                try {
+                    result = await peer.request(method, { ...params, ...extras });
+                    instructionMode = developerInstructions ? 'native' : 'none';
+                }
+                catch (error) {
+                    if (!developerInstructions || error.code !== -32602 || !/unknown field\s+[`'"]?developerInstructions\b/i.test(error.message))
+                        throw error;
+                    const fallback = { ...extras };
+                    delete fallback.developerInstructions;
+                    result = await peer.request(method, { ...params, ...fallback });
+                    instructionMode = 'none';
+                }
             }
             catch (error) {
-                if (!instructions || error.code !== -32602 || !/unknown field\s+[`'"]?developerInstructions\b/i.test(error.message))
-                    throw error;
-                const fallback = { ...extras };
-                delete fallback.developerInstructions;
-                result = await peer.request(method, { ...params, ...fallback });
-                instructionMode = 'none';
+                // A rejected thread start is the engine refusing the lockdown, a failure
+                // the leader cannot recover from; report it in the lead-unavailable class.
+                if (lead)
+                    throw leadUnavailable(`Codex ${method} failed (${error.message})`);
+                throw error;
             }
             resuming = false;
             threadId = result.thread.id;
@@ -500,6 +625,7 @@ export function createCodexDriver({ onEvent, bin = 'codex', socket, cwd, env = {
     };
     return {
         get instructionMode() { return connected ? instructionMode : 'none'; },
+        get workerMcpMounted() { return connected && !disposed && Boolean(leadMcpServers?.some(server => server.name === 'nodo_worker')); },
         get coverage() { return coverage; },
         openSession: boot,
         async goals(objective) {

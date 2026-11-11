@@ -17,6 +17,85 @@ const withFixture = async (run) => {
 
 const texts = events => events.filter(event => event.type === 'text').map(event => event.text)
 
+test('Qoder mounts nodo_worker through inline config without isolating user MCP', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('qoder', { bin, cwd, leadMcpServers: [{ name: 'nodo_worker', url: 'http://127.0.0.1:1234/mcp', token: 'fixture-only' }], onEvent: event => events.push(event) })
+    try {
+      assert.equal(driver.workerMcpMounted, false)
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, true)
+      await driver.sendTurn('Hello')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const spawn = readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).find(entry => entry.spawn)
+      assert.deepEqual(JSON.parse(spawn.mcpConfig), { mcpServers: { nodo_worker: { type: 'http', url: 'http://127.0.0.1:1234/mcp', headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } } } })
+      assert.equal(spawn.spawn.includes('--strict-mcp-config'), false)
+      assert.equal(spawn.mcpConfig.includes('fixture-only'), false, 'credentials stay out of argv')
+      assert.equal(await driver.steer('supplement'), 'refused')
+    } finally { driver.dispose() }
+    assert.equal(driver.workerMcpMounted, false)
+  })
+})
+
+test('Qoder waits past the control-request deadline for a slow boot initialize answer', async t => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('qoder', { bin, cwd, env: { QODER_FIXTURE_INIT_DELAY_MS: '50' }, leadMcpServers: [{ name: 'nodo_worker', url: 'http://127.0.0.1:1234/mcp', token: 'fixture-only' }], onEvent: () => {} })
+    // The fixture answers the boot initialize on a real 50ms delay; the mocked
+    // clock proves the answer survives crossing the old 5s deadline inside the boot one.
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    // setTimeout is mocked, so the real-time wait for the request to hit the
+    // wire rides the unmocked setInterval; the fake clock only starts advancing
+    // once the boot deadline is on the wall.
+    const pause = () => new Promise(resolve => { const id = setInterval(() => { clearInterval(id); resolve() }, 10) })
+    const requests = () => existsSync(join(cwd, 'qoder-requests.jsonl')) ? readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8') : ''
+    let opening
+    try {
+      opening = driver.openSession()
+      const wired = Date.now() + 10_000
+      while (!requests().includes('"control":"initialize"') && Date.now() < wired) await pause()
+      assert.ok(requests().includes('"control":"initialize"'), 'the boot initialize control request is on the wire')
+      // No real I/O runs between the wire check and this synchronous crossing
+      // of the old 5s deadline, so the answer is provably still pending here.
+      t.mock.timers.tick(6000)
+      await opening
+      assert.equal(driver.workerMcpMounted, true, 'the slow answer lands inside the boot deadline')
+    } finally { t.mock.timers.reset(); driver.dispose(); await opening?.catch(() => {}) }
+  })
+})
+
+test('Qoder retries without the worker mount only when the CLI rejects --mcp-config', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const events = []
+    const driver = createDriver('qoder', { bin, cwd, env: { QODER_FIXTURE_NO_MCP: '1' }, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: ['fixture.js'], env: [] }], onEvent: event => events.push(event) })
+    try {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      assert.equal(driver.instructionFallback, 'mcp-field-unsupported')
+      await driver.sendTurn('Hello')
+      await until(() => events.some(event => event.type === 'turn/end'))
+      const requests = readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').trim().split('\n').map(JSON.parse)
+      assert.equal(requests.filter(entry => entry.rejectedMcp).length, 1)
+      assert.equal(requests.find(entry => entry.spawn).mcpConfig, undefined)
+      assert.deepEqual(requests.filter(entry => entry.user).map(entry => entry.user), ['Hello'])
+    } finally { driver.dispose() }
+    const failed = createDriver('qoder', { bin, cwd, env: { QODER_FIXTURE_INIT_ERROR: '1' }, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: [], env: [] }] })
+    try { await assert.rejects(failed.openSession(), /Unsupported initialize/) } finally { failed.dispose() }
+  })
+})
+
+test('Qoder never attaches a worker mount to a leader session', async () => {
+  await withFixture(async ({ bin, cwd }) => {
+    const driver = createDriver('qoder', { bin, cwd, lead: true, leadMcpServers: [{ name: 'nodo_worker', command: 'node', args: [], env: [] }] })
+    try {
+      await driver.openSession()
+      assert.equal(driver.workerMcpMounted, false)
+      await until(() => existsSync(join(cwd, 'qoder-requests.jsonl')))
+      const spawn = JSON.parse(readFileSync(join(cwd, 'qoder-requests.jsonl'), 'utf8').trim().split('\n')[0])
+      assert.equal(spawn.spawn.includes('--mcp-config'), false)
+    } finally { driver.dispose() }
+  })
+})
+
 test('Qoder adapter streams whole messages natively and resumes the same CLI session', async () => {
   await withFixture(async ({ bin, cwd }) => {
     const events = []

@@ -59,7 +59,7 @@ export async function initializeAcp(peer, clientCapabilities = {}, clientInfo) {
         throw new Error('Unsupported ACP protocol version');
     return result.agentCapabilities ?? {};
 }
-export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = {}, support) {
+export function createAcpDriver({ onEvent, cwd, driverSessionId, permission, mcpServers = [] } = {}, support) {
     const { id, label } = support;
     const emit = (event) => { try {
         onEvent?.(event);
@@ -75,6 +75,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
     let ready = null;
     let sessionId = driverSessionId;
     let connected = false;
+    let workerMcpMounted = false;
     let promptImages = false;
     let disposed = false;
     let sequence = 0;
@@ -358,6 +359,8 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                 } });
             peer = connection;
             const capabilities = await (support.initialize ?? initializeAcp)(connection);
+            const servers = mcpServers.filter(server => !('url' in server) || capabilities.mcpCapabilities?.http)
+                .map(server => 'url' in server ? { name: server.name, type: 'http', url: server.url, headers: [{ name: 'Authorization', value: `Bearer ${server.token}` }] } : server);
             coverage.setIdentity({ transport: 'acp', ...(support.initialize ? {} : { protocolVersion: 1 }) });
             promptImages = capabilities.promptCapabilities?.image === true;
             let method = 'session/new';
@@ -369,7 +372,20 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
                 else
                     throw new Error(`${label} ACP cannot restore the saved session`);
             }
-            const attached = await connection.request(method, { ...(sessionId ? { sessionId } : {}), cwd, mcpServers: [] }, 30_000);
+            const params = { ...(sessionId ? { sessionId } : {}), cwd };
+            // An agent whose request schema predates `mcpServers` refuses the whole
+            // call instead of ignoring the field, so the mount is retried without it.
+            let mountAccepted = servers.length > 0;
+            let attached;
+            try {
+                attached = await connection.request(method, { ...params, mcpServers: servers }, 30_000);
+            }
+            catch (error) {
+                if (!mountAccepted || error.code !== -32602 || !/unknown field\s+[`'"]?mcpServers\b/i.test(error.message))
+                    throw error;
+                mountAccepted = false;
+                attached = await connection.request(method, params, 30_000);
+            }
             if (!sessionId)
                 sessionId = attached?.sessionId;
             else if (attached?.sessionId && attached.sessionId !== sessionId)
@@ -383,6 +399,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
             if (disposed || peer !== connection)
                 throw new Error(`${label} startup was cancelled`);
             connected = true;
+            workerMcpMounted = mountAccepted && servers.some(server => server.name === 'nodo_worker');
         })();
         const pending = startup.catch(error => {
             if (peer === connection)
@@ -396,6 +413,7 @@ export function createAcpDriver({ onEvent, cwd, driverSessionId, permission } = 
     };
     return {
         get instructionMode() { return connected ? support.instructionMode ?? 'none' : 'none'; },
+        get workerMcpMounted() { return connected && workerMcpMounted; },
         get coverage() { return coverage; },
         openSession: boot,
         async sendTurn(text, images = []) {

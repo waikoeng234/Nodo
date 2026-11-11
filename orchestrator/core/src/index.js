@@ -22,12 +22,17 @@ import * as approvals from './approvals.js'
 import * as prompt from './prompt.js'
 import * as teams from './teams.js'
 import * as tasks from './tasks.js'
+import * as flow from './flow.js'
 import * as decisions from './decisions.js'
+import * as triggers from './triggers.js'
+import * as composeWorkerInput from './compose-worker-input.js'
 import * as lead from './lead.js'
 import * as leadChannel from './lead-channel.js'
+import * as workerChannel from './worker-channel.js'
+import * as workerReports from './worker-reports.js'
 import * as channel from './channel.js'
 
-const MODULES = [diag, store, workspaces, worktrees, profiles, sessions, streamRecords, context, sessionReferences, secrets, drivers, engineSettings, attachments, stats, dispatch, approvals, prompt, teams, tasks, decisions, lead, leadChannel, channel]
+const MODULES = [diag, store, workspaces, worktrees, profiles, sessions, streamRecords, context, sessionReferences, secrets, drivers, engineSettings, attachments, stats, dispatch, approvals, prompt, teams, tasks, flow, decisions, triggers, composeWorkerInput, lead, leadChannel, workerChannel, workerReports, channel]
 
 export async function createRuntime(host, config, plugins = []) {
   const rt = { ctx: host, config, home: config.home }

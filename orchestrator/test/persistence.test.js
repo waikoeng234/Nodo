@@ -276,7 +276,7 @@ test('an answer acknowledged after turn completion is persisted before its reque
   })
 })
 
-test('v5 task and execution records round trip through the installed runtime', async () => {
+test('v6 task and execution records round trip through the installed runtime', async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-tasks-'))
   let host = boot(home)
   try {
@@ -293,8 +293,9 @@ test('v5 task and execution records round trip through the installed runtime', a
     await rt.requestExecutionStop(execution.id)
     await rt.saveStrict()
     let saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-    assert.equal(saved.version, 5)
+    assert.equal(saved.version, 6)
     assert.equal(saved.executions[execution.id].status, 'running')
+    assert.equal(saved.executions[execution.id].stage, 'implement')
     assert.equal(saved.executions[execution.id].model, null)
     assert.equal(saved.executions[execution.id].thinking, null)
     assert.equal(Object.hasOwn(saved.executions[execution.id], 'stopping'), false)
@@ -316,11 +317,11 @@ test('v5 task and execution records round trip through the installed runtime', a
     assert.deepEqual((await rt.taskView(child.id)).dependsOn, [task.id])
     assert.equal(rt.state.executions[execution.id].model, null)
     assert.equal(rt.state.executions[execution.id].thinking, null)
-    assert.equal(existsSync(join(home, 'state.v5.json')), false)
+    assert.equal(existsSync(join(home, 'state.v6.json')), false)
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
-for (const version of [1, 2, 3]) test(`v${version} upgrades to v5 with an exact backup and empty task containers`, async () => {
+for (const version of [1, 2, 3]) test(`v${version} upgrades to v6 with an exact backup and empty task containers`, async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-task-migration-'))
   const source = JSON.stringify({ version, profiles: {}, prefs: { marker: 'keep' } }, null, 2)
   writeFileSync(join(home, 'state.json'), source)
@@ -329,10 +330,42 @@ for (const version of [1, 2, 3]) test(`v${version} upgrades to v5 with an exact 
     const rt = await host.runtime
     assert.equal(readFileSync(join(home, `state.v${version}.json`), 'utf8'), source)
     const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
-    assert.equal(saved.version, 5)
+    assert.equal(saved.version, 6)
     assert.deepEqual(saved.tasks, {})
     assert.deepEqual(saved.executions, {})
+    assert.deepEqual(saved.triggers, {})
+    assert.deepEqual(saved.cards, {})
     assert.equal(rt.state.prefs.marker, 'keep')
+  } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
+})
+
+test('a v5 copy migrates once, stays writable on the second boot and reads old records as frozen', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'nodo-v6-migration-'))
+  const task = { id: 'task', workspaceRef: 'w', teamId: 't', coordinatorSessionId: 'lead', title: 'Legacy', brief: 'Old task', source: { kind: 'user' }, status: 'open', createdAt: 1, updatedAt: 1, acceptances: [] }
+  const execution = { id: 'execution', taskId: 'task', profileId: 'worker', sessionId: 's', type: 'code', hard: false, model: null, thinking: null,
+    status: 'done', createdAt: 1, updatedAt: 1, startedAt: 1, endedAt: 2, reason: 'done', report: 'old', references: [], result: null }
+  const source = JSON.stringify({ version: 5, tasks: { task }, executions: { execution }, prefs: { marker: 'keep' } })
+  writeFileSync(join(home, 'state.json'), source)
+  let host = boot(home)
+  try {
+    let rt = await host.runtime
+    assert.equal(readFileSync(join(home, 'state.v5.json'), 'utf8'), source)
+    const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
+    assert.equal(saved.version, 6)
+    assert.deepEqual(saved.triggers, {})
+    assert.deepEqual(saved.cards, {})
+    assert.equal(saved.prefs.marker, 'keep')
+    for (const key of ['triggerId', 'scope', 'flow']) assert.equal(Object.hasOwn(saved.tasks.task, key), false, 'old tasks keep their shape')
+    assert.equal(saved.executions.execution.stage, 'implement')
+    for (const key of ['triggerId', 'scope', 'supplements', 'reportData', 'evidence']) assert.equal(Object.hasOwn(saved.executions.execution, key), false, 'old executions keep their shape')
+    assert.deepEqual(rt.taskFlowOf(rt.state.tasks.task), { legacy: true, status: 'frozen' })
+    await host.dispose()
+    host = boot(home)
+    rt = await host.runtime
+    assert.equal(existsSync(join(home, 'state.v6.json')), false)
+    rt.state.prefs.marker = 'second boot'
+    await rt.saveStrict()
+    assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).prefs.marker, 'second boot')
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 
@@ -396,7 +429,7 @@ test('v4 loading defaults record fields and conservatively normalizes invalid st
 
 test('newer state blocks strict saves and ordinary saves leave the file untouched', async () => {
   const home = mkdtempSync(join(tmpdir(), 'nodo-future-state-'))
-  const source = JSON.stringify({ version: 6, tasks: { future: { keep: true } } })
+  const source = JSON.stringify({ version: 7, tasks: { future: { keep: true } } })
   writeFileSync(join(home, 'state.json'), source)
   const host = boot(home)
   try {
@@ -405,7 +438,7 @@ test('newer state blocks strict saves and ordinary saves leave the file untouche
     await assert.rejects(rt.saveStrict(), { code: 'orch/read-only' })
     await assert.doesNotReject(rt.save())
     assert.equal(readFileSync(join(home, 'state.json'), 'utf8'), source)
-    assert.equal(existsSync(join(home, 'state.v6.json')), false)
+    assert.equal(existsSync(join(home, 'state.v7.json')), false)
   } finally { await host.dispose(); rmSync(home, { recursive: true, force: true }) }
 })
 

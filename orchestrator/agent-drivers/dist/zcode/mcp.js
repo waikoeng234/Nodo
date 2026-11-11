@@ -14,20 +14,25 @@ const read = (path) => {
 const entries = (object) => Object.entries(object ?? {}).map(([name, value]) => ({ name, value }));
 // session mcpServers replaces configured servers; never discard an option the
 // protocol cannot carry, or bypass project-specific cwd and trust handling.
-export function zcodeMcpServers({ cwd, env = {} }) {
+export function zcodeMcpServers({ cwd, env = {}, includeProject = false }) {
     try {
+        const projects = [];
         for (let path = resolve(cwd);; path = dirname(path)) {
-            for (const file of ['zcode.json', '.zcode/config.json'])
-                if (Object.keys(read(join(path, file)).mcp?.servers ?? {}).length)
+            const servers = Object.assign({}, ...['zcode.json', '.zcode/config.json'].map(file => read(join(path, file)).mcp?.servers));
+            if (Object.keys(servers).length) {
+                if (!includeProject)
                     return;
+                projects.unshift(servers);
+            }
             if (path === dirname(path))
                 break;
         }
         const config = read(join(env.HOME ?? process.env.HOME ?? homedir(), '.zcode/cli/config.json'));
-        if (config.features?.mcp === false || Object.hasOwn(config.mcp?.servers ?? {}, 'nodo_role'))
+        const configured = Object.assign({}, config.mcp?.servers, ...projects);
+        if (config.features?.mcp === false || Object.hasOwn(configured, 'nodo_role'))
             return;
         const servers = [];
-        for (const [name, server] of Object.entries(config.mcp?.servers ?? {})) {
+        for (const [name, server] of Object.entries(configured)) {
             if (server.enabled === false)
                 continue;
             const stdio = server.type === 'stdio' || (!server.type && server.command);

@@ -1,3 +1,4 @@
+import { routeUserTask, userRoute } from './helpers/route.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -14,7 +15,7 @@ const entry = {
   create({ onEvent }) {
     let turn = 0
     const driver = {
-      calls: [], steers: [], active: false, interrupted: 0,
+      calls: [], steers: [], active: false, interrupted: 0, workerMcpMounted: true,
       hasSession: () => true, dispose() {}, onEvent() {},
       async respondToRequest() { return false },
       async openSession() { if (driver.failOpen) throw new Error('Fixture open failure') },
@@ -63,7 +64,7 @@ const withDecisions = (run, repository = false) => withHost(async host => {
   const owner = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
   const other = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
   const api = (name, body = {}) => host.api(name, { profile: lead.id, session: owner.id, ...body })
-  const delegate = (changes = {}) => rt.leadDispatch.delegate(owner.id, { type: 'feature', hard: false, task: 'Implement', ...changes })
+  const delegate = (changes = {}) => routeUserTask(rt, owner.id, { type: 'feature', hard: false, task: 'Implement', ...changes })
   const bindings = [], clients = []
   const client = async (id = owner.id) => {
     const binding = await rt.issueLeadMcp(id), spec = binding.servers[0]
@@ -82,10 +83,10 @@ const withDecisions = (run, repository = false) => withHost(async host => {
 test('MCP open questions omit options and accept a user text answer', () => withDecisions(async ({ rt, owner, api, client }) => {
   const mcp = await client()
   const question = { id: 'scope', question: '需要支持哪些调用方？', whyUser: '当前用户指令没有说明新增支持范围' }
-  const empty = await mcp.callTool({ name: 'nodo_decision', arguments: { questions: [{ ...question, options: [] }], stopExecutionIds: [] } })
+  const empty = await mcp.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...{ questions: [{ ...question, options: [] }], stopExecutionIds: [] }  }})
   assert.equal(empty.isError, true)
   assert.match(empty.content[0].text, /options 不能为空/)
-  const result = await mcp.callTool({ name: 'nodo_decision', arguments: { questions: [question], stopExecutionIds: [] } })
+  const result = await mcp.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...{ questions: [question], stopExecutionIds: [] }  }})
   assert.notEqual(result.isError, true)
   const { decisionId } = JSON.parse(result.content[0].text)
   assert.deepEqual(rt.getDecision(owner.id, decisionId).questions, [question])
@@ -97,7 +98,7 @@ test('MCP open questions omit options and accept a user text answer', () => with
 
 test('MCP decision file-path references report actionable errors and allow retry without references', () => withDecisions(async ({ rt, owner, client }) => {
   const mcp = await client()
-  const result = await mcp.callTool({ name: 'nodo_decision', arguments: { ...request, references: ['src/ledger.js'] } })
+  const result = await mcp.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...{ ...request, references: ['src/ledger.js'] }  }})
   assert.equal(result.isError, true)
   const message = result.content[0].text
   assert.match(message, /references/)
@@ -106,7 +107,7 @@ test('MCP decision file-path references report actionable errors and allow retry
   assert.match(message, /不是文件路径.*没有.*省略/)
   assert.deepEqual(rt.state.decisions, {})
   assert.equal(rt.sessionBlockReason(owner.id), undefined)
-  const retry = await mcp.callTool({ name: 'nodo_decision', arguments: request })
+  const retry = await mcp.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...request  }})
   assert.notEqual(retry.isError, true)
   assert.equal(rt.sessionBlockReason(owner.id).decisionId, JSON.parse(retry.content[0].text).decisionId)
 }))
@@ -155,7 +156,8 @@ test('a decision established during worker preparation cancels unsent work witho
   assert.equal(execution.status, 'cancelled', 'a pre-send decision refusal must cancel instead of failing the execution')
   assert.equal(execution.reason, 'orch/decision-pending')
   assert.equal(execution.startedAt, null)
-  assert.notEqual(rt.state.tasks[receipt.taskId].status, 'blocked')
+  assert.equal(rt.state.tasks[receipt.taskId].status, 'blocked')
+  assert.equal(rt.state.tasks[receipt.taskId].flow.stalled.reason, 'execution-failed')
   assert.equal(rt.driverOf(receipt.session).calls.length, 0)
   assert.equal(rt.transcriptOf(receipt.session).some(line => line.kind === 'error'), false)
   assert.equal(rt.leadRetryWaiting(receipt.session), false)
@@ -218,14 +220,14 @@ test('delivered reports require review, queued reports allow parallel work, and 
   await rt.followLead(owner.id, turn())
   const executor = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
   assert.doesNotMatch(executor.calls[0], /authoriz/)
-  assert.match(executor.calls[0], /list it in the report with the possible approaches/)
+  assert.match(executor.calls[0], /# 回报方式[\s\S]*nodo_report/)
   await api('send', { text: 'Plan parallel work' })
   const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
   executor.finish('error', false, true)
   await until(() => rt.conversationOf(owner.id).session.reportQueue?.[0]?.text)
   assert.equal(rt.state.executions[first.executionId].reports, undefined)
   const parallel = await delegate({ task: 'Independent queued work' })
-  const premature = await primary.callTool({ name: 'nodo_task', arguments: { action: 'review', taskId: first.taskId, executionId: first.executionId, disposition: 'continue', reason: 'Checked', basis: ['user request'] } })
+  const premature = await primary.callTool({ name: 'nodo_review', arguments: { executionId: first.executionId, disposition: 'continue', reason: 'Checked', basis: ['user request'] } })
   assert.equal(premature.isError, true)
   leader.finish()
   const execution = rt.state.executions[first.executionId]
@@ -236,34 +238,37 @@ test('delivered reports require review, queued reports allow parallel work, and 
   assert.equal(report.sessionId, first.session)
   assert.equal(rt.state.executions[parallel.executionId].status, 'running', 'previously accepted parallel work is sent normally')
   const before = [Object.keys(rt.state.tasks).length, Object.keys(rt.state.executions).length, rt.findProfile(worker.id).sessions.length]
-  const blocked = await primary.callTool({ name: 'nodo_delegate', arguments: { type: 'feature', hard: false, task: 'Blocked', worktree: true } })
+  const blocked = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { type: 'feature', hard: false, task: 'Blocked', worktree: true } )})
   assert.equal(JSON.parse(blocked.content[0].text).code, 'orch/report-unreviewed')
   assert.deepEqual([Object.keys(rt.state.tasks).length, Object.keys(rt.state.executions).length, rt.findProfile(worker.id).sessions.length], before)
   assert.match(rt.leadSnapshot(owner.id), new RegExp(report.id))
-  const review = { action: 'review', taskId: first.taskId, executionId: first.executionId, disposition: 'continue', reason: 'Matches authorized scope', basis: ['current user request', report.id] }
+  const review = { executionId: first.executionId, disposition: 'continue', reason: 'Matches authorized scope', basis: ['current user request', report.id] }
   for (const changes of [{ basis: [] }, { basis: [' '] }, { reason: ' ' }, { disposition: 'ask' }, { executionId: parallel.executionId }]) {
-    assert.equal((await primary.callTool({ name: 'nodo_task', arguments: { ...review, ...changes } })).isError, true)
+    assert.equal((await primary.callTool({ name: 'nodo_review', arguments: { ...review, ...changes } })).isError, true)
   }
-  assert.equal((await foreign.callTool({ name: 'nodo_task', arguments: review })).isError, true)
+  assert.equal((await foreign.callTool({ name: 'nodo_review', arguments: review })).isError, true)
   const status = rt.state.tasks[first.taskId].status
-  assert.equal((await primary.callTool({ name: 'nodo_task', arguments: review })).isError, undefined)
+  assert.equal((await primary.callTool({ name: 'nodo_review', arguments: review })).isError, undefined)
   assert.equal(rt.state.tasks[first.taskId].status, status)
   assert.deepEqual(report.review.basis, review.basis)
   const next = await delegate({ task: 'Authorized next step' })
   leader.finish()
   await until(() => !rt.workView()[owner.id]?.active && rt.driverOf(next.session)?.active)
-  await host.api('send', { profile: worker.id, session: first.session, text: 'Additional evidence' })
+  const card = Object.values(rt.state.cards).find(item => item.taskId === first.taskId && item.status === 'open')
+  await rt.answerFlowCard(owner.id, { cardId: card.id, action: 'retry' })
+  const retry = Object.values(rt.state.executions).findLast(item => item.taskId === first.taskId)
+  assert.notEqual(retry.id, execution.id)
   await until(() => executor.active)
   executor.finish()
-  await until(() => execution.reports.length === 2)
-  await rt.completeTask(first.taskId, { reason: 'Verified', executionIds: [execution.id], basis: ['Verified result'] })
-  assert.equal(execution.reports[1].review, undefined)
+  await until(() => retry.reports?.length === 1)
+  await rt.completeTask(first.taskId, { reason: 'Verified', executionIds: [execution.id, retry.id], basis: ['Verified result'] })
+  assert.equal(retry.reports[0].review, undefined)
   await assert.rejects(delegate(), { code: 'orch/report-unreviewed' })
-  const investigation = { ...review, disposition: 'investigate', reason: 'Check the missing compatibility evidence before implementation', basis: [`execution:${execution.id}:result`] }
-  assert.equal((await primary.callTool({ name: 'nodo_task', arguments: investigation })).isError, undefined)
+  const investigation = { ...review, executionId: retry.id, disposition: 'continue', reason: 'Check the missing compatibility evidence before implementation', basis: [`execution:${retry.id}:result`] }
+  assert.equal((await primary.callTool({ name: 'nodo_review', arguments: investigation })).isError, undefined)
   assert.equal(rt.state.tasks[first.taskId].status, 'done', 'review of a supplement needs no reopen')
   assert.equal(execution.reports[0].review.disposition, 'continue')
-  assert.equal(execution.reports[1].review.disposition, 'investigate')
+  assert.equal(retry.reports[0].review.disposition, 'continue')
   assert.deepEqual(rt.state.decisions, {}, 'investigation does not fabricate a user answer')
   await delegate({ task: 'Investigate the missing facts' })
   await rt.saveStrict()
@@ -290,9 +295,9 @@ test('decision ask links delivered sources atomically; board and snapshots stay 
   assert.deepEqual(rt.state.decisions, {})
   assert.equal(execution.reports[0].review, undefined)
   rt.saveStrict = save
-  await rt.leadTask(owner.id, { action: 'review', taskId: first.taskId, executionId: first.executionId, disposition: 'investigate',
+  await rt.leadReview(owner.id, { executionId: first.executionId, disposition: 'investigate', questions: ['Which compatibility evidence is missing?'],
     reason: 'Investigate the compatibility choice', basis: ['user compatibility requirement'] })
-  const result = await primary.callTool({ name: 'nodo_decision', arguments: { ...request, executionIds: [first.executionId], taskIds: [first.taskId] } })
+  const result = await primary.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...{ ...request, executionIds: [first.executionId], taskIds: [first.taskId] }  }})
   assert.equal(result.isError, undefined, result.content[0].text)
   const { decisionId } = JSON.parse(result.content[0].text)
   assert.equal(execution.reports[0].review.disposition, 'ask')
@@ -322,7 +327,7 @@ test('decision ask picks unreviewed reports first, else the newest, and restores
     reports: [{ id: 'report-1', deliveredAt: 2, sessionId: 'worker-session', summary: 'First', status: 'done', references: [] },
       { id: 'report-2', deliveredAt: 3, sessionId: 'worker-session', summary: 'Second', status: 'done', references: [] }] }
   rt.state.executions[execution.id] = execution
-  await rt.leadTask(owner.id, { action: 'review', taskId: task.id, executionId: execution.id, disposition: 'continue', reason: 'Checked', basis: ['evidence'] })
+  await rt.leadReview(owner.id, { executionId: execution.id, disposition: 'continue', reason: 'Checked', basis: ['evidence'] })
   delete execution.reports[0].review
   const save = rt.saveStrict
   rt.saveStrict = async () => { throw new Error('Fixture ask save failure') }
@@ -402,7 +407,7 @@ test('upgrading a delivered historical report does not backfill review or block 
     assert.equal(recovered.conversationOf(owner.id).session.reportQueue, undefined, 'the historical report was processed')
     assert.equal(recovered.state.executions[first.executionId].reports, undefined)
     assert.equal(recovered.transcriptOf(owner.id).filter(item => item.origin?.reportId === line.origin.reportId).length, 1)
-    assert.equal((await recovered.leadDispatch.delegate(owner.id, { type: 'feature', hard: false, task: 'Authorized work after upgrade' })).status, 'queued')
+    assert.equal((await routeUserTask(recovered, owner.id, { type: 'feature', hard: false, task: 'Authorized work after upgrade' })).status, 'queued')
   } finally { await restarted.dispose() }
 }))
 
@@ -418,7 +423,7 @@ test('pending is durable before queued cancellation; old worktree is removed and
     observed = Object.values(saved.decisions)[0].status === 'pending'
     return cancel(...args)
   }
-  const result = await primary.callTool({ name: 'nodo_decision', arguments: request })
+  const result = await primary.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...request  }})
   assert.equal(result.isError, undefined, result.content[0].text)
   const decision = JSON.parse(result.content[0].text)
   assert.equal(observed, true)
@@ -431,7 +436,7 @@ test('pending is durable before queued cancellation; old worktree is removed and
   for (let index = 0; index < 26; index++) await assert.rejects(delegate({ worktree: true }), { code: 'orch/decision-pending', decisionId: decision.decisionId })
   assert.equal(rt.state.profiles[worker.id].sessions.length, count)
   assert.equal(Object.keys(rt.state.executions).length, 1)
-  const blocked = await primary.callTool({ name: 'nodo_delegate', arguments: { type: 'feature', hard: false, task: 'Forbidden' } })
+  const blocked = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { type: 'feature', hard: false, task: 'Forbidden' } )})
   assert.equal(JSON.parse(blocked.content[0].text).code, 'orch/decision-pending')
   await api('decision-cancel', { decisionId: decision.decisionId })
   for (let index = 0; index < 5; index++) await delegate()
@@ -446,7 +451,7 @@ test('leader boundary validates schema, ownership, references and forbids answer
     { ...request, questions: [{ ...request.questions[0], recommendation: { optionId: 'missing', reason: 'Why' } }] },
     { ...request, taskIds: [foreign.id] }, { ...request, executionIds: ['missing'] },
     { ...request, stopExecutionIds: ['missing'] }, { ...request, references: ['missing'] },
-  ]) assert.equal((await primary.callTool({ name: 'nodo_decision', arguments: args })).isError, true)
+  ]) assert.equal((await primary.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...args  }})).isError, true)
   assert.deepEqual(rt.state.decisions, {})
   const first = await rt.createDecision(owner.id, request)
   assert.equal((await rt.createDecision(owner.id, request)).decisionId, first.decisionId)
@@ -454,7 +459,7 @@ test('leader boundary validates schema, ownership, references and forbids answer
   assert.equal(changed.decisionId, first.decisionId)
   assert.match(changed.message, /不能覆盖/)
   assert.equal(Object.keys(rt.state.decisions).length, 1)
-  for (const name of ['decision-answer', 'decision-cancel', 'nodo_decision_answer']) assert.equal((await primary.callTool({ name, arguments: { decisionId: first.decisionId, answers } })).isError, true)
+  for (const name of ['decision-answer', 'decision-cancel', `nodo_${'decision_answer'}`]) assert.equal((await primary.callTool({ name, arguments: { decisionId: first.decisionId, answers } })).isError, true)
   await assert.rejects(api('decision-get', { session: other.id, decisionId: first.decisionId }), /不属于本会话/)
   await assert.rejects(api('decision-answer', { session: other.id, decisionId: first.decisionId, answers }), /不属于本会话/)
   await assert.rejects(api('decision-cancel', { session: other.id, decisionId: first.decisionId }), /不属于本会话/)
@@ -525,6 +530,33 @@ test('answers queue behind the old turn without steering, then enter a new confi
   rt.driverOf(fresh.session).finish()
   await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.executionId === fresh.executionId))
   leader.finish()
+}))
+
+test('sending a queued message after the leader goes idle writes at and id back, so trigger handles stay resolvable', () => withDecisions(async ({ rt, owner, lead, api }) => {
+  await api('send', { text: 'Plan' })
+  const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
+  const placed = await rt.send(lead.id, 'Queued original', owner.id, [], [], { queue: true, userInput: true, origin: { kind: 'user' } })
+  assert.equal(placed.mode, 'queued')
+  const compacting = rt.isCompacting
+  let liveNotifications = 0
+  const notifyLive = rt.notifyLive
+  rt.notifyLive = (...args) => { liveNotifications++; return notifyLive?.(...args) }
+  rt.isCompacting = () => true
+  leader.finish()
+  // The end handler runs its final stretch (drain included) after an async
+  // save; notifyLive fires right after that drain, so an extra notification
+  // proves the patched-off drain already ran and kept the item queued.
+  const baseline = liveNotifications
+  await until(() => liveNotifications > baseline)
+  rt.isCompacting = compacting
+  rt.notifyLive = notifyLive
+  assert.equal(rt.workView()[owner.id]?.queued, 1, 'drain skipped while compacting, so the item stays queued while idle')
+  await rt.queuedMessage(lead.id, owner.id, placed.seq, 'send')
+  await until(() => rt.driverOf(owner.id)?.active)
+  const pending = rt.pendingTriggerOf(owner.id)
+  assert.match(pending.handle, new RegExp(`^message:${owner.id}:\\d+:[0-9a-f]{8}$`))
+  leader.finish()
+  await until(() => !rt.workView()[owner.id]?.active)
 }))
 
 for (const mode of ['open', 'send', 'after-start', 'before-start']) test(`answer handoff requires accepted send and actual turn start (${mode})`, () => withDecisions(async ({ rt, owner, api, delegate }) => {

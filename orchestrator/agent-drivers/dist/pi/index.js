@@ -1,10 +1,12 @@
-import { statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { STEER, addUsage, promptTokensOf, steerFailed, usageOf } from '../spi.js';
 import { checkCliBase, cliVersion, findExecutable, invalidConfig, validateBin, validateWorkspace } from '../cli.js';
 import { createCoverage, DECLARED } from '../coverage.js';
 import { createFileChanges, replacementEdit } from '../file-changes.js';
 import { piArgs, connectPi } from './native.js';
+import { leadMcpEnv } from '../claude/native.js';
 export const piInfo = {
     id: 'pi', label: 'Pi', command: 'pi', requiresCwd: true,
     description: 'Uses the local pi CLI with its configured model providers; sessions live in the shared pi store.',
@@ -170,7 +172,7 @@ const promptTokens = (raw) => promptTokensOf([raw?.input, raw?.cacheRead, raw?.c
 const textOf = (message) => (Array.isArray(message?.content) ? message.content : [])
     .filter(block => block?.type === 'text' && typeof block.text === 'string')
     .map(block => block.text).join('');
-export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions } = {}) {
+export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, permission, driverSessionId, instructions, lead, leadMcpServers } = {}) {
     const emit = (event) => { try {
         onEvent?.(event);
     }
@@ -179,6 +181,9 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     let ready = null;
     let sessionId = driverSessionId;
     let connected = false;
+    const workerServers = lead ? [] : leadMcpServers?.filter(server => server.name === 'nodo_worker');
+    let extensionDir;
+    let mcpUnsupported = false;
     let disposed = false;
     let sequence = 0;
     let rpcSeq = 0;
@@ -415,26 +420,53 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
             if (!executable)
                 throw new Error('pi CLI executable not found. Install pi or edit the profile CLI path.');
             emit({ type: 'session', state: 'starting' });
-            connection = connectPi({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId, permission }), cwd, env,
-                onFrame: receive,
-                onClose(error) {
-                    if (peer !== connection)
-                        return;
+            let state;
+            for (;;) {
+                const servers = mcpUnsupported ? undefined : workerServers;
+                let extension;
+                if (servers?.length) {
+                    extensionDir ??= mkdtempSync(join(tmpdir(), 'nodo-pi-worker-'));
+                    extension = join(extensionDir, 'worker.mjs');
+                    rmSync(join(extensionDir, 'ready'), { force: true });
+                    const configs = servers.map(server => [server.name, { exposure: 'direct', ...('url' in server
+                                ? { url: server.url, headers: { Authorization: 'Bearer ${NODO_LEAD_TOKEN}' } }
+                                : { command: server.command, args: server.args, env: Object.fromEntries(server.env.filter(({ name }) => !/^NODO_(LEAD|WORKER)_/.test(name)).map(({ name, value }) => [name, value])) }) }]);
+                    writeFileSync(extension, `import { writeFileSync } from 'node:fs'\nexport default pi => {\n  if (typeof pi.registerMcpServer !== 'function') return\n  for (const [name, config] of ${JSON.stringify(configs)}) pi.registerMcpServer(name, config)\n  writeFileSync(${JSON.stringify(join(extensionDir, 'ready'))}, '', { mode: 0o600 })\n}\n`, { mode: 0o600 });
+                }
+                connection = connectPi({ executable, args: piArgs({ model, thinking, instructions, driverSessionId: sessionId, permission, extension }), cwd, env: { ...env, ...leadMcpEnv(servers) },
+                    onFrame: receive,
+                    onClose(error) {
+                        if (peer !== connection)
+                            return;
+                        peer = null;
+                        ready = null;
+                        connected = false;
+                        dropCommands(error.message);
+                        closeRequests();
+                        if (running?.started)
+                            end('error', error.message);
+                        emit({ type: 'session', state: 'closed' });
+                    } });
+                if (disposed) {
+                    connection.dispose();
+                    throw new Error('pi driver disposed');
+                }
+                peer = connection;
+                try {
+                    await connection.running;
+                    state = await command('get_state', {}, 20_000);
+                    if (extension && !existsSync(join(extensionDir, 'ready')))
+                        throw new Error('pi worker MCP registration unavailable');
+                    break;
+                }
+                catch (error) {
+                    if (!extension || !/(?:unknown|unrecognized|unsupported) (?:option|argument)[^\n]*--extension|^pi worker MCP registration unavailable$/i.test(error.message))
+                        throw error;
+                    mcpUnsupported = true;
+                    peer?.dispose();
                     peer = null;
-                    ready = null;
-                    connected = false;
-                    dropCommands(error.message);
-                    closeRequests();
-                    if (running?.started)
-                        end('error', error.message);
-                    emit({ type: 'session', state: 'closed' });
-                } });
-            if (disposed) {
-                connection.dispose();
-                throw new Error('pi driver disposed');
+                }
             }
-            peer = connection;
-            await connection.running;
             if (disposed)
                 throw new Error('pi driver disposed');
             // get_state carries no CLI version, so the identity probe is its own
@@ -443,12 +475,12 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
             if (disposed)
                 throw new Error('pi driver disposed');
             coverage.setIdentity({ transport: 'rpc', ...(version ? { cliVersion: version } : {}) });
-            const state = await command('get_state', {}, 20_000);
             if (typeof state.sessionId === 'string' && state.sessionId !== '')
                 sessionId = state.sessionId;
             if (typeof state.model?.contextWindow === 'number')
                 contextSize = state.model.contextWindow;
             connected = true;
+            ready ??= Promise.resolve();
             emit({ type: 'session', state: 'ready', sessionId });
         })().catch(error => {
             if (peer === connection) {
@@ -465,6 +497,8 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
     };
     return {
         get instructionMode() { return connected && instructions ? 'native' : 'none'; },
+        get workerMcpMounted() { return connected && Boolean(workerServers?.length) && !mcpUnsupported; },
+        get instructionFallback() { return mcpUnsupported ? 'mcp-field-unsupported' : undefined; },
         get coverage() { return coverage; },
         openSession: boot,
         async sendTurn(text, images = []) {
@@ -571,6 +605,7 @@ export function createPiDriver({ onEvent, bin, cwd, env = {}, model, thinking, p
         },
         onEvent() { throw new Error('Pass onEvent to createPiDriver'); },
         hasSession() { return connected; },
-        dispose() { disposed = true; dropCommands('pi driver disposed'); end('interrupted'); peer?.dispose(); },
+        dispose() { disposed = true; connected = false; dropCommands('pi driver disposed'); end('interrupted'); peer?.dispose(); if (extensionDir)
+            rmSync(extensionDir, { recursive: true, force: true }); },
     };
 }

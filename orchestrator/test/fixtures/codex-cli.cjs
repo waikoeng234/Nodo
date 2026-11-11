@@ -6,8 +6,19 @@ const { createServer } = require('node:http')
 const { createRequire } = require('node:module')
 const { join } = require('node:path')
 const { homedir } = require('node:os')
-const { appendFileSync } = require('node:fs')
+const { appendFileSync, readFileSync } = require('node:fs')
+const FIXTURE_CATALOG = { models: [
+  { slug: 'fixture-model', display_name: 'Fixture Model', description: 'fixture', tool_mode: 'code_mode_only', multi_agent_version: 'v2', shell_type: 'unified_exec', priority: 1 },
+  { slug: 'other-model', display_name: 'Other Model', description: 'fixture', tool_mode: 'code_only', multi_agent_version: 'v1', shell_type: 'unified_exec', priority: 2 },
+] }
 if (process.argv.includes('--version')) { console.log('codex-cli fixture'); process.exit(0) }
+if (process.env.CODEX_FIXTURE_SPAWN_LOG) appendFileSync(process.env.CODEX_FIXTURE_SPAWN_LOG, JSON.stringify({ pid: process.pid, argv: process.argv.slice(2) }) + '\n')
+if (process.argv.includes('debug') && process.argv.includes('models')) {
+  if (process.env.CODEX_FIXTURE_MODELS_STDERR) process.stderr.write(process.env.CODEX_FIXTURE_MODELS_STDERR + '\n')
+  if (process.env.CODEX_FIXTURE_MODELS_ERROR) process.exit(1)
+  process.stdout.write(process.env.CODEX_FIXTURE_MODELS_JSON ?? JSON.stringify(FIXTURE_CATALOG))
+  process.exit(0)
+}
 if (process.argv.includes('daemon')) process.exit(0)
 let connection
 const send = message => connection ? connection.send(JSON.stringify(message)) : process.stdout.write(JSON.stringify(message) + '\n')
@@ -33,6 +44,38 @@ const answer = text => {
   note('item/completed', { turnId: turn, item: { id: 'message-' + turn, type: 'agentMessage', text } })
   reportUsage()
   done()
+}
+// The real app-server derives the model-visible surface from the catalog entry
+// the leader process was started with, and it fails open: an unknown tool_mode
+// is direct, an unknown multi_agent_version still ships agent tools. Deriving
+// it here is what makes the frozen surface assertion a real guard.
+const catalogArg = process.argv.find(arg => arg.startsWith('model_catalog_json='))
+// The -c value is the path as a quoted string, which the real CLI parses as TOML.
+const surfaceOf = params => {
+  if (!catalogArg) return undefined
+  // The surface belongs to the model the thread actually runs; a thread/start
+  // without one gets a clearly different surface instead of a default guess.
+  if (!params.model) return { tools: ['no-model-in-thread-start'], allTools: [] }
+  let entry
+  try { entry = JSON.parse(readFileSync(JSON.parse(catalogArg.slice('model_catalog_json='.length)), 'utf8')).models?.find(model => model.slug === params.model) } catch { }
+  if (!entry) return { tools: [`catalog-missing-${params.model}`], allTools: [] }
+  const codeMode = entry?.tool_mode === 'code_mode' || entry?.tool_mode === 'code_mode_only'
+  const agentTools = entry?.multi_agent_version === 'disabled' ? [] : entry?.multi_agent_version === 'v2'
+    ? ['collaboration.spawn_agent', 'collaboration.send_message'] : ['multi_agent_v1.spawn_agent', 'multi_agent_v1.send_input']
+  const mounted = Object.entries(params.config ?? {}).flatMap(([key, value]) => {
+    const server = /^mcp_servers\.(.+)$/.exec(key)?.[1]
+    return !server || !value || typeof value !== 'object' || value.enabled === false || !Array.isArray(value.enabled_tools) ? []
+      : value.enabled_tools.map(tool => `mcp__${server}__${tool}`)
+  })
+  const base = ['apply_patch', 'clock__curr_time', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource']
+  // The real CLI ships the standalone web channel web__run (a live network
+  // call) unless the thread config carries the root `web_search` value;
+  // `tools.web_search` does not reach it.
+  const webRun = params.config?.web_search === 'disabled' ? [] : ['web__run']
+  const tools = codeMode
+    ? [...base, 'exec', 'wait', 'request_user_input', 'request_user_input_async', ...agentTools, ...webRun, ...(entry?.supports_search_tool === false ? [] : ['tool_search'])]
+    : [...base, ...webRun, ...(entry?.supports_search_tool === false ? [] : ['tool_search'])]
+  return { tools: tools.sort(), allTools: codeMode ? [...base, ...mounted, ...webRun].sort() : [] }
 }
 const receive = line => {
   const message = JSON.parse(line)
@@ -67,6 +110,14 @@ const receive = line => {
     return
   }
   if (method === 'account/read') { send({ id, result: { account: { type: 'chatgpt', email: 'private@example.test' }, requiresOpenaiAuth: true } }); return }
+  if (method === 'mcpServerStatus/list') {
+    appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
+    if (process.env.CODEX_FIXTURE_MCP_ERROR) { send({ id, error: { message: process.env.CODEX_FIXTURE_MCP_ERROR } }); return }
+    let servers = JSON.parse(process.env.CODEX_FIXTURE_MCP_SERVERS ?? '[]')
+    // The apps connector injects codex_apps only while the process-level feature is on.
+    if (process.argv.includes('features.apps=false')) servers = servers.filter(item => item.name !== 'codex_apps')
+    send({ id, result: { data: servers, nextCursor: null } }); return
+  }
   if (method === 'model/list') {
     send({ id, result: { data: [
       { id: 'fixture-model', model: 'fixture-model', displayName: 'Fixture Model', description: 'fixture', hidden: false, isDefault: true,
@@ -90,7 +141,7 @@ const receive = line => {
   if (method === 'project/create') { send({ id, result: { project: { id: 'fixture-project' } } }); return }
   if (['thread/metadata/update', 'thread/name/set'].includes(method)) { send({ id, result: {} }); return }
   if (method === 'thread/start' || method === 'thread/resume') {
-    appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params }) + '\n')
+    appendFileSync(join(process.cwd(), 'codex-requests.jsonl'), JSON.stringify({ method, params, surface: surfaceOf(params) }) + '\n')
     if (params.config && process.env.CODEX_FIXTURE_REJECT_CONFIG) {
       send({ id, error: { code: -32602, message: 'unknown field `config`' } }); return
     }

@@ -15,11 +15,13 @@ import type { EngineScanOptions, ModelCatalog } from '../index.js'
 import type { JsonRpcPeer } from '../json-rpc-process.js'
 import type { IdentityFiles } from '../identity-files.js'
 import type { SkillInventory } from '../skills.js'
+import type { McpMount } from '../role-mcp.js'
 
 export type OpencodeOptions = { bin?: string }
 export type OpencodeDriverOptions = AcpDriverOptions & {
   bin?: string; env?: NodeJS.ProcessEnv; model?: string; thinking?: string; instructions?: string
   instructionDir?: string; identityFiles?: IdentityFiles; identityOwner?: string
+  leadMcpServers?: McpMount[]
 }
 type OpencodeSession = { sessionId?: unknown; configOptions?: AcpConfigOption<unknown>[] | null }
 
@@ -199,9 +201,9 @@ const opencodeCommandBody = (name: string, cwd?: string) => {
   return readFileSync(entry.path, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
 }
 
-export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, thinking, instructions, instructionDir, identityFiles, identityOwner, ...options }: OpencodeDriverOptions = {}) {
+export function createOpencodeDriver({ bin = 'opencode', cwd, env = {}, model, thinking, instructions, instructionDir, identityFiles, identityOwner, leadMcpServers, ...options }: OpencodeDriverOptions = {}) {
   const identity = opencodeInstructions(instructions, env, instructionDir, identityFiles, identityOwner)
-  return createAcpDriver({ ...options, cwd }, {
+  return createAcpDriver({ ...options, cwd, mcpServers: leadMcpServers ?? options.mcpServers }, {
     id: 'opencode', label: 'OpenCode', resumeMethod: 'load', fileChanges: true, compact: opencodeCompact,
     get instructionMode() { return identity.mode },
     dispose: () => identity.dispose(),

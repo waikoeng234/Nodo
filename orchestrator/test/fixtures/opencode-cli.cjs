@@ -7,6 +7,7 @@ const log = entry => appendFileSync('opencode-requests.jsonl', JSON.stringify(en
 let next = 0
 const session = 'fixture-oc-session'
 let prompt = null // { id, text, cancel: () => {} }
+let mcpServers = []
 const MODELS = [
   { value: 'fixture/one', name: 'fixture/Model One' },
   { value: 'fixture/two', name: 'fixture/Model Two' },
@@ -53,12 +54,14 @@ const settle = (text, delay = 30) => {
   }, delay)
   prompt.cancel = () => { clearTimeout(timer); finish('cancelled') }
 }
-const receive = line => {
+const receive = async line => {
   const message = JSON.parse(line)
   const { id, method, params = {} } = message
-  if (method === 'initialize') { reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] }); return }
+  if (method === 'initialize') { reply(id, { protocolVersion: 1, agentCapabilities: { loadSession: true, mcpCapabilities: { http: !process.env.ACP_FIXTURE_NO_HTTP } }, authMethods: [] }); return }
   if (method === 'session/new' || method === 'session/load') {
-    log({ method, sessionId: params.sessionId, cwd: params.cwd })
+    mcpServers = params.mcpServers ?? []
+    log({ method, sessionId: params.sessionId, cwd: params.cwd, mcpServers: params.mcpServers })
+    if (process.env.ACP_FIXTURE_NO_MCP_FIELD && params.mcpServers !== undefined) { send({ jsonrpc: '2.0', id, error: { code: -32602, message: 'Invalid params: unknown field `mcpServers`' } }); return }
     if (process.env.OPENCODE_CONFIG_CONTENT) {
       const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT)
       for (const mode of ['build', 'plan']) if (config.agent?.[mode]?.prompt) log({ method: 'native/instructions', mode, prompt: config.agent[mode].prompt.replace(/\{file:([^}]+)\}/g, (_, path) => readFileSync(path, 'utf8')), config })
@@ -76,6 +79,7 @@ const receive = line => {
   }
   if (method === 'session/cancel') { prompt?.cancel(); return }
   if (method === 'session/prompt') {
+    if (process.env.ACP_WORKER_HELPER && mcpServers.some(server => server.name === 'nodo_worker')) log(await require(process.env.ACP_WORKER_HELPER)(mcpServers))
     log({ method, text: params.prompt?.[0]?.text })
     prompt = { id, text: params.prompt?.[0]?.text ?? '' }
     const text = prompt.text

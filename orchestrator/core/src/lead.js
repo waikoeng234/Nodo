@@ -1,8 +1,8 @@
-import { TASK_TEXT_MAX, TRANSCRIPT_TEXT_MAX, RESULT_TEXT_MAX, RESULTS_TEXT_MAX, RUN_LIMITS, INPUT_CONTEXT_MAX, CONTEXT_SELECT_MAX, BACKGROUND_TEXT_MAX } from './constants.js'
+import { TRANSCRIPT_TEXT_MAX, RESULT_TEXT_MAX, RESULTS_TEXT_MAX, RUN_LIMITS, INPUT_CONTEXT_MAX, SCOPE_NOTE_MAX, REVIEW_QUESTIONS_MAX, REVIEW_QUESTION_MAX, TRIGGER_TEXT_TOTAL_MAX } from './constants.js'
 import { clip } from './text.js'
 import { route } from '../shared/route.js'
 import { leadModeOf } from '../shared/lead.js'
-import { invalid } from './errors.js'
+import { invalid, failure } from './errors.js'
 import { randomUUID } from 'node:crypto'
 import { executionResultOf, executionResultView } from './tasks.js'
 import { leadRules } from './lead-rules.js'
@@ -34,9 +34,9 @@ export function install(rt) {
     const task = rt.state.tasks[execution.taskId]
     const firstLine = task.brief.trim().split(/\r?\n/, 1)[0]
     const workspace = rt.state.workspaces[execution.workspaceRef ?? task.workspaceRef]
-    const branch = execution.workspaceRef ? workspace?.worktree?.branch : undefined
+    const branch = execution.workspaceRef && execution.workspaceRef !== task.workspaceRef ? workspace?.worktree?.branch : undefined
     return { type: execution.type, hard: execution.hard, ...(branch ? { branch } : {}), directory: workspace ? branch ?? '共享' : '已删除', task: firstLine.length > 160 ? `${firstLine.slice(0, 159)}…` : firstLine,
-      acceptedAt: execution.createdAt, ...(execution.endedAt ? { endedAt: execution.endedAt, reason: execution.reason } : {}),
+      acceptedAt: execution.createdAt, ...(execution.supplementUnconfirmed ? { supplementUnconfirmed: true } : {}), ...(execution.endedAt ? { endedAt: execution.endedAt, reason: execution.reason } : {}),
       status: execution.status === 'interrupted' && execution.reason.startsWith('interrupted-') ? execution.reason : execution.status,
       ...(execution.reason?.startsWith('interrupted-') ? { stoppedBy: execution.reason.slice(12) } : {}) }
   }
@@ -64,31 +64,6 @@ export function install(rt) {
   const busy = id => {
     const work = rt.workView()[id]
     return work?.active || work?.queued > 0
-  }
-  // Files other sessions of the same lead touched after this session's last
-  // execution ended, in the same execution directory and intersecting its own
-  // change history. Workspace snapshots carry an attribution caveat.
-  const incrementNote = (session, workspaceRef) => {
-    const owner = session.source?.leadSessionId
-    const own = Object.values(rt.state.executions).filter(item => item.sessionId === session.id)
-    const paths = new Set(own.flatMap(item => item.files?.items.map(file => file.path) ?? []))
-    const lastEnded = Math.max(0, ...own.filter(item => item.endedAt != null).map(item => item.endedAt))
-    if (!paths.size || !lastEnded) return ''
-    const hits = Object.values(rt.state.executions)
-      .filter(item => item.endedAt != null && item.endedAt > lastEnded && item.sessionId !== session.id && item.files
-        && rt.state.tasks[item.taskId]?.coordinatorSessionId === owner
-        && (item.workspaceRef ?? rt.state.tasks[item.taskId]?.workspaceRef) === workspaceRef)
-      .sort((a, b) => a.endedAt - b.endedAt)
-      .map(item => {
-        const inter = item.files.items.filter(file => paths.has(file.path)).map(file => file.path)
-        return inter.length ? { title: rt.state.tasks[item.taskId]?.title ?? item.taskId, status: item.status,
-          files: item.files, inter } : null
-      })
-      .filter(Boolean)
-    if (!hits.length) return ''
-    const rest = hits.length - 5
-    return `自你上次执行结束后，以下任务改动了你改过的文件，修改前重新读取：\n${hits.slice(0, 5)
-      .map(item => `- ${item.title} · ${item.status} · ${item.inter.slice(0, 10).join('、')}${item.files.source === 'workspace-snapshot' ? '（工作区快照，可能含其他改动）' : ''}`).join('\n')}${rest > 0 ? `\n另有 ${rest} 个执行也改动了这些文件` : ''}\n\n`
   }
   const recipient = (profile, session) => {
     const found = rt.conversation(profile, session)
@@ -125,8 +100,13 @@ export function install(rt) {
         ...(result.preview ? [`Result preview: ${result.preview}`] : []),
         `Completeness: ${completeness}`,
         `Full result: nodo_context read executionId ${execution.id}`,
+        ...(execution.supplementUnconfirmed ? ['补充未确认送达'] : []),
         ...(item.resumed ? ['Supplemental report after the user manually resumed this session in Nodo.'] : []),
       ].join('\n'))
+      if (execution.reportData) {
+        item.summary = execution.reportData.summary ?? item.summary
+        item.text = rt.workerReportCard(execution, { resumed: item.resumed, completeness })
+      }
       await rt.recordExecutionResult(execution.id, { report: item.summary })
     } else {
       item.summary ??= reportSummary(item)
@@ -170,6 +150,7 @@ export function install(rt) {
       return placed
     } catch (error) {
       if (error.code === 'orch/busy') return
+      if (item.executionId) await rt.flowReportDeliveryFailed(rt.state.executions[item.executionId], item)
       // A lead saved outside the lead rules keeps the result queued until fixed;
       // say so once per result on the executor session instead of failing silently.
       if (error.code === 'orch/lead-invalid' && item.unreported !== true) {
@@ -181,6 +162,11 @@ export function install(rt) {
   }
   const freezing = new Set()
   const queueReport = async (profileId, leadSession, session, result, pending, execution) => {
+    if (!rt.conversationOf(leadSession.id)) {
+      delete session.source.pendingReport
+      await note(session.id, UNREPORTED_GONE)
+      return
+    }
     if (pending && (leadSession.reportQueue?.some(item => item.id === pending.id)
       || rt.transcriptOf(leadSession.id).some(line => line.origin?.reportId === pending.id))) return
     const status = execution?.status ?? (result.unconfirmed ? 'unconfirmed' : result.reason === 'done' ? 'done' : 'failed')
@@ -232,11 +218,6 @@ export function install(rt) {
     })().finally(() => { state.delivering = undefined })
     return state.delivering
   }
-  const headerOf = lead => rt.redactDeepSecrets(`Task from lead ${lead.name}. Start your report with a one-line outcome summary, actual verification results and unresolved issues.
-Carry out the task as written. If something the task leaves open blocks you, list it in the report with the possible approaches.
-Write the body as conclusions, marking file:line only after claims that need checking, such as defect root causes or review findings.
-
-`)
   const ownerOf = value => {
     const found = rt.conversationOf(typeof value === 'string' ? value : value?.id)
     if (!found || !leadModeOf(found.profile, found.session)) throw invalid('调用方必须是有效主控会话')
@@ -251,7 +232,7 @@ Write the body as conclusions, marking file:line only after claims that need che
   }
   const view = createLeadView(rt, { rosterOf, flightOf, delegationSummary, ownerOf, ownedTask })
   const assertFlightCapacity = (state, message) => {
-    if (state.flights.size + state.reserved >= MAX_ACTIVE_FLIGHTS) throw invalid(message)
+    if (state.flights.size + state.reserved >= MAX_ACTIVE_FLIGHTS) throw failure(message, 'orch/busy')
   }
   const begin = (state, session, details, execution) => {
     let settle
@@ -356,7 +337,7 @@ Write the body as conclusions, marking file:line only after claims that need che
     return { session, ...(flight.executionId ? { taskId: flight.taskId, executionId: flight.executionId } : {}), ended: result.reason, ...(result.unconfirmed ? { unconfirmed: true } : {}),
       lastOutput: clip(rt.redactDeepSecrets(String(result.final ?? result.text ?? rt.workView()[session]?.buffer ?? '')), 4000, 'last output') }
   }
-  const track = async (lead, leadSession, session, flight, sent, header, manual = false) => {
+  const track = async (lead, leadSession, session, flight, sent, manual = false) => {
     const state = stateOf(leadSession.id), target = rt.conversationOf(session.id).profile
     let result
     try {
@@ -385,8 +366,9 @@ Write the body as conclusions, marking file:line only after claims that need che
         flight.cancel = null
         if (!resume || flight.stopping || rt.sessionBlockReason?.(leadSession.id)) break
         try {
-          const continued = await rt.send(target.id, header + '上一轮因临时故障中断。请检查已完成的工作，从中断处继续完成原任务。', session.id, [], [],
-            { exclusive: true, cancelled: () => flight.stopping, origin: { kind: 'retry' } })
+          const input = await rt.composeWorkerInput({ executionId: flight.executionId })
+          const continued = await rt.send(target.id, input.text, session.id, input.images, [],
+            { exclusive: true, files: { paths: input.files }, limit: INPUT_CONTEXT_MAX, cancelled: () => flight.stopping, origin: { kind: 'retry' } })
           const next = await completedWork(flight, continued)
           if (next.code === 'orch/decision-pending') break
           result = next
@@ -431,72 +413,34 @@ Write the body as conclusions, marking file:line only after claims that need che
       rt.warn('nodo: delegation tracking failed (%s): %s', session.id, error.message ?? error)
     } finally { void flushLeadReports(leadSession.id) }
   }
-  const parseDelegateContext = context => {
-    if (context === undefined) return undefined
-    if (!context || typeof context !== 'object' || Array.isArray(context)) throw invalid('context 必须是对象')
-    if (Object.keys(context).some(key => !['required', 'background'].includes(key))) throw invalid('context 只接受 required 和 background')
-    for (const key of ['required', 'background']) {
-      const value = context[key]
-      if (!Array.isArray(value) || value.some(id => typeof id !== 'string' || !id.trim())) throw invalid(`context.${key} 必须是非空字符串数组`)
-      if (value.length > CONTEXT_SELECT_MAX) throw invalid(`context.${key} 最多 ${CONTEXT_SELECT_MAX} 个 sourceId`)
-    }
-    return { required: [...new Set(context.required)], background: [...new Set(context.background)] }
-  }
-  const delegate = async (leadValue, command) => {
+  const dispatchTask = async (leadValue, command, taskRecord, details) => {
     const { profile: lead, session: leadSession } = ownerOf(leadValue)
-    await rt.decisionDeliveryReady?.(leadSession.id)
-    rt.assertDecisionDispatch?.(leadSession.id)
-    const unreviewed = rt.reportReviewBlockReason?.(leadSession.id)
-    if (unreviewed) throw Object.assign(invalid(unreviewed.message), unreviewed)
-    const state = stateOf(leadSession.id), header = headerOf(lead)
-    let taskRecord = command?.taskId !== undefined ? await ownedTask({ profile: lead, session: leadSession }, command.taskId) : undefined
-    let continuesRecord
-    if (command?.continues !== undefined) {
-      if (taskRecord) throw invalid('taskId 与 continues 不能同时传：同任务的补充、修改、返修用 taskId；接续其他任务成果的新任务用 continues')
-      continuesRecord = await ownedTask({ profile: lead, session: leadSession }, command.continues)
-    }
-    if (taskRecord && (command.parentId !== undefined || command.dependsOn !== undefined)) throw invalid('续用 taskId 时不能传 parentId 或 dependsOn，请用 nodo_task revise 修改关系')
-    const relations = taskRecord ?? command
-    if (relations.parentId) {
-      const parent = await ownedTask({ profile: lead, session: leadSession }, relations.parentId)
-      if (parent.status === 'done') throw invalid('父任务已验收，请先 reopen 父任务')
-    }
-    for (const id of relations.dependsOn ?? []) {
-      const dependency = await ownedTask({ profile: lead, session: leadSession }, id)
-      if (dependency.status !== 'done') throw invalid(`依赖任务 ${dependency.title} 尚未验收，先完成它再派活`)
-    }
-    if (command?.worktree !== undefined && typeof command.worktree !== 'boolean') throw invalid('worktree 必须是 true 或 false')
+    const state = stateOf(leadSession.id)
+    const { trigger, stage = 'implement', sourceExecutionId, sourceReportId, questions, supplements = [], profileId, resumed = false } = details
+    const continuesRecord = command.continues ? await ownedTask({ profile: lead, session: leadSession }, command.continues) : undefined
     const sourceRecord = taskRecord ?? continuesRecord
-    if (['queued', 'running'].includes(continuesRecord?.executions.at(-1)?.status)) {
-      throw invalid('接续来源任务还在执行，请等它结束再派；需要并行请另建任务并用 dependsOn 排序')
+    if (continuesRecord && (!continuesRecord.executions.length || continuesRecord.executions.at(-1).endedAt == null
+      || continuesRecord.executions.at(-1).status === 'unconfirmed')) throw failure('接续来源任务最近一次执行尚未结束，请等待。', 'orch/source-busy')
+    const previous = sourceRecord?.executions.at(-1)
+    let workspaceRef = previous?.workspaceRef ?? sourceRecord?.workspaceRef ?? leadSession.workspaceRef
+    if (!rt.state.workspaces[workspaceRef] || rt.state.workspaces[workspaceRef].deletedAt) throw invalid('执行目录已不可用')
+    if (continuesRecord && command.worktree !== undefined && command.worktree !== (workspaceRef !== sourceRecord.workspaceRef)) {
+      throw failure('worktree 与接续来源任务的执行目录不一致，执行目录已锁定', 'orch/worktree-mismatch')
     }
-    const previous = sourceRecord?.executions.findLast(item => item.startedAt != null && rt.state.workspaces[item.workspaceRef ?? sourceRecord.workspaceRef])
-    const directoryReset = !previous && sourceRecord?.executions.some(item => item.workspaceRef && !rt.state.workspaces[item.workspaceRef])
-    let workspaceRef = previous ? previous.workspaceRef ?? sourceRecord.workspaceRef : sourceRecord?.workspaceRef ?? leadSession.workspaceRef
-    if (previous && command.worktree !== undefined && command.worktree !== (workspaceRef !== sourceRecord.workspaceRef)) throw invalid('worktree 与接续来源任务的执行目录不一致，执行目录已锁定')
-    const attached = state.attached ?? []
-    if ((state.count ?? 0) >= LEAD_DISPATCH_BUDGET) throw invalid(`本轮已达到 ${LEAD_DISPATCH_BUDGET} 次派活上限`)
     const team = rt.teamOf(lead.id)
-    if (!team) throw invalid('该主控还没有团队，请先在角色页建立团队')
-    if (!team.types.length) throw invalid('该团队还没有任务类型，请先在任务分配页添加')
-    const found = rt.findTeamType(team, command?.type)
-    if (!found) throw invalid('type 必须是本团队任务类型清单中的 id')
-    if (typeof command.hard !== 'boolean') throw invalid('hard 必须是 true 或 false')
-    if (typeof command.task !== 'string' || !command.task.trim()) throw invalid('task 必须是非空字符串')
-    if (command.title !== undefined && (typeof command.title !== 'string' || !command.title.trim())) throw invalid('title 必须是非空字符串')
-    const hard = command.hard, task = rt.redactDeepSecrets(command.task)
-    const title = rt.redactDeepSecrets(command.title ?? task).trim().split(/\r?\n/, 1)[0].slice(0, 80)
-    if (command.task.length > TASK_TEXT_MAX || header.length + task.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
-    const dispatchContext = await rt.selectDispatchContext({ leadSessionId: leadSession.id, taskId: taskRecord?.id,
-      parentId: relations.parentId, dependsOn: relations.dependsOn, context: parseDelegateContext(command.context) })
+    const found = team && rt.findTeamType(team, command.type)
+    if (!found) throw failure('type 必须是本团队任务类型清单中的 id', 'orch/unknown-type')
+    const hard = command.hard, task = trigger.text
+    const title = taskRecord?.title ?? rt.redactDeepSecrets(command.title ?? command.scope.quote ?? command.scope.note).trim().split(/\r?\n/, 1)[0].slice(0, 80)
+    if (!title) throw failure('任务标题为空', 'orch/title-empty')
     const picked = route(team.assign, found.id, hard)
-    const holder = picked.profile ? rosterOf(lead).find(item => item.id === picked.profile) : undefined
-    if (!holder) throw invalid(`没有${hard && team.assign[found.id]?.hard ? `能接「${found.name}」难题` : `承接「${found.name}」`}的角色`)
+    const holder = rosterOf(lead).find(item => item.id === (profileId ?? (stage === 'answer' ? rt.state.executions[sourceExecutionId].profileId : picked.profile)) && item.id !== lead.id)
+    if (!holder) throw failure(`没有承接「${found.name}」的角色`, 'orch/no-holder')
     picked.profile = holder
     // Continuation candidate: the source task's last ended execution's session.
     // Every condition must hold; the first miss gives the receipt's reason.
     const lastEnded = sourceRecord?.executions.findLast(item => item.endedAt != null)
-    let live, continueReason, handover
+    let live, continueReason
     if (!sourceRecord) continueReason = '没有接续来源任务'
     else {
       const candidate = lastEnded && rt.conversationOf(lastEnded.sessionId)
@@ -518,81 +462,50 @@ Write the body as conclusions, marking file:line only after claims that need che
         live = candidate
       }
     }
-    // A fresh session receives the source task's last finished result, inline
-    // when it fits and as background material when it does not.
-    if (!live && sourceRecord && lastEnded) {
-      const handed = await rt.resolveContextSource(leadSession.id, `execution:${lastEnded.id}:result`).catch(() => null)
-      const selection = handed?.text?.trim() ? { sourceId: handed.sourceId, kind: 'execution', description: handed.description,
-        completeness: handed.completeness, ...(handed.reason ? { reason: handed.reason } : {}), text: handed.text, length: handed.text.length } : null
-      if (selection) {
-        const known = [...dispatchContext.required, ...dispatchContext.background].find(item => item.sourceId === selection.sourceId)
-        if (known) handover = known.role === 'background' ? 'background' : 'required'
-        else {
-          const requiredLength = dispatchContext.required.reduce((sum, item) => sum + item.text.length + 200, 0)
-          if (header.length + task.length + requiredLength + selection.text.length + 4200 > INPUT_CONTEXT_MAX) {
-            dispatchContext.background.push({ ...selection, role: 'background' })
-            handover = 'background'
-          } else {
-            dispatchContext.required.push({ ...selection, role: 'required' })
-            handover = 'required'
-          }
-        }
-      }
-    }
-    const requiredLength = dispatchContext.required.reduce((sum, item) => sum + item.text.length + 200, 0)
-    const backgroundLength = dispatchContext.background.reduce((sum, item) => sum + item.text.length, 0)
-    if (backgroundLength > BACKGROUND_TEXT_MAX) throw invalid(`背景材料合计约 ${backgroundLength} 字符超过上限 ${BACKGROUND_TEXT_MAX}，请减少 background 来源`)
-    if (header.length + task.length + requiredLength + 4000 > INPUT_CONTEXT_MAX) throw invalid(`必需上下文超过派活输入预算 ${INPUT_CONTEXT_MAX} 字符（required 合计约 ${requiredLength}），请缩小任务或用 context 改选必要内容`)
     assertFlightCapacity(state, `此主控会话最多同时派活 ${MAX_ACTIVE_FLIGHTS} 个任务，请等一个结束后再派`)
     const target = picked.profile, reused = !!live
+    const newTrigger = !rt.state.triggers[trigger.id]
     state.reserved++
-    state.count = (state.count ?? 0) + 1
+    if (stage !== 'answer') state.count = (state.count ?? 0) + 1
     let reserved = true
     let session, flight, execution, continued, createdWorkspace
     try {
-      if (!previous && command.worktree) {
+      rt.persistTrigger(trigger)
+      if (!sourceRecord && command.worktree) {
         createdWorkspace = (await rt.createTaskWorktree({ workspaceRef })).workspace
         workspaceRef = createdWorkspace.id
       }
       const workspace = rt.findWorkspace(workspaceRef)
       const worktree = workspaceRef !== (sourceRecord?.workspaceRef ?? leadSession.workspaceRef) ? workspace?.worktree : undefined
-      const increment = live ? incrementNote(live.session, workspaceRef) : ''
-      const instruction = worktree ? `\n\n执行目录：${workspace.cwd}\n分支：${worktree.branch}\n基准 commit：${worktree.baseCommit}\n主检出的未提交改动和依赖不在此目录。Nodo 不会自动合并。报告须回传分支、执行目录、改动文件，以及是否已提交；已提交的给出 sha。` : ''
-      if (header.length + task.length + instruction.length + increment.length > TASK_TEXT_MAX) throw invalid(`task 加上派活说明不能超过 ${TASK_TEXT_MAX} 字符，请缩短任务`)
       session = live?.session ?? await rt.createSession(target.id, title, workspaceRef, true, false, picked.choices,
         { kind: 'lead', leadProfileId: lead.id, leadSessionId: leadSession.id, type: found.id, hard }, { activate: false })
       continued = session.source.continued
       if (!taskRecord) {
         taskRecord = await rt.createTask({ workspaceRef: leadSession.workspaceRef, teamId: team.id, coordinatorSessionId: leadSession.id,
           title, brief: task, parentId: command.parentId, dependsOn: command.dependsOn,
-          source: { kind: 'lead', sessionId: leadSession.id } })
+          triggerId: trigger.id, scope: command.scope, flow: { status: 'running', stage: 'implement', round: 1 },
+          source: { kind: 'lead', sessionId: leadSession.id, ...(continuesRecord ? { continuesTaskId: continuesRecord.id } : {}) } })
       }
-      if ((await rt.taskView(taskRecord.id)).status === 'stopped') await rt.reopenTask(taskRecord.id)
       if (reused) session.source.continued = (continued ?? 0) + 1
       execution = await rt.acceptExecution(taskRecord.id, { profileId: target.id, sessionId: session.id, type: found.id, hard,
-        workspaceRef, model: session.model || undefined, thinking: session.thinking || undefined })
+        workspaceRef, model: session.model || undefined, thinking: session.thinking || undefined,
+        stage, triggerId: trigger.id, scope: taskRecord.scope, supplements, sourceExecutionId, sourceReportId, questions })
       state.reserved--
       reserved = false
       flight = begin(state, session, { type: found.id, hard, task }, execution)
       flight.createdWorkspace = createdWorkspace?.id
-      flight.context = dispatchContext
       flight.tracking = true
       flight.dispatch = async () => {
         if (rt.sessionBlockReason?.(leadSession.id)) return cancelDispatch(state, flight)
         flight.dispatchStarted = true
         delete flight.dispatch
-        let following
+        let following, sent
         try {
-          // Worktree tasks receive fresh copies inside their own ignored input
-          // folder; a shared task reuses the paths the lead already holds.
-          const paths = worktree && attached.length ? await rt.placeCopies(attached, workspace.cwd) : attached
-          if (rt.sessionBlockReason?.(leadSession.id) || flight.stopping) return await cancelDispatch(state, flight)
-          const input = await rt.composeDispatchInput({ workspaceCwd: workspace.cwd, header, instruction, task: increment + task,
-            required: flight.context.required, background: flight.context.background })
+          const input = await rt.composeWorkerInput({ executionId: execution.id })
           if (flight.stopping || rt.sessionBlockReason?.(leadSession.id)) return await cancelDispatch(state, flight)
           await rt.startExecution(execution.id, input.inputContext)
-          const sent = await rt.send(target.id, input.text, session.id, [], [], { exclusive: true, files: { paths }, limit: INPUT_CONTEXT_MAX, origin: { kind: 'delegation', ...executionIds(execution) } })
-          following = track(lead, leadSession, session, flight, sent, header)
+          sent = await rt.send(target.id, input.text, session.id, input.images, [], { exclusive: true, files: { paths: input.files }, limit: INPUT_CONTEXT_MAX, origin: { kind: 'delegation', ...executionIds(execution) } })
+          following = track(lead, leadSession, session, flight, sent, resumed)
         } catch (error) {
           try { session = await end(state, session, flight, { reason: causeOf(error) }) }
           finally { await removeUnsentWorktree(createdWorkspace?.id) }
@@ -600,19 +513,21 @@ Write the body as conclusions, marking file:line only after claims that need che
         }
         void following.then(next => next ? rt.followLead(leadSession.id, next) : flushLeadReports(leadSession.id))
           .catch(error => rt.warn('nodo: dispatch failed (%s): %s', flight.session, causeOf(error)))
+        return sent
       }
       session = rt.conversationOf(session.id)?.session ?? session
-      delete session.source.pendingReport
+      if (resumed) session.source.pendingReport = { id: randomUUID() }
+      else delete session.source.pendingReport
       await note(leadSession.id, `${reused ? '继续受理' : '已受理'} ${target.name} · ${session.name}（${found.name} · ${hard ? '难题' : '常规'}）`,
         { delegation: { session: session.id, ...executionIds(execution), profile: target.id, type: found.id, hard, reused, deferred: true,
           ...(worktree ? { branch: worktree.branch } : {}) } })
-      const handoverNote = reused || !sourceRecord ? ''
-        : handover === 'background' ? '。上一执行结果过大，将写入任务目录作为背景材料'
-        : handover ? '' : '。上一执行结果不可用，新会话需要完整上下文'
-      return { receipt: { ...executionIds(execution), session: session.id, role: target.name, type: found.id, hard, reused, continued: reused,
-        ...(reused ? {} : { reason: continueReason }), status: 'queued',
-        message: `已受理，本轮结束后发送${directoryReset ? '。原隔离目录已删除，已重新选择执行目录' : ''}${handoverNote}` } }
+      return { ok: true, ...executionIds(execution), session: session.id, role: target.name, type: found.id, hard,
+        flow: structuredClone(rt.state.tasks[taskRecord.id].flow), reused, continued: reused,
+        ...(reused ? {} : { reason: continueReason }), status: 'queued', message: '已受理，本轮结束后发送' }
+
     } catch (error) {
+      if (newTrigger && !Object.values(rt.state.tasks).some(item => item.triggerId === trigger.id)
+        && !Object.values(rt.state.executions).some(item => item.triggerId === trigger.id || item.supplements?.includes(trigger.id))) delete rt.state.triggers[trigger.id]
       if (!flight?.dispatchStarted) {
         if (reused && session) {
           if (continued === undefined) delete session.source.continued
@@ -628,11 +543,157 @@ Write the body as conclusions, marking file:line only after claims that need che
           created.profile.sessions = created.profile.sessions.filter(item => item.id !== session.id)
           await rt.save()
         } catch (cause) { rt.warn('nodo: orphan session cleanup failed (%s): %s', session.id, causeOf(cause)) }
-        state.count--
+        if (stage !== 'answer') state.count--
         await removeUnsentWorktree(createdWorkspace?.id)
       }
       throw error
     } finally { if (reserved) state.reserved-- }
+  }
+  const leadRoute = async (id, command = {}) => {
+    const owner = ownerOf(id), state = stateOf(owner.session.id)
+    id = owner.session.id
+    const fields = {
+      new: ['type', 'hard', 'scope', 'title', 'worktree', 'parentId', 'dependsOn', 'continues'],
+      attach: ['taskId', 'scope'], stop: ['executionIds', 'taskIds'],
+      ask: ['questions', 'stopExecutionIds', 'taskIds', 'executionIds', 'references'],
+    }[command.action]
+    if (!fields || Object.keys(command).some(key => key !== 'action' && !fields.includes(key))) throw invalid('路由动作或字段无效')
+    for (const key of ['taskId', 'parentId', 'continues']) if (command[key] !== undefined && (typeof command[key] !== 'string' || !command[key].trim())) throw invalid(`${key} 必须是非空字符串`)
+    for (const key of ['dependsOn', 'executionIds', 'taskIds']) if (command[key] !== undefined && (!Array.isArray(command[key]) || command[key].some(value => typeof value !== 'string' || !value.trim()))) throw invalid(`${key} 必须是非空字符串数组`)
+    if (command.action === 'stop') {
+      if ((command.executionIds !== undefined) === (command.taskIds !== undefined) || !(command.executionIds ?? command.taskIds).length) throw invalid('executionIds 和 taskIds 必须且只能指定一个非空数组')
+      const tasks = new Map()
+      const executions = command.executionIds ? command.executionIds.map(value => {
+        const execution = rt.state.executions[value]
+        if (!execution) throw invalid('没有该 Execution')
+        return execution
+      }) : (await Promise.all(command.taskIds.map(value => ownedTask(owner, value)))).flatMap(task => {
+        tasks.set(task.id, task)
+        return task.executions.filter(item => ['queued', 'running', 'unconfirmed'].includes(item.status))
+      })
+      for (const execution of executions) tasks.set(execution.taskId, await ownedTask(owner, execution.taskId))
+      if ([...tasks.values()].some(task => rt.taskFlowOf(task).status === 'frozen')) throw failure('旧任务只读', 'orch/frozen')
+      const stopped = []
+      for (const execution of executions) if (['queued', 'running', 'unconfirmed'].includes(execution.status)) stopped.push(await interruptDelegation(id, { executionId: execution.id }))
+      for (const task of tasks.values()) {
+        const record = rt.state.tasks[task.id]
+        if (record.flow) { record.flow.status = 'stopped'; record.status = 'stopped'; rt.releaseTaskTriggers(task.id) }
+        for (const card of Object.values(rt.state.cards)) if (card.taskId === task.id && card.status === 'open') Object.assign(card, { status: 'resolved', answer: 'stop', answeredAt: Date.now() })
+      }
+      await rt.saveStrict()
+      return { ok: true, stopped }
+    }
+    if ((state.count ?? 0) >= LEAD_DISPATCH_BUDGET) throw failure(`本轮已达到 ${LEAD_DISPATCH_BUDGET} 次派活上限`, 'orch/busy')
+    if (command.action === 'ask') {
+      const { action, ...args } = command
+      const decision = await rt.createDecision(id, args)
+      state.count = (state.count ?? 0) + 1
+      return decision
+    }
+    const trigger = rt.requirePendingTrigger(id)
+    const scope = command.scope
+    if (!scope || typeof scope !== 'object' || Array.isArray(scope) || Object.keys(scope).some(key => !['quote', 'note'].includes(key))
+      || (scope.quote !== undefined) === (scope.note !== undefined)) throw failure('scope 必须且只能提供 quote 或 note', 'orch/scope-missing')
+    if (scope.note !== undefined && (typeof scope.note !== 'string' || !scope.note.trim() || scope.note.length > SCOPE_NOTE_MAX || /[\r\n]/.test(scope.note))) throw failure('范围说明必须是单行且不超过 100 字', 'orch/scope-note-too-long')
+    if (scope.quote !== undefined && (typeof scope.quote !== 'string' || !scope.quote || !trigger.text.includes(scope.quote))) throw failure('quote 必须是本轮用户原话的精确子串', 'orch/scope-not-quote')
+    if (!rt.state.triggers[trigger.id] && rt.triggerUsageOf(id) + trigger.text.length > TRIGGER_TEXT_TOTAL_MAX) throw failure('触发消息存储已满。请清理停滞或已结束的任务，再派新活。', 'orch/trigger-full')
+    if (command.action === 'new') {
+      // The lead channel awaits this for tool calls; direct leadRoute callers
+      // still need to park while an answered decision is mid-delivery.
+      await rt.decisionDeliveryReady?.(id)
+      rt.assertDecisionDispatch?.(id)
+      const unreviewed = rt.reportReviewBlockReason?.(id)
+      if (unreviewed) throw Object.assign(invalid(unreviewed.message), unreviewed)
+      if (typeof command.hard !== 'boolean') throw invalid('hard 必须是 true 或 false')
+      if (command.worktree !== undefined && typeof command.worktree !== 'boolean') throw invalid('worktree 必须是 true 或 false')
+      if (command.title !== undefined && (typeof command.title !== 'string' || command.title.length > 80)) throw failure('title 必须是最多 80 字的文本', 'orch/title-empty')
+      if (command.continues && (command.parentId !== undefined || command.dependsOn !== undefined)) throw invalid('continues 与 parentId/dependsOn 互斥')
+      if (command.parentId && (await ownedTask(owner, command.parentId)).status === 'done') throw invalid('父任务已验收')
+      for (const value of command.dependsOn ?? []) {
+        const dependency = await ownedTask(owner, value)
+        if (dependency.status !== 'done') throw invalid(`依赖任务 ${dependency.title} 尚未验收，先完成它再派活`)
+      }
+      const storedScope = rt.redactDeepSecrets(scope)
+      if (storedScope.note?.length > SCOPE_NOTE_MAX) throw failure('范围说明脱敏后超过 100 字', 'orch/scope-note-too-long')
+      return dispatchTask(id, { ...command, scope: storedScope }, undefined, { trigger })
+    }
+    return attachTask(owner, await ownedTask(owner, command.taskId), trigger)
+  }
+  const attachTask = async (owner, task, trigger) => {
+    const id = owner.session.id, state = stateOf(id), flow = rt.taskFlowOf(task)
+    const workspaceRef = task.executions.at(-1)?.workspaceRef ?? task.workspaceRef
+    if (!rt.state.workspaces[workspaceRef] || rt.state.workspaces[workspaceRef].deletedAt) throw failure('执行目录已不可用，请另建任务', 'orch/frozen')
+    if (flow.status === 'stalled') throw failure('任务已停滞，请另建任务', 'orch/task-stalled')
+    if (!['running', 'reviewing', 'accepting'].includes(flow.status) || ['done', 'stopped'].includes(task.status)) throw failure('已结束、停止或旧任务只读', 'orch/frozen')
+    const latest = task.executions.at(-1)
+    if (!latest) throw invalid('任务没有执行记录')
+    if (latest.status === 'unconfirmed') throw failure('Task or session already has a pending execution', 'orch/busy')
+    const execution = rt.state.executions[latest.id]
+    if (['queued', 'running'].includes(execution.status)) {
+      rt.persistTrigger(trigger)
+      execution.supplements ??= []
+      if (!execution.supplements.includes(trigger.id) && execution.triggerId !== trigger.id) execution.supplements.push(trigger.id)
+      await rt.saveStrict()
+      let mode = execution.status === 'queued' ? 'merged' : 'queued'
+      if (execution.status === 'running' && flow.status === 'running') {
+        const input = await rt.composeSupplementInput({ executionId: execution.id, triggerId: trigger.id })
+        const sent = await rt.send(execution.profileId, input.text, execution.sessionId, input.images, [], { files: { paths: input.files }, limit: INPUT_CONTEXT_MAX,
+          origin: { kind: 'supplement', ...executionIds(execution), triggerId: trigger.id } })
+        mode = sent.mode === 'steered' || sent.mode === 'indeterminate' ? 'steered' : 'queued'
+        if (sent.mode === 'indeterminate') { execution.supplementUnconfirmed = true; await rt.saveStrict() }
+        const flight = state.flights.get(execution.sessionId)
+        if (flight) flight.inputs.set(sent.seq, sent.completion)
+      }
+      state.count = (state.count ?? 0) + 1
+      const target = rt.state.profiles[execution.profileId]
+      const receipt = { ok: true, ...executionIds(execution), role: target.name, type: execution.type, hard: execution.hard, flow, delivery: { mode } }
+      await note(id, '已受理补充', { delegation: { ...receipt, session: execution.sessionId } })
+      return receipt
+    }
+    // A rework follows the task's implementation: review executions only carry
+    // verdicts and findings, so the routing type and holder come from the last
+    // implement/rework execution.
+    const implementLatest = task.executions.findLast(item => ['implement', 'rework'].includes(item.stage ?? 'implement'))
+    if (!implementLatest) throw invalid('任务没有可返工的实现执行记录')
+    rt.assertDecisionDispatch?.(id)
+    const receipt = await rt.reworkFlow(rt.state.tasks[task.id], { trigger, supplement: true,
+      supplements: (execution.supplements ?? []).filter(value => value !== trigger.id), source: rt.state.executions[implementLatest.id] })
+    if (!receipt) throw failure('任务已停滞，请处理停滞卡', 'orch/task-stalled')
+    const mode = flow.status === 'accepting' ? 'withdrew-card' : 'rework'
+    if (flow.status === 'accepting') for (const card of Object.values(rt.state.cards)) if (card.taskId === task.id && card.status === 'open') Object.assign(card, { status: 'resolved', answer: 'supplement', answeredAt: Date.now() })
+    await rt.saveStrict()
+    return { ...receipt, delivery: { mode } }
+  }
+  const leadReview = async (id, command) => {
+    const owner = ownerOf(id), execution = rt.state.executions[command.executionId]
+    if (!execution) throw invalid('没有该 Execution')
+    const task = await ownedTask(owner, execution.taskId)
+    const { questions } = command
+    if (questions !== undefined && (!Array.isArray(questions) || !questions.length || questions.length > REVIEW_QUESTIONS_MAX
+      || questions.some(value => typeof value !== 'string' || !value.trim() || value.length > REVIEW_QUESTION_MAX))) throw invalid('questions 必须为 1–5 个非空问题，每题最多 200 字')
+    if (command.disposition === 'investigate') {
+      if (!questions) throw invalid('investigate 必须提供 questions')
+      rt.deliveredReports(task.id, execution.id)
+      if (!execution.reports.some(report => !report.review || report.review.awaitingAnswer)) throw invalid('回报已复核')
+      const flow = rt.taskFlowOf(task)
+      if (flow.status === 'stalled') throw failure('任务已停滞', 'orch/task-stalled')
+      if (!['running', 'reviewing'].includes(flow.status) || ['done', 'stopped'].includes(task.status)) throw failure('已结束、停止或旧任务只读，不能新增补答执行', 'orch/frozen')
+      if (task.executions.some(item => ['queued', 'running', 'unconfirmed'].includes(item.status))) throw failure('任务已有未结束执行', 'orch/busy')
+      rt.assertDecisionDispatch?.(owner.session.id)
+      assertFlightCapacity(stateOf(owner.session.id), `此主控会话最多同时派活 ${MAX_ACTIVE_FLIGHTS} 个任务`)
+      const trigger = rt.state.triggers[execution.triggerId]
+      if (!trigger) throw invalid('执行的触发消息不存在')
+      const previous = structuredClone(execution.reports)
+      if (!rt.checkFlowCapacity(rt.state.tasks[task.id], 'answer', execution)) { await rt.saveStrict(); return { ok: true, taskId: task.id, flow: rt.state.tasks[task.id].flow } }
+      await rt.reviewReports(task.id, command)
+      try {
+        return await dispatchTask(id, { type: execution.type, hard: execution.hard }, task, { trigger, stage: 'answer', questions: rt.redactDeepSecrets(questions),
+          sourceExecutionId: execution.id, sourceReportId: execution.reports.at(-1).id })
+      } catch (error) { execution.reports = previous; await rt.saveStrict(); throw error }
+    }
+    const reviewed = await rt.reviewReports(task.id, command)
+    await rt.advanceFlow(execution)
+    return { ok: true, taskId: task.id, executionId: execution.id, review: reviewed.reports.at(-1).review }
   }
   const prepareLeadInput = async session => {
     const source = session.source
@@ -685,7 +746,7 @@ Write the body as conclusions, marking file:line only after claims that need che
       await note(sessionId, UNREPORTED_GONE)
       return
     }
-    const next = await track(owner.profile, owner.session, session, flight, placed, headerOf(owner.profile), true)
+    const next = await track(owner.profile, owner.session, session, flight, placed, true)
     if (next) await rt.followLead(owner.session.id, next)
     void flushLeadReports(sessionId)
   }
@@ -698,6 +759,7 @@ Write the body as conclusions, marking file:line only after claims that need che
       rt.warn('nodo: lead follow failed (%s): %s', sessionId, error.message ?? error)
     }
     const state = stateOf(sessionId)
+    if (result?.reason === 'error' || result?.unconfirmed) await rt.flowLeadFailed(sessionId)
     for (const flight of [...state.flights.values()]) {
       if (!flight.dispatch) continue
       try {
@@ -731,6 +793,49 @@ Write the body as conclusions, marking file:line only after claims that need che
     causeOf, queueReport, cancelDispatch, note, flushLeadReports, unreportedGone: UNREPORTED_GONE })
 
   Object.assign(rt, {
+    dispatchFlowExecution: async (task, details) => dispatchTask(task.coordinatorSessionId, { type: details.type, hard: details.hard }, await rt.taskView(task.id), details),
+    startFlowExecution: async executionId => {
+      const execution = rt.state.executions[executionId]
+      const flight = flightOf(execution.sessionId)
+      if (flight?.dispatch) return flight.dispatch()
+    },
+    redeliverFlowReport: async execution => {
+      const owner = rt.conversationOf(rt.state.tasks[execution.taskId].coordinatorSessionId)
+      const queued = owner.session.reportQueue?.find(item => item.executionId === execution.id)
+      if (queued) return deliverReport(owner.profile.id, owner.session, queued)
+      return queueReport(owner.profile.id, owner.session, rt.conversationOf(execution.sessionId).session,
+        { reason: execution.reason }, undefined, execution)
+    },
+    flowWorkerInput: async (session, line) => {
+      const execution = latestExecution(session.id), task = rt.state.tasks[execution?.taskId]
+      if (!task) return
+      if (!task.flow) throw failure('旧任务只读，请另建任务', 'orch/frozen')
+      if (task.flow.status === 'stalled') throw failure('任务已停滞，请处理停滞卡', 'orch/task-stalled')
+      if (['accepted', 'stopped'].includes(task.flow.status)) throw failure('已结束、停止或旧任务只读', 'orch/frozen')
+      const trigger = rt.triggerFromLine({ coordinatorSessionId: task.coordinatorSessionId, lineSessionId: session.id, line })
+      if (['queued', 'running'].includes(execution.status)) {
+        rt.persistTrigger(trigger)
+        execution.supplements ??= []
+        execution.supplements.push(trigger.id)
+        await rt.saveStrict()
+        if (task.flow.status === 'reviewing' || execution.status === 'queued') {
+          rt.appendLine(session.id, { ...line, origin: { kind: 'supplement', triggerId: trigger.id } })
+          await rt.saveStrict()
+          return { placed: { mode: 'queued', completion: Promise.resolve({ reason: 'done' }) } }
+        }
+        return { input: await rt.composeSupplementInput({ executionId: execution.id, triggerId: trigger.id }), ...executionIds(execution), triggerId: trigger.id,
+          queue: false }
+      }
+      const owner = rt.conversationOf(task.coordinatorSessionId)
+      if (!owner || owner.session.archivedAt || owner.profile.deletedAt) return
+      if (execution.status === 'unconfirmed') throw failure('Task or session already has a pending execution', 'orch/busy')
+      rt.assertDecisionDispatch?.(task.coordinatorSessionId)
+      rt.persistTrigger(trigger)
+      const saved = rt.appendLine(session.id, { ...line, origin: { kind: 'supplement', triggerId: trigger.id } })
+      const receipt = await rt.reworkFlow(task, { trigger, supplement: true })
+      if (!receipt) throw failure('任务已停滞，请处理停滞卡', 'orch/task-stalled')
+      return { placed: await rt.startFlowExecution(receipt.executionId), line: saved }
+    },
     sessionNote: note,
     leadDecisionExecutions: id => Object.values(rt.state.executions).filter(execution => ['queued', 'running', 'unconfirmed'].includes(execution.status)
       && rt.state.tasks[execution.taskId]?.coordinatorSessionId === id).map(execution => {
@@ -757,10 +862,15 @@ Write the body as conclusions, marking file:line only after claims that need che
     },
     ownedTask,
     delegationSummary, ...view,
-    leadDispatch: { delegate: async (session, command) => (await delegate(session, command)).receipt, interrupt: interruptDelegation },
+    leadRoute, leadReview,
+    leadDispatch: { interrupt: interruptDelegation },
     prepareLeadInput,
     resetLeadBudget: id => { stateOf(id).count = 0 },
-    leadInputStarted: (id, attached) => { stateOf(id).attached = attached },
+    leadInputStarted: (id, line) => {
+      rt.clearPendingTrigger(id)
+      if (rt.isUserTriggerLine(line)) rt.setPendingTrigger(rt.triggerFromLine({ coordinatorSessionId: id, line }))
+      rt.resetLeadBudget(id)
+    },
     leadEnded: async (id, result) => {
       const session = rt.conversationOf(id)?.session
       const execution = latestExecution(id)

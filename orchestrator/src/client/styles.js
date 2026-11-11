@@ -621,6 +621,23 @@ button.nodo-round-summary{cursor:pointer}
 .nodo-decision-why{margin:2px 0 0;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;text-wrap:pretty}
 .nodo-decision-consequence,.nodo-decision-reason{display:block;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
 .nodo-decision-reason{margin-top:4px;padding-left:8px;border-left:2px solid var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-secondary);font-weight:500}
+.nodo-flow-cards{display:flex;flex-direction:column}
+.nodo-flow-body{gap:14px;padding-top:16px}
+.nodo-flow-body>.nodo-question-title,.nodo-flow-gap{padding:0 16px 0 24px}
+.nodo-flow-section{display:flex;flex-direction:column;padding:0 16px 0 24px}
+.nodo-flow-cap{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:500;line-height:16px}
+.nodo-flow-scope{margin:4px 0 0;padding:2px 0 2px 10px;border-left:2px solid var(--dsw-alias-border-l2);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-flow-trigger{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
+.nodo-flow-stage{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;margin-top:6px;font-size:13px;line-height:20px}
+.nodo-flow-stage-name{font-weight:500}
+.nodo-flow-stage-state{color:var(--dsw-alias-label-tertiary)}
+.nodo-flow-stage-summary{flex-basis:100%;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}
+.nodo-flow-evidence{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:6px;font-size:12px;line-height:18px}
+.nodo-flow-handle{font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-secondary)}
+.nodo-flow-check{color:var(--dsw-alias-label-tertiary)}
+.nodo-flow-check[data-result=pass]{color:var(--dsw-alias-state-success-primary)}
+.nodo-flow-check[data-result=fail]{color:var(--dsw-alias-state-error-primary)}
+.nodo-flow-gap{margin:4px 0 0;color:${WARN_INK};font-size:12px;line-height:18px;overflow-wrap:anywhere}
 .nodo-composer{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;flex:none;width:calc(100% - 32px);max-width:calc(var(--dsh-chat-content-width,748px) + 32px);margin:0 auto 4px;padding-top:8px;border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
 .nodo-composer-scroll{max-height:var(--dsh-composer-text-max-height,336px);margin-right:4px;overflow-y:auto}
 .nodo-pending{display:flex;flex-direction:column;gap:4px;max-height:160px;margin:0 8px;padding-bottom:8px;overflow-y:auto;border-bottom:1px solid var(--dsw-alias-border-l2)}

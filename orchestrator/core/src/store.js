@@ -9,10 +9,10 @@ import { homeLock } from './home-lock.js'
 import { createTranscripts } from './transcripts.js'
 import { atomicWrite, stamp } from './fs.js'
 
-const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'decisions', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
+const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'decisions', 'triggers', 'cards', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
 const ACTIVITY_KEYS = ['transcriptIndex', 'stats', 'streamDetails']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
-const blank = () => ({ version: 5, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
+const blank = () => ({ version: 6, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, triggers: {}, cards: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
 const STAMP_MS = 1000
 const mergeActivity = (target, source) => {
   for (const key of ACTIVITY_KEYS) if (isRecord(source[key])) target[key] = source[key]
@@ -133,7 +133,7 @@ export function install(rt) {
       else warn('nodo: unreadable state %s: %s; backup failed: %s', statePath, error, blocked)
       return undefined
     }
-    blocked = [1, 2, 3, 4, 5].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
+    blocked = [1, 2, 3, 4, 5, 6].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
     if (blocked !== undefined) return undefined
     legacyState = ['transcriptIndex', 'stats', 'streamDetails'].some(key => Object.hasOwn(saved, key))
     retiredState = ['adapterSessions', 'streamDetails'].some(key => Object.hasOwn(saved, key))
@@ -162,6 +162,7 @@ export function install(rt) {
     }
     for (const execution of Object.values(state.executions)) {
       if (!Array.isArray(execution.references)) execution.references = []
+      if (execution.stage === undefined) execution.stage = 'implement'
       if (!['queued', 'running', 'done', 'failed', 'interrupted', 'cancelled', 'unconfirmed'].includes(execution.status)) {
         execution.status = 'unconfirmed'
         invalidStatus = true
@@ -176,7 +177,7 @@ export function install(rt) {
     activity += 1
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
-    state.version = 5
+    state.version = 6
     for (const profile of Object.values(state.profiles)) {
       if (!rt.listEngines().includes(profile.engine)) continue
       const modes = rt.enginePermissionModes(profile.engine)
@@ -222,13 +223,14 @@ export function install(rt) {
     adopt(saved)
     if (readOnly() === undefined) {
       await rm(join(home, 'runs'), { recursive: true, force: true })
-      if (saved && saved.version !== 5) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
+      if (saved && saved.version !== 6) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
       const retired = saved && retiredState
       if (retired) await copyFile(statePath, join(home, 'state.retired.json.bak'))
-      if (saved && (saved.version !== 5 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
+      if (saved && (saved.version !== 6 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
     }
     rt.recoverLeadDelegations?.()
     rt.recoverDecisions?.()
+    rt.recoverFlowCards?.()
   }
 
   // A failed load is tried again by the next caller.
