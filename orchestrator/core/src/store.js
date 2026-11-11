@@ -12,7 +12,7 @@ import { atomicWrite, stamp } from './fs.js'
 const SECTIONS = ['workspaces', 'profiles', 'tasks', 'executions', 'decisions', 'triggers', 'cards', 'transcripts', 'transcriptIndex', 'stats', 'engineCatalogs', 'prefs']
 const ACTIVITY_KEYS = ['transcriptIndex', 'stats', 'streamDetails']
 // `transcripts` holds only the transcripts loaded in memory and is not saved in state.json.
-const blank = () => ({ version: 6, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, triggers: {}, cards: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
+const blank = () => ({ version: 7, workspaces: {}, profiles: {}, tasks: {}, executions: {}, decisions: {}, triggers: {}, cards: {}, transcripts: {}, transcriptIndex: {}, stats: {}, engineCatalogs: {}, prefs: {}, probe: null })
 const STAMP_MS = 1000
 const mergeActivity = (target, source) => {
   for (const key of ACTIVITY_KEYS) if (isRecord(source[key])) target[key] = source[key]
@@ -133,7 +133,7 @@ export function install(rt) {
       else warn('nodo: unreadable state %s: %s; backup failed: %s', statePath, error, blocked)
       return undefined
     }
-    blocked = [1, 2, 3, 4, 5, 6].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
+    blocked = [1, 2, 3, 4, 5, 6, 7].includes(saved?.version) ? undefined : 'saved by a newer Nodo; update the plugin'
     if (blocked !== undefined) return undefined
     legacyState = ['transcriptIndex', 'stats', 'streamDetails'].some(key => Object.hasOwn(saved, key))
     retiredState = ['adapterSessions', 'streamDetails'].some(key => Object.hasOwn(saved, key))
@@ -177,7 +177,8 @@ export function install(rt) {
     activity += 1
     for (const [id, lines] of Object.entries(state.transcripts)) if (!Array.isArray(lines)) state.transcripts[id] = []
     if (state.version === 1) migrateV1()
-    state.version = 6
+    if (state.version < 7) migrateV7()
+    state.version = 7
     for (const profile of Object.values(state.profiles)) {
       if (!rt.listEngines().includes(profile.engine)) continue
       const modes = rt.enginePermissionModes(profile.engine)
@@ -217,16 +218,43 @@ export function install(rt) {
     }
   }
 
+  // v6 → v7: the program advances lead flows and no report queue exists. A task
+  // from before flows keeps its outcome as accepted or stopped, an accepting task
+  // is done without its acceptance card, a task stalled on report delivery goes
+  // back to its stage for the scheduler, and the old dispatch and queue records go.
+  const migrateV7 = () => {
+    const now = Date.now()
+    const resolve = task => { for (const card of Object.values(state.cards)) if (card.taskId === task.id && card.status === 'open') Object.assign(card, { status: 'resolved', answer: 'migrated', answeredAt: now }) }
+    for (const task of Object.values(state.tasks)) {
+      if (!task.flow) {
+        task.flow = { status: task.status === 'done' ? 'accepted' : 'stopped' }
+        if (task.status !== 'done') task.status = 'stopped'
+      } else if (task.flow.status === 'accepting') {
+        task.flow.status = 'done'
+        task.status = 'done'
+        resolve(task)
+      } else if (task.flow.status === 'stalled' && ['delivery-failed', 'lead-error'].includes(task.flow.stalled?.reason)) {
+        task.flow.status = task.flow.stage === 'review' ? 'reviewing' : 'running'
+        delete task.flow.stalled
+        resolve(task)
+      }
+    }
+    for (const profile of Object.values(state.profiles)) for (const session of profile.sessions ?? []) {
+      delete session.reportQueue
+      if (session.source) { delete session.source.dispatch; delete session.source.pendingReport }
+    }
+  }
+
   const restore = async () => {
     await rt.driversReady()
     const saved = await readSaved()
     adopt(saved)
     if (readOnly() === undefined) {
       await rm(join(home, 'runs'), { recursive: true, force: true })
-      if (saved && saved.version !== 6) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
+      if (saved && saved.version !== 7) await copyFile(statePath, join(home, `state.v${saved.version}.json`))
       const retired = saved && retiredState
       if (retired) await copyFile(statePath, join(home, 'state.retired.json.bak'))
-      if (saved && (saved.version !== 6 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
+      if (saved && (saved.version !== 7 || retired || legacyState || Object.hasOwn(saved, 'workflows'))) await save(false, true)
     }
     rt.recoverLeadDelegations?.()
     rt.recoverDecisions?.()

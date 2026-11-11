@@ -1,3 +1,4 @@
+import { until } from './host.js'
 // Fixture tasks are verbatim user messages, never leader-authored bodies.
 export function userRoute(rt, owner, { task = 'Implement and verify', taskId, session, ...fields } = {}) {
   const id = typeof owner === 'string' ? owner : owner.id
@@ -13,3 +14,9 @@ export function userRoute(rt, owner, { task = 'Implement and verify', taskId, se
 }
 
 export const routeUserTask = (rt, owner, command) => rt.leadRoute(owner, userRoute(rt, owner, command))
+
+// Resolves once the program has advanced every ended execution of this lead, as a schedule pass would.
+export const flowSettled = (rt, id) => until(() => Object.values(rt.state.tasks).filter(task => task.coordinatorSessionId === id).every(task => {
+  const latest = Object.values(rt.state.executions).findLast(execution => execution.taskId === task.id)
+  return !latest || latest.endedAt == null || latest.flowContinued || !['running', 'reviewing'].includes(task.flow?.status)
+}))

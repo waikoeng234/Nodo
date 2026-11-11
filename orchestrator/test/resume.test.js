@@ -5,7 +5,7 @@ import { chmodSync, copyFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { withHost, until } from './helpers/host.js'
 
-for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['codex', false]]) test(`${engine} hands off lead and executor contexts and delivers the queued report${resultFirst ? ' (result before close)' : ''}`, () => withHost(async ({ api, runtime, home }) => {
+for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['codex', false]]) test(`${engine} hands off lead and executor contexts and resumes the lead on its next turn${resultFirst ? ' (result before close)' : ''}`, () => withHost(async ({ api, runtime, home }) => {
   const bin = join(home, engine)
   copyFileSync(new URL(`./fixtures/${engine}-cli.cjs`, import.meta.url), bin)
   chmodSync(bin, 0o755)
@@ -41,20 +41,23 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     rt.state.profiles[lead.id].driverSessionId = leadSession.driverSessionId = 'missing-report-recipient'
     await rt.followLead(leadSession.id, first)
     await until(() => rt.state.executions[receipt.executionId].status === 'done')
-    await until(() => rt.transcriptOf(leadSession.id).some(line => line.origin?.reportId) && !rt.workView()[leadSession.id]?.active && !leadSession.reportQueue?.length)
+    await until(() => rt.transcriptOf(leadSession.id).some(line => line.delegation?.executionId === receipt.executionId && line.delegation.ended))
+    const next = await rt.send(lead.id, 'What is the status?', leadSession.id, [], [], { userInput: true })
+    assert.equal((await next.completion).reason, 'done')
     assert.equal(work.driverSessionId, freshId)
     assert.equal(work.restoreContext, false)
     assert.deepEqual(work.source, source)
     const finished = rt.state.tasks[receipt.taskId]
     assert.ok(finished.updatedAt >= task.updatedAt)
-    assert.deepEqual(finished, { ...task, status: 'open', updatedAt: finished.updatedAt })
+    const kept = ({ status, flow, updatedAt, ...rest }) => rest
+    assert.deepEqual(kept(finished), kept(task))
     assert.equal(rt.state.executions[receipt.executionId].sessionId, receipt.session)
     const leadLines = rt.transcriptOf(leadSession.id)
     assert.deepEqual(leadLines.filter(line => line.kind === 'note' && line.text.includes('旧引擎历史')).map(line => line.text),
       ['missing-lead', 'missing-report-recipient'].map(id => `已更换后台上下文：旧引擎历史不再带入，任务与结果经 nodo_board 接续。（原引擎会话：${id}）`))
     assert.deepEqual(rt.transcriptOf(work.id).filter(line => line.kind === 'note' && line.text.includes('旧引擎历史')).map(line => line.text),
       ['已更换后台上下文：旧引擎历史不再带入。（原引擎会话：missing-worker）'])
-    assert.equal(leadLines.filter(line => line.origin?.reportId).length, 1)
+    assert.equal(leadLines.filter(line => line.origin?.reportId).length, 0)
     assert.equal(leadLines.some(line => line.kind === 'error'), false)
     assert.equal(rt.transcriptOf(work.id).some(line => line.kind === 'error'), false)
     const requests = readFileSync(join(home, `${engine}-requests.jsonl`), 'utf8').trim().split('\n').map(JSON.parse)
@@ -63,11 +66,11 @@ for (const [engine, resultFirst] of [['claude', false], ['claude', true], ['code
     assert.ok(inputs.some(text => text.includes('Earlier evidence') && text.includes('Check nodo_board / <nodo-status>')))
     assert.ok(inputs.some(text => text.startsWith('# 本轮要求（用户原话，逐字，唯一需求来源）\nImplement the task')), 'a resumed worker gets the composed requirement section')
     assert.ok(inputs.every(text => !text.includes('Worker evidence')), 'a resumed worker session must not receive the previous report again')
-    assert.ok(inputs.some(text => text.includes('[回报] Worker · Implement the task') && text.includes('Check nodo_board / <nodo-status>')), 'the delivered report card reaches the lead')
+    assert.ok(inputs.some(text => text.includes('What is the status?') && text.includes('Check nodo_board / <nodo-status>')), 'the resumed lead gets its saved context')
     const stateText = readFileSync(join(home, 'state.json'), 'utf8')
     for (const oldId of ['missing-lead', 'missing-worker', 'missing-report-recipient']) assert.equal(stateText.includes(oldId), false)
     const saved = JSON.parse(stateText)
-    assert.equal(saved.version, 6)
+    assert.equal(saved.version, 7)
     assert.equal(saved.profiles[lead.id].driverSessionId, freshId)
   } finally {
     delete process.env[errorEnv]

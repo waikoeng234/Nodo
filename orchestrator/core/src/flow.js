@@ -1,27 +1,31 @@
 import { randomUUID } from 'node:crypto'
-import { FLOW_EXECUTIONS_MAX, STAGE_ROUNDS_MAX, REWORK_MAX_DEFAULT, REPORT_DELIVERY_FAILURES_MAX, ANSWER_TEXT_MAX } from './constants.js'
+import { FLOW_EXECUTIONS_MAX, REWORK_MAX_DEFAULT, ANSWER_TEXT_MAX } from './constants.js'
 import { route } from '../shared/route.js'
 import { leadModeOf } from '../shared/lead.js'
 import { invalid, failure } from './errors.js'
 
 export const flowOf = type => type?.flow ?? { reviewType: 'review', maxRework: REWORK_MAX_DEFAULT }
-const statusOf = { running: 'open', reviewing: 'review', accepting: 'blocked', stalled: 'blocked', accepted: 'done', stopped: 'stopped' }
-const counted = new Set(['rework-limit', 'hard-cap', 'stage-rounds'])
-const retryOf = { 'execution-failed': 'restart-stage', 'verdict-unreadable': 'rerun-review', 'review-unavailable': 'check-review-type',
-  'delivery-failed': 'redeliver-report', 'lead-error': 'redeliver-report', 'accept-blocked': 'check-acceptance' }
+const statusOf = { pending: 'open', running: 'open', reviewing: 'review', stalled: 'blocked', accepted: 'done', stopped: 'stopped' }
+const counted = new Set(['rework-limit', 'hard-cap'])
+const retryOf = { 'execution-failed': 'restart-stage', 'verdict-unreadable': 'rerun-review', 'review-unavailable': 'check-review-type', 'accept-blocked': 'check-acceptance' }
+export const releasedFlow = task => ['done', 'accepted'].includes(task?.flow?.status)
 
 export function install(rt) {
   const { state } = rt
   const executionsOf = task => Object.values(state.executions).filter(item => item.taskId === task.id)
   const implementationOf = task => executionsOf(task).findLast(item => ['implement', 'rework'].includes(item.stage))
-  const stageOf = execution => execution.stage === 'answer' ? stageOf(state.executions[execution.sourceExecutionId]) : execution.stage
-  const phaseOf = execution => execution.stage === 'answer' ? phaseOf(state.executions[execution.sourceExecutionId]) : execution.id
   const ownerOf = id => {
     const owner = rt.conversationOf(id)
     if (!owner || !leadModeOf(owner.profile, owner.session)) throw invalid('请选择有效的主控会话')
     return owner
   }
-  const syncTaskFlow = task => { if (statusOf[task.flow?.status]) task.status = statusOf[task.flow.status] }
+  // A done task waits on its acceptance card; one without an open card is finished.
+  const syncTaskFlow = task => {
+    const status = task.flow?.status === 'done'
+      ? Object.values(state.cards).some(card => card.taskId === task.id && card.status === 'open') ? 'review' : 'done'
+      : statusOf[task.flow?.status]
+    if (status) task.status = status
+  }
   const resolveCards = (task, answer) => {
     for (const card of Object.values(state.cards)) if (card.taskId === task.id && card.status === 'open') {
       Object.assign(card, { status: 'resolved', answer, answeredAt: Date.now() })
@@ -80,33 +84,26 @@ export function install(rt) {
     const pick = type && route(team.assign, type.id, source.hard)
     return type?.independent && team.members.includes(pick.profile) && state.profiles[pick.profile] && !state.profiles[pick.profile].deletedAt ? type : undefined
   }
-  const checkFlowCapacity = (task, stage, source, reject = false) => {
-    const executions = executionsOf(task)
-    const reason = executions.length >= FLOW_EXECUTIONS_MAX ? 'hard-cap'
-      : stage === 'answer' && executions.filter(item => phaseOf(item) === phaseOf(source)).length >= STAGE_ROUNDS_MAX ? 'stage-rounds' : undefined
-    if (reason) {
-      if (reject) throw failure(`任务已达到流程上限：${reason}`, 'orch/task-stalled')
-      stallFlow(task, reason, source); return false
-    }
-    return true
+  const checkFlowCapacity = (task, source, reject = false) => {
+    if (executionsOf(task).length < FLOW_EXECUTIONS_MAX) return true
+    if (reject) throw failure('任务已达到流程上限：hard-cap', 'orch/task-stalled')
+    stallFlow(task, 'hard-cap', source); return false
   }
   const dispatch = async (task, { stage, source, trigger = state.triggers[task.triggerId], supplements = [], immediate = false, resumed = false, supplement = false, returning = false }) => {
-    if (!checkFlowCapacity(task, stage, source, returning)) { await rt.saveStrict(); return }
+    if (!checkFlowCapacity(task, source, returning)) { await rt.saveStrict(); return }
     const implement = implementationOf(task), reviewType = stage === 'review' ? reviewTypeOf(task) : undefined
     if (stage === 'review' && !reviewType) { stallFlow(task, 'review-unavailable', source); await rt.saveStrict(); return }
     const previous = structuredClone(task.flow)
     if (supplement) task.flow.supplementReworks = (task.flow.supplementReworks ?? 0) + 1
     const reviewed = stage === 'review' && source.stage === 'review' ? state.executions[source.sourceExecutionId] : source
-    const flowStage = stage === 'answer' ? stageOf(source) : stage
-    Object.assign(task.flow, { status: flowStage === 'review' ? 'reviewing' : 'running', stage: flowStage, round: (task.flow.round ?? 1) + 1 })
+    Object.assign(task.flow, { status: stage === 'review' ? 'reviewing' : 'running', stage, round: (task.flow.round ?? 1) + 1 })
     delete task.flow.stalled
     syncTaskFlow(task)
     let receipt
     try {
-      receipt = await rt.dispatchFlowExecution(task, { type: stage === 'answer' ? source.type : reviewType?.id ?? implement.type, hard: stage === 'answer' ? source.hard : implement.hard,
-        profileId: stage === 'answer' ? source.profileId : stage === 'review' ? undefined : implement.profileId, stage,
-        sourceExecutionId: stage === 'answer' || resumed && stage === 'rework' ? source.sourceExecutionId ?? source.id : reviewed.id, trigger, supplements,
-        resumed, ...(stage === 'answer' ? { sourceReportId: source.sourceReportId, questions: source.questions } : {}) })
+      receipt = await rt.dispatchFlowExecution(task, { type: reviewType?.id ?? implement.type, hard: implement.hard,
+        profileId: stage === 'review' ? undefined : implement.profileId, stage,
+        sourceExecutionId: resumed && stage === 'rework' ? source.sourceExecutionId ?? source.id : reviewed.id, trigger, supplements, resumed })
     } catch (error) {
       task.flow = previous
       syncTaskFlow(task)
@@ -121,10 +118,10 @@ export function install(rt) {
     return receipt
   }
   const openAcceptance = task => {
-    task.flow.status = 'accepting'
+    task.flow.status = 'done'
     delete task.flow.stalled
-    syncTaskFlow(task)
     putCard(task, 'acceptance')
+    syncTaskFlow(task)
   }
   const reworkFlow = (task, { trigger, supplements = [], source = implementationOf(task), immediate = false, supplement = false, returning = false } = {}) =>
     dispatch(task, { stage: 'rework', source, trigger, supplements, immediate, supplement, returning })
@@ -132,33 +129,27 @@ export function install(rt) {
     const task = state.tasks[execution.taskId]
     if (!task.flow || !['running', 'reviewing'].includes(task.flow.status) || execution.flowContinued
       || executionsOf(task).at(-1)?.id !== execution.id) return
-    let source = execution
-    const chain = []
-    while (source.stage === 'answer') { chain.unshift(source); source = state.executions[source.sourceExecutionId] }
-    if (source.stage === 'review') chain.unshift(source)
-    const supplements = [...new Set(chain.flatMap(item => item.supplements ?? []))]
-      .sort((a, b) => state.triggers[a].at - state.triggers[b].at)
+    const supplements = execution.stage === 'review' ? [...new Set(execution.supplements ?? [])].sort((a, b) => state.triggers[a].at - state.triggers[b].at) : []
     let receipt
-    if (execution.status !== 'done' || ['blocked', 'failed'].includes(execution.reportData?.outcome)
-      || source.status !== 'done' || ['blocked', 'failed'].includes(source.reportData?.outcome)) stallFlow(task, 'execution-failed', execution)
+    if (execution.status !== 'done' || ['blocked', 'failed'].includes(execution.reportData?.outcome)) stallFlow(task, 'execution-failed', execution)
     else if (executionsOf(task).length >= FLOW_EXECUTIONS_MAX) stallFlow(task, 'hard-cap', execution)
     else if (supplements.length) {
       const trigger = state.triggers[supplements.at(-1)]
-      receipt = await reworkFlow(task, { trigger, supplements: supplements.slice(0, -1), supplement: true,
-        source: source.stage === 'review' && source.reportData?.verdict === 'fail' ? source : implementationOf(task) })
-    } else if (source.stage === 'review') {
-      const verdict = source.reportData?.verdict
+      receipt = await reworkFlow(task, { trigger, supplements: supplements.slice(0, -1), supplement: true, immediate: true,
+        source: execution.stage === 'review' && execution.reportData?.verdict === 'fail' ? execution : implementationOf(task) })
+    } else if (execution.stage === 'review') {
+      const verdict = execution.reportData?.verdict
       if (verdict === 'pass') openAcceptance(task)
-      else if (verdict !== 'fail') stallFlow(task, 'verdict-unreadable', source)
+      else if (verdict !== 'fail') stallFlow(task, 'verdict-unreadable', execution)
       else {
         const implement = implementationOf(task), team = rt.teams().find(item => item.id === task.teamId)
-        if ((task.flow.rework ?? 0) >= flowOf(team?.types.find(item => item.id === implement.type)).maxRework) stallFlow(task, 'rework-limit', source)
+        if ((task.flow.rework ?? 0) >= flowOf(team?.types.find(item => item.id === implement.type)).maxRework) stallFlow(task, 'rework-limit', execution)
         else {
-          receipt = await dispatch(task, { stage: 'rework', source })
+          receipt = await dispatch(task, { stage: 'rework', source: execution, immediate: true })
           if (receipt) task.flow.rework = (task.flow.rework ?? 0) + 1
         }
       }
-    } else if (needsFlowReview(source)) receipt = await dispatch(task, { stage: 'review', source })
+    } else if (needsFlowReview(execution)) receipt = await dispatch(task, { stage: 'review', source: execution, immediate: true })
     else openAcceptance(task)
     execution.flowContinued = true
     await rt.saveStrict()
@@ -217,12 +208,11 @@ export function install(rt) {
       const { reason: stalledReason, executionId } = task.flow.stalled
       const source = state.executions[executionId] ?? executionsOf(task).at(-1)
       if (stalledReason === 'accept-blocked') await accept(task, card, answer)
-      else if (['delivery-failed', 'lead-error'].includes(stalledReason)) {
-        const resumedStatus = stageOf(source) === 'review' ? 'reviewing' : 'running'
-        task.flow.status = resumedStatus; delete task.flow.stalled; syncTaskFlow(task)
+      else if (!source) {
+        task.flow.status = 'pending'; delete task.flow.stalled
         Object.assign(card, { status: 'resolved', answer, answeredAt: Date.now() })
+        syncTaskFlow(task)
         await rt.saveStrict()
-        await rt.redeliverFlowReport(source)
       } else {
         if (source.status === 'unconfirmed') await rt.interruptExecution(source.id, { reason: 'retry' })
         await dispatch(task, { stage: stalledReason === 'review-unavailable' || stalledReason === 'verdict-unreadable' ? 'review' : source.stage,
@@ -233,37 +223,57 @@ export function install(rt) {
         }
       }
     }
+    await scheduleFlow(id)
     return structuredClone(card)
   }
-  const flowReportStalled = (execution, report, reason) => {
-    const task = state.tasks[execution.taskId]
-    if (!task.flow || !['running', 'reviewing'].includes(task.flow.status) || report.flowStalled) return
-    report.flowStalled = true
-    stallFlow(task, reason, execution)
-    return true
+  const startPending = async task => {
+    let receipt
+    try { receipt = await rt.dispatchFlowExecution(task, { ...task.flow.route, stage: 'implement', trigger: state.triggers[task.triggerId] }) }
+    catch (error) {
+      if (error.code === 'orch/busy') throw error
+      stallFlow(task, 'execution-failed', undefined, [error.message])
+      await rt.saveStrict()
+      return
+    }
+    Object.assign(task.flow, { status: 'running', stage: 'implement', round: 1 })
+    syncTaskFlow(task)
+    await rt.saveStrict()
+    await rt.startFlowExecution(receipt.executionId)
   }
-  Object.assign(rt, { flowOf, syncTaskFlow, stallFlow, needsFlowReview, checkFlowCapacity, advanceFlow, reworkFlow, flowExecutionEnded, answerFlowCard,
+  // Advances every ended execution the flow has not acted on, then starts the
+  // pending tasks whose dependencies are released. Everything is read from the
+  // saved records; capacity is the lead's dispatch limit, which stops the pass.
+  const schedulePass = async id => {
+    if (rt.readOnly() !== undefined || !rt.conversationOf(id)) return
+    const tasks = Object.values(state.tasks).filter(task => task.coordinatorSessionId === id).sort((a, b) => a.createdAt - b.createdAt)
+    try {
+      for (const task of tasks) {
+        const latest = executionsOf(task).at(-1)
+        if (['running', 'reviewing'].includes(task.flow?.status) && latest?.endedAt != null && !latest.flowContinued) await advanceFlow(latest)
+      }
+      if (rt.sessionBlockReason?.(id)) return
+      for (const task of tasks) if (task.flow?.status === 'pending' && (task.dependsOn ?? []).every(dep => releasedFlow(state.tasks[dep]))) await startPending(task)
+    } catch (error) { if (error.code !== 'orch/busy') throw error }
+  }
+  // Passes for one lead run one after another: two at once could advance the same execution twice.
+  const passes = new Map()
+  const scheduleFlow = id => {
+    const pass = (passes.get(id) ?? Promise.resolve()).then(() => schedulePass(id))
+      .catch(error => rt.warn('nodo: schedule failed (%s): %s', id, error.message ?? error))
+    passes.set(id, pass)
+    void pass.then(() => { if (passes.get(id) === pass) passes.delete(id) })
+    return pass
+  }
+  Object.assign(rt, { flowOf, syncTaskFlow, stallFlow, needsFlowReview, checkFlowCapacity, advanceFlow, reworkFlow, flowExecutionEnded, answerFlowCard, scheduleFlow,
     listFlowCards: id => { ownerOf(id); return structuredClone(Object.values(state.cards).filter(card => card.coordinatorSessionId === id)) },
     getFlowCard: (id, cardId) => structuredClone(cardOf(id, cardId)),
-    flowReportDeliveryFailed: async (execution, report) => {
-      if (!state.tasks[execution.taskId].flow) return
-      report.deliveryFailures = (report.deliveryFailures ?? 0) + 1
-      if (report.deliveryFailures >= REPORT_DELIVERY_FAILURES_MAX) flowReportStalled(execution, report, 'delivery-failed')
-      await rt.saveStrict()
-    },
-    flowLeadFailed: async id => {
-      let changed = false
-      for (const execution of Object.values(state.executions)) if (state.tasks[execution.taskId].coordinatorSessionId === id) {
-        for (const report of execution.reports ?? []) if (!report.review || report.review.awaitingAnswer) changed = flowReportStalled(execution, report, 'lead-error') || changed
-      }
-      if (changed) await rt.saveStrict()
-    },
     recoverFlowCards: () => {
       if (rt.readOnly() !== undefined) return
       for (const task of Object.values(state.tasks)) {
+        if (task.flow?.status === 'done' && task.status === 'review') putCard(task, 'acceptance')
         syncTaskFlow(task)
-        if (['accepting', 'stalled'].includes(task.flow?.status)) putCard(task, task.flow.status === 'accepting' ? 'acceptance' : 'stall')
-        else resolveCards(task, 'recovered')
+        if (task.flow?.status === 'stalled') putCard(task, 'stall')
+        else if (task.flow?.status !== 'done') resolveCards(task, 'recovered')
       }
     } })
 }

@@ -9,7 +9,6 @@ const TOOL_ARGS = {
   nodo_context: ['action', 'taskId', 'query', 'cursor', 'sourceId', 'executionId', 'offset', 'limit'],
   nodo_board: ['table', 'session', 'taskId', 'decisionId'],
   nodo_route: ['action', 'type', 'hard', 'scope', 'title', 'continues', 'taskId', 'worktree', 'parentId', 'dependsOn', 'questions', 'references', 'stopExecutionIds', 'taskIds', 'executionIds'],
-  nodo_review: ['executionId', 'disposition', 'reason', 'basis', 'questions'],
 }
 
 export function install(rt) {
@@ -54,8 +53,7 @@ export function install(rt) {
       if (args.table === 'roles' && args.session !== undefined) throw new Error('roles 表不能同时指定 session')
       return args.table === 'roles' ? rt.leadRoles(id) : rt.leadDelegations(id, args.session)
     }
-    if (request.name === 'nodo_route') return rt.leadRoute(id, args)
-    return rt.leadReview(id, args)
+    return rt.leadRoute(id, args)
   }
   const answer = async request => {
     let result
@@ -64,11 +62,11 @@ export function install(rt) {
       result = { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] }
     } catch (error) {
       const retry = { 'orch/no-trigger': 'ask-user', 'orch/scope-missing': 'quote-or-note', 'orch/scope-not-quote': 'quote-or-note', 'orch/title-empty': 'quote-or-note',
-        'orch/scope-note-too-long': 'shorten', 'orch/unknown-type': 'pick-type', 'orch/report-unreviewed': 'review', 'orch/decision-pending': 'wait',
+        'orch/scope-note-too-long': 'shorten', 'orch/unknown-type': 'pick-type', 'orch/decision-pending': 'wait',
         'orch/busy': 'wait', 'orch/source-busy': 'wait', 'orch/trigger-full': 'close-tasks', 'orch/task-stalled': 'new-task', 'orch/frozen': 'new-task', 'orch/worktree-mismatch': 'drop-worktree' }[error.code]
       result = { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code: error.code ?? 'orch/invalid',
         ...(error.field ? { field: error.field } : {}), message: error.message, ...(retry ? { retry } : {}),
-        ...(error.decisionId ? { decisionId: error.decisionId } : {}), ...(error.reports ? { reports: error.reports } : {}) }) }] }
+        ...(error.decisionId ? { decisionId: error.decisionId } : {}) }) }] }
     }
     let text = JSON.stringify(result)
     for (const token of new Set([...tokens.keys(), request.token].filter(value => typeof value === 'string' && value))) text = text.replaceAll(token, '[redacted]')

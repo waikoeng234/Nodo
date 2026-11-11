@@ -57,7 +57,7 @@ for (const { engine, project, unsupported } of [
   const receipt = await routeUserTask(rt, owner.id, { type: 'feature', hard: false, task: requirement })
   await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'done' }) })
   const execution = rt.state.executions[receipt.executionId]
-  await until(() => execution.reports?.length)
+  await until(() => execution.flowContinued || rt.state.tasks[execution.taskId].flow.status === 'stalled')
   assert.equal(execution.status, 'done')
   if (unsupported) {
     assert.equal(execution.reportData.source, 'final-text')
@@ -79,19 +79,12 @@ for (const { engine, project, unsupported } of [
       assert.deepEqual(requests.filter(item => item.loadedServers).at(-1).loadedServers, ['personal'])
       assert.deepEqual(requests.filter(item => item.loadedServers).at(-1).activeMcpTools, [])
     }
-    await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
     return
   }
   assert.equal(execution.reportData.id, latest.reportId)
   assert.equal(execution.reportData.summary, 'Latest report')
   assert.equal(execution.reportHistory[0].summary, 'First report')
-  const card = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === execution.id && line.origin?.kind === 'report')
-  assert.match(card.text, /\[回报\] Worker · Implement the original · 阶段 implement（第 1 轮）/)
-  assert.match(card.text, /结论：done —— Latest report/)
-  assert.ok(card.text.includes(`报告：report:${latest.reportId}`))
-  assert.ok(card.text.includes(`证据：evidence:${execution.id}`))
-  assert.doesNotMatch(card.text, /First report/)
-  assert.equal(execution.reports[0].summary, 'Latest report')
+  assert.equal(rt.transcriptOf(owner.id).some(line => line.origin?.kind === 'report'), false, 'the report stays on the execution')
   const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[execution.id]
   assert.deepEqual(saved.reportData, execution.reportData)
   assert.deepEqual(saved.evidence, execution.evidence)
@@ -138,5 +131,4 @@ for (const { engine, project, unsupported } of [
     assert.ok(turns[0].content.endsWith(rt.workerReportMethod({ stage: 'implement' })), 'a mounted zcode worker keeps the tool report method')
     assert.doesNotMatch(turns[0].content, /简短总结结果/)
   }
-  await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
 }))

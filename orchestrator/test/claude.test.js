@@ -377,7 +377,7 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
         ['--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
           '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',
           '--tools', '', '--strict-mcp-config',
-          '--allowedTools', 'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_route', 'mcp__nodo_lead__nodo_review',
+          '--allowedTools', 'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_route',
           '--mcp-config', '<nodo-lead-config>', ...(spawn.resume ? ['--resume', 'fixture-claude-session'] : [])])
       assert.equal(spawn.spawn.includes('--setting-sources'), false)
       assert.equal(spawn.spawn.includes('--disable-slash-commands'), false)
@@ -388,8 +388,8 @@ for (const useFile of [false, true]) test(`Claude mounts the lead MCP on start a
       assert.equal(JSON.stringify(config).includes('lead-token-secret'), false)
       assert.equal(JSON.stringify(config).includes(socket), false)
       assert.equal(JSON.stringify(config).includes(tokenFile), false)
-      assert.deepEqual(spawn.allowedTools, ['mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_route', 'mcp__nodo_lead__nodo_review'],
-        'exactly the four lead tools skip approval, nothing injectable')
+      assert.deepEqual(spawn.allowedTools, ['mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_route'],
+        'exactly the three lead tools skip approval, nothing injectable')
       assert.equal(spawn.leadSocketEnv, socket)
       assert.equal(spawn.leadTokenEnv, useFile ? undefined : 'lead-token-secret')
       assert.equal(spawn.leadTokenFileEnv, useFile ? tokenFile : undefined)
@@ -429,7 +429,7 @@ test('Claude treats any non-worker mount as the lead role and refuses a leader w
       ['--print', '--verbose', '--input-format', 'stream-json', '--output-format', 'stream-json',
         '--include-partial-messages', '--replay-user-messages', '--permission-prompt-tool=stdio',
         '--tools', '', '--strict-mcp-config',
-        '--allowedTools', 'mcp__custom_lead__nodo_board', 'mcp__custom_lead__nodo_context', 'mcp__custom_lead__nodo_route', 'mcp__custom_lead__nodo_review',
+        '--allowedTools', 'mcp__custom_lead__nodo_board', 'mcp__custom_lead__nodo_context', 'mcp__custom_lead__nodo_route',
         '--mcp-config', '<custom-lead-config>'])
     assert.deepEqual(Object.keys(JSON.parse(spawn.mcpConfig).mcpServers), ['custom_lead'])
     assert.equal(JSON.stringify(spawn.spawn).includes('lead-token-secret'), false)

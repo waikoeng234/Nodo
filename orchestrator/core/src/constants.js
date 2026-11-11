@@ -18,12 +18,8 @@ export const CONTEXT_LIST_MAX = 50
 export const INPUT_CONTEXT_MAX = 96_000
 // Lead-routed task flow bounds and the trigger-message storage quota.
 export const FLOW_EXECUTIONS_MAX = 8
-export const STAGE_ROUNDS_MAX = 3
 export const REWORK_MAX_DEFAULT = 2
-export const REPORT_DELIVERY_FAILURES_MAX = 3
 export const SCOPE_NOTE_MAX = 100
-export const REVIEW_QUESTIONS_MAX = 5
-export const REVIEW_QUESTION_MAX = 200
 export const HISTORY_USER_MAX = 6
 export const HISTORY_REPLY_MAX = 6
 export const HISTORY_TEXT_MAX = 20_000

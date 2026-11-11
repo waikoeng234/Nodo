@@ -11,8 +11,6 @@ const STALL_REASONS = {
   'execution-failed': '执行失败',
   'verdict-unreadable': '审查结论无法读取',
   'review-unavailable': '审查类型不可用',
-  'delivery-failed': '回报投递失败',
-  'lead-error': '主控运行出错',
   'accept-blocked': '验收检查未通过',
   'rework-limit': '返工次数已达上限',
   'hard-cap': '执行数已达上限',

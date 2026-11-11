@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { registerEngine } from '../agent-drivers/dist/index.js'
 import { withHost, until } from './helpers/host.js'
-import { reviewDeliveredReports } from './helpers/report-review.js'
+import { flowSettled } from './helpers/route.js'
 import { reportFixtureCompletions } from './helpers/flow.js'
 
 // End-to-end acceptance matrix for S3 parallel delegation. The flight fixture
@@ -63,6 +63,7 @@ const withFlights = (run, repository = false) => withHost(async host => {
     types: [{ id: 'feature', name: 'Feature', when: '' }], assign: { feature: { normal: { profile: worker.id } } } }])
   const owner = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
   const reports = id => rt.transcriptOf(id).filter(line => line.origin?.kind === 'report')
+  const ended = id => rt.transcriptOf(id).filter(line => line.delegation?.ended)
   const lines = id => rt.transcriptOf(id)
   const turn = (reason = 'done') => ({ mode: 'turn', completion: Promise.resolve({ reason }) })
   const delegate = (overrides = {}, ownerId = owner.id) => routeUserTask(rt, ownerId,
@@ -70,7 +71,7 @@ const withFlights = (run, repository = false) => withHost(async host => {
   const finishLead = async id => {
     const driver = await until(() => rt.driverOf(id)?.active && rt.driverOf(id))
     const count = driver.calls.length
-    await reviewDeliveredReports(rt, id)
+    await flowSettled(rt, id)
     driver.finish('done', 'Reviewed')
     await until(() => !rt.workView()[id]?.active || driver.calls.length > count)
   }
@@ -79,19 +80,18 @@ const withFlights = (run, repository = false) => withHost(async host => {
       await rt.leadDispatch.interrupt(ownerId, { executionId: flight.executionId })
     }
   }
-  await run({ host, rt, workspace, worker, lead, owner, reports, lines, turn, delegate, finishLead, stopFlight })
+  await run({ host, rt, workspace, worker, lead, owner, reports, ended, lines, turn, delegate, finishLead, stopFlight })
 })
 
-test('dependency and done-parent rejections leave all five slots and all 24 dispatches available without queued work or sessions', () => withFlights(async ({ rt, workspace, worker, owner, delegate, turn }) => {
+test('stopped dependencies and done parents are refused without using slots, budget, work or sessions', () => withFlights(async ({ rt, workspace, worker, owner, delegate, turn }) => {
   const dependency = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
-    title: 'Prerequisite', brief: 'Must be accepted first', source: { kind: 'lead' } })
+    title: 'Prerequisite', brief: 'Stopped before it finished', source: { kind: 'lead' } })
+  rt.state.tasks[dependency.id].flow = { status: 'stopped' }
   const parent = await rt.createTask({ workspaceRef: workspace.id, teamId: 'team', coordinatorSessionId: owner.id,
     title: 'Accepted goal', brief: 'Reopen before new work', source: { kind: 'lead' } })
   rt.state.tasks[parent.id].status = 'done'
-  const statuses = ['open', 'review', 'blocked', 'stopped']
   for (let index = 0; index < 28; index++) {
-    rt.state.tasks[dependency.id].status = statuses[index % statuses.length]
-    await assert.rejects(delegate({ dependsOn: [dependency.id] }), { code: 'orch/invalid', message: '依赖任务 Prerequisite 尚未验收，先完成它再派活' })
+    await assert.rejects(delegate({ dependsOn: [dependency.id] }), { code: 'orch/invalid', message: '依赖任务 Prerequisite 已停止，不能再依赖它' })
     await assert.rejects(delegate({ parentId: parent.id }), { code: 'orch/invalid', message: '父任务已验收' })
     assert.deepEqual(rt.state.executions, {})
     assert.equal(rt.state.profiles[worker.id].sessions.length, 0)
@@ -110,7 +110,27 @@ test('dependency and done-parent rejections leave all five slots and all 24 disp
   assert.ok(Object.values(rt.state.executions).every(item => item.status === 'cancelled'))
 }))
 
-test('M1 parallel flights stay independent across a taskId supplement and a stop', () => withFlights(async ({ rt, owner, delegate, turn, finishLead, stopFlight, reports, lines }) => {
+test('a two-step goal runs both steps in order without another user message or leader turn', () => withFlights(async ({ rt, worker, owner, delegate, turn }) => {
+  const first = await delegate({ task: 'Step one\nInvestigate first' })
+  const second = await delegate({ task: 'Step two\nBuild on step one', dependsOn: [first.taskId] })
+  assert.equal(second.status, 'pending')
+  assert.deepEqual(second.flow, { status: 'pending', route: { type: 'feature', hard: false } })
+  assert.equal(Object.values(rt.state.executions).length, 1, 'the waiting step has no execution')
+  assert.equal(rt.state.profiles[worker.id].sessions.length, 1, 'nor a session')
+  await rt.followLead(owner.id, turn('done'))
+  const one = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
+  one.finish('done', 'Step one done')
+  const execution = await until(() => Object.values(rt.state.executions).find(item => item.taskId === second.taskId && item.status === 'running'))
+  assert.equal(rt.state.tasks[first.taskId].flow.status, 'done')
+  const two = await until(() => rt.driverOf(execution.sessionId)?.active && rt.driverOf(execution.sessionId))
+  assert.match(two.calls[0], /Step two/)
+  two.finish('done', 'Step two done')
+  await until(() => rt.state.tasks[second.taskId].flow.status === 'done')
+  assert.equal(rt.driverOf(owner.id), undefined, 'the leader never ran a turn')
+  assert.deepEqual(Object.values(rt.state.cards).filter(card => card.status === 'open').map(card => card.taskId).sort(), [first.taskId, second.taskId].sort())
+}))
+
+test('M1 parallel flights stay independent across a taskId supplement and a stop', () => withFlights(async ({ rt, owner, delegate, turn, stopFlight, reports, ended }) => {
   const a = await delegate({ task: 'Flight A\nRun beside another task' })
   const b = await delegate({ task: 'Flight B\nRun beside flight A' })
   await rt.followLead(owner.id, turn('done'))
@@ -122,7 +142,6 @@ test('M1 parallel flights stay independent across a taskId supplement and a stop
   assert.equal(deliveredSupplement.executionId, a.executionId)
   assert.equal(deliveredSupplement.delivery.mode, 'steered')
   assert.deepEqual(Object.values(rt.state.executions).map(item => item.status), ['running', 'running'])
-  assert.equal(reports(owner.id).length, 0, 'the steered supplement leaves no report or corrupted state')
   const stopped = await rt.leadDispatch.interrupt(owner.id, { executionId: b.executionId })
   assert.equal(stopped.ended, 'interrupted')
   await until(() => rt.state.executions[b.executionId].status === 'interrupted')
@@ -130,20 +149,14 @@ test('M1 parallel flights stay independent across a taskId supplement and a stop
   assert.equal(db.active, false)
   assert.equal(da.active, true, 'stopping B leaves A running')
   da.finish('done', 'Flight A completed on its own')
-  await until(() => reports(owner.id).length === 1)
+  await until(() => rt.state.tasks[a.taskId].flow.status === 'done')
   assert.equal(rt.state.executions[a.executionId].reportData.structured, true, 'the flight reported through nodo_report')
-  await finishLead(owner.id)
-  assert.equal(rt.state.tasks[a.taskId].flow.status, 'accepting', 'a review-free result opens the acceptance card')
-  const transcript = lines(owner.id)
-  const delivered = transcript.filter(line => line.origin?.kind === 'report')
-  assert.equal(delivered.length, 1)
-  assert.equal(delivered[0].origin.executionId, a.executionId)
+  assert.equal(rt.state.tasks[b.taskId].flow.status, 'stopped')
+  assert.deepEqual(ended(owner.id).map(line => [line.delegation.executionId, line.delegation.ended]),
+    [[b.executionId, 'interrupted'], [a.executionId, 'done']], 'the lead only receives status notes, in the order the flights ended')
+  assert.equal(reports(owner.id).length, 0)
   const sourceId = `execution:${a.executionId}:result`
-  assert.ok(delivered[0].text.includes(`nodo_context read executionId ${a.executionId}`))
-  assert.equal(delivered[0].references, undefined)
   assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId })).text, 'Flight A completed on its own')
-  const stopNote = transcript.findIndex(line => line.delegation?.executionId === b.executionId && line.delegation.ended === 'interrupted')
-  assert.ok(stopNote >= 0 && stopNote < transcript.indexOf(delivered[0]), 'the stop status of B reaches the lead before the report of A')
   const record = rt.state.executions[a.executionId]
   assert.equal(record.status, 'done')
   assert.equal(record.sessionId, a.session)
@@ -153,7 +166,7 @@ test('M1 parallel flights stay independent across a taskId supplement and a stop
   const supplement = await delegate({ taskId: a.taskId, task: '补充 A\nExtra requirement for flight A' })
   assert.equal(supplement.status, 'queued')
   assert.equal(supplement.taskId, a.taskId)
-  assert.equal(supplement.delivery.mode, 'withdrew-card', 'a supplement on an accepting task withdraws its acceptance card')
+  assert.equal(supplement.delivery.mode, 'withdrew-card', 'a supplement on a task awaiting acceptance withdraws its acceptance card')
   assert.equal(rt.state.executions[supplement.executionId].stage, 'rework', 'the supplement continues the flow as a rework')
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.driverOf(supplement.session)?.active)
@@ -164,10 +177,10 @@ test('M1 parallel flights stay independent across a taskId supplement and a stop
   assert.deepEqual(rt.state.executions[a.executionId].result, originalResult)
   assert.deepEqual(rt.state.executions[a.executionId].references, [])
   await stopFlight(owner.id, supplement)
-  assert.equal(reports(owner.id).length, 1, 'a confirmed stop never produces a report')
+  assert.equal(reports(owner.id).length, 0)
 }))
 
-test('M2 two lead sessions keep snapshots, boards, report queues and task records isolated', () => withFlights(async ({ host, rt, workspace, lead, owner, delegate, turn, finishLead, reports }) => {
+test('M2 two lead sessions keep snapshots, boards, status notes and task records isolated', () => withFlights(async ({ host, rt, workspace, lead, owner, delegate, turn, finishLead, ended }) => {
   const other = await host.api('session-create', { profile: lead.id, workspace: workspace.id, lazy: true })
   const first = await delegate({ task: 'Session one task' })
   const second = await delegate({ task: 'Session two task' }, other.id)
@@ -177,8 +190,8 @@ test('M2 two lead sessions keep snapshots, boards, report queues and task record
   await host.api('send', { profile: lead.id, session: other.id, text: 'Second round for session two' })
   await until(() => rt.workView()[other.id]?.active)
   rt.driverOf(first.session).finish('done', 'One done')
-  await until(() => reports(owner.id).length === 1)
-  assert.equal(reports(other.id).length, 0, 'the report of session one never lands in session two')
+  await until(() => rt.state.tasks[first.taskId].flow.status === 'done')
+  assert.equal(ended(other.id).length, 0, 'the result of session one never lands in session two')
   for (const [id, present, absent] of [[owner.id, 'Session one task', 'Session two task'], [other.id, 'Session two task', 'Session one task']]) {
     const snapshot = rt.leadSnapshot(id)
     assert.ok(snapshot.includes(present) && !snapshot.includes(absent), 'the snapshot only shows own delegations')
@@ -191,20 +204,14 @@ test('M2 two lead sessions keep snapshots, boards, report queues and task record
   assert.equal(rt.state.executions[first.executionId].taskId, first.taskId)
   assert.equal(rt.state.executions[second.executionId].taskId, second.taskId)
   rt.driverOf(second.session).finish('done', 'Two done')
-  await until(() => rt.conversationOf(other.id).session.reportQueue?.length === 1)
-  assert.equal(rt.conversationOf(other.id).session.reportQueue[0].session, second.session)
-  assert.equal(rt.conversationOf(owner.id).session.reportQueue, undefined, 'the queue of session one stays empty')
-  await finishLead(owner.id)
+  await until(() => rt.state.tasks[second.taskId].flow.status === 'done')
+  assert.deepEqual(ended(owner.id).map(line => line.delegation.session), [first.session])
+  assert.deepEqual(ended(other.id).map(line => line.delegation.session), [second.session])
+  assert.equal(rt.driverOf(owner.id), undefined)
   await finishLead(other.id)
-  await until(() => reports(other.id).length === 1)
-  assert.equal(reports(other.id)[0].origin.session, second.session)
-  await finishLead(other.id)
-  assert.equal(rt.conversationOf(other.id).session.reportQueue, undefined)
-  assert.equal(reports(owner.id).length, 1)
-  assert.equal(reports(other.id).length, 1)
 }))
 
-test('M3 an engine failure among five active flights frees its slot while the others report', () => withFlights(async ({ rt, owner, delegate, turn, finishLead, stopFlight, reports }) => {
+test('M3 an engine failure among five active flights frees its slot while the others finish', () => withFlights(async ({ rt, owner, delegate, turn, stopFlight, reports, ended }) => {
   const flights = []
   for (let index = 0; index < 5; index++) flights.push(await delegate({ task: `Flight ${index}` }))
   await assert.rejects(delegate({ task: 'One too many' }), /此主控会话最多同时派活 5 个任务，请等一个结束后再派/)
@@ -212,73 +219,50 @@ test('M3 an engine failure among five active flights frees its slot while the ot
   await until(() => flights.every(flight => rt.driverOf(flight.session)?.active))
   const drivers = Object.fromEntries(flights.map(flight => [flight.executionId, rt.driverOf(flight.session)]))
   drivers[flights[0].executionId].finish('error', 'Engine crashed')
-  // The report is prepared after the execution status settles.
-  await until(() => typeof rt.state.executions[flights[0].executionId].report === 'string')
+  await until(() => rt.state.tasks[flights[0].taskId].flow.status === 'stalled')
   assert.equal(rt.state.executions[flights[0].executionId].status, 'failed')
   assert.equal(rt.state.executions[flights[0].executionId].reason, 'error')
-  await until(() => rt.state.executions[flights[0].executionId].reports?.length)
-  await reviewDeliveredReports(rt, owner.id)
   const sixth = await delegate({ task: 'Flight six' })
   assert.equal(sixth.status, 'queued', 'the failed flight released its active slot')
   assert.equal(rt.state.executions[flights[1].executionId].status, 'running', 'the sibling flight keeps running')
   drivers[flights[1].executionId].finish('done', 'Flight one completed cleanly')
-  await until(() => rt.state.executions[flights[1].executionId].report === 'Flight one completed cleanly')
+  await until(() => rt.state.tasks[flights[1].taskId].flow.status === 'done')
   assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId: `execution:${flights[1].executionId}:result` })).text, 'Flight one completed cleanly')
   assert.deepEqual(rt.state.executions[flights[1].executionId].references, [])
-  await until(() => reports(owner.id).some(line => line.origin.executionId === flights[0].executionId))
-  assert.match(reports(owner.id).find(line => line.origin.executionId === flights[0].executionId).text, /Status: failed · error/)
-  await finishLead(owner.id)
-  await finishLead(owner.id)
+  assert.deepEqual(ended(owner.id).map(line => [line.delegation.executionId, line.delegation.ended]), [[flights[0].executionId, 'error'], [flights[1].executionId, 'done']])
+  await rt.followLead(owner.id, turn('done'))
   await until(() => rt.driverOf(sixth.session)?.active)
-  await until(() => reports(owner.id).some(line => line.origin.executionId === flights[1].executionId))
   await stopFlight(owner.id, sixth)
   for (const flight of flights.slice(2)) await stopFlight(owner.id, flight)
-  assert.equal(reports(owner.id).length, 2)
-  assert.equal(rt.conversationOf(owner.id).session.reportQueue, undefined)
+  assert.equal(reports(owner.id).length, 0)
+  assert.equal(rt.driverOf(owner.id), undefined)
 }))
 
-test('M4 results finishing during a lead round queue up and flush once in FIFO order', () => withFlights(async ({ host, rt, lead, owner, delegate, turn, finishLead, reports, lines }) => {
+test('M4 results finishing during a lead round advance their flows without touching the round', () => withFlights(async ({ host, rt, lead, owner, delegate, turn, reports }) => {
   const a = await delegate({ task: 'Report A' })
   const b = await delegate({ task: 'Report B' })
   await rt.followLead(owner.id, turn('done'))
   await until(() => rt.driverOf(a.session)?.active && rt.driverOf(b.session)?.active)
-  // The user round already runs when the executions end, so both results queue behind it;
-  // freezing the first result pins the FIFO order before the second one enters the queue.
   await host.api('send', { profile: lead.id, session: owner.id, text: 'Busy round' })
   const leadDriver = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
-  const queue = () => rt.conversationOf(owner.id).session.reportQueue
   rt.driverOf(a.session).finish('done', 'A finished during the round')
-  await until(() => queue()?.[0]?.session === a.session && queue()[0].text?.includes(`nodo_context read executionId ${a.executionId}`))
   rt.driverOf(b.session).finish('done', 'B finished during the round')
-  await until(() => queue()?.length === 2)
-  assert.deepEqual(queue().map(item => item.session), [a.session, b.session])
-  assert.equal(reports(owner.id).length, 0, 'queued reports do not interrupt the running round')
-  const deliveredReport = rt.state.executions[a.executionId].reportData.id
+  await until(() => [a, b].every(item => rt.state.tasks[item.taskId].flow.status === 'done'))
+  const reportId = rt.state.executions[a.executionId].reportData.id
   rt.driverOf(a.session).finish('done', 'A late extra round')
   await until(() => !rt.workView()[a.session]?.active)
-  assert.equal(rt.state.executions[a.executionId].reportData.id, deliveredReport, 'a repeated turn end never replaces the delivered report')
-  assert.equal(reports(owner.id).length, 0)
+  assert.equal(rt.state.executions[a.executionId].reportData.id, reportId, 'a repeated turn end never replaces the saved report')
   assert.deepEqual(leadDriver.steers, [], 'nothing steers into the busy lead')
+  assert.equal(leadDriver.calls.length, 1)
+  assert.equal(rt.workView()[owner.id]?.queued ?? 0, 0, 'nothing queues behind the round')
   leadDriver.finish('done', 'Round complete')
-  await until(() => reports(owner.id).length === 1)
-  assert.equal(reports(owner.id)[0].origin.session, a.session)
-  assert.ok(reports(owner.id)[0].text.includes(`nodo_context read executionId ${a.executionId}`))
+  await until(() => !rt.workView()[owner.id]?.active)
+  assert.equal(leadDriver.calls.length, 1)
+  assert.equal(reports(owner.id).length, 0)
   assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId: `execution:${a.executionId}:result` })).text, 'A finished during the round')
-  assert.equal(reports(owner.id)[0].references, undefined)
-  await finishLead(owner.id)
-  await until(() => reports(owner.id).length === 2)
-  assert.equal(reports(owner.id)[1].origin.session, b.session)
-  await finishLead(owner.id)
-  const transcript = lines(owner.id)
-  const delivered = transcript.filter(line => line.origin?.kind === 'report')
-  assert.equal(delivered.length, 2)
-  for (const line of delivered) assert.equal(transcript.filter(item => item.origin?.reportId === line.origin.reportId).length, 1)
-  assert.equal(rt.state.executions[a.executionId].status, 'done')
-  assert.equal(rt.state.executions[b.executionId].status, 'done')
-  assert.equal(queue(), undefined, 'no report is lost or duplicated')
 }))
 
-test('M5 the sixth active dispatch is refused in Chinese and accepted after one flight ends', () => withFlights(async ({ rt, owner, delegate, turn, finishLead, stopFlight, reports }) => {
+test('M5 the sixth active dispatch is refused in Chinese and accepted after one flight ends', () => withFlights(async ({ rt, owner, delegate, turn, stopFlight }) => {
   const flights = []
   for (let index = 0; index < 5; index++) flights.push(await delegate({ task: `Flight ${index}` }))
   await assert.rejects(delegate({ task: 'One too many' }),
@@ -286,23 +270,18 @@ test('M5 the sixth active dispatch is refused in Chinese and accepted after one 
   await rt.followLead(owner.id, turn('done'))
   await until(() => flights.every(flight => rt.driverOf(flight.session)?.active))
   rt.driverOf(flights[0].session).finish('done', 'First finished')
-  // The end save settles before the slot is released; the report is prepared after that.
-  await until(() => typeof rt.state.executions[flights[0].executionId].report === 'string')
+  await until(() => rt.state.tasks[flights[0].taskId].flow.status === 'done')
   assert.equal(rt.state.executions[flights[0].executionId].status, 'done')
-  await until(() => rt.state.executions[flights[0].executionId].reports?.length)
-  await reviewDeliveredReports(rt, owner.id)
   const sixth = await delegate({ task: 'Flight six' })
   assert.equal(sixth.status, 'queued', 'a finished flight frees a slot for the next dispatch')
   await assert.rejects(delegate({ task: 'Flight seven' }), /最多同时派活 5 个任务/)
-  await until(() => reports(owner.id).length === 1)
-  await finishLead(owner.id)
+  await rt.followLead(owner.id, turn('done'))
   await until(() => rt.driverOf(sixth.session)?.active)
   await rt.leadDispatch.interrupt(owner.id, { executionId: sixth.executionId })
   for (const flight of flights.slice(1)) await stopFlight(owner.id, flight)
-  assert.equal(rt.conversationOf(owner.id).session.reportQueue, undefined)
 }))
 
-test('M7 parallel shared and isolated tasks keep their directories and continue by taskId', () => withFlights(async ({ rt, workspace, owner, delegate, turn, finishLead, stopFlight, reports }) => {
+test('M7 parallel shared and isolated tasks keep their directories and continue by taskId', () => withFlights(async ({ rt, workspace, owner, delegate, turn, stopFlight, reports }) => {
   const shared = await delegate({ task: 'Shared work in the main checkout' })
   const iso = await delegate({ task: 'Isolated work in its own directory', worktree: true })
   await rt.followLead(owner.id, turn('done'))
@@ -319,16 +298,12 @@ test('M7 parallel shared and isolated tasks keep their directories and continue 
   assert.ok(rt.driverOf(iso.session).calls[0].includes(`执行目录：${isolated.cwd}`))
   rt.driverOf(shared.session).finish('done', 'Shared done')
   rt.driverOf(iso.session).finish('done', 'Isolated done')
-  await until(() => rt.state.executions[shared.executionId].report === 'Shared done' && rt.state.executions[iso.executionId].report === 'Isolated done')
+  await until(() => [shared, iso].every(item => rt.state.tasks[item.taskId].flow.status === 'done'))
   for (const [flight, expected] of [[shared, 'Shared done'], [iso, 'Isolated done']]) {
     assert.equal((await rt.executionContext(owner.id, { action: 'read', sourceId: `execution:${flight.executionId}:result` })).text, expected)
     assert.deepEqual(rt.state.executions[flight.executionId].references, [])
   }
-  await finishLead(owner.id)
-  await finishLead(owner.id)
-  assert.equal(reports(owner.id).length, 2)
-  assert.equal(rt.state.tasks[shared.taskId].flow.status, 'accepting')
-  assert.equal(rt.state.tasks[iso.taskId].flow.status, 'accepting')
+  assert.equal(reports(owner.id).length, 0)
   // once the isolated task has no pending execution, its taskId supplement reuses the locked directory
   const again = await delegate({ taskId: iso.taskId, task: '继续隔离任务' })
   assert.equal(again.delivery.mode, 'withdrew-card')
@@ -340,5 +315,4 @@ test('M7 parallel shared and isolated tasks keep their directories and continue 
   assert.equal(rt.state.executions[again.executionId].workspaceRef, isolated.id, 'the taskId supplement reuses the locked directory')
   assert.equal(rt.driverOf(again.session).cwd, isolated.cwd)
   await stopFlight(owner.id, again)
-  assert.equal(rt.conversationOf(owner.id).session.reportQueue, undefined)
 }, true))

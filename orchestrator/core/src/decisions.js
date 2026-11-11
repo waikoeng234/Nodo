@@ -91,7 +91,6 @@ export function install(rt) {
       const execution = state.executions[executionId]
       if (!execution) throw invalid('来源执行不存在')
       await rt.ownedTask({ session }, execution.taskId)
-      rt.deliveredReports(execution.taskId, executionId)
     }
     for (const reference of references) {
       try { await rt.readReference({ id: reference, target: session.engine === 'dsh' ? session.driverSessionId : id }) }
@@ -109,10 +108,8 @@ export function install(rt) {
       status: 'pending', createdAt: Date.now(),
       ...(session.lastTurn?.reason === 'interrupted' && !rt.workView()[id]?.active ? { handoffStopped: true } : {}) }
     state.decisions[decision.id] = decision
-    const rollbackAsk = rt.askReports(executionIds, decision)
     try { await rt.saveStrict() } catch (error) {
       delete state.decisions[decision.id]
-      rollbackAsk()
       throw error
     }
     Object.assign(decision, await rt.pauseLeadForDecision(id, stopExecutionIds))
@@ -171,6 +168,7 @@ export function install(rt) {
         throw error
       }
       rt.resetLeadBudget(id)
+      void rt.scheduleFlow(id)
       const answerLine = rt.transcriptOf(id).find(item => item.id === decision.answer.userMessageId)
       rt.setPendingTrigger(rt.triggerFromLine({ coordinatorSessionId: id, line: answerLine }))
     })()
@@ -218,7 +216,7 @@ export function install(rt) {
       text: `已撤销决策${question ? `「${question.slice(0, 80)}」` : ''}：未批准推荐方案，也不会恢复旧派活。`,
       origin: { kind: 'decision-cancel', decisionId } })
     await rt.save()
-    void rt.flushLeadReports(id)
+    void rt.scheduleFlow(id)
     return response(decision, '决策已撤销；这不表示批准推荐方案，也不会恢复旧派活。')
   }
   Object.assign(rt, { createDecision, answerDecision, cancelDecision, listDecisions, getDecision, sessionBlockReason, assertDecisionDispatch, assertDecisionAcceptance,

@@ -112,26 +112,23 @@ test('MCP decision file-path references report actionable errors and allow retry
   assert.equal(rt.sessionBlockReason(owner.id).decisionId, JSON.parse(retry.content[0].text).decisionId)
 }))
 
-test('cancelling a decision automatically delivers waiting reports and registers their review', () => withDecisions(async ({ rt, owner, api, delegate }) => {
-  const receipt = await delegate()
+test('a pending decision holds dependent tasks while running work advances; cancelling it starts them', () => withDecisions(async ({ rt, owner, api, delegate }) => {
+  const first = await delegate()
   await rt.followLead(owner.id, turn())
-  const worker = await until(() => rt.driverOf(receipt.session)?.active && rt.driverOf(receipt.session))
+  const worker = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
+  const waiting = await delegate({ task: 'Follow-up', dependsOn: [first.taskId] })
+  assert.equal(waiting.status, 'pending')
   const { decisionId } = await rt.createDecision(owner.id, request)
+  await rt.workerReport(rt.state.executions[first.executionId], { outcome: 'done', summary: 'Done', changed: [], verified: [{ command: 'check', result: 'pass' }], issues: [],
+    reviewFlags: { crossModule: false, publicInterface: false, dataFormat: false, security: false } })
   worker.finish()
-  await until(() => rt.conversationOf(owner.id).session.reportQueue?.[0]?.text)
-  const reportId = rt.conversationOf(owner.id).session.reportQueue[0].id
-  assert.equal(rt.driverOf(owner.id), undefined)
-  assert.equal(rt.state.executions[receipt.executionId].reports, undefined)
+  await until(() => rt.state.executions[first.executionId].flowContinued)
+  assert.equal(rt.state.tasks[first.taskId].flow.status, 'done')
+  assert.equal(rt.state.tasks[waiting.taskId].flow.status, 'pending')
   await api('decision-cancel', { decisionId })
-  await until(() => rt.state.executions[receipt.executionId].reports?.some(report => report.id === reportId), 1500)
-  await until(() => rt.conversationOf(owner.id).session.reportQueue === undefined)
-  const report = rt.state.executions[receipt.executionId].reports.find(report => report.id === reportId)
-  assert.equal(report.review, undefined)
-  await assert.rejects(delegate(), { code: 'orch/report-unreviewed' })
-  assert.ok(rt.transcriptOf(owner.id).some(line => line.origin?.reportId === reportId))
-  assert.equal(rt.conversationOf(owner.id).session.reportQueue, undefined)
-  await until(() => rt.driverOf(owner.id)?.active)
-  rt.driverOf(owner.id).finish()
+  await until(() => Object.values(rt.state.executions).some(item => item.taskId === waiting.taskId && item.status === 'running'))
+  assert.equal(rt.state.tasks[waiting.taskId].flow.status, 'running')
+  assert.equal(rt.driverOf(owner.id), undefined, 'neither the finished work nor the release ran a leader turn')
 }))
 
 test('a decision established during worker preparation cancels unsent work without a failure report and cleans its worktree', () => withDecisions(async ({ rt, owner, api, delegate }) => {
@@ -214,95 +211,21 @@ test('a saved cancel leaves one system note; failed, repeat or answered cancels 
   assert.equal(notes().length, 1, 'a failed cancel save writes no note')
 }))
 
-test('delivered reports require review, queued reports allow parallel work, and supplemental reports need a fresh review', () => withDecisions(async ({ host, rt, lead, owner, other, worker, api, delegate, client }) => {
+test('decision ask links source executions atomically; board and snapshots stay within the calling session', () => withDecisions(async ({ rt, owner, other, api, delegate, client }) => {
   const primary = { callTool: async args => (await client()).callTool(args) }, foreign = await client(other.id)
   const first = await delegate()
   await rt.followLead(owner.id, turn())
   const executor = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
-  assert.doesNotMatch(executor.calls[0], /authoriz/)
-  assert.match(executor.calls[0], /# 回报方式[\s\S]*nodo_report/)
-  await api('send', { text: 'Plan parallel work' })
-  const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
-  executor.finish('error', false, true)
-  await until(() => rt.conversationOf(owner.id).session.reportQueue?.[0]?.text)
-  assert.equal(rt.state.executions[first.executionId].reports, undefined)
-  const parallel = await delegate({ task: 'Independent queued work' })
-  const premature = await primary.callTool({ name: 'nodo_review', arguments: { executionId: first.executionId, disposition: 'continue', reason: 'Checked', basis: ['user request'] } })
-  assert.equal(premature.isError, true)
-  leader.finish()
-  const execution = rt.state.executions[first.executionId]
-  await until(() => execution.reports?.length === 1 && leader.active)
-  const report = execution.reports[0]
-  const line = rt.transcriptOf(owner.id).find(line => line.origin?.reportId === report.id)
-  assert.deepEqual(report.references, (line.references ?? []).map(ref => ref.id))
-  assert.equal(report.sessionId, first.session)
-  assert.equal(rt.state.executions[parallel.executionId].status, 'running', 'previously accepted parallel work is sent normally')
-  const before = [Object.keys(rt.state.tasks).length, Object.keys(rt.state.executions).length, rt.findProfile(worker.id).sessions.length]
-  const blocked = await primary.callTool({ name: 'nodo_route', arguments: userRoute(rt, owner.id, { type: 'feature', hard: false, task: 'Blocked', worktree: true } )})
-  assert.equal(JSON.parse(blocked.content[0].text).code, 'orch/report-unreviewed')
-  assert.deepEqual([Object.keys(rt.state.tasks).length, Object.keys(rt.state.executions).length, rt.findProfile(worker.id).sessions.length], before)
-  assert.match(rt.leadSnapshot(owner.id), new RegExp(report.id))
-  const review = { executionId: first.executionId, disposition: 'continue', reason: 'Matches authorized scope', basis: ['current user request', report.id] }
-  for (const changes of [{ basis: [] }, { basis: [' '] }, { reason: ' ' }, { disposition: 'ask' }, { executionId: parallel.executionId }]) {
-    assert.equal((await primary.callTool({ name: 'nodo_review', arguments: { ...review, ...changes } })).isError, true)
-  }
-  assert.equal((await foreign.callTool({ name: 'nodo_review', arguments: review })).isError, true)
-  const status = rt.state.tasks[first.taskId].status
-  assert.equal((await primary.callTool({ name: 'nodo_review', arguments: review })).isError, undefined)
-  assert.equal(rt.state.tasks[first.taskId].status, status)
-  assert.deepEqual(report.review.basis, review.basis)
-  const next = await delegate({ task: 'Authorized next step' })
-  leader.finish()
-  await until(() => !rt.workView()[owner.id]?.active && rt.driverOf(next.session)?.active)
-  const card = Object.values(rt.state.cards).find(item => item.taskId === first.taskId && item.status === 'open')
-  await rt.answerFlowCard(owner.id, { cardId: card.id, action: 'retry' })
-  const retry = Object.values(rt.state.executions).findLast(item => item.taskId === first.taskId)
-  assert.notEqual(retry.id, execution.id)
-  await until(() => executor.active)
   executor.finish()
-  await until(() => retry.reports?.length === 1)
-  await rt.completeTask(first.taskId, { reason: 'Verified', executionIds: [execution.id, retry.id], basis: ['Verified result'] })
-  assert.equal(retry.reports[0].review, undefined)
-  await assert.rejects(delegate(), { code: 'orch/report-unreviewed' })
-  const investigation = { ...review, executionId: retry.id, disposition: 'continue', reason: 'Check the missing compatibility evidence before implementation', basis: [`execution:${retry.id}:result`] }
-  assert.equal((await primary.callTool({ name: 'nodo_review', arguments: investigation })).isError, undefined)
-  assert.equal(rt.state.tasks[first.taskId].status, 'done', 'review of a supplement needs no reopen')
-  assert.equal(execution.reports[0].review.disposition, 'continue')
-  assert.equal(retry.reports[0].review.disposition, 'continue')
-  assert.deepEqual(rt.state.decisions, {}, 'investigation does not fabricate a user answer')
-  await delegate({ task: 'Investigate the missing facts' })
-  await rt.saveStrict()
-  const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[first.executionId]
-  assert.deepEqual(saved.reports, execution.reports)
-  await host.dispose()
-  const restarted = boot(host.home)
-  try { assert.deepEqual((await (await restarted.runtime).taskView(first.taskId)).executions[0].reports, execution.reports) }
-  finally { await restarted.dispose() }
-}))
-
-test('decision ask links delivered sources atomically; board and snapshots stay within the calling session', () => withDecisions(async ({ rt, owner, other, api, delegate, client }) => {
-  const primary = { callTool: async args => (await client()).callTool(args) }, foreign = await client(other.id)
-  const first = await delegate()
-  await rt.followLead(owner.id, turn())
-  const executor = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
-  await assert.rejects(rt.createDecision(owner.id, { ...request, executionIds: [first.executionId] }), /已投递/)
-  executor.finish()
-  const execution = rt.state.executions[first.executionId]
-  await until(() => execution.reports?.length === 1)
+  await until(() => rt.state.tasks[first.taskId].flow.status === 'stalled')
   const save = rt.saveStrict
   rt.saveStrict = async () => { throw new Error('Decision save failed') }
   await assert.rejects(rt.createDecision(owner.id, { ...request, executionIds: [first.executionId] }), /Decision save failed/)
   assert.deepEqual(rt.state.decisions, {})
-  assert.equal(execution.reports[0].review, undefined)
   rt.saveStrict = save
-  await rt.leadReview(owner.id, { executionId: first.executionId, disposition: 'investigate', questions: ['Which compatibility evidence is missing?'],
-    reason: 'Investigate the compatibility choice', basis: ['user compatibility requirement'] })
   const result = await primary.callTool({ name: 'nodo_route', arguments: { action: 'ask', ...{ ...request, executionIds: [first.executionId], taskIds: [first.taskId] }  }})
   assert.equal(result.isError, undefined, result.content[0].text)
   const { decisionId } = JSON.parse(result.content[0].text)
-  assert.equal(execution.reports[0].review.disposition, 'ask')
-  assert.equal(execution.reports[0].review.decisionId, decisionId)
-  assert.deepEqual(execution.reports[0].review.basis, ['user compatibility requirement'])
   const detail = await primary.callTool({ name: 'nodo_board', arguments: { decisionId } })
   assert.deepEqual(JSON.parse(detail.content[0].text).sourceExecutionIds, [first.executionId])
   assert.equal(JSON.parse((await primary.callTool({ name: 'nodo_board', arguments: { table: 'decisions' } })).content[0].text)[0].id, decisionId)
@@ -320,48 +243,6 @@ test('decision ask links delivered sources atomically; board and snapshots stay 
   await delegate({ task: 'Replan within original authorization' })
 }))
 
-test('decision ask picks unreviewed reports first, else the newest, and restores exactly the pick on save failure', () => withDecisions(async ({ rt, owner, createTask }) => {
-  const task = await createTask()
-  const execution = { id: 'execution', taskId: task.id, profileId: 'worker', sessionId: 'worker-session', type: 'feature', hard: false,
-    status: 'done', createdAt: 1, updatedAt: 1, startedAt: 1, endedAt: 2, reason: 'done', report: null, references: [], result: null,
-    reports: [{ id: 'report-1', deliveredAt: 2, sessionId: 'worker-session', summary: 'First', status: 'done', references: [] },
-      { id: 'report-2', deliveredAt: 3, sessionId: 'worker-session', summary: 'Second', status: 'done', references: [] }] }
-  rt.state.executions[execution.id] = execution
-  await rt.leadReview(owner.id, { executionId: execution.id, disposition: 'continue', reason: 'Checked', basis: ['evidence'] })
-  delete execution.reports[0].review
-  const save = rt.saveStrict
-  rt.saveStrict = async () => { throw new Error('Fixture ask save failure') }
-  await assert.rejects(rt.createDecision(owner.id, { ...request, executionIds: [execution.id] }), /Fixture ask save failure/)
-  rt.saveStrict = save
-  assert.deepEqual(rt.state.decisions, {})
-  assert.equal(execution.reports[0].review, undefined, 'a failed save restores the earlier pick to unreviewed')
-  assert.equal(execution.reports[1].review.disposition, 'continue')
-  assert.deepEqual(execution.reports[1].review.basis, ['evidence'])
-  const first = await rt.createDecision(owner.id, { ...request, executionIds: [execution.id] })
-  assert.equal(execution.reports[0].review.disposition, 'ask', 'an unreviewed report is picked even when it is not the newest')
-  assert.equal(execution.reports[0].review.decisionId, first.decisionId)
-  assert.equal(execution.reports[1].review.disposition, 'continue', 'a reviewed newest report keeps its own review')
-  assert.equal(execution.reports[1].review.decisionId, undefined)
-  await rt.cancelDecision(owner.id, { decisionId: first.decisionId })
-  const second = await rt.createDecision(owner.id, { ...request, executionIds: [execution.id] })
-  assert.equal(execution.reports[0].review.decisionId, first.decisionId, 'the newest fallback touches no earlier report')
-  assert.equal(execution.reports[1].review.decisionId, second.decisionId)
-  assert.deepEqual(execution.reports[1].review.basis, ['evidence'], 'the fallback ask preserves the overwritten review fields')
-  await rt.cancelDecision(owner.id, { decisionId: second.decisionId })
-  rt.saveStrict = async () => { throw new Error('Fixture ask save failure') }
-  await assert.rejects(rt.createDecision(owner.id, { ...request, executionIds: [execution.id] }), /Fixture ask save failure/)
-  rt.saveStrict = save
-  assert.equal(rt.sessionBlockReason(owner.id), undefined, 'the failed decision leaves no unfinished record')
-  assert.equal(execution.reports[0].review.decisionId, first.decisionId)
-  assert.equal(execution.reports[1].review.decisionId, second.decisionId, 'a failed save restores the newest pick to its previous review')
-  delete execution.reports[0].review
-  delete execution.reports[1].review
-  const third = await rt.createDecision(owner.id, { ...request, executionIds: [execution.id] })
-  assert.deepEqual(execution.reports.map(report => [report.review.disposition, report.review.decisionId]),
-    [['ask', third.decisionId], ['ask', third.decisionId]], 'with no reviewed report every delivered report is marked')
-  await rt.cancelDecision(owner.id, { decisionId: third.decisionId })
-}))
-
 test('snapshot and state views cap finished decisions but always keep unfinished ones', () => withDecisions(async ({ rt, owner, other }) => {
   const cancelOne = async session => { const { decisionId } = await rt.createDecision(session, request); await rt.cancelDecision(session, { decisionId }) }
   for (let index = 0; index < 12; index++) await cancelOne(owner.id)
@@ -377,38 +258,6 @@ test('snapshot and state views cap finished decisions but always keep unfinished
   assert.ok(snapshot.includes(decisionId))
   assert.ok(finished.slice(-3).every(id => snapshot.includes(id)), 'the snapshot keeps the three most recent finished decisions')
   assert.ok(finished.slice(0, -3).every(id => !snapshot.includes(id)), 'older finished decisions drop out of the snapshot')
-}))
-
-test('upgrading a delivered historical report does not backfill review or block dispatch', () => withDecisions(async ({ host, rt, owner, delegate }) => {
-  const first = await delegate()
-  await rt.followLead(owner.id, turn())
-  const worker = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
-  worker.finish()
-  await until(() => rt.state.executions[first.executionId].reports?.length)
-  const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
-  leader.finish()
-  await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
-  const line = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === first.executionId)
-  delete rt.state.executions[first.executionId].reports
-  rt.conversationOf(owner.id).session.reportQueue = [{ id: line.origin.reportId, executionId: first.executionId, taskId: first.taskId, session: first.session, text: line.text }]
-  await rt.saveStrict()
-  await host.dispose()
-  // The delivered row is settled on disk: rewrite it as a version before review existed saved it.
-  const file = join(host.home, 'transcripts', `${encodeURIComponent(owner.id)}.jsonl`)
-  writeFileSync(file, readFileSync(file, 'utf8').split('\n').map(text => {
-    const row = text && JSON.parse(text)
-    if (row?.origin?.reportId === line.origin.reportId) delete row.origin.reviewRequired
-    return row ? JSON.stringify(row) : text
-  }).join('\n'))
-  const restarted = boot(host.home)
-  try {
-    const recovered = await restarted.runtime
-    await recovered.flushLeadReports(owner.id)
-    assert.equal(recovered.conversationOf(owner.id).session.reportQueue, undefined, 'the historical report was processed')
-    assert.equal(recovered.state.executions[first.executionId].reports, undefined)
-    assert.equal(recovered.transcriptOf(owner.id).filter(item => item.origin?.reportId === line.origin.reportId).length, 1)
-    assert.equal((await routeUserTask(recovered, owner.id, { type: 'feature', hard: false, task: 'Authorized work after upgrade' })).status, 'queued')
-  } finally { await restarted.dispose() }
 }))
 
 test('pending is durable before queued cancellation; old worktree is removed and dispatch consumes no slots or budget', () => withDecisions(async ({ host, rt, owner, worker, delegate, client, api }) => {
@@ -499,7 +348,7 @@ test('incomplete, invalid, duplicate and expired answers preserve state; ordinar
   assert.equal(expired, decisionId, 'an answered decision cannot be replaced')
 }))
 
-test('answers queue behind the old turn without steering, then enter a new confirmed turn before dispatch; reports remain FIFO', () => withDecisions(async ({ rt, owner, api, delegate }) => {
+test('answers queue behind the old turn without steering, then enter a new confirmed turn before dispatch', () => withDecisions(async ({ rt, owner, api, delegate }) => {
   await api('send', { text: 'Plan' })
   const leader = await until(() => rt.driverOf(owner.id)?.active && rt.driverOf(owner.id))
   const queued = await delegate()
@@ -528,8 +377,8 @@ test('answers queue behind the old turn without steering, then enter a new confi
   leader.finish()
   await until(() => rt.driverOf(fresh.session)?.active)
   rt.driverOf(fresh.session).finish()
-  await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.executionId === fresh.executionId))
-  leader.finish()
+  await until(() => rt.transcriptOf(owner.id).some(line => line.delegation?.executionId === fresh.executionId && line.delegation.ended === 'done'))
+  assert.equal(rt.workView()[owner.id]?.active ?? false, false, 'the finished execution starts no leader turn')
 }))
 
 test('sending a queued message after the leader goes idle writes at and id back, so trigger handles stay resolvable', () => withDecisions(async ({ rt, owner, lead, api }) => {
@@ -596,11 +445,8 @@ test('waiting stops retry timers, preserves other running results and interrupts
   assert.equal(stopDriver.interrupted, 1)
   assert.equal(otherDriver.interrupted, 0)
   otherDriver.finish()
-  await until(() => rt.state.executions[running.executionId].report)
+  await until(() => rt.state.executions[running.executionId].status === 'done')
   assert.equal(rt.driverOf(owner.id), undefined)
-  assert.equal(rt.state.executions[running.executionId].status, 'done')
-  await until(() => rt.conversationOf(owner.id).session.reportQueue?.length === 2)
-  assert.deepEqual(new Set(rt.conversationOf(owner.id).session.reportQueue.map(item => item.executionId)), new Set([retry.executionId, running.executionId]))
   await new Promise(resolve => setTimeout(resolve, 250))
   assert.equal(rt.driverOf(retry.session).calls.length, 1)
   assert.equal(rt.state.decisions[decisionId].status, 'pending')
@@ -608,14 +454,9 @@ test('waiting stops retry timers, preserves other running results and interrupts
   await until(() => rt.state.decisions[decisionId].status === 'delivered')
   const leader = rt.driverOf(owner.id)
   assert.match(leader.calls[0], /用户已回答决策/)
-  const queue = [...rt.conversationOf(owner.id).session.reportQueue].map(item => item.id)
-  for (const reportId of queue) {
-    leader.finish()
-    await until(() => rt.transcriptOf(owner.id).some(line => line.origin?.reportId === reportId))
-  }
   leader.finish()
-  const delivered = rt.transcriptOf(owner.id).filter(line => line.origin?.kind === 'report').map(line => line.origin.reportId)
-  assert.deepEqual(delivered, queue)
+  await until(() => !rt.workView()[owner.id]?.active)
+  assert.equal(leader.calls.length, 1, 'ended executions send the leader no reports')
 }))
 
 test('stop request stays stopping until confirmation', () => withDecisions(async ({ rt, host, owner, delegate }) => {

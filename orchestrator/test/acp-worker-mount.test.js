@@ -32,7 +32,7 @@ for (const engine of ['dsh', 'opencode', 'codebuddy']) {
       const receipt = await routeUserTask(rt, owner.id, { type: 'feature', hard: false, task: original })
       await rt.followLead(owner.id, { mode: 'turn', completion: Promise.resolve({ reason: 'done' }) })
       const execution = rt.state.executions[receipt.executionId]
-      await until(() => execution.reports?.length)
+      await until(() => execution.flowContinued || rt.state.tasks[execution.taskId].flow.status === 'stalled')
       assert.equal(execution.status, 'done', execution.result?.text)
       const requests = readFileSync(join(host.home, `${engine}-requests.jsonl`), 'utf8').trim().split('\n').map(JSON.parse)
       const attach = requests.filter(item => item.method === 'session/new')
@@ -61,11 +61,9 @@ for (const engine of ['dsh', 'opencode', 'codebuddy']) {
         const saved = JSON.parse(readFileSync(join(host.home, 'state.json'), 'utf8')).executions[execution.id]
         assert.deepEqual(saved.reportData, execution.reportData)
         assert.deepEqual(saved.evidence, execution.evidence)
-        const card = rt.transcriptOf(owner.id).find(line => line.origin?.executionId === execution.id && line.origin?.kind === 'report')
-        assert.ok(card.text.includes(`报告：report:${report.reportId}`))
+        assert.equal(rt.transcriptOf(owner.id).some(line => line.origin?.kind === 'report'), false)
       }
       assert.equal(await rt.issueWorkerMcp(owner.id), undefined, 'a leader session never receives a worker credential')
-      await until(() => !rt.workView()[owner.id]?.active && !rt.conversationOf(owner.id).session.reportQueue)
     }))
   }
 

@@ -229,10 +229,7 @@ export function install(rt) {
       case 'session-open':
         return rt.openNativeSession(body)
       case 'session-select':
-        return rt.selectSession(resolveProfileRef(body.profile).id, body.session).then(session => {
-          void rt.flushLeadReports(session.id)
-          return session
-        })
+        return rt.selectSession(resolveProfileRef(body.profile).id, body.session)
       case 'session-update':
         return rt.updateSession(resolveProfileRef(body.profile).id, body.session, body.changes ?? {})
       case 'session-archive':
@@ -258,7 +255,6 @@ export function install(rt) {
         if (leadMode) void rt.followLead(session.id, placed)
         else void rt.followLeadReport(session.id, placed, placed.leadFlight)
         if (leadMode) await rt.resumeDecisionDelivery?.(session.id)
-        void rt.flushLeadReports(session.id)
         return { profileId: profile.id, mode: placed.mode, seq: placed.seq }
       }
       case 'queued-message': {

@@ -216,8 +216,8 @@ test('Codex leader tool surface freezes to code mode with only the Nodo MCP tool
       'code mode: no exec_command, no collaboration, no web__run, no direct MCP declarations')
     assert.deepEqual(thread.surface.allTools, [
       'apply_patch', 'clock__curr_time', 'list_mcp_resource_templates', 'list_mcp_resources',
-      'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_review', 'mcp__nodo_lead__nodo_route',
-      'read_mcp_resource'], 'the exec sandbox may call nothing beyond apply_patch, the resource readers and the four Nodo tools — no web__run')
+      'mcp__nodo_lead__nodo_board', 'mcp__nodo_lead__nodo_context', 'mcp__nodo_lead__nodo_route',
+      'read_mcp_resource'], 'the exec sandbox may call nothing beyond apply_patch, the resource readers and the three Nodo tools — no web__run')
   })
 })
 

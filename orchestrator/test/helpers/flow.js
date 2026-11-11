@@ -78,11 +78,14 @@ export const withFlow = (run, repository = false) => withHost(async host => {
     await start(execution)
     if (report) await rt.workerReport(execution, report)
     rt.driverOf(execution.sessionId).finish(text, reason)
-    await until(() => execution.reports?.length && !rt.workView()[owner.id]?.active)
+    await advanced(execution)
     return execution
   }
+  const advanced = execution => until(() => execution.endedAt != null
+    && (execution.flowContinued || ['stalled', 'stopped'].includes(rt.state.tasks[execution.taskId].flow.status)))
+  // The program advances the flow itself; this returns the task's latest execution.
   const review = async execution => {
-    await rt.leadReview(owner.id, { executionId: execution.id, disposition: 'continue', reason: 'Reviewed evidence', basis: [`report:${execution.reportData.id}`] })
+    await advanced(execution)
     return Object.values(rt.state.executions).filter(item => item.taskId === execution.taskId).at(-1)
   }
   const card = taskId => Object.values(rt.state.cards).find(item => item.taskId === taskId && item.status === 'open')
