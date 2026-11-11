@@ -383,3 +383,36 @@ test('a task waiting on its dependencies takes a supplement and can be stopped',
   assert.deepEqual(Object.values(rt.state.executions).filter(item => item.taskId === third.taskId), [])
   assert.equal(rt.state.triggers[triggerId], undefined, 'a stopped waiting task releases its trigger')
 }))
+
+test('stopping a task stops the tasks still waiting on it', () => withFlow(async ({ rt, owner, trigger, create }) => {
+  const first = await create()
+  trigger('Second step requirement')
+  const second = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Second' }, dependsOn: [first.taskId] })
+  trigger('Third step requirement')
+  const third = await rt.leadRoute(owner.id, { action: 'new', type: 'feature', hard: false, scope: { quote: 'Third' }, dependsOn: [second.taskId] })
+  assert.equal(second.status, 'pending'); assert.equal(third.status, 'pending')
+  const triggerId = rt.state.tasks[third.taskId].triggerId
+  const stopped = await rt.leadRoute(owner.id, { action: 'stop', taskIds: [first.taskId] })
+  assert.deepEqual([...stopped.stoppedTaskIds].sort(), [second.taskId, third.taskId].sort())
+  for (const taskId of [first.taskId, second.taskId, third.taskId]) {
+    assert.equal(rt.state.tasks[taskId].flow.status, 'stopped'); assert.equal(rt.state.tasks[taskId].status, 'stopped')
+  }
+  assert.equal(rt.state.triggers[triggerId], undefined, 'a cascaded stop releases the trigger it held')
+  assert.deepEqual(Object.values(rt.state.cards).filter(card => card.status === 'open'), [])
+}))
+
+test('a late confirmation of an unconfirmed execution returns its stalled task to the flow', () => withFlow(async ({ rt, create, start, card }) => {
+  const execution = await create()
+  await start(execution)
+  rt.driverSink(execution.sessionId, { type: 'turn/end', turnId: 't1', reason: 'error', text: 'lost', unconfirmed: true })
+  await until(() => rt.state.tasks[execution.taskId].flow.status === 'stalled')
+  const stall = card(execution.taskId)
+  assert.equal(stall.payload.reason, 'execution-failed')
+  rt.driverSink(execution.sessionId, { type: 'turn/start', turnId: 't9' })
+  rt.driverSink(execution.sessionId, { type: 'text', turnId: 't9', messageId: 'r9', text: 'Late result' })
+  rt.driverSink(execution.sessionId, { type: 'turn/end', turnId: 't9', reason: 'done', text: 'Late result' })
+  await until(() => rt.state.tasks[execution.taskId].flow.status === 'reviewing')
+  assert.equal(rt.state.executions[execution.id].status, 'done')
+  assert.equal(rt.state.cards[stall.id].status, 'resolved', 'the false stall card is resolved, not left to a manual retry')
+  assert.equal(Object.values(rt.state.executions).at(-1).stage, 'review', 'the flow advances instead of re-running the stage')
+}))

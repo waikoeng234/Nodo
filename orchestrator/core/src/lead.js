@@ -265,7 +265,7 @@ export function install(rt) {
   const dispatchTask = async (leadValue, command, taskRecord, details) => {
     const { profile: lead, session: leadSession } = ownerOf(leadValue)
     const state = stateOf(leadSession.id)
-    const { trigger, stage = 'implement', sourceExecutionId, supplements = [], profileId, resumed = false } = details
+    const { trigger, stage = 'implement', sourceExecutionId, supplements = [], profileId, resumed = false, scheduled = false } = details
     const continuesRecord = command.continues ? await ownedTask({ profile: lead, session: leadSession }, command.continues) : undefined
     const sourceRecord = taskRecord ?? continuesRecord
     if (continuesRecord && (!continuesRecord.executions.length || continuesRecord.executions.at(-1).endedAt == null
@@ -308,7 +308,7 @@ export function install(rt) {
     const target = picked.profile, reused = !!live
     const newTrigger = !rt.state.triggers[trigger.id]
     state.reserved++
-    state.count = (state.count ?? 0) + 1
+    if (!scheduled) state.count = (state.count ?? 0) + 1
     let reserved = true
     let session, flight, execution, continued, createdWorkspace
     try {
@@ -382,7 +382,7 @@ export function install(rt) {
           created.profile.sessions = created.profile.sessions.filter(item => item.id !== session.id)
           await rt.save()
         } catch (cause) { rt.warn('nodo: orphan session cleanup failed (%s): %s', session.id, causeOf(cause)) }
-        state.count--
+        if (!scheduled) state.count--
         await removeUnsentWorktree(createdWorkspace?.id)
       }
       throw error
@@ -411,15 +411,21 @@ export function install(rt) {
         return task.executions.filter(item => ['queued', 'running', 'unconfirmed'].includes(item.status))
       })
       for (const execution of executions) tasks.set(execution.taskId, await ownedTask(owner, execution.taskId))
+      const waiting = Object.values(rt.state.tasks).filter(task => task.coordinatorSessionId === id && task.flow?.status === 'pending').map(task => task.id)
       const stopped = []
       for (const execution of executions) if (['queued', 'running', 'unconfirmed'].includes(execution.status)) stopped.push(await interruptDelegation(id, { executionId: execution.id }))
       for (const task of tasks.values()) {
         const record = rt.state.tasks[task.id]
-        if (record.flow) { record.flow.status = 'stopped'; record.status = 'stopped'; rt.releaseTaskTriggers(task.id) }
-        for (const card of Object.values(rt.state.cards)) if (card.taskId === task.id && card.status === 'open') Object.assign(card, { status: 'resolved', answer: 'stop', answeredAt: Date.now() })
+        if (record.flow) rt.stopFlowTask(record)
+        else {
+          record.status = 'stopped'
+          for (const card of Object.values(rt.state.cards)) if (card.taskId === task.id && card.status === 'open') Object.assign(card, { status: 'resolved', answer: 'stop', answeredAt: Date.now() })
+        }
       }
+      const stoppedTaskIds = waiting.filter(taskId => rt.state.tasks[taskId].flow.status === 'stopped')
+      if (stoppedTaskIds.length) await note(id, `已同时停止 ${stoppedTaskIds.length} 个等待这些任务的下游任务。`)
       await rt.saveStrict()
-      return { ok: true, stopped }
+      return { ok: true, stopped, ...(stoppedTaskIds.length ? { stoppedTaskIds } : {}) }
     }
     if ((state.count ?? 0) >= LEAD_DISPATCH_BUDGET) throw failure(`本轮已达到 ${LEAD_DISPATCH_BUDGET} 次派活上限`, 'orch/busy')
     if (command.action === 'ask') {
@@ -660,8 +666,11 @@ export function install(rt) {
     leadEnded: async (id, result) => {
       const session = rt.conversationOf(id)?.session
       const execution = latestExecution(id)
-      if (execution?.status === 'unconfirmed' && !flightOf(id)) await end(stateOf(session?.source?.leadSessionId), session, { ...executionIds(execution),
+      if (execution?.status !== 'unconfirmed' || flightOf(id)) return
+      await end(stateOf(session?.source?.leadSessionId), session, { ...executionIds(execution),
         stoppedBy: execution.reason?.startsWith('interrupted-') ? execution.reason.slice(12) : undefined, settle() {} }, result)
+      const leadId = rt.resumeStalledExecution?.(execution)
+      if (leadId) await rt.scheduleFlow(leadId)
     },
     recoverLeadDelegations,
     leadBrief, followLead, followLeadReport, cancelLeadRetry,

@@ -316,3 +316,21 @@ test('M7 parallel shared and isolated tasks keep their directories and continue 
   assert.equal(rt.driverOf(again.session).cwd, isolated.cwd)
   await stopFlight(owner.id, again)
 }, true))
+
+test('a task planned for later dependencies costs one route, not two', () => withFlights(async ({ rt, owner, delegate, turn }) => {
+  const first = await delegate({ task: 'Step one' })
+  const second = await delegate({ task: 'Step two', dependsOn: [first.taskId] })
+  assert.equal(second.status, 'pending')
+  await rt.followLead(owner.id, turn('done'))
+  const one = await until(() => rt.driverOf(first.session)?.active && rt.driverOf(first.session))
+  one.finish('done', 'Step one done')
+  await until(() => rt.state.tasks[second.taskId].flow.status === 'running')
+  let accepted = 0, failure
+  for (let index = 0; index < 30; index++) {
+    try { await delegate({ task: `Filler ${index}` }) } catch (error) { failure = error; break }
+    accepted++
+    await rt.followLead(owner.id, turn('interrupted'))
+  }
+  assert.equal(accepted, 22, 'the planned route and its scheduled start share one budget slot')
+  assert.match(failure.message, /24 次派活上限/)
+}))

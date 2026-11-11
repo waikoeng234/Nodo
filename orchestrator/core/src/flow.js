@@ -132,7 +132,7 @@ export function install(rt) {
     const task = state.tasks[execution.taskId]
     if (!task.flow || !['running', 'reviewing'].includes(task.flow.status) || execution.flowContinued
       || executionsOf(task).at(-1)?.id !== execution.id) return
-    const supplements = execution.stage === 'review' ? [...new Set(execution.supplements ?? [])].sort((a, b) => state.triggers[a].at - state.triggers[b].at) : []
+    const supplements = execution.stage === 'review' ? [...new Set(execution.supplements ?? [])].filter(id => state.triggers[id]).sort((a, b) => state.triggers[a].at - state.triggers[b].at) : []
     let receipt
     if (execution.status !== 'done' || ['blocked', 'failed'].includes(execution.reportData?.outcome)) stallFlow(task, 'execution-failed', execution)
     else if (executionsOf(task).length >= FLOW_EXECUTIONS_MAX) stallFlow(task, 'hard-cap', execution)
@@ -165,10 +165,35 @@ export function install(rt) {
   const flowExecutionEnded = execution => {
     const task = state.tasks[execution.taskId]
     if (!task.flow) return
-    if (['interrupted-user', 'interrupted-lead'].includes(execution.reason)) {
-      task.flow.status = 'stopped'; resolveCards(task, 'stop'); syncTaskFlow(task); rt.releaseTaskTriggers(task.id)
-    } else if (execution.status !== 'done' && !['accepted', 'stopped'].includes(task.flow.status)) stallFlow(task, 'execution-failed', execution)
+    if (['interrupted-user', 'interrupted-lead'].includes(execution.reason)) stopFlowTask(task)
+    else if (execution.status !== 'done' && !['accepted', 'stopped'].includes(task.flow.status)) stallFlow(task, 'execution-failed', execution)
     syncTaskFlow(task)
+  }
+  // A stopped task can never release its dependents, so the tasks still waiting on
+  // it stop with it instead of waiting for a release that cannot come.
+  const stopFlowTask = (task, answer = 'stop') => {
+    if (!task.flow || ['accepted', 'stopped'].includes(task.flow.status)) return
+    task.flow.status = 'stopped'
+    delete task.flow.stalled
+    resolveCards(task, answer)
+    syncTaskFlow(task)
+    rt.releaseTaskTriggers(task.id)
+    for (const other of Object.values(state.tasks)) {
+      if (other.coordinatorSessionId === task.coordinatorSessionId && other.flow?.status === 'pending'
+        && (other.dependsOn ?? []).includes(task.id)) stopFlowTask(other, answer)
+    }
+  }
+  // A late confirmation of an execution that stalled its task returns the task to
+  // its stage, so the next pass advances it instead of the stall card re-running it.
+  const resumeStalledExecution = execution => {
+    const task = state.tasks[execution.taskId]
+    if (execution.status !== 'done' || task?.flow?.status !== 'stalled' || task.flow.stalled?.reason !== 'execution-failed'
+      || task.flow.stalled.executionId !== execution.id) return
+    task.flow.status = task.flow.stage === 'review' ? 'reviewing' : 'running'
+    delete task.flow.stalled
+    resolveCards(task, 'recovered')
+    syncTaskFlow(task)
+    return task.coordinatorSessionId
   }
   const cardOf = (id, cardId) => {
     ownerOf(id)
@@ -236,7 +261,7 @@ export function install(rt) {
   const startPending = async task => {
     let receipt
     try { receipt = await rt.dispatchFlowExecution(task, { ...task.flow.route, stage: 'implement', trigger: state.triggers[task.triggerId],
-      supplements: [...(task.flow.supplements ?? [])] }) }
+      supplements: [...(task.flow.supplements ?? [])], scheduled: true }) }
     catch (error) {
       if (error.code === 'orch/busy') throw error
       stallFlow(task, 'execution-failed', undefined, [error.message])
@@ -273,7 +298,7 @@ export function install(rt) {
     void pass.then(() => { if (passes.get(id) === pass) passes.delete(id) })
     return pass
   }
-  Object.assign(rt, { flowOf, syncTaskFlow, stallFlow, needsFlowReview, checkFlowCapacity, advanceFlow, reworkFlow, flowExecutionEnded, answerFlowCard, scheduleFlow,
+  Object.assign(rt, { flowOf, syncTaskFlow, stallFlow, stopFlowTask, resumeStalledExecution, needsFlowReview, checkFlowCapacity, advanceFlow, reworkFlow, flowExecutionEnded, answerFlowCard, scheduleFlow,
     listFlowCards: id => { ownerOf(id); return structuredClone(Object.values(state.cards).filter(card => card.coordinatorSessionId === id)) },
     getFlowCard: (id, cardId) => structuredClone(cardOf(id, cardId)),
     recoverFlowCards: () => {
