@@ -20545,8 +20545,10 @@ function ModelCatalogList({ engine, disabled, onToggle }) {
         "aria-label": "\u641C\u7D22\u6A21\u578B",
         placeholder: "\u641C\u7D22\u6A21\u578B",
         value: query,
-        // Enter must not reach the engine form's submit; the box only filters.
+        // Enter must not reach the engine form's submit; the box only filters,
+        // and a composing Enter belongs to the IME, not the form.
         onKeyDown: (event) => {
+          if (event.nativeEvent?.isComposing || event.keyCode === 229) return;
           if (event.key === "Enter") event.preventDefault();
         },
         onChange: (event) => setQuery(event.target.value)

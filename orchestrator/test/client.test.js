@@ -849,9 +849,13 @@ test('the settings model list searches the scanned models and toggles the enable
         ] } }]
       if (endpoint === 'engine-model-enable-set') {
         // The first save stays in flight until the test releases it, so the
-        // in-flight switch lock is observable.
+        // in-flight switch lock is observable; the third save fails so the
+        // rollback is observable.
         if (requests.filter(item => item.endpoint === 'engine-model-enable-set').length === 1) {
           await new Promise(resolve => { releaseSave = resolve })
+        }
+        if (requests.filter(item => item.endpoint === 'engine-model-enable-set').length === 3) {
+          throw new Error('主机拒绝了这次保存')
         }
         view.prefs.enabledModels ??= {}
         view.prefs.enabledModels[payload.engine] = [...payload.models]
@@ -882,10 +886,17 @@ test('the settings model list searches the scanned models and toggles the enable
   assert.deepEqual(groups(), ['Mock', 'DeepSeek'], 'rows group by the scanned provider')
   assert.equal(groups().some(text => text.startsWith('未显示')), false)
   let prevented = false
-  search().props.onKeyDown({ key: 'Enter', preventDefault: () => { prevented = true } })
+  const press = event => search().props.onKeyDown({ preventDefault: () => { prevented = true }, ...event })
+  press({ key: 'Enter' })
   assert.equal(prevented, true, 'Enter in the search box never submits the engine form')
   prevented = false
-  search().props.onKeyDown({ key: 'g', preventDefault: () => { prevented = true } })
+  press({ key: 'Enter', nativeEvent: { isComposing: true } })
+  assert.equal(prevented, false, 'a composing Enter belongs to the IME and stays untouched')
+  prevented = false
+  press({ key: 'Enter', keyCode: 229 })
+  assert.equal(prevented, false, 'the IME composing keycode stays untouched too')
+  prevented = false
+  press({ key: 'g' })
   assert.equal(prevented, false, 'ordinary typing stays untouched')
   void switches().find(node => node.props['aria-label'] === '停用 GLM X').props.onClick()
   assert.ok(switches().every(node => node.props.disabled === true), 'every switch locks while a save is in flight')
@@ -909,6 +920,13 @@ test('the settings model list searches the scanned models and toggles the enable
   assert.equal(heading(), '已选 3 个')
   assert.equal(groups().some(text => text.startsWith('未显示')), false)
   assert.equal(requests.some(item => item.endpoint === 'engine-config-set'), false, 'searching never writes the engine config')
+  await switches().find(node => node.props['aria-label'] === '停用 GLM Y').props.onClick(); await tick(); await tick()
+  assert.deepEqual(requests.at(-1).payload.models, ['ds-a', 'glm-x'], 'the failed save still sent the toggled set')
+  assert.equal(heading(), '已选 3 个', 'a failed save rolls back to the previous selection')
+  assert.deepEqual(rowNames(), ['GLM X', 'GLM Y', 'DS A'], 'the rolled-back set re-renders as it was')
+  assert.ok(switches().every(node => node.props.disabled === false), 'a failed save unlocks the switches')
+  assert.ok(render().some(node => node.props.className === 'nodo-dialog-error' && String(node.children[0]).includes('主机拒绝')),
+    'the failed save names itself in the dialog')
 })
 
 test('first-run onboarding lists detected engines and stores the choice', async () => {
